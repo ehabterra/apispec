@@ -219,50 +219,37 @@ func isChiBindingMethod(name string) bool {
 }
 
 func extractChiResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
-	var responses []core.ResponseInfo
-	if fn.Body == nil {
-		return responses
-	}
+	// Build funcMap and callGraph once per file set
+	funcMap := BuildFuncMap(goFiles)
+	callGraph := BuildCallGraph(goFiles)
 
-	// Collect JSON aliases from the file containing this function
-	var file *ast.File
-	for _, f := range goFiles {
-		for _, decl := range f.Decls {
-			if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == fn {
-				file = f
+	extractFn := func(f *ast.FuncDecl) []interface{} {
+		var responses []core.ResponseInfo
+		if f.Body == nil {
+			return nil
+		}
+		var file *ast.File
+		for _, gf := range goFiles {
+			for _, decl := range gf.Decls {
+				if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == f {
+					file = gf
+					break
+				}
+			}
+			if file != nil {
 				break
 			}
 		}
+		aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
 		if file != nil {
-			break
+			aliases = CollectJSONAliases(file)
 		}
-	}
-	aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
-	if file != nil {
-		aliases = CollectJSONAliases(file)
-	}
-
-	addResponse := func(statusCode int, responseType string, mapKeys map[string]string) {
-		for _, r := range responses {
-			if r.StatusCode == statusCode && r.Type == responseType {
-				return
+		statusCodes := findAllStatusCodes(f)
+		ast.Inspect(f.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
-		}
-		responses = append(responses, core.ResponseInfo{
-			StatusCode: statusCode,
-			Type:       responseType,
-			MediaType:  "application/json",
-			MapKeys:    mapKeys,
-		})
-	}
-
-	// First pass: collect all WriteHeader calls with their status codes
-	statusCodes := findAllStatusCodes(fn)
-
-	// Second pass: find all response calls and associate them with status codes
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		if call, ok := n.(*ast.CallExpr); ok {
-			// Check for Chi-specific JSON methods
 			if se, ok := call.Fun.(*ast.SelectorExpr); ok && isChiJSONMethod(se.Sel.Name) {
 				if len(call.Args) >= 2 {
 					statusCode := resolveStatusCode(call.Args[0])
@@ -275,12 +262,11 @@ func extractChiResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 					var responseType string
 					var mapKeys map[string]string
 					if ident, ok := call.Args[1].(*ast.Ident); ok {
-						responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
 						if responseType == "" {
 							responseType = ident.Name
 						}
 					} else if comp, ok := call.Args[1].(*ast.CompositeLit); ok {
-						responseType = getTypeName(comp.Type)
 						if info != nil && info.Types != nil {
 							if typeAndValue, exists := info.Types[comp.Type]; exists && typeAndValue.Type != nil {
 								if mapType, ok := typeAndValue.Type.(*types.Map); ok {
@@ -288,15 +274,19 @@ func extractChiResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 								}
 							}
 						}
+						responseType = getTypeName(comp.Type)
 					}
 					if responseType != "" {
-						addResponse(statusCode, responseType, mapKeys)
+						responses = append(responses, core.ResponseInfo{
+							StatusCode: statusCode,
+							Type:       responseType,
+							MediaType:  "application/json",
+							MapKeys:    mapKeys,
+						})
 					}
 				}
 			}
-			// Check for standard Go json.NewEncoder().Encode() patterns
 			if isJSONEncodeCall(call, aliases) {
-				// Find the appropriate status code from collected status codes
 				statusCode := findBestStatusCode(statusCodes, call.Pos())
 				if statusCode == 0 {
 					statusCode = 200 // default
@@ -305,12 +295,11 @@ func extractChiResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 				var mapKeys map[string]string
 				if len(call.Args) > 0 {
 					if ident, ok := call.Args[0].(*ast.Ident); ok {
-						responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
 						if responseType == "" {
 							responseType = ident.Name
 						}
 					} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
-						responseType = getTypeName(comp.Type)
 						if info != nil && info.Types != nil {
 							if typeAndValue, exists := info.Types[comp.Type]; exists && typeAndValue.Type != nil {
 								if mapType, ok := typeAndValue.Type.(*types.Map); ok {
@@ -318,17 +307,38 @@ func extractChiResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 								}
 							}
 						}
+						responseType = getTypeName(comp.Type)
 					}
 				}
 				if responseType != "" {
-					addResponse(statusCode, responseType, mapKeys)
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
 				}
 			}
-		}
-		return true
-	})
+			return true
+		})
+		return toIfaceSlice(responses)
+	}
 
-	return responses
+	var out []core.ResponseInfo
+
+	if fn != nil && fn.Name != nil {
+		results := ExtractNestedInfo(fn.Name.Name, funcMap, callGraph, nil, extractFn)
+		for _, r := range results {
+			if resp, ok := r.(core.ResponseInfo); ok {
+				out = append(out, resp)
+			}
+		}
+		println("[DEBUG] Chi handler:", fn.Name.Name)
+		for _, r := range out {
+			println("  [DEBUG] Response:", r.StatusCode, r.Type, r.MediaType)
+		}
+	}
+	return out
 }
 
 // isChiJSONMethod checks if a function name is a Chi JSON response method
@@ -338,4 +348,21 @@ func isChiJSONMethod(name string) bool {
 		return true
 	}
 	return false
+}
+
+// NewChiParserForTest creates a ChiParser with type information for testing
+func NewChiParserForTest(files []*ast.File) (*ChiParser, error) {
+	// Create types.Info to collect type information
+	info := &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		Scopes:     make(map[ast.Node]*types.Scope),
+	}
+
+	// For tests, we'll skip type checking since we might not have all dependencies
+	// and the parser can work with minimal type information
+	return DefaultChiParserWithTypes(info), nil
 }

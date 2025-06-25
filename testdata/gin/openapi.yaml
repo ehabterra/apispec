@@ -8,7 +8,7 @@ info:
 paths:
     /users:
         get:
-            operationId: getUsers
+            operationId: ListUsers
             responses:
                 "200":
                     description: OK
@@ -19,7 +19,7 @@ paths:
                                 items:
                                     $ref: '#/components/schemas/User'
         post:
-            operationId: postUsers
+            operationId: CreateUser
             requestBody:
                 description: Request body for CreateUser
                 content:
@@ -40,17 +40,16 @@ paths:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
                                     error: null
     /users/{id}:
         get:
-            operationId: getUsersId
+            operationId: GetUser
             parameters:
                 - name: id
                   in: path
+                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
@@ -67,27 +66,24 @@ paths:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
-                                    error: null
+                                    error: example
                 "404":
                     description: Not Found
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
-                                    error: null
+                                    error: example
         put:
-            operationId: putUsersId
+            operationId: UpdateUser
             parameters:
                 - name: id
                   in: path
+                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
@@ -111,9 +107,7 @@ paths:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
                                     error: null
                 "404":
@@ -122,62 +116,41 @@ paths:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
-                                    error: null
+                                    error: example
         delete:
-            operationId: deleteUsersId
+            operationId: DeleteUser
             parameters:
                 - name: id
                   in: path
+                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
             responses:
                 "204":
                     description: No Content
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/MapstringAny'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
-                                    error: null
+                                    error: example
                 "404":
                     description: Not Found
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        $ref: '#/components/schemas/Any'
+                                additionalProperties: true
                                 example:
-                                    error: null
+                                    error: example
 components:
     schemas:
-        Any:
-            type: object
-            properties:
-                error:
-                    $ref: '#/components/schemas/Any'
-            example:
-                error: null
-        MapstringAny:
-            type: object
-            additionalProperties: true
-            example:
-                exampleKey: exampleValue
         User:
             type: object
             required:

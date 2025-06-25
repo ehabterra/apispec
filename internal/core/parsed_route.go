@@ -6,14 +6,12 @@ import (
 	"go/types"
 )
 
-// RouteStrategy defines the interface for different route parsing strategies
-type RouteStrategy interface {
-	TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next RouteStrategy, info *types.Info) (*ParsedRoute, bool)
-}
-
-// EventListener defines the interface for parser events
-type EventListener interface {
-	OnRouteParsed(route *ParsedRoute)
+// ResponseInfo represents response information
+type ResponseInfo struct {
+	StatusCode int
+	Type       string
+	MediaType  string
+	MapKeys    map[string]string
 }
 
 // ParsedRoute represents a parsed API route
@@ -25,14 +23,6 @@ type ParsedRoute struct {
 	RequestSource string
 	ResponseTypes []ResponseInfo
 	Position      token.Position
-}
-
-// ResponseInfo represents response information
-type ResponseInfo struct {
-	StatusCode int
-	Type       string
-	MediaType  string
-	MapKeys    map[string]string
 }
 
 // ParsedRouteBuilder provides a fluent interface for building ParsedRoute
@@ -89,24 +79,4 @@ func (b *ParsedRouteBuilder) SetResponses(responses []ResponseInfo) *ParsedRoute
 // Build returns the built ParsedRoute
 func (b *ParsedRouteBuilder) Build() *ParsedRoute {
 	return b.Route
-}
-
-// StrategyChain represents a chain of parsing strategies
-type StrategyChain struct {
-	strategies []RouteStrategy
-}
-
-// NewStrategyChain creates a new strategy chain
-func NewStrategyChain(strategies ...RouteStrategy) *StrategyChain {
-	return &StrategyChain{strategies: strategies}
-}
-
-// TryParse attempts to parse using each strategy in the chain
-func (c *StrategyChain) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next RouteStrategy, info *types.Info) (*ParsedRoute, bool) {
-	for _, strategy := range c.strategies {
-		if route, ok := strategy.TryParse(node, fset, funcMap, goFiles, next, info); ok {
-			return route, true
-		}
-	}
-	return nil, false
 }

@@ -116,5 +116,51 @@ func TestEndToEnd_Gin(t *testing.T) {
 		t.Fatalf("expected schema $ref to be #/components/schemas/User, got %s", ref)
 	}
 
+	// Check POST /users responses for 201 and 400
+	postResponses, ok := postOp["responses"].(map[string]interface{})
+	if !ok {
+		t.Fatal("responses not found for POST /users")
+	}
+	if _, ok := postResponses["201"]; !ok {
+		t.Error("POST /users missing 201 response")
+	}
+	if _, ok := postResponses["400"]; !ok {
+		t.Error("POST /users missing 400 response")
+	}
+
+	// Check GET/PUT/DELETE /users/{id} for 200, 204, 400, 404
+	userIdPath, ok := paths["/users/{id}"].(map[string]interface{})
+	if !ok {
+		t.Fatal("path /users/{id} not found")
+	}
+	for _, method := range []string{"get", "put", "delete"} {
+		op, ok := userIdPath[method].(map[string]interface{})
+		if !ok {
+			t.Errorf("method %s not found for /users/{id}", method)
+			continue
+		}
+		responses, ok := op["responses"].(map[string]interface{})
+		if !ok {
+			t.Errorf("responses not found for %s /users/{id}", method)
+			continue
+		}
+		// GET and PUT should have 200, 400, 404
+		if method == "get" || method == "put" {
+			for _, code := range []string{"200", "400", "404"} {
+				if _, ok := responses[code]; !ok {
+					t.Errorf("%s /users/{id} missing %s response", method, code)
+				}
+			}
+		}
+		// DELETE should have 204, 400, 404
+		if method == "delete" {
+			for _, code := range []string{"204", "400", "404"} {
+				if _, ok := responses[code]; !ok {
+					t.Errorf("DELETE /users/{id} missing %s response", code)
+				}
+			}
+		}
+	}
+
 	t.Log("Successfully generated OpenAPI spec with request body from Gin code.")
 }

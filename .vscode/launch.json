@@ -12,9 +12,9 @@
             "program": "${workspaceFolder}/cmd/main.go",
             "args": [
                 "-d",
-                "./testdata/chi",
+                "./testdata/gin",
                 "-o",
-                "./testdata/chi/openapi.yaml",
+                "./testdata/gin/openapi.yaml",
                 "-title",
                 "My Awesome API",
                 "-openapi.version",

@@ -1,4 +1,4 @@
-package parser
+package parser_test
 
 import (
 	"go/ast"

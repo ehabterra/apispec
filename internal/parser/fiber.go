@@ -4,29 +4,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"net/http"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/core"
 )
-
-// convertFiberPathToOpenAPI converts Fiber path parameters to OpenAPI format
-func convertFiberPathToOpenAPI(path string) string {
-	// Fiber uses :param for path parameters, convert to {param}
-	result := path
-	for i := 0; i < len(result)-1; i++ {
-		if result[i] == ':' {
-			// Find the end of the parameter name
-			end := i + 1
-			for end < len(result) && result[end] != '/' {
-				end++
-			}
-			paramName := result[i+1 : end]
-			result = result[:i] + "{" + paramName + "}" + result[end:]
-			i = i + len(paramName) + 1 // Skip the replaced part
-		}
-	}
-	return result
-}
 
 type FiberCallExprStrategy struct{}
 
@@ -52,7 +34,7 @@ func (s *FiberCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, fun
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
-				path = convertFiberPathToOpenAPI(path)
+				path = convertPathToOpenAPI(path)
 
 				handlerName := getHandlerName(call.Args[1])
 
@@ -232,147 +214,132 @@ func isFiberBindingMethod(name string) bool {
 }
 
 func extractFiberResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
-	var responses []core.ResponseInfo
-	if fn.Body == nil {
-		return responses
-	}
+	// Build funcMap and callGraph once per file set
+	funcMap := BuildFuncMap(goFiles)
+	callGraph := BuildCallGraph(goFiles)
 
-	var file *ast.File
-	for _, f := range goFiles {
-		for _, decl := range f.Decls {
-			if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == fn {
-				file = f
+	extractFn := func(f *ast.FuncDecl) []interface{} {
+		var responses []core.ResponseInfo
+		if f.Body == nil {
+			return nil
+		}
+		var file *ast.File
+		for _, gf := range goFiles {
+			for _, decl := range gf.Decls {
+				if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == f {
+					file = gf
+					break
+				}
+			}
+			if file != nil {
 				break
 			}
 		}
+		aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
 		if file != nil {
-			break
+			aliases = CollectJSONAliases(file)
 		}
-	}
-	aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
-	if file != nil {
-		aliases = CollectJSONAliases(file)
-	}
-
-	statusCodes := findAllStatusCodes(fn)
-
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-
-		// Handle chained calls: c.Status(...).JSON(...)
-		if se, ok := call.Fun.(*ast.SelectorExpr); ok && isFiberJSONMethod(se.Sel.Name) {
-			var statusCode int
-			var responseArg ast.Expr
-
-			// Check if the receiver is a CallExpr (i.e., c.Status(...))
-			if recvCall, ok := se.X.(*ast.CallExpr); ok {
-				if recvSel, ok := recvCall.Fun.(*ast.SelectorExpr); ok && recvSel.Sel.Name == "Status" && len(recvCall.Args) == 1 {
-					statusCode = resolveStatusCode(recvCall.Args[0])
-				}
+		ast.Inspect(f.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
-			// If not found, fallback to first argument (for c.JSON(status, ...))
-			if statusCode == 0 && len(call.Args) >= 2 {
-				statusCode = resolveStatusCode(call.Args[0])
-				responseArg = call.Args[1]
-			} else if len(call.Args) == 1 {
-				responseArg = call.Args[0]
-			}
-			if statusCode == 0 {
-				statusCode = findBestStatusCode(statusCodes, call.Pos())
+			// Handle chained calls: c.Status(...).JSON(...)
+			if se, ok := call.Fun.(*ast.SelectorExpr); ok && isFiberJSONMethod(se.Sel.Name) {
+				statusCode, responseArg := ExtractStatusAndResponseFromCall(call, info)
 				if statusCode == 0 {
-					statusCode = 200 // default
+					statusCode = http.StatusOK // default
 				}
-			}
-
-			var responseType string
-			var mapKeys map[string]string
-			if responseArg != nil {
-				if ident, ok := responseArg.(*ast.Ident); ok {
-					responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
-					if responseType == "" {
-						responseType = ident.Name
-					}
-				} else if comp, ok := responseArg.(*ast.CompositeLit); ok {
-					if info != nil && info.Types != nil {
-						if typ := info.Types[comp.Type].Type; typ != nil {
-							if named, ok := typ.(*types.Named); ok {
-								responseType = named.Obj().Name()
-							} else if slice, ok := typ.(*types.Slice); ok {
-								if elem, ok := slice.Elem().(*types.Named); ok {
-									responseType = "[]" + elem.Obj().Name()
+				var responseType string
+				var mapKeys map[string]string
+				if responseArg != nil {
+					if ident, ok := responseArg.(*ast.Ident); ok {
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
+						if responseType == "" {
+							responseType = ident.Name
+						}
+					} else if comp, ok := responseArg.(*ast.CompositeLit); ok {
+						if info != nil && info.Types != nil {
+							if typ := info.Types[comp.Type].Type; typ != nil {
+								if named, ok := typ.(*types.Named); ok {
+									responseType = named.Obj().Name()
+								} else if slice, ok := typ.(*types.Slice); ok {
+									if elem, ok := slice.Elem().(*types.Named); ok {
+										responseType = "[]" + elem.Obj().Name()
+									}
+								} else if mapType, ok := typ.(*types.Map); ok {
+									responseType = typ.String()
+									mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
+								} else {
+									responseType = typ.String()
 								}
-							} else if mapType, ok := typ.(*types.Map); ok {
-								responseType = typ.String()
-								mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
-							} else {
-								responseType = typ.String()
 							}
 						}
+						if responseType == "" {
+							responseType = getTypeName(comp.Type)
+						}
 					}
-					if responseType == "" {
+				}
+				if responseType != "" {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
+				}
+				return true
+			}
+			if isJSONEncodeCall(call, aliases) {
+				statusCode := http.StatusOK // default
+				var responseType string
+				var mapKeys map[string]string
+				if len(call.Args) > 0 {
+					if ident, ok := call.Args[0].(*ast.Ident); ok {
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
+						if responseType == "" {
+							responseType = ident.Name
+						}
+					} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
+						if info != nil && info.Types != nil {
+							if typ := info.Types[comp.Type].Type; typ != nil {
+								if mapType, ok := typ.(*types.Map); ok {
+									mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
+								}
+							}
+						}
 						responseType = getTypeName(comp.Type)
 					}
 				}
-			}
-			if responseType != "" {
-				responses = append(responses, core.ResponseInfo{
-					StatusCode: statusCode,
-					Type:       responseType,
-					MediaType:  "application/json",
-					MapKeys:    mapKeys,
-				})
-			}
-			return true
-		}
-
-		// Standard Go json.NewEncoder().Encode() patterns
-		if isJSONEncodeCall(call, aliases) {
-			statusCode := findBestStatusCode(statusCodes, call.Pos())
-			if statusCode == 0 {
-				statusCode = 200 // default
-			}
-			var responseType string
-			var mapKeys map[string]string
-			if len(call.Args) > 0 {
-				if ident, ok := call.Args[0].(*ast.Ident); ok {
-					responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
-					if responseType == "" {
-						responseType = ident.Name
-					}
-				} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
-					if info != nil && info.Types != nil {
-						if typ := info.Types[comp.Type].Type; typ != nil {
-							if mapType, ok := typ.(*types.Map); ok {
-								mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
-							}
-						}
-					}
-					responseType = getTypeName(comp.Type)
+				if responseType != "" {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
 				}
 			}
-			if responseType != "" {
-				responses = append(responses, core.ResponseInfo{
-					StatusCode: statusCode,
-					Type:       responseType,
-					MediaType:  "application/json",
-					MapKeys:    mapKeys,
-				})
-			}
-		}
-		return true
-	})
+			return true
+		})
+		return toIfaceSlice(responses)
+	}
+
+	var out []core.ResponseInfo
 
 	if fn != nil && fn.Name != nil {
+		results := ExtractNestedInfo(fn.Name.Name, funcMap, callGraph, nil, extractFn)
+		for _, r := range results {
+			if resp, ok := r.(core.ResponseInfo); ok {
+				out = append(out, resp)
+			}
+		}
 		println("[DEBUG] Fiber handler:", fn.Name.Name)
-		for _, r := range responses {
+		for _, r := range out {
 			println("  [DEBUG] Response:", r.StatusCode, r.Type, r.MediaType)
 		}
 	}
-
-	return responses
+	return out
 }
 
 // isFiberJSONMethod checks if a function name is a Fiber JSON response method

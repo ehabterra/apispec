@@ -4,9 +4,94 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+var paramRe = regexp.MustCompile(`:([a-zA-Z0-9_]+)`)
+
+// httpStatusMap contains all HTTP status constants from net/http package
+// We'll populate this map with known constants
+// This is more reliable than reflection for constants
+var httpStatusMap = map[string]int{
+	// 1xx Informational
+	"StatusContinue":           http.StatusContinue,           // 100
+	"StatusSwitchingProtocols": http.StatusSwitchingProtocols, // 101
+	"StatusProcessing":         http.StatusProcessing,         // 102
+	"StatusEarlyHints":         http.StatusEarlyHints,         // 103
+
+	// 2xx Success
+	"StatusOK":                   http.StatusOK,                   // 200
+	"StatusCreated":              http.StatusCreated,              // 201
+	"StatusAccepted":             http.StatusAccepted,             // 202
+	"StatusNonAuthoritativeInfo": http.StatusNonAuthoritativeInfo, // 203
+	"StatusNoContent":            http.StatusNoContent,            // 204
+	"StatusResetContent":         http.StatusResetContent,         // 205
+	"StatusPartialContent":       http.StatusPartialContent,       // 206
+	"StatusMultiStatus":          http.StatusMultiStatus,          // 207
+	"StatusAlreadyReported":      http.StatusAlreadyReported,      // 208
+	"StatusIMUsed":               http.StatusIMUsed,               // 226
+
+	// 3xx Redirection
+	"StatusMultipleChoices":   http.StatusMultipleChoices,   // 300
+	"StatusMovedPermanently":  http.StatusMovedPermanently,  // 301
+	"StatusFound":             http.StatusFound,             // 302
+	"StatusSeeOther":          http.StatusSeeOther,          // 303
+	"StatusNotModified":       http.StatusNotModified,       // 304
+	"StatusUseProxy":          http.StatusUseProxy,          // 305
+	"StatusTemporaryRedirect": http.StatusTemporaryRedirect, // 307
+	"StatusPermanentRedirect": http.StatusPermanentRedirect, // 308
+
+	// 4xx Client Error
+	"StatusBadRequest":                   http.StatusBadRequest,                   // 400
+	"StatusUnauthorized":                 http.StatusUnauthorized,                 // 401
+	"StatusPaymentRequired":              http.StatusPaymentRequired,              // 402
+	"StatusForbidden":                    http.StatusForbidden,                    // 403
+	"StatusNotFound":                     http.StatusNotFound,                     // 404
+	"StatusMethodNotAllowed":             http.StatusMethodNotAllowed,             // 405
+	"StatusNotAcceptable":                http.StatusNotAcceptable,                // 406
+	"StatusProxyAuthRequired":            http.StatusProxyAuthRequired,            // 407
+	"StatusRequestTimeout":               http.StatusRequestTimeout,               // 408
+	"StatusConflict":                     http.StatusConflict,                     // 409
+	"StatusGone":                         http.StatusGone,                         // 410
+	"StatusLengthRequired":               http.StatusLengthRequired,               // 411
+	"StatusPreconditionFailed":           http.StatusPreconditionFailed,           // 412
+	"StatusRequestEntityTooLarge":        http.StatusRequestEntityTooLarge,        // 413
+	"StatusRequestURITooLong":            http.StatusRequestURITooLong,            // 414
+	"StatusUnsupportedMediaType":         http.StatusUnsupportedMediaType,         // 415
+	"StatusRequestedRangeNotSatisfiable": http.StatusRequestedRangeNotSatisfiable, // 416
+	"StatusExpectationFailed":            http.StatusExpectationFailed,            // 417
+	"StatusTeapot":                       http.StatusTeapot,                       // 418
+	"StatusMisdirectedRequest":           http.StatusMisdirectedRequest,           // 421
+	"StatusUnprocessableEntity":          http.StatusUnprocessableEntity,          // 422
+	"StatusLocked":                       http.StatusLocked,                       // 423
+	"StatusFailedDependency":             http.StatusFailedDependency,             // 424
+	"StatusTooEarly":                     http.StatusTooEarly,                     // 425
+	"StatusUpgradeRequired":              http.StatusUpgradeRequired,              // 426
+	"StatusPreconditionRequired":         http.StatusPreconditionRequired,         // 428
+	"StatusTooManyRequests":              http.StatusTooManyRequests,              // 429
+	"StatusRequestHeaderFieldsTooLarge":  http.StatusRequestHeaderFieldsTooLarge,  // 431
+	"StatusUnavailableForLegalReasons":   http.StatusUnavailableForLegalReasons,   // 451
+
+	// 5xx Server Error
+	"StatusInternalServerError":           http.StatusInternalServerError,           // 500
+	"StatusNotImplemented":                http.StatusNotImplemented,                // 501
+	"StatusBadGateway":                    http.StatusBadGateway,                    // 502
+	"StatusServiceUnavailable":            http.StatusServiceUnavailable,            // 503
+	"StatusGatewayTimeout":                http.StatusGatewayTimeout,                // 504
+	"StatusHTTPVersionNotSupported":       http.StatusHTTPVersionNotSupported,       // 505
+	"StatusVariantAlsoNegotiates":         http.StatusVariantAlsoNegotiates,         // 506
+	"StatusInsufficientStorage":           http.StatusInsufficientStorage,           // 507
+	"StatusLoopDetected":                  http.StatusLoopDetected,                  // 508
+	"StatusNotExtended":                   http.StatusNotExtended,                   // 510
+	"StatusNetworkAuthenticationRequired": http.StatusNetworkAuthenticationRequired, // 511
+}
+
+func convertPathToOpenAPI(path string) string {
+	return paramRe.ReplaceAllString(path, `{$1}`)
+}
 
 // buildFuncMap creates a map of function names to their declarations.
 func buildFuncMap(files []*ast.File) map[string]*ast.FuncDecl {
@@ -170,23 +255,6 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 	return varType
 }
 
-// NewChiParserForTest creates a ChiParser with type information for testing
-func NewChiParserForTest(files []*ast.File) (*ChiParser, error) {
-	// Create types.Info to collect type information
-	info := &types.Info{
-		Types:      make(map[ast.Expr]types.TypeAndValue),
-		Defs:       make(map[*ast.Ident]types.Object),
-		Uses:       make(map[*ast.Ident]types.Object),
-		Implicits:  make(map[ast.Node]types.Object),
-		Selections: make(map[*ast.SelectorExpr]*types.Selection),
-		Scopes:     make(map[ast.Node]*types.Scope),
-	}
-
-	// For tests, we'll skip type checking since we might not have all dependencies
-	// and the parser can work with minimal type information
-	return DefaultChiParserWithTypes(info), nil
-}
-
 // Collects all import aliases for encoding/json and github.com/json-iterator/go in a file
 func CollectJSONAliases(file *ast.File) map[string]struct{} {
 	aliases := make(map[string]struct{})
@@ -305,37 +373,26 @@ func resolveStatusCode(arg ast.Expr) int {
 			}
 		}
 	case *ast.Ident:
-		// Handle constants like StatusOK
-		switch v.Name {
-		case "StatusOK":
-			return 200
-		case "StatusCreated":
-			return 201
-		case "StatusBadRequest":
-			return 400
-		case "StatusUnauthorized":
-			return 401
-		case "StatusNotFound":
-			return 404
-		case "StatusInternalServerError":
-			return 500
+		// Handle constants like StatusOK (without package prefix)
+		if code, exists := httpStatusMap[v.Name]; exists {
+			return code
 		}
 	case *ast.SelectorExpr:
-		// Handle http.StatusXXX
+		// Handle http.StatusXXX or other package.StatusXXX
 		if pkg, ok := v.X.(*ast.Ident); ok {
-			switch pkg.Name + "." + v.Sel.Name {
-			case "http.StatusOK":
-				return 200
-			case "http.StatusCreated":
-				return 201
-			case "http.StatusBadRequest":
-				return 400
-			case "http.StatusUnauthorized":
-				return 401
-			case "http.StatusNotFound":
-				return 404
-			case "http.StatusInternalServerError":
-				return 500
+			// For http.StatusXXX, we can use our map directly
+			if pkg.Name == "http" {
+				if code, exists := httpStatusMap[v.Sel.Name]; exists {
+					return code
+				}
+			}
+			// Also handle full qualified names like "http.StatusOK"
+			fullName := pkg.Name + "." + v.Sel.Name
+			if strings.HasPrefix(fullName, "http.Status") {
+				statusName := strings.TrimPrefix(fullName, "http.")
+				if code, exists := httpStatusMap[statusName]; exists {
+					return code
+				}
 			}
 		}
 	}
@@ -387,4 +444,35 @@ func extractMapKeysFromCompositeLit(comp *ast.CompositeLit, mapType *types.Map, 
 	}
 
 	return mapKeys
+}
+
+func toIfaceSlice[T any](in []T) []interface{} {
+	out := make([]interface{}, len(in))
+	for i, v := range in {
+		out[i] = v
+	}
+	return out
+}
+
+// Generic status and response extraction for Gin/Echo/Fiber
+// Returns (statusCode, responseArg)
+func ExtractStatusAndResponseFromCall(call *ast.CallExpr, info *types.Info) (int, ast.Expr) {
+	if se, ok := call.Fun.(*ast.SelectorExpr); ok {
+		// Chained: c.Status(204).JSON(...)
+		if se.Sel.Name == "JSON" {
+			// Check for c.Status(204).JSON(...)
+			if recvCall, ok := se.X.(*ast.CallExpr); ok {
+				if recvSel, ok := recvCall.Fun.(*ast.SelectorExpr); ok && recvSel.Sel.Name == "Status" && len(recvCall.Args) == 1 {
+					return resolveStatusCode(recvCall.Args[0]), call.Args[0]
+				}
+			}
+			// Direct: c.JSON(400, ...)
+			if len(call.Args) >= 2 {
+				return resolveStatusCode(call.Args[0]), call.Args[1]
+			} else if len(call.Args) == 1 {
+				return http.StatusOK, call.Args[0] // default
+			}
+		}
+	}
+	return 0, nil
 }

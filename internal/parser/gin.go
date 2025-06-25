@@ -4,47 +4,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"net/http"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/core"
 )
-
-// --- Event System (Observer Pattern) ---
-type ParseEvent string
-
-const (
-	EventRouteFound ParseEvent = "route_found"
-)
-
-type EventListener func(event ParseEvent, route *core.ParsedRoute)
-
-// --- Chain of Responsibility for Strategies ---
-type RouteStrategy interface {
-	TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next RouteStrategy, info *types.Info) (*core.ParsedRoute, bool)
-}
-
-type StrategyChain struct {
-	strategies []RouteStrategy
-}
-
-func (c *StrategyChain) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, _ RouteStrategy, info *types.Info) (*core.ParsedRoute, bool) {
-	return c.tryParseAt(0, node, fset, funcMap, goFiles, info)
-}
-func (c *StrategyChain) tryParseAt(i int, node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, info *types.Info) (*core.ParsedRoute, bool) {
-	if i >= len(c.strategies) {
-		return nil, false
-	}
-	return c.strategies[i].TryParse(node, fset, funcMap, goFiles, &strategyChainNext{c, i + 1}, info)
-}
-
-type strategyChainNext struct {
-	chain *StrategyChain
-	index int
-}
-
-func (n *strategyChainNext) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, _ RouteStrategy, info *types.Info) (*core.ParsedRoute, bool) {
-	return n.chain.tryParseAt(n.index, node, fset, funcMap, goFiles, info)
-}
 
 // --- GinCallExprStrategy (example strategy) ---
 
@@ -72,6 +36,7 @@ func (s *GinCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcM
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
+				path = convertPathToOpenAPI(path)
 
 				handlerName := getHandlerName(call.Args[1])
 
@@ -251,98 +216,115 @@ func isGinBindingMethod(name string) bool {
 }
 
 func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
-	var responses []core.ResponseInfo
-	if fn.Body == nil {
-		return responses
-	}
+	// Build funcMap and callGraph once per file set
+	funcMap := BuildFuncMap(goFiles)
+	callGraph := BuildCallGraph(goFiles)
 
-	// Collect JSON aliases from the file containing this function
-	var file *ast.File
-	for _, f := range goFiles {
-		for _, decl := range f.Decls {
-			if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == fn {
-				file = f
+	extractFn := func(f *ast.FuncDecl) []interface{} {
+		var responses []core.ResponseInfo
+		if f.Body == nil {
+			return nil
+		}
+		var file *ast.File
+		for _, gf := range goFiles {
+			for _, decl := range gf.Decls {
+				if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == f {
+					file = gf
+					break
+				}
+			}
+			if file != nil {
 				break
 			}
 		}
+		aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
 		if file != nil {
-			break
+			aliases = CollectJSONAliases(file)
 		}
-	}
-	aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
-	if file != nil {
-		aliases = CollectJSONAliases(file)
-	}
-
-	addResponse := func(statusCode int, responseType string, mapKeys map[string]string) {
-		for _, r := range responses {
-			if r.StatusCode == statusCode && r.Type == responseType {
-				return
+		statusCodes := findAllStatusCodes(f)
+		ast.Inspect(f.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
-		}
-		responses = append(responses, core.ResponseInfo{
-			StatusCode: statusCode,
-			Type:       responseType,
-			MediaType:  "application/json",
-			MapKeys:    mapKeys,
-		})
-	}
-
-	// First pass: collect all WriteHeader calls with their status codes
-	statusCodes := findAllStatusCodes(fn)
-
-	// Second pass: find all response calls and associate them with status codes
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		if call, ok := n.(*ast.CallExpr); ok {
-			// Check for Gin-specific JSON methods
 			if se, ok := call.Fun.(*ast.SelectorExpr); ok && isGinJSONMethod(se.Sel.Name) {
-				if len(call.Args) >= 2 {
-					statusCode := resolveStatusCode(call.Args[0])
-					if statusCode == 0 {
-						statusCode = findBestStatusCode(statusCodes, call.Pos())
-						if statusCode == 0 {
-							statusCode = 200 // default
+				statusCode, responseArg := ExtractStatusAndResponseFromCall(call, info)
+				if statusCode == 0 {
+					statusCode = http.StatusOK // default
+				}
+				// Always treat 204 as no content, regardless of responseArg
+				if statusCode == http.StatusNoContent {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       "",
+						MediaType:  "",
+						MapKeys:    nil,
+					})
+					return true
+				}
+				var responseType string
+				var mapKeys map[string]string
+				if responseArg != nil {
+					if ident, ok := responseArg.(*ast.Ident); ok {
+						if info != nil && info.Types != nil {
+							if obj, ok := info.Uses[ident]; ok && obj.Type() != nil {
+								typ := obj.Type()
+								if named, ok := typ.(*types.Named); ok {
+									if mapType, ok := named.Underlying().(*types.Map); ok {
+										responseType = mapType.String()
+										// No mapKeys for identifier, only for composite literal
+									}
+								}
+							}
 						}
-					}
-					var responseType string
-					var mapKeys map[string]string
-					if ident, ok := call.Args[1].(*ast.Ident); ok {
-						responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
 						if responseType == "" {
-							responseType = ident.Name
+							responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
+							if responseType == "" {
+								responseType = ident.Name
+							}
 						}
-					} else if comp, ok := call.Args[1].(*ast.CompositeLit); ok {
-						responseType = getTypeName(comp.Type)
-						if info != nil {
+					} else if comp, ok := responseArg.(*ast.CompositeLit); ok {
+						if info != nil && info.Types != nil {
 							if typ := info.Types[comp.Type].Type; typ != nil {
+								// Unwrap named types (e.g., gin.H)
+								if named, ok := typ.(*types.Named); ok {
+									typ = named.Underlying()
+								}
 								if mapType, ok := typ.(*types.Map); ok {
+									responseType = mapType.String()
 									mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
 								}
 							}
 						}
-					}
-					if responseType != "" {
-						addResponse(statusCode, responseType, mapKeys)
+						if responseType == "" {
+							responseType = getTypeName(comp.Type)
+						}
 					}
 				}
+				if responseType != "" {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
+				}
+				return true
 			}
-			// Check for standard Go json.NewEncoder().Encode() patterns
 			if isJSONEncodeCall(call, aliases) {
-				// Find the appropriate status code from collected status codes
 				statusCode := findBestStatusCode(statusCodes, call.Pos())
 				if statusCode == 0 {
-					statusCode = 200 // default
+					statusCode = http.StatusOK // default
 				}
 				var responseType string
 				var mapKeys map[string]string
 				if len(call.Args) > 0 {
 					if ident, ok := call.Args[0].(*ast.Ident); ok {
-						responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
 						if responseType == "" {
 							responseType = ident.Name
 						}
 					} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
-						responseType = getTypeName(comp.Type)
 						if info != nil {
 							if typ := info.Types[comp.Type].Type; typ != nil {
 								if mapType, ok := typ.(*types.Map); ok {
@@ -350,17 +332,59 @@ func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 								}
 							}
 						}
+						responseType = getTypeName(comp.Type)
 					}
 				}
 				if responseType != "" {
-					addResponse(statusCode, responseType, mapKeys)
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
 				}
 			}
-		}
-		return true
-	})
+			return true
+		})
+		return toIfaceSlice(responses)
+	}
 
-	return responses
+	var out []core.ResponseInfo
+
+	if fn != nil && fn.Name != nil {
+		results := ExtractNestedInfo(fn.Name.Name, funcMap, callGraph, nil, extractFn)
+		for _, r := range results {
+			if resp, ok := r.(core.ResponseInfo); ok {
+				out = append(out, resp)
+			}
+		}
+		println("[DEBUG] Gin handler:", fn.Name.Name)
+		for _, r := range out {
+			println("  [DEBUG] Response:", r.StatusCode, r.Type, r.MediaType)
+		}
+	}
+
+	// After collecting responses, filter out 200 if 204 is present for DELETE
+	if fn != nil && fn.Name != nil && strings.HasPrefix(strings.ToLower(fn.Name.Name), "delete") {
+		var filtered []core.ResponseInfo
+		has204 := false
+		for _, r := range out {
+			if r.StatusCode == http.StatusNoContent {
+				has204 = true
+				break
+			}
+		}
+		if has204 {
+			for _, r := range out {
+				if r.StatusCode != http.StatusOK {
+					filtered = append(filtered, r)
+				}
+			}
+			out = filtered
+		}
+	}
+
+	return out
 }
 
 func isGinJSONMethod(name string) bool {

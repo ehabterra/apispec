@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"net/http"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -546,6 +547,35 @@ func (g *OpenAPIGenerator) createRequestBody(route core.ParsedRoute, goFiles []*
 func (g *OpenAPIGenerator) createResponse(respInfo ResponseInfo, goFiles []*ast.File) Response {
 	response := Response{
 		Description: g.getStatusDescription(respInfo.StatusCode),
+	}
+
+	// For 204 No Content, do not emit content
+	if respInfo.StatusCode == http.StatusNoContent {
+		return response
+	}
+
+	// Inline a recursive object schema for any map type (gin.H, map[string]interface{}, map[string]any, map[string]string, etc.)
+	if strings.HasPrefix(respInfo.Type, "map[") {
+		var example map[string]interface{}
+		if len(respInfo.MapKeys) > 0 {
+			example = make(map[string]interface{})
+			for k, typ := range respInfo.MapKeys {
+				example[k] = exampleValueForType(typ)
+			}
+		} else {
+			example = map[string]interface{}{"exampleKey": "exampleValue"}
+		}
+		anySchema := &Schema{
+			Type:                 "object",
+			AdditionalProperties: true,
+			Example:              example,
+		}
+		response.Content = map[string]MediaType{
+			respInfo.MediaType: {
+				Schema: anySchema,
+			},
+		}
+		return response
 	}
 
 	if len(respInfo.MapKeys) > 0 {

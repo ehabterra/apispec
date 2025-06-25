@@ -4,19 +4,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"regexp"
+	"net/http"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/core"
 )
-
-// --- Echo-specific constants and patterns ---
-
-var echoParamRe = regexp.MustCompile(`:([a-zA-Z0-9_]+)`)
-
-func convertEchoPathToOpenAPI(path string) string {
-	return echoParamRe.ReplaceAllString(path, `{$1}`)
-}
 
 // --- EchoCallExprStrategy ---
 
@@ -44,7 +36,7 @@ func (s *EchoCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, func
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
-				path = convertEchoPathToOpenAPI(path)
+				path = convertPathToOpenAPI(path)
 
 				handlerName := getHandlerName(call.Args[1])
 
@@ -210,56 +202,51 @@ func isEchoBindingMethod(name string) bool {
 
 // extractEchoResponseTypes extracts response types from Echo handler functions
 func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
-	var responses []core.ResponseInfo
-	if fn.Body == nil {
-		return responses
-	}
+	// Build funcMap and callGraph once per file set
+	funcMap := BuildFuncMap(goFiles)
+	callGraph := BuildCallGraph(goFiles)
 
-	// Collect JSON aliases from the file containing this function
-	var file *ast.File
-	for _, f := range goFiles {
-		for _, decl := range f.Decls {
-			if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == fn {
-				file = f
+	extractFn := func(f *ast.FuncDecl) []interface{} {
+		var responses []core.ResponseInfo
+		if f.Body == nil {
+			return nil
+		}
+		var file *ast.File
+		for _, gf := range goFiles {
+			for _, decl := range gf.Decls {
+				if funcDecl, ok := decl.(*ast.FuncDecl); ok && funcDecl == f {
+					file = gf
+					break
+				}
+			}
+			if file != nil {
 				break
 			}
 		}
+		aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
 		if file != nil {
-			break
+			aliases = CollectJSONAliases(file)
 		}
-	}
-	aliases := map[string]struct{}{"json": {}, "jsoniter": {}} // fallback
-	if file != nil {
-		aliases = CollectJSONAliases(file)
-	}
-
-	// First pass: collect all WriteHeader calls with their status codes
-	statusCodes := findAllStatusCodes(fn)
-
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-
-		// Check for Echo-specific JSON methods
-		if se, ok := call.Fun.(*ast.SelectorExpr); ok {
-			if isEchoJSONMethod(se.Sel.Name) {
-				if len(call.Args) >= 2 {
-					statusCode := resolveStatusCode(call.Args[0])
-					if statusCode == 0 {
-						return true
-					}
-
-					var responseType string
-					var mapKeys map[string]string
-					if ident, ok := call.Args[1].(*ast.Ident); ok {
-						responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
+		ast.Inspect(f.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if se, ok := call.Fun.(*ast.SelectorExpr); ok && isEchoJSONMethod(se.Sel.Name) {
+				statusCode, responseArg := ExtractStatusAndResponseFromCall(call, info)
+				if statusCode == 0 {
+					statusCode = http.StatusOK // default
+				}
+				var responseType string
+				var mapKeys map[string]string
+				if responseArg != nil {
+					if ident, ok := responseArg.(*ast.Ident); ok {
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
 						if responseType == "" {
 							responseType = ident.Name
 						}
-					} else if comp, ok := call.Args[1].(*ast.CompositeLit); ok {
-						if info != nil {
+					} else if comp, ok := responseArg.(*ast.CompositeLit); ok {
+						if info != nil && info.Types != nil {
 							if typ := info.Types[comp.Type].Type; typ != nil {
 								if named, ok := typ.(*types.Named); ok {
 									responseType = named.Obj().Name()
@@ -279,61 +266,66 @@ func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types
 							responseType = getTypeName(comp.Type)
 						}
 					}
-
-					if responseType != "" {
-						responses = append(responses, core.ResponseInfo{
-							StatusCode: statusCode,
-							Type:       responseType,
-							MediaType:  "application/json",
-							MapKeys:    mapKeys,
-						})
-					}
 				}
-				return true
-			}
-		}
-
-		// Check for standard Go json.NewEncoder().Encode() patterns
-		if isJSONEncodeCall(call, aliases) {
-			// Find the appropriate status code from collected status codes
-			statusCode := findBestStatusCode(statusCodes, call.Pos())
-			if statusCode == 0 {
-				statusCode = 200 // default to 200 if not found
-			}
-
-			var responseType string
-			var mapKeys map[string]string
-			if ident, ok := call.Args[0].(*ast.Ident); ok {
-				responseType = resolveVarTypeInFunc(fn, ident.Name, goFiles)
-				if responseType == "" {
-					responseType = ident.Name
+				if responseType != "" {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
 				}
-			} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
-				responseType = getTypeName(comp.Type)
-				// Extract map keys for better error response schemas
-				if info != nil {
-					if typ := info.Types[comp.Type].Type; typ != nil {
-						if mapType, ok := typ.(*types.Map); ok {
-							mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
+			}
+			if isJSONEncodeCall(call, aliases) {
+				statusCode := http.StatusOK // default
+				var responseType string
+				var mapKeys map[string]string
+				if len(call.Args) > 0 {
+					if ident, ok := call.Args[0].(*ast.Ident); ok {
+						responseType = resolveVarTypeInFunc(f, ident.Name, goFiles)
+						if responseType == "" {
+							responseType = ident.Name
 						}
+					} else if comp, ok := call.Args[0].(*ast.CompositeLit); ok {
+						if info != nil && info.Types != nil {
+							if typ := info.Types[comp.Type].Type; typ != nil {
+								if mapType, ok := typ.(*types.Map); ok {
+									mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
+								}
+							}
+						}
+						responseType = getTypeName(comp.Type)
 					}
 				}
+				if responseType != "" {
+					responses = append(responses, core.ResponseInfo{
+						StatusCode: statusCode,
+						Type:       responseType,
+						MediaType:  "application/json",
+						MapKeys:    mapKeys,
+					})
+				}
 			}
+			return true
+		})
+		return toIfaceSlice(responses)
+	}
 
-			if responseType != "" {
-				responses = append(responses, core.ResponseInfo{
-					StatusCode: statusCode,
-					Type:       responseType,
-					MediaType:  "application/json",
-					MapKeys:    mapKeys,
-				})
+	var out []core.ResponseInfo
+
+	if fn != nil && fn.Name != nil {
+		results := ExtractNestedInfo(fn.Name.Name, funcMap, callGraph, nil, extractFn)
+		for _, r := range results {
+			if resp, ok := r.(core.ResponseInfo); ok {
+				out = append(out, resp)
 			}
 		}
-
-		return true
-	})
-
-	return responses
+		println("[DEBUG] Echo handler:", fn.Name.Name)
+		for _, r := range out {
+			println("  [DEBUG] Response:", r.StatusCode, r.Type, r.MediaType)
+		}
+	}
+	return out
 }
 
 // isEchoJSONMethod checks if a function name is an Echo JSON response method
