@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+    title: My Awesome API
+    contact:
+        name: Ehab
+        email: support@example.com
+    version: 1.0.0
+paths:
+    /api/info:
+        get:
+            operationId: getAPIInfo
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    description:
+                                        type: object
+                                    endpoints:
+                                        type: array
+                                        items:
+                                            type: object
+                                    name:
+                                        type: string
+                                    version:
+                                        type: object
+                                example:
+                                    description: example
+                                    endpoints: null
+                                    name: example
+                                    version: example
+    /health:
+        get:
+            operationId: healthCheck
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    status:
+                                        type: string
+                                    timestamp:
+                                        type: object
+                                    version:
+                                        type: object
+                                example:
+                                    status: example
+                                    timestamp: example
+                                    version: example
+    /users:
+        get:
+            operationId: getUsers
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/User'
+        post:
+            operationId: createUser
+            requestBody:
+                description: Request body for createUser
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateUserRequest'
+                required: true
+            responses:
+                "201":
+                    description: Created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SuccessResponse'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+    /users/{id}:
+        get:
+            operationId: getUser
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+        put:
+            operationId: updateUser
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                description: Request body for updateUser
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateUserRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SuccessResponse'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+        delete:
+            operationId: deleteUser
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    message:
+                                        type: object
+                                    status:
+                                        type: string
+                                example:
+                                    message: example
+                                    status: example
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ErrorResponse'
+components:
+    schemas:
+        CreateUserRequest:
+            type: object
+            properties:
+                age:
+                    type: integer
+                    maximum: 150
+                    minimum: 0
+                name:
+                    type: string
+        ErrorResponse:
+            type: object
+            properties:
+                code:
+                    type: integer
+                error:
+                    type: string
+                message:
+                    type: string
+        SuccessResponse:
+            type: object
+            properties:
+                data:
+                    type: object
+                message:
+                    type: string
+                status:
+                    type: string
+        UpdateUserRequest:
+            type: object
+            properties:
+                age:
+                    type: integer
+                name:
+                    type: string
+        User:
+            type: object
+            properties:
+                age:
+                    type: integer
+                id:
+                    type: integer
+                name:
+                    type: string

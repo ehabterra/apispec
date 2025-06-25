@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+    title: My Awesome API
+    contact:
+        name: Ehab
+        email: support@example.com
+    version: 1.0.0
+paths:
+    /jsoniter:
+        post:
+            operationId: JsoniterUser
+            requestBody:
+                description: Request body for JsoniterUser
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/JsoniterReq'
+                required: true
+            responses:
+                "201":
+                    description: Created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/JsoniterResp'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/JsoniterResp'
+    /users:
+        get:
+            operationId: ListUsers
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/User'
+        post:
+            operationId: CreateUser
+            requestBody:
+                description: Request body for CreateUser
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/User'
+                required: true
+            responses:
+                "201":
+                    description: Created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    code:
+                                        type: object
+                                    details:
+                                        type: object
+                                        additionalProperties: true
+                                    error:
+                                        type: string
+                                example:
+                                    code: example
+                                    details: null
+                                    error: example
+    /users/{id}:
+        get:
+            operationId: GetUser
+            parameters:
+                - name: id
+                  in: path
+                  description: 'Path parameter: id'
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    code:
+                                        type: object
+                                    error:
+                                        type: string
+                                    id:
+                                        $ref: '#/components/schemas/idStr'
+                                example:
+                                    code: example
+                                    error: example
+                                    id: null
+        put:
+            operationId: UpdateUser
+            parameters:
+                - name: id
+                  in: path
+                  description: 'Path parameter: id'
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                description: Request body for UpdateUser
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    code:
+                                        type: object
+                                    details:
+                                        type: object
+                                        additionalProperties: true
+                                    error:
+                                        type: string
+                                example:
+                                    code: example
+                                    details: null
+                                    error: example
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    code:
+                                        type: object
+                                    error:
+                                        type: string
+                                    id:
+                                        $ref: '#/components/schemas/idStr'
+                                example:
+                                    code: example
+                                    error: example
+                                    id: null
+        delete:
+            operationId: DeleteUser
+            parameters:
+                - name: id
+                  in: path
+                  description: 'Path parameter: id'
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    error:
+                                        type: string
+                                example:
+                                    error: example
+                "404":
+                    description: Not Found
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    code:
+                                        type: object
+                                    error:
+                                        type: string
+                                    id:
+                                        $ref: '#/components/schemas/idStr'
+                                example:
+                                    code: example
+                                    error: example
+                                    id: null
+components:
+    schemas:
+        JsoniterReq:
+            type: object
+            properties:
+                name:
+                    type: string
+        JsoniterResp:
+            type: object
+            properties:
+                message:
+                    type: string
+        User:
+            type: object
+            properties:
+                email:
+                    type: string
+                id:
+                    type: integer
+                name:
+                    type: string
+        idStr:
+            type: object
+            additionalProperties: true
+            example:
+                exampleKey: exampleValue
