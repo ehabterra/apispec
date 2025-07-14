@@ -1,3 +1,34 @@
+# Binaries and build output
+main
+*.exe
+*.out
+*.test
+
+# Go modules
+vendor/
+
+# Dependency directories (remove the comment below if you use Go modules)
+Gopkg.lock
+Gopkg.toml
+
+# IDE/editor files
 .vscode/
-openapi.yaml
-openapi.json
+.idea/
+*.swp
+*.swo
+*.bak
+.DS_Store
+
+# Swagen generated files
+metadata.yaml
+metadata-string-pool.yaml
+metadata-packages.yaml
+metadata-call-graph.yaml
+diagram.html
+used-config.yaml
+
+# Test output
+*.log
+
+# OS files
+Thumbs.db
