@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/swagen/internal/parser"
@@ -21,24 +22,40 @@ func TestEndToEnd_Chi(t *testing.T) {
 		t.Fatalf("failed to find project root: %v", err)
 	}
 
-	// 1. Parse the Chi example app from the testdata directory
+	// 1. Recursively collect all Go files in the Chi example app
 	fset := token.NewFileSet()
 	path := filepath.Join(projectRoot, "testdata", "chi")
-	pkgs, err := goparser.ParseDir(fset, path, nil, goparser.ParseComments)
-	if err != nil {
-		t.Fatalf("failed to parse dir: %v", err)
+	var goFiles []string
+	if err := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(p) == ".go" && !strings.HasSuffix(p, "_test.go") {
+			goFiles = append(goFiles, p)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("failed to walk dir: %v", err)
 	}
 
 	var files []*ast.File
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			files = append(files, f)
+	for _, filePath := range goFiles {
+		f, err := goparser.ParseFile(fset, filePath, nil, goparser.ParseComments)
+		if err != nil {
+			t.Fatalf("failed to parse file %s: %v", filePath, err)
 		}
+		t.Logf("[DEBUG] Parsed file: %s", filePath)
+		files = append(files, f)
 	}
 
+	t.Logf("[DEBUG] Total files parsed: %d", len(files))
+
 	// 2. Use the Chi parser with proper type information
-	p := parser.DefaultChiParserWithTypes(nil)
-	routes, err := p.Parse(fset, files)
+	p := parser.DefaultChiParser()
+	routes, err := p.Parse(fset, files, nil)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -46,9 +63,18 @@ func TestEndToEnd_Chi(t *testing.T) {
 		t.Fatalf("expected 6 routes, got %d. Routes: %#v", len(routes), routes)
 	}
 
+	// Debug: Print the actual routes found
+	t.Logf("[DEBUG] Found %d routes:", len(routes))
+	for i, route := range routes {
+		t.Logf("[DEBUG] Route %d: %s %s -> Handler: %s", i, route.Method, route.Path, route.HandlerName)
+	}
+
 	// 3. Generate OpenAPI spec
-	gen := spec.NewOpenAPIGenerator(spec.GeneratorConfig{})
-	specObj, err := gen.GenerateFromRoutes(routes, files)
+	specObj, err := spec.MapParsedRoutesToOpenAPI(routes, files, spec.GeneratorConfig{
+		OpenAPIVersion: "3.0.0",
+		Title:          "Chi Example API",
+		APIVersion:     "1.0.0",
+	})
 	if err != nil {
 		t.Fatalf("GenerateFromRoutes failed: %v", err)
 	}

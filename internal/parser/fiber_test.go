@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	goparser "go/parser"
 	"go/token"
-	"go/types"
 	"testing"
 
 	"github.com/ehabterra/swagen/internal/core"
@@ -30,8 +29,8 @@ func TestFiberParser_Parse(t *testing.T) {
 		t.Fatalf("failed to parse example: %v", err)
 	}
 
-	p := parser.DefaultFiberParserWithTypes(nil)
-	routes, err := p.Parse(fset, []*ast.File{file})
+	p := parser.DefaultFiberParser()
+	routes, err := p.Parse(fset, []*ast.File{file}, nil)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -197,13 +196,8 @@ func deleteUser(c *fiber.Ctx) error {
 				t.Fatalf("Failed to parse code: %v", err)
 			}
 
-			// Create a simple types.Info for testing
-			info := &types.Info{
-				Types: make(map[ast.Expr]types.TypeAndValue),
-			}
-
-			parser := parser.DefaultFiberParserWithTypes(info)
-			routes, err := parser.Parse(fset, []*ast.File{file})
+			parser := parser.DefaultFiberParser()
+			routes, err := parser.Parse(fset, []*ast.File{file}, nil)
 			if err != nil {
 				t.Fatalf("Failed to parse routes: %v", err)
 			}

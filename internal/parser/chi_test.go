@@ -24,8 +24,8 @@ func TestChiParser_Parse(t *testing.T) {
 		t.Fatalf("failed to parse example: %v", err)
 	}
 
-	p := DefaultChiParserWithTypes(nil)
-	routes, err := p.Parse(fset, []*ast.File{file})
+	p := DefaultChiParser()
+	routes, err := p.Parse(fset, []*ast.File{file}, nil)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}

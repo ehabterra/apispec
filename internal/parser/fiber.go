@@ -12,11 +12,11 @@ import (
 
 type FiberCallExprStrategy struct{}
 
-func (s *FiberCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info) (*core.ParsedRoute, bool) {
+func (s *FiberCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info, pkgName string, aliasMap map[string]string, currentFile *ast.File) ([]*core.ParsedRoute, bool) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok {
 		if next != nil {
-			return next.TryParse(node, fset, funcMap, goFiles, next, info)
+			return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 		}
 		return nil, false
 	}
@@ -29,38 +29,60 @@ func (s *FiberCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, fun
 				pathLit, ok := call.Args[0].(*ast.BasicLit)
 				if !ok || pathLit.Kind != token.STRING {
 					if next != nil {
-						return next.TryParse(node, fset, funcMap, goFiles, next, info)
+						return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 					}
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
 				path = convertPathToOpenAPI(path)
 
-				handlerName := getHandlerName(call.Args[1])
+				var handlerName string
+				var handlerFunc *ast.FuncDecl
+				var handlerLit *ast.FuncLit
 
-				if handlerName != "" {
-					if handlerFunc, exists := funcMap[handlerName]; exists {
-						requestType := extractFiberRequestBodyType(handlerFunc, goFiles)
-						responses := extractFiberResponseTypes(handlerFunc, goFiles, info)
+				switch h := call.Args[1].(type) {
+				case *ast.Ident, *ast.SelectorExpr, *ast.CallExpr:
+					handlerName, handlerFunc = resolveHandlerFunc(h, funcMap, pkgName, aliasMap, info)
+				case *ast.FuncLit:
+					handlerName = generateAnonymousHandlerName(goFiles[0], call.Pos(), se.Sel.Name, path)
+					handlerLit = h
+				}
 
-						builder := core.NewParsedRouteBuilder(info)
-						route := builder.Method(se.Sel.Name).
-							Path(path).
-							Handler(handlerName, handlerFunc).
-							SetRequestBody(requestType, "body").
-							SetResponses(responses).
-							Position(fset, call.Pos()).
-							Build()
+				if handlerFunc != nil {
+					requestType := extractFiberRequestBodyType(handlerFunc, goFiles)
+					responses := extractFiberResponseTypes(handlerFunc, goFiles, funcMap, info)
 
-						return route, true
-					}
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, handlerFunc).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
+				} else if handlerLit != nil {
+					requestType := extractFiberRequestBodyTypeFromLit(handlerLit, goFiles)
+					responses := extractFiberResponseTypesFromLit(handlerLit, goFiles, funcMap, info)
+
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, nil).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
 				}
 			}
 		}
 	}
 
 	if next != nil {
-		return next.TryParse(node, fset, funcMap, goFiles, next, info)
+		return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 	}
 	return nil, false
 }
@@ -68,47 +90,47 @@ func (s *FiberCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, fun
 type FiberParser struct {
 	chain     *core.StrategyChain
 	listeners []core.EventListener
-	info      *types.Info // for type resolution
 }
 
-func NewFiberParserWithTypes(strategies []core.RouteStrategy, info *types.Info, listeners ...core.EventListener) *FiberParser {
+func DefaultFiberParser() *FiberParser {
 	return &FiberParser{
-		chain:     core.NewStrategyChain(strategies...),
-		listeners: listeners,
-		info:      info,
-	}
-}
-
-func DefaultFiberParserWithTypes(info *types.Info) *FiberParser {
-	return NewFiberParserWithTypes(
-		[]core.RouteStrategy{
+		chain: core.NewStrategyChain(
 			&FiberCallExprStrategy{},
-		},
-		info,
-	)
+		),
+	}
 }
 
 func (p *FiberParser) AddListener(listener core.EventListener) {
 	p.listeners = append(p.listeners, listener)
 }
 
-func (p *FiberParser) Parse(fset *token.FileSet, files []*ast.File) ([]core.ParsedRoute, error) {
-	funcMap := buildFuncMap(files)
+func (p *FiberParser) Parse(fset *token.FileSet, files []*ast.File, fileToInfo map[*ast.File]*types.Info) ([]core.ParsedRoute, error) {
+	funcMap := BuildFuncMap(files)
 	var routes []core.ParsedRoute
 
 	for _, file := range files {
+		info := fileToInfo[file]
+		pkgName := ""
+		if file.Name != nil {
+			pkgName = file.Name.Name
+		}
+		aliasMap := buildAliasMap(file)
+		if pkgName != "main" {
+			continue
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
-			if route, ok := p.chain.TryParse(n, fset, funcMap, files, nil, p.info); ok {
-				routes = append(routes, *route)
-				for _, l := range p.listeners {
-					l.OnRouteParsed(route)
+			if routeSlice, ok := p.chain.TryParse(n, fset, funcMap, files, nil, info, pkgName, aliasMap, file); ok {
+				for _, route := range routeSlice {
+					routes = append(routes, *route)
+					for _, l := range p.listeners {
+						l.OnRouteParsed(route)
+					}
 				}
 				return false
 			}
 			return true
 		})
 	}
-
 	return routes, nil
 }
 
@@ -192,7 +214,7 @@ func extractFiberRequestBodyType(fn *ast.FuncDecl, goFiles []*ast.File) string {
 			if vspec, ok := spec.(*ast.ValueSpec); ok {
 				for _, name := range vspec.Names {
 					if name.Name == boundVarName {
-						if typeName := getTypeName(vspec.Type); typeName != "" {
+						if typeName := GetTypeName(vspec.Type); typeName != "" {
 							varType = typeName
 							return false
 						}
@@ -213,10 +235,14 @@ func isFiberBindingMethod(name string) bool {
 	return false
 }
 
-func extractFiberResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
+func extractFiberResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
 	// Build funcMap and callGraph once per file set
-	funcMap := BuildFuncMap(goFiles)
-	callGraph := BuildCallGraph(goFiles)
+	// Create a fileToInfo map for BuildCallGraph
+	fileToInfo := make(map[*ast.File]*types.Info)
+	for _, file := range goFiles {
+		fileToInfo[file] = info // Use the same info for all files in this context
+	}
+	callGraph := BuildCallGraph(goFiles, funcMap, fileToInfo)
 
 	extractFn := func(f *ast.FuncDecl) []interface{} {
 		var responses []core.ResponseInfo
@@ -276,7 +302,7 @@ func extractFiberResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *type
 							}
 						}
 						if responseType == "" {
-							responseType = getTypeName(comp.Type)
+							responseType = GetTypeName(comp.Type)
 						}
 					}
 				}
@@ -308,7 +334,7 @@ func extractFiberResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *type
 								}
 							}
 						}
-						responseType = getTypeName(comp.Type)
+						responseType = GetTypeName(comp.Type)
 					}
 				}
 				if responseType != "" {
@@ -349,4 +375,21 @@ func isFiberJSONMethod(name string) bool {
 		return true
 	}
 	return false
+}
+
+// Add extraction helpers for FuncLit
+func extractFiberRequestBodyTypeFromLit(fn *ast.FuncLit, goFiles []*ast.File) string {
+	if fn == nil || fn.Body == nil {
+		return ""
+	}
+	// Reuse logic from extractFiberRequestBodyType, but for FuncLit
+	return ""
+}
+
+func extractFiberResponseTypesFromLit(fn *ast.FuncLit, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
+	if fn == nil || fn.Body == nil {
+		return nil
+	}
+	// Reuse logic from extractFiberResponseTypes, but for FuncLit
+	return nil
 }

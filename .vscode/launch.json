@@ -5,24 +5,29 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Generate OpenAPI for Gin Example",
+            "name": "Generate OpenAPI Example",
             "type": "go",
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/main.go",
             "args": [
                 "-d",
-                "./testdata/gin",
+                // "./testdata/chi",
+                "./../../Yassir/lmd-core/cmd/api",
                 "-o",
-                "./testdata/gin/openapi.yaml",
+                // "./openapi.yaml",
+                "./openapi-lmd-core.yaml",
                 "-title",
                 "My Awesome API",
                 "-openapi.version",
                 "3.0.3",
-                "-contact.name",
-                "Ehab",
-                "-contact.email",
-                "support@example.com"
+                // "--write-metadata",
+                "--config",
+                "used-config.yaml",
+                "--output-config",
+                "used-config.yaml"
+                // "-split-metadata",
+                // "-disable-string-pool"
             ],
             "cwd": "${workspaceFolder}"
         }

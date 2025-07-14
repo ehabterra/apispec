@@ -1,244 +1,256 @@
 openapi: 3.0.3
 info:
     title: My Awesome API
-    contact:
-        name: Ehab
-        email: support@example.com
     version: 1.0.0
 paths:
-    /jsoniter:
+    /payment/api/v1/payment/process:
         post:
-            operationId: JsoniterUser
-            requestBody:
-                description: Request body for JsoniterUser
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/JsoniterReq'
-                required: true
+            tags:
+                - /payment
+            operationId: github.com/ehabterra/swagen/testdata/chi/payment.ProcessPayment
             responses:
-                "201":
-                    description: Created
+                "200":
+                    description: Success
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/JsoniterResp'
+                                type: object
+                                additionalProperties:
+                                    type: string
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/JsoniterResp'
-    /users:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /payment/api/v1/stripe/pk:
         get:
-            operationId: ListUsers
+            tags:
+                - /payment
+            operationId: github.com/ehabterra/swagen/testdata/chi/payment.GetStripePublicKey
             responses:
                 "200":
-                    description: OK
+                    description: Success
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                additionalProperties:
+                                    type: string
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /products/:
+        get:
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/chi/products.github.com/ehabterra/swagen/testdata/chi/products.ListProducts
+            responses:
+                "200":
+                    description: Success
                     content:
                         application/json:
                             schema:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/User'
-        post:
-            operationId: CreateUser
-            requestBody:
-                description: Request body for CreateUser
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/User'
-                required: true
-            responses:
-                "201":
-                    description: Created
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/User'
+                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_products.Product'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    code:
-                                        type: object
-                                    details:
-                                        type: object
-                                        additionalProperties: true
-                                    error:
-                                        type: string
-                                example:
-                                    code: example
-                                    details: null
-                                    error: example
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+        post:
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/chi/products.github.com/ehabterra/swagen/testdata/chi/products.CreateProduct
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_products.CreateProductRequest'
+            responses:
+                "200":
+                    description: Success
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_products.Product'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /products/{id}:
+        get:
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/chi/products.github.com/ehabterra/swagen/testdata/chi/products.GetProduct
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                  x-warning: This parameter is present in the path but not found in the code.
+            responses:
+                "200":
+                    description: Success
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_products.Product'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /users/:
+        get:
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/chi/users.github.com/ehabterra/swagen/testdata/chi/users.ListUsers
+            responses:
+                "200":
+                    description: Success
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_users.User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+        post:
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/chi/users.github.com/ehabterra/swagen/testdata/chi/users.CreateUser
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_users.CreateUserRequest'
+            responses:
+                "200":
+                    description: Success
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_users.User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
     /users/{id}:
         get:
-            operationId: GetUser
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/chi/users.github.com/ehabterra/swagen/testdata/chi/users.GetUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
             responses:
                 "200":
-                    description: OK
+                    description: Success
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/User'
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_chi_users.User'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
-                "404":
-                    description: Not Found
+                "500":
+                    description: Internal Server Error
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    code:
-                                        type: object
-                                    error:
-                                        type: string
-                                    id:
-                                        $ref: '#/components/schemas/idStr'
-                                example:
-                                    code: example
-                                    error: example
-                                    id: null
-        put:
-            operationId: UpdateUser
-            parameters:
-                - name: id
-                  in: path
-                  description: 'Path parameter: id'
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                description: Request body for UpdateUser
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/User'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/User'
-                "400":
-                    description: Bad Request
-                    content:
-                        application/json:
-                            schema:
-                                type: object
-                                properties:
-                                    code:
-                                        type: object
-                                    details:
-                                        type: object
-                                        additionalProperties: true
-                                    error:
-                                        type: string
-                                example:
-                                    code: example
-                                    details: null
-                                    error: example
-                "404":
-                    description: Not Found
-                    content:
-                        application/json:
-                            schema:
-                                type: object
-                                properties:
-                                    code:
-                                        type: object
-                                    error:
-                                        type: string
-                                    id:
-                                        $ref: '#/components/schemas/idStr'
-                                example:
-                                    code: example
-                                    error: example
-                                    id: null
-        delete:
-            operationId: DeleteUser
-            parameters:
-                - name: id
-                  in: path
-                  description: 'Path parameter: id'
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "400":
-                    description: Bad Request
-                    content:
-                        application/json:
-                            schema:
-                                type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
-                "404":
-                    description: Not Found
-                    content:
-                        application/json:
-                            schema:
-                                type: object
-                                properties:
-                                    code:
-                                        type: object
-                                    error:
-                                        type: string
-                                    id:
-                                        $ref: '#/components/schemas/idStr'
-                                example:
-                                    code: example
-                                    error: example
-                                    id: null
 components:
     schemas:
-        JsoniterReq:
+        github.com_ehabterra_swagen_testdata_chi_products.CreateProductRequest:
             type: object
             properties:
                 name:
                     type: string
-        JsoniterResp:
+                price:
+                    type: number
+        github.com_ehabterra_swagen_testdata_chi_products.Product:
             type: object
             properties:
-                message:
-                    type: string
-        User:
-            type: object
-            properties:
-                email:
-                    type: string
                 id:
-                    type: integer
+                    type: string
                 name:
                     type: string
-        idStr:
+                price:
+                    type: number
+        github.com_ehabterra_swagen_testdata_chi_users.CreateUserRequest:
             type: object
-            additionalProperties: true
-            example:
-                exampleKey: exampleValue
+            properties:
+                name:
+                    type: string
+        github.com_ehabterra_swagen_testdata_chi_users.User:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string

@@ -1,9 +1,0 @@
-=== RUN   TestEndToEnd_Echo
-    e2e_echo_test.go:140: Expected schema User not found in components
-    e2e_echo_test.go:153: JSON output does not contain expected OpenAPI version
-    e2e_echo_test.go:157: JSON output does not contain expected title
-    e2e_echo_test.go:175: Successfully generated OpenAPI spec with 4 paths and 6 schemas
---- FAIL: TestEndToEnd_Echo (3.14s)
-FAIL
-exit status 1
-FAIL	github.com/ehabterra/swagen	3.533s

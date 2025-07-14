@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -14,11 +15,20 @@ import (
 
 type GinCallExprStrategy struct{}
 
-func (s *GinCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info) (*core.ParsedRoute, bool) {
+// Helper to generate a unique name for anonymous handlers
+func generateAnonymousHandlerName(file *ast.File, pos token.Pos, method, path string) string {
+	position := file.Pos()
+	if file != nil && file.Name != nil {
+		position = pos
+	}
+	return fmt.Sprintf("anon_%s_%s_at_%d", method, path, position)
+}
+
+func (s *GinCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info, pkgName string, aliasMap map[string]string, currentFile *ast.File) ([]*core.ParsedRoute, bool) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok {
 		if next != nil {
-			return next.TryParse(node, fset, funcMap, goFiles, next, info)
+			return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 		}
 		return nil, false
 	}
@@ -31,38 +41,60 @@ func (s *GinCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcM
 				pathLit, ok := call.Args[0].(*ast.BasicLit)
 				if !ok || pathLit.Kind != token.STRING {
 					if next != nil {
-						return next.TryParse(node, fset, funcMap, goFiles, next, info)
+						return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 					}
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
 				path = convertPathToOpenAPI(path)
 
-				handlerName := getHandlerName(call.Args[1])
+				var handlerName string
+				var handlerFunc *ast.FuncDecl
+				var handlerLit *ast.FuncLit
 
-				if handlerName != "" {
-					if handlerFunc, exists := funcMap[handlerName]; exists {
-						requestType := extractGinRequestBodyType(handlerFunc, goFiles)
-						responses := extractGinResponseTypes(handlerFunc, goFiles, info)
+				switch h := call.Args[1].(type) {
+				case *ast.Ident, *ast.SelectorExpr, *ast.CallExpr:
+					handlerName, handlerFunc = resolveHandlerFunc(h, funcMap, pkgName, aliasMap, info)
+				case *ast.FuncLit:
+					handlerName = generateAnonymousHandlerName(currentFile, call.Pos(), se.Sel.Name, path)
+					handlerLit = h
+				}
 
-						builder := core.NewParsedRouteBuilder(info)
-						route := builder.Method(se.Sel.Name).
-							Path(path).
-							Handler(handlerName, handlerFunc).
-							SetRequestBody(requestType, "body").
-							SetResponses(responses).
-							Position(fset, call.Pos()).
-							Build()
+				if handlerFunc != nil {
+					requestType := extractGinRequestBodyType(handlerFunc, goFiles)
+					responses := extractGinResponseTypes(handlerFunc, goFiles, funcMap, info)
 
-						return route, true
-					}
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, handlerFunc).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
+				} else if handlerLit != nil {
+					requestType := extractGinRequestBodyTypeFromLit(handlerLit, goFiles)
+					responses := extractGinResponseTypesFromLit(handlerLit, goFiles, funcMap, info)
+
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, nil).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
 				}
 			}
 		}
 	}
 
 	if next != nil {
-		return next.TryParse(node, fset, funcMap, goFiles, next, info)
+		return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 	}
 	return nil, false
 }
@@ -70,47 +102,47 @@ func (s *GinCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcM
 type GinParser struct {
 	chain     *core.StrategyChain
 	listeners []core.EventListener
-	info      *types.Info // for type resolution
 }
 
-func NewGinParserWithTypes(strategies []core.RouteStrategy, info *types.Info, listeners ...core.EventListener) *GinParser {
+func DefaultGinParser() *GinParser {
 	return &GinParser{
-		chain:     core.NewStrategyChain(strategies...),
-		listeners: listeners,
-		info:      info,
-	}
-}
-
-func DefaultGinParserWithTypes(info *types.Info) *GinParser {
-	return NewGinParserWithTypes(
-		[]core.RouteStrategy{
+		chain: core.NewStrategyChain(
 			&GinCallExprStrategy{},
-		},
-		info,
-	)
+		),
+	}
 }
 
 func (p *GinParser) AddListener(listener core.EventListener) {
 	p.listeners = append(p.listeners, listener)
 }
 
-func (p *GinParser) Parse(fset *token.FileSet, files []*ast.File) ([]core.ParsedRoute, error) {
-	funcMap := buildFuncMap(files)
+func (p *GinParser) Parse(fset *token.FileSet, files []*ast.File, fileToInfo map[*ast.File]*types.Info) ([]core.ParsedRoute, error) {
+	funcMap := BuildFuncMap(files)
 	var routes []core.ParsedRoute
 
 	for _, file := range files {
+		info := fileToInfo[file]
+		pkgName := ""
+		if file.Name != nil {
+			pkgName = file.Name.Name
+		}
+		aliasMap := buildAliasMap(file)
+		if pkgName != "main" {
+			continue
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
-			if route, ok := p.chain.TryParse(n, fset, funcMap, files, nil, p.info); ok {
-				routes = append(routes, *route)
-				for _, l := range p.listeners {
-					l.OnRouteParsed(route)
+			if routeSlice, ok := p.chain.TryParse(n, fset, funcMap, files, nil, info, pkgName, aliasMap, file); ok {
+				for _, route := range routeSlice {
+					routes = append(routes, *route)
+					for _, l := range p.listeners {
+						l.OnRouteParsed(route)
+					}
 				}
 				return false
 			}
 			return true
 		})
 	}
-
 	return routes, nil
 }
 
@@ -194,7 +226,7 @@ func extractGinRequestBodyType(fn *ast.FuncDecl, goFiles []*ast.File) string {
 			if vspec, ok := spec.(*ast.ValueSpec); ok {
 				for _, name := range vspec.Names {
 					if name.Name == boundVarName {
-						if typeName := getTypeName(vspec.Type); typeName != "" {
+						if typeName := GetTypeName(vspec.Type); typeName != "" {
 							varType = typeName
 							return false
 						}
@@ -215,10 +247,14 @@ func isGinBindingMethod(name string) bool {
 	return false
 }
 
-func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
+func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
 	// Build funcMap and callGraph once per file set
-	funcMap := BuildFuncMap(goFiles)
-	callGraph := BuildCallGraph(goFiles)
+	// Create a fileToInfo map for BuildCallGraph
+	fileToInfo := make(map[*ast.File]*types.Info)
+	for _, file := range goFiles {
+		fileToInfo[file] = info // Use the same info for all files in this context
+	}
+	callGraph := BuildCallGraph(goFiles, funcMap, fileToInfo)
 
 	extractFn := func(f *ast.FuncDecl) []interface{} {
 		var responses []core.ResponseInfo
@@ -297,7 +333,7 @@ func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 							}
 						}
 						if responseType == "" {
-							responseType = getTypeName(comp.Type)
+							responseType = GetTypeName(comp.Type)
 						}
 					}
 				}
@@ -332,7 +368,7 @@ func extractGinResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.
 								}
 							}
 						}
-						responseType = getTypeName(comp.Type)
+						responseType = GetTypeName(comp.Type)
 					}
 				}
 				if responseType != "" {
@@ -393,4 +429,23 @@ func isGinJSONMethod(name string) bool {
 		return true
 	}
 	return false
+}
+
+// Add extraction helpers for FuncLit
+func extractGinRequestBodyTypeFromLit(fn *ast.FuncLit, goFiles []*ast.File) string {
+	if fn == nil || fn.Body == nil {
+		return ""
+	}
+	// Reuse logic from extractGinRequestBodyType, but for FuncLit
+	// (You can refactor to share code if desired)
+	return ""
+}
+
+func extractGinResponseTypesFromLit(fn *ast.FuncLit, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
+	if fn == nil || fn.Body == nil {
+		return nil
+	}
+	// Reuse logic from extractGinResponseTypes, but for FuncLit
+	// (You can refactor to share code if desired)
+	return nil
 }

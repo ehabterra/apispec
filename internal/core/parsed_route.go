@@ -23,6 +23,7 @@ type ParsedRoute struct {
 	RequestSource string
 	ResponseTypes []ResponseInfo
 	Position      token.Position
+	Tags          []string
 }
 
 // ParsedRouteBuilder provides a fluent interface for building ParsedRoute
@@ -73,6 +74,12 @@ func (b *ParsedRouteBuilder) SetRequestBody(reqType, reqSource string) *ParsedRo
 // SetResponses sets the response types
 func (b *ParsedRouteBuilder) SetResponses(responses []ResponseInfo) *ParsedRouteBuilder {
 	b.Route.ResponseTypes = responses
+	return b
+}
+
+// SetTags sets the tags for the route
+func (b *ParsedRouteBuilder) SetTags(tags []string) *ParsedRouteBuilder {
+	b.Route.Tags = tags
 	return b
 }
 

@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	goparser "go/parser"
 	"go/token"
-	"go/types"
 	"testing"
 
 	"github.com/ehabterra/swagen/internal/core"
@@ -164,13 +163,8 @@ func deleteUser(c echo.Context) error {
 				t.Fatalf("Failed to parse code: %v", err)
 			}
 
-			// Create a simple types.Info for testing
-			info := &types.Info{
-				Types: make(map[ast.Expr]types.TypeAndValue),
-			}
-
-			parser := parser.DefaultEchoParserWithTypes(info)
-			routes, err := parser.Parse(fset, []*ast.File{file})
+			parser := parser.DefaultEchoParser()
+			routes, err := parser.Parse(fset, []*ast.File{file}, nil)
 			if err != nil {
 				t.Fatalf("Failed to parse routes: %v", err)
 			}

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -9,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-var paramRe = regexp.MustCompile(`:([a-zA-Z0-9_]+)`)
 
 // httpStatusMap contains all HTTP status constants from net/http package
 // We'll populate this map with known constants
@@ -89,49 +88,136 @@ var httpStatusMap = map[string]int{
 	"StatusNetworkAuthenticationRequired": http.StatusNetworkAuthenticationRequired, // 511
 }
 
+var paramRe = regexp.MustCompile(`:([a-zA-Z0-9_]+)`)
+
 func convertPathToOpenAPI(path string) string {
 	return paramRe.ReplaceAllString(path, `{$1}`)
 }
 
-// buildFuncMap creates a map of function names to their declarations.
-func buildFuncMap(files []*ast.File) map[string]*ast.FuncDecl {
+// BuildFuncMap creates a map of function names to their declarations.
+func BuildFuncMap(files []*ast.File) map[string]*ast.FuncDecl {
 	funcMap := make(map[string]*ast.FuncDecl)
 	for _, file := range files {
-		for _, decl := range file.Decls {
-			if fn, ok := decl.(*ast.FuncDecl); ok {
-				funcMap[fn.Name.Name] = fn
-			}
+		pkgName := ""
+		if file.Name != nil {
+			pkgName = file.Name.Name
 		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			// Handle regular functions
+			if fn, isFn := n.(*ast.FuncDecl); isFn {
+				var key string
+				if fn.Recv == nil || len(fn.Recv.List) == 0 {
+					// Only for top-level functions, use package prefix if not main
+					if pkgName != "" && pkgName != "main" {
+						key = pkgName + "." + fn.Name.Name
+					} else {
+						key = fn.Name.Name
+					}
+					funcMap[key] = fn
+				} else {
+					// For methods, always use TypeName.MethodName (no package prefix)
+					var typeName string
+					recvType := fn.Recv.List[0].Type
+					if starExpr, ok := recvType.(*ast.StarExpr); ok {
+						if ident, ok := starExpr.X.(*ast.Ident); ok {
+							typeName = ident.Name
+						}
+					} else if ident, ok := recvType.(*ast.Ident); ok {
+						typeName = ident.Name
+					}
+					if typeName != "" {
+						methodKey := typeName + "." + fn.Name.Name
+						funcMap[methodKey] = fn
+					}
+				}
+			}
+			return true
+		})
 	}
 	return funcMap
 }
 
-// getHandlerName extracts the name of a handler function from an AST expression.
-func getHandlerName(arg ast.Expr) string {
-	if ident, ok := arg.(*ast.Ident); ok {
-		return ident.Name
+func pkgPrefix(pkgName string) string {
+	if pkgName != "" && pkgName != "main" {
+		return pkgName + "."
 	}
 	return ""
 }
 
-// getTypeName recursively extracts a type name from an AST expression.
-func getTypeName(expr ast.Expr) string {
+// buildAliasMap creates a map of import aliases to their actual package names for a given file.
+// e.g., `import myhttp "net/http"` -> {"myhttp": "http"}
+func buildAliasMap(file *ast.File) map[string]string {
+	aliases := make(map[string]string)
+	for _, imp := range file.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		pkgName := path[strings.LastIndex(path, "/")+1:]
+
+		if imp.Name != nil {
+			// Alias is used, e.g., `myhttp "net/http"`
+			aliases[imp.Name.Name] = pkgName
+		} else {
+			// No alias, the package name itself is the identifier
+			aliases[pkgName] = pkgName
+		}
+	}
+	return aliases
+}
+
+// getHandlerName extracts the qualified name of a handler function from an AST expression.
+// It correctly handles identifiers, selectors (pkg.Func), and function calls (pkg.Func()).
+func getHandlerName(arg ast.Expr, pkgName string, aliasMap map[string]string) string {
+	switch v := arg.(type) {
+	case *ast.Ident:
+		// A local function, e.g., `myHandler`
+		if pkgName != "" && pkgName != "main" {
+			return pkgName + "." + v.Name
+		}
+		return v.Name
+
+	case *ast.SelectorExpr:
+		// A function from another package, e.g., `handlers.LoadCart`
+		if pkgIdent, ok := v.X.(*ast.Ident); ok {
+			// Resolve alias if it exists
+			if realPkgName, exists := aliasMap[pkgIdent.Name]; exists {
+				return realPkgName + "." + v.Sel.Name
+			}
+			// Fallback to the identifier name
+			return pkgIdent.Name + "." + v.Sel.Name
+		}
+
+	case *ast.CallExpr:
+		// A function call that returns a handler, e.g., `handlers.LoadCart(...)`
+		return getHandlerName(v.Fun, pkgName, aliasMap)
+	}
+
+	return "" // Return empty if the handler expression is not recognized
+}
+
+// GetTypeName recursively extracts a type name from an AST expression.
+func GetTypeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		return t.Name
+	case *ast.CallExpr:
+		if sel, ok := t.Fun.(*ast.SelectorExpr); ok {
+			if id, ok := sel.X.(*ast.Ident); ok {
+				return id.Name + "." + sel.Sel.Name
+			}
+			return sel.Sel.Name
+		}
 	case *ast.SelectorExpr:
 		if x, ok := t.X.(*ast.Ident); ok {
 			return x.Name + "." + t.Sel.Name
 		}
 	case *ast.StarExpr:
-		return getTypeName(t.X)
+		return GetTypeName(t.X)
 	case *ast.CompositeLit:
 		// For struct literals like User{}, it returns the type name.
-		return getTypeName(t.Type)
+		return GetTypeName(t.Type)
 	case *ast.ArrayType:
-		return "[]" + getTypeName(t.Elt)
+		return "[]" + GetTypeName(t.Elt)
 	case *ast.MapType:
-		return "map[" + getTypeName(t.Key) + "]" + getTypeName(t.Value)
+		return "map[" + GetTypeName(t.Key) + "]" + GetTypeName(t.Value)
 	}
 	return ""
 }
@@ -146,7 +232,7 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 	for _, param := range fn.Type.Params.List {
 		for _, name := range param.Names {
 			if name.Name == varName {
-				varType = getTypeName(param.Type)
+				varType = GetTypeName(param.Type)
 				return varType
 			}
 		}
@@ -164,9 +250,9 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 						for i, name := range vspec.Names {
 							if name.Name == varName {
 								if vspec.Type != nil {
-									varType = getTypeName(vspec.Type)
+									varType = GetTypeName(vspec.Type)
 								} else if len(vspec.Values) > i {
-									varType = getTypeName(vspec.Values[i])
+									varType = GetTypeName(vspec.Values[i])
 								}
 								return false
 							}
@@ -182,10 +268,10 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 					if i < len(assign.Rhs) {
 						// Try to get type from the right-hand side
 						if comp, ok := assign.Rhs[i].(*ast.CompositeLit); ok {
-							varType = getTypeName(comp.Type)
+							varType = GetTypeName(comp.Type)
 						} else {
 							// For other expressions, try to infer the type
-							varType = getTypeName(assign.Rhs[i])
+							varType = GetTypeName(assign.Rhs[i])
 						}
 					}
 					return false
@@ -213,7 +299,7 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 						}
 					} else {
 						// fallback: try to get type name directly
-						collType := getTypeName(forStmt.X)
+						collType := GetTypeName(forStmt.X)
 						if strings.HasPrefix(collType, "[]") {
 							varType = strings.TrimPrefix(collType, "[]")
 						} else if strings.HasPrefix(collType, "map[") {
@@ -241,9 +327,9 @@ func resolveVarTypeInFunc(fn *ast.FuncDecl, varName string, goFiles []*ast.File)
 						for i, name := range vspec.Names {
 							if name.Name == varName {
 								if vspec.Type != nil {
-									varType = getTypeName(vspec.Type)
+									varType = GetTypeName(vspec.Type)
 								} else if len(vspec.Values) > i {
-									varType = getTypeName(vspec.Values[i])
+									varType = GetTypeName(vspec.Values[i])
 								}
 							}
 						}
@@ -408,7 +494,7 @@ func extractMapKeysFromCompositeLit(comp *ast.CompositeLit, mapType *types.Map, 
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
 			if key, ok := kv.Key.(*ast.BasicLit); ok && key.Kind == token.STRING {
 				keyName := strings.Trim(key.Value, "\"")
-				valType := getTypeName(kv.Value)
+				valType := GetTypeName(kv.Value)
 				if valType == "" {
 					// For string literals, use "string" type
 					if lit, ok := kv.Value.(*ast.BasicLit); ok && lit.Kind == token.STRING {
@@ -475,4 +561,187 @@ func ExtractStatusAndResponseFromCall(call *ast.CallExpr, info *types.Info) (int
 		}
 	}
 	return 0, nil
+}
+
+// resolveHandlerFunc tries to resolve the actual handler function declaration.
+// It handles simple functions, aliased package functions, handler factories, and methods on structs.
+func resolveHandlerFunc(expr ast.Expr, funcMap map[string]*ast.FuncDecl, pkgName string, aliasMap map[string]string, info *types.Info) (string, *ast.FuncDecl) {
+	// First, try name-based resolution for functions and function factories
+	switch h := expr.(type) {
+	case *ast.Ident:
+		handlerName := getHandlerName(expr, pkgName, aliasMap)
+		if fn, ok := funcMap[handlerName]; ok {
+			return handlerName, fn
+		}
+
+	case *ast.SelectorExpr:
+		// Try name-based resolution first (for pkg.Function)
+		handlerName := getHandlerName(expr, pkgName, aliasMap)
+		if fn, ok := funcMap[handlerName]; ok {
+			return handlerName, fn
+		}
+	// If that fails, fall through to the type-based resolution below for controller.Method
+
+	case *ast.CallExpr:
+		// This part handles handler factories, e.g., handlers.LoadCart(deps)
+		funcName := getHandlerName(h.Fun, pkgName, aliasMap)
+		if fn, ok := funcMap[funcName]; ok {
+			if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+				if _, ok := fn.Type.Results.List[0].Type.(*ast.FuncType); ok {
+					// It returns a function. Try to find the literal if possible.
+					for _, stmt := range fn.Body.List {
+						if ret, ok := stmt.(*ast.ReturnStmt); ok && len(ret.Results) > 0 {
+							if funLit, ok := ret.Results[0].(*ast.FuncLit); ok {
+								// Return the factory name, but the func literal's body/type
+								return funcName, &ast.FuncDecl{
+									Name: &ast.Ident{Name: funcName},
+									Type: funLit.Type,
+									Body: funLit.Body,
+								}
+							}
+						}
+					}
+					return funcName, fn // Return the factory function itself as a fallback
+				}
+			}
+		}
+		// Now, also try type-based resolution on h.Fun if it's a SelectorExpr
+		if info != nil {
+			if selExpr, ok := h.Fun.(*ast.SelectorExpr); ok {
+				fmt.Printf("[DEBUG] selExpr: %v\n", selExpr.Sel.Name)
+				fmt.Printf("[DEBUG] Found Selections: %v\n", info.Selections)
+				if tv, ok := info.Selections[selExpr]; ok && tv.Obj() != nil {
+					if fn, ok := tv.Obj().(*types.Func); ok {
+						if recv := fn.Signature().Recv(); recv != nil {
+							var namedType *types.Named
+							if ptr, ok := recv.Type().(*types.Pointer); ok {
+								namedType, _ = ptr.Elem().(*types.Named)
+							} else {
+								namedType, _ = recv.Type().(*types.Named)
+							}
+							if namedType != nil {
+								typeName := namedType.Obj().Name()
+								methodKey := typeName + "." + fn.Name()
+								if methodFunc, exists := funcMap[methodKey]; exists {
+									return methodKey, methodFunc
+								}
+								// Heuristic: If typeName is an interface, try all concrete types
+								if _, ok := namedType.Underlying().(*types.Interface); ok {
+									for k, methodFunc := range funcMap {
+										if strings.HasSuffix(k, "."+fn.Name()) && k != methodKey {
+											// Optionally: check that the method's signature matches
+											return k, methodFunc
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// If name-based resolution fails and we have type info, try type-based resolution for methods.
+	if info != nil {
+		if selExpr, ok := expr.(*ast.SelectorExpr); ok {
+			fmt.Printf("[DEBUG] selExpr: %v\n", selExpr.Sel.Name)
+			fmt.Printf("[DEBUG] Found Selections: %v\n", info.Selections)
+			// This handles controller.Method where controller is a variable.
+			if tv, ok := info.Selections[selExpr]; ok && tv.Obj() != nil {
+				// tv.Obj() is the method's `types.Func`.
+				if fn, ok := tv.Obj().(*types.Func); ok {
+					// The receiver of the method gives us the struct type.
+					if recv := fn.Signature().Recv(); recv != nil {
+						// recv.Type() is the type of the receiver, e.g., `*main.APIController`
+						// We need the underlying named type to get the TypeName.
+						var namedType *types.Named
+						if ptr, ok := recv.Type().(*types.Pointer); ok {
+							namedType, _ = ptr.Elem().(*types.Named)
+						} else {
+							namedType, _ = recv.Type().(*types.Named)
+						}
+
+						if namedType != nil {
+							// namedType.Obj().Name() is the TypeName, e.g., `APIController`
+							typeName := namedType.Obj().Name()
+							methodKey := typeName + "." + fn.Name()
+							if methodFunc, exists := funcMap[methodKey]; exists {
+								return methodKey, methodFunc
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return "", nil
+}
+
+// FuncSignature returns a string representation of a function's signature.
+func FuncSignature(fn *ast.FuncDecl) string {
+	if fn == nil || fn.Type == nil {
+		return ""
+	}
+	params := []string{}
+	if fn.Type.Params != nil {
+		for _, field := range fn.Type.Params.List {
+			typeStr := ExprToString(field.Type)
+			for range field.Names {
+				params = append(params, typeStr)
+			}
+			if len(field.Names) == 0 {
+				params = append(params, typeStr)
+			}
+		}
+	}
+	results := []string{}
+	if fn.Type.Results != nil {
+		for _, field := range fn.Type.Results.List {
+			typeStr := ExprToString(field.Type)
+			for range field.Names {
+				results = append(results, typeStr)
+			}
+			if len(field.Names) == 0 {
+				results = append(results, typeStr)
+			}
+		}
+	}
+	return fmt.Sprintf("(%s) (%s)", strings.Join(params, ", "), strings.Join(results, ", "))
+}
+
+// FuncPosition returns the file:line:col position of a function.
+func FuncPosition(fn *ast.FuncDecl, file *ast.File) string {
+	if fn == nil || file == nil {
+		return ""
+	}
+	pos := fn.Pos()
+	return positionString(pos, file)
+}
+
+// VarPosition returns the file:line:col position of a variable identifier.
+func VarPosition(ident *ast.Ident, file *ast.File) string {
+	if ident == nil || file == nil {
+		return ""
+	}
+	pos := ident.Pos()
+	return positionString(pos, file)
+}
+
+// ExprToString returns a string representation of an expression.
+func ExprToString(expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	return fmt.Sprintf("%#v", expr)
+}
+
+// positionString returns a string representation of a position in a file.
+func positionString(pos token.Pos, file *ast.File) string {
+	if file == nil {
+		return ""
+	}
+	fset := token.NewFileSet()
+	posn := fset.Position(pos)
+	return fmt.Sprintf("%s:%d:%d", posn.Filename, posn.Line, posn.Column)
 }

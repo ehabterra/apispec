@@ -14,11 +14,11 @@ import (
 
 type EchoCallExprStrategy struct{}
 
-func (s *EchoCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info) (*core.ParsedRoute, bool) {
+func (s *EchoCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, goFiles []*ast.File, next core.RouteStrategy, info *types.Info, pkgName string, aliasMap map[string]string, currentFile *ast.File) ([]*core.ParsedRoute, bool) {
 	call, ok := node.(*ast.CallExpr)
 	if !ok {
 		if next != nil {
-			return next.TryParse(node, fset, funcMap, goFiles, next, info)
+			return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 		}
 		return nil, false
 	}
@@ -31,38 +31,60 @@ func (s *EchoCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, func
 				pathLit, ok := call.Args[0].(*ast.BasicLit)
 				if !ok || pathLit.Kind != token.STRING {
 					if next != nil {
-						return next.TryParse(node, fset, funcMap, goFiles, next, info)
+						return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 					}
 					return nil, false
 				}
 				path := strings.Trim(pathLit.Value, "\"")
 				path = convertPathToOpenAPI(path)
 
-				handlerName := getHandlerName(call.Args[1])
+				var handlerName string
+				var handlerFunc *ast.FuncDecl
+				var handlerLit *ast.FuncLit
 
-				if handlerName != "" {
-					if handlerFunc, exists := funcMap[handlerName]; exists {
-						requestType := extractEchoRequestBodyType(handlerFunc, goFiles)
-						responses := extractEchoResponseTypes(handlerFunc, goFiles, info)
+				switch h := call.Args[1].(type) {
+				case *ast.Ident, *ast.SelectorExpr, *ast.CallExpr:
+					handlerName, handlerFunc = resolveHandlerFunc(h, funcMap, pkgName, aliasMap, info)
+				case *ast.FuncLit:
+					handlerName = generateAnonymousHandlerName(goFiles[0], call.Pos(), se.Sel.Name, path)
+					handlerLit = h
+				}
 
-						builder := core.NewParsedRouteBuilder(info)
-						route := builder.Method(se.Sel.Name).
-							Path(path).
-							Handler(handlerName, handlerFunc).
-							SetRequestBody(requestType, "body").
-							SetResponses(responses).
-							Position(fset, call.Pos()).
-							Build()
+				if handlerFunc != nil {
+					requestType := extractEchoRequestBodyType(handlerFunc, goFiles)
+					responses := extractEchoResponseTypes(handlerFunc, goFiles, funcMap, info)
 
-						return route, true
-					}
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, handlerFunc).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
+				} else if handlerLit != nil {
+					requestType := extractEchoRequestBodyTypeFromLit(handlerLit, goFiles)
+					responses := extractEchoResponseTypesFromLit(handlerLit, goFiles, funcMap, info)
+
+					builder := core.NewParsedRouteBuilder(info)
+					route := builder.Method(se.Sel.Name).
+						Path(path).
+						Handler(handlerName, nil).
+						SetRequestBody(requestType, "body").
+						SetResponses(responses).
+						Position(fset, call.Pos()).
+						Build()
+
+					return []*core.ParsedRoute{route}, true
 				}
 			}
 		}
 	}
 
 	if next != nil {
-		return next.TryParse(node, fset, funcMap, goFiles, next, info)
+		return next.TryParse(node, fset, funcMap, goFiles, next, info, pkgName, aliasMap, currentFile)
 	}
 	return nil, false
 }
@@ -72,47 +94,47 @@ func (s *EchoCallExprStrategy) TryParse(node ast.Node, fset *token.FileSet, func
 type EchoParser struct {
 	chain     *core.StrategyChain
 	listeners []core.EventListener
-	info      *types.Info // for type resolution
 }
 
-func NewEchoParserWithTypes(strategies []core.RouteStrategy, info *types.Info, listeners ...core.EventListener) *EchoParser {
+func DefaultEchoParser() *EchoParser {
 	return &EchoParser{
-		chain:     core.NewStrategyChain(strategies...),
-		listeners: listeners,
-		info:      info,
-	}
-}
-
-func DefaultEchoParserWithTypes(info *types.Info) *EchoParser {
-	return NewEchoParserWithTypes(
-		[]core.RouteStrategy{
+		chain: core.NewStrategyChain(
 			&EchoCallExprStrategy{},
-		},
-		info,
-	)
+		),
+	}
 }
 
 func (p *EchoParser) AddListener(listener core.EventListener) {
 	p.listeners = append(p.listeners, listener)
 }
 
-func (p *EchoParser) Parse(fset *token.FileSet, files []*ast.File) ([]core.ParsedRoute, error) {
-	funcMap := buildFuncMap(files)
+func (p *EchoParser) Parse(fset *token.FileSet, files []*ast.File, fileToInfo map[*ast.File]*types.Info) ([]core.ParsedRoute, error) {
+	funcMap := BuildFuncMap(files)
 	var routes []core.ParsedRoute
 
 	for _, file := range files {
+		info := fileToInfo[file]
+		pkgName := ""
+		if file.Name != nil {
+			pkgName = file.Name.Name
+		}
+		aliasMap := buildAliasMap(file)
+		if pkgName != "main" {
+			continue
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
-			if route, ok := p.chain.TryParse(n, fset, funcMap, files, nil, p.info); ok {
-				routes = append(routes, *route)
-				for _, l := range p.listeners {
-					l.OnRouteParsed(route)
+			if routeSlice, ok := p.chain.TryParse(n, fset, funcMap, files, nil, info, pkgName, aliasMap, file); ok {
+				for _, route := range routeSlice {
+					routes = append(routes, *route)
+					for _, l := range p.listeners {
+						l.OnRouteParsed(route)
+					}
 				}
 				return false
 			}
 			return true
 		})
 	}
-
 	return routes, nil
 }
 
@@ -177,7 +199,7 @@ func extractEchoRequestBodyType(fn *ast.FuncDecl, _ []*ast.File) string {
 			if vspec, ok := spec.(*ast.ValueSpec); ok {
 				for _, name := range vspec.Names {
 					if name.Name == boundVarName {
-						if typeName := getTypeName(vspec.Type); typeName != "" {
+						if typeName := GetTypeName(vspec.Type); typeName != "" {
 							varType = typeName
 							return false
 						}
@@ -201,10 +223,14 @@ func isEchoBindingMethod(name string) bool {
 }
 
 // extractEchoResponseTypes extracts response types from Echo handler functions
-func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types.Info) []core.ResponseInfo {
+func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
 	// Build funcMap and callGraph once per file set
-	funcMap := BuildFuncMap(goFiles)
-	callGraph := BuildCallGraph(goFiles)
+	// Create a fileToInfo map for BuildCallGraph
+	fileToInfo := make(map[*ast.File]*types.Info)
+	for _, file := range goFiles {
+		fileToInfo[file] = info // Use the same info for all files in this context
+	}
+	callGraph := BuildCallGraph(goFiles, funcMap, fileToInfo)
 
 	extractFn := func(f *ast.FuncDecl) []interface{} {
 		var responses []core.ResponseInfo
@@ -258,12 +284,12 @@ func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types
 									responseType = typ.String()
 									mapKeys = extractMapKeysFromCompositeLit(comp, mapType, info)
 								} else {
-									responseType = typ.String()
+									responseType = GetTypeName(comp.Type)
 								}
 							}
 						}
 						if responseType == "" {
-							responseType = getTypeName(comp.Type)
+							responseType = GetTypeName(comp.Type)
 						}
 					}
 				}
@@ -294,7 +320,7 @@ func extractEchoResponseTypes(fn *ast.FuncDecl, goFiles []*ast.File, info *types
 								}
 							}
 						}
-						responseType = getTypeName(comp.Type)
+						responseType = GetTypeName(comp.Type)
 					}
 				}
 				if responseType != "" {
@@ -335,4 +361,21 @@ func isEchoJSONMethod(name string) bool {
 		return true
 	}
 	return false
+}
+
+// Add extraction helpers for FuncLit
+func extractEchoRequestBodyTypeFromLit(fn *ast.FuncLit, goFiles []*ast.File) string {
+	if fn == nil || fn.Body == nil {
+		return ""
+	}
+	// Reuse logic from extractEchoRequestBodyType, but for FuncLit
+	return ""
+}
+
+func extractEchoResponseTypesFromLit(fn *ast.FuncLit, goFiles []*ast.File, funcMap map[string]*ast.FuncDecl, info *types.Info) []core.ResponseInfo {
+	if fn == nil || fn.Body == nil {
+		return nil
+	}
+	// Reuse logic from extractEchoResponseTypes, but for FuncLit
+	return nil
 }

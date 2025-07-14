@@ -37,16 +37,14 @@ func TestEndToEnd_Fiber(t *testing.T) {
 		t.Fatal("No routes found in Fiber app")
 	}
 
-	config := spec.GeneratorConfig{
-		OpenAPIVersion: "3.1.1",
-		Title:          "Fiber API",
-		Description:    "API generated from Fiber application",
+	// 3. Generate OpenAPI spec
+	specObj, err := spec.MapParsedRoutesToOpenAPI(routes, goFiles, spec.GeneratorConfig{
+		OpenAPIVersion: "3.0.0",
+		Title:          "Fiber Example API",
 		APIVersion:     "1.0.0",
-	}
-	generator := spec.NewOpenAPIGenerator(config)
-	specObj, err := generator.GenerateFromRoutes(routes, goFiles)
+	})
 	if err != nil {
-		t.Fatalf("Failed to generate OpenAPI spec: %v", err)
+		t.Fatalf("GenerateFromRoutes failed: %v", err)
 	}
 
 	if specObj.OpenAPI != "3.1.1" {
@@ -197,10 +195,9 @@ func parseFiberApp(dir string) ([]core.ParsedRoute, []*ast.File, error) {
 		}
 	}
 	conf := types.Config{Importer: importer.For("source", nil)}
-	info := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue)}
-	_, _ = conf.Check("main", fset, files, info)
-	p := iparser.DefaultFiberParserWithTypes(info)
-	routes, err := p.Parse(fset, files)
+	_, _ = conf.Check("main", fset, files, nil)
+	p := iparser.DefaultFiberParser()
+	routes, err := p.Parse(fset, files, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse routes: %w", err)
 	}

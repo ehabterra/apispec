@@ -1,0 +1,2468 @@
+package metadata
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"go/ast"
+	"go/token"
+	"go/types"
+
+	"github.com/ehabterra/swagen/internal/parser"
+	"gopkg.in/yaml.v3"
+)
+
+// StringPool for deduplicating strings across metadata
+type StringPool struct {
+	strings map[string]int
+	values  []string
+}
+
+func NewStringPool() *StringPool {
+	return &StringPool{
+		strings: make(map[string]int),
+		values:  make([]string, 0),
+	}
+}
+
+func (sp *StringPool) Get(s string) int {
+	if s == "" {
+		return -1
+	}
+
+	if idx, exists := sp.strings[s]; exists {
+		return idx
+	}
+	idx := len(sp.values)
+	sp.strings[s] = idx
+	sp.values = append(sp.values, s)
+	return idx
+}
+
+func (sp *StringPool) GetString(idx int) string {
+	if idx >= 0 && idx < len(sp.values) {
+		return sp.values[idx]
+	}
+	return ""
+}
+
+// GetSize returns the number of unique strings in the pool
+func (sp *StringPool) GetSize() int {
+	return len(sp.values)
+}
+
+// MarshalYAML implements yaml.Marshaler interface
+func (sp *StringPool) MarshalYAML() (interface{}, error) {
+	return sp.values, nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler interface
+func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var values []string
+	if err := unmarshal(&values); err != nil {
+		return err
+	}
+
+	sp.values = values
+	sp.strings = make(map[string]int)
+	for i, s := range values {
+		sp.strings[s] = i
+	}
+	return nil
+}
+
+// Add to StringPool
+func (sp *StringPool) Finalize() {
+	sp.strings = nil
+}
+
+// Metadata uses string pools and maps for efficient storage
+type Metadata struct {
+	StringPool *StringPool         `yaml:"string_pool"`
+	Packages   map[string]*Package `yaml:"packages"`
+	CallGraph  []CallGraphEdge     `yaml:"call_graph"`
+}
+
+// UncompressedMetadata stores strings directly without compression
+type UncompressedMetadata struct {
+	Packages  map[string]*UncompressedPackage `yaml:"packages"`
+	CallGraph []UncompressedCallGraphEdge     `yaml:"call_graph"`
+}
+
+type UncompressedPackage struct {
+	ImportPath string                       `yaml:"import_path"`
+	Files      map[string]*UncompressedFile `yaml:"files"`
+}
+
+type UncompressedFile struct {
+	Types           map[string]*UncompressedType     `yaml:"types"`
+	Functions       map[string]*UncompressedFunction `yaml:"functions"`
+	Variables       map[string]*UncompressedVariable `yaml:"variables"`
+	StructInstances []UncompressedStructInstance     `yaml:"struct_instances"`
+	Selectors       []UncompressedSelector           `yaml:"selectors"`
+	Assignments     []UncompressedAssignment         `yaml:"assignments"`
+	Imports         map[string]string                `yaml:"imports"` // alias -> path
+}
+
+type UncompressedField struct {
+	Name     string `yaml:"name"`
+	Type     string `yaml:"type"`
+	Tag      string `yaml:"tag"`
+	Scope    string `yaml:"scope"`
+	Comments string `yaml:"comments"`
+}
+
+type UncompressedType struct {
+	Name          string               `yaml:"name"`
+	Kind          string               `yaml:"kind"`
+	Target        string               `yaml:"target"`
+	Implements    []string             `yaml:"implements"`
+	ImplementedBy []string             `yaml:"implemented_by"`
+	Embeds        []string             `yaml:"embeds"`
+	Fields        []UncompressedField  `yaml:"fields"`
+	Scope         string               `yaml:"scope"`
+	Methods       []UncompressedMethod `yaml:"methods"`
+	Comments      string               `yaml:"comments"`
+	Tags          []string             `yaml:"tags"`
+}
+
+type UncompressedMethod struct {
+	Name         string       `yaml:"name"`
+	Receiver     string       `yaml:"receiver"`
+	Signature    CallArgument `yaml:"signature"`
+	SignatureStr string       `yaml:"signature_str"`
+	Position     string       `yaml:"position"`
+	Scope        string       `yaml:"scope"`
+	Comments     string       `yaml:"comments"`
+	Tags         []string     `yaml:"tags"`
+}
+
+type UncompressedFunction struct {
+	Name      string         `yaml:"name"`
+	Signature []CallArgument `yaml:"signature"`
+	Position  string         `yaml:"position"`
+	Scope     string         `yaml:"scope"`
+	Comments  string         `yaml:"comments"`
+	Tags      []string       `yaml:"tags"`
+}
+
+type UncompressedVariable struct {
+	Name     string `yaml:"name"`
+	Type     string `yaml:"type"`
+	Value    string `yaml:"value"`
+	Position string `yaml:"position"`
+	Comments string `yaml:"comments"`
+}
+
+type UncompressedSelector struct {
+	Expr     CallArgument `yaml:"expr"`
+	Kind     string       `yaml:"kind"`
+	Position string       `yaml:"position"`
+}
+
+type UncompressedStructInstance struct {
+	Type     string            `yaml:"type"`
+	Position string            `yaml:"position"`
+	Fields   map[string]string `yaml:"fields"`
+}
+
+// CallArgument represents a structured function argument for call graph edges
+// Only one of the fields should be set, depending on the argument type
+type CallArgument struct {
+	Kind     string                 `yaml:"kind"`            // ident, literal, selector, call, raw
+	Name     string                 `yaml:"name,omitempty"`  // for ident
+	Value    string                 `yaml:"value,omitempty"` // for literal
+	X        *CallArgument          `yaml:"x,omitempty"`     // for selector/call
+	Sel      string                 `yaml:"sel,omitempty"`   // for selector
+	Fun      *CallArgument          `yaml:"fun,omitempty"`   // for call
+	Args     []CallArgument         `yaml:"args,omitempty"`  // for call
+	Raw      string                 `yaml:"raw,omitempty"`   // fallback
+	Extra    map[string]interface{} `yaml:"extra,omitempty"` // extensibility
+	Pkg      string                 `yaml:"pkg,omitempty"`   // for ident
+	Type     string                 `yaml:"type,omitempty"`  // for ident
+	Position string                 `yaml:"position,omitempty"`
+}
+
+func (a *CallArgument) ID() string {
+	switch a.Kind {
+	case "ident":
+		// For identifiers, use type if available, else pkg+name
+		var pkgName string
+
+		if a.Type != "" {
+			if a.Pkg != "" {
+				pkgName = a.Pkg + "."
+			}
+			return pkgName + a.Type + "." + a.Name
+		}
+		if a.Pkg != "" {
+			pkgName = a.Pkg + "/"
+		}
+		return pkgName + a.Name
+	case "selector":
+		// For selectors, recursively get the X part and append the selector
+		if a.X != nil {
+			if len(a.X.Pkg) != 0 {
+				return a.X.ID() + "." + a.Sel
+			}
+			return a.X.ID() + "/" + a.Sel
+		}
+		return a.Sel
+	case "call":
+		// For calls, use the function's ID (e.g., for users.Routes(userService))
+		if a.Fun != nil {
+			return a.Fun.ID()
+		}
+		return "call"
+	default:
+		return ""
+	}
+}
+
+type UncompressedCall struct {
+	Name     string `yaml:"name"`
+	Pkg      string `yaml:"pkg"`
+	RecvType string `yaml:"recv_type"`
+}
+
+func (c UncompressedCall) ID() string {
+	return createUniqueID(c.Name, c.Pkg, c.RecvType)
+}
+
+type UncompressedCallGraphEdge struct {
+	Caller   UncompressedCall `yaml:"caller"`
+	Callee   UncompressedCall `yaml:"callee"`
+	Position string           `yaml:"position"`
+	Args     []CallArgument   `yaml:"args"`
+}
+
+type UncompressedAssignment struct {
+	VariableName string       `yaml:"variable_name"`
+	Pkg          string       `yaml:"pkg"`
+	ConcreteType string       `yaml:"concrete_type"`
+	Position     string       `yaml:"position"`
+	Scope        string       `yaml:"scope"`
+	Value        CallArgument `yaml:"value"`
+}
+
+type Package struct {
+	ImportPath int              `yaml:"import_path"`
+	Files      map[string]*File `yaml:"files"`
+}
+
+type File struct {
+	Types           map[string]*Type     `yaml:"types"`
+	Functions       map[string]*Function `yaml:"functions"`
+	Variables       map[string]*Variable `yaml:"variables"`
+	StructInstances []StructInstance     `yaml:"struct_instances"`
+	Selectors       []Selector           `yaml:"selectors"`
+	Assignments     []Assignment         `yaml:"assignments"`
+	Imports         map[int]int          `yaml:"imports"` // alias -> path
+}
+
+type Field struct {
+	Name     int `yaml:"name"`
+	Type     int `yaml:"type"`
+	Tag      int `yaml:"tag"`
+	Scope    int `yaml:"scope"`
+	Comments int `yaml:"comments"`
+}
+
+type Type struct {
+	Name          int      `yaml:"name"`
+	Kind          int      `yaml:"kind"`
+	Target        int      `yaml:"target"`
+	Implements    []int    `yaml:"implements"`
+	ImplementedBy []int    `yaml:"implemented_by"`
+	Embeds        []int    `yaml:"embeds"`
+	Fields        []Field  `yaml:"fields"`
+	Scope         int      `yaml:"scope"`
+	Methods       []Method `yaml:"methods"`
+	Comments      int      `yaml:"comments"`
+	Tags          []int    `yaml:"tags"`
+}
+
+type Method struct {
+	Name         int          `yaml:"name"`
+	Receiver     int          `yaml:"receiver"`
+	Signature    CallArgument `yaml:"signature"`
+	SignatureStr int          `yaml:"signature_str"`
+	Position     int          `yaml:"position"`
+	Scope        int          `yaml:"scope"`
+	Comments     int          `yaml:"comments"`
+	Tags         []int        `yaml:"tags"`
+}
+
+type Function struct {
+	Name      int          `yaml:"name"`
+	Signature CallArgument `yaml:"signature"`
+	Position  int          `yaml:"position"`
+	Scope     int          `yaml:"scope"`
+	Comments  int          `yaml:"comments"`
+	Tags      []int        `yaml:"tags"`
+}
+
+type Variable struct {
+	Name     int `yaml:"name"`
+	Type     int `yaml:"type"`
+	Value    int `yaml:"value"`
+	Position int `yaml:"position"`
+	Comments int `yaml:"comments"`
+}
+
+type Selector struct {
+	Expr     CallArgument `yaml:"expr"`
+	Kind     int          `yaml:"kind"`
+	Position int          `yaml:"position"`
+}
+
+type StructInstance struct {
+	Type     int         `yaml:"type"`
+	Position int         `yaml:"position"`
+	Fields   map[int]int `yaml:"fields"`
+}
+
+type Call struct {
+	meta *Metadata
+
+	Name     int `yaml:"name"`
+	Pkg      int `yaml:"pkg"`
+	RecvType int `yaml:"recv_type"`
+}
+
+func (c Call) ID() string {
+	return createUniqueID(c.meta.StringPool.GetString(c.Name), c.meta.StringPool.GetString(c.Pkg), c.meta.StringPool.GetString(c.RecvType))
+}
+
+// createUniqueID creates a unique identifier for an expression using its name and position
+func createUniqueID(name, pkgName, typeName string) string {
+	if typeName == "" {
+		return pkgName + "." + name
+	}
+	return pkgName + "." + typeName + "." + name
+}
+
+type CallGraphEdge struct {
+	Caller   Call           `yaml:"caller"`
+	Callee   Call           `yaml:"callee"`
+	Position int            `yaml:"position"`
+	Args     []CallArgument `yaml:"args"`
+
+	meta *Metadata
+}
+
+type GlobalAssignment struct {
+	ConcreteType string
+	PkgName      string
+}
+
+// Add assignment tracking structures
+type Assignment struct {
+	VariableName int          `yaml:"variable_name"`
+	Pkg          int          `yaml:"pkg"`
+	ConcreteType int          `yaml:"concrete_type"`
+	Position     int          `yaml:"position"`
+	Scope        int          `yaml:"scope"`
+	Value        CallArgument `yaml:"value"`
+}
+
+// WriteYAML writes any data to a YAML file
+func WriteYAML(data interface{}, filename string) error {
+	out, err := yaml.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, out, 0644)
+}
+
+// WriteMetadata writes metadata to a YAML file (always compressed)
+func WriteMetadata(metadata *Metadata, filename string) error {
+	return WriteYAML(metadata, filename)
+}
+
+// WriteUncompressedMetadata writes uncompressed metadata to a YAML file
+func WriteUncompressedMetadata(uncompressedMeta *UncompressedMetadata, filename string) error {
+	return WriteYAML(uncompressedMeta, filename)
+}
+
+// WriteMetadataWithOption writes metadata to a YAML file based on whether StringPool is disabled
+func WriteMetadataWithOption(metadata *Metadata, uncompressedMeta *UncompressedMetadata, filename string, disableStringPool bool) error {
+	if disableStringPool {
+		return WriteUncompressedMetadata(uncompressedMeta, filename)
+	}
+	return WriteMetadata(metadata, filename)
+}
+
+// WriteSplitMetadata writes metadata split into 3 separate files
+func WriteSplitMetadata(metadata *Metadata, baseFilename string) error {
+	// Extract base path without extension
+	basePath := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
+
+	// Write string pool
+	stringPoolFile := basePath + "-string-pool.yaml"
+	if err := WriteYAML(metadata.StringPool, stringPoolFile); err != nil {
+		return fmt.Errorf("failed to write string pool: %w", err)
+	}
+
+	// Write packages
+	packagesFile := basePath + "-packages.yaml"
+	if err := WriteYAML(metadata.Packages, packagesFile); err != nil {
+		return fmt.Errorf("failed to write packages: %w", err)
+	}
+
+	// Write call graph
+	callGraphFile := basePath + "-call-graph.yaml"
+	if err := WriteYAML(metadata.CallGraph, callGraphFile); err != nil {
+		return fmt.Errorf("failed to write call graph: %w", err)
+	}
+
+	return nil
+}
+
+// LoadMetadata loads metadata from a YAML file (always compressed)
+func LoadMetadata(filename string) (*Metadata, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata Metadata
+	err = yaml.Unmarshal(data, &metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	return &metadata, nil
+}
+
+// LoadSplitMetadata loads metadata from 3 separate files
+func LoadSplitMetadata(baseFilename string) (*Metadata, error) {
+	// Extract base path without extension
+	basePath := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
+
+	// Load string pool
+	stringPoolFile := basePath + "-string-pool.yaml"
+	var stringPool StringPool
+	if err := LoadYAML(stringPoolFile, &stringPool); err != nil {
+		return nil, fmt.Errorf("failed to load string pool: %w", err)
+	}
+
+	// Load packages
+	packagesFile := basePath + "-packages.yaml"
+	var packages map[string]*Package
+	if err := LoadYAML(packagesFile, &packages); err != nil {
+		return nil, fmt.Errorf("failed to load packages: %w", err)
+	}
+
+	// Load call graph
+	callGraphFile := basePath + "-call-graph.yaml"
+	var callGraph []CallGraphEdge
+	if err := LoadYAML(callGraphFile, &callGraph); err != nil {
+		return nil, fmt.Errorf("failed to load call graph: %w", err)
+	}
+
+	return &Metadata{
+		StringPool: &stringPool,
+		Packages:   packages,
+		CallGraph:  callGraph,
+	}, nil
+}
+
+// LoadYAML loads data from a YAML file
+func LoadYAML(filename string, data interface{}) error {
+	fileData, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(fileData, data)
+}
+
+func shortType(typeStr string) (string, string) {
+	if typeStr == "" {
+		return "", ""
+	}
+	// Remove pointer prefix
+	typeStr = strings.TrimPrefix(typeStr, "*")
+	// Only keep the last part after dot or slash
+	if idx := strings.LastIndex(typeStr, "."); idx != -1 {
+		return typeStr[:idx], typeStr[idx+1:]
+	}
+	if idx := strings.LastIndex(typeStr, "/"); idx != -1 {
+		return typeStr[:idx], typeStr[idx+1:]
+	}
+	return "", typeStr
+}
+
+// ExprToCallArgument returns a structured CallArgument for an expression.
+func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *token.FileSet) CallArgument {
+	if expr == nil {
+		return CallArgument{Kind: "raw", Raw: ""}
+	}
+	switch e := expr.(type) {
+	case *ast.Ident:
+		name := e.Name
+		pkg := ""
+		typeStr := ""
+
+		if info != nil {
+			if obj := info.ObjectOf(e); obj != nil {
+				if typePkgName, ok := obj.(*types.PkgName); ok {
+					// This is an imported package identifier
+					pkg = typePkgName.Imported().Path()  // The real import path
+					name = typePkgName.Imported().Name() // The real package name
+
+					pkg = strings.TrimSuffix(pkg, "/"+name)
+				} else if obj.Pkg() != nil {
+					pkg = obj.Pkg().Path()
+				} else if e.Obj != nil {
+					var typePkg string
+
+					typePkg, typeStr = shortType(obj.Type().String())
+					if typePkg != "" {
+						pkg = typePkg
+					}
+				} else {
+					pkg = pkgName
+				}
+			}
+		}
+
+		return CallArgument{Kind: "ident", Name: name, Pkg: pkg, Type: typeStr}
+	case *ast.BasicLit:
+		return CallArgument{Kind: "literal", Value: e.Value}
+	case *ast.SelectorExpr:
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		return CallArgument{
+			Kind:     "selector",
+			X:        &x,
+			Sel:      e.Sel.Name,
+			Position: fset.Position(e.Pos()).String(),
+		}
+	case *ast.CallExpr:
+		args := make([]CallArgument, len(e.Args))
+		for i, a := range e.Args {
+			args[i] = ExprToCallArgument(a, info, pkgName, fset)
+		}
+		fun := ExprToCallArgument(e.Fun, info, pkgName, fset)
+		test := CallArgument{
+			Kind: "call",
+			Fun:  &fun,
+			Args: args,
+			// Position: fset.Position(e.Pos()).String(),
+		}
+		return test
+	case *ast.UnaryExpr:
+		// Handle unary expressions like &user, *ptr, !flag, etc.
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		op := ""
+		switch e.Op {
+		case token.AND:
+			op = "&"
+		case token.MUL:
+			op = "*"
+		case token.NOT:
+			op = "!"
+		case token.XOR:
+			op = "^"
+		case token.SUB:
+			op = "-"
+		case token.ADD:
+			op = "+"
+		}
+		return CallArgument{
+			Kind:  "unary",
+			Value: op,
+			X:     &x,
+		}
+	case *ast.BinaryExpr:
+		// Handle binary expressions like a + b, x == y, etc.
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		y := ExprToCallArgument(e.Y, info, pkgName, fset)
+		op := e.Op.String()
+		return CallArgument{
+			Kind:  "binary",
+			Value: op,
+			X:     &x,
+			Fun:   &y, // Reuse Fun field for the second operand
+		}
+	case *ast.IndexExpr:
+		// Handle index expressions like array[i], map[key], etc.
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		index := ExprToCallArgument(e.Index, info, pkgName, fset)
+		return CallArgument{
+			Kind: "index",
+			X:    &x,
+			Fun:  &index, // Reuse Fun field for the index
+		}
+	case *ast.IndexListExpr:
+		// Handle generic type parameters like MyType[T, U]
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		indices := make([]CallArgument, len(e.Indices))
+		for i, idx := range e.Indices {
+			indices[i] = ExprToCallArgument(idx, info, pkgName, fset)
+		}
+		return CallArgument{
+			Kind: "index_list",
+			X:    &x,
+			Args: indices,
+		}
+	case *ast.ParenExpr:
+		// Handle parenthesized expressions like (x + y)
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		return CallArgument{
+			Kind: "paren",
+			X:    &x,
+		}
+	case *ast.StarExpr:
+		// Handle pointer types like *MyType
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		return CallArgument{
+			Kind: "star",
+			X:    &x,
+		}
+	case *ast.ArrayType:
+		// Handle array types like []int, [5]string
+		elt := ExprToCallArgument(e.Elt, info, pkgName, fset)
+		len := ""
+		if e.Len != nil {
+			lenArg := ExprToCallArgument(e.Len, info, pkgName, fset)
+			if lenArg.Kind == "literal" {
+				len = lenArg.Value
+			}
+		}
+		return CallArgument{
+			Kind:  "array_type",
+			Value: len,
+			X:     &elt,
+		}
+	case *ast.SliceExpr:
+		// Handle slice expressions like array[low:high]
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		args := []CallArgument{}
+		if e.Low != nil {
+			l := ExprToCallArgument(e.Low, info, pkgName, fset)
+			args = append(args, l)
+		}
+		if e.High != nil {
+			h := ExprToCallArgument(e.High, info, pkgName, fset)
+			args = append(args, h)
+		}
+		if e.Max != nil {
+			m := ExprToCallArgument(e.Max, info, pkgName, fset)
+			args = append(args, m)
+		}
+		return CallArgument{
+			Kind: "slice",
+			X:    &x,
+			Args: args,
+		}
+	case *ast.CompositeLit:
+		// Handle struct literals like MyStruct{Field: value}
+		typeExpr := ExprToCallArgument(e.Type, info, pkgName, fset)
+		elts := make([]CallArgument, len(e.Elts))
+		for i, elt := range e.Elts {
+			elts[i] = ExprToCallArgument(elt, info, pkgName, fset)
+		}
+		return CallArgument{
+			Kind: "composite_lit",
+			X:    &typeExpr,
+			Args: elts,
+		}
+	case *ast.KeyValueExpr:
+		// Handle key-value pairs in struct literals like Field: value
+		key := ExprToCallArgument(e.Key, info, pkgName, fset)
+		value := ExprToCallArgument(e.Value, info, pkgName, fset)
+		return CallArgument{
+			Kind: "key_value",
+			X:    &key,
+			Fun:  &value, // Reuse Fun field for the value
+		}
+	case *ast.TypeAssertExpr:
+		// Handle type assertions like x.(string)
+		x := ExprToCallArgument(e.X, info, pkgName, fset)
+		typeExpr := ExprToCallArgument(e.Type, info, pkgName, fset)
+		return CallArgument{
+			Kind: "type_assert",
+			X:    &x,
+			Fun:  &typeExpr, // Reuse Fun field for the type
+		}
+	case *ast.FuncLit:
+		// Handle function literals like func() { ... }
+		// For now, just capture the signature
+		return CallArgument{
+			Kind:  "func_lit",
+			Value: "func()", // Simplified for now
+		}
+	case *ast.ChanType:
+		// Handle channel types like chan int, <-chan int, chan<- int
+		elt := ExprToCallArgument(e.Value, info, pkgName, fset)
+		dir := ""
+		switch e.Dir {
+		case ast.SEND:
+			dir = "send"
+		case ast.RECV:
+			dir = "recv"
+		case ast.SEND | ast.RECV:
+			dir = "bidir"
+		}
+		return CallArgument{
+			Kind:  "chan_type",
+			Value: dir,
+			X:     &elt,
+		}
+	case *ast.MapType:
+		// Handle map types like map[string]int
+		key := ExprToCallArgument(e.Key, info, pkgName, fset)
+		value := ExprToCallArgument(e.Value, info, pkgName, fset)
+		return CallArgument{
+			Kind: "map_type",
+			X:    &key,
+			Fun:  &value, // Reuse Fun field for the value type
+		}
+	case *ast.StructType:
+		// Handle struct type definitions
+		fields := make([]CallArgument, 0, len(e.Fields.List))
+		for _, field := range e.Fields.List {
+			// Simplified field representation
+			fieldType := ExprToCallArgument(field.Type, info, pkgName, fset)
+			comments := ""
+			if field.Doc != nil {
+				comments += field.Doc.Text()
+			}
+			if field.Comment != nil {
+				if comments != "" {
+					comments += "\n"
+				}
+				comments += field.Comment.Text()
+			}
+			if len(field.Names) == 0 {
+				// Embedded (anonymous) field
+				fields = append(fields, CallArgument{
+					Kind: "embed",
+					X:    &fieldType,
+				})
+				continue
+			}
+
+			for _, name := range field.Names {
+				fields = append(fields, CallArgument{
+					Kind: "field",
+					Name: name.Name,
+					Type: fieldType.Type,
+				})
+			}
+		}
+		return CallArgument{
+			Kind: "struct_type",
+			Args: fields,
+		}
+	case *ast.InterfaceType:
+		// Handle interface type definitions
+		methods := make([]CallArgument, len(e.Methods.List))
+		for i, method := range e.Methods.List {
+			// Simplified method representation
+			if len(method.Names) > 0 {
+				methods[i] = CallArgument{
+					Kind: "interface_method",
+					Name: method.Names[0].Name,
+				}
+			}
+		}
+		return CallArgument{
+			Kind: "interface_type",
+			Args: methods,
+		}
+	case *ast.Ellipsis:
+		// Handle variadic arguments like ...args
+		elt := ExprToCallArgument(e.Elt, info, pkgName, fset)
+		return CallArgument{
+			Kind: "ellipsis",
+			X:    &elt,
+		}
+	case *ast.FuncType:
+		// Handle function types like func(int, string) error
+		var params []CallArgument
+		if e.Params != nil {
+			params = make([]CallArgument, len(e.Params.List))
+			for i, field := range e.Params.List {
+				fieldType := ExprToCallArgument(field.Type, info, pkgName, fset)
+				params[i] = fieldType
+			}
+		}
+
+		var results []CallArgument
+		if e.Results != nil {
+			results = make([]CallArgument, len(e.Results.List))
+			for i, field := range e.Results.List {
+				fieldType := ExprToCallArgument(field.Type, info, pkgName, fset)
+				results[i] = fieldType
+			}
+		}
+
+		return CallArgument{
+			Kind: "func_type",
+			Args: params, // Use Args for parameters
+			Fun: &CallArgument{ // Use Fun field to store results
+				Kind: "func_results",
+				Args: results,
+			},
+		}
+	}
+	// Fallback for other complex expressions
+	return CallArgument{Kind: "raw", Raw: ExprToString(expr)}
+}
+
+// ExprToString returns a string representation of an expression.
+func ExprToString(expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	return fmt.Sprintf("%#v", expr)
+}
+
+// FillMetadataAndCallGraph extracts all metadata and call graph info
+func FillMetadataAndCallGraph(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, disableStringPool bool) (*Metadata, []CallGraphEdge, *UncompressedMetadata) {
+	if disableStringPool {
+		return fillUncompressedMetadata(pkgs, fileToInfo, importPaths, fset, funcMap)
+	}
+
+	pool := NewStringPool()
+	metadata := &Metadata{
+		StringPool: pool,
+		Packages:   make(map[string]*Package),
+		CallGraph:  make([]CallGraphEdge, 0),
+	}
+
+	for pkgName, files := range pkgs {
+		pkg := &Package{
+			ImportPath: pool.Get(importPaths[pkgName]),
+			Files:      make(map[string]*File),
+		}
+
+		allTypeMethods := make(map[string][]Method)
+		allTypes := make(map[string]*Type)
+		allInterfaces := make(map[string]*Type)
+
+		// Collect methods for types
+		for _, f2 := range files {
+			info := fileToInfo[f2]
+			for _, decl2 := range f2.Decls {
+				fn, ok := decl2.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+					continue
+				}
+				recvType := parser.GetTypeName(fn.Recv.List[0].Type)
+				m := Method{
+					Name:      pool.Get(fn.Name.Name),
+					Receiver:  pool.Get(recvType),
+					Signature: ExprToCallArgument(fn.Type, info, pkgName, fset),
+					Position:  pool.Get(parser.FuncPosition(fn, f2)),
+					Scope:     pool.Get(scopeOf(fn.Name.Name)),
+				}
+				m.SignatureStr = pool.Get(callArgToString(m.Signature))
+
+				allTypeMethods[recvType] = append(allTypeMethods[recvType], m)
+			}
+		}
+
+		for fileName, file := range files {
+			info := fileToInfo[file]
+			// Create full package path for the file
+			fullPath := importPaths[pkgName]
+			if fullPath != "" {
+				fullPath += "/"
+			}
+			fullPath += fileName
+
+			f := &File{
+				Types:           make(map[string]*Type),
+				Functions:       make(map[string]*Function),
+				Variables:       make(map[string]*Variable),
+				StructInstances: make([]StructInstance, 0),
+				Selectors:       make([]Selector, 0),
+				Imports:         make(map[int]int),
+			}
+
+			// --- Collect consts for this file ---
+			constMap := make(map[string]string)
+
+			// Types
+			for _, decl := range file.Decls {
+				genDecl, ok := decl.(*ast.GenDecl)
+				if !ok || genDecl.Tok != token.TYPE {
+					continue
+				}
+				for _, spec := range genDecl.Specs {
+					tspec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					t := &Type{
+						Name:  pool.Get(tspec.Name.Name),
+						Scope: pool.Get(scopeOf(tspec.Name.Name)),
+					}
+					// Comments for type
+					if tspec.Doc != nil {
+						t.Comments = pool.Get(tspec.Doc.Text())
+					} else if genDecl.Doc != nil {
+						t.Comments = pool.Get(genDecl.Doc.Text())
+					}
+					// Kind
+					interfaceKind := pool.Get("interface")
+					switch ut := tspec.Type.(type) {
+					case *ast.StructType:
+						t.Kind = pool.Get("struct")
+						for _, field := range ut.Fields.List {
+							fieldType := getTypeString(field.Type)
+							tag := ""
+							if field.Tag != nil {
+								tag = field.Tag.Value
+							}
+							comments := ""
+							if field.Doc != nil {
+								comments += field.Doc.Text()
+							}
+							if field.Comment != nil {
+								if comments != "" {
+									comments += "\n"
+								}
+								comments += field.Comment.Text()
+							}
+							if len(field.Names) == 0 {
+								// Embedded (anonymous) field
+								t.Embeds = append(t.Embeds, pool.Get(fieldType))
+								continue
+							}
+							for _, name := range field.Names {
+								scope := scopeOf(name.Name)
+								f := Field{
+									Name:     pool.Get(name.Name),
+									Type:     pool.Get(fieldType),
+									Tag:      pool.Get(tag),
+									Scope:    pool.Get(scope),
+									Comments: pool.Get(comments),
+								}
+								t.Fields = append(t.Fields, f)
+							}
+						}
+						allTypes[tspec.Name.Name] = t
+					case *ast.InterfaceType:
+						t.Kind = interfaceKind
+						for _, method := range ut.Methods.List {
+							if len(method.Names) > 0 {
+								m := Method{
+									Name:      pool.Get(method.Names[0].Name),
+									Signature: ExprToCallArgument(method.Type.(*ast.FuncType), info, pkgName, fset),
+									Scope:     pool.Get(scopeOf(method.Names[0].Name)),
+								}
+								m.SignatureStr = pool.Get(callArgToString(m.Signature))
+
+								// Comments for interface method
+								if method.Doc != nil {
+									m.Comments = pool.Get(method.Doc.Text())
+								} else if method.Comment != nil {
+									m.Comments = pool.Get(method.Comment.Text())
+								}
+								t.Methods = append(t.Methods, m)
+							}
+						}
+						allTypes[tspec.Name.Name] = t
+						allInterfaces[tspec.Name.Name] = t
+					case *ast.Ident:
+						t.Kind = pool.Get("alias")
+						t.Target = pool.Get(ut.Name)
+						allTypes[tspec.Name.Name] = t
+					default:
+						t.Kind = pool.Get("other")
+						allTypes[tspec.Name.Name] = t
+					}
+					if t.Kind != interfaceKind {
+						t.Methods = allTypeMethods[tspec.Name.Name]
+					}
+					f.Types[tspec.Name.Name] = t
+				}
+			}
+
+			// Functions
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil {
+					continue
+				}
+				comments := ""
+				if fn.Doc != nil {
+					comments = fn.Doc.Text()
+				}
+				f.Functions[fn.Name.Name] = &Function{
+					Name:      pool.Get(fn.Name.Name),
+					Signature: ExprToCallArgument(fn.Type, info, pkgName, fset),
+					Position:  pool.Get(parser.FuncPosition(fn, file)),
+					Comments:  pool.Get(comments),
+				}
+			}
+
+			// Variables and consts
+			for _, decl := range file.Decls {
+				genDecl, ok := decl.(*ast.GenDecl)
+				if !ok || (genDecl.Tok != token.VAR && genDecl.Tok != token.CONST) {
+					continue
+				}
+				for _, spec := range genDecl.Specs {
+					vspec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					comments := ""
+					if vspec.Doc != nil {
+						comments = vspec.Doc.Text()
+					} else if genDecl.Doc != nil {
+						comments = genDecl.Doc.Text()
+					}
+					for i, name := range vspec.Names {
+						v := &Variable{
+							Name:     pool.Get(name.Name),
+							Type:     pool.Get(parser.GetTypeName(vspec.Type)),
+							Position: pool.Get(parser.VarPosition(name, file)),
+							Comments: pool.Get(comments),
+						}
+						if len(vspec.Values) > i {
+							v.Value = pool.Get(callArgToString(ExprToCallArgument(vspec.Values[i], info, pkgName, fset)))
+							if genDecl.Tok == token.CONST {
+								constMap[name.Name] = callArgToString(ExprToCallArgument(vspec.Values[i], info, pkgName, fset))
+							}
+						}
+						f.Variables[name.Name] = v
+					}
+				}
+			}
+
+			// --- Struct Instances and Assignments ---
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.CompositeLit:
+					typeName := parser.GetTypeName(x.Type)
+					if typeName == "" {
+						return true
+					}
+					fields := map[int]int{}
+					for _, elt := range x.Elts {
+						if kv, ok := elt.(*ast.KeyValueExpr); ok {
+							key := callArgToString(ExprToCallArgument(kv.Key, info, pkgName, fset))
+							val := callArgToString(ExprToCallArgument(kv.Value, info, pkgName, fset))
+							if ident, ok := kv.Value.(*ast.Ident); ok {
+								if cval, exists := constMap[ident.Name]; exists {
+									val = cval
+								}
+							}
+							fields[pool.Get(key)] = pool.Get(val)
+						}
+					}
+					f.StructInstances = append(f.StructInstances, StructInstance{
+						Type:     pool.Get(typeName),
+						Position: pool.Get(fset.Position(x.Pos()).String()),
+						Fields:   fields,
+					})
+				case *ast.AssignStmt:
+					// Track assignments to capture concrete types
+					fmt.Printf("DEBUG: Found assignment at %s\n", fset.Position(x.Pos()).String())
+					for i, lhs := range x.Lhs {
+						if ident, ok := lhs.(*ast.Ident); ok {
+							if i < len(x.Rhs) {
+								rhs := x.Rhs[i]
+								pkg, concreteType := analyzeAssignmentValue(rhs, pkgs, fileToInfo, funcMap, fset, pkgName)
+								fmt.Printf("DEBUG: Assignment %s = %s (concrete type: %s)\n", ident.Name, getTypeString(rhs), concreteType)
+								if concreteType != "" {
+									// Store in global variable assignments map
+									filePath := fset.Position(x.Pos()).Filename
+									if globalVariableAssignments[filePath] == nil {
+										globalVariableAssignments[filePath] = make(map[string]GlobalAssignment)
+									}
+									globalVariableAssignments[filePath][ident.Name] = GlobalAssignment{
+										ConcreteType: concreteType,
+										PkgName:      pkg,
+									}
+
+									f.Assignments = append(f.Assignments, Assignment{
+										VariableName: pool.Get(ident.Name),
+										Pkg:          pool.Get(pkgName),
+										ConcreteType: pool.Get(concreteType),
+										Position:     pool.Get(fset.Position(x.Pos()).String()),
+										Scope:        pool.Get(scopeOf(ident.Name)),
+										Value:        ExprToCallArgument(rhs, info, pkgName, fset),
+									})
+								}
+							}
+						}
+					}
+				}
+				return true
+			})
+
+			// --- Selectors ---
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.CallExpr:
+					if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+						f.Selectors = append(f.Selectors, Selector{
+							Expr:     ExprToCallArgument(sel, info, pkgName, fset),
+							Kind:     pool.Get("call"),
+							Position: pool.Get(fset.Position(sel.Pos()).String()),
+						})
+					}
+				case *ast.SelectorExpr:
+					f.Selectors = append(f.Selectors, Selector{
+						Expr:     ExprToCallArgument(x, info, pkgName, fset),
+						Kind:     pool.Get("field"),
+						Position: pool.Get(fset.Position(x.Pos()).String()),
+					})
+				}
+				return true
+			})
+
+			// Imports (unique per file)
+			for _, imp := range file.Imports {
+				importPath := strings.Trim(imp.Path.Value, `"`)
+				alias := ""
+				if imp.Name != nil {
+					alias = imp.Name.Name
+				}
+
+				f.Imports[pool.Get(alias)] = pool.Get(importPath)
+			}
+
+			pkg.Files[fullPath] = f
+		}
+
+		// --- Build call graph ---
+		for _, file := range files {
+			info := fileToInfo[file]
+
+			ast.Inspect(file, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					// Get the caller function name (if we're inside a function)
+					callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
+					callerPkg := pkgName
+
+					// Get the callee function name and package
+					calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, pkgs, file, pkgName, fileToInfo, funcMap, fset)
+
+					if callerFunc != "" && calleeFunc != "" {
+						// Collect arguments
+						args := make([]CallArgument, len(call.Args))
+						for i, arg := range call.Args {
+							args[i] = ExprToCallArgument(arg, info, pkgName, fset)
+						}
+
+						// Convert args for compressed version
+						compressedArgs := make([]CallArgument, len(args))
+						copy(compressedArgs, args)
+
+						metadata.CallGraph = append(metadata.CallGraph, CallGraphEdge{
+							meta: metadata,
+							Caller: Call{
+								meta:     metadata,
+								Name:     pool.Get(callerFunc),
+								Pkg:      pool.Get(callerPkg),
+								RecvType: pool.Get(callerParts),
+							},
+							Callee: Call{
+								meta:     metadata,
+								Name:     pool.Get(calleeFunc),
+								Pkg:      pool.Get(calleePkg),
+								RecvType: pool.Get(calleeParts),
+							},
+							Position: pool.Get(fset.Position(call.Pos()).String()),
+							Args:     compressedArgs,
+						})
+					}
+				}
+				return true
+			})
+		}
+
+		metadata.Packages[pkgName] = pkg
+	}
+
+	// In FillMetadataAndCallGraph, before return:
+	if pool != nil {
+		pool.Finalize()
+	}
+
+	return metadata, metadata.CallGraph, nil
+}
+
+// fillUncompressedMetadata creates metadata without string pool compression
+func fillUncompressedMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, funcMap map[string]*ast.FuncDecl) (*Metadata, []CallGraphEdge, *UncompressedMetadata) {
+	// Create uncompressed metadata
+	uncompressedMeta := &UncompressedMetadata{
+		Packages:  make(map[string]*UncompressedPackage),
+		CallGraph: make([]UncompressedCallGraphEdge, 0),
+	}
+
+	for pkgName, files := range pkgs {
+		pkg := &UncompressedPackage{
+			ImportPath: importPaths[pkgName],
+			Files:      make(map[string]*UncompressedFile),
+		}
+
+		allTypeMethods := make(map[string][]UncompressedMethod)
+
+		// Collect methods for types
+		for _, f2 := range files {
+			info := fileToInfo[f2]
+			for _, decl2 := range f2.Decls {
+				fn, ok := decl2.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+					continue
+				}
+				recvType := getTypeString(fn.Recv.List[0].Type)
+				m := UncompressedMethod{
+					Name:      fn.Name.Name,
+					Receiver:  recvType,
+					Signature: ExprToCallArgument(fn.Type, info, pkgName, fset),
+					Position:  parser.FuncPosition(fn, f2),
+					Scope:     scopeOf(fn.Name.Name),
+				}
+				m.SignatureStr = callArgToString(m.Signature)
+
+				allTypeMethods[recvType] = append(allTypeMethods[recvType], m)
+			}
+		}
+
+		for fullPath, file := range files {
+			info := fileToInfo[file]
+
+			f := &UncompressedFile{
+				Types:           make(map[string]*UncompressedType),
+				Functions:       make(map[string]*UncompressedFunction),
+				Variables:       make(map[string]*UncompressedVariable),
+				StructInstances: make([]UncompressedStructInstance, 0),
+				Selectors:       make([]UncompressedSelector, 0),
+				Assignments:     make([]UncompressedAssignment, 0),
+				Imports:         make(map[string]string),
+			}
+
+			// --- Collect consts for this file ---
+			constMap := make(map[string]string)
+
+			// Types
+			for _, decl := range file.Decls {
+				genDecl, ok := decl.(*ast.GenDecl)
+				if !ok || genDecl.Tok != token.TYPE {
+					continue
+				}
+				for _, spec := range genDecl.Specs {
+					tspec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					t := &UncompressedType{
+						Name:  tspec.Name.Name,
+						Scope: scopeOf(tspec.Name.Name),
+					}
+					// Comments for type
+					if tspec.Doc != nil {
+						t.Comments = tspec.Doc.Text()
+					} else if genDecl.Doc != nil {
+						t.Comments = genDecl.Doc.Text()
+					}
+					// Kind
+					switch ut := tspec.Type.(type) {
+					case *ast.StructType:
+						t.Kind = "struct"
+						for _, field := range ut.Fields.List {
+							fieldType := parser.GetTypeName(field.Type)
+							tag := ""
+							if field.Tag != nil {
+								tag = field.Tag.Value
+							}
+							comments := ""
+							if field.Doc != nil {
+								comments += field.Doc.Text()
+							}
+							if field.Comment != nil {
+								if comments != "" {
+									comments += "\n"
+								}
+								comments += field.Comment.Text()
+							}
+							if len(field.Names) == 0 {
+								// Embedded (anonymous) field
+								t.Embeds = append(t.Embeds, fieldType)
+								continue
+							}
+							for _, name := range field.Names {
+								scope := scopeOf(name.Name)
+								f := UncompressedField{
+									Name:     name.Name,
+									Type:     fieldType,
+									Tag:      tag,
+									Scope:    scope,
+									Comments: comments,
+								}
+								t.Fields = append(t.Fields, f)
+							}
+
+							// Append all Struct methods
+							t.Methods = append(t.Methods, allTypeMethods[t.Name]...)
+						}
+					case *ast.InterfaceType:
+						t.Kind = "interface"
+						for _, method := range ut.Methods.List {
+							if len(method.Names) > 0 {
+								m := UncompressedMethod{
+									Name:      method.Names[0].Name,
+									Signature: ExprToCallArgument(method.Type.(*ast.FuncType), info, pkgName, fset),
+									Scope:     scopeOf(method.Names[0].Name),
+								}
+								m.SignatureStr = callArgToString(m.Signature)
+
+								// Comments for interface method
+								if method.Doc != nil {
+									m.Comments = method.Doc.Text()
+								} else if method.Comment != nil {
+									m.Comments = method.Comment.Text()
+								}
+								t.Methods = append(t.Methods, m)
+							}
+						}
+					case *ast.Ident:
+						t.Kind = "alias"
+						t.Target = ut.Name
+					default:
+						t.Kind = "other"
+					}
+					f.Types[tspec.Name.Name] = t
+				}
+			}
+
+			// Functions
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil {
+					continue
+				}
+				comments := ""
+				if fn.Doc != nil {
+					comments = fn.Doc.Text()
+				}
+
+				f.Functions[fn.Name.Name] = &UncompressedFunction{
+					Name:      fn.Name.Name,
+					Signature: []CallArgument{ExprToCallArgument(fn.Type, info, pkgName, fset)},
+					Position:  parser.FuncPosition(fn, file),
+					Comments:  comments,
+				}
+			}
+
+			// Variables and consts
+			for _, decl := range file.Decls {
+				genDecl, ok := decl.(*ast.GenDecl)
+				if !ok || (genDecl.Tok != token.VAR && genDecl.Tok != token.CONST) {
+					continue
+				}
+				for _, spec := range genDecl.Specs {
+					vspec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					comments := ""
+					if vspec.Doc != nil {
+						comments = vspec.Doc.Text()
+					} else if genDecl.Doc != nil {
+						comments = genDecl.Doc.Text()
+					}
+					for i, name := range vspec.Names {
+						v := &UncompressedVariable{
+							Name:     name.Name,
+							Type:     getTypeString(vspec.Type),
+							Position: parser.VarPosition(name, file),
+							Comments: comments,
+						}
+						if len(vspec.Values) > i {
+							v.Value = callArgToString(ExprToCallArgument(vspec.Values[i], info, pkgName, fset))
+							if genDecl.Tok == token.CONST {
+								constMap[name.Name] = callArgToString(ExprToCallArgument(vspec.Values[i], info, pkgName, fset))
+							}
+						}
+						f.Variables[name.Name] = v
+					}
+				}
+			}
+
+			// --- Struct Instances ---
+			ast.Inspect(file, func(n ast.Node) bool {
+				cl, ok := n.(*ast.CompositeLit)
+				if !ok {
+					return true
+				}
+				typeName := getTypeString(cl.Type)
+				if typeName == "" {
+					return true
+				}
+				fields := map[string]string{}
+				for _, elt := range cl.Elts {
+					if kv, ok := elt.(*ast.KeyValueExpr); ok {
+						key := callArgToString(ExprToCallArgument(kv.Key, info, pkgName, fset))
+						val := callArgToString(ExprToCallArgument(kv.Value, info, pkgName, fset))
+						if ident, ok := kv.Value.(*ast.Ident); ok {
+							if cval, exists := constMap[ident.Name]; exists {
+								val = cval
+							}
+						}
+						fields[key] = val
+					}
+				}
+				f.StructInstances = append(f.StructInstances, UncompressedStructInstance{
+					Type:     typeName,
+					Position: fset.Position(cl.Pos()).String(),
+					Fields:   fields,
+				})
+				return true
+			})
+
+			// --- Selectors and Assignments ---
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.AssignStmt:
+					// Track assignments to capture concrete types
+					fmt.Printf("DEBUG: Found assignment at %s\n", fset.Position(x.Pos()).String())
+					for i, lhs := range x.Lhs {
+						if ident, ok := lhs.(*ast.Ident); ok {
+							if i < len(x.Rhs) {
+								rhs := x.Rhs[i]
+								pkg, concreteType := analyzeAssignmentValue(rhs, pkgs, fileToInfo, funcMap, fset, pkgName)
+
+								fmt.Printf("DEBUG: Assignment %s = %s (concrete type: %s)\n", ident.Name, getTypeString(rhs), concreteType)
+								if concreteType != "" {
+									f.Assignments = append(f.Assignments, UncompressedAssignment{
+										VariableName: ident.Name,
+										Pkg:          pkg,
+										ConcreteType: concreteType,
+										Position:     fset.Position(x.Pos()).String(),
+										Scope:        scopeOf(ident.Name),
+										Value:        ExprToCallArgument(rhs, info, pkgName, fset),
+									})
+								}
+							}
+						}
+					}
+				case *ast.CallExpr:
+					if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+						f.Selectors = append(f.Selectors, UncompressedSelector{
+							Expr:     ExprToCallArgument(sel, info, pkgName, fset),
+							Kind:     "call",
+							Position: fset.Position(sel.Pos()).String(),
+						})
+					}
+				case *ast.SelectorExpr:
+					f.Selectors = append(f.Selectors, UncompressedSelector{
+						Expr:     ExprToCallArgument(x, info, pkgName, fset),
+						Kind:     "field",
+						Position: fset.Position(x.Pos()).String(),
+					})
+				}
+				return true
+			})
+
+			// Imports (unique per file)
+			for _, imp := range file.Imports {
+				importPath := strings.Trim(imp.Path.Value, `"`)
+				alias := ""
+				if imp.Name != nil {
+					alias = imp.Name.Name
+				}
+				f.Imports[alias] = importPath
+			}
+
+			pkg.Files[fullPath] = f
+		}
+
+		// --- Build call graph ---
+		for filePath, file := range files {
+			info := fileToInfo[file]
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch call := n.(type) {
+				case *ast.AssignStmt:
+					if globalVariableAssignments[filePath] == nil {
+						globalVariableAssignments[filePath] = make(map[string]GlobalAssignment)
+					}
+					for i, lhs := range call.Lhs {
+						if ident, ok := lhs.(*ast.Ident); ok {
+							if i < len(call.Rhs) {
+								rhs := call.Rhs[i]
+								pkg, concreteType := analyzeAssignmentValue(rhs, pkgs, fileToInfo, funcMap, fset, pkgName)
+								if concreteType != "" {
+									globalVariableAssignments[filePath][ident.Name] = GlobalAssignment{
+										ConcreteType: concreteType,
+										PkgName:      pkg,
+									}
+								}
+							}
+						}
+					}
+				case *ast.CallExpr:
+					// Get the caller function name (if we're inside a function)
+					callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
+					callerPkg := pkgName
+
+					// Get the callee function name and package
+					calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, pkgs, file, pkgName, fileToInfo, funcMap, fset)
+
+					if callerFunc != "" && calleeFunc != "" {
+						// Collect arguments
+						args := make([]CallArgument, len(call.Args))
+						for i, arg := range call.Args {
+							args[i] = ExprToCallArgument(arg, info, pkgName, fset)
+						}
+
+						uncompressedMeta.CallGraph = append(uncompressedMeta.CallGraph, UncompressedCallGraphEdge{
+							Caller: UncompressedCall{
+								Name:     callerFunc,
+								Pkg:      callerPkg,
+								RecvType: callerParts,
+							},
+							Callee: UncompressedCall{
+								Name:     calleeFunc,
+								Pkg:      calleePkg,
+								RecvType: calleeParts,
+							},
+							Position: fset.Position(call.Pos()).String(),
+							Args:     args,
+						})
+					}
+				}
+				return true
+			})
+		}
+
+		uncompressedMeta.Packages[pkgName] = pkg
+	}
+
+	// All types for each kind
+	var types = make(map[string]map[string]*Type)
+	var uncompressedTypes = make(map[string]map[string]*UncompressedType)
+
+	// Convert uncompressed metadata to compressed format for compatibility
+	// This is a temporary solution - ideally we'd update all consuming code to handle uncompressed metadata
+	pool := NewStringPool()
+	metadata := &Metadata{
+		StringPool: pool,
+		Packages:   make(map[string]*Package),
+		CallGraph:  make([]CallGraphEdge, 0),
+	}
+
+	// Convert packages
+	for pkgName, uncompressedPkg := range uncompressedMeta.Packages {
+		pkg := &Package{
+			ImportPath: pool.Get(uncompressedPkg.ImportPath),
+			Files:      make(map[string]*File),
+		}
+
+		for fileName, uncompressedFile := range uncompressedPkg.Files {
+			file := &File{
+				Types:           make(map[string]*Type),
+				Functions:       make(map[string]*Function),
+				Variables:       make(map[string]*Variable),
+				StructInstances: make([]StructInstance, 0),
+				Selectors:       make([]Selector, 0),
+				Assignments:     make([]Assignment, 0),
+				Imports:         make(map[int]int),
+			}
+
+			// Convert types
+			for typeName, uncompressedType := range uncompressedFile.Types {
+				typ := &Type{
+					Name:          pool.Get(uncompressedType.Name),
+					Kind:          pool.Get(uncompressedType.Kind),
+					Target:        pool.Get(uncompressedType.Target),
+					Implements:    make([]int, len(uncompressedType.Implements)),
+					ImplementedBy: make([]int, len(uncompressedType.ImplementedBy)),
+					Embeds:        make([]int, len(uncompressedType.Embeds)),
+					Fields:        make([]Field, len(uncompressedType.Fields)),
+					Scope:         pool.Get(uncompressedType.Scope),
+					Methods:       make([]Method, len(uncompressedType.Methods)),
+					Comments:      pool.Get(uncompressedType.Comments),
+					Tags:          make([]int, len(uncompressedType.Tags)),
+				}
+
+				for i, embed := range uncompressedType.Embeds {
+					typ.Embeds[i] = pool.Get(embed)
+				}
+
+				for i, field := range uncompressedType.Fields {
+					typ.Fields[i] = Field{
+						Name:     pool.Get(field.Name),
+						Type:     pool.Get(field.Type),
+						Tag:      pool.Get(field.Tag),
+						Scope:    pool.Get(field.Scope),
+						Comments: pool.Get(field.Comments),
+					}
+				}
+
+				for i, method := range uncompressedType.Methods {
+					typ.Methods[i] = Method{
+						Name:         pool.Get(method.Name),
+						Receiver:     pool.Get(method.Receiver),
+						Signature:    method.Signature,
+						SignatureStr: pool.Get(method.SignatureStr),
+						Position:     pool.Get(method.Position),
+						Scope:        pool.Get(method.Scope),
+						Comments:     pool.Get(method.Comments),
+						Tags:         make([]int, len(method.Tags)),
+					}
+
+					for j, tag := range method.Tags {
+						typ.Methods[i].Tags[j] = pool.Get(tag)
+					}
+				}
+
+				file.Types[typeName] = typ
+
+				// Collect all types to compare with interfaces
+				if _, exists := types[uncompressedType.Kind]; !exists {
+					types[uncompressedType.Kind] = make(map[string]*Type)
+					uncompressedTypes[uncompressedType.Kind] = make(map[string]*UncompressedType)
+				}
+				types[uncompressedType.Kind][pkgName+"."+uncompressedType.Name] = typ
+				uncompressedTypes[uncompressedType.Kind][pkgName+"."+uncompressedType.Name] = uncompressedType
+
+			}
+
+			// Convert functions
+			for funcName, uncompressedFunc := range uncompressedFile.Functions {
+				file.Functions[funcName] = &Function{
+					Name:      pool.Get(uncompressedFunc.Name),
+					Signature: uncompressedFunc.Signature[0],
+					Position:  pool.Get(uncompressedFunc.Position),
+					Comments:  pool.Get(uncompressedFunc.Comments),
+				}
+				for j, tag := range uncompressedFunc.Tags {
+					file.Functions[funcName].Tags[j] = pool.Get(tag)
+				}
+			}
+
+			// Convert variables
+			for varName, uncompressedVar := range uncompressedFile.Variables {
+				file.Variables[varName] = &Variable{
+					Name:     pool.Get(uncompressedVar.Name),
+					Type:     pool.Get(uncompressedVar.Type),
+					Position: pool.Get(uncompressedVar.Position),
+					Comments: pool.Get(uncompressedVar.Comments),
+				}
+			}
+
+			// Convert struct instances
+			for _, uncompressedInstance := range uncompressedFile.StructInstances {
+				fields := map[int]int{}
+				for key, value := range uncompressedInstance.Fields {
+					fields[pool.Get(key)] = pool.Get(value)
+				}
+				file.StructInstances = append(file.StructInstances, StructInstance{
+					Type:     pool.Get(uncompressedInstance.Type),
+					Position: pool.Get(uncompressedInstance.Position),
+					Fields:   fields,
+				})
+			}
+
+			// Convert selectors
+			for _, uncompressedSelector := range uncompressedFile.Selectors {
+				file.Selectors = append(file.Selectors, Selector{
+					Expr:     uncompressedSelector.Expr,
+					Kind:     pool.Get(uncompressedSelector.Kind),
+					Position: pool.Get(uncompressedSelector.Position),
+				})
+			}
+
+			// Convert assignments
+			for _, uncompressedAssignment := range uncompressedFile.Assignments {
+				file.Assignments = append(file.Assignments, Assignment{
+					VariableName: pool.Get(uncompressedAssignment.VariableName),
+					Pkg:          pool.Get(uncompressedAssignment.Pkg),
+					ConcreteType: pool.Get(uncompressedAssignment.ConcreteType),
+					Position:     pool.Get(uncompressedAssignment.Position),
+					Scope:        pool.Get(uncompressedAssignment.Scope),
+					Value:        uncompressedAssignment.Value,
+				})
+			}
+
+			// Convert imports
+			for alias, path := range uncompressedFile.Imports {
+				file.Imports[pool.Get(alias)] = pool.Get(path)
+			}
+
+			pkg.Files[fileName] = file
+		}
+
+		metadata.Packages[pkgName] = pkg
+	}
+
+	// Convert call graph
+	for _, uncompressedEdge := range uncompressedMeta.CallGraph {
+		args := make([]CallArgument, len(uncompressedEdge.Args))
+		copy(args, uncompressedEdge.Args)
+
+		metadata.CallGraph = append(metadata.CallGraph, CallGraphEdge{
+			meta: metadata,
+			Caller: Call{
+				meta:     metadata,
+				Name:     pool.Get(uncompressedEdge.Caller.Name),
+				Pkg:      pool.Get(uncompressedEdge.Caller.Pkg),
+				RecvType: pool.Get(uncompressedEdge.Caller.RecvType),
+			},
+			Callee: Call{
+				meta:     metadata,
+				Name:     pool.Get(uncompressedEdge.Callee.Name),
+				Pkg:      pool.Get(uncompressedEdge.Callee.Pkg),
+				RecvType: pool.Get(uncompressedEdge.Callee.RecvType),
+			},
+			Position: pool.Get(uncompressedEdge.Position),
+			Args:     args,
+		})
+	}
+
+	for structName, stct := range types["struct"] {
+		structMethods := make(map[int]int) // name -> signature string
+		for _, method := range stct.Methods {
+			structMethods[method.Name] = method.SignatureStr
+		}
+
+		for interfaceName, intrf := range types["interface"] {
+			if implements := implementsInterface(structMethods, intrf); implements {
+				stct.Implements = append(stct.Implements, pool.Get(interfaceName))
+				intrf.ImplementedBy = append(intrf.ImplementedBy, pool.Get(structName))
+
+				uncompressedStruct := uncompressedTypes["struct"][structName]
+				uncompressedInterface := uncompressedTypes["interface"][interfaceName]
+				uncompressedStruct.Implements = append(uncompressedStruct.Implements, interfaceName)
+				uncompressedInterface.ImplementedBy = append(uncompressedInterface.ImplementedBy, structName)
+			}
+		}
+	}
+
+	// pool.Finalize()
+	return metadata, metadata.CallGraph, uncompressedMeta
+}
+
+func scopeOf(name string) string {
+	if len(name) == 0 {
+		return "unknown"
+	}
+	if name[0] >= 'A' && name[0] <= 'Z' {
+		return "exported"
+	}
+	return "unexported"
+}
+
+func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
+	for _, ifaceMethod := range ifaceType.Methods {
+		// Check if method exists with matching signature
+		if structSignatureStr, exists := structMethods[ifaceMethod.Name]; !exists {
+			return false
+		} else if structSignatureStr != ifaceMethod.SignatureStr {
+			// Method exists but signature doesn't match
+			return false
+		}
+	}
+	return true
+}
+
+func getEnclosingFunctionName(file *ast.File, pos token.Pos) (string, string) {
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		if fn.Pos() <= pos && pos <= fn.End() {
+			var parts []string
+
+			// Check if this is a method (has a receiver)
+			if fn.Recv != nil && len(fn.Recv.List) > 0 {
+				recv := fn.Recv.List[0]
+				recvType := getTypeString(recv.Type)
+				parts = append(parts, recvType)
+			}
+
+			return fn.Name.Name, strings.Join(parts, ".")
+		}
+	}
+	return "", ""
+}
+
+// Helper function to extract type string from ast.Expr
+func getTypeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		// Handle pointer receivers like *MyStruct
+		return "*" + getTypeString(t.X)
+	case *ast.SelectorExpr:
+		// Handle qualified types like pkg.MyStruct
+		return getTypeString(t.X) + "." + t.Sel.Name
+	case *ast.IndexExpr:
+		// Handle generic types like MyStruct[T]
+		return getTypeString(t.X) + "[" + getTypeString(t.Index) + "]"
+	case *ast.IndexListExpr:
+		// Handle generic types with multiple type parameters like MyStruct[T, U]
+		var indices []string
+		for _, index := range t.Indices {
+			indices = append(indices, getTypeString(index))
+		}
+		return getTypeString(t.X) + "[" + strings.Join(indices, ", ") + "]"
+	case *ast.UnaryExpr:
+		// Handle unary expressions like &user, *ptr, !flag, etc.
+		op := ""
+		switch t.Op {
+		case token.AND:
+			// return pointer type
+			op = "*"
+		case token.MUL:
+			op = "*"
+		case token.NOT:
+			op = "!"
+		case token.XOR:
+			op = "^"
+		case token.SUB:
+			op = "-"
+		case token.ADD:
+			op = "+"
+		}
+		return op + getTypeString(t.X)
+	case *ast.CompositeLit:
+		// Handle composite literals like MyStruct{Field: value}
+		if t.Type != nil {
+			return getTypeString(t.Type)
+		}
+		// If no explicit type, try to infer from the literal structure
+		if len(t.Elts) > 0 {
+			// For struct literals, try to infer the type from the first key-value pair
+			if kv, ok := t.Elts[0].(*ast.KeyValueExpr); ok {
+				if ident, ok := kv.Key.(*ast.Ident); ok {
+					// This might be a struct literal, try to infer the type
+					return "struct{" + ident.Name + "}"
+				}
+			}
+		}
+		return "composite_literal"
+	case *ast.CallExpr:
+		// Handle function calls that return types
+		return getTypeString(t.Fun) + "()"
+	case *ast.BinaryExpr:
+		// Handle binary expressions like a + b, x == y, etc.
+		// For type inference, we might want to focus on the left operand
+		return getTypeString(t.X)
+	case *ast.ParenExpr:
+		// Handle parenthesized expressions like (x + y)
+		return getTypeString(t.X)
+	case *ast.ArrayType:
+		// Handle array types like []int, [5]string
+		elt := getTypeString(t.Elt)
+		if t.Len != nil {
+			len := getTypeString(t.Len)
+			return "[" + len + "]" + elt
+		}
+		return "[]" + elt
+	case *ast.SliceExpr:
+		// Handle slice expressions like array[low:high]
+		return getTypeString(t.X)
+	case *ast.TypeAssertExpr:
+		// Handle type assertions like x.(string)
+		return getTypeString(t.Type)
+	case *ast.FuncLit:
+		// Handle function literals like func() { ... }
+		return "func()"
+	case *ast.ChanType:
+		// Handle channel types like chan int, <-chan int, chan<- int
+		elt := getTypeString(t.Value)
+		switch t.Dir {
+		case ast.SEND:
+			return "chan<- " + elt
+		case ast.RECV:
+			return "<-chan " + elt
+		case ast.SEND | ast.RECV:
+			return "chan " + elt
+		}
+		return "chan " + elt
+	case *ast.MapType:
+		// Handle map types like map[string]int
+		key := getTypeString(t.Key)
+		value := getTypeString(t.Value)
+		return "map[" + key + "]" + value
+	case *ast.StructType:
+		// Handle struct type definitions
+		return "struct{}"
+	case *ast.InterfaceType:
+		// Handle interface type definitions
+		return "interface{}"
+	case *ast.Ellipsis:
+		// Handle variadic arguments like ...args
+		return "..." + getTypeString(t.Elt)
+	case *ast.FuncType:
+		// Handle function types like func(int, string) error
+		var params []string
+		if t.Params != nil {
+			for _, field := range t.Params.List {
+				paramType := getTypeString(field.Type)
+				params = append(params, paramType)
+			}
+		}
+
+		var results []string
+		if t.Results != nil {
+			for _, field := range t.Results.List {
+				resultType := getTypeString(field.Type)
+				results = append(results, resultType)
+			}
+		}
+
+		if len(results) > 0 {
+			return "func(" + strings.Join(params, ", ") + ") " + strings.Join(results, ", ")
+		}
+		return "func(" + strings.Join(params, ", ") + ")"
+	case *ast.BasicLit:
+		// Handle basic literals like "hello", 42, true
+		switch t.Kind {
+		case token.STRING:
+			return "string"
+		case token.INT:
+			return "int"
+		case token.FLOAT:
+			return "float64"
+		case token.CHAR:
+			return "rune"
+		case token.IMAG:
+			return "complex128"
+		}
+		return "literal"
+	default:
+		// Fallback for other complex types
+		return ""
+	}
+}
+
+// Returns function name, package path, and receiver type (if it's a method call)
+func getCalleeFunctionNameAndPackage(expr ast.Expr, pkgs map[string]map[string]*ast.File, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet) (string, string, string) {
+	// Get assignments from global map for this file
+	filePath := ""
+	if file != nil && file.Pos().IsValid() && fset != nil {
+		filePath = fset.Position(file.Pos()).Filename
+	}
+	assignments := globalVariableAssignments[filePath]
+	if assignments == nil {
+		assignments = make(map[string]GlobalAssignment)
+	}
+
+	switch x := expr.(type) {
+	case *ast.Ident:
+		// // First check if this is a variable with a known concrete type assignment
+		// if concreteType, exists := assignments[x.Name]; exists {
+		// 	return x.Name, pkgName, concreteType
+		// }
+
+		if info, exists := fileToInfo[file]; exists {
+			if obj := info.ObjectOf(x); obj != nil {
+				if obj.Pkg() != nil {
+					funcName := obj.Pkg().Name() + "." + x.Name
+					if fn, ok := funcMap[funcName]; ok {
+						if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+							return x.Name, obj.Pkg().Path(), ""
+						}
+					}
+				}
+			}
+		}
+
+		return x.Name, pkgName, ""
+	case *ast.SelectorExpr:
+		if ident, ok := x.X.(*ast.Ident); ok {
+			// First check if this is a variable with a known concrete type assignment
+			if assignment, exists := assignments[ident.Name]; exists {
+				// This is a method call on a variable with known concrete type
+				fmt.Printf("DEBUG: Found method call %s.%s on variable %s with concrete type %s.%s\n", ident.Name, x.Sel.Name, ident.Name, assignment.PkgName, assignment.ConcreteType)
+				return x.Sel.Name, assignment.PkgName, assignment.ConcreteType
+			}
+
+			// Check if it's a package-qualified function call
+			for _, imp := range file.Imports {
+				if imp.Name != nil && imp.Name.Name == ident.Name {
+					return x.Sel.Name, strings.Trim(imp.Path.Value, "\""), ""
+				} else if imp.Name == nil {
+					importPath := strings.Trim(imp.Path.Value, "\"")
+					if strings.HasSuffix(importPath, "/"+ident.Name) || importPath == ident.Name {
+						funcName := ident.Name + "." + x.Sel.Name
+						if fn, ok := funcMap[funcName]; ok {
+							if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+								// It returns a function. Try to find the literal if possible.
+								for _, stmt := range fn.Body.List {
+									if ret, ok := stmt.(*ast.ReturnStmt); ok && len(ret.Results) > 0 {
+										var recvType string
+
+										if fn.Recv != nil {
+											recvType = getTypeString(fn.Recv.List[0].Type)
+										}
+										return x.Sel.Name, importPath, recvType
+									}
+								}
+								return x.Sel.Name, importPath, ""
+							}
+						}
+
+						return x.Sel.Name, importPath, ""
+					}
+				}
+			}
+
+			// Check if it's a method call on a variable/receiver
+			if info, exists := fileToInfo[file]; exists {
+				if obj := info.ObjectOf(ident); obj != nil {
+					if varObj, ok := obj.(*types.Var); ok {
+						t := varObj.Type()
+						receiverType := getReceiverTypeString(t)
+						switch t := t.(type) {
+						case *types.Named:
+							if t.Obj().Pkg() != nil {
+								return x.Sel.Name, t.Obj().Pkg().Path(), receiverType
+							}
+							return x.Sel.Name, pkgName, receiverType
+						case *types.Pointer:
+							if named, ok := t.Elem().(*types.Named); ok {
+								return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
+							}
+						case *types.Interface:
+							// For interfaces, fallback to current package
+							return x.Sel.Name, pkgName, receiverType
+						}
+					}
+				}
+
+				// Check if it's a type-based method call
+				if tv := info.Types[ident]; tv.IsType() {
+					receiverType := getReceiverTypeString(tv.Type)
+					if named, ok := tv.Type.(*types.Named); ok {
+						return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
+					}
+				}
+
+				// Check the full selector expression
+				if tv := info.Types[x]; tv.IsType() {
+					receiverType := getReceiverTypeString(tv.Type)
+					if named, ok := tv.Type.(*types.Named); ok {
+						return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
+					}
+				}
+			}
+			return x.Sel.Name, pkgName, ""
+		}
+
+		// Handle more complex receiver expressions
+		if info, exists := fileToInfo[file]; exists {
+			if tv := info.Types[x.X]; tv.Type != nil {
+				receiverType := getReceiverTypeString(tv.Type)
+				switch t := tv.Type.(type) {
+				case *types.Named:
+					if t.Obj().Pkg() != nil {
+						return x.Sel.Name, t.Obj().Pkg().Path(), receiverType
+					}
+					return x.Sel.Name, pkgName, receiverType
+				case *types.Pointer:
+					if named, ok := t.Elem().(*types.Named); ok {
+						return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
+					}
+				case *types.Interface:
+					// For interfaces, fallback to current package
+					return x.Sel.Name, pkgName, receiverType
+				}
+			}
+		}
+		return x.Sel.Name, pkgName, ""
+	case *ast.CallExpr:
+		return getCalleeFunctionNameAndPackage(x.Fun, pkgs, file, pkgName, fileToInfo, funcMap, fset)
+	}
+	return "", "", ""
+}
+
+// Helper function to get a string representation of the receiver type
+func getReceiverTypeString(t types.Type) string {
+	switch t := t.(type) {
+	case *types.Named:
+		return t.Obj().Name()
+	case *types.Pointer:
+		// Handle pointer types like *MyStruct
+		return "*" + getReceiverTypeString(t.Elem())
+	case *types.Interface:
+		// Handle interface types
+		if t.String() == "interface{}" {
+			return "interface{}"
+		}
+		return t.String()
+	case *types.Basic:
+		// Handle basic types like int, string, etc.
+		return t.Name()
+	case *types.Slice:
+		// Handle slice types like []int
+		return "[]" + getReceiverTypeString(t.Elem())
+	case *types.Array:
+		// Handle array types like [5]int
+		return "[" + string(rune(t.Len())) + "]" + getReceiverTypeString(t.Elem())
+	case *types.Map:
+		// Handle map types like map[string]int
+		return "map[" + getReceiverTypeString(t.Key()) + "]" + getReceiverTypeString(t.Elem())
+	case *types.Chan:
+		// Handle channel types
+		switch t.Dir() {
+		case types.SendRecv:
+			return "chan " + getReceiverTypeString(t.Elem())
+		case types.SendOnly:
+			return "chan<- " + getReceiverTypeString(t.Elem())
+		case types.RecvOnly:
+			return "<-chan " + getReceiverTypeString(t.Elem())
+		}
+	}
+
+	// Fallback to the string representation
+	return t.String()
+}
+
+func callArgToString(arg CallArgument) string {
+	switch arg.Kind {
+	case "ident":
+		return arg.Name
+	case "literal":
+		return arg.Value
+	case "selector":
+		if arg.X != nil {
+			return fmt.Sprintf("%s.%s", callArgToString(*arg.X), arg.Sel)
+		}
+		return arg.Sel
+	case "call":
+		if arg.Fun != nil {
+			return fmt.Sprintf("%s(%s)", callArgToString(*arg.Fun), strings.Join(callArgToStringArgs(arg.Args), ", "))
+		}
+		return "call()"
+	case "unary":
+		if arg.X != nil {
+			return fmt.Sprintf("%s%s", arg.Value, callArgToString(*arg.X))
+		}
+		return arg.Value
+	case "binary":
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("%s %s %s", callArgToString(*arg.X), arg.Value, callArgToString(*arg.Fun))
+		}
+		return arg.Value
+	case "index":
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("%s[%s]", callArgToString(*arg.X), callArgToString(*arg.Fun))
+		}
+		return "index"
+	case "index_list":
+		if arg.X != nil {
+			return fmt.Sprintf("%s[%s]", callArgToString(*arg.X), strings.Join(callArgToStringArgs(arg.Args), ", "))
+		}
+		return "index_list"
+	case "paren":
+		if arg.X != nil {
+			return fmt.Sprintf("(%s)", callArgToString(*arg.X))
+		}
+		return "()"
+	case "star":
+		if arg.X != nil {
+			return fmt.Sprintf("*%s", callArgToString(*arg.X))
+		}
+		return "*"
+	case "array_type":
+		if arg.X != nil {
+			return fmt.Sprintf("[%s]%s", arg.Value, callArgToString(*arg.X))
+		}
+		return fmt.Sprintf("[%s]", arg.Value)
+	case "slice":
+		if arg.X != nil && len(arg.Args) >= 2 {
+			return fmt.Sprintf("%s[%s:%s]", callArgToString(*arg.X), callArgToString(arg.Args[0]), callArgToString(arg.Args[1]))
+		}
+		return "slice"
+	case "composite_lit":
+		if arg.X != nil {
+			return fmt.Sprintf("%s{%s}", callArgToString(*arg.X), strings.Join(callArgToStringArgs(arg.Args), ", "))
+		}
+		return "{}"
+	case "key_value":
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("%s: %s", callArgToString(*arg.X), callArgToString(*arg.Fun))
+		}
+		return "key: value"
+	case "type_assert":
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("%s.(%s)", callArgToString(*arg.X), callArgToString(*arg.Fun))
+		}
+		return "type_assert"
+	case "func_lit":
+		return arg.Value
+	case "chan_type":
+		if arg.X != nil {
+			return fmt.Sprintf("chan %s", callArgToString(*arg.X))
+		}
+		return "chan"
+	case "map_type":
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("map[%s]%s", callArgToString(*arg.X), callArgToString(*arg.Fun))
+		}
+		return "map"
+	case "struct_type":
+		return fmt.Sprintf("struct{%s}", strings.Join(callArgToStringArgs(arg.Args), ", "))
+	case "interface_type":
+		return fmt.Sprintf("interface{%s}", strings.Join(callArgToStringArgs(arg.Args), ", "))
+	case "ellipsis":
+		if arg.X != nil {
+			return fmt.Sprintf("...%s", callArgToString(*arg.X))
+		}
+		return "..."
+	case "func_type":
+		if arg.Fun != nil {
+			return fmt.Sprintf("func(%s) %s", strings.Join(callArgToStringArgs(arg.Args), ", "), callArgToString(*arg.Fun))
+		}
+		return "func()"
+	case "func_results":
+		return strings.Join(callArgToStringArgs(arg.Args), ", ")
+	default:
+		return arg.Raw
+	}
+}
+
+func callArgToStringArgs(args []CallArgument) []string {
+	result := make([]string, len(args))
+
+	for i := range args {
+		result[i] = callArgToString(args[i])
+	}
+
+	return result
+}
+
+// traceConcreteType traces through a function body to find the actual concrete type
+// that implements an interface, by analyzing return statements and assignments
+func traceConcreteType(fn *ast.FuncDecl, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pkgName string) GlobalAssignment {
+	if fn.Body == nil {
+		return GlobalAssignment{
+			ConcreteType: "",
+			PkgName:      pkgName,
+		}
+	}
+
+	// Look for return statements
+	for _, stmt := range fn.Body.List {
+		if ret, ok := stmt.(*ast.ReturnStmt); ok && len(ret.Results) > 0 {
+			// Analyze the first return value
+			result := ret.Results[0]
+			concreteType := analyzeReturnValue(result, pkgs, fileToInfo, pkgName)
+			if concreteType.ConcreteType != "" && concreteType.ConcreteType != "interface{}" {
+				return GlobalAssignment{
+					ConcreteType: concreteType.ConcreteType,
+					PkgName:      concreteType.PkgName,
+				}
+			}
+		}
+	}
+
+	// Look for variable assignments that might be returned
+	return traceVariableAssignments(fn, pkgs, fileToInfo, funcMap, fset, pkgName)
+}
+
+// analyzeReturnValue analyzes a return value expression to determine its concrete type
+func analyzeReturnValue(expr ast.Expr, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, pkgName string) GlobalAssignment {
+	switch e := expr.(type) {
+	case *ast.UnaryExpr:
+		if e.Op == token.AND {
+			// Handle &variable - get the type of the variable
+			assignment := analyzeReturnValue(e.X, pkgs, fileToInfo, pkgName)
+			if assignment.ConcreteType != "" {
+				assignment.ConcreteType = "*" + assignment.ConcreteType
+
+				return assignment
+			}
+		}
+		return GlobalAssignment{
+			ConcreteType: getTypeString(e),
+			PkgName:      pkgName,
+		}
+	case *ast.Ident:
+		pkg := pkgName
+
+		for _, files := range pkgs {
+			for _, file := range files {
+				info := fileToInfo[file]
+				if obj := info.ObjectOf(e); obj != nil && obj.Pkg() != nil {
+					pkg = obj.Pkg().Path()
+					break
+				}
+			}
+		}
+		// Check if this is a variable that was assigned a concrete type
+		return GlobalAssignment{
+			ConcreteType: getTypeString(e),
+			PkgName:      pkg,
+		}
+	case *ast.CompositeLit:
+		// Handle struct literals like &paymentHandler{...}
+		if e.Type != nil {
+			return GlobalAssignment{
+				ConcreteType: getTypeString(e.Type),
+				PkgName:      pkgName,
+			}
+		}
+		return GlobalAssignment{
+			ConcreteType: "composite_literal",
+			PkgName:      pkgName,
+		}
+	case *ast.CallExpr:
+		// Handle function calls that return concrete types
+		return GlobalAssignment{
+			ConcreteType: getTypeString(e.Fun) + "()",
+			PkgName:      pkgName,
+		}
+	default:
+		return GlobalAssignment{
+			ConcreteType: getTypeString(e),
+			PkgName:      pkgName,
+		}
+	}
+}
+
+// traceVariableAssignments looks for variable assignments in the function body
+func traceVariableAssignments(fn *ast.FuncDecl, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pkgName string) GlobalAssignment {
+	// Track variable assignments and their concrete types
+	varAssignments := make(map[string]GlobalAssignment)
+
+	// First pass: collect all variable assignments
+	for _, stmt := range fn.Body.List {
+		if assign, ok := stmt.(*ast.AssignStmt); ok {
+			for i, lhs := range assign.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok {
+					if i < len(assign.Rhs) {
+						rhs := assign.Rhs[i]
+						pkg, concreteType := analyzeAssignmentValue(rhs, pkgs, fileToInfo, funcMap, fset, pkgName)
+						if concreteType != "" {
+							varAssignments[ident.Name] = GlobalAssignment{
+								ConcreteType: concreteType,
+								PkgName:      pkg,
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Second pass: look for return statements that use these variables
+	for _, stmt := range fn.Body.List {
+		if ret, ok := stmt.(*ast.ReturnStmt); ok && len(ret.Results) > 0 {
+			result := ret.Results[0]
+			if ident, ok := result.(*ast.Ident); ok {
+				if assignment, exists := varAssignments[ident.Name]; exists {
+					return assignment
+				}
+			}
+		}
+	}
+
+	return GlobalAssignment{}
+}
+
+// analyzeAssignmentValue analyzes the right-hand side of an assignment to determine concrete pkg and type
+func analyzeAssignmentValue(expr ast.Expr, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pkgName string) (string, string) {
+	switch e := expr.(type) {
+	case *ast.UnaryExpr:
+		if e.Op == token.AND {
+			// Handle &structLiteral - get the concrete type
+			pkg, concreteType := analyzeAssignmentValue(e.X, pkgs, fileToInfo, funcMap, fset, pkgName)
+			if concreteType != "" {
+				return pkg, "*" + concreteType
+			}
+		}
+		return pkgName, getTypeString(e)
+	case *ast.CompositeLit:
+		// Handle struct literals like paymentHandler{...}
+		if e.Type != nil {
+			return pkgName, getTypeString(e.Type)
+		}
+		return pkgName, "composite_literal"
+	case *ast.CallExpr:
+		if pkg, result := analyzeAssignmentValue(e.Fun, pkgs, fileToInfo, funcMap, fset, pkgName); result != "" {
+			return pkg, result
+		}
+
+		return pkgName, getTypeString(e.Fun) + "()"
+	case *ast.Ident:
+		filePath := fset.Position(e.Pos()).Filename
+		if file, exists := pkgs[pkgName][filePath]; exists {
+			// Look for patterns like NewPaymentHandler, NewUserService, etc.
+			if info, exists := fileToInfo[file]; exists {
+				if obj := info.ObjectOf(e); obj != nil {
+					if obj.Pkg() != nil {
+						funcName := obj.Pkg().Name() + "." + e.Name
+						if fn, ok := funcMap[funcName]; ok {
+							if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+								concreteType := traceConcreteType(fn, pkgs, fileToInfo, funcMap, fset, pkgName)
+								if concreteType.ConcreteType != "" {
+									return obj.Pkg().Path(), concreteType.ConcreteType
+								}
+								// Fallback to original behavior
+								for _, stmt := range fn.Body.List {
+									if ret, ok := stmt.(*ast.ReturnStmt); ok && len(ret.Results) > 0 {
+										var results []string
+										for i := range ret.Results {
+											results = append(results, getTypeString(ret.Results[i]))
+										}
+										return obj.Pkg().Path(), strings.Join(results, ",")
+									}
+								}
+							}
+						}
+						return obj.Pkg().Path(), getTypeString(e)
+					}
+					return pkgName, getTypeString(e)
+				}
+			}
+		}
+		// Check if this is a variable that was previously assigned
+		return pkgName, getTypeString(e)
+
+	case *ast.SelectorExpr:
+		pkg, _ := analyzeAssignmentValue(e.X, pkgs, fileToInfo, funcMap, fset, pkgName)
+		selPkg, sel := analyzeAssignmentValue(e.Sel, pkgs, fileToInfo, funcMap, fset, pkgName)
+
+		if pkg != selPkg {
+			if pkg == pkgName {
+				pkg = selPkg
+			}
+		}
+		return pkg, sel
+	default:
+		return pkgName, getTypeString(e)
+	}
+}
+
+// getConcreteTypeForInterface attempts to find the concrete type that implements an interface
+func getConcreteTypeForInterface(interfaceName string, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet) GlobalAssignment {
+	// Look for functions that return the interface type
+	for _, fn := range funcMap {
+		if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+			// Check if this function returns the interface we're looking for
+			for _, result := range fn.Type.Results.List {
+				resultType := getTypeString(result.Type)
+				if resultType == interfaceName {
+					// This function returns our interface, trace its body
+					assignment := traceConcreteType(fn, pkgs, fileToInfo, funcMap, fset, pkgName)
+					if assignment.ConcreteType != "" {
+						return assignment
+					}
+				}
+			}
+		}
+	}
+	return GlobalAssignment{}
+}
+
+// Global variable assignment tracking
+var globalVariableAssignments = make(map[string]map[string]GlobalAssignment) // file -> variable -> concrete type

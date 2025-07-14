@@ -57,8 +57,8 @@ func TestEndToEnd_Gin(t *testing.T) {
 	}
 
 	// 2. Use the Gin parser with proper type information
-	p := parser.DefaultGinParserWithTypes(nil)
-	routes, err := p.Parse(fset, files)
+	p := parser.DefaultGinParser()
+	routes, err := p.Parse(fset, files, nil)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -67,8 +67,12 @@ func TestEndToEnd_Gin(t *testing.T) {
 	}
 
 	// 3. Generate OpenAPI spec
-	gen := spec.NewOpenAPIGenerator(spec.GeneratorConfig{})
-	specObj, err := gen.GenerateFromRoutes(routes, files)
+	// Replace spec.NewOpenAPIGenerator with direct call to MapMetadataToOpenAPI. Update GeneratorConfig usage to only use OpenAPIVersion, Title, APIVersion.
+	specObj, err := spec.MapParsedRoutesToOpenAPI(routes, files, spec.GeneratorConfig{
+		OpenAPIVersion: "3.0.0",
+		Title:          "Gin Example API",
+		APIVersion:     "1.0.0",
+	})
 	if err != nil {
 		t.Fatalf("GenerateFromRoutes failed: %v", err)
 	}

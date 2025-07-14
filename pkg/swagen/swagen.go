@@ -45,22 +45,18 @@ func (g *Generator) GenerateFromDirectory(dir string) (*spec.OpenAPISpec, error)
 		return nil, err
 	}
 
-	// Generate OpenAPI spec
-	openAPIGenerator := spec.NewOpenAPIGenerator(g.config)
-
 	// Collect Go files for type resolution
 	goFiles, err := g.collectGoFiles(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	return openAPIGenerator.GenerateFromRoutes(routes, goFiles)
+	return spec.MapParsedRoutesToOpenAPI(routes, goFiles, g.config)
 }
 
 // GenerateFromRoutes generates an OpenAPI specification from parsed routes
 func (g *Generator) GenerateFromRoutes(routes []core.ParsedRoute, goFiles []*ast.File) (*spec.OpenAPISpec, error) {
-	openAPIGenerator := spec.NewOpenAPIGenerator(g.config)
-	return openAPIGenerator.GenerateFromRoutes(routes, goFiles)
+	return spec.MapParsedRoutesToOpenAPI(routes, goFiles, g.config)
 }
 
 // Helper methods for parsing different frameworks

@@ -1,7 +1,6 @@
 package core
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -20,7 +19,7 @@ func NewFrameworkDetector() *FrameworkDetector {
 // Detect determines which web framework is being used in the given directory
 func (d *FrameworkDetector) Detect(dir string) (string, error) {
 	// Collect Go files
-	goFiles, err := d.collectGoFiles(dir)
+	goFiles, err := CollectGoFiles(dir)
 	if err != nil {
 		return "", err
 	}
@@ -43,6 +42,8 @@ func (d *FrameworkDetector) Detect(dir string) (string, error) {
 				return "chi", nil
 			case strings.Contains(importPath, "labstack/echo"):
 				return "echo", nil
+			case strings.Contains(importPath, "gofiber/fiber"):
+				return "fiber", nil
 			}
 		}
 	}
@@ -50,8 +51,8 @@ func (d *FrameworkDetector) Detect(dir string) (string, error) {
 	return "unknown", nil
 }
 
-// collectGoFiles recursively collects all .go files from a directory
-func (d *FrameworkDetector) collectGoFiles(dir string) ([]string, error) {
+// CollectGoFiles recursively collects all .go files from a directory
+func CollectGoFiles(dir string) ([]string, error) {
 	var goFiles []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -63,12 +64,4 @@ func (d *FrameworkDetector) collectGoFiles(dir string) ([]string, error) {
 		return nil
 	})
 	return goFiles, err
-}
-
-// DetectFramework scans parsed Go files and returns the detected framework name
-// This is a legacy function for backward compatibility
-func DetectFramework(files []*ast.File) string {
-	// For now, return a default since we don't have a directory
-	// In practice, this would need to be updated to work with the new interface
-	return "unknown"
 }

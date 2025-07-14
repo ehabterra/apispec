@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swagen Call Tree Diagram</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .header h1 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 24px;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 5px 0 0 0;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        .controls {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .controls button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .controls button:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+        .controls select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #bdc3c7;
+            font-size: 13px;
+            background: white;
+        }
+        .stats {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 8px 20px;
+            font-size: 12px;
+            color: #2c3e50;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        #cy {
+            flex: 1;
+            background: #f8f9fa;
+            border: none;
+        }
+        .legend {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 20px;
+            border-top: 1px solid #ecf0f1;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #2c3e50;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Call Tree Diagram</h1>
+            <p>Function call tree with fixed rectangular nodes</p>
+        </div>
+        <div class="stats">
+            <strong>Tree Statistics:</strong> 
+            <span id="nodeCount">0</span> functions, 
+            <span id="edgeCount">0</span> calls
+        </div>
+        <div class="controls">
+            <button onclick="resetView()">Reset</button>
+            <button onclick="fitView()">Fit View</button>
+            <button onclick="toggleLabels()">Toggle Labels</button>
+            <button onclick="expandTree()">Expand Tree</button>
+            <button onclick="collapseTree()">Collapse Tree</button>
+            <select id="layoutSelect" onchange="changeLayout()">
+                <option value="dagre">Left-Right Tree (Recommended)</option>
+                <option value="breadthfirst">Breadth-First Tree</option>
+                <option value="grid">Grid Layout</option>
+            </select>
+            <button onclick="exportPNG()">Export PNG</button>
+            <button onclick="exportSVG()">Export SVG</button>
+        </div>
+        <div id="cy"></div>
+        <div class="legend">
+            <div class="legend-item">
+                <span class="legend-color" style="background: #3498db;"></span>
+                Functions
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #2ecc71;"></span>
+                Function Calls
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background: #e74c3c;"></span>
+                Root Functions
+            </div>
+        </div>
+    </div>
+    <script>
+        // Cytoscape data from Go
+        const cytoscapeData = {
+  "nodes": [
+    {
+      "data": {
+        "id": "node_0",
+        "label": "github.com/ehabterra/swagen/testdata/chi.main",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_1",
+        "label": "github.com/go-chi/chi/v5.NewMux",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_1",
+        "label": "github.com/go-chi/chi/v5.NewMux",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_2",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.NewService",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_2",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.NewService",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_3",
+        "label": "github.com/go-chi/chi/v5.NewMux",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_3",
+        "label": "github.com/go-chi/chi/v5.NewMux",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_4",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_4",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_5",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.Routes",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_5",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.Routes",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_6",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_6",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_7",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.ListUsers",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_7",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.ListUsers",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_8",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_8",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_9",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_9",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_10",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_10",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_11",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_11",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_12",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_12",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_13",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.GetUser",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_13",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.GetUser",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_14",
+        "label": "github.com/go-chi/chi/v5.URLParam",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_14",
+        "label": "github.com/go-chi/chi/v5.URLParam",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_15",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_15",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_16",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_16",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_17",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_17",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_18",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_18",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_19",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_19",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_20",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.CreateUser",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_20",
+        "label": "github.com/ehabterra/swagen/testdata/chi/users.CreateUser",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_21",
+        "label": "encoding/json.Decode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_21",
+        "label": "encoding/json.Decode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_22",
+        "label": "encoding/json.NewDecoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_22",
+        "label": "encoding/json.NewDecoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_23",
+        "label": "net/http.Error",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_23",
+        "label": "net/http.Error",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_24",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_24",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_25",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_25",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_26",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_26",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_27",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_27",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_28",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_28",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_29",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.PaymentAPIs",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_29",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.PaymentAPIs",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_30",
+        "label": "github.com/go-chi/chi/v5.NewRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_30",
+        "label": "github.com/go-chi/chi/v5.NewRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_31",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.NewPaymentHandler",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_31",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.NewPaymentHandler",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_32",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_32",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_33",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.GetStripePublicKey",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_33",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.GetStripePublicKey",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_34",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_34",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_35",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_35",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_36",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_36",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_37",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_37",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_38",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_38",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_39",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.ProcessPayment",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_39",
+        "label": "github.com/ehabterra/swagen/testdata/chi/payment.ProcessPayment",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_40",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_40",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_41",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_41",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_42",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_42",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_43",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_43",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_44",
+        "label": "github.com/ehabterra/swagen/testdata/chi.NewModule",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_44",
+        "label": "github.com/ehabterra/swagen/testdata/chi.NewModule",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_45",
+        "label": "github.com/ehabterra/swagen/testdata/chi.opt",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_45",
+        "label": "github.com/ehabterra/swagen/testdata/chi.opt",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_46",
+        "label": "github.com/ehabterra/swagen/testdata/chi.WithRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_46",
+        "label": "github.com/ehabterra/swagen/testdata/chi.WithRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_47",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.Routes",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_47",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.Routes",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_48",
+        "label": "github.com/go-chi/chi/v5.NewRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_48",
+        "label": "github.com/go-chi/chi/v5.NewRouter",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_49",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_49",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_50",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.ListProducts",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_50",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.ListProducts",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_51",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_51",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_52",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_52",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_53",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_53",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_54",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_54",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_55",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_55",
+        "label": "github.com/go-chi/chi/v5.Post",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_56",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.CreateProduct",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_56",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.CreateProduct",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_57",
+        "label": "encoding/json.Decode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_57",
+        "label": "encoding/json.Decode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_58",
+        "label": "encoding/json.NewDecoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_58",
+        "label": "encoding/json.NewDecoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_59",
+        "label": "net/http.Error",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_59",
+        "label": "net/http.Error",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_60",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_60",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_61",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_61",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_62",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_62",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_63",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_63",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_64",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_64",
+        "label": "github.com/go-chi/chi/v5.Get",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_65",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.GetProduct",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_65",
+        "label": "github.com/ehabterra/swagen/testdata/chi/products.GetProduct",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_66",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_66",
+        "label": "net/http.Set",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_67",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_67",
+        "label": "net/http.Header",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_68",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_68",
+        "label": "encoding/json.Encode",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_69",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_69",
+        "label": "encoding/json.NewEncoder",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_70",
+        "label": "github.com/ehabterra/swagen/testdata/chi.Init",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_70",
+        "label": "github.com/ehabterra/swagen/testdata/chi.Init",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_71",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_71",
+        "label": "github.com/go-chi/chi/v5.Mount",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_72",
+        "label": "net/http.ListenAndServe",
+        "type": "function"
+      }
+    },
+    {
+      "data": {
+        "id": "node_72",
+        "label": "net/http.ListenAndServe",
+        "type": "function"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "edge_0",
+        "source": "node_0",
+        "target": "node_1",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_1",
+        "source": "node_0",
+        "target": "node_2",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_2",
+        "source": "node_2",
+        "target": "node_3",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_3",
+        "source": "node_0",
+        "target": "node_4",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_4",
+        "source": "node_4",
+        "target": "node_5",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_5",
+        "source": "node_5",
+        "target": "node_6",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_6",
+        "source": "node_6",
+        "target": "node_7",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_7",
+        "source": "node_7",
+        "target": "node_8",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_8",
+        "source": "node_7",
+        "target": "node_9",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_9",
+        "source": "node_7",
+        "target": "node_10",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_10",
+        "source": "node_7",
+        "target": "node_11",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_11",
+        "source": "node_5",
+        "target": "node_12",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_12",
+        "source": "node_12",
+        "target": "node_13",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_13",
+        "source": "node_13",
+        "target": "node_14",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_14",
+        "source": "node_13",
+        "target": "node_15",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_15",
+        "source": "node_13",
+        "target": "node_16",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_16",
+        "source": "node_13",
+        "target": "node_17",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_17",
+        "source": "node_13",
+        "target": "node_18",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_18",
+        "source": "node_5",
+        "target": "node_19",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_19",
+        "source": "node_19",
+        "target": "node_20",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_20",
+        "source": "node_20",
+        "target": "node_21",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_21",
+        "source": "node_20",
+        "target": "node_22",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_22",
+        "source": "node_20",
+        "target": "node_23",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_23",
+        "source": "node_20",
+        "target": "node_24",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_24",
+        "source": "node_20",
+        "target": "node_25",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_25",
+        "source": "node_20",
+        "target": "node_26",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_26",
+        "source": "node_20",
+        "target": "node_27",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_27",
+        "source": "node_0",
+        "target": "node_28",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_28",
+        "source": "node_28",
+        "target": "node_29",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_29",
+        "source": "node_29",
+        "target": "node_30",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_30",
+        "source": "node_29",
+        "target": "node_31",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_31",
+        "source": "node_29",
+        "target": "node_32",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_32",
+        "source": "node_32",
+        "target": "node_33",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_33",
+        "source": "node_33",
+        "target": "node_34",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_34",
+        "source": "node_33",
+        "target": "node_35",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_35",
+        "source": "node_33",
+        "target": "node_36",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_36",
+        "source": "node_33",
+        "target": "node_37",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_37",
+        "source": "node_29",
+        "target": "node_38",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_38",
+        "source": "node_38",
+        "target": "node_39",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_39",
+        "source": "node_39",
+        "target": "node_40",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_40",
+        "source": "node_39",
+        "target": "node_41",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_41",
+        "source": "node_39",
+        "target": "node_42",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_42",
+        "source": "node_39",
+        "target": "node_43",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_43",
+        "source": "node_0",
+        "target": "node_44",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_44",
+        "source": "node_44",
+        "target": "node_45",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_45",
+        "source": "node_44",
+        "target": "node_46",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_46",
+        "source": "node_46",
+        "target": "node_47",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_47",
+        "source": "node_47",
+        "target": "node_48",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_48",
+        "source": "node_47",
+        "target": "node_49",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_49",
+        "source": "node_49",
+        "target": "node_50",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_50",
+        "source": "node_50",
+        "target": "node_51",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_51",
+        "source": "node_50",
+        "target": "node_52",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_52",
+        "source": "node_50",
+        "target": "node_53",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_53",
+        "source": "node_50",
+        "target": "node_54",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_54",
+        "source": "node_47",
+        "target": "node_55",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_55",
+        "source": "node_55",
+        "target": "node_56",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_56",
+        "source": "node_56",
+        "target": "node_57",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_57",
+        "source": "node_56",
+        "target": "node_58",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_58",
+        "source": "node_56",
+        "target": "node_59",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_59",
+        "source": "node_56",
+        "target": "node_60",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_60",
+        "source": "node_56",
+        "target": "node_61",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_61",
+        "source": "node_56",
+        "target": "node_62",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_62",
+        "source": "node_56",
+        "target": "node_63",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_63",
+        "source": "node_47",
+        "target": "node_64",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_64",
+        "source": "node_64",
+        "target": "node_65",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_65",
+        "source": "node_65",
+        "target": "node_66",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_66",
+        "source": "node_65",
+        "target": "node_67",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_67",
+        "source": "node_65",
+        "target": "node_68",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_68",
+        "source": "node_65",
+        "target": "node_69",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_69",
+        "source": "node_0",
+        "target": "node_70",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_70",
+        "source": "node_70",
+        "target": "node_71",
+        "type": "calls"
+      }
+    },
+    {
+      "data": {
+        "id": "edge_71",
+        "source": "node_0",
+        "target": "node_72",
+        "type": "calls"
+      }
+    }
+  ]
+};
+        // Initialize Cytoscape with tree-based layout
+        const cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: cytoscapeData,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': '#3498db',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': 'white',
+                        'text-outline-color': '#2c3e50',
+                        'text-outline-width': 1,
+                        'font-size': '12px',
+                        'font-weight': '500',
+                        'width': 400,
+                        'height': 50,
+                        'border-width': 2,
+                        'border-color': '#2980b9',
+                        'border-radius': '6px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': 200,
+                        'text-margin-y': '0px',
+                        'shape': 'rectangle'
+                    }
+                },
+                {
+                    selector: 'node[type = "compound"]',
+                    style: {
+                        'background-color': '#e74c3c',
+                        'width': 400,
+                        'height': 50,
+                        'font-size': '14px',
+                        'font-weight': 'bold'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 3,
+                        'line-color': '#2ecc71',
+                        'target-arrow-color': '#2ecc71',
+                        'target-arrow-shape': 'triangle',
+                        'target-arrow-width': 8,
+                        'target-arrow-height': 8,
+                        'curve-style': 'bezier',
+                        'font-size': '10px',
+                        'text-rotation': 'autorotate',
+                        'text-margin-y': '-10px',
+                        'text-outline-color': 'white',
+                        'text-outline-width': 2,
+                        'text-background-color': 'white',
+                        'text-background-opacity': 0.8,
+                        'text-background-padding': '3px'
+                    }
+                },
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'background-color': '#f39c12',
+                        'border-color': '#e67e22',
+                        'border-width': 3,
+                        'shadow-blur': 10,
+                        'shadow-color': '#f39c12',
+                        'shadow-opacity': 0.5
+                    }
+                },
+                {
+                    selector: 'edge:selected',
+                    style: {
+                        'line-color': '#f39c12',
+                        'target-arrow-color': '#f39c12',
+                        'width': 5,
+                        'shadow-blur': 5,
+                        'shadow-color': '#f39c12'
+                    }
+                },
+                {
+                    selector: '.highlighted',
+                    style: {
+                        'background-color': '#f39c12',
+                        'line-color': '#f39c12',
+                        'target-arrow-color': '#f39c12',
+                    }
+                },
+                {
+                    selector: '.root-node',
+                    style: {
+                        'background-color': '#e74c3c',
+                        'border-color': '#c0392b'
+                    }
+                }
+            ],
+            layout: {
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeDimensionsIncludeLabels: true,
+                fit: true,
+                padding: 50,
+                animate: 'end',
+                animationDuration: 1000,
+                ranker: 'network-simplex',
+                nodeSep: 80,
+                edgeSep: 30,
+                rankSep: 120,
+                align: 'DL',
+                acyclicer: 'greedy',
+                ranker: 'network-simplex',
+                nestingRoot: undefined,
+                animate: 'end',
+                animationDuration: 1000,
+                animationEasing: 'ease-out-quint'
+            }
+        });
+        // Disable node dragging
+        cy.on('drag', 'node', function(evt) {
+            evt.preventDefault();
+            evt.target.position(evt.target.position());
+        });
+        // Update statistics
+        function updateStats() {
+            document.getElementById('nodeCount').textContent = cy.nodes().length;
+            document.getElementById('edgeCount').textContent = cy.edges().length;
+        }
+        // Event handlers
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            console.log('Clicked node:', node.data());
+            // Highlight connected edges and nodes
+            const connectedEdges = node.connectedEdges();
+            const connectedNodes = node.neighborhood();
+            cy.elements().removeClass('highlighted');
+            node.addClass('highlighted');
+            connectedEdges.addClass('highlighted');
+            connectedNodes.addClass('highlighted');
+        });
+        cy.on('tap', function(evt) {
+            if (evt.target === cy) {
+                cy.elements().removeClass('highlighted');
+            }
+        });
+        // Control functions
+        function resetView() {
+            cy.fit();
+            cy.center();
+        }
+        function fitView() {
+            cy.fit();
+        }
+        function toggleLabels() {
+            const nodes = cy.nodes();
+            const currentVisibility = nodes.style('label');
+            nodes.style('label', currentVisibility === 'data(label)' ? '' : 'data(label)');
+        }
+        function expandTree() {
+            // Expand all collapsed nodes
+            cy.nodes().forEach(node => {
+                node.style('display', 'element');
+            });
+            cy.fit();
+        }
+        function collapseTree() {
+            // Collapse nodes that are not root or direct children of root
+            const rootNodes = cy.nodes().roots();
+            const directChildren = rootNodes.neighborhood();
+            cy.nodes().forEach(node => {
+                if (!rootNodes.contains(node) && !directChildren.contains(node)) {
+                    node.style('display', 'none');
+                }
+            });
+            cy.fit();
+        }
+        function changeLayout() {
+            const layoutName = document.getElementById('layoutSelect').value;
+            let layoutOptions = {
+                name: layoutName,
+                animate: 'end',
+                animationDuration: 1000,
+                fit: true,
+                padding: 50
+            };
+            if (layoutName === 'dagre') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    rankDir: 'LR',
+                    ranker: 'network-simplex',
+                    nodeSep: 80,
+                    edgeSep: 30,
+                    rankSep: 120,
+                    align: 'DL',
+                    acyclicer: 'greedy'
+                };
+            } else if (layoutName === 'breadthfirst') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    directed: true,
+                    circle: false,
+                    grid: false,
+                    spacingFactor: 1.5,
+                    animate: 'end',
+                    animationDuration: 1000
+                };
+            }
+            const layout = cy.layout(layoutOptions);
+            layout.run();
+        }
+        function exportPNG() {
+            const png = cy.png({
+                scale: 7,
+                quality: 1,
+                output: 'blob'
+            });
+            const link = document.createElement('a');
+            link.download = 'call-tree-diagram.png';
+            link.href = URL.createObjectURL(png);
+            link.click();
+        }
+        function exportSVG() {
+            const svgStr = cy.svg({
+                scale: 1,
+                full: true
+            });
+            const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+            const link = document.createElement('a');
+            link.download = 'call-tree-diagram.svg';
+            link.href = URL.createObjectURL(blob);
+            link.click();
+        }
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            switch(e.key) {
+                case 'r':
+                case 'R':
+                    resetView();
+                    break;
+                case 'f':
+                case 'F':
+                    fitView();
+                    break;
+                case 'l':
+                case 'L':
+                    toggleLabels();
+                    break;
+                case 'e':
+                case 'E':
+                    expandTree();
+                    break;
+                case 'c':
+                case 'C':
+                    collapseTree();
+                    break;
+            }
+        });
+        // Mark root nodes
+        cy.ready(function() {
+            // Mark root nodes (nodes with no incoming edges)
+            const rootNodes = cy.nodes().roots();
+            rootNodes.addClass('root-node');
+            cy.fit();
+            updateStats();
+        });
+    </script>
+</body>
+</html> 

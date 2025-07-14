@@ -1,0 +1,4373 @@
+string_pool:
+    - GetStripePublicKey
+    - '*paymentHandler'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:33:1
+    - exported
+    - func() HandlerFunc
+    - ProcessPayment
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:44:1
+    - PaymentHandler
+    - interface
+    - paymentHandler
+    - unexported
+    - struct
+    - logger
+    - interface{}
+    - config
+    - environment
+    - string
+    - validator
+    - NewPaymentHandler
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:23:1
+    - NewPaymentHandler creates a new payment handler
+    - '"production"'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:24:10
+    - '"public_key"'
+    - '"pk_test_123456789"'
+    - map[string]string
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:35:15
+    - '"status"'
+    - '"success"'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:46:15
+    - field
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:10:23
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:11:19
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:33:47
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:34:16
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:34:40
+    - call
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:38:3
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:39:3
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:44:43
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:45:16
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:45:40
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:49:3
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:50:3
+    - encoding/json
+    - net/http
+    - PaymentAPIs
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:8:1
+    - PaymentAPIs creates payment routes
+    - router
+    - github.com/ehabterra/swagen/testdata/chi/payment
+    - Router
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:9:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:8:43
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:9:12
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:18:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:18:34
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:21:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:21:41
+    - github.com/go-chi/chi/v5
+    - Set
+    - Header
+    - ResponseWriter
+    - Encode
+    - '*Encoder'
+    - NewEncoder
+    - NewRouter
+    - Get
+    - '*Mux'
+    - Post
+    - ListProducts
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:8:1
+    - CreateProduct
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:17:1
+    - GetProduct
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:28:1
+    - '[]Product'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:9:14
+    - ID
+    - '"3"'
+    - Name
+    - Price
+    - Product
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:23:13
+    - '"1"'
+    - '"Widget"'
+    - "9.99"
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:29:13
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:8:21
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:8:45
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:13:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:14:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:17:22
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:17:46
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:19:12
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:19:28
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:20:3
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:20:36
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:23:36
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:23:53
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:24:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:25:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:28:19
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:28:43
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:30:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:31:2
+    - json:"id"
+    - json:"name"
+    - float64
+    - json:"price"
+    - CreateProductRequest
+    - Routes
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:11:1
+    - root
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:8:2
+    - '"/"'
+    - r
+    - github.com/ehabterra/swagen/testdata/chi/products
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:12:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:11:15
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:12:7
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:13:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:14:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:15:2
+    - Decode
+    - '*Decoder'
+    - NewDecoder
+    - Error
+    - ListUsers
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:10:1
+    - CreateUser
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:19:1
+    - GetUser
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:30:1
+    - '[]User'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:11:11
+    - User
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:25:10
+    - id
+    - '"Alice"'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:32:10
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:10:18
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:10:42
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:15:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:16:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:19:19
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:19:43
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:21:12
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:21:28
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:22:3
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:22:36
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:25:30
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:26:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:27:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:30:16
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:30:40
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:31:8
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:33:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:34:2
+    - CreateUserRequest
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:10:1
+    - Routes defines the user routes. It now accepts a Service dependency.
+    - UserRoute
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:7:7
+    - '"/users"'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:10:25
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:12:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:13:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:14:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:15:9
+    - Service
+    - '*chi.Mux'
+    - NewService
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:11:1
+    - NewService creates a new user service with its own router.
+    - github.com/ehabterra/swagen/testdata/chi/users
+    - Mux
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:12:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:14:10
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:7:10
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:12:7
+    - NewMux
+    - URLParam
+    - Init
+    - '*Module'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:33:1
+    - 'func(*Mux) '
+    - Module
+    - chi.Router
+    - main
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:12:1
+    - NewModule
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:37:1
+    - WithRouter
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:47:1
+    - github.com/ehabterra/swagen/testdata/chi
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:13:2
+    - userService
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:16:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:38:13
+    - '*github.com/ehabterra/swagen/testdata/chi.Module'
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:49:3
+    - selector
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:13:7
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:16:17
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:19:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:19:10
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:19:27
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:20:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:20:22
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:22:28
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:24:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:26:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:30:9
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:33:26
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:34:2
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:34:23
+    - /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:47:24
+    - Mount
+    - ListenAndServe
+    - opt
+packages:
+    github.com/ehabterra/swagen/testdata/chi:
+        import_path: -1
+        files:
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/main.go:
+                types:
+                    Module:
+                        name: 187
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 49
+                              type: 188
+                              tag: -1
+                              scope: 10
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                functions:
+                    NewModule:
+                        name: 191
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: star
+                                      x:
+                                        kind: ident
+                                        name: Module
+                                        pkg: github.com/ehabterra/swagen/testdata/chi
+                                        type: Module
+                            args:
+                                - kind: ellipsis
+                                  x:
+                                    kind: func_type
+                                    fun:
+                                        kind: func_results
+                                    args:
+                                        - kind: star
+                                          x:
+                                            kind: ident
+                                            name: Module
+                                            pkg: github.com/ehabterra/swagen/testdata/chi
+                                            type: Module
+                        position: 192
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    WithRouter:
+                        name: 193
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: func_type
+                                      fun:
+                                        kind: func_results
+                                      args:
+                                        - kind: star
+                                          x:
+                                            kind: ident
+                                            name: Module
+                                            pkg: github.com/ehabterra/swagen/testdata/chi
+                                            type: Module
+                            args:
+                                - kind: ident
+                                  name: Router
+                                  x:
+                                    kind: ident
+                                    name: chi
+                                    pkg: github.com/go-chi/chi/v5
+                                  pkg: github.com/go-chi/chi/v5
+                                  type: Router
+                        position: 194
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    main:
+                        name: 189
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                        position: 190
+                        scope: 10
+                        comments: -1
+                        tags: []
+                variables: {}
+                struct_instances:
+                    - type: 187
+                      position: 199
+                      fields: {}
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: NewMux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 36
+                      position: 203
+                    - expr:
+                        kind: ident
+                        name: NewMux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 30
+                      position: 203
+                    - expr:
+                        kind: ident
+                        name: NewService
+                        x:
+                            kind: ident
+                            name: users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: func() *github.com/ehabterra/swagen/testdata/chi/users.Service
+                      kind: 36
+                      position: 204
+                    - expr:
+                        kind: ident
+                        name: NewService
+                        x:
+                            kind: ident
+                            name: users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: func() *github.com/ehabterra/swagen/testdata/chi/users.Service
+                      kind: 30
+                      position: 204
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 36
+                      position: 205
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 30
+                      position: 205
+                    - expr:
+                        kind: ident
+                        name: UserRoute
+                        x:
+                            kind: ident
+                            name: users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: untyped string
+                      kind: 30
+                      position: 206
+                    - expr:
+                        kind: ident
+                        name: Routes
+                        x:
+                            kind: ident
+                            name: users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: func(s *github.com/ehabterra/swagen/testdata/chi/users.Service) github.com/go-chi/chi/v5.Router
+                      kind: 36
+                      position: 207
+                    - expr:
+                        kind: ident
+                        name: Routes
+                        x:
+                            kind: ident
+                            name: users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: func(s *github.com/ehabterra/swagen/testdata/chi/users.Service) github.com/go-chi/chi/v5.Router
+                      kind: 30
+                      position: 207
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 36
+                      position: 208
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 30
+                      position: 208
+                    - expr:
+                        kind: ident
+                        name: PaymentAPIs
+                        x:
+                            kind: ident
+                            name: payment
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func(application interface{}) github.com/go-chi/chi/v5.Router
+                      kind: 36
+                      position: 209
+                    - expr:
+                        kind: ident
+                        name: PaymentAPIs
+                        x:
+                            kind: ident
+                            name: payment
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func(application interface{}) github.com/go-chi/chi/v5.Router
+                      kind: 30
+                      position: 209
+                    - expr:
+                        kind: ident
+                        name: Routes
+                        x:
+                            kind: ident
+                            name: products
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        type: func() github.com/go-chi/chi/v5.Router
+                      kind: 36
+                      position: 210
+                    - expr:
+                        kind: ident
+                        name: Routes
+                        x:
+                            kind: ident
+                            name: products
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        type: func() github.com/go-chi/chi/v5.Router
+                      kind: 30
+                      position: 210
+                    - expr:
+                        kind: ident
+                        name: Init
+                        x:
+                            kind: ident
+                            name: m
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/ehabterra/swagen/testdata/chi.Module'
+                        pkg: github.com/ehabterra/swagen/testdata/chi
+                        type: func(r *github.com/go-chi/chi/v5.Mux)
+                      kind: 36
+                      position: 211
+                    - expr:
+                        kind: ident
+                        name: Init
+                        x:
+                            kind: ident
+                            name: m
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/ehabterra/swagen/testdata/chi.Module'
+                        pkg: github.com/ehabterra/swagen/testdata/chi
+                        type: func(r *github.com/go-chi/chi/v5.Mux)
+                      kind: 30
+                      position: 211
+                    - expr:
+                        kind: ident
+                        name: ListenAndServe
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(addr string, handler net/http.Handler) error
+                      kind: 36
+                      position: 212
+                    - expr:
+                        kind: ident
+                        name: ListenAndServe
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(addr string, handler net/http.Handler) error
+                      kind: 30
+                      position: 212
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Router
+                      kind: 30
+                      position: 213
+                    - expr:
+                        kind: ident
+                        name: Mux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Mux
+                      kind: 30
+                      position: 214
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 36
+                      position: 215
+                    - expr:
+                        kind: ident
+                        name: Mount
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handler net/http.Handler)
+                      kind: 30
+                      position: 215
+                    - expr:
+                        kind: ident
+                        name: router
+                        x:
+                            kind: ident
+                            name: m
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/ehabterra/swagen/testdata/chi.Module'
+                        pkg: github.com/ehabterra/swagen/testdata/chi
+                        type: github.com/go-chi/chi/v5.Router
+                      kind: 30
+                      position: 216
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Router
+                      kind: 30
+                      position: 217
+                    - expr:
+                        kind: ident
+                        name: router
+                        x:
+                            kind: ident
+                            name: m
+                            pkg: github.com/ehabterra/swagen/testdata/chi
+                            type: '*github.com/ehabterra/swagen/testdata/chi.Module'
+                        pkg: github.com/ehabterra/swagen/testdata/chi
+                        type: github.com/go-chi/chi/v5.Router
+                      kind: 30
+                      position: 201
+                assignments:
+                    - variable_name: 116
+                      pkg: 195
+                      concrete_type: 176
+                      position: 196
+                      scope: 10
+                      value:
+                        kind: call
+                        fun:
+                            kind: ident
+                            name: NewMux
+                            x:
+                                kind: ident
+                                name: chi
+                                pkg: github.com/go-chi/chi/v5
+                            pkg: github.com/go-chi/chi/v5
+                            type: func() *github.com/go-chi/chi/v5.Mux
+                    - variable_name: 197
+                      pkg: 195
+                      concrete_type: 170
+                      position: 198
+                      scope: 10
+                      value:
+                        kind: call
+                        fun:
+                            kind: ident
+                            name: NewService
+                            x:
+                                kind: ident
+                                name: users
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: func() *github.com/ehabterra/swagen/testdata/chi/users.Service
+                    - variable_name: 49
+                      pkg: 195
+                      concrete_type: 200
+                      position: 201
+                      scope: 202
+                      value:
+                        kind: ident
+                        name: router
+                        pkg: github.com/ehabterra/swagen/testdata/chi
+                        type: github.com/go-chi/chi/v5.Router
+                imports:
+                    -1: 59
+    github.com/ehabterra/swagen/testdata/chi/payment:
+        import_path: -1
+        files:
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/handlers.go:
+                types:
+                    PaymentHandler:
+                        name: 7
+                        kind: 8
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields: []
+                        scope: 3
+                        methods:
+                            - name: 0
+                              receiver: 0
+                              signature:
+                                kind: func_type
+                                fun:
+                                    kind: func_results
+                                    args:
+                                        - kind: ident
+                                          name: HandlerFunc
+                                          x:
+                                            kind: ident
+                                            name: http
+                                            pkg: net/http
+                                          pkg: net/http
+                                          type: HandlerFunc
+                              signature_str: 4
+                              position: 0
+                              scope: 3
+                              comments: -1
+                              tags: []
+                            - name: 5
+                              receiver: 0
+                              signature:
+                                kind: func_type
+                                fun:
+                                    kind: func_results
+                                    args:
+                                        - kind: ident
+                                          name: HandlerFunc
+                                          x:
+                                            kind: ident
+                                            name: http
+                                            pkg: net/http
+                                          pkg: net/http
+                                          type: HandlerFunc
+                              signature_str: 4
+                              position: 0
+                              scope: 3
+                              comments: -1
+                              tags: []
+                        comments: -1
+                        tags: []
+                    paymentHandler:
+                        name: 9
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 12
+                              type: 13
+                              tag: -1
+                              scope: 10
+                              comments: -1
+                            - name: 14
+                              type: 13
+                              tag: -1
+                              scope: 10
+                              comments: -1
+                            - name: 15
+                              type: 16
+                              tag: -1
+                              scope: 10
+                              comments: -1
+                            - name: 17
+                              type: 13
+                              tag: -1
+                              scope: 10
+                              comments: -1
+                        scope: 10
+                        methods: []
+                        comments: -1
+                        tags: []
+                functions:
+                    NewPaymentHandler:
+                        name: 18
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: ident
+                                      name: PaymentHandler
+                                      pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                      type: PaymentHandler
+                            args:
+                                - kind: interface_type
+                                - kind: interface_type
+                                - kind: interface_type
+                        position: 19
+                        scope: 3
+                        comments: 20
+                        tags: []
+                variables: {}
+                struct_instances:
+                    - type: 9
+                      position: 22
+                      fields:
+                        12: 12
+                        14: 14
+                        15: 21
+                        17: 17
+                    - type: 25
+                      position: 26
+                      fields:
+                        23: 24
+                    - type: 25
+                      position: 29
+                      fields:
+                        27: 28
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: HandlerFunc
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: HandlerFunc
+                      kind: 30
+                      position: 31
+                    - expr:
+                        kind: ident
+                        name: HandlerFunc
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: HandlerFunc
+                      kind: 30
+                      position: 32
+                    - expr:
+                        kind: ident
+                        name: HandlerFunc
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: HandlerFunc
+                      kind: 30
+                      position: 33
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 34
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 35
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 37
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 37
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 37
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 37
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 38
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 38
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 38
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 38
+                    - expr:
+                        kind: ident
+                        name: HandlerFunc
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: HandlerFunc
+                      kind: 30
+                      position: 39
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 40
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 41
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 42
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 42
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 42
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 42
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 43
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 43
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 43
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 43
+                assignments: []
+                imports:
+                    -1: 45
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/payment/routes.go:
+                types: {}
+                functions:
+                    PaymentAPIs:
+                        name: 46
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: ident
+                                      name: Router
+                                      x:
+                                        kind: ident
+                                        name: chi
+                                        pkg: github.com/go-chi/chi/v5
+                                      pkg: github.com/go-chi/chi/v5
+                                      type: Router
+                            args:
+                                - kind: interface_type
+                        position: 47
+                        scope: 3
+                        comments: 48
+                        tags: []
+                variables: {}
+                struct_instances: []
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Router
+                      kind: 30
+                      position: 53
+                    - expr:
+                        kind: ident
+                        name: NewRouter
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 36
+                      position: 54
+                    - expr:
+                        kind: ident
+                        name: NewRouter
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 30
+                      position: 54
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: router
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 55
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: router
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 55
+                    - expr:
+                        kind: ident
+                        name: GetStripePublicKey
+                        x:
+                            kind: ident
+                            name: paymentHandlers
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: PaymentHandler
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func() net/http.HandlerFunc
+                      kind: 36
+                      position: 56
+                    - expr:
+                        kind: ident
+                        name: GetStripePublicKey
+                        x:
+                            kind: ident
+                            name: paymentHandlers
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: PaymentHandler
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func() net/http.HandlerFunc
+                      kind: 30
+                      position: 56
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: router
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 57
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: router
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 57
+                    - expr:
+                        kind: ident
+                        name: ProcessPayment
+                        x:
+                            kind: ident
+                            name: paymentHandlers
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: PaymentHandler
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func() net/http.HandlerFunc
+                      kind: 36
+                      position: 58
+                    - expr:
+                        kind: ident
+                        name: ProcessPayment
+                        x:
+                            kind: ident
+                            name: paymentHandlers
+                            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                            type: PaymentHandler
+                        pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                        type: func() net/http.HandlerFunc
+                      kind: 30
+                      position: 58
+                assignments:
+                    - variable_name: 49
+                      pkg: 50
+                      concrete_type: 51
+                      position: 52
+                      scope: 10
+                      value:
+                        kind: call
+                        fun:
+                            kind: ident
+                            name: NewRouter
+                            x:
+                                kind: ident
+                                name: chi
+                                pkg: github.com/go-chi/chi/v5
+                            pkg: github.com/go-chi/chi/v5
+                            type: func() *github.com/go-chi/chi/v5.Mux
+                imports:
+                    -1: 59
+    github.com/ehabterra/swagen/testdata/chi/products:
+        import_path: -1
+        files:
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/handlers.go:
+                types: {}
+                functions:
+                    CreateProduct:
+                        name: 72
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 73
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    GetProduct:
+                        name: 74
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 75
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    ListProducts:
+                        name: 70
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 71
+                        scope: 3
+                        comments: -1
+                        tags: []
+                variables: {}
+                struct_instances:
+                    - type: 76
+                      position: 77
+                      fields: {}
+                    - type: 82
+                      position: 83
+                      fields:
+                        78: 79
+                        80: 80
+                        81: 81
+                    - type: 82
+                      position: 87
+                      fields:
+                        78: 84
+                        80: 85
+                        81: 86
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 88
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 89
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 90
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 90
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 90
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 90
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 91
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 91
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 91
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 91
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 92
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 93
+                    - expr:
+                        kind: ident
+                        name: Decode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewDecoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(r io.Reader) *encoding/json.Decoder
+                            args:
+                                - kind: ident
+                                  name: Body
+                                  x:
+                                    kind: ident
+                                    name: r
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: '*net/http.Request'
+                                  pkg: net/http
+                                  type: io.ReadCloser
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 94
+                    - expr:
+                        kind: ident
+                        name: Decode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewDecoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(r io.Reader) *encoding/json.Decoder
+                            args:
+                                - kind: ident
+                                  name: Body
+                                  x:
+                                    kind: ident
+                                    name: r
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: '*net/http.Request'
+                                  pkg: net/http
+                                  type: io.ReadCloser
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 94
+                    - expr:
+                        kind: ident
+                        name: NewDecoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(r io.Reader) *encoding/json.Decoder
+                      kind: 36
+                      position: 94
+                    - expr:
+                        kind: ident
+                        name: NewDecoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(r io.Reader) *encoding/json.Decoder
+                      kind: 30
+                      position: 94
+                    - expr:
+                        kind: ident
+                        name: Body
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*net/http.Request'
+                        pkg: net/http
+                        type: io.ReadCloser
+                      kind: 30
+                      position: 95
+                    - expr:
+                        kind: ident
+                        name: Error
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(w net/http.ResponseWriter, error string, code int)
+                      kind: 36
+                      position: 96
+                    - expr:
+                        kind: ident
+                        name: Error
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(w net/http.ResponseWriter, error string, code int)
+                      kind: 30
+                      position: 96
+                    - expr:
+                        kind: ident
+                        name: StatusBadRequest
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: untyped int
+                      kind: 30
+                      position: 97
+                    - expr:
+                        kind: ident
+                        name: Name
+                        x:
+                            kind: ident
+                            name: req
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: CreateProductRequest
+                        pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        type: string
+                      kind: 30
+                      position: 98
+                    - expr:
+                        kind: ident
+                        name: Price
+                        x:
+                            kind: ident
+                            name: req
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: CreateProductRequest
+                        pkg: github.com/ehabterra/swagen/testdata/chi/products
+                        type: float64
+                      kind: 30
+                      position: 99
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 100
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 100
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 100
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 100
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 101
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 101
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 101
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 101
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 102
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 103
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 104
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 104
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 104
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 104
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 105
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/products
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 105
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 105
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 105
+                assignments: []
+                imports:
+                    -1: 45
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/models.go:
+                types:
+                    CreateProductRequest:
+                        name: 110
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 80
+                              type: 16
+                              tag: 107
+                              scope: 3
+                              comments: -1
+                            - name: 81
+                              type: 108
+                              tag: 109
+                              scope: 3
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                    Product:
+                        name: 82
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 78
+                              type: 16
+                              tag: 106
+                              scope: 3
+                              comments: -1
+                            - name: 80
+                              type: 16
+                              tag: 107
+                              scope: 3
+                              comments: -1
+                            - name: 81
+                              type: 108
+                              tag: 109
+                              scope: 3
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                functions: {}
+                variables: {}
+                struct_instances: []
+                selectors: []
+                assignments: []
+                imports: {}
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/products/routes.go:
+                types: {}
+                functions:
+                    Routes:
+                        name: 111
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: ident
+                                      name: Router
+                                      x:
+                                        kind: ident
+                                        name: chi
+                                        pkg: github.com/go-chi/chi/v5
+                                      pkg: github.com/go-chi/chi/v5
+                                      type: Router
+                        position: 112
+                        scope: 3
+                        comments: -1
+                        tags: []
+                variables:
+                    root:
+                        name: 113
+                        type: -1
+                        value: 115
+                        position: 114
+                        comments: -1
+                struct_instances: []
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Router
+                      kind: 30
+                      position: 119
+                    - expr:
+                        kind: ident
+                        name: NewRouter
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 36
+                      position: 120
+                    - expr:
+                        kind: ident
+                        name: NewRouter
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 30
+                      position: 120
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 121
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 121
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 122
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 122
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 123
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/products
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 123
+                assignments:
+                    - variable_name: 116
+                      pkg: 117
+                      concrete_type: 51
+                      position: 118
+                      scope: 10
+                      value:
+                        kind: call
+                        fun:
+                            kind: ident
+                            name: NewRouter
+                            x:
+                                kind: ident
+                                name: chi
+                                pkg: github.com/go-chi/chi/v5
+                            pkg: github.com/go-chi/chi/v5
+                            type: func() *github.com/go-chi/chi/v5.Mux
+                imports:
+                    -1: 59
+    github.com/ehabterra/swagen/testdata/chi/users:
+        import_path: -1
+        files:
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/handlers.go:
+                types: {}
+                functions:
+                    CreateUser:
+                        name: 130
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 131
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    GetUser:
+                        name: 132
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 133
+                        scope: 3
+                        comments: -1
+                        tags: []
+                    ListUsers:
+                        name: 128
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                            args:
+                                - kind: ident
+                                  name: ResponseWriter
+                                  x:
+                                    kind: ident
+                                    name: http
+                                    pkg: net/http
+                                  pkg: net/http
+                                  type: ResponseWriter
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Request
+                                    x:
+                                        kind: ident
+                                        name: http
+                                        pkg: net/http
+                                    pkg: net/http
+                                    type: Request
+                        position: 129
+                        scope: 3
+                        comments: -1
+                        tags: []
+                variables: {}
+                struct_instances:
+                    - type: 134
+                      position: 135
+                      fields: {}
+                    - type: 136
+                      position: 137
+                      fields:
+                        78: 79
+                        80: 80
+                    - type: 136
+                      position: 140
+                      fields:
+                        78: 138
+                        80: 139
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 141
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 142
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 143
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 143
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 143
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 143
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 144
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 144
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 144
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 144
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 145
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 146
+                    - expr:
+                        kind: ident
+                        name: Decode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewDecoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(r io.Reader) *encoding/json.Decoder
+                            args:
+                                - kind: ident
+                                  name: Body
+                                  x:
+                                    kind: ident
+                                    name: r
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: '*net/http.Request'
+                                  pkg: net/http
+                                  type: io.ReadCloser
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 147
+                    - expr:
+                        kind: ident
+                        name: Decode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewDecoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(r io.Reader) *encoding/json.Decoder
+                            args:
+                                - kind: ident
+                                  name: Body
+                                  x:
+                                    kind: ident
+                                    name: r
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: '*net/http.Request'
+                                  pkg: net/http
+                                  type: io.ReadCloser
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 147
+                    - expr:
+                        kind: ident
+                        name: NewDecoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(r io.Reader) *encoding/json.Decoder
+                      kind: 36
+                      position: 147
+                    - expr:
+                        kind: ident
+                        name: NewDecoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(r io.Reader) *encoding/json.Decoder
+                      kind: 30
+                      position: 147
+                    - expr:
+                        kind: ident
+                        name: Body
+                        x:
+                            kind: ident
+                            name: r
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*net/http.Request'
+                        pkg: net/http
+                        type: io.ReadCloser
+                      kind: 30
+                      position: 148
+                    - expr:
+                        kind: ident
+                        name: Error
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(w net/http.ResponseWriter, error string, code int)
+                      kind: 36
+                      position: 149
+                    - expr:
+                        kind: ident
+                        name: Error
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: func(w net/http.ResponseWriter, error string, code int)
+                      kind: 30
+                      position: 149
+                    - expr:
+                        kind: ident
+                        name: StatusBadRequest
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: untyped int
+                      kind: 30
+                      position: 150
+                    - expr:
+                        kind: ident
+                        name: Name
+                        x:
+                            kind: ident
+                            name: req
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: CreateUserRequest
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: string
+                      kind: 30
+                      position: 151
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 152
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 152
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 152
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 152
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 153
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 153
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 153
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 153
+                    - expr:
+                        kind: ident
+                        name: ResponseWriter
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: ResponseWriter
+                      kind: 30
+                      position: 154
+                    - expr:
+                        kind: ident
+                        name: Request
+                        x:
+                            kind: ident
+                            name: http
+                            pkg: net/http
+                        pkg: net/http
+                        type: Request
+                      kind: 30
+                      position: 155
+                    - expr:
+                        kind: ident
+                        name: URLParam
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(r *net/http.Request, key string) string
+                      kind: 36
+                      position: 156
+                    - expr:
+                        kind: ident
+                        name: URLParam
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(r *net/http.Request, key string) string
+                      kind: 30
+                      position: 156
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 36
+                      position: 157
+                    - expr:
+                        kind: ident
+                        name: Set
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: Header
+                                x:
+                                    kind: ident
+                                    name: w
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: net/http.ResponseWriter
+                                pkg: net/http
+                                type: func() net/http.Header
+                        pkg: net/http
+                        type: func(key string, value string)
+                      kind: 30
+                      position: 157
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 36
+                      position: 157
+                    - expr:
+                        kind: ident
+                        name: Header
+                        x:
+                            kind: ident
+                            name: w
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: net/http.ResponseWriter
+                        pkg: net/http
+                        type: func() net/http.Header
+                      kind: 30
+                      position: 157
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 36
+                      position: 158
+                    - expr:
+                        kind: ident
+                        name: Encode
+                        x:
+                            kind: call
+                            fun:
+                                kind: ident
+                                name: NewEncoder
+                                x:
+                                    kind: ident
+                                    name: json
+                                    pkg: encoding/json
+                                pkg: encoding/json
+                                type: func(w io.Writer) *encoding/json.Encoder
+                            args:
+                                - kind: ident
+                                  name: w
+                                  pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                  type: net/http.ResponseWriter
+                        pkg: encoding/json
+                        type: func(v any) error
+                      kind: 30
+                      position: 158
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 36
+                      position: 158
+                    - expr:
+                        kind: ident
+                        name: NewEncoder
+                        x:
+                            kind: ident
+                            name: json
+                            pkg: encoding/json
+                        pkg: encoding/json
+                        type: func(w io.Writer) *encoding/json.Encoder
+                      kind: 30
+                      position: 158
+                assignments: []
+                imports:
+                    -1: 59
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/models.go:
+                types:
+                    CreateUserRequest:
+                        name: 159
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 80
+                              type: 16
+                              tag: 107
+                              scope: 3
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                    User:
+                        name: 136
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 78
+                              type: 16
+                              tag: 106
+                              scope: 3
+                              comments: -1
+                            - name: 80
+                              type: 16
+                              tag: 107
+                              scope: 3
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                functions: {}
+                variables: {}
+                struct_instances: []
+                selectors: []
+                assignments: []
+                imports: {}
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/routes.go:
+                types: {}
+                functions:
+                    Routes:
+                        name: 111
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: ident
+                                      name: Router
+                                      x:
+                                        kind: ident
+                                        name: chi
+                                        pkg: github.com/go-chi/chi/v5
+                                      pkg: github.com/go-chi/chi/v5
+                                      type: Router
+                            args:
+                                - kind: star
+                                  x:
+                                    kind: ident
+                                    name: Service
+                                    pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                    type: Service
+                        position: 160
+                        scope: 3
+                        comments: 161
+                        tags: []
+                variables:
+                    UserRoute:
+                        name: 162
+                        type: -1
+                        value: 164
+                        position: 163
+                        comments: -1
+                struct_instances: []
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Router
+                      kind: 30
+                      position: 165
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 166
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 166
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: s
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: '*github.com/go-chi/chi/v5.Mux'
+                      kind: 30
+                      position: 166
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 167
+                    - expr:
+                        kind: ident
+                        name: Get
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 167
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: s
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: '*github.com/go-chi/chi/v5.Mux'
+                      kind: 30
+                      position: 167
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 36
+                      position: 168
+                    - expr:
+                        kind: ident
+                        name: Post
+                        x:
+                            kind: ident
+                            name: Router
+                            x:
+                                kind: ident
+                                name: s
+                                pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/go-chi/chi/v5.Mux'
+                        pkg: github.com/go-chi/chi/v5
+                        type: func(pattern string, handlerFn net/http.HandlerFunc)
+                      kind: 30
+                      position: 168
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: s
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: '*github.com/go-chi/chi/v5.Mux'
+                      kind: 30
+                      position: 168
+                    - expr:
+                        kind: ident
+                        name: Router
+                        x:
+                            kind: ident
+                            name: s
+                            pkg: github.com/ehabterra/swagen/testdata/chi/users
+                            type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                        type: '*github.com/go-chi/chi/v5.Mux'
+                      kind: 30
+                      position: 169
+                assignments: []
+                imports:
+                    -1: 59
+            /Users/ehab/Documents/Work/Private/swagen/testdata/chi/users/service.go:
+                types:
+                    Service:
+                        name: 170
+                        kind: 11
+                        target: 0
+                        implements: []
+                        implemented_by: []
+                        embeds: []
+                        fields:
+                            - name: 51
+                              type: 171
+                              tag: -1
+                              scope: 3
+                              comments: -1
+                        scope: 3
+                        methods: []
+                        comments: -1
+                        tags: []
+                functions:
+                    NewService:
+                        name: 172
+                        signature:
+                            kind: func_type
+                            fun:
+                                kind: func_results
+                                args:
+                                    - kind: star
+                                      x:
+                                        kind: ident
+                                        name: Service
+                                        pkg: github.com/ehabterra/swagen/testdata/chi/users
+                                        type: Service
+                        position: 173
+                        scope: 3
+                        comments: 174
+                        tags: []
+                variables: {}
+                struct_instances:
+                    - type: 170
+                      position: 178
+                      fields:
+                        51: 116
+                selectors:
+                    - expr:
+                        kind: ident
+                        name: Mux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: Mux
+                      kind: 30
+                      position: 179
+                    - expr:
+                        kind: ident
+                        name: NewMux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 36
+                      position: 180
+                    - expr:
+                        kind: ident
+                        name: NewMux
+                        x:
+                            kind: ident
+                            name: chi
+                            pkg: github.com/go-chi/chi/v5
+                        pkg: github.com/go-chi/chi/v5
+                        type: func() *github.com/go-chi/chi/v5.Mux
+                      kind: 30
+                      position: 180
+                assignments:
+                    - variable_name: 116
+                      pkg: 175
+                      concrete_type: 176
+                      position: 177
+                      scope: 10
+                      value:
+                        kind: call
+                        fun:
+                            kind: ident
+                            name: NewMux
+                            x:
+                                kind: ident
+                                name: chi
+                                pkg: github.com/go-chi/chi/v5
+                            pkg: github.com/go-chi/chi/v5
+                            type: func() *github.com/go-chi/chi/v5.Mux
+                imports:
+                    -1: 59
+call_graph:
+    - caller:
+        name: 0
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9899340
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 0
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9899340
+      args: []
+    - caller:
+        name: 0
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9899393
+      args:
+        - kind: ident
+          name: response
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: map[string]string
+    - caller:
+        name: 0
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9899393
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: net/http.ResponseWriter
+    - caller:
+        name: 5
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9899652
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 5
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9899652
+      args: []
+    - caller:
+        name: 5
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9899705
+      args:
+        - kind: ident
+          name: response
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: map[string]string
+    - caller:
+        name: 5
+        pkg: 50
+        recv_type: 1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9899705
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: net/http.ResponseWriter
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 66
+        pkg: 59
+        recv_type: -1
+      position: 9897463
+      args: []
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 18
+        pkg: 50
+        recv_type: -1
+      position: 9897579
+      args:
+        - kind: ident
+          name: nil
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: untyped nil
+        - kind: ident
+          name: nil
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: untyped nil
+        - kind: ident
+          name: nil
+          pkg: github.com/ehabterra/swagen/testdata/chi/payment
+          type: untyped nil
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 67
+        pkg: 59
+        recv_type: 68
+      position: 9897733
+      args:
+        - kind: literal
+          value: '"/api/v1/stripe/pk"'
+        - kind: call
+          fun:
+            kind: ident
+            name: GetStripePublicKey
+            x:
+                kind: ident
+                name: paymentHandlers
+                pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                type: PaymentHandler
+            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+            type: func() net/http.HandlerFunc
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 0
+        pkg: 50
+        recv_type: 7
+      position: 9897765
+      args: []
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 69
+        pkg: 59
+        recv_type: 68
+      position: 9897834
+      args:
+        - kind: literal
+          value: '"/api/v1/payment/process"'
+        - kind: call
+          fun:
+            kind: ident
+            name: ProcessPayment
+            x:
+                kind: ident
+                name: paymentHandlers
+                pkg: github.com/ehabterra/swagen/testdata/chi/payment
+                type: PaymentHandler
+            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+            type: func() net/http.HandlerFunc
+    - caller:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      callee:
+        name: 5
+        pkg: 50
+        recv_type: 7
+      position: 9897873
+      args: []
+    - caller:
+        name: 111
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 66
+        pkg: 59
+        recv_type: -1
+      position: 9899861
+      args: []
+    - caller:
+        name: 111
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 67
+        pkg: 59
+        recv_type: 68
+      position: 9899878
+      args:
+        - kind: ident
+          name: root
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: untyped string
+        - kind: ident
+          name: ListProducts
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 111
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 69
+        pkg: 59
+        recv_type: 68
+      position: 9899905
+      args:
+        - kind: literal
+          value: '"/"'
+        - kind: ident
+          name: CreateProduct
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 111
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 67
+        pkg: 59
+        recv_type: 68
+      position: 9899933
+      args:
+        - kind: literal
+          value: '"/:id"'
+        - kind: ident
+          name: GetProduct
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 70
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9900430
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 70
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9900430
+      args: []
+    - caller:
+        name: 70
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9900482
+      args:
+        - kind: ident
+          name: products
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: '[]github.com/ehabterra/swagen/testdata/chi/products.Product'
+    - caller:
+        name: 70
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9900482
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: net/http.ResponseWriter
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 124
+        pkg: 44
+        recv_type: 125
+      position: 9900623
+      args:
+        - kind: unary
+          value: '&'
+          x:
+            kind: ident
+            name: req
+            pkg: github.com/ehabterra/swagen/testdata/chi/products
+            type: CreateProductRequest
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 126
+        pkg: 44
+        recv_type: -1
+      position: 9900623
+      args:
+        - kind: ident
+          name: Body
+          x:
+            kind: ident
+            name: r
+            pkg: github.com/ehabterra/swagen/testdata/chi/products
+            type: '*net/http.Request'
+          pkg: net/http
+          type: io.ReadCloser
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 127
+        pkg: 45
+        recv_type: -1
+      position: 9900676
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: net/http.ResponseWriter
+        - kind: literal
+          value: '"Invalid request"'
+        - kind: ident
+          name: StatusBadRequest
+          x:
+            kind: ident
+            name: http
+            pkg: net/http
+          pkg: net/http
+          type: untyped int
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9900808
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9900808
+      args: []
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9900860
+      args:
+        - kind: ident
+          name: product
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: Product
+    - caller:
+        name: 72
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9900860
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: net/http.ResponseWriter
+    - caller:
+        name: 74
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9901015
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 74
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9901015
+      args: []
+    - caller:
+        name: 74
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9901067
+      args:
+        - kind: ident
+          name: product
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: Product
+    - caller:
+        name: 74
+        pkg: 117
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9901067
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/products
+          type: net/http.ResponseWriter
+    - caller:
+        name: 111
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 67
+        pkg: 59
+        recv_type: 68
+      position: 9898329
+      args:
+        - kind: literal
+          value: '"/"'
+        - kind: ident
+          name: ListUsers
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 111
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 67
+        pkg: 59
+        recv_type: 68
+      position: 9898359
+      args:
+        - kind: literal
+          value: '"/:id"'
+        - kind: ident
+          name: GetUser
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 111
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 69
+        pkg: 59
+        recv_type: 68
+      position: 9898390
+      args:
+        - kind: literal
+          value: '"/"'
+        - kind: ident
+          name: CreateUser
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: func(w net/http.ResponseWriter, r *net/http.Request)
+    - caller:
+        name: 172
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 181
+        pkg: 59
+        recv_type: -1
+      position: 9896334
+      args: []
+    - caller:
+        name: 128
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9896661
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 128
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9896661
+      args: []
+    - caller:
+        name: 128
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9896713
+      args:
+        - kind: ident
+          name: users
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: '[]github.com/ehabterra/swagen/testdata/chi/users.User'
+    - caller:
+        name: 128
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9896713
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: net/http.ResponseWriter
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 124
+        pkg: 44
+        recv_type: 125
+      position: 9896845
+      args:
+        - kind: unary
+          value: '&'
+          x:
+            kind: ident
+            name: req
+            pkg: github.com/ehabterra/swagen/testdata/chi/users
+            type: CreateUserRequest
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 126
+        pkg: 44
+        recv_type: -1
+      position: 9896845
+      args:
+        - kind: ident
+          name: Body
+          x:
+            kind: ident
+            name: r
+            pkg: github.com/ehabterra/swagen/testdata/chi/users
+            type: '*net/http.Request'
+          pkg: net/http
+          type: io.ReadCloser
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 127
+        pkg: 45
+        recv_type: -1
+      position: 9896898
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: net/http.ResponseWriter
+        - kind: literal
+          value: '"Invalid request"'
+        - kind: ident
+          name: StatusBadRequest
+          x:
+            kind: ident
+            name: http
+            pkg: net/http
+          pkg: net/http
+          type: untyped int
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9897006
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9897006
+      args: []
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9897058
+      args:
+        - kind: ident
+          name: user
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: User
+    - caller:
+        name: 130
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9897058
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: net/http.ResponseWriter
+    - caller:
+        name: 132
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 182
+        pkg: 59
+        recv_type: -1
+      position: 9897155
+      args:
+        - kind: ident
+          name: r
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: '*net/http.Request'
+        - kind: literal
+          value: '"id"'
+    - caller:
+        name: 132
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 60
+        pkg: 45
+        recv_type: 61
+      position: 9897215
+      args:
+        - kind: literal
+          value: '"Content-Type"'
+        - kind: literal
+          value: '"application/json"'
+    - caller:
+        name: 132
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 61
+        pkg: 45
+        recv_type: 62
+      position: 9897215
+      args: []
+    - caller:
+        name: 132
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 63
+        pkg: 44
+        recv_type: 64
+      position: 9897267
+      args:
+        - kind: ident
+          name: user
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: User
+    - caller:
+        name: 132
+        pkg: 175
+        recv_type: -1
+      callee:
+        name: 65
+        pkg: 44
+        recv_type: -1
+      position: 9897267
+      args:
+        - kind: ident
+          name: w
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: net/http.ResponseWriter
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 181
+        pkg: 59
+        recv_type: -1
+      position: 9901347
+      args: []
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 172
+        pkg: 175
+        recv_type: -1
+      position: 9901437
+      args: []
+      assignments:
+        - variable_name: 116
+          pkg: 195
+          concrete_type: 176
+          position: 177
+          scope: 10
+          value:
+            kind: call
+            fun:
+                kind: ident
+                name: NewMux
+                x:
+                    kind: ident
+                    name: chi
+                    pkg: github.com/ehabterra/swagen/testdata/chi
+                pkg: github.com/ehabterra/swagen/testdata/chi
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 218
+        pkg: 59
+        recv_type: 68
+      position: 9901513
+      args:
+        - kind: ident
+          name: UserRoute
+          x:
+            kind: ident
+            name: users
+            pkg: github.com/ehabterra/swagen/testdata/chi/users
+          pkg: github.com/ehabterra/swagen/testdata/chi/users
+          type: untyped string
+        - kind: call
+          fun:
+            kind: ident
+            name: Routes
+            x:
+                kind: ident
+                name: users
+                pkg: github.com/ehabterra/swagen/testdata/chi/users
+            pkg: github.com/ehabterra/swagen/testdata/chi/users
+            type: func(s *github.com/ehabterra/swagen/testdata/chi/users.Service) github.com/go-chi/chi/v5.Router
+          args:
+            - kind: ident
+              name: userService
+              pkg: github.com/ehabterra/swagen/testdata/chi
+              type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 111
+        pkg: 175
+        recv_type: -1
+      position: 9901538
+      args:
+        - kind: ident
+          name: userService
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: '*github.com/ehabterra/swagen/testdata/chi/users.Service'
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 218
+        pkg: 59
+        recv_type: 68
+      position: 9901566
+      args:
+        - kind: literal
+          value: '"/payment"'
+        - kind: call
+          fun:
+            kind: ident
+            name: PaymentAPIs
+            x:
+                kind: ident
+                name: payment
+                pkg: github.com/ehabterra/swagen/testdata/chi/payment
+            pkg: github.com/ehabterra/swagen/testdata/chi/payment
+            type: func(application interface{}) github.com/go-chi/chi/v5.Router
+          args:
+            - kind: ident
+              name: nil
+              pkg: github.com/ehabterra/swagen/testdata/chi
+              type: untyped nil
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 46
+        pkg: 50
+        recv_type: -1
+      position: 9901586
+      args:
+        - kind: ident
+          name: nil
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: untyped nil
+      assignments:
+        - variable_name: 49
+          pkg: 195
+          concrete_type: 51
+          position: 52
+          scope: 10
+          value:
+            kind: call
+            fun:
+                kind: ident
+                name: NewRouter
+                x:
+                    kind: ident
+                    name: chi
+                    pkg: github.com/ehabterra/swagen/testdata/chi
+                pkg: github.com/ehabterra/swagen/testdata/chi
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 191
+        pkg: 195
+        recv_type: -1
+      position: 9901619
+      args:
+        - kind: call
+          fun:
+            kind: ident
+            name: WithRouter
+            pkg: github.com/ehabterra/swagen/testdata/chi
+            type: func(router github.com/go-chi/chi/v5.Router) func(*github.com/ehabterra/swagen/testdata/chi.Module)
+          args:
+            - kind: call
+              fun:
+                kind: ident
+                name: Routes
+                x:
+                    kind: ident
+                    name: products
+                    pkg: github.com/ehabterra/swagen/testdata/chi/products
+                pkg: github.com/ehabterra/swagen/testdata/chi/products
+                type: func() github.com/go-chi/chi/v5.Router
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 193
+        pkg: 195
+        recv_type: -1
+      position: 9901629
+      args:
+        - kind: call
+          fun:
+            kind: ident
+            name: Routes
+            x:
+                kind: ident
+                name: products
+                pkg: github.com/ehabterra/swagen/testdata/chi/products
+            pkg: github.com/ehabterra/swagen/testdata/chi/products
+            type: func() github.com/go-chi/chi/v5.Router
+      assignments:
+        - variable_name: 49
+          pkg: 195
+          concrete_type: 200
+          position: 201
+          scope: 202
+          value:
+            kind: ident
+            name: router
+            pkg: github.com/ehabterra/swagen/testdata/chi
+            type: github.com/go-chi/chi/v5.Router
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 111
+        pkg: 117
+        recv_type: -1
+      position: 9901640
+      args: []
+      assignments:
+        - variable_name: 116
+          pkg: 195
+          concrete_type: 51
+          position: 118
+          scope: 10
+          value:
+            kind: call
+            fun:
+                kind: ident
+                name: NewRouter
+                x:
+                    kind: ident
+                    name: chi
+                    pkg: github.com/ehabterra/swagen/testdata/chi
+                pkg: github.com/ehabterra/swagen/testdata/chi
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 183
+        pkg: 195
+        recv_type: 184
+      position: 9901662
+      args:
+        - kind: ident
+          name: r
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: '*github.com/go-chi/chi/v5.Mux'
+    - caller:
+        name: 189
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 219
+        pkg: 45
+        recv_type: -1
+      position: 9901674
+      args:
+        - kind: literal
+          value: '":3000"'
+        - kind: ident
+          name: r
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: '*github.com/go-chi/chi/v5.Mux'
+    - caller:
+        name: 183
+        pkg: 195
+        recv_type: 184
+      callee:
+        name: 218
+        pkg: 59
+        recv_type: 68
+      position: 9901789
+      args:
+        - kind: literal
+          value: '"/products"'
+        - kind: ident
+          name: router
+          x:
+            kind: ident
+            name: m
+            pkg: github.com/ehabterra/swagen/testdata/chi
+            type: '*github.com/ehabterra/swagen/testdata/chi.Module'
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: github.com/go-chi/chi/v5.Router
+    - caller:
+        name: 191
+        pkg: 195
+        recv_type: -1
+      callee:
+        name: 220
+        pkg: 195
+        recv_type: -1
+      position: 9901923
+      args:
+        - kind: ident
+          name: module
+          pkg: github.com/ehabterra/swagen/testdata/chi
+          type: '*github.com/ehabterra/swagen/testdata/chi.Module'

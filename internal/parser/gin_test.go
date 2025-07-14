@@ -26,8 +26,8 @@ func TestGinParser_Parse(t *testing.T) {
 		t.Fatalf("failed to parse example: %v", err)
 	}
 
-	p := parser.DefaultGinParserWithTypes(nil)
-	routes, err := p.Parse(fset, []*ast.File{file})
+	p := parser.DefaultGinParser()
+	routes, err := p.Parse(fset, []*ast.File{file}, nil)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}

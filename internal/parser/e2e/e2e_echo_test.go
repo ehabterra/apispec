@@ -45,18 +45,14 @@ func TestEndToEnd_Echo(t *testing.T) {
 		t.Fatal("No routes found in Echo app")
 	}
 
-	// Generate OpenAPI spec
-	config := spec.GeneratorConfig{
-		OpenAPIVersion: "3.1.1",
-		Title:          "Echo API",
-		Description:    "API generated from Echo application",
+	// 3. Generate OpenAPI spec
+	specObj, err := spec.MapParsedRoutesToOpenAPI(routes, goFiles, spec.GeneratorConfig{
+		OpenAPIVersion: "3.0.0",
+		Title:          "Echo Example API",
 		APIVersion:     "1.0.0",
-	}
-
-	generator := spec.NewOpenAPIGenerator(config)
-	specObj, err := generator.GenerateFromRoutes(routes, goFiles)
+	})
 	if err != nil {
-		t.Fatalf("Failed to generate OpenAPI spec: %v", err)
+		t.Fatalf("GenerateFromRoutes failed: %v", err)
 	}
 
 	// Verify the spec has the expected structure
@@ -231,18 +227,15 @@ func parseEchoApp(dir string) ([]core.ParsedRoute, []*ast.File, error) {
 
 	// Set up type checking
 	conf := types.Config{Importer: importer.For("source", nil)}
-	info := &types.Info{
-		Types: make(map[ast.Expr]types.TypeAndValue),
-	}
-	_, err = conf.Check("main", fset, files, info)
+	_, err = conf.Check("main", fset, files, nil)
 	if err != nil {
 		// For testing, we'll continue even if type checking fails
 		// as the parser can work with minimal type information
 	}
 
 	// Use the Echo parser
-	p := parser.DefaultEchoParserWithTypes(info)
-	routes, err := p.Parse(fset, files)
+	p := parser.DefaultEchoParser()
+	routes, err := p.Parse(fset, files, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse routes: %w", err)
 	}
