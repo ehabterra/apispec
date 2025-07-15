@@ -1,5 +1,40 @@
 package metadata
 
+const (
+	kindIdent           = "ident"
+	kindLiteral         = "literal"
+	kindSelector        = "selector"
+	kindCall            = "call"
+	kindRaw             = "raw"
+	kindString          = "string"
+	kindInt             = "int"
+	kindFloat64         = "float64"
+	kindRune            = "rune"
+	kindComplex128      = "complex128"
+	kindFuncLit         = "func_lit"
+	kindUnary           = "unary"
+	kindBinary          = "binary"
+	kindIndex           = "index"
+	kindIndexList       = "index_list"
+	kindStar            = "star"
+	kindParen           = "paren"
+	kindArrayType       = "array_type"
+	kindSlice           = "slice"
+	kindCompositeLit    = "composite_lit"
+	kindKeyValue        = "key_value"
+	kindTypeAssert      = "type_assert"
+	kindChanType        = "chan_type"
+	kindMapType         = "map_type"
+	kindStructType      = "struct_type"
+	kindInterfaceType   = "interface_type"
+	kindInterfaceMethod = "interface_method"
+	kindEmbed           = "embed"
+	kindField           = "field"
+	kindEllipsis        = "ellipsis"
+	kindFuncType        = "func_type"
+	kindFuncResults     = "func_results"
+)
+
 // StringPool for deduplicating strings across metadata
 type StringPool struct {
 	strings map[string]int
@@ -138,6 +173,7 @@ type Function struct {
 // Variable represents a variable
 type Variable struct {
 	Name     int `yaml:"name"`
+	Tok      int `yaml:"tok"`
 	Type     int `yaml:"type"`
 	Value    int `yaml:"value"`
 	Position int `yaml:"position"`
@@ -191,23 +227,23 @@ func (a *CallArgument) ID() string {
 // ID returns a unique identifier for the call argument
 func (a *CallArgument) id(sep string) string {
 	switch a.Kind {
-	case "ident":
+	case kindIdent:
 		if a.Pkg != "" {
 			return a.Pkg + sep + a.Name
 		}
 		return a.Name
-	case "literal":
+	case kindLiteral:
 		return a.Value
-	case "selector":
+	case kindSelector:
 		if a.X != nil {
 			return a.X.id("/") + sep + a.Sel
 		}
 		return a.Sel
-	case "call":
+	case kindCall:
 		if a.Fun != nil {
 			return a.Fun.ID()
 		}
-		return "call"
+		return kindCall
 	default:
 		return a.Raw
 	}

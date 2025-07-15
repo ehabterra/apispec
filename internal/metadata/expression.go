@@ -9,17 +9,23 @@ import (
 	"go/types"
 )
 
+const (
+	valueFuncLit = "func()"
+
+	defaultSep = "."
+)
+
 // ExprToCallArgument returns a structured CallArgument for an expression.
 func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *token.FileSet) CallArgument {
 	if expr == nil {
-		return CallArgument{Kind: "raw", Raw: ""}
+		return CallArgument{Kind: kindRaw, Raw: ""}
 	}
 
 	switch e := expr.(type) {
 	case *ast.Ident:
 		return handleIdent(e, info, pkgName)
 	case *ast.BasicLit:
-		return CallArgument{Kind: "literal", Value: e.Value}
+		return CallArgument{Kind: kindLiteral, Value: e.Value}
 	case *ast.SelectorExpr:
 		return handleSelector(e, info, pkgName, fset)
 	case *ast.CallExpr:
@@ -47,7 +53,7 @@ func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *t
 	case *ast.TypeAssertExpr:
 		return handleTypeAssertExpr(e, info, pkgName, fset)
 	case *ast.FuncLit:
-		return CallArgument{Kind: "func_lit", Value: "func()"}
+		return CallArgument{Kind: kindFuncLit, Value: valueFuncLit}
 	case *ast.ChanType:
 		return handleChanType(e, info, pkgName, fset)
 	case *ast.MapType:
@@ -63,7 +69,7 @@ func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *t
 	}
 
 	// Fallback for other complex expressions
-	return CallArgument{Kind: "raw", Raw: ExprToString(expr)}
+	return CallArgument{Kind: kindRaw, Raw: ExprToString(expr)}
 }
 
 // handleIdent processes identifier expressions
@@ -84,12 +90,12 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string) CallArgument {
 				if obj.Pkg() != nil {
 					pkg = obj.Pkg().Path()
 				}
-				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+".")
+				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
 			}
 		}
 	}
 
-	return CallArgument{Kind: "ident", Name: name, Pkg: pkg, Type: typeStr}
+	return CallArgument{Kind: kindIdent, Name: name, Pkg: pkg, Type: typeStr}
 }
 
 // handleSelector processes selector expressions
@@ -109,7 +115,7 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	}
 	fun := ExprToCallArgument(e.Fun, info, pkgName, fset)
 	return CallArgument{
-		Kind: "call",
+		Kind: kindCall,
 		Fun:  &fun,
 		Args: args,
 	}
@@ -134,7 +140,7 @@ func handleUnaryExpr(e *ast.UnaryExpr, info *types.Info, pkgName string, fset *t
 		op = "+"
 	}
 	return CallArgument{
-		Kind:  "unary",
+		Kind:  kindUnary,
 		Value: op,
 		X:     &x,
 	}
@@ -146,7 +152,7 @@ func handleBinaryExpr(e *ast.BinaryExpr, info *types.Info, pkgName string, fset 
 	y := ExprToCallArgument(e.Y, info, pkgName, fset)
 	op := e.Op.String()
 	return CallArgument{
-		Kind:  "binary",
+		Kind:  kindBinary,
 		Value: op,
 		X:     &x,
 		Fun:   &y, // Reuse Fun field for the second operand
@@ -158,7 +164,7 @@ func handleIndexExpr(e *ast.IndexExpr, info *types.Info, pkgName string, fset *t
 	x := ExprToCallArgument(e.X, info, pkgName, fset)
 	index := ExprToCallArgument(e.Index, info, pkgName, fset)
 	return CallArgument{
-		Kind: "index",
+		Kind: kindIndex,
 		X:    &x,
 		Fun:  &index, // Reuse Fun field for the index
 	}
@@ -172,7 +178,7 @@ func handleIndexListExpr(e *ast.IndexListExpr, info *types.Info, pkgName string,
 		indices[i] = ExprToCallArgument(idx, info, pkgName, fset)
 	}
 	return CallArgument{
-		Kind: "index_list",
+		Kind: kindIndexList,
 		X:    &x,
 		Args: indices,
 	}
@@ -182,7 +188,7 @@ func handleIndexListExpr(e *ast.IndexListExpr, info *types.Info, pkgName string,
 func handleParenExpr(e *ast.ParenExpr, info *types.Info, pkgName string, fset *token.FileSet) CallArgument {
 	x := ExprToCallArgument(e.X, info, pkgName, fset)
 	return CallArgument{
-		Kind: "paren",
+		Kind: kindParen,
 		X:    &x,
 	}
 }
@@ -191,7 +197,7 @@ func handleParenExpr(e *ast.ParenExpr, info *types.Info, pkgName string, fset *t
 func handleStarExpr(e *ast.StarExpr, info *types.Info, pkgName string, fset *token.FileSet) CallArgument {
 	x := ExprToCallArgument(e.X, info, pkgName, fset)
 	return CallArgument{
-		Kind: "star",
+		Kind: kindStar,
 		X:    &x,
 	}
 }
@@ -202,12 +208,12 @@ func handleArrayType(e *ast.ArrayType, info *types.Info, pkgName string, fset *t
 	len := ""
 	if e.Len != nil {
 		lenArg := ExprToCallArgument(e.Len, info, pkgName, fset)
-		if lenArg.Kind == "literal" {
+		if lenArg.Kind == kindLiteral {
 			len = lenArg.Value
 		}
 	}
 	return CallArgument{
-		Kind:  "array_type",
+		Kind:  kindArrayType,
 		Value: len,
 		X:     &elt,
 	}
@@ -230,7 +236,7 @@ func handleSliceExpr(e *ast.SliceExpr, info *types.Info, pkgName string, fset *t
 		args = append(args, m)
 	}
 	return CallArgument{
-		Kind: "slice",
+		Kind: kindSlice,
 		X:    &x,
 		Args: args,
 	}
@@ -244,7 +250,7 @@ func handleCompositeLit(e *ast.CompositeLit, info *types.Info, pkgName string, f
 		elts[i] = ExprToCallArgument(elt, info, pkgName, fset)
 	}
 	return CallArgument{
-		Kind: "composite_lit",
+		Kind: kindCompositeLit,
 		X:    &typeExpr,
 		Args: elts,
 	}
@@ -255,7 +261,7 @@ func handleKeyValueExpr(e *ast.KeyValueExpr, info *types.Info, pkgName string, f
 	key := ExprToCallArgument(e.Key, info, pkgName, fset)
 	value := ExprToCallArgument(e.Value, info, pkgName, fset)
 	return CallArgument{
-		Kind: "key_value",
+		Kind: kindKeyValue,
 		X:    &key,
 		Fun:  &value, // Reuse Fun field for the value
 	}
@@ -266,7 +272,7 @@ func handleTypeAssertExpr(e *ast.TypeAssertExpr, info *types.Info, pkgName strin
 	x := ExprToCallArgument(e.X, info, pkgName, fset)
 	typeExpr := ExprToCallArgument(e.Type, info, pkgName, fset)
 	return CallArgument{
-		Kind: "type_assert",
+		Kind: kindTypeAssert,
 		X:    &x,
 		Fun:  &typeExpr, // Reuse Fun field for the type
 	}
@@ -285,7 +291,7 @@ func handleChanType(e *ast.ChanType, info *types.Info, pkgName string, fset *tok
 		dir = "bidir"
 	}
 	return CallArgument{
-		Kind:  "chan_type",
+		Kind:  kindChanType,
 		Value: dir,
 		X:     &elt,
 	}
@@ -296,7 +302,7 @@ func handleMapType(e *ast.MapType, info *types.Info, pkgName string, fset *token
 	key := ExprToCallArgument(e.Key, info, pkgName, fset)
 	value := ExprToCallArgument(e.Value, info, pkgName, fset)
 	return CallArgument{
-		Kind: "map_type",
+		Kind: kindMapType,
 		X:    &key,
 		Fun:  &value, // Reuse Fun field for the value type
 	}
@@ -320,7 +326,7 @@ func handleStructType(e *ast.StructType, info *types.Info, pkgName string, fset 
 		if len(field.Names) == 0 {
 			// Embedded (anonymous) field
 			fields = append(fields, CallArgument{
-				Kind: "embed",
+				Kind: kindEmbed,
 				X:    &fieldType,
 			})
 			continue
@@ -328,14 +334,14 @@ func handleStructType(e *ast.StructType, info *types.Info, pkgName string, fset 
 
 		for _, name := range field.Names {
 			fields = append(fields, CallArgument{
-				Kind: "field",
+				Kind: kindField,
 				Name: name.Name,
 				Type: fieldType.Type,
 			})
 		}
 	}
 	return CallArgument{
-		Kind: "struct_type",
+		Kind: kindStructType,
 		Args: fields,
 	}
 }
@@ -347,13 +353,13 @@ func handleInterfaceType(e *ast.InterfaceType, info *types.Info, pkgName string,
 		// Simplified method representation
 		if len(method.Names) > 0 {
 			methods[i] = CallArgument{
-				Kind: "interface_method",
+				Kind: kindInterfaceMethod,
 				Name: method.Names[0].Name,
 			}
 		}
 	}
 	return CallArgument{
-		Kind: "interface_type",
+		Kind: kindInterfaceType,
 		Args: methods,
 	}
 }
@@ -362,7 +368,7 @@ func handleInterfaceType(e *ast.InterfaceType, info *types.Info, pkgName string,
 func handleEllipsis(e *ast.Ellipsis, info *types.Info, pkgName string, fset *token.FileSet) CallArgument {
 	elt := ExprToCallArgument(e.Elt, info, pkgName, fset)
 	return CallArgument{
-		Kind: "ellipsis",
+		Kind: kindEllipsis,
 		X:    &elt,
 	}
 }
@@ -388,10 +394,10 @@ func handleFuncType(e *ast.FuncType, info *types.Info, pkgName string, fset *tok
 	}
 
 	return CallArgument{
-		Kind: "func_type",
+		Kind: kindFuncType,
 		Args: params, // Use Args for parameters
 		Fun: &CallArgument{ // Use Fun field to store results
-			Kind: "func_results",
+			Kind: kindFuncResults,
 			Args: results,
 		},
 	}
@@ -405,273 +411,105 @@ func ExprToString(expr ast.Expr) string {
 	return fmt.Sprintf("%#v", expr)
 }
 
-// shortType extracts package and type name from a full type string
-func shortType(typeStr string) (string, string) {
-	if typeStr == "" {
-		return "", ""
-	}
-	// Remove pointer prefix
-	typeStr = strings.TrimPrefix(typeStr, "*")
-	// Only keep the last part after dot or slash
-	if idx := strings.LastIndex(typeStr, "."); idx != -1 {
-		return typeStr[:idx], typeStr[idx+1:]
-	}
-	if idx := strings.LastIndex(typeStr, "/"); idx != -1 {
-		return typeStr[:idx], typeStr[idx+1:]
-	}
-	return "", typeStr
-}
-
-// getTypeString extracts type string from ast.Expr
-func getTypeString(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		// Handle pointer receivers like *MyStruct
-		return "*" + getTypeString(t.X)
-	case *ast.SelectorExpr:
-		// Handle qualified types like pkg.MyStruct
-		return getTypeString(t.X) + "." + t.Sel.Name
-	case *ast.IndexExpr:
-		// Handle generic types like MyStruct[T]
-		return getTypeString(t.X) + "[" + getTypeString(t.Index) + "]"
-	case *ast.IndexListExpr:
-		// Handle generic types with multiple type parameters like MyStruct[T, U]
-		var indices []string
-		for _, index := range t.Indices {
-			indices = append(indices, getTypeString(index))
-		}
-		return getTypeString(t.X) + "[" + strings.Join(indices, ", ") + "]"
-	case *ast.UnaryExpr:
-		// Handle unary expressions like &user, *ptr, !flag, etc.
-		op := ""
-		switch t.Op {
-		case token.AND:
-			op = "*"
-		case token.MUL:
-			op = "*"
-		case token.NOT:
-			op = "!"
-		case token.XOR:
-			op = "^"
-		case token.SUB:
-			op = "-"
-		case token.ADD:
-			op = "+"
-		}
-		return op + getTypeString(t.X)
-	case *ast.CompositeLit:
-		// Handle composite literals like MyStruct{Field: value}
-		if t.Type != nil {
-			return getTypeString(t.Type)
-		}
-		// If no explicit type, try to infer from the literal structure
-		if len(t.Elts) > 0 {
-			// For struct literals, try to infer the type from the first key-value pair
-			if kv, ok := t.Elts[0].(*ast.KeyValueExpr); ok {
-				if ident, ok := kv.Key.(*ast.Ident); ok {
-					// This might be a struct literal, try to infer the type
-					return "struct{" + ident.Name + "}"
-				}
-			}
-		}
-		return "composite_literal"
-	case *ast.CallExpr:
-		// Handle function calls that return types
-		return getTypeString(t.Fun) + "()"
-	case *ast.BinaryExpr:
-		// Handle binary expressions like a + b, x == y, etc.
-		// For type inference, we might want to focus on the left operand
-		return getTypeString(t.X)
-	case *ast.ParenExpr:
-		// Handle parenthesized expressions like (x + y)
-		return getTypeString(t.X)
-	case *ast.ArrayType:
-		// Handle array types like []int, [5]string
-		elt := getTypeString(t.Elt)
-		if t.Len != nil {
-			len := getTypeString(t.Len)
-			return "[" + len + "]" + elt
-		}
-		return "[]" + elt
-	case *ast.SliceExpr:
-		// Handle slice expressions like array[low:high]
-		return getTypeString(t.X)
-	case *ast.TypeAssertExpr:
-		// Handle type assertions like x.(string)
-		return getTypeString(t.Type)
-	case *ast.FuncLit:
-		// Handle function literals like func() { ... }
-		return "func()"
-	case *ast.ChanType:
-		// Handle channel types like chan int, <-chan int, chan<- int
-		elt := getTypeString(t.Value)
-		switch t.Dir {
-		case ast.SEND:
-			return "chan<- " + elt
-		case ast.RECV:
-			return "<-chan " + elt
-		case ast.SEND | ast.RECV:
-			return "chan " + elt
-		}
-		return "chan " + elt
-	case *ast.MapType:
-		// Handle map types like map[string]int
-		key := getTypeString(t.Key)
-		value := getTypeString(t.Value)
-		return "map[" + key + "]" + value
-	case *ast.StructType:
-		// Handle struct type definitions
-		return "struct{}"
-	case *ast.InterfaceType:
-		// Handle interface type definitions
-		return "interface{}"
-	case *ast.Ellipsis:
-		// Handle variadic arguments like ...args
-		return "..." + getTypeString(t.Elt)
-	case *ast.FuncType:
-		// Handle function types like func(int, string) error
-		var params []string
-		if t.Params != nil {
-			for _, field := range t.Params.List {
-				paramType := getTypeString(field.Type)
-				params = append(params, paramType)
-			}
-		}
-
-		var results []string
-		if t.Results != nil {
-			for _, field := range t.Results.List {
-				resultType := getTypeString(field.Type)
-				results = append(results, resultType)
-			}
-		}
-
-		if len(results) > 0 {
-			return "func(" + strings.Join(params, ", ") + ") " + strings.Join(results, ", ")
-		}
-		return "func(" + strings.Join(params, ", ") + ")"
-	case *ast.BasicLit:
-		// Handle basic literals like "hello", 42, true
-		switch t.Kind {
-		case token.STRING:
-			return "string"
-		case token.INT:
-			return "int"
-		case token.FLOAT:
-			return "float64"
-		case token.CHAR:
-			return "rune"
-		case token.IMAG:
-			return "complex128"
-		}
-		return "literal"
-	default:
-		// Fallback for other complex types
-		return ""
-	}
-}
-
 // callArgToString converts a CallArgument to its string representation
 func callArgToString(arg CallArgument) string {
 	switch arg.Kind {
-	case "ident":
+	case kindIdent:
 		return arg.Name
-	case "literal":
+	case kindLiteral:
 		return arg.Value
-	case "selector":
+	case kindSelector:
 		if arg.X != nil {
 			return fmt.Sprintf("%s.%s", callArgToString(*arg.X), arg.Sel)
 		}
 		return arg.Sel
-	case "call":
+	case kindCall:
 		if arg.Fun != nil {
 			return fmt.Sprintf("%s(%s)", callArgToString(*arg.Fun), strings.Join(callArgToStringArgs(arg.Args), ", "))
 		}
 		return "call()"
-	case "unary":
+	case kindUnary:
 		if arg.X != nil {
 			return fmt.Sprintf("%s%s", arg.Value, callArgToString(*arg.X))
 		}
 		return arg.Value
-	case "binary":
+	case kindBinary:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("%s %s %s", callArgToString(*arg.X), arg.Value, callArgToString(*arg.Fun))
 		}
 		return arg.Value
-	case "index":
+	case kindIndex:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("%s[%s]", callArgToString(*arg.X), callArgToString(*arg.Fun))
 		}
 		return "index"
-	case "index_list":
+	case kindIndexList:
 		if arg.X != nil {
 			return fmt.Sprintf("%s[%s]", callArgToString(*arg.X), strings.Join(callArgToStringArgs(arg.Args), ", "))
 		}
 		return "index_list"
-	case "paren":
+	case kindParen:
 		if arg.X != nil {
 			return fmt.Sprintf("(%s)", callArgToString(*arg.X))
 		}
 		return "()"
-	case "star":
+	case kindStar:
 		if arg.X != nil {
 			return fmt.Sprintf("*%s", callArgToString(*arg.X))
 		}
 		return "*"
-	case "array_type":
+	case kindArrayType:
 		if arg.X != nil {
 			return fmt.Sprintf("[%s]%s", arg.Value, callArgToString(*arg.X))
 		}
 		return fmt.Sprintf("[%s]", arg.Value)
-	case "slice":
+	case kindSlice:
 		if arg.X != nil && len(arg.Args) >= 2 {
 			return fmt.Sprintf("%s[%s:%s]", callArgToString(*arg.X), callArgToString(arg.Args[0]), callArgToString(arg.Args[1]))
 		}
 		return "slice"
-	case "composite_lit":
+	case kindCompositeLit:
 		if arg.X != nil {
 			return fmt.Sprintf("%s{%s}", callArgToString(*arg.X), strings.Join(callArgToStringArgs(arg.Args), ", "))
 		}
 		return "{}"
-	case "key_value":
+	case kindKeyValue:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("%s: %s", callArgToString(*arg.X), callArgToString(*arg.Fun))
 		}
 		return "key: value"
-	case "type_assert":
+	case kindTypeAssert:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("%s.(%s)", callArgToString(*arg.X), callArgToString(*arg.Fun))
 		}
 		return "type_assert"
-	case "func_lit":
+	case kindFuncLit:
 		return arg.Value
-	case "chan_type":
+	case kindChanType:
 		if arg.X != nil {
 			return fmt.Sprintf("chan %s", callArgToString(*arg.X))
 		}
 		return "chan"
-	case "map_type":
+	case kindMapType:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("map[%s]%s", callArgToString(*arg.X), callArgToString(*arg.Fun))
 		}
 		return "map"
-	case "struct_type":
+	case kindStructType:
 		return fmt.Sprintf("struct{%s}", strings.Join(callArgToStringArgs(arg.Args), ", "))
-	case "interface_type":
+	case kindInterfaceType:
 		return fmt.Sprintf("interface{%s}", strings.Join(callArgToStringArgs(arg.Args), ", "))
-	case "ellipsis":
+	case kindEllipsis:
 		if arg.X != nil {
 			return fmt.Sprintf("...%s", callArgToString(*arg.X))
 		}
 		return "..."
-	case "func_type":
+	case kindFuncType:
 		if arg.Fun != nil {
 			return fmt.Sprintf("func(%s) %s", strings.Join(callArgToStringArgs(arg.Args), ", "), callArgToString(*arg.Fun))
 		}
 		return "func()"
-	case "func_results":
+	case kindFuncResults:
 		return strings.Join(callArgToStringArgs(arg.Args), ", ")
 	default:
 		return arg.Raw

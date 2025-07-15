@@ -1,53 +1,70 @@
 openapi: 3.0.3
 info:
     title: My Awesome API
+    description: |4-
+
+        Copyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE.
+    version: 1.0.0
     contact:
         name: Ehab
-        email: support@example.com
-    version: 1.0.0
+        url: https://ehabterra.github.io/
+        email: ehabterra@hotmail.com
+    license:
+        name: ""
 paths:
-    /api/info:
-        get:
-            operationId: getAPIInfo
+    /payment/payment/process:
+        post:
+            tags:
+                - /payment
+            operationId: github.com/ehabterra/swagen/testdata/fiber/payment.github.com/ehabterra/swagen/testdata/fiber/payment.ProcessPayment
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                properties:
-                                    framework:
-                                        type: object
-                                    name:
-                                        type: string
-                                    version:
-                                        type: object
-                                example:
-                                    framework: example
-                                    name: example
-                                    version: example
-    /health:
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /payment/stripe/pk:
         get:
-            operationId: healthCheck
+            tags:
+                - /payment
+            operationId: github.com/ehabterra/swagen/testdata/fiber/payment.github.com/ehabterra/swagen/testdata/fiber/payment.GetStripePublicKey
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                properties:
-                                    status:
-                                        type: string
-                                    time:
-                                        type: object
-                                example:
-                                    status: example
-                                    time: example
-    /users:
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /products/:
         get:
-            operationId: getUsers
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/fiber/products.github.com/ehabterra/swagen/testdata/fiber/products.ListProducts
             responses:
                 "200":
                     description: OK
@@ -56,41 +73,139 @@ paths:
                             schema:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/User'
-        post:
-            operationId: createUser
-            requestBody:
-                description: Request body for createUser
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateUserRequest'
-                required: true
-            responses:
-                "201":
-                    description: Created
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/SuccessResponse'
+                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_products.Product'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+        post:
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/fiber/products.github.com/ehabterra/swagen/testdata/fiber/products.CreateProduct
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_products.CreateProductRequest'
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_products.Product'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /products/{id}:
+        get:
+            tags:
+                - /products
+            operationId: github.com/ehabterra/swagen/testdata/fiber/products.github.com/ehabterra/swagen/testdata/fiber/products.GetProduct
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+    /users/:
+        get:
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/fiber/users.github.com/ehabterra/swagen/testdata/fiber/users.ListUsers
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_users.User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+        post:
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/fiber/users.github.com/ehabterra/swagen/testdata/fiber/users.CreateUser
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_users.CreateUserRequest'
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_users.User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
     /users/{id}:
         get:
-            operationId: getUser
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/fiber/users.github.com/ehabterra/swagen/testdata/fiber/users.GetUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
@@ -100,70 +215,60 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/User'
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
-                "404":
-                    description: Not Found
+                "500":
+                    description: Internal Server Error
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ErrorResponse'
+                                type: object
         put:
-            operationId: updateUser
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/fiber/users.github.com/ehabterra/swagen/testdata/fiber/users.UpdateUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
             requestBody:
-                description: Request body for updateUser
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/UpdateUserRequest'
-                required: true
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_fiber_users.UpdateUserRequest'
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/SuccessResponse'
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ErrorResponse'
-                "404":
-                    description: Not Found
+                                type: object
+                "500":
+                    description: Internal Server Error
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
         delete:
-            operationId: deleteUser
+            tags:
+                - /users
+            operationId: github.com/ehabterra/swagen/testdata/fiber/users.github.com/ehabterra/swagen/testdata/fiber/users.DeleteUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
@@ -173,62 +278,52 @@ paths:
                     content:
                         application/json:
                             schema:
-                                type: object
-                                properties:
-                                    message:
-                                        type: string
-                                example:
-                                    message: example
+                                $ref: '#/components/schemas/github.com_gofiber_fiber_v2.Map'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
                                 type: object
-                                properties:
-                                    error:
-                                        type: string
-                                example:
-                                    error: example
-                "404":
-                    description: Not Found
+                "500":
+                    description: Internal Server Error
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ErrorResponse'
+                                type: object
 components:
     schemas:
-        CreateUserRequest:
+        github.com_ehabterra_swagen_testdata_fiber_products.CreateProductRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                price:
+                    type: number
+        github.com_ehabterra_swagen_testdata_fiber_products.Product:
+            type: object
+            properties:
+                id:
+                    type: integer
+                name:
+                    type: string
+                price:
+                    type: number
+        github.com_ehabterra_swagen_testdata_fiber_users.CreateUserRequest:
             type: object
             properties:
                 email:
                     type: string
                 name:
                     type: string
-        ErrorResponse:
-            type: object
-            properties:
-                code:
-                    type: string
-                details:
-                    type: string
-                error:
-                    type: string
-        SuccessResponse:
-            type: object
-            properties:
-                data:
-                    type: object
-                message:
-                    type: string
-        UpdateUserRequest:
+        github.com_ehabterra_swagen_testdata_fiber_users.UpdateUserRequest:
             type: object
             properties:
                 email:
                     type: string
                 name:
                     type: string
-        User:
+        github.com_ehabterra_swagen_testdata_fiber_users.User:
             type: object
             properties:
                 email:
@@ -237,3 +332,5 @@ components:
                     type: integer
                 name:
                     type: string
+        github.com_gofiber_fiber_v2.Map:
+            type: object

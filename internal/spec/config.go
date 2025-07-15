@@ -1,8 +1,17 @@
 package spec
 
 import (
+	"net/http"
 	"regexp"
 	"strings"
+)
+
+const (
+	defaultRequestContentType  = "application/json"
+	defaultResponseContentType = "application/json"
+	defaultResponseStatus      = 200
+	primitiveObjectIDType      = "primitive.ObjectID"
+	primitiveObjectIDFormat    = "objectid"
 )
 
 // FrameworkConfig defines framework-specific extraction patterns
@@ -57,7 +66,6 @@ type RequestBodyPattern struct {
 	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
-	BodyArgIndex int `yaml:"bodyArgIndex,omitempty"` // Which arg contains request body
 	TypeArgIndex int `yaml:"typeArgIndex,omitempty"` // Which arg contains type info
 
 	// Extraction hints
@@ -83,9 +91,8 @@ type ResponsePattern struct {
 	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
-	StatusArgIndex   int `yaml:"statusArgIndex,omitempty"`   // Which arg contains status code
-	ResponseArgIndex int `yaml:"responseArgIndex,omitempty"` // Which arg contains response body
-	TypeArgIndex     int `yaml:"typeArgIndex,omitempty"`     // Which arg contains type info
+	StatusArgIndex int `yaml:"statusArgIndex,omitempty"` // Which arg contains status code
+	TypeArgIndex   int `yaml:"typeArgIndex,omitempty"`   // Which arg contains type info
 
 	// Extraction hints
 	StatusFromArg bool `yaml:"statusFromArg,omitempty"` // Extract status from argument
@@ -126,9 +133,10 @@ type ParamPattern struct {
 // MountPattern defines how to extract mount/subrouter information
 type MountPattern struct {
 	// Function call patterns to match
-	CallRegex         string   `yaml:"callRegex,omitempty"`
-	CallChain         []string `yaml:"callChain,omitempty"`
-	FunctionNameRegex string   `yaml:"functionNameRegex,omitempty"`
+	CallRegex         string `yaml:"callRegex,omitempty"`
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
 	PathArgIndex   int `yaml:"pathArgIndex,omitempty"`   // Which arg contains mount path
@@ -274,16 +282,14 @@ func DefaultChiConfig() *SwagenConfig {
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^Decode$`,
-					BodyArgIndex:  0,
-					TypeArgIndex:  0, // Type is inferred from the receiver
+					TypeArgIndex:  0,
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: ".*json(iter)?\\.\\*Decoder",
 				},
 				{
 					CallRegex:     `^Unmarshal$`,
-					BodyArgIndex:  1,
-					TypeArgIndex:  0, // Type is inferred from the receiver
+					TypeArgIndex:  0,
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: "json",
@@ -291,24 +297,25 @@ func DefaultChiConfig() *SwagenConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:        `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex:   0,
-					ResponseArgIndex: 1,
-					StatusFromArg:    true,
-					Deref:            true,
+					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					StatusArgIndex: 0,
+					TypeArgIndex:   1,
+					TypeFromArg:    true,
+					StatusFromArg:  true,
+					Deref:          true,
 				},
 				{
-					CallRegex:        `^Marshal$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 1,
+					TypeFromArg:  true,
+					Deref:        true,
 				},
 				{
-					CallRegex:        `^Encode$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
-					RecvTypeRegex:    ".*json(iter)?\\.\\*?Encoder",
+					CallRegex:     `^Encode$`,
+					TypeArgIndex:  1,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
 				},
 			},
 			ParamPatterns: []ParamPattern{
@@ -368,17 +375,254 @@ func DefaultChiConfig() *SwagenConfig {
 			},
 		},
 		Defaults: Defaults{
-			RequestContentType:  "application/json",
-			ResponseContentType: "application/json",
-			ResponseStatus:      200,
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
+			ResponseStatus:      defaultResponseStatus,
 		},
 		// example of external type mapping
 		ExternalTypes: []ExternalType{
 			{
-				Name: "primitive.ObjectID",
+				Name: primitiveObjectIDType,
 				OpenAPIType: &Schema{
 					Type:   "string",
-					Format: "objectid",
+					Format: primitiveObjectIDFormat,
+				},
+			},
+		},
+	}
+}
+
+// DefaultEchoConfig returns a default configuration for Echo framework
+func DefaultEchoConfig() *SwagenConfig {
+	return &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					MethodFromCall:  true,
+					PathFromArg:     true,
+					HandlerFromArg:  true,
+					PathArgIndex:    0,
+					HandlerArgIndex: 1,
+					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
+				},
+			},
+			RequestBodyPatterns: []RequestBodyPattern{
+				{
+					CallRegex:     `(?i)(Bind)$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
+					CallRegex:     `^Decode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*Decoder",
+				},
+				{
+					CallRegex:     `^Unmarshal$`,
+					TypeArgIndex:  1,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: "json",
+				},
+			},
+			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					StatusArgIndex: 0,
+					TypeArgIndex:   1,
+					TypeFromArg:    true,
+					StatusFromArg:  true,
+					Deref:          true,
+					RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
+				},
+				{
+					CallRegex:     `^Encode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
+				},
+			},
+			ParamPatterns: []ParamPattern{
+				{
+					CallRegex:     "^Param$",
+					ParamIn:       "path",
+					ParamArgIndex: 0,
+				},
+				{
+					CallRegex:     "^QueryParam$",
+					ParamIn:       "query",
+					ParamArgIndex: 0,
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
+					CallRegex:     "^FormValue$",
+					ParamIn:       "form",
+					ParamArgIndex: 0,
+				},
+				{
+					CallRegex:     "^Cookie$",
+					ParamIn:       "cookie",
+					ParamArgIndex: 0,
+				},
+			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:     `^Group$`,
+					PathFromArg:   true,
+					RouterFromArg: false,
+					PathArgIndex:  0,
+					IsMount:       true,
+				},
+			},
+		},
+		Defaults: Defaults{
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
+			ResponseStatus:      http.StatusOK,
+		},
+	}
+}
+
+// DefaultFiberConfig returns a default configuration for Fiber framework
+func DefaultFiberConfig() *SwagenConfig {
+	return &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					MethodFromCall:  true,
+					PathFromArg:     true,
+					HandlerFromArg:  true,
+					PathArgIndex:    0,
+					HandlerArgIndex: 1,
+					RecvTypeRegex:   `^github\.com/gofiber/fiber(/v\d)?\.\*(App|Router)$`,
+				},
+			},
+			RequestBodyPatterns: []RequestBodyPattern{
+				{
+					CallRegex:     `^BodyParser$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:     `^Decode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*Decoder",
+				},
+				{
+					CallRegex:     `^Unmarshal$`,
+					TypeArgIndex:  1,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: "json",
+				},
+			},
+			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^JSON$`,
+					StatusArgIndex: -1, // Fiber's c.JSON does not take status, only data
+					TypeArgIndex:   0,
+					TypeFromArg:    true,
+					Deref:          true,
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:      `^SendString$`,
+					StatusArgIndex: -1,
+					TypeArgIndex:   0,
+					TypeFromArg:    true,
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:      `^SendStatus$`,
+					StatusArgIndex: 0,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
+				},
+				{
+					CallRegex:     `^Encode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
+				},
+			},
+			ParamPatterns: []ParamPattern{
+				{
+					CallRegex:     "^Params$",
+					ParamIn:       "path",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:     "^Query$",
+					ParamIn:       "query",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:     "^FormValue$",
+					ParamIn:       "form",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:     "^Cookies$",
+					ParamIn:       "cookie",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:      `^Mount$`,
+					PathFromArg:    true,
+					RouterFromArg:  true,
+					PathArgIndex:   0,
+					RouterArgIndex: 1,
+					IsMount:        true,
+				},
+				{
+					CallRegex:     `^Group$`,
+					PathFromArg:   true,
+					RouterFromArg: false,
+					PathArgIndex:  0,
+					IsMount:       true,
+				},
+			},
+		},
+		Defaults: Defaults{
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
+			ResponseStatus:      http.StatusOK,
+		},
+		ExternalTypes: []ExternalType{
+			{
+				Name: "github.com/gofiber/fiber/v2.Map",
+				OpenAPIType: &Schema{
+					Type: "object",
 				},
 			},
 		},
@@ -397,47 +641,48 @@ func DefaultGinConfig() *SwagenConfig {
 					HandlerFromArg:  true,
 					PathArgIndex:    0,
 					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/gin-gonic/gin\\.\\*Router$",
+					RecvTypeRegex:   "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:    `(?i)(BindJSON|BindXML|BindYAML|BindForm|BindQuery)$`,
-					BodyArgIndex: 0,
+					CallRegex:    `(?i)(BindJSON|BindXML|BindYAML|BindForm)$`,
+					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 				{
 					CallRegex:    `^Decode$`,
-					BodyArgIndex: 0,
+					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 				{
 					CallRegex:    `^Unmarshal$`,
-					BodyArgIndex: 1,
+					TypeArgIndex: 1,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:        `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex:   0,
-					ResponseArgIndex: 1,
-					StatusFromArg:    true,
+					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					StatusArgIndex: 0,
+					TypeArgIndex:   1,
+					TypeFromArg:    true,
+					StatusFromArg:  true,
 				},
 				{
-					CallRegex:        `^Marshal$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
 				},
 				{
-					CallRegex:        `^Encode$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
+					CallRegex:    `^Encode$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
 				},
 			},
 			ParamPatterns: []ParamPattern{
@@ -470,207 +715,22 @@ func DefaultGinConfig() *SwagenConfig {
 					PathArgIndex:   0,
 					RouterArgIndex: 1,
 					IsMount:        true,
+					RecvTypeRegex:  "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
 		},
 		Defaults: Defaults{
-			RequestContentType:  "application/json",
-			ResponseContentType: "application/json",
-			ResponseStatus:      200,
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
+			ResponseStatus:      http.StatusOK,
 		},
-	}
-}
-
-// DefaultEchoConfig returns a default configuration for Echo framework
-func DefaultEchoConfig() *SwagenConfig {
-	return &SwagenConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*Router$",
+		ExternalTypes: []ExternalType{
+			{
+				Name: "github.com/gin-gonic/gin.H",
+				OpenAPIType: &Schema{
+					Type: "object",
 				},
 			},
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:    `(?i)(Bind|JSON|XML|Form|Query)$`,
-					BodyArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Decode$`,
-					BodyArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Unmarshal$`,
-					BodyArgIndex: 1,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:        `(?i)(JSON|String|XML|YAML|Blob|File|Redirect)$`,
-					StatusArgIndex:   0,
-					ResponseArgIndex: 1,
-					StatusFromArg:    true,
-					Deref:            true,
-				},
-				{
-					CallRegex:        `^Marshal$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
-				},
-				{
-					CallRegex:        `^Encode$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^Param$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^QueryParam$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Cookie$",
-					ParamIn:       "cookie",
-					ParamArgIndex: 0,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Group$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  "application/json",
-			ResponseContentType: "application/json",
-			ResponseStatus:      200,
-		},
-	}
-}
-
-// DefaultFiberConfig returns a default configuration for Fiber framework
-func DefaultFiberConfig() *SwagenConfig {
-	return &SwagenConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/gofiber/fiber(/v\\d)?\\.\\*Router$",
-				},
-			},
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:    `(?i)(Bind|JSON|XML|Form|Query)$`,
-					BodyArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Decode$`,
-					BodyArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Unmarshal$`,
-					BodyArgIndex: 1,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:        `(?i)(JSON|String|XML|YAML|Send|SendFile|Redirect)$`,
-					StatusArgIndex:   0,
-					ResponseArgIndex: 1,
-					StatusFromArg:    true,
-					Deref:            true,
-				},
-				{
-					CallRegex:        `^Marshal$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
-				},
-				{
-					CallRegex:        `^Encode$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^Params$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Query$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Cookies$",
-					ParamIn:       "cookie",
-					ParamArgIndex: 0,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Group$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  "application/json",
-			ResponseContentType: "application/json",
-			ResponseStatus:      200,
 		},
 	}
 }
@@ -699,36 +759,36 @@ func DefaultHTTPConfig() *SwagenConfig {
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:    `^Decode$`,
-					BodyArgIndex: 0,
+					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 				{
 					CallRegex:    `^Unmarshal$`,
-					BodyArgIndex: 1,
+					TypeArgIndex: 1,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:        `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex:   0,
-					ResponseArgIndex: 1,
-					StatusFromArg:    true,
-					Deref:            true,
+					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					StatusArgIndex: 0,
+					TypeArgIndex:   1,
+					TypeFromArg:    true,
+					Deref:          true,
 				},
 				{
-					CallRegex:        `^Marshal$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
 				},
 				{
-					CallRegex:        `^Encode$`,
-					ResponseArgIndex: 0,
-					TypeFromArg:      true,
-					Deref:            true,
+					CallRegex:    `^Encode$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
 				},
 			},
 			ParamPatterns: []ParamPattern{
@@ -750,8 +810,8 @@ func DefaultHTTPConfig() *SwagenConfig {
 			},
 		},
 		Defaults: Defaults{
-			RequestContentType:  "application/json",
-			ResponseContentType: "application/json",
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
 			ResponseStatus:      200,
 		},
 	}

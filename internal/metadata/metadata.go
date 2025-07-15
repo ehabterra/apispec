@@ -107,7 +107,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 // BuildFuncMap creates a map of function names to their declarations.
 func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl {
 	funcMap := make(map[string]*ast.FuncDecl)
-	for _, files := range pkgs {
+	for pkgPath, files := range pkgs {
 		for _, file := range files {
 			pkgName := ""
 			if file.Name != nil {
@@ -120,7 +120,7 @@ func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl
 					if fn.Recv == nil || len(fn.Recv.List) == 0 {
 						// Only for top-level functions, use package prefix if not main
 						if pkgName != "" && pkgName != "main" {
-							key = pkgName + "." + fn.Name.Name
+							key = pkgPath + "." + fn.Name.Name
 						} else {
 							key = fn.Name.Name
 						}
@@ -137,7 +137,7 @@ func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl
 							typeName = ident.Name
 						}
 						if typeName != "" {
-							methodKey := typeName + "." + fn.Name.Name
+							methodKey := pkgPath + "." + typeName + "." + fn.Name.Name
 							funcMap[methodKey] = fn
 						}
 					}
@@ -248,7 +248,7 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 	switch ut := tspec.Type.(type) {
 	case *ast.StructType:
 		t.Kind = pool.Get("struct")
-		processStructFields(ut, info, pkgName, fset, pool, t)
+		processStructFields(ut, pool, t)
 		allTypes[tspec.Name.Name] = t
 
 	case *ast.InterfaceType:
@@ -268,7 +268,7 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 }
 
 // processStructFields processes fields of a struct type
-func processStructFields(structType *ast.StructType, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, t *Type) {
+func processStructFields(structType *ast.StructType, pool *StringPool, t *Type) {
 	for _, field := range structType.Fields.List {
 		fieldType := getTypeName(field.Type)
 		tag := getFieldTag(field)
@@ -337,6 +337,15 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 			continue
 		}
 
+		var tok string
+		// genDecl is *ast.GenDecl
+		switch genDecl.Tok {
+		case token.CONST:
+			tok = "const"
+		case token.VAR:
+			tok = "var"
+		}
+
 		for _, spec := range genDecl.Specs {
 			vspec, ok := spec.(*ast.ValueSpec)
 			if !ok {
@@ -347,6 +356,7 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 			for i, name := range vspec.Names {
 				v := &Variable{
 					Name:     pool.Get(name.Name),
+					Tok:      pool.Get(tok),
 					Type:     pool.Get(getTypeName(vspec.Type)),
 					Position: pool.Get(getVarPosition(name, fset)),
 					Comments: pool.Get(comments),
@@ -549,7 +559,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc []Assignment
-		funName := handlerName(getFilePkgName(pkgs, calleePkg), calleeParts, calleeFunc)
+		funName := handlerName(calleePkg, calleeParts, calleeFunc)
 		funcName := strings.TrimPrefix(funName, "*")
 		fn, ok := funcMap[funcName]
 		if ok {

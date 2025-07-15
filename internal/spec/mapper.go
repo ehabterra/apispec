@@ -1,20 +1,19 @@
 package spec
 
 import (
-	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
-	"go/ast"
-
-	"github.com/ehabterra/swagen/internal/core"
 	"github.com/ehabterra/swagen/internal/metadata"
 )
 
-const TypeSep = "-->"
+const (
+	refComponentsSchemasPrefix = "#/components/schemas/"
+)
 
 var schemaComponentNameReplacer = strings.NewReplacer("/", "_", "-->", ".")
 
@@ -78,87 +77,6 @@ func MapMetadataToOpenAPI(tree *TrackerTree, cfg *SwagenConfig, genCfg Generator
 	spec := &OpenAPISpec{
 		OpenAPI:      genCfg.OpenAPIVersion,
 		Info:         info,
-		Paths:        paths,
-		Components:   &components,
-		Servers:      cfg.Servers,
-		Security:     cfg.Security,
-		Tags:         cfg.Tags,
-		ExternalDocs: cfg.ExternalDocs,
-	}
-
-	// Fill securitySchemes in components if present in config
-	if len(cfg.SecuritySchemes) > 0 {
-		if spec.Components == nil {
-			spec.Components = &Components{}
-		}
-		spec.Components.SecuritySchemes = cfg.SecuritySchemes
-	}
-
-	return spec, nil
-}
-
-// MapParsedRoutesToOpenAPI maps parsed routes to OpenAPI specification
-func MapParsedRoutesToOpenAPI(routes []core.ParsedRoute, files []*ast.File, genCfg GeneratorConfig) (*OpenAPISpec, error) {
-	// Create a default config for now
-	cfg := DefaultSwagenConfig()
-
-	// Convert ParsedRoute to RouteInfo
-	var routeInfos []RouteInfo
-	for _, route := range routes {
-		routeInfo := RouteInfo{
-			Path:     route.Path,
-			Method:   route.Method,
-			Handler:  route.HandlerName,
-			Package:  "", // Will be extracted from handler if needed
-			Function: route.HandlerName,
-			Summary:  "",
-			Tags:     route.Tags,
-		}
-
-		// Add request info if present
-		if route.RequestType != "" {
-			routeInfo.Request = &RequestInfo{
-				ContentType: "application/json",
-				BodyType:    route.RequestType,
-			}
-
-			if route.RequestType != "" {
-				routeInfo.Request.Schema = addRefSchemaForType(route.RequestType)
-			}
-		}
-
-		// Add response info if present
-		if len(route.ResponseTypes) > 0 {
-			// Use the first response type for now
-			resp := route.ResponseTypes[0]
-			routeInfo.Response = &ResponseInfo{
-				StatusCode:  resp.StatusCode,
-				ContentType: resp.MediaType,
-				BodyType:    resp.Type,
-			}
-
-			if resp.Type != "" {
-
-				routeInfo.Response.Schema = addRefSchemaForType(resp.Type)
-			}
-		}
-
-		routeInfos = append(routeInfos, routeInfo)
-	}
-
-	// Build paths
-	paths := buildPathsFromRoutes(routeInfos)
-
-	// For now, create empty components - in a full implementation,
-	// you would parse the files to extract type information
-	components := Components{
-		Schemas: make(map[string]*Schema),
-	}
-
-	// Build OpenAPI spec
-	spec := &OpenAPISpec{
-		OpenAPI:      genCfg.OpenAPIVersion,
-		Info:         Info{Title: genCfg.Title, Version: genCfg.APIVersion},
 		Paths:        paths,
 		Components:   &components,
 		Servers:      cfg.Servers,
@@ -279,7 +197,7 @@ func deduplicateParameters(params []Parameter) []Parameter {
 }
 
 // buildResponses builds OpenAPI responses from response info
-func buildResponses(respInfo *ResponseInfo) map[string]Response {
+func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	responses := make(map[string]Response)
 
 	if respInfo == nil {
@@ -293,17 +211,6 @@ func buildResponses(respInfo *ResponseInfo) map[string]Response {
 			},
 		}
 		return responses
-	}
-
-	// Add success response
-	statusCode := fmt.Sprintf("%d", respInfo.StatusCode)
-	responses[statusCode] = Response{
-		Description: "Success",
-		Content: map[string]MediaType{
-			respInfo.ContentType: {
-				Schema: respInfo.Schema,
-			},
-		},
 	}
 
 	// Add error responses
@@ -322,6 +229,18 @@ func buildResponses(respInfo *ResponseInfo) map[string]Response {
 				Schema: &Schema{Type: "object"},
 			},
 		},
+	}
+
+	// Add success response
+	for statusCode, resp := range respInfo {
+		responses[statusCode] = Response{
+			Description: http.StatusText(resp.StatusCode),
+			Content: map[string]MediaType{
+				resp.ContentType: {
+					Schema: resp.Schema,
+				},
+			},
+		}
 	}
 
 	return responses
@@ -381,7 +300,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes
 		// Check external types
 		if cfg != nil {
 			for _, externalType := range cfg.ExternalTypes {
-				if externalType.Name == typeName {
+				if externalType.Name == strings.ReplaceAll(typeName, TypeSep, ".") {
 					components.Schemas[schemaComponentNameReplacer.Replace(typeName)] = externalType.OpenAPIType
 					continue
 				}
@@ -389,7 +308,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes
 		}
 
 		// Find the type in metadata
-		typ := findTypeInMetadata(meta, typeName, cfg)
+		typ := findTypeInMetadata(meta, typeName)
 		if typ == nil {
 			continue
 		}
@@ -415,8 +334,10 @@ func collectUsedTypesFromRoutes(routes []RouteInfo, meta *metadata.Metadata, cfg
 		}
 
 		// Add response types
-		if route.Response != nil && route.Response.BodyType != "" {
-			addTypeAndDependenciesWithMetadata(route.Response.BodyType, usedTypes, meta, cfg)
+		for _, res := range route.Response {
+			if route.Response != nil && res.BodyType != "" {
+				addTypeAndDependenciesWithMetadata(res.BodyType, usedTypes, meta, cfg)
+			}
 		}
 
 		// Add parameter types
@@ -436,7 +357,7 @@ func collectUsedTypesFromRoutes(routes []RouteInfo, meta *metadata.Metadata, cfg
 }
 
 // findTypeInMetadata finds a type in metadata
-func findTypeInMetadata(meta *metadata.Metadata, typeName string, cfg *SwagenConfig) *metadata.Type {
+func findTypeInMetadata(meta *metadata.Metadata, typeName string) *metadata.Type {
 	// Skip primitive types - they don't need to be looked up in metadata
 	if isPrimitiveType(typeName) {
 		return nil
@@ -531,23 +452,6 @@ func isPrimitiveType(typeName string) bool {
 	return false
 }
 
-// isExternalType checks if a type is an external type that we know about
-func isExternalType(typeName string, cfg *SwagenConfig) bool {
-	// Remove pointer prefix for checking
-	baseType := strings.TrimPrefix(typeName, "*")
-
-	// Check configured external types first
-	if cfg != nil {
-		for _, externalType := range cfg.ExternalTypes {
-			if baseType == externalType.Name {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // generateSchemaFromType generates an OpenAPI schema from a metadata type
 func generateSchemaFromType(typ *metadata.Type, meta *metadata.Metadata, cfg *SwagenConfig) *Schema {
 	// Get type kind from string pool
@@ -557,7 +461,7 @@ func generateSchemaFromType(typ *metadata.Type, meta *metadata.Metadata, cfg *Sw
 	case "struct":
 		return generateStructSchema(typ, meta, cfg)
 	case "interface":
-		return generateInterfaceSchema(typ, meta, cfg)
+		return generateInterfaceSchema()
 	case "alias":
 		return generateAliasSchema(typ, meta, cfg)
 	default:
@@ -591,7 +495,7 @@ func generateStructSchema(typ *metadata.Type, meta *metadata.Metadata, cfg *Swag
 }
 
 // generateInterfaceSchema generates a schema for an interface type
-func generateInterfaceSchema(typ *metadata.Type, meta *metadata.Metadata, cfg *SwagenConfig) *Schema {
+func generateInterfaceSchema() *Schema {
 	// For interfaces, we'll create a generic object schema
 	// In a more sophisticated implementation, you might analyze interface methods
 	return &Schema{
@@ -624,7 +528,7 @@ func addTypeAndDependenciesWithMetadata(typeName string, usedTypes map[string]bo
 	}
 
 	// Find the type in metadata and add its field types
-	typ := findTypeInMetadata(meta, dereferencedType, cfg)
+	typ := findTypeInMetadata(meta, dereferencedType)
 	if typ != nil {
 		kind := getStringFromPool(meta, typ.Kind)
 		switch kind {
@@ -763,7 +667,7 @@ func mapGoTypeToOpenAPISchema(goType string, meta *metadata.Metadata, cfg *Swage
 		// For custom types, check if it's a struct in metadata
 		if meta != nil {
 			// Try to find the type in metadata
-			typ := findTypeInMetadata(meta, goType, cfg)
+			typ := findTypeInMetadata(meta, goType)
 			if typ != nil {
 				// Generate inline schema for the type
 				return generateSchemaFromType(typ, meta, cfg)
@@ -780,6 +684,6 @@ func mapGoTypeToOpenAPISchema(goType string, meta *metadata.Metadata, cfg *Swage
 
 func addRefSchemaForType(goType string) *Schema {
 	// For custom types not found in metadata, create a reference
-	return &Schema{Ref: "#/components/schemas/" + schemaComponentNameReplacer.Replace(goType)}
+	return &Schema{Ref: refComponentsSchemasPrefix + schemaComponentNameReplacer.Replace(goType)}
 
 }

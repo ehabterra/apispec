@@ -7,6 +7,10 @@ import (
 	"github.com/ehabterra/swagen/internal/metadata"
 )
 
+const (
+	trackerNodeKeyFormat = "%s@%d@%s"
+)
+
 // TrackerLimits holds configuration for tree/graph traversal limits.
 type TrackerLimits struct {
 	MaxNodesPerTree    int
@@ -89,7 +93,7 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	var nodeKey string
 	if parentEdge != nil {
 		// Include the position and parent to distinguish between different calls to the same function
-		nodeKey = fmt.Sprintf("%s@%d@%s", id, parentEdge.Position, parentID)
+		nodeKey = fmt.Sprintf(trackerNodeKeyFormat, id, parentEdge.Position, parentID)
 	} else {
 		// For root nodes or nodes without parent edge, just use the ID
 		nodeKey = id

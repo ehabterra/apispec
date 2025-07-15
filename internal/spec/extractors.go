@@ -2,10 +2,42 @@ package spec
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/metadata"
+)
+
+const (
+	TypeSep             = "-->"
+	kindIdent           = "ident"
+	kindLiteral         = "literal"
+	kindSelector        = "selector"
+	kindCall            = "call"
+	kindRaw             = "raw"
+	kindIndex           = "index"
+	kindUnary           = "unary"
+	kindField           = "field"
+	kindParen           = "paren"
+	kindStar            = "star"
+	kindArrayType       = "array_type"
+	kindSlice           = "slice"
+	kindCompositeLit    = "composite_lit"
+	kindKeyValue        = "key_value"
+	kindTypeAssert      = "type_assert"
+	kindChanType        = "chan_type"
+	kindMapType         = "map_type"
+	kindStructType      = "struct_type"
+	kindInterfaceType   = "interface_type"
+	kindInterfaceMethod = "interface_method"
+	kindEmbed           = "embed"
+	kindEllipsis        = "ellipsis"
+	kindFuncType        = "func_type"
+	kindFuncResults     = "func_results"
+	callEllipsis        = "call(...)"
+	defaultSep          = "."
+	slashSep            = "/"
 )
 
 // Extractor provides methods to extract OpenAPI information from a TrackerTree
@@ -52,12 +84,10 @@ func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mount
 		// If this mount call has a router argument that is a function call, record the mapping
 		if mountPattern.RouterFromArg && len(node.CallGraphEdge.Args) > mountPattern.RouterArgIndex {
 			routerArg := node.CallGraphEdge.Args[mountPattern.RouterArgIndex]
-			if routerArg.Kind == "ident" || routerArg.Kind == "field" {
+			if routerArg.Kind == kindIdent || routerArg.Kind == kindField {
 				// Assignment tracking: look up the assignment for this variable/field
 				assignFunc := e.findAssignmentFunction(routerArg)
 				if assignFunc != nil {
-					fmt.Printf("[DEBUG] Assignment mount context: %s -> %s\n", assignFunc.Name, mountPath)
-
 					// Apply BFT
 					var (
 						id         = assignFunc.ID()
@@ -154,7 +184,7 @@ type RouteInfo struct {
 	Summary  string
 	Tags     []string
 	Request  *RequestInfo
-	Response *ResponseInfo
+	Response map[string]*ResponseInfo
 	Params   []Parameter
 }
 
@@ -181,8 +211,9 @@ type ResponseInfo struct {
 // extractRouteFromNode extracts route information from a node and function
 func (e *Extractor) extractRouteFromNode(node *TrackerNode, pattern RoutePattern) RouteInfo {
 	routeInfo := RouteInfo{
-		Package: e.getString(node.Callee.Pkg),
-		File:    e.getString(node.CallGraphEdge.Position),
+		Package:  e.getString(node.Callee.Pkg),
+		File:     e.getString(node.CallGraphEdge.Position),
+		Response: make(map[string]*ResponseInfo),
 	}
 
 	if routeInfo.File == "" && node.CallArgument != nil {
@@ -195,7 +226,10 @@ func (e *Extractor) extractRouteFromNode(node *TrackerNode, pattern RoutePattern
 	routeInfo.Request = e.extractRequestInfoFromNode(node, &routeInfo)
 
 	// Extract response information
-	routeInfo.Response = e.extractResponseInfoFromNode(node)
+	response := e.extractResponseInfoFromNode(node)
+	if response != nil && response.Schema != nil {
+		routeInfo.Response[fmt.Sprintf("%d", response.StatusCode)] = response
+	}
 
 	// Extract parameters
 	routeInfo.Params = e.extractParametersFromNode(node)
@@ -346,11 +380,13 @@ func (e *Extractor) applyOverrides(routeInfo *RouteInfo) {
 			if override.Description != "" {
 				// Note: Description field not in RouteInfo, would need to add
 			}
-			if override.ResponseStatus != 0 && routeInfo.Response != nil {
-				routeInfo.Response.StatusCode = override.ResponseStatus
+			if res, exists := routeInfo.Response[fmt.Sprintf("%d", override.ResponseStatus)]; exists && override.ResponseStatus != 0 && routeInfo.Response != nil {
+				res.StatusCode = override.ResponseStatus
 			}
 			if override.ResponseType != "" && routeInfo.Response != nil {
-				routeInfo.Response.BodyType = override.ResponseType
+				for _, res := range routeInfo.Response {
+					res.BodyType = override.ResponseType
+				}
 			}
 			if len(override.Tags) > 0 {
 				routeInfo.Tags = override.Tags
@@ -371,11 +407,6 @@ func (e *Extractor) getString(idx int) string {
 
 // callArgToString converts a call argument to a string representation for OpenAPI extraction.
 func (e *Extractor) callArgToString(arg metadata.CallArgument, sep *string) string {
-	const (
-		slashSep   = "/"
-		defaultSep = "."
-	)
-
 	// Use provided separator or default
 	separator := defaultSep
 	if sep != nil && *sep != "" {
@@ -383,22 +414,46 @@ func (e *Extractor) callArgToString(arg metadata.CallArgument, sep *string) stri
 	}
 
 	switch arg.Kind {
-	case "literal":
+	case kindLiteral:
 		// Remove quotes from string literals
 		return strings.Trim(arg.Value, "\"")
 
-	case "unary":
+	case kindKeyValue:
+		return ""
+
+	case kindMapType:
+		if arg.X != nil && arg.Fun != nil {
+			return fmt.Sprintf("map[%s]%s", e.callArgToString(*arg.X, nil), e.callArgToString(*arg.Fun, nil))
+		}
+		return "map"
+
+	case kindUnary:
 		// Handle unary expressions (e.g., *X)
 		if arg.X != nil {
 			return "*" + e.callArgToString(*arg.X, nil)
 		}
 		return "*"
+	case kindIndex:
+		// Handle unary expressions (e.g., *X)
+		if arg.X != nil {
+			return "*" + e.callArgToString(*arg.X, nil)
+		}
+		return "*"
+	case kindCompositeLit:
+		if arg.X != nil {
+			return e.callArgToString(*arg.X, nil)
+		}
+		return ""
 
-	case "ident":
+	case kindIdent:
+		if arg.Pkg == "net/http" && strings.HasPrefix(arg.Name, "Status") {
+			return arg.Pkg + defaultSep + arg.Name
+		}
+
 		// Try to resolve as a constant value from metadata
 		if pkg, exists := e.tree.meta.Packages[arg.Pkg]; exists {
 			for _, file := range pkg.Files {
-				if variable, exists := file.Variables[arg.Name]; exists {
+				if variable, exists := file.Variables[arg.Name]; exists && e.getString(variable.Tok) == "const" {
 					return strings.Trim(e.getString(variable.Value), "\"")
 				}
 			}
@@ -479,7 +534,7 @@ func (e *Extractor) callArgToString(arg metadata.CallArgument, sep *string) stri
 		// Fallback to variable name
 		return arg.Name
 
-	case "selector":
+	case kindSelector:
 		// Handle selector expressions (e.g., pkg.X.Sel)
 		if arg.X != nil {
 			pkgKey := arg.X.Pkg + slashSep + arg.X.Name
@@ -497,14 +552,17 @@ func (e *Extractor) callArgToString(arg metadata.CallArgument, sep *string) stri
 		}
 		return arg.Sel
 
-	case "call":
+	case kindCall:
 		// Handle function call expressions
 		if arg.Fun != nil {
 			return e.callArgToString(*arg.Fun, nil)
 		}
-		return "call(...)"
+		return callEllipsis
 
-	case "raw":
+	case kindInterfaceType:
+		// interface{}
+		return "interface{}"
+	case kindRaw:
 		// Raw string value
 		return arg.Raw
 	}
@@ -597,7 +655,7 @@ func (e *Extractor) matchRequestBodyPattern(node *TrackerNode, pattern RequestBo
 	// Context-aware validation: don't match request body patterns for GET/HEAD/DELETE methods
 	// unless explicitly allowed by the pattern
 	if !pattern.AllowForGetMethods {
-		if route.Method == "GET" || route.Method == "HEAD" || route.Method == "DELETE" {
+		if route.Method == http.MethodGet || route.Method == http.MethodHead || route.Method == http.MethodDelete {
 			return false
 		}
 	}
@@ -690,6 +748,38 @@ func (e *Extractor) parseStatusCode(statusStr string) (int, bool) {
 	// Remove quotes if present
 	statusStr = strings.Trim(statusStr, "\"")
 
+	statusStr = strings.TrimPrefix(statusStr, "net/http.")
+
+	// Check for net/http status constants
+	switch statusStr {
+	case "StatusOK":
+		return http.StatusOK, true
+	case "StatusCreated":
+		return http.StatusCreated, true
+	case "StatusAccepted":
+		return http.StatusAccepted, true
+	case "StatusNoContent":
+		return http.StatusNoContent, true
+	case "StatusBadRequest":
+		return http.StatusBadRequest, true
+	case "StatusUnauthorized":
+		return http.StatusUnauthorized, true
+	case "StatusForbidden":
+		return http.StatusForbidden, true
+	case "StatusNotFound":
+		return http.StatusNotFound, true
+	case "StatusConflict":
+		return http.StatusConflict, true
+	case "StatusInternalServerError":
+		return http.StatusInternalServerError, true
+	case "StatusNotImplemented":
+		return http.StatusNotImplemented, true
+	case "StatusBadGateway":
+		return http.StatusBadGateway, true
+	case "StatusServiceUnavailable":
+		return http.StatusServiceUnavailable, true
+	}
+
 	// Try to parse as integer
 	var status int
 	_, err := fmt.Sscanf(statusStr, "%d", &status)
@@ -723,9 +813,45 @@ func (e *Extractor) mapGoTypeToOpenAPISchema(goType string) *Schema {
 			keyType := goType[4:endIdx]
 			valueType := strings.TrimSpace(goType[endIdx+1:])
 			if keyType == "string" {
-				return &Schema{
-					Type:                 "object",
-					AdditionalProperties: e.mapGoTypeToOpenAPISchema(valueType),
+				// Handle specific value types for string-keyed maps
+				switch valueType {
+				case "string":
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{Type: "string"},
+					}
+				case "interface{}", "any":
+					// For interface{}, allow any type
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{}, // Empty schema allows any type
+					}
+				case "int", "int8", "int16", "int32", "int64":
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{Type: "integer"},
+					}
+				case "uint", "uint8", "uint16", "uint32", "uint64", "byte":
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{Type: "integer", Minimum: 0},
+					}
+				case "float32", "float64":
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{Type: "number"},
+					}
+				case "bool":
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: &Schema{Type: "boolean"},
+					}
+				default:
+					// For custom types, recursively map the value type
+					return &Schema{
+						Type:                 "object",
+						AdditionalProperties: e.mapGoTypeToOpenAPISchema(valueType),
+					}
 				}
 			}
 			// Non-string keys are not supported in OpenAPI, fallback to generic object
@@ -777,6 +903,9 @@ func (e *Extractor) mapGoTypeToOpenAPISchema(goType string) *Schema {
 		return &Schema{Type: "array", Items: &Schema{Type: "string"}}
 	case "[]int":
 		return &Schema{Type: "array", Items: &Schema{Type: "integer"}}
+	case "interface{}", "any":
+		// For standalone interface{}, allow any type
+		return &Schema{}
 	default:
 		if goType != "" {
 			// For custom types, create a reference
@@ -803,6 +932,14 @@ func (e *Extractor) matchMountNode(node *TrackerNode, pattern MountPattern) bool
 		return false
 	}
 	callName := e.getString(node.CallGraphEdge.Callee.Name)
+	recvType := e.getString(node.CallGraphEdge.Callee.RecvType)
+	recvPkg := e.getString(node.CallGraphEdge.Callee.Pkg)
+	fqRecvType := recvPkg
+	if fqRecvType != "" && recvType != "" {
+		fqRecvType += "." + recvType
+	} else if recvType != "" {
+		fqRecvType = recvType
+	}
 	if pattern.CallRegex != "" && !e.matchPattern(pattern.CallRegex, callName) {
 		return false
 	}
@@ -811,6 +948,15 @@ func (e *Extractor) matchMountNode(node *TrackerNode, pattern MountPattern) bool
 		if !e.matchPattern(pattern.FunctionNameRegex, funcName) {
 			return false
 		}
+	}
+	// If RecvTypeRegex is set, use regex matching for receiver type
+	if pattern.RecvTypeRegex != "" {
+		matched, err := regexp.MatchString(pattern.RecvTypeRegex, fqRecvType)
+		if err != nil || !matched {
+			return false
+		}
+	} else if pattern.RecvType != "" && pattern.RecvType != fqRecvType {
+		return false
 	}
 	return pattern.IsMount
 }
@@ -834,7 +980,7 @@ func (e *Extractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInf
 		}
 		// Response
 		if resp := e.extractResponseInfoFromNode(child); resp != nil && resp.BodyType != "" {
-			route.Response = resp
+			route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
 		}
 		// Params (from children)
 		for _, pattern := range e.cfg.Framework.ParamPatterns {
@@ -884,7 +1030,7 @@ func (e *Extractor) findAssignmentFunction(arg metadata.CallArgument) *metadata.
 				// TODO: search for argument function that is containing the routes and pass it directly
 				// by searching for callee as a caller
 				for _, targetArg := range edge.Args {
-					if targetArg.Kind == "call" && targetArg.Fun != nil {
+					if targetArg.Kind == kindCall && targetArg.Fun != nil {
 						return targetArg.Fun
 					}
 				}

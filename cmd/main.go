@@ -34,6 +34,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultOutputFile         = "openapi.json"
+	defaultInputDir           = "."
+	defaultTitle              = "Generated API"
+	defaultAPIVersion         = "1.0.0"
+	defaultContactName        = "Ehab"
+	defaultContactURL         = "https://ehabterra.github.io/"
+	defaultContactEmail       = "ehabterra@hotmail.com"
+	defaultOpenAPIVersion     = "3.1.1"
+	defaultMaxNodesPerTree    = 10000
+	defaultMaxChildrenPerNode = 150
+	defaultMaxArgsPerFunction = 20
+	defaultMaxNestedArgsDepth = 100
+	defaultMetadataFile       = "metadata.yaml"
+	copyrightNotice           = "swagen - Copyright 2025 Ehab Terra"
+	licenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+	fullLicenseNotice         = "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+)
+
 // findModuleRoot finds the root directory of a Go module by looking for go.mod
 func findModuleRoot(startPath string) (string, error) {
 	absPath, err := filepath.Abs(startPath)
@@ -62,37 +81,38 @@ func findModuleRoot(startPath string) (string, error) {
 func main() {
 	start := time.Now()
 	// Print copyright and license info at the very start
-	fmt.Println("swagen - Copyright 2025 Ehab Terra")
-	fmt.Println("Licensed under the Apache License 2.0. See LICENSE and NOTICE.")
+	fmt.Println(copyrightNotice)
+	fmt.Println(licenseNotice)
 
 	// --- CLI Flags ---
-	output := flag.String("o", "openapi.json", "Output file for the OpenAPI specification (e.g., openapi.json, openapi.yaml)")
-	inputDir := flag.String("d", ".", "Directory to parse for Go source files")
+	output := flag.String("o", defaultOutputFile, "Output file for the OpenAPI specification (e.g., openapi.json, openapi.yaml)")
+	inputDir := flag.String("d", defaultInputDir, "Directory to parse for Go source files")
 	// excludeDirs := flag.String("exclude", "vendor,testdata,mocks", "A comma-separated list of directories to exclude from parsing.")
 	// Metadata flags
-	title := flag.String("title", "Generated API", "API Title")
-	apiVersion := flag.String("api.version", "1.0.0", "API Version")
+	title := flag.String("title", defaultTitle, "API Title")
+	apiVersion := flag.String("api.version", defaultAPIVersion, "API Version")
 	description := flag.String("description", "", "API Description")
 	termsOfService := flag.String("terms", "", "Terms of Service URL")
-	contactName := flag.String("contact.name", "Ehab", "Contact Name")
-	contactURL := flag.String("contact.url", "https://ehabterra.github.io/", "Contact URL")
-	contactEmail := flag.String("contact.email", "ehabterra@hotmail.com", "Contact Email")
+	contactName := flag.String("contact.name", defaultContactName, "Contact Name")
+	contactURL := flag.String("contact.url", defaultContactURL, "Contact URL")
+	contactEmail := flag.String("contact.email", defaultContactEmail, "Contact Email")
 	licenseName := flag.String("license.name", "", "License Name")
 	licenseURL := flag.String("license.url", "", "License URL")
-	openapiVersion := flag.String("openapi.version", "3.1.1", "OpenAPI Specification version (e.g., 3.1.1, 3.0.3)")
+	openapiVersion := flag.String("openapi.version", defaultOpenAPIVersion, "OpenAPI Specification version (e.g., 3.1.1, 3.0.3)")
 	// Metadata output flags
 	splitMetadata := flag.Bool("split-metadata", false, "Split metadata into separate files (string-pool, packages, call-graph)")
 	configFile := flag.String("config", "", "Path to custom Swagen config YAML file")
-	maxNodesPerTree := flag.Int("max-nodes-per-tree", 10000, "Maximum number of nodes allowed in a single call graph tree (prevents infinite loops)")
-	maxChildrenPerNode := flag.Int("max-children-per-node", 150, "Maximum number of children allowed per node in the call graph tree")
-	maxArgsPerFunction := flag.Int("max-args-per-function", 20, "Maximum number of arguments to process per function call in the call graph tree")
-	maxNestedArgsDepth := flag.Int("max-nested-args-depth", 100, "Maximum depth for collecting nested argument IDs in the call graph tree")
+	maxNodesPerTree := flag.Int("max-nodes-per-tree", defaultMaxNodesPerTree, "Maximum number of nodes allowed in a single call graph tree (prevents infinite loops)")
+	maxChildrenPerNode := flag.Int("max-children-per-node", defaultMaxChildrenPerNode, "Maximum number of children allowed per node in the call graph tree")
+	maxArgsPerFunction := flag.Int("max-args-per-function", defaultMaxArgsPerFunction, "Maximum number of arguments to process per function call in the call graph tree")
+	maxNestedArgsDepth := flag.Int("max-nested-args-depth", defaultMaxNestedArgsDepth, "Maximum depth for collecting nested argument IDs in the call graph tree")
 	outputConfig := flag.String("output-config", "", "Output the effective/used config (after CLI overrides) to this YAML file")
 	writeMetadata := flag.Bool("write-metadata", false, "Write metadata.yaml or split metadata files to disk")
+	diagramPath := flag.String("diagram", "", "Path to save the call graph diagram as HTML (optional, if set)")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "swagen - Copyright 2025 Ehab Terra\n")
-		fmt.Fprintf(os.Stderr, "Licensed under the Apache License 2.0. See LICENSE and NOTICE.\n\n")
+		fmt.Fprintf(os.Stderr, "%s\n", copyrightNotice)
+		fmt.Fprintf(os.Stderr, "%s\n\n", licenseNotice)
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
@@ -117,7 +137,6 @@ func main() {
 
 	fset := token.NewFileSet()
 	fileToInfo := make(map[*ast.File]*types.Info)
-	var allFiles []*ast.File
 
 	log.Println("Starting to load and type-check packages...")
 	cfg := &packages.Config{
@@ -145,7 +164,6 @@ func main() {
 
 		for i, f := range pkg.Syntax {
 			pkgsMetadata[pkg.PkgPath][pkg.GoFiles[i]] = f
-			allFiles = append(allFiles, f)
 			fileToInfo[f] = pkg.TypesInfo
 			importPaths[pkg.GoFiles[i]] = pkg.PkgPath // fallback, can be improved
 		}
@@ -188,7 +206,7 @@ func main() {
 
 	// After parsing flags:
 	desc := *description
-	licenseNotice := "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+	licenseNotice := fullLicenseNotice
 	if !strings.HasSuffix(desc, licenseNotice) {
 		desc += licenseNotice
 	}
@@ -230,7 +248,7 @@ func main() {
 	// Write metadata (split or combined) only if --write-metadata is set
 	if *writeMetadata {
 		if *splitMetadata {
-			if err := metadata.WriteSplitMetadata(meta, "metadata.yaml"); err != nil {
+			if err := metadata.WriteSplitMetadata(meta, defaultMetadataFile); err != nil {
 				log.Printf("Failed to write split metadata files: %v", err)
 			} else {
 				log.Println("Successfully wrote split metadata files:")
@@ -239,7 +257,7 @@ func main() {
 				log.Println("  - metadata-call-graph.yaml")
 			}
 		} else {
-			if err := metadata.WriteMetadata(meta, "metadata.yaml"); err != nil {
+			if err := metadata.WriteMetadata(meta, defaultMetadataFile); err != nil {
 				log.Printf("Failed to write metadata.yaml: %v", err)
 			} else {
 				log.Println("Successfully wrote metadata.yaml file")
@@ -263,7 +281,15 @@ func main() {
 	}
 	tree := spec.NewTrackerTree(meta, limits)
 
-	spec.GenerateCytoscapeHTML(tree.GetRoots(), "./diagram.html")
+	// Only generate diagram if diagramPath is set
+	if *diagramPath != "" {
+		err := spec.GenerateCytoscapeHTML(tree.GetRoots(), *diagramPath)
+		if err != nil {
+			log.Printf("Failed to generate diagram HTML: %v", err)
+		} else {
+			log.Printf("Diagram HTML written to %s", *diagramPath)
+		}
+	}
 
 	// --- Generate OpenAPI spec from metadata using config-driven extractor/mapper ---
 	openAPISpec, err := spec.MapMetadataToOpenAPI(tree, swagenConfig, config)

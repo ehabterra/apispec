@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	defaultScopeExported   = "exported"
+	defaultScopeUnexported = "unexported"
+)
+
 // getTypeName extracts a type name from an AST expression
 func getTypeName(expr ast.Expr) string {
 	if expr == nil {
@@ -127,9 +132,9 @@ func isExported(name string) bool {
 // getScope determines the scope of a name
 func getScope(name string) string {
 	if isExported(name) {
-		return "exported"
+		return defaultScopeExported
 	}
-	return "unexported"
+	return defaultScopeUnexported
 }
 
 // formatSignature creates a readable function signature string

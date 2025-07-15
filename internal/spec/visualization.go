@@ -5,11 +5,17 @@ import (
 	"strings"
 )
 
+const (
+	mermaidGraphHeader = "graph LR\n"
+	nodePrefix         = "node_"
+	edgePrefix         = "edge_"
+)
+
 // DrawTrackerTree generates a Mermaid graph for the tracker tree.
 func DrawTrackerTree(nodes []*TrackerNode) string {
 	var str = strings.Builder{}
 	var counter = 0
-	str.WriteString("graph LR\n")
+	str.WriteString(mermaidGraphHeader)
 	for _, node := range nodes {
 		drawNode(node, &str, &counter)
 	}
@@ -17,10 +23,10 @@ func DrawTrackerTree(nodes []*TrackerNode) string {
 }
 
 func drawNode(node *TrackerNode, str *strings.Builder, counter *int) {
-	nodeID := *counter
+	nodeID := fmt.Sprintf("%s%d", nodePrefix, *counter)
 	for _, child := range node.children {
 		*counter++
-		fmt.Fprintf(str, "  node_%d[%q] --> node_%d[%q]\n", nodeID, node.id, *counter, child.id)
+		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.id, fmt.Sprintf("%s%d", nodePrefix, *counter), child.id)
 		drawNode(child, str, counter)
 	}
 }
@@ -76,7 +82,7 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 	if node == nil {
 		return
 	}
-	nodeID := fmt.Sprintf("node_%d", *nodeCounter)
+	nodeID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
 	data.Nodes = append(data.Nodes, CytoscapeNode{
 		Data: CytoscapeNodeData{
 			ID:    nodeID,
@@ -87,7 +93,7 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 	for _, child := range node.children {
 		if child != nil {
 			*nodeCounter++
-			childID := fmt.Sprintf("node_%d", *nodeCounter)
+			childID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
 			nodeMap[child.id] = childID
 			data.Nodes = append(data.Nodes, CytoscapeNode{
 				Data: CytoscapeNodeData{
@@ -96,7 +102,7 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 					Type:  "function",
 				},
 			})
-			edgeID := fmt.Sprintf("edge_%d", *edgeCounter)
+			edgeID := fmt.Sprintf("%s%d", edgePrefix, *edgeCounter)
 			*edgeCounter++
 			data.Edges = append(data.Edges, CytoscapeEdge{
 				Data: CytoscapeEdgeData{

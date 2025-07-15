@@ -225,14 +225,12 @@ func TestMatchRequestBodyPattern_ContextAware(t *testing.T) {
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:    `^Unmarshal$`,
-					BodyArgIndex: 1,
 					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
 				{
 					CallRegex:    `^Decode$`,
-					BodyArgIndex: 0,
 					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,

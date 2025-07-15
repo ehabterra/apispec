@@ -7,6 +7,14 @@ import (
 	"strings"
 )
 
+const (
+	interfaceTypeName = "interface"
+	blankIdentifier   = "_"
+	indexScope        = "index"
+	selectorScope     = "selector"
+	rawScope          = "raw"
+)
+
 // implementsInterface checks if a struct implements an interface
 func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
 	for _, ifaceMethod := range ifaceType.Methods {

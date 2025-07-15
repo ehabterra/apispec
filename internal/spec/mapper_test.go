@@ -198,7 +198,7 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	for _, primitiveType := range primitiveTypes {
 		t.Run("primitive_"+primitiveType, func(t *testing.T) {
-			result := findTypeInMetadata(meta, primitiveType, nil)
+			result := findTypeInMetadata(meta, primitiveType)
 			if result != nil {
 				t.Errorf("Expected nil for primitive type '%s', got %v", primitiveType, result)
 			}
@@ -207,9 +207,10 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	// Test custom type - should return the type
 	t.Run("custom_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "User", nil)
+		result := findTypeInMetadata(meta, "User")
 		if result == nil {
 			t.Error("Expected User type to be found, got nil")
+			return
 		}
 		if getStringFromPool(meta, result.Name) != "User" {
 			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result.Name))
@@ -218,9 +219,10 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	// Test qualified custom type - should return the type
 	t.Run("qualified_custom_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "main-->User", nil)
+		result := findTypeInMetadata(meta, "main-->User")
 		if result == nil {
 			t.Error("Expected main-->User type to be found, got nil")
+			return
 		}
 		if getStringFromPool(meta, result.Name) != "User" {
 			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result.Name))
@@ -236,26 +238,6 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 		Packages:   make(map[string]*metadata.Package),
 	}
 
-	// Create a config with external types
-	cfg := &SwagenConfig{
-		ExternalTypes: []ExternalType{
-			{
-				Name: "primitive.ObjectID",
-				OpenAPIType: &Schema{
-					Type:   "string",
-					Format: "objectid",
-				},
-			},
-			{
-				Name: "primitive.DateTime",
-				OpenAPIType: &Schema{
-					Type:   "string",
-					Format: "date-time",
-				},
-			},
-		},
-	}
-
 	// Test external types - should return nil (not found in metadata, but recognized as external)
 	externalTypes := []string{
 		"primitive.ObjectID",
@@ -266,7 +248,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	for _, externalType := range externalTypes {
 		t.Run("external_"+externalType, func(t *testing.T) {
-			result := findTypeInMetadata(meta, externalType, cfg)
+			result := findTypeInMetadata(meta, externalType)
 			if result != nil {
 				t.Errorf("Expected nil for external type '%s', got %v", externalType, result)
 			}
@@ -275,7 +257,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	// Test unknown external type - should return nil
 	t.Run("unknown_external_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "unknown.ExternalType", cfg)
+		result := findTypeInMetadata(meta, "unknown.ExternalType")
 		if result != nil {
 			t.Errorf("Expected nil for unknown external type, got %v", result)
 		}
@@ -283,7 +265,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	// Test without config - should fall back to hardcoded types
 	t.Run("external_without_config", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "primitive.ObjectID", nil)
+		result := findTypeInMetadata(meta, "primitive.ObjectID")
 		if result != nil {
 			t.Errorf("Expected nil for external type without config, got %v", result)
 		}

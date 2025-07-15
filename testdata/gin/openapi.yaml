@@ -1,14 +1,20 @@
 openapi: 3.0.3
 info:
     title: My Awesome API
+    description: |4-
+
+        Copyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE.
+    version: 1.0.0
     contact:
         name: Ehab
-        email: support@example.com
-    version: 1.0.0
+        url: https://ehabterra.github.io/
+        email: ehabterra@hotmail.com
+    license:
+        name: ""
 paths:
-    /users:
+    /:
         get:
-            operationId: ListUsers
+            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.ListUsers
             responses:
                 "200":
                     description: OK
@@ -17,39 +23,51 @@ paths:
                             schema:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/User'
+                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                "400":
+                    description: Bad Request
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
+                                type: object
         post:
-            operationId: CreateUser
+            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.CreateUser
             requestBody:
-                description: Request body for CreateUser
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/User'
-                required: true
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
             responses:
                 "201":
                     description: Created
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/User'
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                additionalProperties: true
-                                example:
-                                    error: null
-    /users/{id}:
+    /{id}:
         get:
-            operationId: GetUser
+            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.GetUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
@@ -59,104 +77,104 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/User'
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                type: object
-                                additionalProperties: true
-                                example:
-                                    error: example
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
                 "404":
                     description: Not Found
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                additionalProperties: true
-                                example:
-                                    error: example
         put:
-            operationId: UpdateUser
+            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.UpdateUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
             requestBody:
-                description: Request body for UpdateUser
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/User'
-                required: true
+                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/User'
+                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                type: object
-                                additionalProperties: true
-                                example:
-                                    error: null
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
                 "404":
                     description: Not Found
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                additionalProperties: true
-                                example:
-                                    error: example
         delete:
-            operationId: DeleteUser
+            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.DeleteUser
             parameters:
                 - name: id
                   in: path
-                  description: 'Path parameter: id'
                   required: true
                   schema:
                     type: string
             responses:
                 "204":
                     description: No Content
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                type: object
-                                additionalProperties: true
-                                example:
-                                    error: example
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
                 "404":
                     description: Not Found
                     content:
                         application/json:
                             schema:
+                                $ref: '#/components/schemas/github.com_gin-gonic_gin.H'
+                "500":
+                    description: Internal Server Error
+                    content:
+                        application/json:
+                            schema:
                                 type: object
-                                additionalProperties: true
-                                example:
-                                    error: example
 components:
     schemas:
-        User:
+        github.com_ehabterra_swagen_testdata_gin.User:
             type: object
-            required:
-                - name
             properties:
                 id:
                     type: integer
                 name:
                     type: string
+        github.com_gin-gonic_gin.H:
+            type: object

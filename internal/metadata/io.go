@@ -9,13 +9,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultYAMLExtension       = ".yaml"
+	stringPoolSuffix           = "-string-pool.yaml"
+	packagesSuffix             = "-packages.yaml"
+	callGraphSuffix            = "-call-graph.yaml"
+	filePerm                   = 0644
+	defaultBaseFilename        = "metadata.yaml"
+	errorFailedWriteStringPool = "failed to write string pool: %w"
+	errorFailedWritePackages   = "failed to write packages: %w"
+	errorFailedWriteCallGraph  = "failed to write call graph: %w"
+	errorFailedLoadStringPool  = "failed to load string pool: %w"
+	errorFailedLoadPackages    = "failed to load packages: %w"
+	errorFailedLoadCallGraph   = "failed to load call graph: %w"
+)
+
 // WriteYAML writes any data to a YAML file
 func WriteYAML(data interface{}, filename string) error {
 	out, err := yaml.Marshal(data)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, out, 0644)
+	return os.WriteFile(filename, out, filePerm)
 }
 
 // WriteMetadata writes metadata to a YAML file
@@ -29,21 +44,21 @@ func WriteSplitMetadata(metadata *Metadata, baseFilename string) error {
 	basePath := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
 
 	// Write string pool
-	stringPoolFile := basePath + "-string-pool.yaml"
+	stringPoolFile := basePath + stringPoolSuffix
 	if err := WriteYAML(metadata.StringPool, stringPoolFile); err != nil {
-		return fmt.Errorf("failed to write string pool: %w", err)
+		return fmt.Errorf(errorFailedWriteStringPool, err)
 	}
 
 	// Write packages
-	packagesFile := basePath + "-packages.yaml"
+	packagesFile := basePath + packagesSuffix
 	if err := WriteYAML(metadata.Packages, packagesFile); err != nil {
-		return fmt.Errorf("failed to write packages: %w", err)
+		return fmt.Errorf(errorFailedWritePackages, err)
 	}
 
 	// Write call graph
-	callGraphFile := basePath + "-call-graph.yaml"
+	callGraphFile := basePath + callGraphSuffix
 	if err := WriteYAML(metadata.CallGraph, callGraphFile); err != nil {
-		return fmt.Errorf("failed to write call graph: %w", err)
+		return fmt.Errorf(errorFailedWriteCallGraph, err)
 	}
 
 	return nil
@@ -71,24 +86,24 @@ func LoadSplitMetadata(baseFilename string) (*Metadata, error) {
 	basePath := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
 
 	// Load string pool
-	stringPoolFile := basePath + "-string-pool.yaml"
+	stringPoolFile := basePath + stringPoolSuffix
 	var stringPool StringPool
 	if err := LoadYAML(stringPoolFile, &stringPool); err != nil {
-		return nil, fmt.Errorf("failed to load string pool: %w", err)
+		return nil, fmt.Errorf(errorFailedLoadStringPool, err)
 	}
 
 	// Load packages
-	packagesFile := basePath + "-packages.yaml"
+	packagesFile := basePath + packagesSuffix
 	var packages map[string]*Package
 	if err := LoadYAML(packagesFile, &packages); err != nil {
-		return nil, fmt.Errorf("failed to load packages: %w", err)
+		return nil, fmt.Errorf(errorFailedLoadPackages, err)
 	}
 
 	// Load call graph
-	callGraphFile := basePath + "-call-graph.yaml"
+	callGraphFile := basePath + callGraphSuffix
 	var callGraph []CallGraphEdge
 	if err := LoadYAML(callGraphFile, &callGraph); err != nil {
-		return nil, fmt.Errorf("failed to load call graph: %w", err)
+		return nil, fmt.Errorf(errorFailedLoadCallGraph, err)
 	}
 
 	return &Metadata{

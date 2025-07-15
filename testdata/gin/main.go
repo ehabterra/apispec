@@ -96,10 +96,16 @@ func DeleteUser(c *gin.Context) {
 
 func main() {
 	r := gin.Default()
-	r.GET("/users", ListUsers)
-	r.GET("/users/:id", GetUser)
-	r.POST("/users", CreateUser)
-	r.PUT("/users/:id", UpdateUser)
-	r.DELETE("/users/:id", DeleteUser)
+	g := r.Group("/users")
+	g.GET("/", ListUsers)
+	g.GET("/:id", GetUser)
+	UserRoutes(g)
 	r.Run(":8080")
+}
+
+func UserRoutes(g *gin.RouterGroup) {
+	g.POST("/", CreateUser)
+	g.PUT("/:id", UpdateUser)
+	g.DELETE("/:id", DeleteUser)
+
 }
