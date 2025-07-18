@@ -132,6 +132,11 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		// Handle indexed expressions like array[index] or map[key]
 		// Recursively analyze the indexed expression (X) to find function calls
 		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
+
+	case *ast.IndexListExpr:
+		// Handle generic function or type instantiations like Func[T1, T2]
+		// Recursively analyze the X field to find function calls
+		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
 	}
 	return "", "", ""
 }

@@ -272,7 +272,7 @@ func (a *CallArgument) id(sep string) string {
 
 // Call represents a function call
 type Call struct {
-	meta *Metadata
+	Meta *Metadata
 
 	Name     int `yaml:"name"`
 	Pkg      int `yaml:"pkg"`
@@ -281,7 +281,7 @@ type Call struct {
 
 // ID returns a unique identifier for the call
 func (c Call) ID() string {
-	return c.meta.StringPool.GetString(c.Pkg) + "." + c.meta.StringPool.GetString(c.Name)
+	return c.Meta.StringPool.GetString(c.Pkg) + "." + c.Meta.StringPool.GetString(c.Name)
 }
 
 // CallGraphEdge represents an edge in the call graph

@@ -1,11 +1,9 @@
 package metadata
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
-	"strconv"
 	"strings"
 )
 
@@ -651,74 +649,99 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// Build parameter-to-argument mapping
 		paramArgMap := make(map[string]CallArgument)
 		typeParamMap := make(map[string]string)
-		if typ := info.TypeOf(call.Fun); typ != nil {
-			if fn, ok := typ.(*types.Signature); ok {
-				tup := fn.Params()
-				for i := 0; i < tup.Len(); i++ {
-					field := tup.At(i)
-					if i < len(args) {
-						paramArgMap[field.Name()] = args[i]
-					}
 
-					// Handle unnamed parameters (rare, but possible)
-					unnamedIdx := 0
+		// Get the *types.Object for the function being called
+		// This is crucial for getting the *declared* generic type parameters
+		var funcObj types.Object
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			funcObj = info.ObjectOf(fun)
+		case *ast.SelectorExpr:
+			funcObj = info.ObjectOf(fun.Sel)
+		case *ast.IndexExpr: // For calls like `Func[T]()`
+			if ident, ok := fun.X.(*ast.Ident); ok {
+				funcObj = info.ObjectOf(ident)
+			} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
+				funcObj = info.ObjectOf(sel.Sel)
+			}
+		case *ast.IndexListExpr: // For calls like `Func[T1, T2]()`
+			if ident, ok := fun.X.(*ast.Ident); ok {
+				funcObj = info.ObjectOf(ident)
+			} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
+				funcObj = info.ObjectOf(sel.Sel)
+			}
+		}
+
+		if funcObj != nil {
+			if fobj, isFunc := funcObj.(*types.Func); isFunc {
+				if sig, isSig := fobj.Type().(*types.Signature); isSig {
+					// Handle regular parameters
+					tup := sig.Params()
 					for i := 0; i < tup.Len(); i++ {
-						if field.Name() == "" && i < len(args) {
-							paramArgMap["_unnamed_"+strconv.Itoa(unnamedIdx)] = args[i]
-							unnamedIdx++
-						}
-					}
-					// Handle generics (Go 1.18+)
-					// First try to extract type arguments from the call expression itself
-					extractTypeArgsFromCall := func() {
-						if idxCall, ok := call.Fun.(*ast.IndexExpr); ok {
-							typeParamMap["T"] = getTypeName(idxCall.Index)
-							fmt.Printf("DEBUG: Found IndexExpr type arg -> %s\n", getTypeName(idxCall.Index))
-						} else if idxListCall, ok := call.Fun.(*ast.IndexListExpr); ok {
-							for i, index := range idxListCall.Indices {
-								typeParamMap[fmt.Sprintf("T%d", i)] = getTypeName(index)
-								fmt.Printf("DEBUG: Found IndexListExpr type arg[%d] -> %s\n", i, getTypeName(index))
-							}
-						} else if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-							// Handle cases like validator.DecodeJSON[dtos.SendEmailRequest]
-							if idxCall, ok := sel.X.(*ast.IndexExpr); ok {
-								typeParamMap["T"] = getTypeName(idxCall.Index)
-								fmt.Printf("DEBUG: Found SelectorExpr+IndexExpr type arg -> %s\n", getTypeName(idxCall.Index))
-							} else if idxListCall, ok := sel.X.(*ast.IndexListExpr); ok {
-								for i, index := range idxListCall.Indices {
-									typeParamMap[fmt.Sprintf("T%d", i)] = getTypeName(index)
-									fmt.Printf("DEBUG: Found SelectorExpr+IndexListExpr type arg[%d] -> %s\n", i, getTypeName(index))
-								}
-							}
+						field := tup.At(i)
+						if i < len(args) {
+							paramArgMap[field.Name()] = args[i]
 						}
 					}
 
-					// Try to extract from function signature first
-					if fn.TypeParams() != nil {
-						for i := 0; i < fn.TypeParams().Len(); i++ {
-							tparam := fn.TypeParams().At(i)
-							name := tparam.Obj().Name()
-							// Try to extract type argument from call (IndexExpr/IndexListExpr)
-							if idxCall, ok := call.Fun.(*ast.IndexExpr); ok && i == 0 {
-								typeParamMap[name] = getTypeName(idxCall.Index)
-								fmt.Printf("DEBUG: Found IndexExpr type param %s -> %s\n", name, getTypeName(idxCall.Index))
-							} else if idxListCall, ok := call.Fun.(*ast.IndexListExpr); ok && i < len(idxListCall.Indices) {
-								typeParamMap[name] = getTypeName(idxListCall.Indices[i])
-								fmt.Printf("DEBUG: Found IndexListExpr type param %s -> %s\n", name, getTypeName(idxListCall.Indices[i]))
-							} else if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-								// Handle cases like validator.DecodeJSON[dtos.SendEmailRequest]
-								if idxCall, ok := sel.X.(*ast.IndexExpr); ok && i == 0 {
-									typeParamMap[name] = getTypeName(idxCall.Index)
-									fmt.Printf("DEBUG: Found SelectorExpr+IndexExpr type param %s -> %s\n", name, getTypeName(idxCall.Index))
-								} else if idxListCall, ok := sel.X.(*ast.IndexListExpr); ok && i < len(idxListCall.Indices) {
-									typeParamMap[name] = getTypeName(idxListCall.Indices[i])
-									fmt.Printf("DEBUG: Found SelectorExpr+IndexListExpr type param %s -> %s\n", name, getTypeName(idxListCall.Indices[i]))
+					// Handle generic type parameters from the *declared* function signature
+					if sig.TypeParams() != nil {
+						// Attempt to extract explicit type arguments from the call expression syntax
+						var explicitTypeArgExprs []ast.Expr
+						switch fun := call.Fun.(type) {
+						case *ast.IndexExpr:
+							explicitTypeArgExprs = []ast.Expr{fun.Index}
+						case *ast.IndexListExpr:
+							explicitTypeArgExprs = fun.Indices
+						case *ast.SelectorExpr:
+							// For cases like pkg.Func[T] or receiver.Method[T]
+							switch selX := fun.X.(type) {
+							case *ast.IndexExpr:
+								explicitTypeArgExprs = []ast.Expr{selX.Index}
+							case *ast.IndexListExpr:
+								explicitTypeArgExprs = selX.Indices
+							}
+						case *ast.Ident, *ast.ParenExpr: // Handle cases where type arguments are inferred
+							// If it's an Ident (e.g., HandleRequest(handler)) or wrapped in Parens,
+							// type arguments are inferred, not explicitly in call.Fun syntax.
+							// We will use info.Instances below to get inferred types.
+							explicitTypeArgExprs = nil // Ensure it's nil or empty
+						default:
+							explicitTypeArgExprs = nil // Default case, no explicit type arguments
+						}
+
+						// If explicit type arguments are provided, use them
+						if len(explicitTypeArgExprs) > 0 {
+							for i := 0; i < sig.TypeParams().Len(); i++ {
+								tparam := sig.TypeParams().At(i)
+								name := tparam.Obj().Name()
+
+								if i < len(explicitTypeArgExprs) {
+									typeArgExpr := explicitTypeArgExprs[i]
+									if typeOfTypeArg := info.TypeOf(typeArgExpr); typeOfTypeArg != nil {
+										typeParamMap[name] = typeOfTypeArg.String()
+									} else {
+										typeParamMap[name] = getTypeName(typeArgExpr)
+									}
+								}
+							}
+						} else {
+							// No explicit type arguments in the call syntax.
+							// This means type inference is happening.
+							// We need to get the instantiated types from the *call expression itself*.
+							if instance, ok := info.Instances[call.Fun.(*ast.Ident)]; ok {
+								if instance.TypeArgs != nil {
+									for i := 0; i < sig.TypeParams().Len(); i++ {
+										tparam := sig.TypeParams().At(i)
+										name := tparam.Obj().Name()
+										if i < instance.TypeArgs.Len() {
+											inferredType := instance.TypeArgs.At(i)
+											typeParamMap[name] = inferredType.String()
+										}
+									}
 								}
 							}
 						}
-					} else {
-						// If no type params in signature, try to extract from call expression
-						extractTypeArgsFromCall()
 					}
 				}
 			}
@@ -734,12 +757,29 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			ast.Inspect(fn, func(nd ast.Node) bool {
 				switch expr := nd.(type) {
 				case *ast.AssignStmt:
-					pos := fset.Position(fn.Pos())
-					fnInfo := fileToInfo[pkgs[calleePkg][pos.Filename]]
-					assignments := processAssignment(expr, file, fnInfo, calleePkg, fset, pool, fileToInfo, funcMap, metadata)
-					for _, assign := range assignments {
-						varName := pool.GetString(assign.VariableName)
-						assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+					// IMPORTANT: The `file` argument in processAssignment should be the file of the *callee*,
+					// not the caller. Otherwise, info.ObjectOf might return nil for objects not in the caller's file.
+					// We need to find the correct `*ast.File` object for the callee's declaration.
+					// This lookup is more complex than just using `pos.Filename` because `pkgs` is keyed by package path,
+					// and `fileToInfo` maps `*ast.File` pointers.
+					var calleeAstFile *ast.File
+					for _, f := range pkgs[calleePkg] {
+						// Simple heuristic: if the function's position is within this file, it's the one.
+						// This assumes a function declaration is entirely within one file.
+						// A more robust check might involve comparing FileSet positions.
+						if fset.Position(fn.Pos()).Filename == fset.Position(f.Pos()).Filename {
+							calleeAstFile = f
+							break
+						}
+					}
+
+					if calleeAstFile != nil {
+						fnInfo := fileToInfo[calleeAstFile]
+						assignments := processAssignment(expr, calleeAstFile, fnInfo, calleePkg, fset, pool, fileToInfo, funcMap, metadata)
+						for _, assign := range assignments {
+							varName := pool.GetString(assign.VariableName)
+							assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+						}
 					}
 				}
 				return true
@@ -750,18 +790,19 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		var calleeVarName string
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 			if ident, ok := sel.X.(*ast.Ident); ok && ident.Obj != nil {
+				// This identifies the variable name of the receiver for method calls (e.g., "myStruct.Method()")
 				calleeVarName = ident.Name
 			}
 		}
 		cgEdge := CallGraphEdge{
 			Caller: Call{
-				meta:     metadata,
+				Meta:     metadata,
 				Name:     pool.Get(callerFunc),
 				Pkg:      pool.Get(pkgName),
 				RecvType: pool.Get(callerParts),
 			},
 			Callee: Call{
-				meta:     metadata,
+				Meta:     metadata,
 				Name:     pool.Get(calleeFunc),
 				Pkg:      pool.Get(calleePkg),
 				RecvType: pool.Get(calleeParts),
