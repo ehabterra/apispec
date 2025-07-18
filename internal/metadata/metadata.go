@@ -1,9 +1,11 @@
 package metadata
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strconv"
 	"strings"
 )
 
@@ -37,12 +39,29 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 					continue
 				}
 				recvType := getTypeName(fn.Recv.List[0].Type)
+
+				// Use funcMap to get callee function declaration
+				var assignmentsInFunc = make(map[string][]Assignment)
+
+				ast.Inspect(fn, func(nd ast.Node) bool {
+					switch expr := nd.(type) {
+					case *ast.AssignStmt:
+						assignments := processAssignment(expr, file, info, pkgName, fset, pool, fileToInfo, funcMap, metadata)
+						for _, assign := range assignments {
+							varName := pool.GetString(assign.VariableName)
+							assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+						}
+					}
+					return true
+				})
+
 				m := Method{
-					Name:      pool.Get(fn.Name.Name),
-					Receiver:  pool.Get(recvType),
-					Signature: ExprToCallArgument(fn.Type, info, pkgName, fset),
-					Position:  pool.Get(getFuncPosition(fn, fset)),
-					Scope:     pool.Get(getScope(fn.Name.Name)),
+					Name:          pool.Get(fn.Name.Name),
+					Receiver:      pool.Get(recvType),
+					Signature:     ExprToCallArgument(fn.Type, info, pkgName, fset),
+					Position:      pool.Get(getFuncPosition(fn, fset)),
+					Scope:         pool.Get(getScope(fn.Name.Name)),
+					AssignmentMap: assignmentsInFunc,
 				}
 				m.SignatureStr = pool.Get(callArgToString(m.Signature))
 				allTypeMethods[recvType] = append(allTypeMethods[recvType], m)
@@ -60,7 +79,6 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 				Variables:       make(map[string]*Variable),
 				StructInstances: make([]StructInstance, 0),
 				Selectors:       make([]Selector, 0),
-				Assignments:     make([]Assignment, 0),
 				Imports:         make(map[int]int),
 			}
 
@@ -71,13 +89,13 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 			processTypes(file, info, pkgName, fset, pool, f, allTypeMethods, allTypes)
 
 			// Process functions
-			processFunctions(file, info, pkgName, fset, pool, f)
+			processFunctions(file, info, pkgName, fset, pool, f, fileToInfo, funcMap, metadata)
 
 			// Process variables and constants
-			processVariables(file, info, pkgName, fset, pool, f, constMap)
+			processVariables(file, info, pkgName, fset, pool, f)
 
 			// Process struct instances and assignments
-			processStructInstancesAndAssignments(file, info, pkgName, fset, pool, f, constMap, pkgs, fileToInfo, funcMap)
+			processStructInstancesAndAssignments(file, info, pkgName, fset, pool, f, constMap, pkgs, fileToInfo, funcMap, metadata)
 
 			// Process selectors
 			processSelectors(file, info, pkgName, fset, pool, f)
@@ -119,7 +137,7 @@ func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl
 					var key string
 					if fn.Recv == nil || len(fn.Recv.List) == 0 {
 						// Only for top-level functions, use package prefix if not main
-						if pkgName != "" && pkgName != "main" {
+						if pkgName != "" {
 							key = pkgPath + "." + fn.Name.Name
 						} else {
 							key = fn.Name.Name
@@ -158,7 +176,7 @@ func handlerName(pkgName, recvTypeName, fnName string) string {
 
 	if recvTypeName == "" {
 		// Only for top-level functions, use package prefix if not main
-		if pkgName != "" && pkgName != "main" {
+		if pkgName != "" {
 			key = pkgName + "." + fnName
 		} else {
 			key = fnName
@@ -311,7 +329,7 @@ func processInterfaceMethods(interfaceType *ast.InterfaceType, info *types.Info,
 }
 
 // processFunctions processes all function declarations in a file
-func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File) {
+func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, metadata *Metadata) {
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Recv != nil {
@@ -319,18 +337,63 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 		}
 
 		comments := getComments(fn)
+
+		// Extract type parameter names for generics
+		typeParams := []string{}
+		if fn.Type != nil && fn.Type.TypeParams != nil {
+			for _, tparam := range fn.Type.TypeParams.List {
+				for _, name := range tparam.Names {
+					typeParams = append(typeParams, name.Name)
+				}
+			}
+		}
+
+		// Extract return value origins
+		var returnVars []CallArgument
+		if fn.Body != nil {
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				ret, ok := n.(*ast.ReturnStmt)
+				if !ok {
+					return true
+				}
+				for _, expr := range ret.Results {
+					returnVars = append(returnVars, ExprToCallArgument(expr, info, pkgName, fset))
+				}
+				// For now, only record the first return statement (can be extended for control flow)
+				return false
+			})
+		}
+
+		// Use funcMap to get callee function declaration
+		var assignmentsInFunc = make(map[string][]Assignment)
+
+		ast.Inspect(fn, func(nd ast.Node) bool {
+			switch expr := nd.(type) {
+			case *ast.AssignStmt:
+				assignments := processAssignment(expr, file, info, pkgName, fset, pool, fileToInfo, funcMap, metadata)
+				for _, assign := range assignments {
+					varName := pool.GetString(assign.VariableName)
+					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+				}
+			}
+			return true
+		})
+
 		f.Functions[fn.Name.Name] = &Function{
-			Name:      pool.Get(fn.Name.Name),
-			Signature: ExprToCallArgument(fn.Type, info, pkgName, fset),
-			Position:  pool.Get(getFuncPosition(fn, fset)),
-			Scope:     pool.Get(getScope(fn.Name.Name)),
-			Comments:  pool.Get(comments),
+			Name:          pool.Get(fn.Name.Name),
+			Signature:     ExprToCallArgument(fn.Type, info, pkgName, fset),
+			Position:      pool.Get(getFuncPosition(fn, fset)),
+			Scope:         pool.Get(getScope(fn.Name.Name)),
+			Comments:      pool.Get(comments),
+			TypeParams:    typeParams,
+			ReturnVars:    returnVars,
+			AssignmentMap: assignmentsInFunc,
 		}
 	}
 }
 
 // processVariables processes all variable and constant declarations in a file
-func processVariables(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, constMap map[string]string) {
+func processVariables(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File) {
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || (genDecl.Tok != token.VAR && genDecl.Tok != token.CONST) {
@@ -373,13 +436,11 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 }
 
 // processStructInstancesAndAssignments processes struct literals and assignments
-func processStructInstancesAndAssignments(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, constMap map[string]string, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl) {
+func processStructInstancesAndAssignments(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, constMap map[string]string, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, metadata *Metadata) {
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.CompositeLit:
 			processStructInstance(x, info, pkgName, fset, pool, f, constMap)
-		case *ast.AssignStmt:
-			f.Assignments = append(f.Assignments, processAssignment(x, info, pkgName, fset, pool, pkgs, fileToInfo, funcMap)...)
 		}
 		return true
 	})
@@ -417,7 +478,7 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 }
 
 // processAssignment processes a variable assignment
-func processAssignment(assign *ast.AssignStmt, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl) []Assignment {
+func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, metadata *Metadata) []Assignment {
 	var assignments []Assignment
 
 	lhsLen := len(assign.Lhs)
@@ -436,6 +497,9 @@ func processAssignment(assign *ast.AssignStmt, info *types.Info, pkgName string,
 			rhsExpr = assign.Rhs[i]
 		}
 
+		// Find the enclosing function name for this assignment
+		funcName, _ := getEnclosingFunctionName(file, assign.Pos())
+
 		// Handle identifier assignments (var = ...)
 		switch expr := lhsExpr.(type) {
 		case *ast.Ident:
@@ -444,16 +508,29 @@ func processAssignment(assign *ast.AssignStmt, info *types.Info, pkgName string,
 				continue
 			}
 			if rhsExpr != nil {
-				_, concreteType := analyzeAssignmentValue(rhsExpr, pkgs, fileToInfo, funcMap, fset, pkgName)
+				val := ExprToCallArgument(rhsExpr, info, pkgName, fset)
+				_, concreteTypeArg := analyzeAssignmentValue(rhsExpr, info, funcName, pkgName, metadata, fset)
+				concreteType := ""
+				if concreteTypeArg != nil {
+					concreteType = concreteTypeArg.Type
+				}
 				if concreteType != "" {
-					assignments = append(assignments, Assignment{
+					assign := Assignment{
 						VariableName: pool.Get(expr.Name),
 						Pkg:          pool.Get(pkgName),
 						ConcreteType: pool.Get(concreteType),
 						Position:     pool.Get(getPosition(assign.Pos(), fset)),
 						Scope:        pool.Get(getScope(expr.Name)),
-						Value:        ExprToCallArgument(rhsExpr, info, pkgName, fset),
-					})
+						Value:        val,
+					}
+					// If RHS is a function call, record callee info
+					if callExpr, ok := rhsExpr.(*ast.CallExpr); ok {
+						calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset)
+						assign.CalleeFunc = calleeFunc
+						assign.CalleePkg = calleePkg
+						assign.ReturnIndex = 0 // For now, always first return value
+					}
+					assignments = append(assignments, assign)
 				}
 			}
 		// Handle selector assignments (obj.Field = ...)
@@ -536,17 +613,31 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 	for _, file := range files {
 		info := fileToInfo[file]
 
+		var assignVarName string
+
 		ast.Inspect(file, func(n ast.Node) bool {
 			if call, ok := n.(*ast.CallExpr); ok {
-				processCallExpression(call, file, pkgs, pkgName, fileToInfo, funcMap, fset, pool, metadata, info)
+				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info)
+				assignVarName = ""
+			} else if assign, ok := n.(*ast.AssignStmt); ok {
+				// Find which variable this call is assigned to
+				for i, rhs := range assign.Rhs {
+					if _, ok := rhs.(*ast.CallExpr); ok && i < len(assign.Lhs) {
+						if ident, ok := assign.Lhs[i].(*ast.Ident); ok {
+							assignVarName = ident.Name
+							break
+						}
+					}
+				}
 			}
+
 			return true
 		})
 	}
 }
 
 // processCallExpression processes a function call expression
-func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info) {
+func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info) {
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
@@ -557,24 +648,111 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			args[i] = ExprToCallArgument(arg, info, pkgName, fset)
 		}
 
-		// Use funcMap to get callee function declaration
-		var assignmentsInFunc []Assignment
+		// Build parameter-to-argument mapping
+		paramArgMap := make(map[string]CallArgument)
+		typeParamMap := make(map[string]string)
+		if typ := info.TypeOf(call.Fun); typ != nil {
+			if fn, ok := typ.(*types.Signature); ok {
+				tup := fn.Params()
+				for i := 0; i < tup.Len(); i++ {
+					field := tup.At(i)
+					if i < len(args) {
+						paramArgMap[field.Name()] = args[i]
+					}
+
+					// Handle unnamed parameters (rare, but possible)
+					unnamedIdx := 0
+					for i := 0; i < tup.Len(); i++ {
+						if field.Name() == "" && i < len(args) {
+							paramArgMap["_unnamed_"+strconv.Itoa(unnamedIdx)] = args[i]
+							unnamedIdx++
+						}
+					}
+					// Handle generics (Go 1.18+)
+					// First try to extract type arguments from the call expression itself
+					extractTypeArgsFromCall := func() {
+						if idxCall, ok := call.Fun.(*ast.IndexExpr); ok {
+							typeParamMap["T"] = getTypeName(idxCall.Index)
+							fmt.Printf("DEBUG: Found IndexExpr type arg -> %s\n", getTypeName(idxCall.Index))
+						} else if idxListCall, ok := call.Fun.(*ast.IndexListExpr); ok {
+							for i, index := range idxListCall.Indices {
+								typeParamMap[fmt.Sprintf("T%d", i)] = getTypeName(index)
+								fmt.Printf("DEBUG: Found IndexListExpr type arg[%d] -> %s\n", i, getTypeName(index))
+							}
+						} else if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+							// Handle cases like validator.DecodeJSON[dtos.SendEmailRequest]
+							if idxCall, ok := sel.X.(*ast.IndexExpr); ok {
+								typeParamMap["T"] = getTypeName(idxCall.Index)
+								fmt.Printf("DEBUG: Found SelectorExpr+IndexExpr type arg -> %s\n", getTypeName(idxCall.Index))
+							} else if idxListCall, ok := sel.X.(*ast.IndexListExpr); ok {
+								for i, index := range idxListCall.Indices {
+									typeParamMap[fmt.Sprintf("T%d", i)] = getTypeName(index)
+									fmt.Printf("DEBUG: Found SelectorExpr+IndexListExpr type arg[%d] -> %s\n", i, getTypeName(index))
+								}
+							}
+						}
+					}
+
+					// Try to extract from function signature first
+					if fn.TypeParams() != nil {
+						for i := 0; i < fn.TypeParams().Len(); i++ {
+							tparam := fn.TypeParams().At(i)
+							name := tparam.Obj().Name()
+							// Try to extract type argument from call (IndexExpr/IndexListExpr)
+							if idxCall, ok := call.Fun.(*ast.IndexExpr); ok && i == 0 {
+								typeParamMap[name] = getTypeName(idxCall.Index)
+								fmt.Printf("DEBUG: Found IndexExpr type param %s -> %s\n", name, getTypeName(idxCall.Index))
+							} else if idxListCall, ok := call.Fun.(*ast.IndexListExpr); ok && i < len(idxListCall.Indices) {
+								typeParamMap[name] = getTypeName(idxListCall.Indices[i])
+								fmt.Printf("DEBUG: Found IndexListExpr type param %s -> %s\n", name, getTypeName(idxListCall.Indices[i]))
+							} else if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+								// Handle cases like validator.DecodeJSON[dtos.SendEmailRequest]
+								if idxCall, ok := sel.X.(*ast.IndexExpr); ok && i == 0 {
+									typeParamMap[name] = getTypeName(idxCall.Index)
+									fmt.Printf("DEBUG: Found SelectorExpr+IndexExpr type param %s -> %s\n", name, getTypeName(idxCall.Index))
+								} else if idxListCall, ok := sel.X.(*ast.IndexListExpr); ok && i < len(idxListCall.Indices) {
+									typeParamMap[name] = getTypeName(idxListCall.Indices[i])
+									fmt.Printf("DEBUG: Found SelectorExpr+IndexListExpr type param %s -> %s\n", name, getTypeName(idxListCall.Indices[i]))
+								}
+							}
+						}
+					} else {
+						// If no type params in signature, try to extract from call expression
+						extractTypeArgsFromCall()
+					}
+				}
+			}
+		}
+
 		funName := handlerName(calleePkg, calleeParts, calleeFunc)
 		funcName := strings.TrimPrefix(funName, "*")
-		fn, ok := funcMap[funcName]
-		if ok {
+
+		// Use funcMap to get callee function declaration
+		var assignmentsInFunc = make(map[string][]Assignment)
+
+		if fn, ok := funcMap[funcName]; ok {
 			ast.Inspect(fn, func(nd ast.Node) bool {
 				switch expr := nd.(type) {
 				case *ast.AssignStmt:
 					pos := fset.Position(fn.Pos())
 					fnInfo := fileToInfo[pkgs[calleePkg][pos.Filename]]
-					assignmentsInFunc = append(assignmentsInFunc, processAssignment(expr, fnInfo, calleePkg, fset, pool, pkgs, fileToInfo, funcMap)...)
+					assignments := processAssignment(expr, file, fnInfo, calleePkg, fset, pool, fileToInfo, funcMap, metadata)
+					for _, assign := range assignments {
+						varName := pool.GetString(assign.VariableName)
+						assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+					}
 				}
 				return true
 			})
 		}
 
 		// Create the call graph edge
+		var calleeVarName string
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && ident.Obj != nil {
+				calleeVarName = ident.Name
+			}
+		}
 		cgEdge := CallGraphEdge{
 			Caller: Call{
 				meta:     metadata,
@@ -588,10 +766,14 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 				Pkg:      pool.Get(calleePkg),
 				RecvType: pool.Get(calleeParts),
 			},
-			Position:    int(call.Pos()),
-			Args:        args,
-			Assignments: assignmentsInFunc,
-			meta:        metadata,
+			Position:          int(call.Pos()),
+			Args:              args,
+			AssignmentMap:     assignmentsInFunc,
+			ParamArgMap:       paramArgMap,
+			TypeParamMap:      typeParamMap,
+			CalleeVarName:     calleeVarName,
+			CalleeRecvVarName: assignVarName,
+			meta:              metadata,
 		}
 		metadata.CallGraph = append(metadata.CallGraph, cgEdge)
 	}

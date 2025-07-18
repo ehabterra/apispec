@@ -7,14 +7,6 @@ import (
 	"strings"
 )
 
-const (
-	interfaceTypeName = "interface"
-	blankIdentifier   = "_"
-	indexScope        = "index"
-	selectorScope     = "selector"
-	rawScope          = "raw"
-)
-
 // implementsInterface checks if a struct implements an interface
 func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
 	for _, ifaceMethod := range ifaceType.Methods {
@@ -50,16 +42,6 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos) (string, string) {
 		}
 	}
 	return "", ""
-}
-
-// getDefaultImportName returns the default import name for an import path (last non-version segment)
-func getFilePkgName(pkgs map[string]map[string]*ast.File, importPath string) string {
-	if pkg, ok := pkgs[importPath]; ok {
-		for _, file := range pkg {
-			return file.Name.Name
-		}
-	}
-	return ""
 }
 
 // getDefaultImportName returns the default import name for an import path (last non-version segment)
@@ -145,6 +127,11 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 
 	case *ast.CallExpr:
 		return getCalleeFunctionNameAndPackage(x.Fun, file, pkgName, fileToInfo, funcMap, fset)
+
+	case *ast.IndexExpr:
+		// Handle indexed expressions like array[index] or map[key]
+		// Recursively analyze the indexed expression (X) to find function calls
+		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
 	}
 	return "", "", ""
 }
@@ -165,29 +152,196 @@ func getReceiverTypeString(t types.Type) string {
 	}
 }
 
-// analyzeAssignmentValue analyzes the value being assigned to determine concrete types
-func analyzeAssignmentValue(expr ast.Expr, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pkgName string) (string, string) {
+// analyzeAssignmentValue analyzes the value being assigned to determine concrete types using full metadata tracing
+func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pkgName string, metadata *Metadata, fset *token.FileSet) (string, *CallArgument) {
+	if expr == nil {
+		return pkgName, nil
+	}
+
+	// Use type info if available (works for stdlib and user code)
+	if info != nil {
+		if typ := info.TypeOf(expr); typ != nil {
+			return pkgName, &CallArgument{Kind: kindIdent, Type: typ.String()}
+		}
+	}
+
 	switch e := expr.(type) {
 	case *ast.Ident:
-		// Simple identifier - return the type name
-		return pkgName, getTypeName(e)
+		// Use TraceVariableOrigin for identifiers
+		_, originPkg, originType := TraceVariableOrigin(e.Name, funcName, pkgName, metadata)
+		return originPkg, originType
 
 	case *ast.SelectorExpr:
-		// Package-qualified type - simplified
-		return pkgName, getTypeName(e)
+		// Try to resolve selector as var.field or package.type
+		if ident, ok := e.X.(*ast.Ident); ok {
+			// Try tracing the base identifier
+			_, basePkg, baseType := TraceVariableOrigin(ident.Name, funcName, pkgName, metadata)
+			return basePkg, baseType
+		}
+		// Fallback: just get type name
+		return pkgName, &CallArgument{Kind: kindIdent, Type: getTypeName(e)}
 
 	case *ast.CallExpr:
-		// Function call - try to determine return type
+		// For function calls, try to trace the return value
+		if funIdent, ok := e.Fun.(*ast.Ident); ok {
+			// Direct function call
+			_, originPkg, originType := TraceVariableOrigin(funIdent.Name, funcName, pkgName, metadata)
+			return originPkg, originType
+		}
 		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
-			// Look for constructor patterns like NewType()
-			if strings.HasPrefix(sel.Sel.Name, "New") {
-				typeName := strings.TrimPrefix(sel.Sel.Name, "New")
-				return pkgName, typeName
+			// Method or package function call
+			if _, ok := sel.X.(*ast.Ident); ok {
+				_, originPkg, originType := TraceVariableOrigin(sel.Sel.Name, funcName, pkgName, metadata)
+				return originPkg, originType
 			}
 		}
-		return pkgName, getTypeName(e)
+
+		callType := ExprToCallArgument(e, info, pkgName, fset)
+		// Fallback: just get type name
+		return pkgName, &callType
+
+	case *ast.TypeAssertExpr:
+		// Type assertion: try to get asserted type
+		if e.Type != nil {
+			callType := ExprToCallArgument(e.Type, info, pkgName, fset)
+			return pkgName, &callType
+		}
+		return pkgName, &CallArgument{Kind: kindIdent, Type: "interface{}"}
+
+	case *ast.StarExpr:
+		// Pointer dereference: trace the base
+		return analyzeAssignmentValue(e.X, info, funcName, pkgName, metadata, fset)
+
+	case *ast.CompositeLit:
+		// Struct or array literal: get type name
+		callType := ExprToCallArgument(e.Type, info, pkgName, fset)
+		return pkgName, &callType
 
 	default:
-		return pkgName, getTypeName(e)
+		callType := ExprToCallArgument(e, info, pkgName, fset)
+		return pkgName, &callType
 	}
+}
+
+// TraceVariableOrigin recursively traces the origin and type of a variable/parameter through the call graph.
+// It supports cross-file and cross-package tracing.
+// Returns: origin variable/parameter name, package, and type (if resolvable).
+func TraceVariableOrigin(
+	varName string,
+	funcName string,
+	pkgName string,
+	metadata *Metadata,
+) (originVar string, originPkg string, originType *CallArgument) {
+	visited := make(map[string]struct{})
+	return traceVariableOriginHelper(varName, funcName, pkgName, metadata, visited)
+}
+
+func traceVariableOriginHelper(
+	varName string,
+	funcName string,
+	pkgName string,
+	metadata *Metadata,
+	visited map[string]struct{},
+) (originVar string, originPkg string, originType *CallArgument) {
+	key := pkgName + "." + funcName + ":" + varName
+	if _, ok := visited[key]; ok {
+		return varName, pkgName, nil // Prevent infinite recursion
+	}
+	visited[key] = struct{}{}
+
+	funcNameIndex := metadata.StringPool.Get(funcName)
+	pkgNameIndex := metadata.StringPool.Get(pkgName)
+
+	// Look for a call graph edge where this function is the callee
+	for _, edge := range metadata.CallGraph {
+		if edge.Callee.Name == funcNameIndex && edge.Callee.Pkg == pkgNameIndex {
+			// Type param (generic)
+			if concrete, ok := edge.TypeParamMap[varName]; ok && concrete != "" {
+				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: concrete}
+			}
+
+			// See if this parameter is mapped
+			if arg, ok := edge.ParamArgMap[varName]; ok {
+				switch arg.Kind {
+				case kindIdent:
+					callerName := metadata.StringPool.GetString(edge.Caller.Name)
+					callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
+					return traceVariableOriginHelper(arg.Name, callerName, callerPkg, metadata, visited)
+				case kindUnary, kindStar:
+					if arg.X != nil {
+						callerName := metadata.StringPool.GetString(edge.Caller.Name)
+						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
+						return traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+					}
+				case kindSelector:
+					if arg.X != nil {
+						callerName := metadata.StringPool.GetString(edge.Caller.Name)
+						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
+						baseVar, basePkg, baseType := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+						return baseVar + "." + arg.Sel, basePkg, baseType
+					}
+				case kindCall:
+					if arg.Fun != nil {
+						callerName := metadata.StringPool.GetString(edge.Caller.Name)
+						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
+						return traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
+					}
+				case kindTypeAssert:
+					// For type assertions, use the asserted type as the concrete type
+					if arg.Fun != nil && arg.Fun.Type != "" {
+						return varName, pkgName, arg.Fun
+					}
+				default:
+					if arg.Kind != "" {
+						return arg.Name, pkgName, &arg
+					}
+				}
+			}
+
+			break // No need to search again for another edge
+		}
+	}
+
+	// Try to find assignment in the same pkg
+	if pkg, ok := metadata.Packages[pkgName]; ok {
+		for _, file := range pkg.Files {
+			if v, ok := file.Variables[varName]; ok {
+				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: metadata.StringPool.GetString(v.Type)}
+			}
+
+			if fn, ok := file.Functions[funcName]; ok {
+				if assigns, ok := fn.AssignmentMap[varName]; ok && len(assigns) > 0 {
+					// Use the most recent assignment (last in slice)
+					assign := assigns[len(assigns)-1]
+					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS
+					if assign.Value.Kind == kindIdent && assign.Value.Name != varName {
+						return traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+					}
+					// If the assignment is from a function call, follow the return value
+					if assign.CalleeFunc != "" && assign.CalleePkg != "" {
+						calleePkg, ok := metadata.Packages[assign.CalleePkg]
+						if ok {
+							for _, calleeFile := range calleePkg.Files {
+								if calleeFn, ok := calleeFile.Functions[assign.CalleeFunc]; ok {
+									retIdx := assign.ReturnIndex
+									if retIdx < len(calleeFn.ReturnVars) {
+										retArg := calleeFn.ReturnVars[retIdx]
+										if retArg.Kind == kindIdent && retArg.Name != "" {
+											return traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+										}
+										// For literals or other expressions, return as is
+										return retArg.Name, assign.CalleePkg, &retArg
+									}
+								}
+							}
+						}
+					}
+					return varName, pkgName, &assign.Value
+				}
+			}
+		}
+	}
+
+	// Fallback: return as is
+	return varName, pkgName, nil
 }

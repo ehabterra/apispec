@@ -12,8 +12,10 @@ info:
     license:
         name: ""
 paths:
-    /:
+    /users/:
         get:
+            tags:
+                - /users
             operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.ListUsers
             responses:
                 "200":
@@ -37,6 +39,8 @@ paths:
                             schema:
                                 type: object
         post:
+            tags:
+                - /users
             operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.CreateUser
             requestBody:
                 content:
@@ -62,8 +66,10 @@ paths:
                         application/json:
                             schema:
                                 type: object
-    /{id}:
+    /users/{id}:
         get:
+            tags:
+                - /users
             operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.GetUser
             parameters:
                 - name: id
@@ -97,6 +103,8 @@ paths:
                             schema:
                                 type: object
         put:
+            tags:
+                - /users
             operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.UpdateUser
             parameters:
                 - name: id
@@ -135,6 +143,8 @@ paths:
                             schema:
                                 type: object
         delete:
+            tags:
+                - /users
             operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.DeleteUser
             parameters:
                 - name: id

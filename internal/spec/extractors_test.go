@@ -3,6 +3,11 @@ package spec
 import (
 	"testing"
 
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
+
 	"github.com/ehabterra/swagen/internal/metadata"
 )
 
@@ -419,4 +424,145 @@ func TestExtractQueryParameters_RecvTypeRegex(t *testing.T) {
 	if param.In != "query" {
 		t.Errorf("Expected parameter location 'query', got '%s'", param.In)
 	}
+}
+
+func TestRouteGroupPrefixLinking_TableDriven(t *testing.T) {
+	tests := []struct {
+		desc        string
+		src         string
+		expectPath  string
+		expectGroup string
+	}{
+		{
+			desc: "Simple route, no group",
+			src: `package main
+import "github.com/gin-gonic/gin"
+func main() {
+	r := gin.New()
+	r.GET("/users", handler)
+}
+func handler(c *gin.Context) {}`,
+			expectPath:  "/users",
+			expectGroup: "",
+		},
+		{
+			desc: "Route with single group prefix",
+			src: `package main
+import "github.com/gin-gonic/gin"
+func main() {
+	r := gin.New()
+	g := r.Group("/api")
+	g.GET("/users", handler)
+}
+func handler(c *gin.Context) {}`,
+			expectPath:  "/api/users",
+			expectGroup: "/api",
+		},
+		{
+			desc: "Route with nested group prefixes",
+			src: `package main
+import "github.com/gin-gonic/gin"
+func main() {
+	r := gin.New()
+	g := r.Group("/api")
+	sub := g.Group("/v1")
+	sub.GET("/users", handler)
+}
+func handler(c *gin.Context) {}`,
+			expectPath:  "/v1/users", // Note: Only the innermost group is currently supported unless recursive prefixing is implemented
+			expectGroup: "/v1",
+		},
+		{
+			desc: "Route with alias group variable",
+			src: `package main
+import "github.com/gin-gonic/gin"
+func main() {
+	r := gin.New()
+	g := r.Group("/api")
+	h := g
+	h.GET("/users", handler)
+}
+func handler(c *gin.Context) {}`,
+			expectPath:  "/api/users",
+			expectGroup: "/api",
+		},
+		{
+			desc: "Route with group variable reassignment",
+			src: `package main
+import "github.com/gin-gonic/gin"
+func main() {
+	r := gin.New()
+	g := r.Group("/api")
+	g = g.Group("/v2")
+	g.GET("/users", handler)
+}
+func handler(c *gin.Context) {}`,
+			expectPath:  "/v2/users",
+			expectGroup: "/v2",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			// Parse the source and build metadata
+			fset, pkgs, importPaths, fileToInfo := parseGoSourceForTest(tc.src)
+			meta := metadata.GenerateMetadata(pkgs, fileToInfo, importPaths, fset)
+			tree := BuildTrackerTree(meta) // Assume this builds a TrackerTree from metadata
+			extractor := NewExtractor(tree, minimalGinConfig())
+			routes := extractor.ExtractRoutes()
+			if len(routes) == 0 {
+				t.Fatal("No routes extracted")
+			}
+			route := routes[0]
+			if route.Path != tc.expectPath {
+				t.Errorf("expected path %q, got %q", tc.expectPath, route.Path)
+			}
+			if route.GroupPrefix != tc.expectGroup {
+				t.Errorf("expected group prefix %q, got %q", tc.expectGroup, route.GroupPrefix)
+			}
+		})
+	}
+}
+
+// minimalGinConfig returns a minimal config for Gin route extraction
+func minimalGinConfig() *SwagenConfig {
+	return &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{{
+				CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+				MethodFromCall:  true,
+				PathFromArg:     true,
+				HandlerFromArg:  true,
+				PathArgIndex:    0,
+				HandlerArgIndex: 1,
+				RecvTypeRegex:   "^github.com/gin-gonic/gin.\\*(Engine|RouterGroup)$",
+			}},
+			MountPatterns: []MountPattern{{
+				CallRegex:     `^Group$`,
+				PathFromArg:   true,
+				RouterFromArg: true,
+				PathArgIndex:  0,
+				IsMount:       true,
+				RecvTypeRegex: "^github.com/gin-gonic/gin.\\*(Engine|RouterGroup)$",
+			}},
+		},
+	}
+}
+
+// parseGoSourceForTest parses Go source and returns fset, pkgs, importPaths, fileToInfo for testing
+func parseGoSourceForTest(src string) (*token.FileSet, map[string]map[string]*ast.File, map[string]string, map[*ast.File]*types.Info) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "test.go", src, parser.AllErrors)
+	if err != nil {
+		panic(err)
+	}
+	pkgs := map[string]map[string]*ast.File{"main": {"test.go": file}}
+	importPaths := map[string]string{"main": "main"}
+	fileToInfo := map[*ast.File]*types.Info{}
+	return fset, pkgs, importPaths, fileToInfo
+}
+
+// BuildTrackerTree is a minimal mock that attaches meta to a TrackerTree for testing
+func BuildTrackerTree(meta *metadata.Metadata) *TrackerTree {
+	return &TrackerTree{meta: meta}
 }

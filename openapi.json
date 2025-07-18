@@ -1,0 +1,18 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Generated API",
+    "description": "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Ehab",
+      "url": "https://ehabterra.github.io/",
+      "email": "ehabterra@hotmail.com"
+    },
+    "license": {
+      "name": ""
+    }
+  },
+  "paths": {},
+  "components": {}
+}

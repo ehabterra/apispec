@@ -66,9 +66,20 @@ func (e *Extractor) ExtractRoutes() []RouteInfo {
 
 // traverseForRoutes recursively traverses the TrackerTree to extract routes, handling mounts and routes.
 func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo) {
+	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
+}
+
+func (e *Extractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
+
+	// Prevent infinite recursion by tracking visited nodes
+	nodeID := node.id
+	if visited[nodeID] {
+		return
+	}
+	visited[nodeID] = true
 
 	// Check if this node is a mount
 	if mountPattern, ok := e.matchMountPattern(node); ok {
@@ -84,40 +95,79 @@ func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mount
 		// If this mount call has a router argument that is a function call, record the mapping
 		if mountPattern.RouterFromArg && len(node.CallGraphEdge.Args) > mountPattern.RouterArgIndex {
 			routerArg := node.CallGraphEdge.Args[mountPattern.RouterArgIndex]
-			if routerArg.Kind == kindIdent || routerArg.Kind == kindField {
-				// Assignment tracking: look up the assignment for this variable/field
-				assignFunc := e.findAssignmentFunction(routerArg)
-				if assignFunc != nil {
-					// Apply BFT
-					var (
-						id         = assignFunc.ID()
-						targetNode *TrackerNode
-						queue      = e.tree.roots
+			// --- Integration: Trace router/group origin ---
+			switch routerArg.Kind {
+			case kindIdent:
+				_, _, _ = metadata.TraceVariableOrigin(
+					routerArg.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+			case kindUnary, kindStar:
+				if routerArg.X != nil {
+					_, _, _ = metadata.TraceVariableOrigin(
+						routerArg.X.Name,
+						e.getString(node.Caller.Name),
+						e.getString(node.Caller.Pkg),
+						e.tree.meta,
 					)
+				}
+			case kindSelector:
+				if routerArg.X != nil {
+					_, _, _ = metadata.TraceVariableOrigin(
+						routerArg.X.Name,
+						e.getString(node.Caller.Name),
+						e.getString(node.Caller.Pkg),
+						e.tree.meta,
+					)
+				}
+			case kindCall:
+				if routerArg.Fun != nil {
+					_, _, _ = metadata.TraceVariableOrigin(
+						routerArg.Fun.Name,
+						e.getString(node.Caller.Name),
+						e.getString(node.Caller.Pkg),
+						e.tree.meta,
+					)
+				}
+			case kindTypeAssert:
+				if routerArg.Fun != nil && routerArg.Fun.Type != "" {
+					// No further tracing needed, type is asserted
+				}
+			}
+			// Assignment tracking: look up the assignment for this variable/field
+			assignFunc := e.findAssignmentFunction(routerArg)
+			if assignFunc != nil {
+				// Apply BFT
+				var (
+					id         = assignFunc.ID()
+					targetNode *TrackerNode
+					queue      = e.tree.roots
+				)
 
-					for len(queue) > 0 {
-						nd := queue[0]
-						queue = queue[1:] // dequeue
+				for len(queue) > 0 {
+					nd := queue[0]
+					queue = queue[1:] // dequeue
 
-						if nd.id == id {
-							targetNode = nd
-							queue = nil
-							break
-						}
-
-						queue = append(queue, nd.children...)
+					if nd.id == id {
+						targetNode = nd
+						queue = nil
+						break
 					}
 
-					if targetNode != nil {
-						for _, child := range targetNode.children {
-							var newTags []string
-							if mountPath != "" {
-								newTags = []string{mountPath}
-							} else {
-								newTags = mountTags
-							}
-							e.traverseForRoutes(child, mountPath, newTags, routes)
+					queue = append(queue, nd.children...)
+				}
+
+				if targetNode != nil {
+					for _, child := range targetNode.children {
+						var newTags []string
+						if mountPath != "" {
+							newTags = []string{mountPath}
+						} else {
+							newTags = mountTags
 						}
+						e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
 					}
 				}
 			}
@@ -130,7 +180,7 @@ func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mount
 			} else {
 				newTags = mountTags
 			}
-			e.traverseForRoutes(child, mountPath, newTags, routes)
+			e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
 		}
 
 		return
@@ -169,7 +219,7 @@ func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mount
 
 	// Otherwise, keep traversing
 	for _, child := range node.children {
-		e.traverseForRoutes(child, mountPath, mountTags, routes)
+		e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
 	}
 }
 
@@ -186,6 +236,9 @@ type RouteInfo struct {
 	Request  *RequestInfo
 	Response map[string]*ResponseInfo
 	Params   []Parameter
+
+	// Resolved router group prefix (if any)
+	GroupPrefix string
 }
 
 // IsValid checks if the route info is valid
@@ -221,6 +274,34 @@ func (e *Extractor) extractRouteFromNode(node *TrackerNode, pattern RoutePattern
 	}
 
 	e.extractRouteDetailsFromNode(node, pattern, &routeInfo)
+
+	// --- Integration: Trace handler origin/type ---
+	if pattern.HandlerFromArg && len(node.CallGraphEdge.Args) > pattern.HandlerArgIndex {
+		handlerArg := node.CallGraphEdge.Args[pattern.HandlerArgIndex]
+		if handlerArg.Kind == kindIdent {
+			// Use TraceVariableOrigin to resolve handler
+			originVar, originPkg, originType := metadata.TraceVariableOrigin(
+				handlerArg.Name,
+				e.getString(node.Caller.Name),
+				e.getString(node.Caller.Pkg),
+				e.tree.meta,
+			)
+			if originVar != "" {
+				routeInfo.Handler = originVar
+			}
+			if originPkg != "" {
+				routeInfo.Package = originPkg
+			}
+
+			var originTypeStr string
+			if originType != nil {
+				originTypeStr = e.callArgToString(*originType, nil)
+			}
+			if originTypeStr != "" {
+				routeInfo.Summary = originTypeStr // Optionally store type info for debugging
+			}
+		}
+	}
 
 	// Extract request body information
 	routeInfo.Request = e.extractRequestInfoFromNode(node, &routeInfo)
@@ -277,7 +358,89 @@ func (e *Extractor) extractRequestBodyDetailsFromNode(node *TrackerNode, pattern
 		ContentType: e.cfg.Defaults.RequestContentType,
 	}
 	if pattern.TypeFromArg && len(node.CallGraphEdge.Args) > pattern.TypeArgIndex {
-		reqInfo.BodyType = e.callArgToString(node.CallGraphEdge.Args[pattern.TypeArgIndex], nil)
+		arg := node.CallGraphEdge.Args[pattern.TypeArgIndex]
+		bodyType := e.callArgToString(arg, nil)
+		// --- Integration: Trace request body type origin ---
+		switch arg.Kind {
+		case kindIdent:
+			_, _, originType := metadata.TraceVariableOrigin(
+				arg.Name,
+				e.getString(node.Caller.Name),
+				e.getString(node.Caller.Pkg),
+				e.tree.meta,
+			)
+			var originTypeStr string
+			if originType != nil {
+				originTypeStr = e.callArgToString(*originType, nil)
+			}
+
+			if originTypeStr != "" {
+				bodyType = originTypeStr
+			}
+		case kindUnary, kindStar:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindSelector:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindCall:
+			if arg.Fun != nil {
+				// Recursively trace the function call's return value as a variable
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.Fun.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindTypeAssert:
+			if arg.Fun != nil && arg.Fun.Type != "" {
+				bodyType = arg.Fun.Type
+			}
+		}
+		// If the resolved type is a type parameter, try to resolve it using TypeParamMap
+		if edge, ok := e.findCallGraphEdgeForNode(node); ok && bodyType != "" {
+			if concrete, found := edge.TypeParamMap[bodyType]; found && concrete != "" {
+				bodyType = concrete
+			}
+		}
+		reqInfo.BodyType = bodyType
 		if pattern.Deref && strings.HasPrefix(reqInfo.BodyType, "*") {
 			reqInfo.BodyType = strings.TrimPrefix(reqInfo.BodyType, "*")
 		}
@@ -318,7 +481,89 @@ func (e *Extractor) extractResponseDetailsFromNode(node *TrackerNode, pattern Re
 		}
 	}
 	if pattern.TypeFromArg && len(node.CallGraphEdge.Args) > pattern.TypeArgIndex {
-		respInfo.BodyType = e.callArgToString(node.CallGraphEdge.Args[pattern.TypeArgIndex], nil)
+		arg := node.CallGraphEdge.Args[pattern.TypeArgIndex]
+		bodyType := e.callArgToString(arg, nil)
+		// --- Integration: Trace response body type origin ---
+		switch arg.Kind {
+		case kindIdent:
+			_, _, originType := metadata.TraceVariableOrigin(
+				arg.Name,
+				e.getString(node.Caller.Name),
+				e.getString(node.Caller.Pkg),
+				e.tree.meta,
+			)
+			var originTypeStr string
+			if originType != nil {
+				originTypeStr = e.callArgToString(*originType, nil)
+			}
+
+			if originTypeStr != "" {
+				bodyType = originTypeStr
+			}
+		case kindUnary, kindStar:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindSelector:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindCall:
+			if arg.Fun != nil {
+				// Recursively trace the function call's return value as a variable
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.Fun.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					bodyType = originTypeStr
+				}
+			}
+		case kindTypeAssert:
+			if arg.Fun != nil && arg.Fun.Type != "" {
+				bodyType = arg.Fun.Type
+			}
+		}
+		// If the resolved type is a type parameter, try to resolve it using TypeParamMap
+		if edge, ok := e.findCallGraphEdgeForNode(node); ok && bodyType != "" {
+			if concrete, found := edge.TypeParamMap[bodyType]; found && concrete != "" {
+				bodyType = concrete
+			}
+		}
+		respInfo.BodyType = bodyType
 		if pattern.Deref && strings.HasPrefix(respInfo.BodyType, "*") {
 			respInfo.BodyType = strings.TrimPrefix(respInfo.BodyType, "*")
 		}
@@ -353,7 +598,88 @@ func (e *Extractor) extractParameterDetailsFromNode(node *TrackerNode, pattern P
 		param.Name = e.callArgToString(node.CallGraphEdge.Args[pattern.ParamArgIndex], nil)
 	}
 	if pattern.TypeFromArg && len(node.CallGraphEdge.Args) > pattern.TypeArgIndex {
-		paramType := e.callArgToString(node.CallGraphEdge.Args[pattern.TypeArgIndex], nil)
+		arg := node.CallGraphEdge.Args[pattern.TypeArgIndex]
+		paramType := e.callArgToString(arg, nil)
+		// --- Integration: Trace parameter type origin ---
+		switch arg.Kind {
+		case kindIdent:
+			_, _, originType := metadata.TraceVariableOrigin(
+				arg.Name,
+				e.getString(node.Caller.Name),
+				e.getString(node.Caller.Pkg),
+				e.tree.meta,
+			)
+			var originTypeStr string
+			if originType != nil {
+				originTypeStr = e.callArgToString(*originType, nil)
+			}
+
+			if originTypeStr != "" {
+				paramType = originTypeStr
+			}
+		case kindUnary, kindStar:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					paramType = originTypeStr
+				}
+			}
+		case kindSelector:
+			if arg.X != nil {
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.X.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					paramType = originTypeStr
+				}
+			}
+		case kindCall:
+			if arg.Fun != nil {
+				// Recursively trace the function call's return value as a variable
+				_, _, originType := metadata.TraceVariableOrigin(
+					arg.Fun.Name,
+					e.getString(node.Caller.Name),
+					e.getString(node.Caller.Pkg),
+					e.tree.meta,
+				)
+				var originTypeStr string
+				if originType != nil {
+					originTypeStr = e.callArgToString(*originType, nil)
+				}
+
+				if originTypeStr != "" {
+					paramType = originTypeStr
+				}
+			}
+		case kindTypeAssert:
+			if arg.Fun != nil && arg.Fun.Type != "" {
+				paramType = arg.Fun.Type
+			}
+		}
+		// If the resolved type is a type parameter, try to resolve it using TypeParamMap
+		if edge, ok := e.findCallGraphEdgeForNode(node); ok && paramType != "" {
+			if concrete, found := edge.TypeParamMap[paramType]; found && concrete != "" {
+				paramType = concrete
+			}
+		}
 		if pattern.Deref && strings.HasPrefix(paramType, "*") {
 			paramType = strings.TrimPrefix(paramType, "*")
 		}
@@ -1020,22 +1346,49 @@ func (e *Extractor) findAssignmentFunction(arg metadata.CallArgument) *metadata.
 	// Look up for calls that assign to this argument
 	// Return the function name for the argument that should be used for mount instead of the arg.
 	for _, edge := range e.tree.meta.CallGraph {
-		for _, assign := range edge.Assignments {
-			varName := e.getString(assign.VariableName)
-			varType := e.getString(assign.ConcreteType)
-			varPkg := e.getString(assign.Pkg)
+		for _, varAssignments := range edge.AssignmentMap {
+			for _, assign := range varAssignments {
+				varName := e.getString(assign.VariableName)
+				varType := e.getString(assign.ConcreteType)
+				varPkg := e.getString(assign.Pkg)
 
-			if varName == arg.Name && varPkg == arg.Pkg && varType == arg.X.Type {
-				// Get the function name directly (it's already a string)
-				// TODO: search for argument function that is containing the routes and pass it directly
-				// by searching for callee as a caller
-				for _, targetArg := range edge.Args {
-					if targetArg.Kind == kindCall && targetArg.Fun != nil {
-						return targetArg.Fun
+				if varName == arg.Name && varPkg == arg.Pkg && varType == arg.X.Type {
+					// Get the function name directly (it's already a string)
+					// TODO: search for argument function that is containing the routes and pass it directly
+					// by searching for callee as a caller
+					for _, targetArg := range edge.Args {
+						if targetArg.Kind == kindCall && targetArg.Fun != nil {
+							return targetArg.Fun
+						}
 					}
 				}
 			}
 		}
 	}
 	return nil
+}
+
+// Add helper to find the call graph edge for a node
+func (e *Extractor) findCallGraphEdgeForNode(node *TrackerNode) (*metadata.CallGraphEdge, bool) {
+	if node == nil || node.CallGraphEdge == nil {
+		return nil, false
+	}
+	return node.CallGraphEdge, true
+}
+
+// Helper to extract a string representation from a *metadata.CallArgument for type usage
+func extractTypeString(arg *metadata.CallArgument) string {
+	if arg == nil {
+		return ""
+	}
+	if arg.Type != "" {
+		return arg.Type
+	}
+	if arg.Name != "" {
+		return arg.Name
+	}
+	if arg.Value != "" {
+		return arg.Value
+	}
+	return ""
 }

@@ -312,7 +312,7 @@ func DefaultChiConfig() *SwagenConfig {
 				},
 				{
 					CallRegex:     `^Encode$`,
-					TypeArgIndex:  1,
+					TypeArgIndex:  0,
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
@@ -746,7 +746,7 @@ func DefaultHTTPConfig() *SwagenConfig {
 					HandlerFromArg:  true,
 					PathArgIndex:    0,
 					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^net/http\\.\\*ServeMux$",
+					RecvTypeRegex:   "^net/http(\\.\\*ServeMux)?$",
 				},
 				{
 					CallRegex:       `^Handle$`,
@@ -812,7 +812,7 @@ func DefaultHTTPConfig() *SwagenConfig {
 		Defaults: Defaults{
 			RequestContentType:  defaultRequestContentType,
 			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      200,
+			ResponseStatus:      http.StatusOK,
 		},
 	}
 }

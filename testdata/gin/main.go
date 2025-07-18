@@ -103,9 +103,9 @@ func main() {
 	r.Run(":8080")
 }
 
-func UserRoutes(g *gin.RouterGroup) {
-	g.POST("/", CreateUser)
-	g.PUT("/:id", UpdateUser)
-	g.DELETE("/:id", DeleteUser)
+func UserRoutes(rg *gin.RouterGroup) {
+	rg.POST("/", CreateUser)
+	rg.PUT("/:id", UpdateUser)
+	rg.DELETE("/:id", DeleteUser)
 
 }

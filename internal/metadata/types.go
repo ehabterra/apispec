@@ -56,6 +56,11 @@ func (sp *StringPool) Get(s string) int {
 	if idx, exists := sp.strings[s]; exists {
 		return idx
 	}
+
+	if sp.strings == nil {
+		return -1
+	}
+
 	idx := len(sp.values)
 	sp.strings[s] = idx
 	sp.values = append(sp.values, s)
@@ -96,7 +101,7 @@ func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Finalize cleans up the string pool by removing the lookup map
 func (sp *StringPool) Finalize() {
-	sp.strings = nil
+	// sp.strings = nil
 }
 
 // Metadata represents the complete metadata for a Go codebase
@@ -120,7 +125,6 @@ type File struct {
 	Variables       map[string]*Variable `yaml:"variables"`
 	StructInstances []StructInstance     `yaml:"struct_instances"`
 	Selectors       []Selector           `yaml:"selectors"`
-	Assignments     []Assignment         `yaml:"assignments"`
 	Imports         map[int]int          `yaml:"imports"` // alias -> path
 }
 
@@ -158,6 +162,9 @@ type Method struct {
 	Scope        int          `yaml:"scope"`
 	Comments     int          `yaml:"comments"`
 	Tags         []int        `yaml:"tags"`
+
+	// map of variable name to all assignments (for alias/reassignment tracking)
+	AssignmentMap map[string][]Assignment `yaml:"assignment_map,omitempty"`
 }
 
 // Function represents a function
@@ -168,6 +175,15 @@ type Function struct {
 	Scope     int          `yaml:"scope"`
 	Comments  int          `yaml:"comments"`
 	Tags      []int        `yaml:"tags"`
+
+	// Type parameter names for generics
+	TypeParams []string `yaml:"type_params,omitempty"`
+
+	// Return value origins for tracing through return values
+	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
+
+	// map of variable name to all assignments (for alias/reassignment tracking)
+	AssignmentMap map[string][]Assignment `yaml:"assignment_map,omitempty"`
 }
 
 // Variable represents a variable
@@ -202,6 +218,11 @@ type Assignment struct {
 	Position     int          `yaml:"position"`
 	Scope        int          `yaml:"scope"`
 	Value        CallArgument `yaml:"value"`
+
+	// For assignments from function calls
+	CalleeFunc  string `yaml:"callee_func,omitempty"`
+	CalleePkg   string `yaml:"callee_pkg,omitempty"`
+	ReturnIndex int    `yaml:"return_index,omitempty"`
 }
 
 // CallArgument represents a function call argument or expression
@@ -265,11 +286,18 @@ func (c Call) ID() string {
 
 // CallGraphEdge represents an edge in the call graph
 type CallGraphEdge struct {
-	Caller      Call           `yaml:"caller"`
-	Callee      Call           `yaml:"callee"`
-	Position    int            `yaml:"position"`
-	Args        []CallArgument `yaml:"args"`
-	Assignments []Assignment   `yaml:"assignments,omitempty"`
+	Caller        Call                    `yaml:"caller"`
+	Callee        Call                    `yaml:"callee"`
+	Position      int                     `yaml:"position"`
+	Args          []CallArgument          `yaml:"args"`
+	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
+
+	// New fields for argument-to-parameter and type parameter mapping
+	ParamArgMap  map[string]CallArgument `yaml:"param_arg_map,omitempty"`  // parameter name -> argument
+	TypeParamMap map[string]string       `yaml:"type_param_map,omitempty"` // type parameter name -> concrete type
+
+	CalleeVarName     string `yaml:"callee_var_name,omitempty"`
+	CalleeRecvVarName string `yaml:"callee_recv_var_name,omitempty"`
 
 	meta *Metadata
 }

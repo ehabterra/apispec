@@ -48,7 +48,7 @@ func (d *FrameworkDetector) Detect(dir string) (string, error) {
 		}
 	}
 
-	return "unknown", nil
+	return "net/http", nil
 }
 
 // CollectGoFiles recursively collects all .go files from a directory
