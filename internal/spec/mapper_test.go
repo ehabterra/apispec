@@ -198,7 +198,7 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	for _, primitiveType := range primitiveTypes {
 		t.Run("primitive_"+primitiveType, func(t *testing.T) {
-			result := findTypeInMetadata(meta, primitiveType)
+			result := findTypesInMetadata(meta, primitiveType)
 			if result != nil {
 				t.Errorf("Expected nil for primitive type '%s', got %v", primitiveType, result)
 			}
@@ -207,7 +207,7 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	// Test custom type - should return the type
 	t.Run("custom_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "User")
+		result := findTypesInMetadata(meta, "User")
 		if result == nil {
 			t.Error("Expected User type to be found, got nil")
 			return
@@ -219,7 +219,7 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 
 	// Test qualified custom type - should return the type
 	t.Run("qualified_custom_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "main-->User")
+		result := findTypesInMetadata(meta, "main-->User")
 		if result == nil {
 			t.Error("Expected main-->User type to be found, got nil")
 			return
@@ -248,7 +248,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	for _, externalType := range externalTypes {
 		t.Run("external_"+externalType, func(t *testing.T) {
-			result := findTypeInMetadata(meta, externalType)
+			result := findTypesInMetadata(meta, externalType)
 			if result != nil {
 				t.Errorf("Expected nil for external type '%s', got %v", externalType, result)
 			}
@@ -257,7 +257,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	// Test unknown external type - should return nil
 	t.Run("unknown_external_type", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "unknown.ExternalType")
+		result := findTypesInMetadata(meta, "unknown.ExternalType")
 		if result != nil {
 			t.Errorf("Expected nil for unknown external type, got %v", result)
 		}
@@ -265,7 +265,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 
 	// Test without config - should fall back to hardcoded types
 	t.Run("external_without_config", func(t *testing.T) {
-		result := findTypeInMetadata(meta, "primitive.ObjectID")
+		result := findTypesInMetadata(meta, "primitive.ObjectID")
 		if result != nil {
 			t.Errorf("Expected nil for external type without config, got %v", result)
 		}

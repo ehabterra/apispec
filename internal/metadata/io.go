@@ -26,11 +26,26 @@ const (
 
 // WriteYAML writes any data to a YAML file
 func WriteYAML(data interface{}, filename string) error {
-	out, err := yaml.Marshal(data)
+	err := os.Remove(filename)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filename, out, filePerm)
+
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := yaml.NewEncoder(file)
+	encoder.SetIndent(2) // This is a good default for readability.
+
+	if err := encoder.Encode(data); err != nil {
+		return err
+	}
+
+	// It's important to close the encoder to flush any buffered data.
+	return encoder.Close()
 }
 
 // WriteMetadata writes metadata to a YAML file

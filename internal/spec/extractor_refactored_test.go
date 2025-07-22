@@ -1,0 +1,229 @@
+package spec
+
+import (
+	"testing"
+
+	"github.com/ehabterra/swagen/internal/metadata"
+)
+
+func TestRefactoredExtractor(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+
+	// Create call graph after meta is defined
+	meta.CallGraph = []metadata.CallGraphEdge{
+		{
+			Caller: metadata.Call{
+				Meta: meta,
+				Name: 0, // Will be set after StringPool is created
+				Pkg:  1,
+			},
+			Callee: metadata.Call{
+				Meta: meta,
+				Name: 2,
+				Pkg:  3,
+			},
+			Args: []metadata.CallArgument{
+				{
+					Kind: "ident",
+					Name: "router",
+					Type: "*chi.Mux",
+				},
+			},
+		},
+	}
+
+	// Set the string pool indices after creation
+	meta.CallGraph[0].Caller.Name = meta.StringPool.Get("main")
+	meta.CallGraph[0].Caller.Pkg = meta.StringPool.Get("main")
+	meta.CallGraph[0].Callee.Name = meta.StringPool.Get("NewRouter")
+	meta.CallGraph[0].Callee.Pkg = meta.StringPool.Get("chi")
+
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
+	}
+
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a simple config for testing
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "NewRouter",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:      "Mount",
+					IsMount:        true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+					RouterFromArg:  true,
+					RouterArgIndex: 1,
+				},
+			},
+		},
+		Defaults: Defaults{
+			RequestContentType:  "application/json",
+			ResponseContentType: "application/json",
+			ResponseStatus:      200,
+		},
+	}
+
+	// Create refactored extractor
+	extractor := NewRefactoredExtractor(tree, cfg)
+
+	// Test extraction
+	routes := extractor.ExtractRoutes()
+
+	// Verify results
+	if len(routes) == 0 {
+		t.Log("No routes extracted, which is expected for this simple test")
+	} else {
+		t.Logf("Extracted %d routes", len(routes))
+		for i, route := range routes {
+			t.Logf("Route %d: %s %s", i, route.Method, route.Path)
+		}
+	}
+}
+
+func TestPatternMatchers(t *testing.T) {
+	// Create context provider
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+	contextProvider := NewContextProvider(meta)
+
+	// Test route pattern matcher
+	routePattern := RoutePattern{
+		CallRegex:      "Get",
+		MethodFromCall: true,
+		PathFromArg:    true,
+		PathArgIndex:   0,
+	}
+
+	cfg := &SwagenConfig{}
+	schemaMapper := NewSchemaMapper(cfg)
+	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
+	matcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider, typeResolver)
+
+	// Test pattern matching
+	if matcher.GetPriority() <= 0 {
+		t.Error("Expected positive priority for route pattern matcher")
+	}
+
+	pattern := matcher.GetPattern()
+	if pattern == nil {
+		t.Error("Expected non-nil pattern")
+	}
+}
+
+func TestContextProvider(t *testing.T) {
+	// Create metadata with string pool
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+	meta.StringPool.Get("test") // Add a string to the pool
+
+	contextProvider := NewContextProvider(meta)
+
+	// Test GetString
+	result := contextProvider.GetString(0)
+	if result != "test" {
+		t.Errorf("Expected 'test', got '%s'", result)
+	}
+
+	// Test GetString with invalid index
+	result = contextProvider.GetString(999)
+	if result != "" {
+		t.Errorf("Expected empty string for invalid index, got '%s'", result)
+	}
+}
+
+func TestSchemaMapper(t *testing.T) {
+	cfg := &SwagenConfig{}
+	mapper := NewSchemaMapper(cfg)
+
+	// Test basic type mapping
+	schema := mapper.MapGoTypeToOpenAPISchema("string")
+	if schema == nil || schema.Type != "string" {
+		t.Error("Expected string schema for 'string' type")
+	}
+
+	// Test pointer type mapping
+	schema = mapper.MapGoTypeToOpenAPISchema("*string")
+	if schema == nil || schema.Type != "string" {
+		t.Error("Expected string schema for '*string' type")
+	}
+
+	// Test slice type mapping
+	schema = mapper.MapGoTypeToOpenAPISchema("[]string")
+	if schema == nil || schema.Type != "array" {
+		t.Error("Expected array schema for '[]string' type")
+	}
+
+	// Test status code mapping
+	status, ok := mapper.MapStatusCode("200")
+	if !ok || status != 200 {
+		t.Error("Expected status code 200")
+	}
+
+	// Test method extraction
+	method := mapper.MapMethodFromFunctionName("GetUsers")
+	if method != "GET" {
+		t.Errorf("Expected 'GET', got '%s'", method)
+	}
+}
+
+func TestOverrideApplier(t *testing.T) {
+	cfg := &SwagenConfig{
+		Overrides: []Override{
+			{
+				FunctionName:   "testFunc",
+				Summary:        "Test Summary",
+				ResponseStatus: 201,
+				ResponseType:   "TestType",
+				Tags:           []string{"test"},
+			},
+		},
+	}
+
+	applier := NewOverrideApplier(cfg)
+
+	// Test HasOverride
+	if !applier.HasOverride("testFunc") {
+		t.Error("Expected override to exist for 'testFunc'")
+	}
+
+	if applier.HasOverride("nonexistent") {
+		t.Error("Expected no override for 'nonexistent'")
+	}
+
+	// Test ApplyOverrides
+	routeInfo := &RouteInfo{
+		Function: "testFunc",
+		Response: map[string]*ResponseInfo{
+			"200": {StatusCode: 200},
+		},
+	}
+
+	applier.ApplyOverrides(routeInfo)
+
+	if routeInfo.Summary != "Test Summary" {
+		t.Errorf("Expected 'Test Summary', got '%s'", routeInfo.Summary)
+	}
+
+	if len(routeInfo.Tags) != 1 || routeInfo.Tags[0] != "test" {
+		t.Error("Expected tags to be applied")
+	}
+}

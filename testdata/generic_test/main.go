@@ -157,7 +157,7 @@ func respondWithError(w http.ResponseWriter, message string, statusCode int) {
 
 func main() {
 	// Test generic type parameter extraction
-	testGenericExtraction()
+	// testGenericExtraction()
 
 	// Set up routes with generic handlers
 	http.HandleFunc("/api/email/send", HandleRequest(handleSendEmail))

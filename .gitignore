@@ -26,7 +26,7 @@ metadata-packages.yaml
 metadata-call-graph.yaml
 diagram.html
 used-config.yaml
-openapi.yaml
+openapi*.yaml
 
 # Test output
 *.log

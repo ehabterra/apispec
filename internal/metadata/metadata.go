@@ -1,9 +1,11 @@
 package metadata
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"strings"
 )
 
@@ -76,8 +78,8 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 				Functions:       make(map[string]*Function),
 				Variables:       make(map[string]*Variable),
 				StructInstances: make([]StructInstance, 0),
-				Selectors:       make([]Selector, 0),
-				Imports:         make(map[int]int),
+				// Selectors:       make([]Selector, 0),
+				Imports: make(map[int]int),
 			}
 
 			// Collect constants for this file
@@ -95,8 +97,8 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 			// Process struct instances and assignments
 			processStructInstancesAndAssignments(file, info, pkgName, fset, pool, f, constMap, pkgs, fileToInfo, funcMap, metadata)
 
-			// Process selectors
-			processSelectors(file, info, pkgName, fset, pool, f)
+			// // // Process selectors
+			// processSelectors(file, info, pkgName, fset, pool, f)
 
 			// Process imports
 			processImports(file, pool, f)
@@ -574,28 +576,28 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 	return assignments
 }
 
-// processSelectors processes selector expressions
-func processSelectors(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File) {
-	ast.Inspect(file, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.CallExpr:
-			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
-				f.Selectors = append(f.Selectors, Selector{
-					Expr:     ExprToCallArgument(sel, info, pkgName, fset),
-					Kind:     pool.Get("call"),
-					Position: pool.Get(getPosition(sel.Pos(), fset)),
-				})
-			}
-		case *ast.SelectorExpr:
-			f.Selectors = append(f.Selectors, Selector{
-				Expr:     ExprToCallArgument(x, info, pkgName, fset),
-				Kind:     pool.Get("field"),
-				Position: pool.Get(getPosition(x.Pos(), fset)),
-			})
-		}
-		return true
-	})
-}
+// // processSelectors processes selector expressions
+// func processSelectors(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File) {
+// 	ast.Inspect(file, func(n ast.Node) bool {
+// 		switch x := n.(type) {
+// 		case *ast.CallExpr:
+// 			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+// 				f.Selectors = append(f.Selectors, Selector{
+// 					Expr:     ExprToCallArgument(sel, info, pkgName, fset),
+// 					Kind:     pool.Get("call"),
+// 					Position: pool.Get(getPosition(sel.Pos(), fset)),
+// 				})
+// 			}
+// 		case *ast.SelectorExpr:
+// 			f.Selectors = append(f.Selectors, Selector{
+// 				Expr:     ExprToCallArgument(x, info, pkgName, fset),
+// 				Kind:     pool.Get("field"),
+// 				Position: pool.Get(getPosition(x.Pos(), fset)),
+// 			})
+// 		}
+// 		return true
+// 	})
+// }
 
 // processImports processes import statements
 func processImports(file *ast.File, pool *StringPool, f *File) {
@@ -608,14 +610,26 @@ func processImports(file *ast.File, pool *StringPool, f *File) {
 
 // buildCallGraph builds the call graph for all files in a package
 func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, pool *StringPool, metadata *Metadata) {
+	var visited = map[string]bool{}
+
 	for _, file := range files {
 		info := fileToInfo[file]
 
 		var assignVarName string
 
 		ast.Inspect(file, func(n ast.Node) bool {
+			if n == nil {
+				return true
+			}
+
+			// pos := getPosition(n.Pos(), fset)
+			// if _, ok := visited[pos]; ok {
+			// 	return true
+			// }
+			// visited[pos] = true
+
 			if call, ok := n.(*ast.CallExpr); ok {
-				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info)
+				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, visited)
 				assignVarName = ""
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
 				// Find which variable this call is assigned to
@@ -635,7 +649,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 }
 
 // processCallExpression processes a function call expression
-func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info) {
+func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, visited map[string]bool) {
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
@@ -652,100 +666,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		// Get the *types.Object for the function being called
 		// This is crucial for getting the *declared* generic type parameters
-		var funcObj types.Object
-		switch fun := call.Fun.(type) {
-		case *ast.Ident:
-			funcObj = info.ObjectOf(fun)
-		case *ast.SelectorExpr:
-			funcObj = info.ObjectOf(fun.Sel)
-		case *ast.IndexExpr: // For calls like `Func[T]()`
-			if ident, ok := fun.X.(*ast.Ident); ok {
-				funcObj = info.ObjectOf(ident)
-			} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
-				funcObj = info.ObjectOf(sel.Sel)
-			}
-		case *ast.IndexListExpr: // For calls like `Func[T1, T2]()`
-			if ident, ok := fun.X.(*ast.Ident); ok {
-				funcObj = info.ObjectOf(ident)
-			} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
-				funcObj = info.ObjectOf(sel.Sel)
-			}
-		}
-
-		if funcObj != nil {
-			if fobj, isFunc := funcObj.(*types.Func); isFunc {
-				if sig, isSig := fobj.Type().(*types.Signature); isSig {
-					// Handle regular parameters
-					tup := sig.Params()
-					for i := 0; i < tup.Len(); i++ {
-						field := tup.At(i)
-						if i < len(args) {
-							paramArgMap[field.Name()] = args[i]
-						}
-					}
-
-					// Handle generic type parameters from the *declared* function signature
-					if sig.TypeParams() != nil {
-						// Attempt to extract explicit type arguments from the call expression syntax
-						var explicitTypeArgExprs []ast.Expr
-						switch fun := call.Fun.(type) {
-						case *ast.IndexExpr:
-							explicitTypeArgExprs = []ast.Expr{fun.Index}
-						case *ast.IndexListExpr:
-							explicitTypeArgExprs = fun.Indices
-						case *ast.SelectorExpr:
-							// For cases like pkg.Func[T] or receiver.Method[T]
-							switch selX := fun.X.(type) {
-							case *ast.IndexExpr:
-								explicitTypeArgExprs = []ast.Expr{selX.Index}
-							case *ast.IndexListExpr:
-								explicitTypeArgExprs = selX.Indices
-							}
-						case *ast.Ident, *ast.ParenExpr: // Handle cases where type arguments are inferred
-							// If it's an Ident (e.g., HandleRequest(handler)) or wrapped in Parens,
-							// type arguments are inferred, not explicitly in call.Fun syntax.
-							// We will use info.Instances below to get inferred types.
-							explicitTypeArgExprs = nil // Ensure it's nil or empty
-						default:
-							explicitTypeArgExprs = nil // Default case, no explicit type arguments
-						}
-
-						// If explicit type arguments are provided, use them
-						if len(explicitTypeArgExprs) > 0 {
-							for i := 0; i < sig.TypeParams().Len(); i++ {
-								tparam := sig.TypeParams().At(i)
-								name := tparam.Obj().Name()
-
-								if i < len(explicitTypeArgExprs) {
-									typeArgExpr := explicitTypeArgExprs[i]
-									if typeOfTypeArg := info.TypeOf(typeArgExpr); typeOfTypeArg != nil {
-										typeParamMap[name] = typeOfTypeArg.String()
-									} else {
-										typeParamMap[name] = getTypeName(typeArgExpr)
-									}
-								}
-							}
-						} else {
-							// No explicit type arguments in the call syntax.
-							// This means type inference is happening.
-							// We need to get the instantiated types from the *call expression itself*.
-							if instance, ok := info.Instances[call.Fun.(*ast.Ident)]; ok {
-								if instance.TypeArgs != nil {
-									for i := 0; i < sig.TypeParams().Len(); i++ {
-										tparam := sig.TypeParams().At(i)
-										name := tparam.Obj().Name()
-										if i < instance.TypeArgs.Len() {
-											inferredType := instance.TypeArgs.At(i)
-											typeParamMap[name] = inferredType.String()
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		extractParamsAndTypeParams(call, info, args, paramArgMap, typeParamMap)
 
 		funName := handlerName(calleePkg, calleeParts, calleeFunc)
 		funcName := strings.TrimPrefix(funName, "*")
@@ -755,6 +676,16 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		if fn, ok := funcMap[funcName]; ok {
 			ast.Inspect(fn, func(nd ast.Node) bool {
+				if nd == nil {
+					return true
+				}
+
+				// pos := getPosition(nd.Pos(), fset)
+				// if _, ok := visited[pos]; ok {
+				// 	return true
+				// }
+				// visited[pos] = true
+
 				switch expr := nd.(type) {
 				case *ast.AssignStmt:
 					// IMPORTANT: The `file` argument in processAssignment should be the file of the *callee*,
@@ -799,12 +730,14 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 				Meta:     metadata,
 				Name:     pool.Get(callerFunc),
 				Pkg:      pool.Get(pkgName),
+				Position: -1,
 				RecvType: pool.Get(callerParts),
 			},
 			Callee: Call{
 				Meta:     metadata,
 				Name:     pool.Get(calleeFunc),
 				Pkg:      pool.Get(calleePkg),
+				Position: pool.Get(getPosition(call.Pos(), fset)),
 				RecvType: pool.Get(calleeParts),
 			},
 			Position:          int(call.Pos()),
@@ -816,7 +749,187 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			CalleeRecvVarName: assignVarName,
 			meta:              metadata,
 		}
+
+		// NEW: Apply type parameter resolution to fill CallArgument with correct data
+		applyTypeParameterResolution(&cgEdge)
+
 		metadata.CallGraph = append(metadata.CallGraph, cgEdge)
+	}
+}
+
+func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []CallArgument, paramArgMap map[string]CallArgument, typeParamMap map[string]string) {
+	var funcObj types.Object
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		funcObj = info.ObjectOf(fun)
+	case *ast.SelectorExpr:
+		funcObj = info.ObjectOf(fun.Sel)
+	case *ast.IndexExpr: // For calls like `Func[T]()`
+		if ident, ok := fun.X.(*ast.Ident); ok {
+			funcObj = info.ObjectOf(ident)
+		} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
+			funcObj = info.ObjectOf(sel.Sel)
+		}
+	case *ast.IndexListExpr: // For calls like `Func[T1, T2]()`
+		if ident, ok := fun.X.(*ast.Ident); ok {
+			funcObj = info.ObjectOf(ident)
+		} else if sel, ok := fun.X.(*ast.SelectorExpr); ok {
+			funcObj = info.ObjectOf(sel.Sel)
+		}
+	}
+
+	if funcObj != nil {
+		if fobj, isFunc := funcObj.(*types.Func); isFunc {
+			if sig, isSig := fobj.Type().(*types.Signature); isSig {
+				// Handle generic type parameters from the *declared* function signature
+				if sig.TypeParams() != nil {
+					// DEBUG: Log when we find a generic function
+					fmt.Printf("DEBUG: Found generic function: %s with %d type parameters\n", fobj.Name(), sig.TypeParams().Len())
+
+					// Attempt to extract explicit type arguments from the call expression syntax
+					var explicitTypeArgExprs []ast.Expr
+					switch fun := call.Fun.(type) {
+					case *ast.IndexExpr:
+						explicitTypeArgExprs = []ast.Expr{fun.Index}
+					case *ast.IndexListExpr:
+						explicitTypeArgExprs = fun.Indices
+					case *ast.SelectorExpr:
+						// For cases like pkg.Func[T] or receiver.Method[T]
+						switch selX := fun.X.(type) {
+						case *ast.IndexExpr:
+							explicitTypeArgExprs = []ast.Expr{selX.Index}
+						case *ast.IndexListExpr:
+							explicitTypeArgExprs = selX.Indices
+						}
+					case *ast.Ident, *ast.ParenExpr: // Handle cases where type arguments are inferred
+						// If it's an Ident (e.g., HandleRequest(handler)) or wrapped in Parens,
+						// type arguments are inferred, not explicitly in call.Fun syntax.
+						// We will use info.Instances below to get inferred types.
+						explicitTypeArgExprs = nil // Ensure it's nil or empty
+					default:
+						explicitTypeArgExprs = nil // Default case, no explicit type arguments
+					}
+
+					// If explicit type arguments are provided, use them
+					if len(explicitTypeArgExprs) > 0 {
+						fmt.Printf("DEBUG: Found explicit type arguments for %s\n", fobj.Name())
+						for i := 0; i < sig.TypeParams().Len(); i++ {
+							tparam := sig.TypeParams().At(i)
+							name := tparam.Obj().Name()
+
+							if i < len(explicitTypeArgExprs) {
+								typeArgExpr := explicitTypeArgExprs[i]
+								if typeOfTypeArg := info.TypeOf(typeArgExpr); typeOfTypeArg != nil {
+									typeParamMap[name] = typeOfTypeArg.String()
+								} else {
+									typeParamMap[name] = getTypeName(typeArgExpr)
+								}
+							}
+						}
+					} else {
+						// No explicit type arguments in the call syntax.
+						// This means type inference is happening.
+						// We need to get the instantiated types from the *call expression itself*.
+
+						// ENHANCED: Handle type inference for different call expression types
+						var instance types.Instance
+						var found bool
+
+						switch fun := call.Fun.(type) {
+						case *ast.Ident:
+							instance, found = info.Instances[fun]
+							fmt.Printf("DEBUG: Checking instances for Ident: %s, found: %v\n", fun.Name, found)
+						case *ast.SelectorExpr:
+							// For selector expressions like pkg.Func, try to get the instance
+							instance, found = info.Instances[fun.Sel]
+							fmt.Printf("DEBUG: Checking instances for Selector: %s, found: %v\n", fun.Sel.Name, found)
+						case *ast.ParenExpr:
+							// For parenthesized expressions like (Func), unwrap and try again
+							if ident, ok := fun.X.(*ast.Ident); ok {
+								instance, found = info.Instances[ident]
+								fmt.Printf("DEBUG: Checking instances for ParenExpr: %s, found: %v\n", ident.Name, found)
+							}
+						}
+
+						if found && instance.TypeArgs != nil {
+							fmt.Printf("DEBUG: Found instance with %d type args for %s\n", instance.TypeArgs.Len(), fobj.Name())
+							for i := 0; i < sig.TypeParams().Len(); i++ {
+								tparam := sig.TypeParams().At(i)
+								name := tparam.Obj().Name()
+								if i < instance.TypeArgs.Len() {
+									inferredType := instance.TypeArgs.At(i)
+									typeParamMap[name] = inferredType.String()
+									fmt.Printf("DEBUG: Mapped %s -> %s\n", name, inferredType.String())
+								}
+							}
+						} else {
+							// NEW: Try to infer types from function arguments
+							// This is crucial for cases like HandleRequest(handleSendEmail)
+							// where the type parameters are inferred from the argument types
+							fmt.Printf("DEBUG: No instance found, trying argument-based inference for %s\n", fobj.Name())
+							if len(args) > 0 {
+								// Look at the first argument to infer type parameters
+								firstArg := args[0]
+								if firstArg.Kind == "ident" {
+									// Try to get the type of the argument
+									if argType := info.TypeOf(call.Args[0]); argType != nil {
+										fmt.Printf("DEBUG: Argument type: %s\n", argType.String())
+										// For function arguments, try to extract parameter types
+										if sig, isSig := argType.(*types.Signature); isSig {
+											fmt.Printf("DEBUG: Argument is a function signature with %d params\n", sig.Params().Len())
+											// Check if this is a function type that can help infer generic parameters
+											if sig.Params().Len() > 0 {
+												// The first parameter type of the argument function
+												// should correspond to the first type parameter of the generic function
+												firstParamType := sig.Params().At(0).Type()
+												fmt.Printf("DEBUG: First param type: %s\n", firstParamType.String())
+												if sig.TypeParams().Len() > 0 {
+													// This is a generic function argument
+													// Try to map its type parameters to the callee's type parameters
+													for i := 0; i < sig.TypeParams().Len(); i++ {
+														tparam := sig.TypeParams().At(i)
+														calleeTParam := sig.TypeParams().At(i)
+														if i < sig.TypeParams().Len() {
+															// Map the argument's type parameter to the callee's type parameter
+															typeParamMap[calleeTParam.Obj().Name()] = tparam.Obj().Name()
+															fmt.Printf("DEBUG: Mapped generic param %s -> %s\n", calleeTParam.Obj().Name(), tparam.Obj().Name())
+														}
+													}
+												} else {
+													// Non-generic function argument
+													// The first parameter type should map to the first type parameter
+													if sig.TypeParams().Len() > 0 {
+														firstTParam := sig.TypeParams().At(0)
+														typeParamMap[firstTParam.Obj().Name()] = firstParamType.String()
+														fmt.Printf("DEBUG: Mapped non-generic param %s -> %s\n", firstTParam.Obj().Name(), firstParamType.String())
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				// Handle regular parameters
+				tup := sig.Params()
+				for i := 0; i < tup.Len(); i++ {
+					field := tup.At(i)
+					if i < len(args) {
+						if args[i].TypeParamMap == nil {
+							args[i].TypeParamMap = map[string]string{}
+						}
+
+						// Propagate type mapping to args
+						maps.Copy(args[i].TypeParamMap, typeParamMap)
+
+						paramArgMap[field.Name()] = args[i]
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -846,5 +959,54 @@ func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool)
 				}
 			}
 		}
+	}
+}
+
+// applyTypeParameterResolution applies ParamArgMap and TypeParamMap to CallArgument structures
+// to fill them with correct resolved type information
+func applyTypeParameterResolution(edge *CallGraphEdge) {
+	if edge == nil {
+		return
+	}
+
+	// Apply type parameter resolution to all arguments
+	for i := range edge.Args {
+		arg := &edge.Args[i]
+		applyTypeParameterResolutionToArgument(arg, edge.ParamArgMap, edge.TypeParamMap)
+	}
+
+	// Apply type parameter resolution to ParamArgMap values
+	for paramName, arg := range edge.ParamArgMap {
+		resolvedArg := arg
+		applyTypeParameterResolutionToArgument(&resolvedArg, edge.ParamArgMap, edge.TypeParamMap)
+		edge.ParamArgMap[paramName] = resolvedArg
+	}
+}
+
+// applyTypeParameterResolutionToArgument applies type parameter resolution to a single CallArgument
+func applyTypeParameterResolutionToArgument(arg *CallArgument, paramArgMap map[string]CallArgument, typeParamMap map[string]string) {
+	if arg == nil {
+		return
+	}
+
+	// Check if this argument represents a generic type parameter
+	if arg.Type != "" {
+		// Check if the type is a generic type parameter (e.g., "TRequest", "TData")
+		if concreteType, exists := typeParamMap[arg.Type]; exists {
+			arg.ResolvedType = concreteType
+			arg.IsGenericType = true
+			arg.GenericTypeName = arg.Type
+		}
+	}
+
+	// Recursively apply to nested arguments
+	if arg.X != nil {
+		applyTypeParameterResolutionToArgument(arg.X, paramArgMap, typeParamMap)
+	}
+	if arg.Fun != nil {
+		applyTypeParameterResolutionToArgument(arg.Fun, paramArgMap, typeParamMap)
+	}
+	for i := range arg.Args {
+		applyTypeParameterResolutionToArgument(&arg.Args[i], paramArgMap, typeParamMap)
 	}
 }

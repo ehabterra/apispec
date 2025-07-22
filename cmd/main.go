@@ -44,9 +44,9 @@ const (
 	defaultContactEmail       = "ehabterra@hotmail.com"
 	defaultOpenAPIVersion     = "3.1.1"
 	defaultMaxNodesPerTree    = 10000
-	defaultMaxChildrenPerNode = 150
-	defaultMaxArgsPerFunction = 20
-	defaultMaxNestedArgsDepth = 100
+	defaultMaxChildrenPerNode = 200
+	defaultMaxArgsPerFunction = 30
+	defaultMaxNestedArgsDepth = 50
 	defaultMetadataFile       = "metadata.yaml"
 	copyrightNotice           = "swagen - Copyright 2025 Ehab Terra"
 	licenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."

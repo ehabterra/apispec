@@ -248,11 +248,11 @@ func traceVariableOriginHelper(
 	metadata *Metadata,
 	visited map[string]struct{},
 ) (originVar string, originPkg string, originType *CallArgument) {
-	key := pkgName + "." + funcName + ":" + varName
-	if _, ok := visited[key]; ok {
-		return varName, pkgName, nil // Prevent infinite recursion
-	}
-	visited[key] = struct{}{}
+	// key := pkgName + "." + funcName + ":" + varName
+	// if _, ok := visited[key]; ok {
+	// 	return varName, pkgName, nil // Prevent infinite recursion
+	// }
+	// visited[key] = struct{}{}
 
 	funcNameIndex := metadata.StringPool.Get(funcName)
 	pkgNameIndex := metadata.StringPool.Get(pkgName)

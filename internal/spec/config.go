@@ -69,8 +69,9 @@ type RequestBodyPattern struct {
 	TypeArgIndex int `yaml:"typeArgIndex,omitempty"` // Which arg contains type info
 
 	// Extraction hints
-	TypeFromArg bool `yaml:"typeFromArg,omitempty"` // Extract type from argument
-	Deref       bool `yaml:"deref,omitempty"`       // Dereference pointer types
+	TypeFromArg    bool `yaml:"typeFromArg,omitempty"`    // Extract type from argument
+	TypeFromReturn bool `yaml:"typeFromReturn,omitempty"` // Extract type from return value
+	Deref          bool `yaml:"deref,omitempty"`          // Dereference pointer types
 
 	// Context-aware validation
 	AllowForGetMethods bool `yaml:"allowForGetMethods,omitempty"` // Allow this pattern for GET/HEAD methods
@@ -297,7 +298,7 @@ func DefaultChiConfig() *SwagenConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
 					TypeArgIndex:   1,
 					TypeFromArg:    true,
@@ -398,7 +399,7 @@ func DefaultEchoConfig() *SwagenConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
 					MethodFromCall:  true,
 					PathFromArg:     true,
 					HandlerFromArg:  true,
@@ -409,7 +410,7 @@ func DefaultEchoConfig() *SwagenConfig {
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:     `(?i)(Bind)$`,
+					CallRegex:     `^(?i)(Bind)$`,
 					TypeArgIndex:  0,
 					TypeFromArg:   true,
 					Deref:         true,
@@ -432,7 +433,7 @@ func DefaultEchoConfig() *SwagenConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
 					TypeArgIndex:   1,
 					TypeFromArg:    true,
@@ -479,11 +480,12 @@ func DefaultEchoConfig() *SwagenConfig {
 			},
 			MountPatterns: []MountPattern{
 				{
-					CallRegex:     `^Group$`,
-					PathFromArg:   true,
-					RouterFromArg: false,
-					PathArgIndex:  0,
-					IsMount:       true,
+					CallRegex:      `^Group$`,
+					PathFromArg:    true,
+					RouterFromArg:  true,
+					PathArgIndex:   0,
+					RouterArgIndex: 1,
+					IsMount:        true,
 				},
 			},
 		},
@@ -501,7 +503,7 @@ func DefaultFiberConfig() *SwagenConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
 					MethodFromCall:  true,
 					PathFromArg:     true,
 					HandlerFromArg:  true,
@@ -635,7 +637,7 @@ func DefaultGinConfig() *SwagenConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
 					MethodFromCall:  true,
 					PathFromArg:     true,
 					HandlerFromArg:  true,
@@ -646,7 +648,7 @@ func DefaultGinConfig() *SwagenConfig {
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:    `(?i)(BindJSON|BindXML|BindYAML|BindForm)$`,
+					CallRegex:    `^(?i)(BindJSON|BindXML|BindYAML|BindForm)$`,
 					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
@@ -666,7 +668,7 @@ func DefaultGinConfig() *SwagenConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
 					TypeArgIndex:   1,
 					TypeFromArg:    true,
@@ -745,6 +747,7 @@ func DefaultHTTPConfig() *SwagenConfig {
 					PathFromArg:     true,
 					HandlerFromArg:  true,
 					PathArgIndex:    0,
+					MethodArgIndex:  -1,
 					HandlerArgIndex: 1,
 					RecvTypeRegex:   "^net/http(\\.\\*ServeMux)?$",
 				},
@@ -753,6 +756,7 @@ func DefaultHTTPConfig() *SwagenConfig {
 					PathFromArg:     true,
 					HandlerFromArg:  true,
 					PathArgIndex:    0,
+					MethodArgIndex:  -1,
 					HandlerArgIndex: 1,
 				},
 			},
@@ -772,7 +776,7 @@ func DefaultHTTPConfig() *SwagenConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
-					CallRegex:      `(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
+					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
 					TypeArgIndex:   1,
 					TypeFromArg:    true,

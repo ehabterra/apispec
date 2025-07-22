@@ -1,0 +1,743 @@
+package spec
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/ehabterra/swagen/internal/metadata"
+)
+
+const (
+	TypeSep = "-->"
+	// TypeSep             = "."
+	kindIdent           = "ident"
+	kindLiteral         = "literal"
+	kindSelector        = "selector"
+	kindCall            = "call"
+	kindRaw             = "raw"
+	kindIndex           = "index"
+	kindUnary           = "unary"
+	kindField           = "field"
+	kindParen           = "paren"
+	kindStar            = "star"
+	kindArrayType       = "array_type"
+	kindSlice           = "slice"
+	kindCompositeLit    = "composite_lit"
+	kindKeyValue        = "key_value"
+	kindTypeAssert      = "type_assert"
+	kindChanType        = "chan_type"
+	kindMapType         = "map_type"
+	kindStructType      = "struct_type"
+	kindInterfaceType   = "interface_type"
+	kindInterfaceMethod = "interface_method"
+	kindEmbed           = "embed"
+	kindEllipsis        = "ellipsis"
+	kindFuncType        = "func_type"
+	kindFuncResults     = "func_results"
+	callEllipsis        = "call(...)"
+	defaultSep          = "."
+	slashSep            = "/"
+)
+
+// RouteInfo represents extracted route information
+type RouteInfo struct {
+	Path     string
+	Method   string
+	Handler  string
+	Package  string
+	File     string
+	Function string
+	Summary  string
+	Tags     []string
+	Request  *RequestInfo
+	Response map[string]*ResponseInfo
+	Params   []Parameter
+
+	// Resolved router group prefix (if any)
+	GroupPrefix string
+}
+
+// IsValid checks if the route info is valid
+func (r *RouteInfo) IsValid() bool {
+	return r.Path != "" && r.Handler != ""
+}
+
+// RequestInfo represents request information
+type RequestInfo struct {
+	ContentType string
+	BodyType    string
+	Schema      *Schema
+}
+
+// ResponseInfo represents response information
+type ResponseInfo struct {
+	StatusCode  int
+	ContentType string
+	BodyType    string
+	Schema      *Schema
+}
+
+// RefactoredExtractor provides a cleaner, more modular approach to extraction
+type RefactoredExtractor struct {
+	tree            *TrackerTree
+	cfg             *SwagenConfig
+	contextProvider ContextProvider
+	schemaMapper    SchemaMapper
+	typeResolver    TypeResolver
+	overrideApplier OverrideApplier
+
+	// Pattern matchers
+	routeMatchers    []RoutePatternMatcher
+	mountMatchers    []MountPatternMatcher
+	requestMatchers  []RequestPatternMatcher
+	responseMatchers []ResponsePatternMatcher
+	paramMatchers    []ParamPatternMatcher
+}
+
+// NewRefactoredExtractor creates a new refactored extractor
+func NewRefactoredExtractor(tree *TrackerTree, cfg *SwagenConfig) *RefactoredExtractor {
+	contextProvider := NewContextProvider(tree.meta)
+	schemaMapper := NewSchemaMapper(cfg)
+	typeResolver := NewTypeResolver(tree.meta, cfg, schemaMapper)
+	overrideApplier := NewOverrideApplier(cfg)
+
+	extractor := &RefactoredExtractor{
+		tree:            tree,
+		cfg:             cfg,
+		contextProvider: contextProvider,
+		schemaMapper:    schemaMapper,
+		typeResolver:    typeResolver,
+		overrideApplier: overrideApplier,
+	}
+
+	// Initialize pattern matchers
+	extractor.initializePatternMatchers()
+
+	return extractor
+}
+
+// initializePatternMatchers initializes all pattern matchers
+func (e *RefactoredExtractor) initializePatternMatchers() {
+	// Initialize route matchers
+	for _, pattern := range e.cfg.Framework.RoutePatterns {
+		matcher := NewRoutePatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.routeMatchers = append(e.routeMatchers, matcher)
+	}
+
+	// Initialize mount matchers
+	for _, pattern := range e.cfg.Framework.MountPatterns {
+		matcher := NewMountPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.mountMatchers = append(e.mountMatchers, matcher)
+	}
+
+	// Initialize request matchers
+	for _, pattern := range e.cfg.Framework.RequestBodyPatterns {
+		matcher := NewRequestPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.requestMatchers = append(e.requestMatchers, matcher)
+	}
+
+	// Initialize response matchers
+	for _, pattern := range e.cfg.Framework.ResponsePatterns {
+		matcher := NewResponsePatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.responseMatchers = append(e.responseMatchers, matcher)
+	}
+
+	// Initialize param matchers
+	for _, pattern := range e.cfg.Framework.ParamPatterns {
+		matcher := NewParamPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.paramMatchers = append(e.paramMatchers, matcher)
+	}
+}
+
+// ExtractRoutes extracts all routes from the tracker tree
+func (e *RefactoredExtractor) ExtractRoutes() []RouteInfo {
+	var routes []RouteInfo
+	for _, root := range e.tree.GetRoots() {
+		e.traverseForRoutes(root, "", nil, &routes)
+	}
+	return routes
+}
+
+// traverseForRoutes traverses the tree to find routes
+func (e *RefactoredExtractor) traverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo) {
+	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
+}
+
+// traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
+func (e *RefactoredExtractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+	if node == nil {
+		return
+	}
+
+	// // Prevent infinite recursion
+	// nodeID := node.id
+	// if visited[nodeID] {
+	// 	return
+	// }
+	// visited[nodeID] = true
+
+	// Check for mount patterns first
+	if mountInfo, isMount := e.executeMountPattern(node); isMount {
+		e.handleMountNode(node, mountInfo, mountPath, mountTags, routes, visited)
+		return
+	}
+
+	// Check for route patterns
+	if routeInfo, isRoute := e.executeRoutePattern(node); isRoute {
+		e.handleRouteNode(node, routeInfo, mountPath, mountTags, routes)
+		return
+	}
+
+	// Continue traversing children
+	for _, child := range node.children {
+		e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
+	}
+}
+
+// executeMountPattern executes mount pattern matching
+func (e *RefactoredExtractor) executeMountPattern(node *TrackerNode) (MountInfo, bool) {
+	var bestMatch MountInfo
+	var bestPriority int
+	var found bool
+
+	for _, matcher := range e.mountMatchers {
+		if matcher.MatchNode(node) {
+			priority := matcher.GetPriority()
+			if !found || priority > bestPriority {
+				mountInfo := matcher.ExtractMount(node)
+				bestMatch = mountInfo
+				bestPriority = priority
+				found = true
+			}
+		}
+	}
+
+	return bestMatch, found
+}
+
+// executeRoutePattern executes route pattern matching
+func (e *RefactoredExtractor) executeRoutePattern(node *TrackerNode) (RouteInfo, bool) {
+	var bestMatch RouteInfo
+	var bestPriority int
+	var found bool
+
+	for _, matcher := range e.routeMatchers {
+		if matcher.MatchNode(node) {
+			priority := matcher.GetPriority()
+			if !found || priority > bestPriority {
+				routeInfo := matcher.ExtractRoute(node)
+				bestMatch = routeInfo
+				bestPriority = priority
+				found = true
+			}
+		}
+	}
+
+	return bestMatch, found
+}
+
+// handleMountNode handles a mount node
+func (e *RefactoredExtractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+	// Update mount path if needed
+	if mountInfo.Path != "" {
+		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
+			mountPath = e.joinPaths(mountPath, mountInfo.Path)
+		}
+	}
+
+	// Handle router assignment if present
+	if mountInfo.Assignment != nil {
+		e.handleRouterAssignment(mountInfo, mountPath, mountTags, routes, visited)
+	}
+
+	// Continue traversing children
+	for _, child := range node.children {
+		var newTags []string
+		if mountPath != "" {
+			newTags = []string{mountPath}
+		} else {
+			newTags = mountTags
+		}
+		e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
+	}
+}
+
+// handleRouteNode handles a route node
+func (e *RefactoredExtractor) handleRouteNode(node *TrackerNode, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
+	// Prepend mount path if present
+	if mountPath != "" && routeInfo.Path != "" {
+		routeInfo.Path = e.joinPaths(mountPath, routeInfo.Path)
+	}
+
+	// Set tags from mountTags if present
+	if len(mountTags) > 0 {
+		routeInfo.Tags = mountTags
+	}
+
+	// Extract request/response/params from children
+	e.extractRouteChildren(node, &routeInfo)
+
+	// Apply overrides
+	e.overrideApplier.ApplyOverrides(&routeInfo)
+
+	if routeInfo.IsValid() {
+		// Update existing route or add new one
+		var found bool
+		for i := range *routes {
+			if (*routes)[i].Function == routeInfo.Function {
+				(*routes)[i] = routeInfo
+				found = true
+				break
+			}
+		}
+		if !found {
+			*routes = append(*routes, routeInfo)
+		}
+	}
+}
+
+// handleRouterAssignment handles router assignment for mounts
+func (e *RefactoredExtractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+	// Find the target node for the assignment
+	targetNode := e.findTargetNode(mountInfo.Assignment)
+	if targetNode != nil {
+		for _, child := range targetNode.children {
+			var newTags []string
+			if mountPath != "" {
+				newTags = []string{mountPath}
+			} else {
+				newTags = mountTags
+			}
+			e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
+		}
+	}
+}
+
+// findTargetNode finds the target node for an assignment
+func (e *RefactoredExtractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNode {
+	if assignment == nil {
+		return nil
+	}
+
+	// Use breadth-first search to find the target node
+	queue := e.tree.roots
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:] // dequeue
+
+		if node.id == assignment.ID() {
+			return node
+		}
+
+		queue = append(queue, node.children...)
+	}
+
+	return nil
+}
+
+// extractRouteChildren extracts request, response, and params from children nodes
+func (e *RefactoredExtractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInfo) {
+	for _, child := range routeNode.children {
+		// Extract request
+		if req := e.extractRequestFromNode(child, route); req != nil {
+			route.Request = req
+		}
+
+		// Extract response
+		if resp := e.extractResponseFromNode(child); resp != nil && resp.BodyType != "" {
+			route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
+		}
+
+		// Extract parameters
+		if param := e.extractParamFromNode(child); param != nil {
+			route.Params = append(route.Params, *param)
+		}
+
+		// Recursive extraction
+		e.extractRouteChildren(child, route)
+	}
+
+	// Extract parameters from the route node itself
+	if param := e.extractParamFromNode(routeNode); param != nil {
+		route.Params = append(route.Params, *param)
+	}
+}
+
+// extractRequestFromNode extracts request information from a node
+func (e *RefactoredExtractor) extractRequestFromNode(node *TrackerNode, route *RouteInfo) *RequestInfo {
+	for _, matcher := range e.requestMatchers {
+		if matcher.MatchNode(node) {
+			return matcher.ExtractRequest(node, route)
+		}
+	}
+	return nil
+}
+
+// extractResponseFromNode extracts response information from a node
+func (e *RefactoredExtractor) extractResponseFromNode(node *TrackerNode) *ResponseInfo {
+	for _, matcher := range e.responseMatchers {
+		if matcher.MatchNode(node) {
+			return matcher.ExtractResponse(node)
+		}
+	}
+	return &ResponseInfo{
+		StatusCode:  e.cfg.Defaults.ResponseStatus,
+		ContentType: e.cfg.Defaults.ResponseContentType,
+	}
+}
+
+// extractParamFromNode extracts parameter information from a node
+func (e *RefactoredExtractor) extractParamFromNode(node *TrackerNode) *Parameter {
+	for _, matcher := range e.paramMatchers {
+		if matcher.MatchNode(node) {
+			return matcher.ExtractParam(node)
+		}
+	}
+	return nil
+}
+
+// joinPaths joins two URL paths cleanly
+func (e *RefactoredExtractor) joinPaths(a, b string) string {
+	a = strings.TrimRight(a, "/")
+	b = strings.TrimLeft(b, "/")
+	if a == "" {
+		return "/" + b
+	}
+	return a + "/" + b
+}
+
+// ResponsePatternMatcherImpl implements ResponsePatternMatcher
+type ResponsePatternMatcherImpl struct {
+	*BasePatternMatcher
+	pattern ResponsePattern
+}
+
+// NewResponsePatternMatcher creates a new response pattern matcher
+func NewResponsePatternMatcher(pattern ResponsePattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ResponsePatternMatcherImpl {
+	return &ResponsePatternMatcherImpl{
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		pattern:            pattern,
+	}
+}
+
+// MatchNode checks if a node matches the response pattern
+func (r *ResponsePatternMatcherImpl) MatchNode(node *TrackerNode) bool {
+	if node == nil || node.CallGraphEdge == nil {
+		return false
+	}
+
+	callName := r.contextProvider.GetString(node.CallGraphEdge.Callee.Name)
+	recvType := r.contextProvider.GetString(node.CallGraphEdge.Callee.RecvType)
+	recvPkg := r.contextProvider.GetString(node.CallGraphEdge.Callee.Pkg)
+
+	// Build fully qualified receiver type
+	fqRecvType := recvPkg
+	if fqRecvType != "" && recvType != "" {
+		fqRecvType += "." + recvType
+	} else if recvType != "" {
+		fqRecvType = recvType
+	}
+
+	// Check call regex
+	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {
+		return false
+	}
+
+	// Check function name regex
+	if r.pattern.FunctionNameRegex != "" {
+		funcName := r.contextProvider.GetString(node.CallGraphEdge.Caller.Name)
+		if !r.matchPattern(r.pattern.FunctionNameRegex, funcName) {
+			return false
+		}
+	}
+
+	// Check receiver type
+	if r.pattern.RecvTypeRegex != "" {
+		matched, err := regexp.MatchString(r.pattern.RecvTypeRegex, fqRecvType)
+		if err != nil || !matched {
+			return false
+		}
+	} else if r.pattern.RecvType != "" && r.pattern.RecvType != fqRecvType {
+		return false
+	}
+
+	return true
+}
+
+// GetPattern returns the response pattern
+func (r *ResponsePatternMatcherImpl) GetPattern() interface{} {
+	return r.pattern
+}
+
+// GetPriority returns the priority of this pattern
+func (r *ResponsePatternMatcherImpl) GetPriority() int {
+	priority := 0
+	if r.pattern.CallRegex != "" {
+		priority += 10
+	}
+	if r.pattern.FunctionNameRegex != "" {
+		priority += 5
+	}
+	if r.pattern.RecvTypeRegex != "" || r.pattern.RecvType != "" {
+		priority += 3
+	}
+	return priority
+}
+
+// ExtractResponse extracts response information from a matched node
+func (r *ResponsePatternMatcherImpl) ExtractResponse(node *TrackerNode) *ResponseInfo {
+	respInfo := &ResponseInfo{
+		StatusCode:  r.cfg.Defaults.ResponseStatus,
+		ContentType: r.cfg.Defaults.ResponseContentType,
+	}
+
+	if r.pattern.StatusFromArg && len(node.CallGraphEdge.Args) > r.pattern.StatusArgIndex {
+		statusStr := r.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[r.pattern.StatusArgIndex])
+		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
+			respInfo.StatusCode = status
+		}
+	}
+
+	if r.pattern.TypeFromArg && len(node.CallGraphEdge.Args) > r.pattern.TypeArgIndex {
+		arg := node.CallGraphEdge.Args[r.pattern.TypeArgIndex]
+		bodyType := r.contextProvider.GetArgumentInfo(arg)
+
+		// Trace type origin
+		bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+
+		// Apply dereferencing if needed
+		if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
+			bodyType = strings.TrimPrefix(bodyType, "*")
+		}
+
+		respInfo.BodyType = bodyType
+		respInfo.Schema = r.mapGoTypeToOpenAPISchema(bodyType)
+	}
+
+	return respInfo
+}
+
+// resolveTypeOrigin traces the origin of a type through assignments and type parameters
+func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
+	// NEW: If the argument has resolved type information, use it
+	if arg.ResolvedType != "" {
+		return arg.ResolvedType
+	}
+
+	// If it's a generic type with a concrete resolution, use it
+	if arg.IsGenericType && arg.GenericTypeName != "" {
+		if concreteType, exists := node.CallGraphEdge.TypeParamMap[arg.GenericTypeName]; exists {
+			return concreteType
+		}
+	}
+
+	// Original logic for type resolution
+	if arg.Kind == "ident" {
+		// Check if this variable has assignments that might give us more type information
+		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
+			for _, assignment := range assignments {
+				if assignment.ConcreteType != 0 {
+					concreteType := r.contextProvider.GetString(assignment.ConcreteType)
+					if concreteType != "" {
+						return concreteType
+					}
+				}
+			}
+		}
+	}
+
+	return originalType
+}
+
+// ParamPatternMatcherImpl implements ParamPatternMatcher
+type ParamPatternMatcherImpl struct {
+	*BasePatternMatcher
+	pattern ParamPattern
+}
+
+// NewParamPatternMatcher creates a new param pattern matcher
+func NewParamPatternMatcher(pattern ParamPattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ParamPatternMatcherImpl {
+	return &ParamPatternMatcherImpl{
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		pattern:            pattern,
+	}
+}
+
+// MatchNode checks if a node matches the param pattern
+func (p *ParamPatternMatcherImpl) MatchNode(node *TrackerNode) bool {
+	if node == nil || node.CallGraphEdge == nil {
+		return false
+	}
+
+	callName := p.contextProvider.GetString(node.CallGraphEdge.Callee.Name)
+	recvType := p.contextProvider.GetString(node.CallGraphEdge.Callee.RecvType)
+	recvPkg := p.contextProvider.GetString(node.CallGraphEdge.Callee.Pkg)
+
+	// Build fully qualified receiver type
+	fqRecvType := recvPkg
+	if fqRecvType != "" && recvType != "" {
+		fqRecvType += "." + recvType
+	} else if recvType != "" {
+		fqRecvType = recvType
+	}
+
+	// Check call regex
+	if p.pattern.CallRegex != "" && !p.matchPattern(p.pattern.CallRegex, callName) {
+		return false
+	}
+
+	// Check function name regex
+	if p.pattern.FunctionNameRegex != "" {
+		funcName := p.contextProvider.GetString(node.CallGraphEdge.Caller.Name)
+		if !p.matchPattern(p.pattern.FunctionNameRegex, funcName) {
+			return false
+		}
+	}
+
+	// Check receiver type
+	if p.pattern.RecvTypeRegex != "" {
+		matched, err := regexp.MatchString(p.pattern.RecvTypeRegex, fqRecvType)
+		if err != nil || !matched {
+			return false
+		}
+	} else if p.pattern.RecvType != "" && p.pattern.RecvType != fqRecvType {
+		return false
+	}
+
+	return true
+}
+
+// GetPattern returns the param pattern
+func (p *ParamPatternMatcherImpl) GetPattern() interface{} {
+	return p.pattern
+}
+
+// GetPriority returns the priority of this pattern
+func (p *ParamPatternMatcherImpl) GetPriority() int {
+	priority := 0
+	if p.pattern.CallRegex != "" {
+		priority += 10
+	}
+	if p.pattern.FunctionNameRegex != "" {
+		priority += 5
+	}
+	if p.pattern.RecvTypeRegex != "" || p.pattern.RecvType != "" {
+		priority += 3
+	}
+	return priority
+}
+
+// ExtractParam extracts parameter information from a matched node
+func (p *ParamPatternMatcherImpl) ExtractParam(node *TrackerNode) *Parameter {
+	param := &Parameter{
+		In: p.pattern.ParamIn,
+	}
+
+	if len(node.CallGraphEdge.Args) > p.pattern.ParamArgIndex {
+		param.Name = p.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[p.pattern.ParamArgIndex])
+	}
+
+	if p.pattern.TypeFromArg && len(node.CallGraphEdge.Args) > p.pattern.TypeArgIndex {
+		arg := node.CallGraphEdge.Args[p.pattern.TypeArgIndex]
+		paramType := p.contextProvider.GetArgumentInfo(arg)
+
+		// Trace type origin
+		paramType = p.resolveTypeOrigin(arg, node, paramType)
+
+		// Apply dereferencing if needed
+		if p.pattern.Deref && strings.HasPrefix(paramType, "*") {
+			paramType = strings.TrimPrefix(paramType, "*")
+		}
+
+		param.Schema = p.mapGoTypeToOpenAPISchema(paramType)
+	}
+
+	// Ensure all parameters have a schema - default to string if none specified
+	if param.Schema == nil {
+		param.Schema = &Schema{Type: "string"}
+	}
+
+	// Ensure path parameters are always required
+	if p.pattern.ParamIn == "path" {
+		param.Required = true
+	}
+
+	return param
+}
+
+// resolveTypeOrigin traces the origin of a type through assignments and type parameters
+func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
+	// NEW: If the argument has resolved type information, use it
+	if arg.ResolvedType != "" {
+		return arg.ResolvedType
+	}
+
+	// If it's a generic type with a concrete resolution, use it
+	if arg.IsGenericType && arg.GenericTypeName != "" {
+		if concreteType, exists := node.CallGraphEdge.TypeParamMap[arg.GenericTypeName]; exists {
+			return concreteType
+		}
+	}
+
+	// Original logic for type resolution
+	if arg.Kind == "ident" {
+		// Check if this variable has assignments that might give us more type information
+		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
+			for _, assignment := range assignments {
+				if assignment.ConcreteType != 0 {
+					concreteType := p.contextProvider.GetString(assignment.ConcreteType)
+					if concreteType != "" {
+						return concreteType
+					}
+				}
+			}
+		}
+	}
+
+	return originalType
+}
+
+// OverrideApplierImpl implements OverrideApplier
+type OverrideApplierImpl struct {
+	cfg *SwagenConfig
+}
+
+// NewOverrideApplier creates a new override applier
+func NewOverrideApplier(cfg *SwagenConfig) *OverrideApplierImpl {
+	return &OverrideApplierImpl{
+		cfg: cfg,
+	}
+}
+
+// ApplyOverrides applies manual overrides to route info
+func (o *OverrideApplierImpl) ApplyOverrides(routeInfo *RouteInfo) {
+	for _, override := range o.cfg.Overrides {
+		if override.FunctionName == routeInfo.Function {
+			if override.Summary != "" {
+				routeInfo.Summary = override.Summary
+			}
+			if res, exists := routeInfo.Response[fmt.Sprintf("%d", override.ResponseStatus)]; exists && override.ResponseStatus != 0 && routeInfo.Response != nil {
+				res.StatusCode = override.ResponseStatus
+			}
+			if override.ResponseType != "" && routeInfo.Response != nil {
+				for _, res := range routeInfo.Response {
+					res.BodyType = override.ResponseType
+				}
+			}
+			if len(override.Tags) > 0 {
+				routeInfo.Tags = override.Tags
+			}
+		}
+	}
+}
+
+// HasOverride checks if there's an override for a function
+func (o *OverrideApplierImpl) HasOverride(functionName string) bool {
+	for _, override := range o.cfg.Overrides {
+		if override.FunctionName == functionName {
+			return true
+		}
+	}
+	return false
+}

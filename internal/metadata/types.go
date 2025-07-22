@@ -1,5 +1,7 @@
 package metadata
 
+import "fmt"
+
 const (
 	kindIdent           = "ident"
 	kindLiteral         = "literal"
@@ -106,75 +108,75 @@ func (sp *StringPool) Finalize() {
 
 // Metadata represents the complete metadata for a Go codebase
 type Metadata struct {
-	StringPool *StringPool         `yaml:"string_pool"`
-	Packages   map[string]*Package `yaml:"packages"`
-	CallGraph  []CallGraphEdge     `yaml:"call_graph"`
+	StringPool *StringPool         `yaml:"string_pool,omitempty"`
+	Packages   map[string]*Package `yaml:"packages,omitempty"`
+	CallGraph  []CallGraphEdge     `yaml:"call_graph,omitempty"`
 }
 
 // Package represents a Go package
 type Package struct {
-	ImportPath int              `yaml:"import_path"`
-	Files      map[string]*File `yaml:"files"`
-	Types      map[string]*Type `yaml:"types"`
+	ImportPath int              `yaml:"import_path,omitempty"`
+	Files      map[string]*File `yaml:"files,omitempty"`
+	Types      map[string]*Type `yaml:"types,omitempty"`
 }
 
 // File represents a Go source file
 type File struct {
-	Types           map[string]*Type     `yaml:"types"`
-	Functions       map[string]*Function `yaml:"functions"`
-	Variables       map[string]*Variable `yaml:"variables"`
-	StructInstances []StructInstance     `yaml:"struct_instances"`
-	Selectors       []Selector           `yaml:"selectors"`
-	Imports         map[int]int          `yaml:"imports"` // alias -> path
+	Types           map[string]*Type     `yaml:"types,omitempty"`
+	Functions       map[string]*Function `yaml:"functions,omitempty"`
+	Variables       map[string]*Variable `yaml:"variables,omitempty"`
+	StructInstances []StructInstance     `yaml:"struct_instances,omitempty"`
+	// Selectors       []Selector           `yaml:"selectors"`
+	Imports map[int]int `yaml:"imports"` // alias -> path
 }
 
 // Type represents a Go type
 type Type struct {
-	Name          int      `yaml:"name"`
-	Kind          int      `yaml:"kind"`
-	Target        int      `yaml:"target"`
-	Implements    []int    `yaml:"implements"`
-	ImplementedBy []int    `yaml:"implemented_by"`
-	Embeds        []int    `yaml:"embeds"`
-	Fields        []Field  `yaml:"fields"`
-	Scope         int      `yaml:"scope"`
-	Methods       []Method `yaml:"methods"`
-	Comments      int      `yaml:"comments"`
-	Tags          []int    `yaml:"tags"`
+	Name          int      `yaml:"name,omitempty"`
+	Kind          int      `yaml:"kind,omitempty"`
+	Target        int      `yaml:"target,omitempty"`
+	Implements    []int    `yaml:"implements,omitempty"`
+	ImplementedBy []int    `yaml:"implemented_by,omitempty"`
+	Embeds        []int    `yaml:"embeds,omitempty"`
+	Fields        []Field  `yaml:"fields,omitempty"`
+	Scope         int      `yaml:"scope,omitempty"`
+	Methods       []Method `yaml:"methods,omitempty"`
+	Comments      int      `yaml:"comments,omitempty"`
+	Tags          []int    `yaml:"tags,omitempty"`
 }
 
 // Field represents a struct field
 type Field struct {
-	Name     int `yaml:"name"`
-	Type     int `yaml:"type"`
-	Tag      int `yaml:"tag"`
-	Scope    int `yaml:"scope"`
-	Comments int `yaml:"comments"`
+	Name     int `yaml:"name,omitempty"`
+	Type     int `yaml:"type,omitempty"`
+	Tag      int `yaml:"tag,omitempty"`
+	Scope    int `yaml:"scope,omitempty"`
+	Comments int `yaml:"comments,omitempty"`
 }
 
 // Method represents a method
 type Method struct {
-	Name         int          `yaml:"name"`
-	Receiver     int          `yaml:"receiver"`
-	Signature    CallArgument `yaml:"signature"`
-	SignatureStr int          `yaml:"signature_str"`
-	Position     int          `yaml:"position"`
-	Scope        int          `yaml:"scope"`
-	Comments     int          `yaml:"comments"`
-	Tags         []int        `yaml:"tags"`
+	Name         int          `yaml:"name,omitempty"`
+	Receiver     int          `yaml:"receiver,omitempty"`
+	Signature    CallArgument `yaml:"signature,omitempty"`
+	SignatureStr int          `yaml:"signature_str,omitempty"`
+	Position     int          `yaml:"position,omitempty"`
+	Scope        int          `yaml:"scope,omitempty"`
+	Comments     int          `yaml:"comments,omitempty"`
+	Tags         []int        `yaml:"tags,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
-	AssignmentMap map[string][]Assignment `yaml:"assignment_map,omitempty"`
+	AssignmentMap map[string][]Assignment `yaml:"-"`
 }
 
 // Function represents a function
 type Function struct {
-	Name      int          `yaml:"name"`
-	Signature CallArgument `yaml:"signature"`
-	Position  int          `yaml:"position"`
-	Scope     int          `yaml:"scope"`
-	Comments  int          `yaml:"comments"`
-	Tags      []int        `yaml:"tags"`
+	Name      int          `yaml:"name,omitempty"`
+	Signature CallArgument `yaml:"signature,omitempty"`
+	Position  int          `yaml:"position,omitempty"`
+	Scope     int          `yaml:"scope,omitempty"`
+	Comments  int          `yaml:"comments,omitempty"`
+	Tags      []int        `yaml:"tags,omitempty"`
 
 	// Type parameter names for generics
 	TypeParams []string `yaml:"type_params,omitempty"`
@@ -183,41 +185,41 @@ type Function struct {
 	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
-	AssignmentMap map[string][]Assignment `yaml:"assignment_map,omitempty"`
+	AssignmentMap map[string][]Assignment `yaml:"-"`
 }
 
 // Variable represents a variable
 type Variable struct {
-	Name     int `yaml:"name"`
-	Tok      int `yaml:"tok"`
-	Type     int `yaml:"type"`
-	Value    int `yaml:"value"`
-	Position int `yaml:"position"`
-	Comments int `yaml:"comments"`
+	Name     int `yaml:"name,omitempty"`
+	Tok      int `yaml:"tok,omitempty"`
+	Type     int `yaml:"type,omitempty"`
+	Value    int `yaml:"value,omitempty"`
+	Position int `yaml:"position,omitempty"`
+	Comments int `yaml:"comments,omitempty"`
 }
 
 // Selector represents a selector expression
 type Selector struct {
-	Expr     CallArgument `yaml:"expr"`
-	Kind     int          `yaml:"kind"`
-	Position int          `yaml:"position"`
+	Expr     CallArgument `yaml:"expr,omitempty"`
+	Kind     int          `yaml:"kind,omitempty"`
+	Position int          `yaml:"position,omitempty"`
 }
 
 // StructInstance represents a struct literal instance
 type StructInstance struct {
-	Type     int         `yaml:"type"`
-	Position int         `yaml:"position"`
-	Fields   map[int]int `yaml:"fields"`
+	Type     int         `yaml:"type,omitempty"`
+	Position int         `yaml:"position,omitempty"`
+	Fields   map[int]int `yaml:"fields,omitempty"`
 }
 
 // Assignment represents a variable assignment
 type Assignment struct {
-	VariableName int          `yaml:"variable_name"`
-	Pkg          int          `yaml:"pkg"`
-	ConcreteType int          `yaml:"concrete_type"`
-	Position     int          `yaml:"position"`
-	Scope        int          `yaml:"scope"`
-	Value        CallArgument `yaml:"value"`
+	VariableName int          `yaml:"variable_name,omitempty"`
+	Pkg          int          `yaml:"pkg,omitempty"`
+	ConcreteType int          `yaml:"concrete_type,omitempty"`
+	Position     int          `yaml:"position,omitempty"`
+	Scope        int          `yaml:"scope,omitempty"`
+	Value        CallArgument `yaml:"value,omitempty"`
 
 	// For assignments from function calls
 	CalleeFunc  string `yaml:"callee_func,omitempty"`
@@ -227,6 +229,7 @@ type Assignment struct {
 
 // CallArgument represents a function call argument or expression
 type CallArgument struct {
+	idstr    string
 	Kind     string                 `yaml:"kind"`            // ident, literal, selector, call, raw
 	Name     string                 `yaml:"name,omitempty"`  // for ident
 	Value    string                 `yaml:"value,omitempty"` // for literal
@@ -239,10 +242,31 @@ type CallArgument struct {
 	Pkg      string                 `yaml:"pkg,omitempty"`   // for ident
 	Type     string                 `yaml:"type,omitempty"`  // for ident
 	Position string                 `yaml:"position,omitempty"`
+
+	// New fields for argument-to-parameter and type parameter mapping
+	ParamArgMap  map[string]CallArgument `yaml:"-"` // parameter name -> argument
+	TypeParamMap map[string]string       `yaml:"-"` // type parameter name -> concrete type
+
+	// NEW: Type parameter resolution information
+	ResolvedType    string `yaml:"resolved_type,omitempty"`     // The concrete type after type parameter resolution
+	IsGenericType   bool   `yaml:"is_generic_type,omitempty"`   // Whether this argument represents a generic type
+	GenericTypeName string `yaml:"generic_type_name,omitempty"` // The generic type parameter name (e.g., "TRequest", "TData")
 }
 
 func (a *CallArgument) ID() string {
-	return a.id(".")
+	var pos string
+
+	if a.idstr != "" {
+		return a.idstr
+	}
+
+	if len(a.Position) > 0 {
+		pos = "@" + a.Position
+	}
+
+	a.idstr = a.id(".") + pos
+
+	return a.idstr
 }
 
 // ID returns a unique identifier for the call argument
@@ -272,24 +296,37 @@ func (a *CallArgument) id(sep string) string {
 
 // Call represents a function call
 type Call struct {
-	Meta *Metadata
-
-	Name     int `yaml:"name"`
-	Pkg      int `yaml:"pkg"`
-	RecvType int `yaml:"recv_type"`
+	Meta     *Metadata `yaml:"-"`
+	id       string
+	Name     int `yaml:"name,omitempty"`
+	Pkg      int `yaml:"pkg,omitempty"`
+	Position int `yaml:"position,omitempty"`
+	RecvType int `yaml:"recv_type,omitempty"`
 }
 
 // ID returns a unique identifier for the call
 func (c Call) ID() string {
-	return c.Meta.StringPool.GetString(c.Pkg) + "." + c.Meta.StringPool.GetString(c.Name)
+	var pos string
+
+	if c.id != "" {
+		return c.id
+	}
+
+	if c.Position >= 0 {
+		pos = "@" + c.Meta.StringPool.GetString(c.Position)
+	}
+
+	c.id = fmt.Sprintf("%s.%s%s", c.Meta.StringPool.GetString(c.Pkg), c.Meta.StringPool.GetString(c.Name), pos)
+
+	return c.id
 }
 
 // CallGraphEdge represents an edge in the call graph
 type CallGraphEdge struct {
-	Caller        Call                    `yaml:"caller"`
-	Callee        Call                    `yaml:"callee"`
-	Position      int                     `yaml:"position"`
-	Args          []CallArgument          `yaml:"args"`
+	Caller        Call                    `yaml:"caller,omitempty"`
+	Callee        Call                    `yaml:"callee,omitempty"`
+	Position      int                     `yaml:"position,omitempty"`
+	Args          []CallArgument          `yaml:"args,omitempty"`
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
 
 	// New fields for argument-to-parameter and type parameter mapping
@@ -304,6 +341,6 @@ type CallGraphEdge struct {
 
 // GlobalAssignment represents a global variable assignment
 type GlobalAssignment struct {
-	ConcreteType string
-	PkgName      string
+	ConcreteType string `yaml:"-"`
+	PkgName      string `yaml:"-"`
 }

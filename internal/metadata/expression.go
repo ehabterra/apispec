@@ -114,10 +114,21 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 		args[i] = ExprToCallArgument(a, info, pkgName, fset)
 	}
 	fun := ExprToCallArgument(e.Fun, info, pkgName, fset)
+	// Build parameter-to-argument mapping
+	paramArgMap := make(map[string]CallArgument)
+	typeParamMap := make(map[string]string)
+
+	// Get the *types.Object for the function being called
+	// This is crucial for getting the *declared* generic type parameters
+	extractParamsAndTypeParams(e, info, args, paramArgMap, typeParamMap)
+
 	return CallArgument{
-		Kind: kindCall,
-		Fun:  &fun,
-		Args: args,
+		Kind:         kindCall,
+		Fun:          &fun,
+		Args:         args,
+		Position:     getPosition(e.Pos(), fset),
+		TypeParamMap: typeParamMap,
+		ParamArgMap:  paramArgMap,
 	}
 }
 
