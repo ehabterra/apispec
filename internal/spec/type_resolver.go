@@ -68,7 +68,7 @@ func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, 
 	}
 
 	// Use metadata.TraceVariableOrigin to trace the variable
-	originVar, _, originType := metadata.TraceVariableOrigin(
+	originVar, _, originType, _ := metadata.TraceVariableOrigin(
 		arg.Name,
 		t.getCallerName(context),
 		t.getCallerPkg(context),

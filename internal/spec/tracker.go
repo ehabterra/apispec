@@ -161,8 +161,8 @@ func classifyArgument(arg metadata.CallArgument, edge *metadata.CallGraphEdge) A
 	}
 }
 
-// processArgumentsEnhanced processes arguments with enhanced classification and tracking
-func processArgumentsEnhanced(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]*TrackerNode, assignmentIndex map[assignmentKey]*TrackerNode, limits TrackerLimits) []*TrackerNode {
+// processArguments processes arguments with enhanced classification and tracking
+func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]*TrackerNode, assignmentIndex map[assignmentKey]*TrackerNode, limits TrackerLimits) []*TrackerNode {
 	var children []*TrackerNode
 	argCount := 0
 
@@ -227,7 +227,7 @@ func processArgumentsEnhanced(tree *TrackerTree, meta *metadata.Metadata, parent
 				if len(arg.Args) > 0 {
 					childArgs := make([]metadata.CallArgument, len(arg.Args))
 					copy(childArgs, arg.Args)
-					argNode.children = append(argNode.children, processArgumentsEnhanced(tree, meta, argNode, edge, &arg, visited, assignmentIndex, limits)...)
+					argNode.children = append(argNode.children, processArguments(tree, meta, argNode, edge, &arg, visited, assignmentIndex, limits)...)
 				}
 
 				children = append(children, argNode)
@@ -239,7 +239,7 @@ func processArgumentsEnhanced(tree *TrackerTree, meta *metadata.Metadata, parent
 
 		case ArgTypeVariable:
 			// Enhanced variable tracing and assignment linking
-			originVar, originPkg, _ := metadata.TraceVariableOrigin(
+			originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
 				arg.Name,
 				getString(meta, edge.Caller.Name),
 				getString(meta, edge.Caller.Pkg),
@@ -271,7 +271,7 @@ func processArgumentsEnhanced(tree *TrackerTree, meta *metadata.Metadata, parent
 			// Process field/method access
 			if arg.X != nil {
 				// Trace the base object
-				baseVar, _, _ := metadata.TraceVariableOrigin(
+				baseVar, _, _, _ := metadata.TraceVariableOrigin(
 					arg.X.Name,
 					getString(meta, edge.Caller.Name),
 					getString(meta, edge.Caller.Pkg),
@@ -293,7 +293,7 @@ func processArgumentsEnhanced(tree *TrackerTree, meta *metadata.Metadata, parent
 			if arg.X != nil {
 				// Trace the operand
 				if arg.X.Kind == "ident" {
-					originVar, originPkg, _ := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
 						arg.X.Name,
 						getString(meta, edge.Caller.Name),
 						getString(meta, edge.Caller.Pkg),
@@ -463,7 +463,7 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 				var addedToParent bool
 
 				// Process arguments for this edge using enhanced processing
-				argumentChildren := processArgumentsEnhanced(tree, meta, childNode, &edge, callArg, visited, assignmentIndex, limits)
+				argumentChildren := processArguments(tree, meta, childNode, &edge, callArg, visited, assignmentIndex, limits)
 
 				// Register assignments for this node (from AssignmentMap)
 				funcName := getString(meta, edge.Caller.Name)
@@ -479,16 +479,18 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 				if edge.CalleeRecvVarName != "" {
 					for _, assigns := range assignmentMap {
-						lastAssign := assigns[len(assigns)-1]
-						if lastAssign.CalleeFunc == calleeName && lastAssign.CalleePkg == calleePkg {
-							akey := assignmentKey{
-								Name:     childNode.CalleeRecvVarName,
-								Pkg:      callerPkg, // Use caller's package to match TraceVariableOrigin
-								Type:     getString(meta, lastAssign.ConcreteType),
-								Function: funcName,
+						for assignIndex := len(assigns) - 1; assignIndex >= 0; assignIndex-- {
+							assignment := assigns[assignIndex]
+							if assignment.CalleeFunc == calleeName && assignment.CalleePkg == calleePkg {
+								akey := assignmentKey{
+									Name:     childNode.CalleeRecvVarName,
+									Pkg:      callerPkg, // Use caller's package to match TraceVariableOrigin
+									Type:     getString(meta, assignment.ConcreteType),
+									Function: funcName,
+								}
+								assignmentIndex[akey] = childNode
+								break
 							}
-							assignmentIndex[akey] = childNode
-							break
 						}
 					}
 				}
@@ -508,19 +510,18 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 						}
 					}
 
-					originVar, originPkg, originType := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, originFunc := metadata.TraceVariableOrigin(
 						edge.CalleeVarName,
 						funcName,
 						callerPkg,
 						meta,
 					)
 
-					fmt.Println("originType:", originType)
 					if parent, ok := assignmentIndex[assignmentKey{
 						Name:     originVar,
 						Pkg:      originPkg,
 						Type:     calleeRecvType,
-						Function: funcName, // here is the problem need to move up to the parent function not current one
+						Function: originFunc,
 					}]; ok {
 						parent.children = append(parent.children, childNode)
 						addedToParent = true
@@ -625,7 +626,7 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
 
 	// For variable arguments, trace back to assignment
 	if argNode.ArgType == ArgTypeVariable && argNode.CallArgument != nil {
-		originVar, _, _ := metadata.TraceVariableOrigin(
+		originVar, _, _, _ := metadata.TraceVariableOrigin(
 			argNode.CallArgument.Name,
 			argNode.ArgContext,
 			"", // Use empty string for package, will be determined by TraceVariableOrigin

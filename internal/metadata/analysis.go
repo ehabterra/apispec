@@ -173,14 +173,14 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 	switch e := expr.(type) {
 	case *ast.Ident:
 		// Use TraceVariableOrigin for identifiers
-		_, originPkg, originType := TraceVariableOrigin(e.Name, funcName, pkgName, metadata)
+		_, originPkg, originType, _ := TraceVariableOrigin(e.Name, funcName, pkgName, metadata)
 		return originPkg, originType
 
 	case *ast.SelectorExpr:
 		// Try to resolve selector as var.field or package.type
 		if ident, ok := e.X.(*ast.Ident); ok {
 			// Try tracing the base identifier
-			_, basePkg, baseType := TraceVariableOrigin(ident.Name, funcName, pkgName, metadata)
+			_, basePkg, baseType, _ := TraceVariableOrigin(ident.Name, funcName, pkgName, metadata)
 			return basePkg, baseType
 		}
 		// Fallback: just get type name
@@ -190,13 +190,13 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 		// For function calls, try to trace the return value
 		if funIdent, ok := e.Fun.(*ast.Ident); ok {
 			// Direct function call
-			_, originPkg, originType := TraceVariableOrigin(funIdent.Name, funcName, pkgName, metadata)
+			_, originPkg, originType, _ := TraceVariableOrigin(funIdent.Name, funcName, pkgName, metadata)
 			return originPkg, originType
 		}
 		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
 			// Method or package function call
 			if _, ok := sel.X.(*ast.Ident); ok {
-				_, originPkg, originType := TraceVariableOrigin(sel.Sel.Name, funcName, pkgName, metadata)
+				_, originPkg, originType, _ := TraceVariableOrigin(sel.Sel.Name, funcName, pkgName, metadata)
 				return originPkg, originType
 			}
 		}
@@ -230,13 +230,13 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 
 // TraceVariableOrigin recursively traces the origin and type of a variable/parameter through the call graph.
 // It supports cross-file and cross-package tracing.
-// Returns: origin variable/parameter name, package, and type (if resolvable).
+// Returns: origin variable/parameter name, package, type (if resolvable), and the caller's function name.
 func TraceVariableOrigin(
 	varName string,
 	funcName string,
 	pkgName string,
 	metadata *Metadata,
-) (originVar string, originPkg string, originType *CallArgument) {
+) (originVar string, originPkg string, originType *CallArgument, callerFuncName string) {
 	visited := make(map[string]struct{})
 	return traceVariableOriginHelper(varName, funcName, pkgName, metadata, visited)
 }
@@ -247,12 +247,12 @@ func traceVariableOriginHelper(
 	pkgName string,
 	metadata *Metadata,
 	visited map[string]struct{},
-) (originVar string, originPkg string, originType *CallArgument) {
-	// key := pkgName + "." + funcName + ":" + varName
-	// if _, ok := visited[key]; ok {
-	// 	return varName, pkgName, nil // Prevent infinite recursion
-	// }
-	// visited[key] = struct{}{}
+) (originVar string, originPkg string, originType *CallArgument, callerFuncName string) {
+	key := pkgName + "." + funcName + ":" + varName
+	if _, ok := visited[key]; ok {
+		return varName, pkgName, nil, funcName // Prevent infinite recursion, return current funcName as caller
+	}
+	visited[key] = struct{}{}
 
 	funcNameIndex := metadata.StringPool.Get(funcName)
 	pkgNameIndex := metadata.StringPool.Get(pkgName)
@@ -260,45 +260,43 @@ func traceVariableOriginHelper(
 	// Look for a call graph edge where this function is the callee
 	for _, edge := range metadata.CallGraph {
 		if edge.Callee.Name == funcNameIndex && edge.Callee.Pkg == pkgNameIndex {
+			callerName := metadata.StringPool.GetString(edge.Caller.Name)
+			callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
+
 			// Type param (generic)
 			if concrete, ok := edge.TypeParamMap[varName]; ok && concrete != "" {
-				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: concrete}
+				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: concrete}, callerName
 			}
 
 			// See if this parameter is mapped
 			if arg, ok := edge.ParamArgMap[varName]; ok {
 				switch arg.Kind {
 				case kindIdent:
-					callerName := metadata.StringPool.GetString(edge.Caller.Name)
-					callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
-					return traceVariableOriginHelper(arg.Name, callerName, callerPkg, metadata, visited)
+					_, _, t, f := traceVariableOriginHelper(arg.Name, callerName, callerPkg, metadata, visited)
+					return arg.Name, callerPkg, t, f
 				case kindUnary, kindStar:
 					if arg.X != nil {
-						callerName := metadata.StringPool.GetString(edge.Caller.Name)
-						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
-						return traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+						_, _, t, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+						return arg.X.Name, callerPkg, t, f
 					}
 				case kindSelector:
 					if arg.X != nil {
-						callerName := metadata.StringPool.GetString(edge.Caller.Name)
-						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
-						baseVar, basePkg, baseType := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
-						return baseVar + "." + arg.Sel, basePkg, baseType
+						baseVar, basePkg, baseType, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+						return baseVar + "." + arg.Sel, basePkg, baseType, f
 					}
 				case kindCall:
 					if arg.Fun != nil {
-						callerName := metadata.StringPool.GetString(edge.Caller.Name)
-						callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
-						return traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
+						_, _, t, f := traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
+						return arg.Fun.Name, callerPkg, t, f
 					}
 				case kindTypeAssert:
 					// For type assertions, use the asserted type as the concrete type
 					if arg.Fun != nil && arg.Fun.Type != "" {
-						return varName, pkgName, arg.Fun
+						return varName, pkgName, arg.Fun, callerName
 					}
 				default:
 					if arg.Kind != "" {
-						return arg.Name, pkgName, &arg
+						return arg.Name, pkgName, &arg, callerName
 					}
 				}
 			}
@@ -311,7 +309,7 @@ func traceVariableOriginHelper(
 	if pkg, ok := metadata.Packages[pkgName]; ok {
 		for _, file := range pkg.Files {
 			if v, ok := file.Variables[varName]; ok {
-				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: metadata.StringPool.GetString(v.Type)}
+				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: metadata.StringPool.GetString(v.Type)}, funcName
 			}
 
 			if fn, ok := file.Functions[funcName]; ok {
@@ -320,7 +318,8 @@ func traceVariableOriginHelper(
 					assign := assigns[len(assigns)-1]
 					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS
 					if assign.Value.Kind == kindIdent && assign.Value.Name != varName {
-						return traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+						_, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+						return assign.Value.Name, pkgName, t, f
 					}
 					// If the assignment is from a function call, follow the return value
 					if assign.CalleeFunc != "" && assign.CalleePkg != "" {
@@ -332,21 +331,22 @@ func traceVariableOriginHelper(
 									if retIdx < len(calleeFn.ReturnVars) {
 										retArg := calleeFn.ReturnVars[retIdx]
 										if retArg.Kind == kindIdent && retArg.Name != "" {
-											return traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+											_, _, t, f := traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+											return retArg.Name, assign.CalleePkg, t, f
 										}
 										// For literals or other expressions, return as is
-										return retArg.Name, assign.CalleePkg, &retArg
+										return retArg.Name, assign.CalleePkg, &retArg, funcName
 									}
 								}
 							}
 						}
 					}
-					return varName, pkgName, &assign.Value
+					return varName, pkgName, &assign.Value, funcName
 				}
 			}
 		}
 	}
 
 	// Fallback: return as is
-	return varName, pkgName, nil
+	return varName, pkgName, nil, funcName
 }

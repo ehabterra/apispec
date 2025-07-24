@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -613,6 +612,9 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 	var visited = map[string]bool{}
 
 	for _, file := range files {
+		var argMap = map[string]*CallArgument{}
+		var calleeMap = map[string]*CallGraphEdge{}
+
 		info := fileToInfo[file]
 
 		var assignVarName string
@@ -629,7 +631,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			// visited[pos] = true
 
 			if call, ok := n.(*ast.CallExpr); ok {
-				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, visited)
+				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, visited, calleeMap, argMap)
 				assignVarName = ""
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
 				// Find which variable this call is assigned to
@@ -645,11 +647,17 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 
 			return true
 		})
+
+		for argID, arg := range argMap {
+			if edge, ok := calleeMap[argID]; ok {
+				arg.Edge = edge
+			}
+		}
 	}
 }
 
 // processCallExpression processes a function call expression
-func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, visited map[string]bool) {
+func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, visited map[string]bool, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
@@ -658,6 +666,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		args := make([]CallArgument, len(call.Args))
 		for i, arg := range call.Args {
 			args[i] = ExprToCallArgument(arg, info, pkgName, fset)
+			argMap[args[i].ID()] = &args[i]
 		}
 
 		// Build parameter-to-argument mapping
@@ -674,47 +683,39 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
 
-		if fn, ok := funcMap[funcName]; ok {
-			ast.Inspect(fn, func(nd ast.Node) bool {
-				if nd == nil {
-					return true
-				}
+		calleeAstFile := astFileFromFn(calleePkg, funcName, pkgs, fset, metadata)
 
-				// pos := getPosition(nd.Pos(), fset)
-				// if _, ok := visited[pos]; ok {
-				// 	return true
-				// }
-				// visited[pos] = true
+		if calleeAstFile != nil {
+			fnInfo := fileToInfo[calleeAstFile]
 
-				switch expr := nd.(type) {
-				case *ast.AssignStmt:
-					// IMPORTANT: The `file` argument in processAssignment should be the file of the *callee*,
-					// not the caller. Otherwise, info.ObjectOf might return nil for objects not in the caller's file.
-					// We need to find the correct `*ast.File` object for the callee's declaration.
-					// This lookup is more complex than just using `pos.Filename` because `pkgs` is keyed by package path,
-					// and `fileToInfo` maps `*ast.File` pointers.
-					var calleeAstFile *ast.File
-					for _, f := range pkgs[calleePkg] {
-						// Simple heuristic: if the function's position is within this file, it's the one.
-						// This assumes a function declaration is entirely within one file.
-						// A more robust check might involve comparing FileSet positions.
-						if fset.Position(fn.Pos()).Filename == fset.Position(f.Pos()).Filename {
-							calleeAstFile = f
-							break
-						}
+			if fn, ok := funcMap[funcName]; ok {
+				ast.Inspect(fn, func(nd ast.Node) bool {
+					if nd == nil {
+						return true
 					}
 
-					if calleeAstFile != nil {
-						fnInfo := fileToInfo[calleeAstFile]
+					// pos := getPosition(nd.Pos(), fset)
+					// if _, ok := visited[pos]; ok {
+					// 	return true
+					// }
+					// visited[pos] = true
+
+					switch expr := nd.(type) {
+					case *ast.AssignStmt:
+						// IMPORTANT: The `file` argument in processAssignment should be the file of the *callee*,
+						// not the caller. Otherwise, info.ObjectOf might return nil for objects not in the caller's file.
+						// We need to find the correct `*ast.File` object for the callee's declaration.
+						// This lookup is more complex than just using `pos.Filename` because `pkgs` is keyed by package path,
+						// and `fileToInfo` maps `*ast.File` pointers.
 						assignments := processAssignment(expr, calleeAstFile, fnInfo, calleePkg, fset, pool, fileToInfo, funcMap, metadata)
 						for _, assign := range assignments {
 							varName := pool.GetString(assign.VariableName)
 							assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 						}
 					}
-				}
-				return true
-			})
+					return true
+				})
+			}
 		}
 
 		// Create the call graph edge
@@ -750,11 +751,28 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			meta:              metadata,
 		}
 
-		// NEW: Apply type parameter resolution to fill CallArgument with correct data
+		// Apply type parameter resolution to fill CallArgument with correct data
 		applyTypeParameterResolution(&cgEdge)
+
+		calleeMap[cgEdge.Callee.ID()] = &cgEdge
 
 		metadata.CallGraph = append(metadata.CallGraph, cgEdge)
 	}
+}
+
+func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File, fset *token.FileSet, metadata *Metadata) *ast.File {
+	var astFile *ast.File
+
+	if pkg, pkgExists := metadata.Packages[pkgName]; pkgExists {
+		for fileName, f := range pkg.Files {
+			if _, ok := f.Functions[fnName]; ok {
+				astFile = pkgs[pkgName][fileName]
+				break
+			}
+		}
+	}
+
+	return astFile
 }
 
 func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []CallArgument, paramArgMap map[string]CallArgument, typeParamMap map[string]string) {
@@ -783,9 +801,6 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 			if sig, isSig := fobj.Type().(*types.Signature); isSig {
 				// Handle generic type parameters from the *declared* function signature
 				if sig.TypeParams() != nil {
-					// DEBUG: Log when we find a generic function
-					fmt.Printf("DEBUG: Found generic function: %s with %d type parameters\n", fobj.Name(), sig.TypeParams().Len())
-
 					// Attempt to extract explicit type arguments from the call expression syntax
 					var explicitTypeArgExprs []ast.Expr
 					switch fun := call.Fun.(type) {
@@ -812,7 +827,6 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 
 					// If explicit type arguments are provided, use them
 					if len(explicitTypeArgExprs) > 0 {
-						fmt.Printf("DEBUG: Found explicit type arguments for %s\n", fobj.Name())
 						for i := 0; i < sig.TypeParams().Len(); i++ {
 							tparam := sig.TypeParams().At(i)
 							name := tparam.Obj().Name()
@@ -831,58 +845,49 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 						// This means type inference is happening.
 						// We need to get the instantiated types from the *call expression itself*.
 
-						// ENHANCED: Handle type inference for different call expression types
+						// Handle type inference for different call expression types
 						var instance types.Instance
 						var found bool
 
 						switch fun := call.Fun.(type) {
 						case *ast.Ident:
 							instance, found = info.Instances[fun]
-							fmt.Printf("DEBUG: Checking instances for Ident: %s, found: %v\n", fun.Name, found)
 						case *ast.SelectorExpr:
 							// For selector expressions like pkg.Func, try to get the instance
 							instance, found = info.Instances[fun.Sel]
-							fmt.Printf("DEBUG: Checking instances for Selector: %s, found: %v\n", fun.Sel.Name, found)
 						case *ast.ParenExpr:
 							// For parenthesized expressions like (Func), unwrap and try again
 							if ident, ok := fun.X.(*ast.Ident); ok {
 								instance, found = info.Instances[ident]
-								fmt.Printf("DEBUG: Checking instances for ParenExpr: %s, found: %v\n", ident.Name, found)
 							}
 						}
 
 						if found && instance.TypeArgs != nil {
-							fmt.Printf("DEBUG: Found instance with %d type args for %s\n", instance.TypeArgs.Len(), fobj.Name())
 							for i := 0; i < sig.TypeParams().Len(); i++ {
 								tparam := sig.TypeParams().At(i)
 								name := tparam.Obj().Name()
 								if i < instance.TypeArgs.Len() {
 									inferredType := instance.TypeArgs.At(i)
 									typeParamMap[name] = inferredType.String()
-									fmt.Printf("DEBUG: Mapped %s -> %s\n", name, inferredType.String())
 								}
 							}
 						} else {
-							// NEW: Try to infer types from function arguments
+							// Try to infer types from function arguments
 							// This is crucial for cases like HandleRequest(handleSendEmail)
 							// where the type parameters are inferred from the argument types
-							fmt.Printf("DEBUG: No instance found, trying argument-based inference for %s\n", fobj.Name())
 							if len(args) > 0 {
 								// Look at the first argument to infer type parameters
 								firstArg := args[0]
 								if firstArg.Kind == "ident" {
 									// Try to get the type of the argument
 									if argType := info.TypeOf(call.Args[0]); argType != nil {
-										fmt.Printf("DEBUG: Argument type: %s\n", argType.String())
 										// For function arguments, try to extract parameter types
 										if sig, isSig := argType.(*types.Signature); isSig {
-											fmt.Printf("DEBUG: Argument is a function signature with %d params\n", sig.Params().Len())
 											// Check if this is a function type that can help infer generic parameters
 											if sig.Params().Len() > 0 {
 												// The first parameter type of the argument function
 												// should correspond to the first type parameter of the generic function
 												firstParamType := sig.Params().At(0).Type()
-												fmt.Printf("DEBUG: First param type: %s\n", firstParamType.String())
 												if sig.TypeParams().Len() > 0 {
 													// This is a generic function argument
 													// Try to map its type parameters to the callee's type parameters
@@ -892,7 +897,6 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 														if i < sig.TypeParams().Len() {
 															// Map the argument's type parameter to the callee's type parameter
 															typeParamMap[calleeTParam.Obj().Name()] = tparam.Obj().Name()
-															fmt.Printf("DEBUG: Mapped generic param %s -> %s\n", calleeTParam.Obj().Name(), tparam.Obj().Name())
 														}
 													}
 												} else {
@@ -901,7 +905,6 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 													if sig.TypeParams().Len() > 0 {
 														firstTParam := sig.TypeParams().At(0)
 														typeParamMap[firstTParam.Obj().Name()] = firstParamType.String()
-														fmt.Printf("DEBUG: Mapped non-generic param %s -> %s\n", firstTParam.Obj().Name(), firstParamType.String())
 													}
 												}
 											}

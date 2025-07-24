@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ const (
 // WriteYAML writes any data to a YAML file
 func WriteYAML(data interface{}, filename string) error {
 	err := os.Remove(filename)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 

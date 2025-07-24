@@ -44,7 +44,7 @@ const (
 	defaultContactEmail       = "ehabterra@hotmail.com"
 	defaultOpenAPIVersion     = "3.1.1"
 	defaultMaxNodesPerTree    = 10000
-	defaultMaxChildrenPerNode = 200
+	defaultMaxChildrenPerNode = 150
 	defaultMaxArgsPerFunction = 30
 	defaultMaxNestedArgsDepth = 50
 	defaultMetadataFile       = "metadata.yaml"

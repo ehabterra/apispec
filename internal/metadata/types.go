@@ -243,6 +243,9 @@ type CallArgument struct {
 	Type     string                 `yaml:"type,omitempty"`  // for ident
 	Position string                 `yaml:"position,omitempty"`
 
+	// Callee edge for the same call if it's kind is call
+	Edge *CallGraphEdge `yaml:"-"`
+
 	// New fields for argument-to-parameter and type parameter mapping
 	ParamArgMap  map[string]CallArgument `yaml:"-"` // parameter name -> argument
 	TypeParamMap map[string]string       `yaml:"-"` // type parameter name -> concrete type

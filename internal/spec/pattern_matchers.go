@@ -125,7 +125,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node *TrackerNode) RouteInfo {
 		handlerArg := node.CallGraphEdge.Args[r.pattern.HandlerArgIndex]
 		if handlerArg.Kind == kindIdent {
 			// Use variable tracing to resolve handler
-			originVar, originPkg, originType := r.traceVariable(
+			originVar, originPkg, originType, _ := r.traceVariable(
 				handlerArg.Name,
 				r.contextProvider.GetString(node.Caller.Name),
 				r.contextProvider.GetString(node.Caller.Pkg),
@@ -410,13 +410,13 @@ func (b *BasePatternMatcher) matchPattern(pattern, value string) bool {
 	return re.MatchString(value)
 }
 
-func (b *BasePatternMatcher) traceVariable(varName, funcName, pkgName string) (originVar, originPkg string, originType *metadata.CallArgument) {
+func (b *BasePatternMatcher) traceVariable(varName, funcName, pkgName string) (originVar, originPkg string, originType *metadata.CallArgument, originFunc string) {
 	ctxImpl, ok := b.contextProvider.(*ContextProviderImpl)
 	if !ok || ctxImpl.meta == nil {
-		return varName, pkgName, nil
+		return varName, pkgName, nil, originFunc
 	}
-	originVar, originPkg, originType = metadata.TraceVariableOrigin(varName, funcName, pkgName, ctxImpl.meta)
-	return originVar, originPkg, originType
+	originVar, originPkg, originType, originFunc = metadata.TraceVariableOrigin(varName, funcName, pkgName, ctxImpl.meta)
+	return originVar, originPkg, originType, originFunc
 }
 
 func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument, node *TrackerNode) {
