@@ -1,0 +1,197 @@
+# tests/struct_methods_interfaces.yaml
+# This is based on your paste-2.txt metadata but simplified for testing
+string_pool:
+  - GetName
+  - '*User'
+  - exported
+  - func() string
+  - example
+  - SetAge
+  - func(int)
+  - User
+  - struct
+  - Name
+  - string
+  - Age
+  - int
+  - interface
+  - Namer
+  - NewUser
+  - user
+  - '*example.User'
+  - main
+  - name
+  - age
+  - Println
+  - fmt
+
+packages:
+  example:
+    files:
+      "example/types.go":
+        types:
+          User:
+            name: 7
+            kind: 8
+            fields:
+              - name: 9
+                type: 10
+                scope: 3
+                comments: -1
+              - name: 11
+                type: 12
+                scope: 3
+                comments: -1
+            scope: 3
+            methods:
+              - name: 0
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                signature_str: 3
+                scope: 3
+              - name: 5
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                  args:
+                    - kind: ident
+                      name: int
+                      pkg: example
+                      type: int
+                signature_str: 6
+                scope: 3
+            comments: -1
+        functions:
+          NewUser:
+            name: 14
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: star
+                    x:
+                      kind: ident
+                      name: User
+                      pkg: example
+                      type: User
+              args:
+                - kind: ident
+                  name: string
+                  pkg: example
+                  type: string
+                - kind: ident
+                  name: int
+                  pkg: example
+                  type: int
+            scope: 3
+            comments: -1
+          main:
+            name: 17
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            scope: 31
+            comments: -1
+        imports: {}
+    types:
+      User:
+        name: 7
+        kind: 8
+        fields:
+          - name: 9
+            type: 10
+            scope: 3
+            comments: -1
+          - name: 11
+            type: 12
+            scope: 3
+            comments: -1
+        scope: 3
+        methods:
+          - name: 0
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: ident
+                    name: string
+                    pkg: example
+                    type: string
+            signature_str: 3
+            scope: 3
+          - name: 5
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+              args:
+                - kind: ident
+                  name: int
+                  pkg: example
+                  type: int
+            signature_str: 6
+            scope: 3
+        comments: -1
+
+call_graph:
+  - caller:
+      name: 17
+      pkg: 4
+      position: -1
+      recv_type: -1
+    callee:
+      name: 14
+      pkg: 4
+      position: -1
+      recv_type: -1
+    position: 1000
+    args:
+      - kind: literal
+        value: '"User Name"'
+      - kind: literal
+        value: "40"
+    param_arg_map:
+      name:
+        kind: literal
+        value: '"User Name"'
+      age:
+        kind: literal
+        value: "40"
+    callee_recv_var_name: user
+  - caller:
+      name: 17
+      pkg: 4
+      position: -1
+      recv_type: -1
+    callee:
+      name: 21
+      pkg: 22
+      position: -1
+      recv_type: -1
+    position: 1001
+    args:
+      - kind: star
+        x:
+          kind: ident
+          name: user
+          pkg: example
+          type: '*example.User'
+    param_arg_map:
+      a:
+        kind: star
+        x:
+          kind: ident
+          name: user
+          pkg: example
+          type: '*example.User'

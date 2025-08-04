@@ -1,0 +1,110 @@
+# tests/nested_composite.yaml
+string_pool:
+  - ProcessUser
+  - User
+  - example
+  - main
+  - result
+  - user
+  - Name
+  - Age
+  - UserName
+  - string
+  - int
+
+packages:
+  example:
+    files:
+      "example/types.go":
+        types:
+          User:
+            name: 1
+            kind: struct
+            fields:
+              - name: 6
+                type: 9
+                scope: 3
+                comments: -1
+              - name: 7
+                type: 10
+                scope: 3
+                comments: -1
+            comments: -1
+        functions:
+          ProcessUser:
+            name: 0
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: ident
+                    name: string
+                    pkg: example
+                    type: string
+              args:
+                - kind: ident
+                  name: User
+                  pkg: example
+                  type: User
+            scope: 3
+            comments: -1
+          main:
+            name: 3
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            scope: 31
+            comments: -1
+        imports: {}
+
+call_graph:
+  - caller:
+      name: 3
+      pkg: 2
+      position: -1
+      recv_type: -1
+    callee:
+      name: 0
+      pkg: 2
+      position: -1
+      recv_type: -1
+    position: 3000
+    args:
+      - kind: composite_lit
+        x:
+          kind: ident
+          name: User
+          pkg: example
+          type: User
+        args:
+          - kind: key_value
+            x:
+              kind: ident
+              name: Name
+              pkg: example
+              type: string
+            fun:
+              kind: ident
+              name: UserName
+              pkg: example
+              type: string
+          - kind: key_value
+            x:
+              kind: ident
+              name: Age
+              pkg: example
+              type: int
+            fun:
+              kind: literal
+              value: "30"
+    param_arg_map:
+      user:
+        kind: composite_lit
+        x:
+          kind: ident
+          name: User
+          pkg: example
+          type: User
+    callee_recv_var_name: result

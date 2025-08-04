@@ -290,7 +290,7 @@ func DefaultChiConfig() *SwagenConfig {
 				},
 				{
 					CallRegex:     `^Unmarshal$`,
-					TypeArgIndex:  0,
+					TypeArgIndex:  1,
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: "json",
@@ -307,7 +307,7 @@ func DefaultChiConfig() *SwagenConfig {
 				},
 				{
 					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 1,
+					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,
 				},
@@ -622,7 +622,7 @@ func DefaultFiberConfig() *SwagenConfig {
 		},
 		ExternalTypes: []ExternalType{
 			{
-				Name: "github.com/gofiber/fiber/v2.Map",
+				Name: "github.com/gofiber/fiber.Map",
 				OpenAPIType: &Schema{
 					Type: "object",
 				},
@@ -648,7 +648,7 @@ func DefaultGinConfig() *SwagenConfig {
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:    `^(?i)(BindJSON|BindXML|BindYAML|BindForm)$`,
+					CallRegex:    `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,
 					TypeArgIndex: 0,
 					TypeFromArg:  true,
 					Deref:        true,

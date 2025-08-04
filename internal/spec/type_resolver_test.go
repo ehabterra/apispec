@@ -119,7 +119,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 			name: "resolve selector expression",
 			arg: metadata.CallArgument{
 				Kind: "selector",
-				Sel:  "Name",
+				Sel: &metadata.CallArgument{
+					Kind: "ident",
+					Name: "Name",
+					Type: "",
+				},
 				X: &metadata.CallArgument{
 					Kind: "ident",
 					Name: "user",

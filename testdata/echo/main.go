@@ -11,7 +11,7 @@ func main() {
 	g := e.Group("/users")
 
 	// Register all API routes
-	RegisterUsersRoutes(g)
+	RegisterUsersRoutes(g, NewHandler(&defaultUserService{}))
 
 	// Health check
 	e.GET("/health", healthCheck)

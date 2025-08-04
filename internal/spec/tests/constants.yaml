@@ -1,0 +1,144 @@
+string_pool:
+  - Message
+  - constants
+  - string
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:15:2
+  - exported
+  - init
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:14:1
+  - unexported
+  - size
+  - int
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:19:2
+  - UseConstants
+  - name
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:20:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:18:1
+  - MaxSize
+  - const
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:4:2
+  - "100"
+  - Name
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:5:2
+  - test
+  - Pi
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:6:2
+  - "3.14"
+  - GlobalVar
+  - var
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:10:2
+  - "42"
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:11:2
+packages:
+  constants:
+    files:
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go
+      : functions:
+          UseConstants:
+            name: 11
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            position: 14
+            scope: 4
+            comments: -1
+            assignments:
+              name:
+                - variable_name: 12
+                  pkg: 1
+                  concrete_type: 2
+                  position: 13
+                  scope: 7
+                  value:
+                    kind: ident
+                    name: Name
+                    pkg: constants
+                    type: untyped string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:20:10
+                  lhs:
+                    kind: ident
+                    name: name
+                    pkg: constants
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:20:2
+                  func: 11
+              size:
+                - variable_name: 8
+                  pkg: 1
+                  concrete_type: 9
+                  position: 10
+                  scope: 7
+                  value:
+                    kind: ident
+                    name: MaxSize
+                    pkg: constants
+                    type: untyped int
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:19:10
+                  lhs:
+                    kind: ident
+                    name: size
+                    pkg: constants
+                    type: int
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:19:2
+                  func: 11
+          init:
+            name: 5
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            position: 6
+            scope: 7
+            comments: -1
+            assignments:
+              Message:
+                - pkg: 1
+                  concrete_type: 2
+                  position: 3
+                  scope: 4
+                  value:
+                    kind: literal
+                    value: '"initialized"'
+                  lhs:
+                    kind: ident
+                    name: Message
+                    pkg: constants
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables2373423769/constants/src/constants/const.go:15:2
+                  func: 5
+        variables:
+          GlobalVar:
+            name: 25
+            tok: 26
+            type: 9
+            value: 28
+            position: 27
+            comments: -1
+          MaxSize:
+            name: 15
+            tok: 16
+            type: -1
+            value: 18
+            position: 17
+            comments: -1
+          Message:
+            tok: 26
+            type: 2
+            position: 29
+            comments: -1
+          Name:
+            name: 19
+            tok: 16
+            type: -1
+            value: 21
+            position: 20
+            comments: -1
+          Pi:
+            name: 22
+            tok: 16
+            type: -1
+            value: 24
+            position: 23
+            comments: -1
+        imports: {}

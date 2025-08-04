@@ -125,7 +125,7 @@ func main() {
 			importPaths := map[string]string{"main": "main"}
 			fileToInfo := map[*ast.File]*types.Info{}
 			meta := GenerateMetadata(pkgs, fileToInfo, importPaths, fset)
-			name, _, _ := TraceVariableOrigin(tc.varName, tc.funcName, "main", meta)
+			name, _, _, _ := TraceVariableOrigin(tc.varName, tc.funcName, "main", meta)
 			if name != tc.expectVar {
 				t.Errorf("expected %q to resolve to %q, got %q", tc.varName, tc.expectVar, name)
 			}

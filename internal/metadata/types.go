@@ -115,9 +115,8 @@ type Metadata struct {
 
 // Package represents a Go package
 type Package struct {
-	ImportPath int              `yaml:"import_path,omitempty"`
-	Files      map[string]*File `yaml:"files,omitempty"`
-	Types      map[string]*Type `yaml:"types,omitempty"`
+	Files map[string]*File `yaml:"files,omitempty"`
+	Types map[string]*Type `yaml:"types,omitempty"`
 }
 
 // File represents a Go source file
@@ -166,7 +165,7 @@ type Method struct {
 	Tags         []int        `yaml:"tags,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
-	AssignmentMap map[string][]Assignment `yaml:"-"`
+	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
 }
 
 // Function represents a function
@@ -185,7 +184,7 @@ type Function struct {
 	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
-	AssignmentMap map[string][]Assignment `yaml:"-"`
+	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
 }
 
 // Variable represents a variable
@@ -220,6 +219,8 @@ type Assignment struct {
 	Position     int          `yaml:"position,omitempty"`
 	Scope        int          `yaml:"scope,omitempty"`
 	Value        CallArgument `yaml:"value,omitempty"`
+	Lhs          CallArgument `yaml:"lhs,omitempty"`
+	Func         int          `yaml:"func,omitempty"`
 
 	// For assignments from function calls
 	CalleeFunc  string `yaml:"callee_func,omitempty"`
@@ -234,7 +235,7 @@ type CallArgument struct {
 	Name     string                 `yaml:"name,omitempty"`  // for ident
 	Value    string                 `yaml:"value,omitempty"` // for literal
 	X        *CallArgument          `yaml:"x,omitempty"`     // for selector/call
-	Sel      string                 `yaml:"sel,omitempty"`   // for selector
+	Sel      *CallArgument          `yaml:"sel,omitempty"`   // for selector
 	Fun      *CallArgument          `yaml:"fun,omitempty"`   // for call
 	Args     []CallArgument         `yaml:"args,omitempty"`  // for call
 	Raw      string                 `yaml:"raw,omitempty"`   // fallback
@@ -276,7 +277,12 @@ func (a *CallArgument) ID() string {
 func (a *CallArgument) id(sep string) string {
 	switch a.Kind {
 	case kindIdent:
-		if a.Pkg != "" {
+		if a.Type != "" && a.Name == "" && sep == "/" {
+			return a.Type
+		} else if a.Pkg != "" {
+			if sep == "/" {
+				return a.Pkg
+			}
 			return a.Pkg + sep + a.Name
 		}
 		return a.Name
@@ -284,12 +290,12 @@ func (a *CallArgument) id(sep string) string {
 		return a.Value
 	case kindSelector:
 		if a.X != nil {
-			return a.X.id("/") + sep + a.Sel
+			return a.X.id("/") + sep + a.Sel.Name
 		}
-		return a.Sel
+		return a.Sel.Name
 	case kindCall:
 		if a.Fun != nil {
-			return a.Fun.ID()
+			return a.Fun.id(".")
 		}
 		return kindCall
 	default:

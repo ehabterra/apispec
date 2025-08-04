@@ -23,16 +23,22 @@ func (s *defaultUserService) ListUsers() []User {
 	}
 }
 
-var userService UserService = &defaultUserService{}
+type Handler struct {
+	userService UserService
+}
 
-// getUsers returns a list of users using the UserService interface.
-func getUsers(c echo.Context) error {
-	users := userService.ListUsers()
+func NewHandler(userService UserService) *Handler {
+	return &Handler{userService: userService}
+}
+
+// GetUsers returns a list of users using the UserService interface.
+func (h *Handler) GetUsers(c echo.Context) error {
+	users := h.userService.ListUsers()
 	return c.JSON(http.StatusOK, users)
 }
 
-// getUser returns a single user by ID.
-func getUser(c echo.Context) error {
+// GetUser returns a single user by ID.
+func (h *Handler) GetUser(c echo.Context) error {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -53,8 +59,8 @@ func getUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, user)
 }
 
-// createUser creates a new user.
-func createUser(c echo.Context) error {
+// CreateUser creates a new user.
+func (h *Handler) CreateUser(c echo.Context) error {
 	var req CreateUserRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]any{
@@ -86,8 +92,8 @@ func createUser(c echo.Context) error {
 	})
 }
 
-// updateUser updates an existing user.
-func updateUser(c echo.Context) error {
+// UpdateUser updates an existing user.
+func (h *Handler) UpdateUser(c echo.Context) error {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -119,8 +125,8 @@ func updateUser(c echo.Context) error {
 	})
 }
 
-// deleteUser deletes a user by ID.
-func deleteUser(c echo.Context) error {
+// DeleteUser deletes a user by ID.
+func (h *Handler) DeleteUser(c echo.Context) error {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {

@@ -1,0 +1,115 @@
+# tests/interface_impl.yaml
+string_pool:
+  - ProcessNamer
+  - Namer
+  - example
+  - main
+  - GetName
+  - User
+  - user
+  - name
+  - string
+  - interface
+
+packages:
+  example:
+    files:
+      "example/types.go":
+        types:
+          Namer:
+            name: 1
+            kind: 9
+            methods:
+              - name: 4
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                signature_str: func() string
+                scope: 3
+            comments: -1
+          User:
+            name: 5
+            kind: struct
+            implements:
+              - 1
+            methods:
+              - name: 4
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                signature_str: func() string
+                scope: 3
+            comments: -1
+        functions:
+          ProcessNamer:
+            name: 0
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+              args:
+                - kind: ident
+                  name: Namer
+                  pkg: example
+                  type: Namer
+            scope: 3
+            comments: -1
+          main:
+            name: 3
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            scope: 31
+            comments: -1
+        imports: {}
+
+call_graph:
+  - caller:
+      name: 3
+      pkg: 2
+      position: -1
+      recv_type: -1
+    callee:
+      name: 0
+      pkg: 2
+      position: -1
+      recv_type: -1
+    position: 5000
+    args:
+      - kind: ident
+        name: user
+        pkg: example
+        type: example.Namer
+    param_arg_map:
+      n:
+        kind: ident
+        name: user
+        pkg: example
+        type: example.Namer
+  - caller:
+      name: 0
+      pkg: 2
+      position: -1
+      recv_type: -1
+    callee:
+      name: 4
+      pkg: 2
+      position: -1
+      recv_type: 1
+    position: 5001
+    args: []
+    param_arg_map: {}
+    callee_recv_var_name: name

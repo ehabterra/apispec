@@ -548,6 +548,15 @@ func (b *BasePatternMatcher) extractMethodFromFunctionName(funcName string) stri
 }
 
 func (b *BasePatternMatcher) mapGoTypeToOpenAPISchema(goType string) *Schema {
+	// switch {
+	// case strings.Contains(goType, TypeSep):
+	// 	parts := strings.Split(goType, TypeSep)
+	// 	goType = metadata.DefaultImportName(parts[0]) + TypeSep + parts[1]
+	// case strings.Contains(goType, defaultSep):
+	// 	parts := strings.Split(goType, defaultSep)
+	// 	goType = metadata.DefaultImportName(parts[0]) + defaultSep + parts[1]
+	// }
+
 	// Use TypeResolver for schema mapping if available
 	if b.typeResolver != nil {
 		return b.typeResolver.MapToOpenAPISchema(goType)

@@ -1,0 +1,90 @@
+# tests/interface_methods.yaml
+string_pool:
+  - GetName
+  - User
+  - example
+  - main
+  - SetAge
+  - string
+  - int
+  - name
+  - age
+
+packages:
+  example:
+    files:
+      "example/types.go":
+        types:
+          User:
+            name: 1
+            kind: struct
+            methods:
+              - name: 0
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                signature_str: func() string
+                scope: 3
+              - name: 4
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                  args:
+                    - kind: ident
+                      name: int
+                      pkg: example
+                      type: int
+                signature_str: func(int)
+                scope: 3
+            comments: -1
+        functions:
+          main:
+            name: 3
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            scope: 31
+            comments: -1
+        imports: {}
+
+call_graph:
+  - caller:
+      name: 3
+      pkg: 2
+      position: -1
+      recv_type: -1
+    callee:
+      name: 0
+      pkg: 2
+      position: -1
+      recv_type: 1
+    position: 2000
+    args: []
+    param_arg_map: {}
+    callee_recv_var_name: name
+  - caller:
+      name: 3
+      pkg: 2
+      position: -1
+      recv_type: -1
+    callee:
+      name: 4
+      pkg: 2
+      position: -1
+      recv_type: 1
+    position: 2001
+    args:
+      - kind: literal
+        value: "25"
+    param_arg_map:
+      age:
+        kind: literal
+        value: "25"

@@ -212,8 +212,8 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 			t.Error("Expected User type to be found, got nil")
 			return
 		}
-		if getStringFromPool(meta, result.Name) != "User" {
-			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result.Name))
+		if getStringFromPool(meta, result["User"].Name) != "User" {
+			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result["User"].Name))
 		}
 	})
 
@@ -224,8 +224,8 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 			t.Error("Expected main-->User type to be found, got nil")
 			return
 		}
-		if getStringFromPool(meta, result.Name) != "User" {
-			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result.Name))
+		if getStringFromPool(meta, result["User"].Name) != "User" {
+			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result["User"].Name))
 		}
 	})
 }

@@ -141,12 +141,12 @@ func (t *TypeResolverImpl) resolveIdentType(arg metadata.CallArgument) string {
 // resolveSelectorType resolves type for selector expressions
 func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string {
 	if arg.X == nil {
-		return arg.Sel
+		return arg.Sel.Name
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)
 	if baseType == "" {
-		return arg.Sel
+		return arg.Sel.Name
 	}
 
 	// For field access, try to find the field type in metadata
@@ -158,7 +158,7 @@ func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string
 				if typ, exists := file.Types[typeName]; exists {
 					// Find the field
 					for _, field := range typ.Fields {
-						if t.getString(field.Name) == arg.Sel {
+						if t.getString(field.Name) == arg.Sel.Name {
 							return t.getString(field.Type)
 						}
 					}
@@ -168,7 +168,7 @@ func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string
 	}
 
 	// Fallback to concatenated form
-	return baseType + "." + arg.Sel
+	return baseType + "." + arg.Sel.Name
 }
 
 // resolveCallType resolves type for function calls

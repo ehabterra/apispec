@@ -81,7 +81,7 @@ func TestRefactoredExtractor(t *testing.T) {
 	}
 
 	// Create refactored extractor
-	extractor := NewRefactoredExtractor(tree, cfg)
+	extractor := NewExtractor(tree, cfg)
 
 	// Test extraction
 	routes := extractor.ExtractRoutes()

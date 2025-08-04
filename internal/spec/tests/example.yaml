@@ -1,0 +1,487 @@
+string_pool:
+  - GetName
+  - '*User'
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:20:1
+  - exported
+  - func() string
+  - '*example.User.Age'
+  - example
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:2
+  - selector
+  - SetAge
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:24:1
+  - 'func(int) '
+  - User
+  - struct
+  - Name
+  - string
+  - json:"name"
+  - Age
+  - int
+  - json:"age"
+  - interface
+  - Namer
+  - Ager
+  - Phoner
+  - SetPhone
+  - 'func(string) '
+  - NewUser
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:28:1
+  - user
+  - '*example.User'
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:36:2
+  - unexported
+  - main
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:35:1
+  - name
+  - age
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:29:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:36:10
+  - Println
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:37:2
+  - example.Namer
+  - example.User
+  - example.Ager
+packages:
+  example:
+    files:
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go
+      : types:
+          Ager:
+            name: 22
+            kind: 20
+            implemented_by:
+              - 41
+            scope: 3
+            methods:
+              - name: 9
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                  args:
+                    - kind: ident
+                      name: int
+                      pkg: example
+                      type: int
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:13:13
+                signature_str: 11
+                scope: 3
+                comments: -1
+            comments: -1
+          Namer:
+            name: 21
+            kind: 20
+            implemented_by:
+              - 41
+            scope: 3
+            methods:
+              - signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:9:12
+                signature_str: 4
+                scope: 3
+                comments: -1
+            comments: -1
+          Phoner:
+            name: 23
+            kind: 20
+            scope: 3
+            methods:
+              - name: 24
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                  args:
+                    - kind: ident
+                      name: string
+                      pkg: example
+                      type: string
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:17:16
+                signature_str: 25
+                scope: 3
+                comments: -1
+            comments: -1
+          User:
+            name: 12
+            kind: 13
+            implements:
+              - 40
+              - 42
+            fields:
+              - name: 14
+                type: 15
+                tag: 16
+                scope: 3
+                comments: -1
+              - name: 17
+                type: 18
+                tag: 19
+                scope: 3
+                comments: -1
+            scope: 3
+            methods:
+              - receiver: 1
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                    args:
+                      - kind: ident
+                        name: string
+                        pkg: example
+                        type: string
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:20:26
+                signature_str: 4
+                position: 2
+                scope: 3
+              - name: 9
+                receiver: 1
+                signature:
+                  kind: func_type
+                  fun:
+                    kind: func_results
+                  args:
+                    - kind: ident
+                      name: int
+                      pkg: example
+                      type: int
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:24:27
+                signature_str: 11
+                position: 10
+                scope: 3
+                assignments:
+                  '*example.User.Age':
+                    - variable_name: 5
+                      pkg: 6
+                      concrete_type: -1
+                      position: 7
+                      scope: 8
+                      value:
+                        kind: ident
+                        name: age
+                        pkg: example
+                        type: int
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:10
+                      lhs:
+                        kind: selector
+                        x:
+                          kind: ident
+                          name: u
+                          pkg: example
+                          type: '*example.User'
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:2
+                        sel:
+                          kind: ident
+                          name: Age
+                          pkg: example
+                          type: int
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:4
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:2
+            comments: -1
+        functions:
+          NewUser:
+            name: 26
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: star
+                    x:
+                      kind: ident
+                      name: User
+                      pkg: example
+                      type: User
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:28:37
+              args:
+                - kind: ident
+                  name: string
+                  pkg: example
+                  type: string
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:28:19
+                - kind: ident
+                  name: int
+                  pkg: example
+                  type: int
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:28:31
+            position: 27
+            scope: 3
+            comments: -1
+            return_vars:
+              - kind: unary
+                value: '&'
+                x:
+                  kind: composite_lit
+                  x:
+                    kind: ident
+                    name: User
+                    pkg: example
+                    type: User
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:29:10
+                  args:
+                    - kind: key_value
+                      x:
+                        kind: ident
+                        name: Name
+                        pkg: example
+                        type: string
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:30:3
+                      fun:
+                        kind: ident
+                        name: name
+                        pkg: example
+                        type: string
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:30:9
+                    - kind: key_value
+                      x:
+                        kind: ident
+                        name: Age
+                        pkg: example
+                        type: int
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:31:3
+                      fun:
+                        kind: ident
+                        name: age
+                        pkg: example
+                        type: int
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:31:9
+          main:
+            name: 32
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            position: 33
+            scope: 31
+            comments: -1
+            assignments:
+              user:
+                - variable_name: 28
+                  pkg: 6
+                  concrete_type: 29
+                  position: 30
+                  scope: 31
+                  value:
+                    kind: call
+                    fun:
+                      kind: ident
+                      name: NewUser
+                      pkg: example
+                      type: func(name string, age int) *example.User
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:36:10
+                    args:
+                      - kind: literal
+                        value: '"User Name"'
+                      - kind: literal
+                        value: "40"
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:36:10
+                  lhs:
+                    kind: ident
+                    name: user
+                    pkg: example
+                    type: '*example.User'
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:36:2
+                  func: 32
+                  callee_func: NewUser
+                  callee_pkg: example
+        struct_instances:
+          - type: 12
+            position: 36
+            fields:
+              14: 34
+              17: 35
+        imports: {}
+    types:
+      Ager:
+        name: 22
+        kind: 20
+        implemented_by:
+          - 41
+        scope: 3
+        methods:
+          - name: 9
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+              args:
+                - kind: ident
+                  name: int
+                  pkg: example
+                  type: int
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:13:13
+            signature_str: 11
+            scope: 3
+            comments: -1
+        comments: -1
+      Namer:
+        name: 21
+        kind: 20
+        implemented_by:
+          - 41
+        scope: 3
+        methods:
+          - signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: ident
+                    name: string
+                    pkg: example
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:9:12
+            signature_str: 4
+            scope: 3
+            comments: -1
+        comments: -1
+      Phoner:
+        name: 23
+        kind: 20
+        scope: 3
+        methods:
+          - name: 24
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+              args:
+                - kind: ident
+                  name: string
+                  pkg: example
+                  type: string
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:17:16
+            signature_str: 25
+            scope: 3
+            comments: -1
+        comments: -1
+      User:
+        name: 12
+        kind: 13
+        implements:
+          - 40
+          - 42
+        fields:
+          - name: 14
+            type: 15
+            tag: 16
+            scope: 3
+            comments: -1
+          - name: 17
+            type: 18
+            tag: 19
+            scope: 3
+            comments: -1
+        scope: 3
+        methods:
+          - receiver: 1
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+                args:
+                  - kind: ident
+                    name: string
+                    pkg: example
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:20:26
+            signature_str: 4
+            position: 2
+            scope: 3
+          - name: 9
+            receiver: 1
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+              args:
+                - kind: ident
+                  name: int
+                  pkg: example
+                  type: int
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:24:27
+            signature_str: 11
+            position: 10
+            scope: 3
+            assignments:
+              '*example.User.Age':
+                - variable_name: 5
+                  pkg: 6
+                  concrete_type: -1
+                  position: 7
+                  scope: 8
+                  value:
+                    kind: ident
+                    name: age
+                    pkg: example
+                    type: int
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:10
+                  lhs:
+                    kind: selector
+                    x:
+                      kind: ident
+                      name: u
+                      pkg: example
+                      type: '*example.User'
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:2
+                    sel:
+                      kind: ident
+                      name: Age
+                      pkg: example
+                      type: int
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:4
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:25:2
+        comments: -1
+call_graph:
+  - caller:
+      name: 32
+      pkg: 6
+      position: -1
+      recv_type: -1
+    callee:
+      name: 26
+      pkg: 6
+      position: 37
+      recv_type: -1
+    position: 3932810
+    args:
+      - kind: literal
+        value: '"User Name"'
+      - kind: literal
+        value: "40"
+    param_arg_map:
+      age:
+        kind: literal
+        value: "40"
+      name:
+        kind: literal
+        value: '"User Name"'
+    callee_recv_var_name: user
+  - caller:
+      name: 32
+      pkg: 6
+      position: -1
+      recv_type: -1
+    callee:
+      name: 38
+      pkg: 6
+      position: 39
+      recv_type: -1
+    position: 3932836
+    args:
+      - kind: star
+        x:
+          kind: ident
+          name: user
+          pkg: example
+          type: '*example.User'
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4262407248/example/src/example/types.go:37:15

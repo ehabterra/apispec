@@ -89,10 +89,6 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		return ""
 
 	case "ident":
-		if arg.Pkg == "net/http" && strings.HasPrefix(arg.Name, "Status") {
-			return arg.Pkg + separator + arg.Name
-		}
-
 		// Try to resolve as a constant value from metadata
 		if pkg, exists := c.meta.Packages[arg.Pkg]; exists {
 			for _, file := range pkg.Files {
@@ -170,9 +166,12 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 			}
 		}
 
-		argName := arg.Name
-		if arg.Pkg != "" {
-			argName = arg.Pkg + separator + arg.Name
+		var argName string
+
+		if arg.Type == "" && strings.HasSuffix(DefaultPackageName(arg.Pkg), arg.Name) {
+			argName = DefaultPackageName(arg.Pkg)
+		} else {
+			argName = DefaultPackageName(arg.Pkg) + "/" + arg.Name
 		}
 
 		// Fallback to variable name
@@ -181,20 +180,34 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 	case "selector":
 		// Handle selector expressions (e.g., pkg.X.Sel)
 		if arg.X != nil {
-			pkgKey := arg.X.Pkg + "/" + arg.X.Name
+			var pkgKey string
+
+			if arg.X.Type == "" && strings.HasSuffix(arg.X.Pkg, arg.X.Name) {
+				pkgKey = arg.X.Pkg
+			} else {
+				pkgKey = arg.X.Pkg + "/" + arg.X.Name
+			}
+
 			if pkg, exists := c.meta.Packages[pkgKey]; exists {
 				for _, file := range pkg.Files {
-					if variable, exists := file.Variables[arg.Sel]; exists {
+					var selName string
+
+					if arg.X.Type != "" {
+						selName = arg.X.Type + "." + selName
+					} else {
+						selName = arg.Sel.Name
+					}
+					if variable, exists := file.Variables[selName]; exists {
 						return strings.Trim(c.GetString(variable.Value), "\"")
 					}
 				}
 			}
 			xResult := c.callArgToString(*arg.X, strPtr("/"))
 			if xResult != "" {
-				return xResult + "." + arg.Sel
+				return xResult + "." + arg.Sel.Name
 			}
 		}
-		return arg.Sel
+		return arg.Sel.Name
 
 	case "call":
 		// Handle function call expressions
@@ -226,6 +239,20 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 	}
 	// Fallback for unknown kinds
 	return ""
+}
+
+// DefaultPackageName returns the default package name for an package path (last non-version segment)
+func DefaultPackageName(pkgPath string) string {
+	parts := strings.Split(pkgPath, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	// If last is a version (e.g., v5), use the one before it
+	if len(parts) > 1 && strings.HasPrefix(last, "v") && len(last) > 1 && last[1] >= '0' && last[1] <= '9' {
+		return pkgPath[:len(pkgPath)-len(last)-1]
+	}
+	return pkgPath
 }
 
 // strPtr returns a pointer to the given string (helper for separator passing)

@@ -242,7 +242,6 @@ func main() {
 		fmt.Printf("Effective config written to %s\n", *outputConfig)
 	}
 
-	// Updated: Only two return values, no disableStringPool
 	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
 
 	// Write metadata (split or combined) only if --write-metadata is set

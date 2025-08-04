@@ -1,0 +1,188 @@
+string_pool:
+  - x
+  - main
+  - int
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:9:2
+  - unexported
+  - "y"
+  - string
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:10:2
+  - z
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:8:1
+  - fmt
+  - strings
+  - Sprintf
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:7
+  - Println
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:12:2
+  - ToUpper
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:13:2
+packages:
+  main:
+    files:
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go
+      : functions:
+          main:
+            name: 1
+            signature:
+              kind: func_type
+              fun:
+                kind: func_results
+            position: 10
+            scope: 4
+            comments: -1
+            assignments:
+              x:
+                - pkg: 1
+                  concrete_type: 2
+                  position: 3
+                  scope: 4
+                  value:
+                    kind: literal
+                    value: "1"
+                  lhs:
+                    kind: ident
+                    name: x
+                    pkg: main
+                    type: int
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:9:2
+                  func: 1
+              "y":
+                - variable_name: 5
+                  pkg: 1
+                  concrete_type: 6
+                  position: 7
+                  scope: 4
+                  value:
+                    kind: literal
+                    value: '"hello"'
+                  lhs:
+                    kind: ident
+                    name: "y"
+                    pkg: main
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:10:2
+                  func: 1
+              z:
+                - variable_name: 8
+                  pkg: 1
+                  concrete_type: 6
+                  position: 9
+                  scope: 4
+                  value:
+                    kind: call
+                    fun:
+                      kind: selector
+                      x:
+                        kind: ident
+                        name: fmt
+                        pkg: fmt
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:7
+                      sel:
+                        kind: ident
+                        name: Sprintf
+                        pkg: fmt
+                        type: func(format string, a ...any) string
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:11
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:7
+                    args:
+                      - kind: literal
+                        value: '"%d"'
+                      - kind: ident
+                        name: x
+                        pkg: main
+                        type: int
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:25
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:7
+                  lhs:
+                    kind: ident
+                    name: z
+                    pkg: main
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:2
+                  func: 1
+                  callee_func: Sprintf
+                  callee_pkg: fmt
+        imports:
+          11: 11
+          12: 12
+call_graph:
+  - caller:
+      name: 1
+      pkg: 1
+      position: -1
+      recv_type: -1
+    callee:
+      name: 13
+      pkg: 11
+      position: 14
+      recv_type: -1
+    position: 3932307
+    args:
+      - kind: literal
+        value: '"%d"'
+      - kind: ident
+        name: x
+        pkg: main
+        type: int
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:25
+    param_arg_map:
+      a:
+        kind: ident
+        name: x
+        pkg: main
+        type: int
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:11:25
+      format:
+        kind: literal
+        value: '"%d"'
+    callee_recv_var_name: z
+  - caller:
+      name: 1
+      pkg: 1
+      position: -1
+      recv_type: -1
+    callee:
+      name: 15
+      pkg: 11
+      position: 16
+      recv_type: -1
+    position: 3932329
+    args:
+      - kind: ident
+        name: z
+        pkg: main
+        type: string
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:12:14
+    param_arg_map:
+      a:
+        kind: ident
+        name: z
+        pkg: main
+        type: string
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:12:14
+  - caller:
+      name: 1
+      pkg: 1
+      position: -1
+      recv_type: -1
+    callee:
+      name: 17
+      pkg: 12
+      position: 18
+      recv_type: -1
+    position: 3932345
+    args:
+      - kind: ident
+        name: "y"
+        pkg: main
+        type: string
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:13:18
+    param_arg_map:
+      s:
+        kind: ident
+        name: "y"
+        pkg: main
+        type: string
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports3314431965/main/src/main/test.go:13:18

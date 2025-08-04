@@ -93,6 +93,12 @@ func LoadMetadata(filename string) (*Metadata, error) {
 		return nil, err
 	}
 
+	for i := range metadata.CallGraph {
+		metadata.CallGraph[i].meta = &metadata
+		metadata.CallGraph[i].Caller.Meta = &metadata
+		metadata.CallGraph[i].Callee.Meta = &metadata
+	}
+
 	return &metadata, nil
 }
 

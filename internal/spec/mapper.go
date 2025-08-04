@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -48,7 +49,7 @@ func DefaultSwagenConfig() *SwagenConfig {
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification
 func MapMetadataToOpenAPI(tree *TrackerTree, cfg *SwagenConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
 	// Create extractor
-	extractor := NewRefactoredExtractor(tree, cfg)
+	extractor := NewExtractor(tree, cfg)
 
 	// Extract routes
 	routes := extractor.ExtractRoutes()
@@ -309,7 +310,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes
 
 		// Find the type in metadata
 		typs := findTypesInMetadata(meta, typeName)
-		if len(typs) == 0 {
+		if len(typs) == 0 || typs[typeName] == nil {
 			continue
 		}
 
@@ -450,10 +451,8 @@ func isPrimitiveType(typeName string) bool {
 		"complex64", "complex128",
 	}
 
-	for _, primitive := range primitiveTypes {
-		if baseType == primitive {
-			return true
-		}
+	if slices.Contains(primitiveTypes, baseType) {
+		return true
 	}
 
 	// Check for slice/array of primitives

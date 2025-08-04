@@ -78,8 +78,8 @@ type ResponseInfo struct {
 	Schema      *Schema
 }
 
-// RefactoredExtractor provides a cleaner, more modular approach to extraction
-type RefactoredExtractor struct {
+// Extractor provides a cleaner, more modular approach to extraction
+type Extractor struct {
 	tree            *TrackerTree
 	cfg             *SwagenConfig
 	contextProvider ContextProvider
@@ -95,14 +95,14 @@ type RefactoredExtractor struct {
 	paramMatchers    []ParamPatternMatcher
 }
 
-// NewRefactoredExtractor creates a new refactored extractor
-func NewRefactoredExtractor(tree *TrackerTree, cfg *SwagenConfig) *RefactoredExtractor {
+// NewExtractor creates a new refactored extractor
+func NewExtractor(tree *TrackerTree, cfg *SwagenConfig) *Extractor {
 	contextProvider := NewContextProvider(tree.meta)
 	schemaMapper := NewSchemaMapper(cfg)
 	typeResolver := NewTypeResolver(tree.meta, cfg, schemaMapper)
 	overrideApplier := NewOverrideApplier(cfg)
 
-	extractor := &RefactoredExtractor{
+	extractor := &Extractor{
 		tree:            tree,
 		cfg:             cfg,
 		contextProvider: contextProvider,
@@ -118,7 +118,7 @@ func NewRefactoredExtractor(tree *TrackerTree, cfg *SwagenConfig) *RefactoredExt
 }
 
 // initializePatternMatchers initializes all pattern matchers
-func (e *RefactoredExtractor) initializePatternMatchers() {
+func (e *Extractor) initializePatternMatchers() {
 	// Initialize route matchers
 	for _, pattern := range e.cfg.Framework.RoutePatterns {
 		matcher := NewRoutePatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
@@ -151,7 +151,7 @@ func (e *RefactoredExtractor) initializePatternMatchers() {
 }
 
 // ExtractRoutes extracts all routes from the tracker tree
-func (e *RefactoredExtractor) ExtractRoutes() []RouteInfo {
+func (e *Extractor) ExtractRoutes() []RouteInfo {
 	var routes []RouteInfo
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, &routes)
@@ -160,12 +160,12 @@ func (e *RefactoredExtractor) ExtractRoutes() []RouteInfo {
 }
 
 // traverseForRoutes traverses the tree to find routes
-func (e *RefactoredExtractor) traverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo) {
 	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
 }
 
 // traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
-func (e *RefactoredExtractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
@@ -190,13 +190,13 @@ func (e *RefactoredExtractor) traverseForRoutesWithVisited(node *TrackerNode, mo
 	}
 
 	// Continue traversing children
-	for _, child := range node.children {
+	for _, child := range node.Children {
 		e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
 	}
 }
 
 // executeMountPattern executes mount pattern matching
-func (e *RefactoredExtractor) executeMountPattern(node *TrackerNode) (MountInfo, bool) {
+func (e *Extractor) executeMountPattern(node *TrackerNode) (MountInfo, bool) {
 	var bestMatch MountInfo
 	var bestPriority int
 	var found bool
@@ -217,7 +217,7 @@ func (e *RefactoredExtractor) executeMountPattern(node *TrackerNode) (MountInfo,
 }
 
 // executeRoutePattern executes route pattern matching
-func (e *RefactoredExtractor) executeRoutePattern(node *TrackerNode) (RouteInfo, bool) {
+func (e *Extractor) executeRoutePattern(node *TrackerNode) (RouteInfo, bool) {
 	var bestMatch RouteInfo
 	var bestPriority int
 	var found bool
@@ -238,7 +238,7 @@ func (e *RefactoredExtractor) executeRoutePattern(node *TrackerNode) (RouteInfo,
 }
 
 // handleMountNode handles a mount node
-func (e *RefactoredExtractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
@@ -252,7 +252,7 @@ func (e *RefactoredExtractor) handleMountNode(node *TrackerNode, mountInfo Mount
 	}
 
 	// Continue traversing children
-	for _, child := range node.children {
+	for _, child := range node.Children {
 		var newTags []string
 		if mountPath != "" {
 			newTags = []string{mountPath}
@@ -264,7 +264,7 @@ func (e *RefactoredExtractor) handleMountNode(node *TrackerNode, mountInfo Mount
 }
 
 // handleRouteNode handles a route node
-func (e *RefactoredExtractor) handleRouteNode(node *TrackerNode, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) handleRouteNode(node *TrackerNode, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
 	// Prepend mount path if present
 	if mountPath != "" && routeInfo.Path != "" {
 		routeInfo.Path = e.joinPaths(mountPath, routeInfo.Path)
@@ -298,11 +298,11 @@ func (e *RefactoredExtractor) handleRouteNode(node *TrackerNode, routeInfo Route
 }
 
 // handleRouterAssignment handles router assignment for mounts
-func (e *RefactoredExtractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	// Find the target node for the assignment
 	targetNode := e.findTargetNode(mountInfo.Assignment)
 	if targetNode != nil {
-		for _, child := range targetNode.children {
+		for _, child := range targetNode.Children {
 			var newTags []string
 			if mountPath != "" {
 				newTags = []string{mountPath}
@@ -315,7 +315,7 @@ func (e *RefactoredExtractor) handleRouterAssignment(mountInfo MountInfo, mountP
 }
 
 // findTargetNode finds the target node for an assignment
-func (e *RefactoredExtractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNode {
+func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNode {
 	if assignment == nil {
 		return nil
 	}
@@ -326,19 +326,23 @@ func (e *RefactoredExtractor) findTargetNode(assignment *metadata.CallArgument) 
 		node := queue[0]
 		queue = queue[1:] // dequeue
 
-		if node.id == assignment.ID() {
+		if node.ID == assignment.ID() {
 			return node
 		}
 
-		queue = append(queue, node.children...)
+		queue = append(queue, node.Children...)
 	}
 
 	return nil
 }
 
 // extractRouteChildren extracts request, response, and params from children nodes
-func (e *RefactoredExtractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInfo) {
-	for _, child := range routeNode.children {
+func (e *Extractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInfo) {
+	// TODO: remove this
+	if route.Path == "/payment/api/v1/reserve" || route.Path == "/api/v1/reserve" {
+		fmt.Println("found")
+	}
+	for _, child := range routeNode.Children {
 		// Extract request
 		if req := e.extractRequestFromNode(child, route); req != nil {
 			route.Request = req
@@ -365,7 +369,7 @@ func (e *RefactoredExtractor) extractRouteChildren(routeNode *TrackerNode, route
 }
 
 // extractRequestFromNode extracts request information from a node
-func (e *RefactoredExtractor) extractRequestFromNode(node *TrackerNode, route *RouteInfo) *RequestInfo {
+func (e *Extractor) extractRequestFromNode(node *TrackerNode, route *RouteInfo) *RequestInfo {
 	for _, matcher := range e.requestMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractRequest(node, route)
@@ -375,7 +379,7 @@ func (e *RefactoredExtractor) extractRequestFromNode(node *TrackerNode, route *R
 }
 
 // extractResponseFromNode extracts response information from a node
-func (e *RefactoredExtractor) extractResponseFromNode(node *TrackerNode) *ResponseInfo {
+func (e *Extractor) extractResponseFromNode(node *TrackerNode) *ResponseInfo {
 	for _, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractResponse(node)
@@ -388,7 +392,7 @@ func (e *RefactoredExtractor) extractResponseFromNode(node *TrackerNode) *Respon
 }
 
 // extractParamFromNode extracts parameter information from a node
-func (e *RefactoredExtractor) extractParamFromNode(node *TrackerNode) *Parameter {
+func (e *Extractor) extractParamFromNode(node *TrackerNode) *Parameter {
 	for _, matcher := range e.paramMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractParam(node)
@@ -398,7 +402,7 @@ func (e *RefactoredExtractor) extractParamFromNode(node *TrackerNode) *Parameter
 }
 
 // joinPaths joins two URL paths cleanly
-func (e *RefactoredExtractor) joinPaths(a, b string) string {
+func (e *Extractor) joinPaths(a, b string) string {
 	a = strings.TrimRight(a, "/")
 	b = strings.TrimLeft(b, "/")
 	if a == "" {

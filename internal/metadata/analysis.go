@@ -44,8 +44,8 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos) (string, string) {
 	return "", ""
 }
 
-// getDefaultImportName returns the default import name for an import path (last non-version segment)
-func getDefaultImportName(importPath string) string {
+// DefaultImportName returns the default import name for an import path (last non-version segment)
+func DefaultImportName(importPath string) string {
 	parts := strings.Split(importPath, "/")
 	if len(parts) == 0 {
 		return ""
@@ -70,7 +70,7 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 			// Try to match ident.Name to an import alias or default import name
 			for _, imp := range file.Imports {
 				importPath := strings.Trim(imp.Path.Value, "\"")
-				defaultName := getDefaultImportName(importPath)
+				defaultName := DefaultImportName(importPath)
 				if (imp.Name != nil && imp.Name.Name == ident.Name) ||
 					(imp.Name == nil && defaultName == ident.Name) {
 					return x.Sel.Name, importPath, ""
@@ -248,6 +248,10 @@ func traceVariableOriginHelper(
 	metadata *Metadata,
 	visited map[string]struct{},
 ) (originVar string, originPkg string, originType *CallArgument, callerFuncName string) {
+	if varName == "" {
+		return varName, pkgName, nil, funcName
+	}
+
 	key := pkgName + "." + funcName + ":" + varName
 	if _, ok := visited[key]; ok {
 		return varName, pkgName, nil, funcName // Prevent infinite recursion, return current funcName as caller
@@ -270,35 +274,49 @@ func traceVariableOriginHelper(
 
 			// See if this parameter is mapped
 			if arg, ok := edge.ParamArgMap[varName]; ok {
-				switch arg.Kind {
-				case kindIdent:
-					_, _, t, f := traceVariableOriginHelper(arg.Name, callerName, callerPkg, metadata, visited)
-					return arg.Name, callerPkg, t, f
-				case kindUnary, kindStar:
-					if arg.X != nil {
-						_, _, t, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
-						return arg.X.Name, callerPkg, t, f
-					}
-				case kindSelector:
-					if arg.X != nil {
-						baseVar, basePkg, baseType, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
-						return baseVar + "." + arg.Sel, basePkg, baseType, f
-					}
-				case kindCall:
-					if arg.Fun != nil {
-						_, _, t, f := traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
-						return arg.Fun.Name, callerPkg, t, f
-					}
-				case kindTypeAssert:
-					// For type assertions, use the asserted type as the concrete type
-					if arg.Fun != nil && arg.Fun.Type != "" {
-						return varName, pkgName, arg.Fun, callerName
-					}
-				default:
-					if arg.Kind != "" {
-						return arg.Name, pkgName, &arg, callerName
-					}
+				paramName := CallArgToString(arg)
+
+				spaceIndex := strings.LastIndex(paramName, " ")
+				if spaceIndex > -1 {
+					paramName = paramName[spaceIndex+1:]
 				}
+				bracketIndex := strings.Index(paramName, "(")
+				if bracketIndex > -1 {
+					paramName = paramName[:bracketIndex]
+				}
+
+				baseVar, basePkg, baseType, f := traceVariableOriginHelper(paramName, callerName, callerPkg, metadata, visited)
+				return baseVar, basePkg, baseType, f
+
+				// switch arg.Kind {
+				// case kindIdent:
+				// 	_, _, t, f := traceVariableOriginHelper(paramName, callerName, callerPkg, metadata, visited)
+				// 	return arg.Name, callerPkg, t, f
+				// case kindUnary, kindStar:
+				// 	if arg.X != nil {
+				// 		_, _, t, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+				// 		return arg.X.Name, callerPkg, t, f
+				// 	}
+				// case kindSelector:
+				// 	if arg.X != nil {
+				// 		baseVar, basePkg, baseType, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
+				// 		return baseVar + "." + arg.Sel.Name, basePkg, baseType, f
+				// 	}
+				// case kindCall:
+				// 	if arg.Fun != nil {
+				// 		_, _, t, f := traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
+				// 		return arg.Fun.Name, callerPkg, t, f
+				// 	}
+				// case kindTypeAssert:
+				// 	// For type assertions, use the asserted type as the concrete type
+				// 	if arg.Fun != nil && arg.Fun.Type != "" {
+				// 		return varName, pkgName, arg.Fun, callerName
+				// 	}
+				// default:
+				// 	if arg.Kind != "" {
+				// 		return arg.Name, pkgName, &arg, callerName
+				// 	}
+				// }
 			}
 
 			break // No need to search again for another edge
@@ -330,6 +348,17 @@ func traceVariableOriginHelper(
 									retIdx := assign.ReturnIndex
 									if retIdx < len(calleeFn.ReturnVars) {
 										retArg := calleeFn.ReturnVars[retIdx]
+									OuterLoop:
+										for retArg.Kind != kindIdent {
+											switch retArg.Kind {
+											case kindSelector:
+												retArg = *retArg.Sel
+											case kindUnary, kindCompositeLit:
+												retArg = *retArg.X
+											default:
+												break OuterLoop
+											}
+										}
 										if retArg.Kind == kindIdent && retArg.Name != "" {
 											_, _, t, f := traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
 											return retArg.Name, assign.CalleePkg, t, f

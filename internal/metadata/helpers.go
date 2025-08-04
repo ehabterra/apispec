@@ -13,16 +13,34 @@ const (
 )
 
 // getTypeName extracts a type name from an AST expression
-func getTypeName(expr ast.Expr) string {
-	if expr == nil {
+func getTypeName(nd ast.Node) string {
+	if nd == nil {
 		return ""
 	}
 
-	switch t := expr.(type) {
+	switch t := nd.(type) {
+	case *ast.TypeSpec:
+		var list string
+
+		if t.TypeParams != nil {
+			list = getTypeName(t.TypeParams)
+		}
+
+		return t.Name.Name + list
+	case *ast.FieldList:
+		var result []byte
+		for _, item := range t.List {
+			for _, name := range item.Names {
+				result = append(result, []byte(name.Name+", ")...)
+			}
+		}
+		return fmt.Sprintf("[%s]", strings.TrimSuffix(string(result), ", "))
 	case *ast.Ident:
 		return t.Name
 	case *ast.StarExpr:
 		return "*" + getTypeName(t.X)
+	case *ast.IndexExpr:
+		return fmt.Sprintf("%s[%s]", getTypeName(t.X), getTypeName(t.Index))
 	case *ast.SelectorExpr:
 		if x, ok := t.X.(*ast.Ident); ok {
 			return x.Name + "." + t.Sel.Name
@@ -39,9 +57,10 @@ func getTypeName(expr ast.Expr) string {
 	case *ast.FuncType:
 		return "func"
 	case *ast.ChanType:
-		if t.Dir == ast.SEND {
+		switch t.Dir {
+		case ast.SEND:
 			return "chan<- " + getTypeName(t.Value)
-		} else if t.Dir == ast.RECV {
+		case ast.RECV:
 			return "<-chan " + getTypeName(t.Value)
 		}
 		return "chan " + getTypeName(t.Value)
