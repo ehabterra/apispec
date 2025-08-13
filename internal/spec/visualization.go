@@ -26,7 +26,7 @@ func drawNode(node *TrackerNode, str *strings.Builder, counter *int) {
 	nodeID := fmt.Sprintf("%s%d", nodePrefix, *counter)
 	for _, child := range node.Children {
 		*counter++
-		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.ID, fmt.Sprintf("%s%d", nodePrefix, *counter), child.ID)
+		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.Key, fmt.Sprintf("%s%d", nodePrefix, *counter), child.Key)
 		drawNode(child, str, counter)
 	}
 }
@@ -86,7 +86,7 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 	data.Nodes = append(data.Nodes, CytoscapeNode{
 		Data: CytoscapeNodeData{
 			ID:    nodeID,
-			Label: node.ID,
+			Label: node.Key(),
 			Type:  "function",
 		},
 	})
@@ -94,11 +94,11 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 		if child != nil {
 			*nodeCounter++
 			childID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
-			nodeMap[child.ID] = childID
+			nodeMap[child.Key()] = childID
 			data.Nodes = append(data.Nodes, CytoscapeNode{
 				Data: CytoscapeNodeData{
-					ID:    nodeMap[child.ID],
-					Label: child.ID,
+					ID:    nodeMap[child.Key()],
+					Label: child.Key(),
 					Type:  "function",
 				},
 			})

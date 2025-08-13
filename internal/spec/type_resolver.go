@@ -31,7 +31,7 @@ func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context *Track
 	}
 
 	// First, try to resolve type parameters from the call graph edge
-	if resolvedType := t.resolveTypeParameter(arg, context.CallGraphEdge); resolvedType != "" {
+	if resolvedType := t.resolveTypeParameter(arg, context); resolvedType != "" {
 		return resolvedType
 	}
 
@@ -45,16 +45,16 @@ func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context *Track
 }
 
 // resolveTypeParameter resolves type parameters from call graph edges
-func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, edge *metadata.CallGraphEdge) string {
+func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node *TrackerNode) string {
 	// Check if this argument corresponds to a type parameter
-	for paramName, concreteType := range edge.TypeParamMap {
+	for paramName, concreteType := range node.TypeParams() {
 		if arg.Name == paramName {
 			return concreteType
 		}
 	}
 
 	// Check if this argument is mapped to a parameter
-	if paramArg, exists := edge.ParamArgMap[arg.Name]; exists {
+	if paramArg, exists := node.CallGraphEdge.ParamArgMap[arg.Name]; exists {
 		return t.resolveTypeFromArgument(paramArg)
 	}
 

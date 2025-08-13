@@ -217,9 +217,10 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 				argName = arg.Pkg + separator + arg.Name
 			}
 
-			if len(arg.TypeParamMap) > 0 {
+			typeParams := arg.TypeParams()
+			if len(typeParams) > 0 {
 				typParam := "["
-				for _, val := range arg.TypeParamMap {
+				for _, val := range typeParams {
 					typParam += val + ", "
 				}
 				typParam = typParam[:len(typParam)-2] + "]"

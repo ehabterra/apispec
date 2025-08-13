@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"maps"
+	"strings"
 )
 
 var assignmentCount int
@@ -22,6 +23,10 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		StringPool: pool,
 		Packages:   make(map[string]*Package),
 		CallGraph:  make([]CallGraphEdge, 0),
+
+		Callers: make(map[string][]*CallGraphEdge),
+		Callees: make(map[string][]*CallGraphEdge),
+		Args:    make(map[string][]*CallGraphEdge),
 	}
 
 	for pkgName, files := range pkgs {
@@ -122,6 +127,40 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		buildCallGraph(files, pkgs, pkgName, fileToInfo, fset, funcMap, pool, metadata)
 	}
 
+	// Collect all callers and callee in maps
+	for i := range metadata.CallGraph {
+		edge := &metadata.CallGraph[i]
+		callerID := edge.Caller.ID()
+		calleeID := stripID(edge.Callee.ID())
+		metadata.Callers[callerID] = append(metadata.Callers[callerID], edge)
+		metadata.Callees[calleeID] = append(metadata.Callees[calleeID], edge)
+		for _, arg := range edge.Args {
+			argID := stripID(arg.ID())
+			metadata.Args[argID] = append(metadata.Args[argID], edge)
+		}
+	}
+
+	roots := metadata.CallGraphRoots()
+	for i := range roots {
+		edge := roots[i]
+
+		metadata.TraverseCallerChildren(edge, func(parent, child *CallGraphEdge) {
+			if len(parent.TypeParamMap) > 0 && len(child.TypeParamMap) > 0 {
+				newChild := *child
+				newChild.TypeParamMap = map[string]string{}
+
+				maps.Copy(newChild.TypeParamMap, child.TypeParamMap)
+				// Add parent types
+				maps.Copy(child.TypeParamMap, parent.TypeParamMap)
+
+				// Reset id
+				newChild.Callee.id = ""
+
+				metadata.CallGraph = append(metadata.CallGraph, newChild)
+			}
+		})
+	}
+
 	// Finalize string pool
 	pool.Finalize()
 
@@ -174,6 +213,16 @@ func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl
 		}
 	}
 	return funcMap
+}
+
+func stripID(id string) string {
+	callerID := id
+	idIndex := strings.IndexAny(id, "@[")
+
+	if idIndex >= 0 {
+		callerID = id[:idIndex]
+	}
+	return callerID
 }
 
 // buildFullPath creates the full path for a file
@@ -740,20 +789,6 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			}
 		}
 		cgEdge := CallGraphEdge{
-			Caller: Call{
-				Meta:     metadata,
-				Name:     pool.Get(callerFunc),
-				Pkg:      pool.Get(pkgName),
-				Position: -1,
-				RecvType: pool.Get(callerParts),
-			},
-			Callee: Call{
-				Meta:     metadata,
-				Name:     pool.Get(calleeFunc),
-				Pkg:      pool.Get(calleePkg),
-				Position: pool.Get(getPosition(call.Pos(), fset)),
-				RecvType: pool.Get(calleeParts),
-			},
 			Position:          int(call.Pos()),
 			Args:              args,
 			AssignmentMap:     assignmentsInFunc,
@@ -763,6 +798,20 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			CalleeRecvVarName: assignVarName,
 			meta:              metadata,
 		}
+
+		cgEdge.Caller = *cgEdge.NewCall(
+			pool.Get(callerFunc),
+			pool.Get(pkgName),
+			-1,
+			pool.Get(callerParts),
+		)
+
+		cgEdge.Callee = *cgEdge.NewCall(
+			pool.Get(calleeFunc),
+			pool.Get(calleePkg),
+			pool.Get(getPosition(call.Pos(), fset)),
+			pool.Get(calleeParts),
+		)
 
 		// Apply type parameter resolution to fill CallArgument with correct data
 		applyTypeParameterResolution(&cgEdge)

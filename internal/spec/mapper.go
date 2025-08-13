@@ -16,7 +16,7 @@ const (
 	refComponentsSchemasPrefix = "#/components/schemas/"
 )
 
-var schemaComponentNameReplacer = strings.NewReplacer("/", "_", "-->", ".", " ", "-", "[", "_", "]", "")
+var schemaComponentNameReplacer = strings.NewReplacer("/", "_", "-->", ".", " ", "-", "[", "_", "]", "", ", ", "-")
 
 // GeneratorConfig holds generation configuration
 type GeneratorConfig struct {

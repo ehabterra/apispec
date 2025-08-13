@@ -1,6 +1,10 @@
 package metadata
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+	"strings"
+)
 
 const (
 	kindIdent           = "ident"
@@ -111,6 +115,52 @@ type Metadata struct {
 	StringPool *StringPool         `yaml:"string_pool,omitempty"`
 	Packages   map[string]*Package `yaml:"packages,omitempty"`
 	CallGraph  []CallGraphEdge     `yaml:"call_graph,omitempty"`
+
+	roots   []*CallGraphEdge            `yaml:"roots"`
+	Callers map[string][]*CallGraphEdge `yaml:"-"`
+	Callees map[string][]*CallGraphEdge `yaml:"-"`
+	Args    map[string][]*CallGraphEdge `yaml:"-"`
+}
+
+func (m *Metadata) TraverseCallerChildren(edge *CallGraphEdge, action func(edge, child *CallGraphEdge)) {
+	calleeID := stripID(edge.Callee.ID())
+	if children, ok := m.Callers[calleeID]; ok {
+		for _, child := range children {
+			action(edge, child)
+
+			m.TraverseCallerChildren(child, action)
+		}
+	}
+}
+
+func (m *Metadata) CallGraphRoots() []*CallGraphEdge {
+	if len(m.roots) > 0 {
+		return m.roots
+	}
+
+	// Search for root functions
+	for i := range m.CallGraph {
+		edge := &m.CallGraph[i]
+
+		callerID := edge.Caller.ID()
+
+		var root = true
+
+		if _, exists := m.Callees[callerID]; exists {
+			root = false
+		}
+		if _, exists := m.Args[callerID]; exists {
+			root = false
+		}
+
+		// Only select main function from root function to be the root
+		// and construct the tree based on it
+		if root {
+			m.roots = append(m.roots, edge)
+		}
+	}
+
+	return m.roots
 }
 
 // Package represents a Go package
@@ -257,6 +307,19 @@ type CallArgument struct {
 	GenericTypeName string `yaml:"generic_type_name,omitempty"` // The generic type parameter name (e.g., "TRequest", "TData")
 }
 
+func (a *CallArgument) TypeParams() map[string]string {
+	if a.TypeParamMap == nil {
+		a.TypeParamMap = map[string]string{}
+	}
+
+	// Propagate type resolving
+	if a.Edge != nil && len(a.Edge.TypeParamMap) > 0 {
+		maps.Copy(a.TypeParamMap, a.Edge.TypeParamMap)
+	}
+
+	return a.TypeParamMap
+}
+
 func (a *CallArgument) ID() string {
 	var pos string
 
@@ -268,54 +331,145 @@ func (a *CallArgument) ID() string {
 		pos = "@" + a.Position
 	}
 
-	a.idstr = a.id(".") + pos
+	id, typeParam := a.id(".")
+
+	a.idstr = id + typeParam + pos
 
 	return a.idstr
 }
 
 // ID returns a unique identifier for the call argument
-func (a *CallArgument) id(sep string) string {
+func (a *CallArgument) id(sep string) (string, string) {
+	var typeParam string
+
+	typeParams := a.TypeParams()
+	if typeParams != nil {
+		for _, param := range typeParams {
+			exists := true
+
+			var concreteType string
+
+			for exists {
+				concreteType, exists = typeParams[param]
+
+				if concreteType != "" {
+					param = concreteType
+				}
+			}
+			typeParam += "," + param
+		}
+
+		if typeParam != "" {
+			typeParam = fmt.Sprintf("[%s]", typeParam[1:])
+		}
+	}
+
 	switch a.Kind {
 	case kindIdent:
-		if a.Type != "" && a.Name == "" && sep == "/" {
-			return a.Type
+		// if a.Type != "" && a.Name == "" && sep == "/" {
+		if a.Type != "" && sep == "/" {
+			return a.Type, typeParam
 		} else if a.Pkg != "" {
 			if sep == "/" {
-				return a.Pkg
+				return "", typeParam
 			}
-			return a.Pkg + sep + a.Name
+			return a.Pkg + sep + a.Name, typeParam
 		}
-		return a.Name
+		return a.Name, typeParam
 	case kindLiteral:
-		return a.Value
+		return a.Value, typeParam
 	case kindSelector:
 		if a.X != nil {
-			return a.X.id("/") + sep + a.Sel.Name
+			xID, xTypeParam := a.X.id("/")
+			if xID == "" {
+				xID = a.Sel.Pkg
+			}
+			id := xID + sep + a.Sel.Name
+
+			if xTypeParam != "" {
+				typeParam = xTypeParam
+			}
+
+			return id, typeParam
 		}
-		return a.Sel.Name
+		return a.Sel.Name, typeParam
 	case kindCall:
 		if a.Fun != nil {
-			return a.Fun.id(".")
+			funID, funTypeParam := a.Fun.id(".")
+			if funTypeParam != "" {
+				typeParam = funTypeParam
+			}
+
+			return funID, typeParam
 		}
-		return kindCall
+		return kindCall, typeParam
+	case kindUnary:
+		if a.X != nil {
+			xID, xTypeParam := a.X.id("/")
+			if xID == "" {
+				xID = a.Pkg
+			}
+			id := a.Value + xID
+
+			if xTypeParam != "" {
+				typeParam = xTypeParam
+			}
+
+			return id, typeParam
+		}
+		return "", ""
+	case kindCompositeLit:
+		if a.X != nil {
+			xID, xTypeParam := a.X.id("/")
+			if xID == "" {
+				xID = a.Pkg
+			}
+			id := xID
+
+			if xTypeParam != "" {
+				typeParam = xTypeParam
+			}
+
+			return id, typeParam
+		}
+		return "", ""
+	case kindIndex:
+		if a.X != nil {
+			xID, xTypeParam := a.X.id("/")
+			if xID == "" {
+				xID = a.Pkg
+			}
+			id := xID
+
+			if xTypeParam != "" {
+				typeParam = xTypeParam
+			}
+
+			return id, typeParam
+		}
+		return "", ""
 	default:
-		return a.Raw
+		return a.Raw, typeParam
 	}
 }
 
 // Call represents a function call
 type Call struct {
-	Meta     *Metadata `yaml:"-"`
-	id       string
-	Name     int `yaml:"name,omitempty"`
-	Pkg      int `yaml:"pkg,omitempty"`
-	Position int `yaml:"position,omitempty"`
-	RecvType int `yaml:"recv_type,omitempty"`
+	Meta     *Metadata      `yaml:"-"`
+	Edge     *CallGraphEdge `yaml:"-"`
+	id       string         `yaml:"id"`
+	Name     int            `yaml:"name,omitempty"`
+	Pkg      int            `yaml:"pkg,omitempty"`
+	Position int            `yaml:"position,omitempty"`
+	RecvType int            `yaml:"recv_type,omitempty"`
 }
 
 // ID returns a unique identifier for the call
 func (c Call) ID() string {
-	var pos string
+	var (
+		pos       string
+		typeParam string
+	)
 
 	if c.id != "" {
 		return c.id
@@ -325,7 +479,40 @@ func (c Call) ID() string {
 		pos = "@" + c.Meta.StringPool.GetString(c.Position)
 	}
 
-	c.id = fmt.Sprintf("%s.%s%s", c.Meta.StringPool.GetString(c.Pkg), c.Meta.StringPool.GetString(c.Name), pos)
+	if pos != "" {
+		if c.Edge != nil && c.Edge.TypeParamMap != nil {
+			for _, param := range c.Edge.TypeParamMap {
+				exists := true
+
+				var concreteType string
+
+				for exists {
+					concreteType, exists = c.Edge.TypeParamMap[param]
+
+					if concreteType != "" {
+						param = concreteType
+					}
+				}
+				typeParam += "," + param
+			}
+
+			if typeParam != "" {
+				typeParam = fmt.Sprintf("[%s]", typeParam[1:])
+			}
+		}
+	}
+
+	if c.RecvType != -1 {
+		recvType := c.Meta.StringPool.GetString(c.RecvType)
+		if strings.HasPrefix(recvType, "*") {
+			recvType = "*" + c.Meta.StringPool.GetString(c.Pkg) + "." + recvType[1:]
+		} else {
+			recvType = c.Meta.StringPool.GetString(c.Pkg) + recvType
+		}
+		c.id = fmt.Sprintf("%s.%s%s%s", recvType, c.Meta.StringPool.GetString(c.Name), typeParam, pos)
+	} else {
+		c.id = fmt.Sprintf("%s.%s%s%s", c.Meta.StringPool.GetString(c.Pkg), c.Meta.StringPool.GetString(c.Name), typeParam, pos)
+	}
 
 	return c.id
 }
@@ -346,6 +533,17 @@ type CallGraphEdge struct {
 	CalleeRecvVarName string `yaml:"callee_recv_var_name,omitempty"`
 
 	meta *Metadata
+}
+
+func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
+	return &Call{
+		Edge:     edge,
+		Meta:     edge.meta,
+		Name:     name,
+		Pkg:      pkg,
+		Position: position,
+		RecvType: recvType,
+	}
 }
 
 // GlobalAssignment represents a global variable assignment

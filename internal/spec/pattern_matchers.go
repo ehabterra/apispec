@@ -369,12 +369,12 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node *TrackerNode, route *Rou
 		arg := node.CallGraphEdge.Args[r.pattern.TypeArgIndex]
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
-		// NEW: Check for resolved type information in the CallArgument
+		// Check for resolved type information in the CallArgument
 		if arg.ResolvedType != "" {
 			bodyType = arg.ResolvedType
 		} else if arg.IsGenericType && arg.GenericTypeName != "" {
 			// If it's a generic type, try to resolve it from the edge's type parameters
-			if concreteType, exists := node.CallGraphEdge.TypeParamMap[arg.GenericTypeName]; exists {
+			if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
 				bodyType = concreteType
 			}
 		}
@@ -492,10 +492,9 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	}
 
 	typeParts := TypeParts(originalType)
-	edge := node.CallGraphEdge
 
 	// If it's a generic type with a concrete resolution, use it
-	genericType := traceGenericOrigin(edge, typeParts)
+	genericType := traceGenericOrigin(node, typeParts)
 	if genericType != "" {
 		return genericType
 	}
@@ -518,15 +517,17 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	return originalType
 }
 
-func traceGenericOrigin(edge *metadata.CallGraphEdge, typeParts []string) string {
-	if edge != nil && len(edge.TypeParamMap) > 0 && len(typeParts) > 1 {
+func traceGenericOrigin(node *TrackerNode, typeParts []string) string {
+	typeParams := node.TypeParams()
+
+	if len(typeParams) > 0 && len(typeParts) > 1 {
 		searchType := typeParts[1]
 		exists := true
 
 		var concreteType string
 
 		for exists {
-			concreteType, exists = edge.TypeParamMap[searchType]
+			concreteType, exists = typeParams[searchType]
 
 			if concreteType != "" {
 				searchType = concreteType

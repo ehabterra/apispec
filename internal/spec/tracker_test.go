@@ -185,6 +185,7 @@ func TestNewTrackerTree(t *testing.T) {
 			name:         "Struct types with methods and interfaces",
 			metaFileName: "tests/example.yaml",
 			expected: Expected{
+				RootAssignmentMap: map[string][]string{"user": {"NewUser"}},
 				Roots: []Node{
 					{
 						ID:     "example.main",
@@ -239,6 +240,28 @@ func TestNewTrackerTree(t *testing.T) {
 											{
 												Kind:  "literal",
 												Value: "40",
+											},
+										},
+									},
+									{
+										ID:                "example.SetAge@/var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces3005951015/example/src/example/types.go:34:2",
+										Caller:            "NewUser",
+										Callee:            "SetAge",
+										CalleeRecvVarName: "",
+										Children: []Node{
+											{
+												ID:        "example.age@/var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces3005951015/example/src/example/types.go:34:11",
+												Caller:    "SetAge",
+												Callee:    "age",
+												ParamMap:  []string{"age"},
+												Arguments: []metadata.CallArgument{{Kind: "ident", Name: "age"}},
+											},
+										},
+										ParamMap: []string{"age"},
+										Arguments: []metadata.CallArgument{
+											{
+												Kind: "ident",
+												Name: "age",
 											},
 										},
 									},
@@ -953,13 +976,13 @@ func TestNewTrackerTree(t *testing.T) {
 				}
 
 				for i := range expectedNodes {
-					has := strings.HasPrefix(actualNodes[i].ID, expectedNodes[i].ID+"@")
+					has := strings.HasPrefix(actualNodes[i].Key(), expectedNodes[i].ID+"@")
 					if !has {
-						has = strings.EqualFold(actualNodes[i].ID, expectedNodes[i].ID)
+						has = strings.EqualFold(actualNodes[i].Key(), expectedNodes[i].ID)
 					}
 
 					ok := assert.Equal(t, true, has,
-						"Node should be %q but found %q", expectedNodes[i].ID, actualNodes[i].ID)
+						"Node should be %q but found %q", expectedNodes[i].ID, actualNodes[i].Key)
 					if !ok {
 						return
 					}
@@ -1014,14 +1037,14 @@ func TestNewTrackerTree(t *testing.T) {
 						}
 
 						// Types
-						ok = assert.Equal(t, len(expectedNodes[i].TypeMap), len(actualNodes[i].CallGraphEdge.TypeParamMap),
+						ok = assert.Equal(t, len(expectedNodes[i].TypeMap), len(actualNodes[i].TypeParams()),
 							"Nodes types should be %d but found %d", len(expectedNodes[i].TypeMap), len(actualNodes[i].CallGraphEdge.TypeParamMap))
 						if !ok {
 							return
 						}
 
 						if expectedNodes[i].TypeMap != nil {
-							assert.Equal(t, expectedNodes[i].TypeMap, actualNodes[i].CallGraphEdge.TypeParamMap,
+							assert.Equal(t, expectedNodes[i].TypeMap, actualNodes[i].TypeParams(),
 								"Nodes args should be %d but found %d", expectedNodes[i].TypeMap, actualNodes[i].CallGraphEdge.TypeParamMap)
 						}
 					}
@@ -1037,7 +1060,7 @@ func TestNewTrackerTree(t *testing.T) {
 			for i := range roots {
 				// Root Assignments
 				ok := assert.Equal(t, len(tc.expected.RootAssignmentMap), len(roots[i].RootAssignmentMap),
-					"Node %q root assignment should be %d but found %d", roots[i].ID, len(tc.expected.RootAssignmentMap), len(roots[i].RootAssignmentMap))
+					"Node %q root assignment should be %d but found %d", roots[i].Key, len(tc.expected.RootAssignmentMap), len(roots[i].RootAssignmentMap))
 				if !ok {
 					return
 				}
@@ -1045,16 +1068,16 @@ func TestNewTrackerTree(t *testing.T) {
 				for key := range tc.expected.RootAssignmentMap {
 					assignments, ok := roots[i].RootAssignmentMap[key]
 					if !ok {
-						t.Errorf("actual node %q doesn't have key %q", roots[i].ID, key)
+						t.Errorf("actual node %q doesn't have key %q", roots[i].Key, key)
 						return
 					}
 					if len(assignments) != len(tc.expected.RootAssignmentMap[key]) {
-						t.Errorf("actual node %q doesn't have key %q", roots[i].ID, key)
+						t.Errorf("actual node %q doesn't have key %q", roots[i].Key, key)
 						return
 					}
 					for i := range assignments {
 						ok = assert.Equal(t, tc.expected.RootAssignmentMap[key][i], assignments[i].CalleeFunc,
-							"Node %q assignment should be %q but found %q", roots[i].ID, tc.expected.RootAssignmentMap[key][i], assignments[i].CalleeFunc)
+							"Node %q assignment should be %q but found %q", roots[i].Key, tc.expected.RootAssignmentMap[key][i], assignments[i].CalleeFunc)
 						if !ok {
 							return
 						}

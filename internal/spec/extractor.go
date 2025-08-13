@@ -326,7 +326,7 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNo
 		node := queue[0]
 		queue = queue[1:] // dequeue
 
-		if node.ID == assignment.ID() {
+		if node.Key() == assignment.ID() {
 			return node
 		}
 
@@ -531,7 +531,7 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument
 
 	// If it's a generic type with a concrete resolution, use it
 	if arg.IsGenericType && arg.GenericTypeName != "" {
-		if concreteType, exists := node.CallGraphEdge.TypeParamMap[arg.GenericTypeName]; exists {
+		if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
 			return concreteType
 		}
 	}
@@ -679,7 +679,7 @@ func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, n
 
 	// If it's a generic type with a concrete resolution, use it
 	if arg.IsGenericType && arg.GenericTypeName != "" {
-		if concreteType, exists := node.CallGraphEdge.TypeParamMap[arg.GenericTypeName]; exists {
+		if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
 			return concreteType
 		}
 	}

@@ -175,10 +175,14 @@ func (u *User) SetAge(age int) {
 }
 
 func NewUser(name string, age int) *User {
-	return &User{
+	u := &User{
 		Name: name,
 		Age:  age,
 	}
+
+	u.SetAge(age)
+	
+	return u
 }
 	
 func main() {

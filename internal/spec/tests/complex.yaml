@@ -1,24 +1,24 @@
 string_pool:
   - GetName
   - '*Service'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:9:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:9:1
   - exported
   - func() string
   - result
   - complex
   - string
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:2
   - unexported
   - Process
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:13:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:13:1
   - func(string) string
   - name
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:2
   - Handle
   - processed
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:2
   - '*Handler'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:22:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:22:1
   - 'func(string) '
   - Service
   - struct
@@ -26,33 +26,33 @@ string_pool:
   - Handler
   - service
   - NewService
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:28:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:28:1
   - NewHandler
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:32:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:32:1
   - svc
   - '*complex.Service'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:37:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:37:2
   - main
   - handler
   - '*complex.Handler'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:36:1
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:29:10
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:33:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:36:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:29:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:33:10
   - fmt
   - Sprintf
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
   - Printf
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:25:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:37:9
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:13
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:39:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:25:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:37:9
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:13
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:39:2
 packages:
   complex:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go
       : types:
           Handler:
             name: 24
@@ -76,7 +76,7 @@ packages:
                       name: string
                       pkg: complex
                       type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:22:32
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:22:32
                 signature_str: 20
                 position: 19
                 scope: 3
@@ -98,28 +98,28 @@ packages:
                               name: h
                               pkg: complex
                               type: '*complex.Handler'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                             sel:
                               kind: ident
                               name: service
                               pkg: complex
                               type: '*complex.Service'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:12
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:12
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                           sel:
                             kind: ident
                             name: GetName
                             pkg: complex
                             type: func() string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:20
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:20
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                       lhs:
                         kind: ident
                         name: name
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:2
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:2
                       func: 15
                       callee_func: GetName
                       callee_pkg: complex
@@ -140,34 +140,34 @@ packages:
                               name: h
                               pkg: complex
                               type: '*complex.Handler'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                             sel:
                               kind: ident
                               name: service
                               pkg: complex
                               type: '*complex.Service'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:17
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:17
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                           sel:
                             kind: ident
                             name: Process
                             pkg: complex
                             type: func(data string) string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:25
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:25
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                         args:
                           - kind: ident
                             name: input
                             pkg: complex
                             type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:33
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:33
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                       lhs:
                         kind: ident
                         name: processed
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:2
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:2
                       func: 15
                       callee_func: Process
                       callee_pkg: complex
@@ -193,7 +193,7 @@ packages:
                         name: string
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:9:29
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:9:29
                 signature_str: 4
                 position: 2
                 scope: 3
@@ -208,13 +208,13 @@ packages:
                         name: string
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:13:40
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:13:40
                   args:
                     - kind: ident
                       name: string
                       pkg: complex
                       type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:13:32
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:13:32
                 signature_str: 12
                 position: 11
                 scope: 3
@@ -233,14 +233,14 @@ packages:
                             kind: ident
                             name: fmt
                             pkg: fmt
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                           sel:
                             kind: ident
                             name: Sprintf
                             pkg: fmt
                             type: func(format string, a ...any) string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:16
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:16
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                         args:
                           - kind: literal
                             value: '"Processing: %s"'
@@ -248,14 +248,14 @@ packages:
                             name: data
                             pkg: complex
                             type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:42
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:42
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                       lhs:
                         kind: ident
                         name: result
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:2
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:2
                       func: 10
                       callee_func: Sprintf
                       callee_pkg: fmt
@@ -274,7 +274,7 @@ packages:
                       name: Handler
                       pkg: complex
                       type: Handler
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:32:32
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:32:32
               args:
                 - kind: star
                   x:
@@ -282,7 +282,7 @@ packages:
                     name: Service
                     pkg: complex
                     type: Service
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:32:22
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:32:22
             position: 29
             scope: 3
             comments: -1
@@ -296,7 +296,7 @@ packages:
                     name: Handler
                     pkg: complex
                     type: Handler
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:33:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:33:10
                   args:
                     - kind: key_value
                       x:
@@ -304,13 +304,13 @@ packages:
                         name: service
                         pkg: complex
                         type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:33:18
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:33:18
                       fun:
                         kind: ident
                         name: svc
                         pkg: complex
                         type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:33:27
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:33:27
           NewService:
             name: 26
             signature:
@@ -324,13 +324,13 @@ packages:
                       name: Service
                       pkg: complex
                       type: Service
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:28:31
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:28:31
               args:
                 - kind: ident
                   name: string
                   pkg: complex
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:28:22
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:28:22
             position: 27
             scope: 3
             comments: -1
@@ -344,7 +344,7 @@ packages:
                     name: Service
                     pkg: complex
                     type: Service
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:29:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:29:10
                   args:
                     - kind: key_value
                       x:
@@ -352,13 +352,13 @@ packages:
                         name: name
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:29:18
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:29:18
                       fun:
                         kind: ident
                         name: name
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:29:24
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:29:24
           main:
             name: 33
             signature:
@@ -382,20 +382,20 @@ packages:
                       name: NewHandler
                       pkg: complex
                       type: func(svc *complex.Service) *complex.Handler
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:13
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:13
                     args:
                       - kind: ident
                         name: svc
                         pkg: complex
                         type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:24
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:13
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:24
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:13
                   lhs:
                     kind: ident
                     name: handler
                     pkg: complex
                     type: '*complex.Handler'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:2
                   func: 33
                   callee_func: NewHandler
                   callee_pkg: complex
@@ -412,17 +412,17 @@ packages:
                       name: NewService
                       pkg: complex
                       type: func(name string) *complex.Service
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:37:9
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:37:9
                     args:
                       - kind: literal
                         value: '"test-service"'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:37:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:37:9
                   lhs:
                     kind: ident
                     name: svc
                     pkg: complex
                     type: '*complex.Service'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:37:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:37:2
                   func: 33
                   callee_func: NewService
                   callee_pkg: complex
@@ -460,7 +460,7 @@ packages:
                   name: string
                   pkg: complex
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:22:32
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:22:32
             signature_str: 20
             position: 19
             scope: 3
@@ -482,28 +482,28 @@ packages:
                           name: h
                           pkg: complex
                           type: '*complex.Handler'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                         sel:
                           kind: ident
                           name: service
                           pkg: complex
                           type: '*complex.Service'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:12
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                       sel:
                         kind: ident
                         name: GetName
                         pkg: complex
                         type: func() string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:20
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:20
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:10
                   lhs:
                     kind: ident
                     name: name
                     pkg: complex
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:23:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:23:2
                   func: 15
                   callee_func: GetName
                   callee_pkg: complex
@@ -524,34 +524,34 @@ packages:
                           name: h
                           pkg: complex
                           type: '*complex.Handler'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                         sel:
                           kind: ident
                           name: service
                           pkg: complex
                           type: '*complex.Service'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:17
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:17
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                       sel:
                         kind: ident
                         name: Process
                         pkg: complex
                         type: func(data string) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:25
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:25
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                     args:
                       - kind: ident
                         name: input
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:33
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:15
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:33
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:15
                   lhs:
                     kind: ident
                     name: processed
                     pkg: complex
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:2
                   func: 15
                   callee_func: Process
                   callee_pkg: complex
@@ -577,7 +577,7 @@ packages:
                     name: string
                     pkg: complex
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:9:29
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:9:29
             signature_str: 4
             position: 2
             scope: 3
@@ -592,13 +592,13 @@ packages:
                     name: string
                     pkg: complex
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:13:40
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:13:40
               args:
                 - kind: ident
                   name: string
                   pkg: complex
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:13:32
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:13:32
             signature_str: 12
             position: 11
             scope: 3
@@ -617,14 +617,14 @@ packages:
                         kind: ident
                         name: fmt
                         pkg: fmt
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                       sel:
                         kind: ident
                         name: Sprintf
                         pkg: fmt
                         type: func(format string, a ...any) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:16
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:16
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                     args:
                       - kind: literal
                         value: '"Processing: %s"'
@@ -632,14 +632,14 @@ packages:
                         name: data
                         pkg: complex
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:42
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:42
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:12
                   lhs:
                     kind: ident
                     name: result
                     pkg: complex
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:2
                   func: 10
                   callee_func: Sprintf
                   callee_pkg: fmt
@@ -655,7 +655,7 @@ call_graph:
       pkg: 40
       position: 42
       recv_type: -1
-    position: 6293137
+    position: 6293163
     args:
       - kind: literal
         value: '"Processing: %s"'
@@ -663,14 +663,14 @@ call_graph:
         name: data
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:42
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:42
     param_arg_map:
       a:
         kind: ident
         name: data
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:14:42
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:14:42
       format:
         kind: literal
         value: '"Processing: %s"'
@@ -684,7 +684,7 @@ call_graph:
       pkg: 6
       position: 43
       recv_type: 1
-    position: 6293284
+    position: 6293310
     callee_recv_var_name: name
   - caller:
       name: 15
@@ -696,20 +696,20 @@ call_graph:
       pkg: 6
       position: 44
       recv_type: 1
-    position: 6293318
+    position: 6293344
     args:
       - kind: ident
         name: input
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:33
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:33
     param_arg_map:
       data:
         kind: ident
         name: input
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:24:33
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:24:33
     callee_recv_var_name: processed
   - caller:
       name: 15
@@ -721,7 +721,7 @@ call_graph:
       pkg: 40
       position: 46
       recv_type: -1
-    position: 6293344
+    position: 6293370
     args:
       - kind: literal
         value: '"Handler %s: %s\n"'
@@ -729,19 +729,19 @@ call_graph:
         name: name
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:25:33
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:25:33
       - kind: ident
         name: processed
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:25:39
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:25:39
     param_arg_map:
       a:
         kind: ident
         name: name
         pkg: complex
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:25:33
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:25:33
       format:
         kind: literal
         value: '"Handler %s: %s\n"'
@@ -755,7 +755,7 @@ call_graph:
       pkg: 6
       position: 47
       recv_type: -1
-    position: 6293564
+    position: 6293590
     args:
       - kind: literal
         value: '"test-service"'
@@ -774,20 +774,20 @@ call_graph:
       pkg: 6
       position: 48
       recv_type: -1
-    position: 6293603
+    position: 6293629
     args:
       - kind: ident
         name: svc
         pkg: complex
         type: '*complex.Service'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:24
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:24
     param_arg_map:
       svc:
         kind: ident
         name: svc
         pkg: complex
         type: '*complex.Service'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3348838817/complex/src/complex/service.go:38:24
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains1932195800/complex/src/complex/service.go:38:24
     callee_recv_var_name: handler
   - caller:
       name: 33
@@ -799,7 +799,7 @@ call_graph:
       pkg: 6
       position: 49
       recv_type: 18
-    position: 6293620
+    position: 6293646
     args:
       - kind: literal
         value: '"test-data"'
