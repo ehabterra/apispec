@@ -3,6 +3,8 @@ package metadata
 import (
 	"fmt"
 	"maps"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -116,46 +118,185 @@ type Metadata struct {
 	Packages   map[string]*Package `yaml:"packages,omitempty"`
 	CallGraph  []CallGraphEdge     `yaml:"call_graph,omitempty"`
 
-	roots   []*CallGraphEdge            `yaml:"roots"`
 	Callers map[string][]*CallGraphEdge `yaml:"-"`
 	Callees map[string][]*CallGraphEdge `yaml:"-"`
 	Args    map[string][]*CallGraphEdge `yaml:"-"`
+
+	roots []*CallGraphEdge `yaml:"-"`
+
+	callDepth map[string]int `yaml:"_"`
 }
 
-func (m *Metadata) TraverseCallerChildren(edge *CallGraphEdge, action func(edge, child *CallGraphEdge)) {
-	calleeID := stripID(edge.Callee.ID())
-	if children, ok := m.Callers[calleeID]; ok {
-		for _, child := range children {
-			action(edge, child)
+// BuildCallGraphMaps builds the various lookup maps
+func (m *Metadata) BuildCallGraphMaps() {
+	m.Callers = make(map[string][]*CallGraphEdge)
+	m.Callees = make(map[string][]*CallGraphEdge)
+	m.Args = make(map[string][]*CallGraphEdge)
+	m.callDepth = map[string]int{}
 
-			m.TraverseCallerChildren(child, action)
+	for i := range m.CallGraph {
+		edge := &m.CallGraph[i]
+
+		callerBase := edge.Caller.BaseID()
+		calleeBase := edge.Callee.BaseID()
+
+		m.Callers[callerBase] = append(m.Callers[callerBase], edge)
+		m.Callees[calleeBase] = append(m.Callees[calleeBase], edge)
+
+		// Index arguments by their base IDs
+		for _, arg := range edge.Args {
+			argBase := stripToBase(arg.ID())
+			m.Args[argBase] = append(m.Args[argBase], edge)
 		}
 	}
 }
 
+// GetCallersOfFunction returns all edges where the given function is the caller
+func (m *Metadata) GetCallersOfFunction(pkg, funcName string) []*CallGraphEdge {
+	baseID := fmt.Sprintf("%s.%s", pkg, funcName)
+	return m.Callers[baseID]
+}
+
+// GetCalleesOfFunction returns all edges where the given function is called
+func (m *Metadata) GetCalleesOfFunction(pkg, funcName string) []*CallGraphEdge {
+	baseID := fmt.Sprintf("%s.%s", pkg, funcName)
+	return m.Callees[baseID]
+}
+
+// GetCallersOfMethod returns all edges where the given method is the caller
+func (m *Metadata) GetCallersOfMethod(pkg, recvType, methodName string) []*CallGraphEdge {
+	baseID := fmt.Sprintf("%s.%s.%s", pkg, recvType, methodName)
+	return m.Callers[baseID]
+}
+
+// GetCalleesOfMethod returns all edges where the given method is called
+func (m *Metadata) GetCalleesOfMethod(pkg, recvType, methodName string) []*CallGraphEdge {
+	baseID := fmt.Sprintf("%s.%s.%s", pkg, recvType, methodName)
+	return m.Callees[baseID]
+}
+
+// IsSubset checks if array 'a' is a subset of array 'b'
+// Returns true if all elements in 'a' exist in 'b'
+func IsSubset(a, b []string) bool {
+	// Create a map for O(1) lookups
+	bMap := make(map[string]bool)
+	for _, item := range b {
+		bMap[item] = true
+	}
+
+	// Check if all items in 'a' exist in 'b'
+	for _, item := range a {
+		if !bMap[item] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ExtractGenericTypes extracts the values from generic type parameters in a string
+// Supports two formats:
+// 1. "path.Function[TParam1=Value1,TParam2=Value2]" -> extracts values after '='
+// 2. "path.Function[Type1,Type2,Type3]" -> extracts all comma-separated types
+// Returns: []string containing the extracted types
+func ExtractGenericTypes(input string) []string {
+	// Find the content between square brackets
+	re := regexp.MustCompile(`\[([^\]]+)\]`)
+	matches := re.FindStringSubmatch(input)
+
+	if len(matches) < 2 {
+		return []string{}
+	}
+
+	// Extract the parameters string (everything between [ and ])
+	params := matches[1]
+
+	// Split by comma to get individual items
+	items := strings.Split(params, ",")
+
+	var result []string
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+
+		// Check if this is a key=value format
+		if strings.Contains(item, "=") {
+			parts := strings.Split(item, "=")
+			if len(parts) == 2 {
+				value := strings.TrimSpace(parts[1])
+				result = append(result, value)
+			}
+		} else {
+			// This is just a type name (comma-separated format)
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+func TypeEdges(id string, callerEdges []*CallGraphEdge) []*CallGraphEdge {
+	edges := []*CallGraphEdge{}
+	idTypes := ExtractGenericTypes(id)
+
+	if len(idTypes) > 0 {
+		for i := range callerEdges {
+			CallerEdgeID := callerEdges[i].Caller.ID()
+			CallerEdgeTypes := ExtractGenericTypes(CallerEdgeID)
+
+			if IsSubset(idTypes, CallerEdgeTypes) {
+				edges = append(edges, callerEdges[i])
+			}
+		}
+	} else {
+		edges = callerEdges
+	}
+	return edges
+}
+
+const MaxSelfCallingDepth = 50
+
+// TraverseCallerChildren traverses the call graph using base IDs
+func (m *Metadata) TraverseCallerChildren(edge *CallGraphEdge, action func(parent, child *CallGraphEdge)) {
+	calleeBase := edge.Callee.BaseID()
+	if children, ok := m.Callers[calleeBase]; ok {
+		for _, child := range children {
+			if calleeBase == child.Callee.BaseID() { // Limit self calling
+				if m.callDepth[calleeBase] >= MaxSelfCallingDepth {
+					continue
+				}
+				m.callDepth[calleeBase]++
+			}
+			action(edge, child)
+			m.TraverseCallerChildren(child, action)
+
+		}
+	}
+}
+
+// CallGraphRoots finds root functions using base IDs
 func (m *Metadata) CallGraphRoots() []*CallGraphEdge {
 	if len(m.roots) > 0 {
 		return m.roots
 	}
 
-	// Search for root functions
+	// Search for root functions using base IDs
 	for i := range m.CallGraph {
 		edge := &m.CallGraph[i]
+		callerBase := edge.Caller.BaseID()
 
-		callerID := edge.Caller.ID()
+		var isRoot = true
 
-		var root = true
-
-		if _, exists := m.Callees[callerID]; exists {
-			root = false
-		}
-		if _, exists := m.Args[callerID]; exists {
-			root = false
+		// Check if this function is called by anyone (using base ID)
+		if _, exists := m.Callees[callerBase]; exists {
+			isRoot = false
 		}
 
-		// Only select main function from root function to be the root
-		// and construct the tree based on it
-		if root {
+		// Check if this function appears as an argument (using base ID)
+		if _, exists := m.Args[callerBase]; exists {
+			isRoot = false
+		}
+
+		if isRoot {
 			m.roots = append(m.roots, edge)
 		}
 	}
@@ -335,6 +476,8 @@ func (a *CallArgument) ID() string {
 
 	a.idstr = id + typeParam + pos
 
+	a.idstr = strings.TrimPrefix(a.idstr, "*")
+
 	return a.idstr
 }
 
@@ -343,25 +486,13 @@ func (a *CallArgument) id(sep string) (string, string) {
 	var typeParam string
 
 	typeParams := a.TypeParams()
-	if typeParams != nil {
-		for _, param := range typeParams {
-			exists := true
-
-			var concreteType string
-
-			for exists {
-				concreteType, exists = typeParams[param]
-
-				if concreteType != "" {
-					param = concreteType
-				}
-			}
-			typeParam += "," + param
+	if len(typeParams) > 0 {
+		var genericParts []string
+		for param, concrete := range typeParams {
+			genericParts = append(genericParts, fmt.Sprintf("%s=%s", param, concrete))
 		}
-
-		if typeParam != "" {
-			typeParam = fmt.Sprintf("[%s]", typeParam[1:])
-		}
+		sort.Slice(genericParts, func(i, j int) bool { return genericParts[i] < genericParts[j] })
+		typeParam = fmt.Sprintf("[%s]", strings.Join(genericParts, ","))
 	}
 
 	switch a.Kind {
@@ -453,68 +584,57 @@ func (a *CallArgument) id(sep string) (string, string) {
 	}
 }
 
-// Call represents a function call
 type Call struct {
-	Meta     *Metadata      `yaml:"-"`
-	Edge     *CallGraphEdge `yaml:"-"`
-	id       string         `yaml:"id"`
-	Name     int            `yaml:"name,omitempty"`
-	Pkg      int            `yaml:"pkg,omitempty"`
-	Position int            `yaml:"position,omitempty"`
-	RecvType int            `yaml:"recv_type,omitempty"`
+	Meta *Metadata      `yaml:"-"`
+	Edge *CallGraphEdge `yaml:"-"`
+
+	// Separate fields for different ID components
+	identifier *CallIdentifier `yaml:"-"`
+
+	// Keep existing fields for serialization
+	Name     int `yaml:"name,omitempty"`
+	Pkg      int `yaml:"pkg,omitempty"`
+	Position int `yaml:"position,omitempty"`
+	RecvType int `yaml:"recv_type,omitempty"`
 }
 
-// ID returns a unique identifier for the call
-func (c Call) ID() string {
-	var (
-		pos       string
-		typeParam string
+// ID returns different types of identifiers based on context
+func (c *Call) ID() string {
+	return c.InstanceID() // Default to instance ID for backward compatibility
+}
+
+// BaseID returns the base identifier without position or generics
+func (c *Call) BaseID() string {
+	if c.identifier == nil {
+		c.buildIdentifier()
+	}
+	return c.identifier.ID(BaseID)
+}
+
+// InstanceID returns the full instance identifier with position and generics
+func (c *Call) InstanceID() string {
+	if c.identifier == nil {
+		c.buildIdentifier()
+	}
+	return c.identifier.ID(InstanceID)
+}
+
+func (c *Call) buildIdentifier() {
+	var generics map[string]string
+	if c.Edge != nil && c.Edge.TypeParamMap != nil {
+		generics = make(map[string]string)
+		for k, v := range c.Edge.TypeParamMap {
+			generics[k] = v
+		}
+	}
+
+	c.identifier = NewCallIdentifier(
+		c.Meta.StringPool.GetString(c.Pkg),
+		c.Meta.StringPool.GetString(c.Name),
+		c.Meta.StringPool.GetString(c.RecvType),
+		c.Meta.StringPool.GetString(c.Position),
+		generics,
 	)
-
-	if c.id != "" {
-		return c.id
-	}
-
-	if c.Position >= 0 {
-		pos = "@" + c.Meta.StringPool.GetString(c.Position)
-	}
-
-	if pos != "" {
-		if c.Edge != nil && c.Edge.TypeParamMap != nil {
-			for _, param := range c.Edge.TypeParamMap {
-				exists := true
-
-				var concreteType string
-
-				for exists {
-					concreteType, exists = c.Edge.TypeParamMap[param]
-
-					if concreteType != "" {
-						param = concreteType
-					}
-				}
-				typeParam += "," + param
-			}
-
-			if typeParam != "" {
-				typeParam = fmt.Sprintf("[%s]", typeParam[1:])
-			}
-		}
-	}
-
-	if c.RecvType != -1 {
-		recvType := c.Meta.StringPool.GetString(c.RecvType)
-		if strings.HasPrefix(recvType, "*") {
-			recvType = "*" + c.Meta.StringPool.GetString(c.Pkg) + "." + recvType[1:]
-		} else {
-			recvType = c.Meta.StringPool.GetString(c.Pkg) + recvType
-		}
-		c.id = fmt.Sprintf("%s.%s%s%s", recvType, c.Meta.StringPool.GetString(c.Name), typeParam, pos)
-	} else {
-		c.id = fmt.Sprintf("%s.%s%s%s", c.Meta.StringPool.GetString(c.Pkg), c.Meta.StringPool.GetString(c.Name), typeParam, pos)
-	}
-
-	return c.id
 }
 
 // CallGraphEdge represents an edge in the call graph

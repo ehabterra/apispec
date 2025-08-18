@@ -6,8 +6,97 @@ import (
 	"go/token"
 	"go/types"
 	"maps"
+	"sort"
 	"strings"
 )
+
+// CallIdentifierType represents different types of identifiers used in the call graph
+type CallIdentifierType int
+
+const (
+	// BaseID - Function/method name with package, no position or generics
+	BaseID CallIdentifierType = iota
+	// InstanceID - Includes position and generic type parameters for specific call instances
+	InstanceID
+)
+
+// CallIdentifier manages different identifier formats for calls
+type CallIdentifier struct {
+	pkg      string
+	name     string
+	recvType string
+	position string
+	generics map[string]string
+}
+
+func NewCallIdentifier(pkg, name, recvType, position string, generics map[string]string) *CallIdentifier {
+	return &CallIdentifier{
+		pkg:      pkg,
+		name:     name,
+		recvType: recvType,
+		position: position,
+		generics: generics,
+	}
+}
+
+// ID returns the identifier based on the specified type
+func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
+	var base string
+
+	// Build base identifier
+	if ci.recvType != "" {
+		if strings.HasPrefix(ci.recvType, "*") {
+			base = fmt.Sprintf("%s.%s.%s", ci.pkg, ci.recvType[1:], ci.name)
+		} else {
+			base = fmt.Sprintf("%s.%s.%s", ci.pkg, ci.recvType, ci.name)
+		}
+	} else {
+		base = fmt.Sprintf("%s.%s", ci.pkg, ci.name)
+	}
+	base = strings.TrimPrefix(base, "*")
+
+	switch idType {
+	case BaseID:
+		return base
+	case InstanceID:
+		// Include generics and position for instance identification
+		var parts []string
+		parts = append(parts, base)
+
+		if len(ci.generics) > 0 {
+			var genericParts []string
+			for param, concrete := range ci.generics {
+				genericParts = append(genericParts, fmt.Sprintf("%s=%s", param, concrete))
+			}
+			sort.Slice(genericParts, func(i, j int) bool { return genericParts[i] < genericParts[j] })
+			parts = append(parts, fmt.Sprintf("[%s]", strings.Join(genericParts, ",")))
+		}
+
+		if ci.position != "" {
+			parts = append(parts, fmt.Sprintf("@%s", ci.position))
+		}
+
+		id := strings.Join(parts, "")
+		id = strings.TrimPrefix(id, "*")
+
+		return id
+	default:
+		return base
+	}
+}
+
+// Helper function to strip ID to base format
+func stripToBase(id string) string {
+	// Remove position (@...)
+	if idx := strings.Index(id, "@"); idx >= 0 {
+		id = id[:idx]
+	}
+	// Remove generics ([...])
+	if idx := strings.Index(id, "["); idx >= 0 {
+		id = id[:idx]
+	}
+	return id
+}
 
 var assignmentCount int
 var processAssignmentCount int
@@ -23,10 +112,6 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		StringPool: pool,
 		Packages:   make(map[string]*Package),
 		CallGraph:  make([]CallGraphEdge, 0),
-
-		Callers: make(map[string][]*CallGraphEdge),
-		Callees: make(map[string][]*CallGraphEdge),
-		Args:    make(map[string][]*CallGraphEdge),
 	}
 
 	for pkgName, files := range pkgs {
@@ -127,23 +212,10 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		buildCallGraph(files, pkgs, pkgName, fileToInfo, fset, funcMap, pool, metadata)
 	}
 
-	// Collect all callers and callee in maps
-	for i := range metadata.CallGraph {
-		edge := &metadata.CallGraph[i]
-		callerID := edge.Caller.ID()
-		calleeID := stripID(edge.Callee.ID())
-		metadata.Callers[callerID] = append(metadata.Callers[callerID], edge)
-		metadata.Callees[calleeID] = append(metadata.Callees[calleeID], edge)
-		for _, arg := range edge.Args {
-			argID := stripID(arg.ID())
-			metadata.Args[argID] = append(metadata.Args[argID], edge)
-		}
-	}
+	metadata.BuildCallGraphMaps()
 
 	roots := metadata.CallGraphRoots()
-	for i := range roots {
-		edge := roots[i]
-
+	for _, edge := range roots {
 		metadata.TraverseCallerChildren(edge, func(parent, child *CallGraphEdge) {
 			if len(parent.TypeParamMap) > 0 && len(child.TypeParamMap) > 0 {
 				newChild := *child
@@ -151,12 +223,19 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 
 				maps.Copy(newChild.TypeParamMap, child.TypeParamMap)
 				// Add parent types
-				maps.Copy(child.TypeParamMap, parent.TypeParamMap)
+				maps.Copy(newChild.TypeParamMap, parent.TypeParamMap)
 
 				// Reset id
-				newChild.Callee.id = ""
+				newChild.Caller.identifier = nil
+				newChild.Caller.Edge = &newChild
+				newChild.Caller.buildIdentifier()
+
+				newChild.Callee.identifier = nil
+				newChild.Callee.Edge = &newChild
+				newChild.Callee.buildIdentifier()
 
 				metadata.CallGraph = append(metadata.CallGraph, newChild)
+				metadata.Callers[newChild.Caller.identifier.ID(BaseID)] = append(metadata.Callers[newChild.Caller.identifier.ID(BaseID)], &newChild)
 			}
 		})
 	}
@@ -213,16 +292,6 @@ func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl
 		}
 	}
 	return funcMap
-}
-
-func stripID(id string) string {
-	callerID := id
-	idIndex := strings.IndexAny(id, "@[")
-
-	if idIndex >= 0 {
-		callerID = id[:idIndex]
-	}
-	return callerID
 }
 
 // buildFullPath creates the full path for a file
@@ -788,6 +857,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 				calleeVarName = ident.Name
 			}
 		}
+
 		cgEdge := CallGraphEdge{
 			Position:          int(call.Pos()),
 			Args:              args,
@@ -802,7 +872,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		cgEdge.Caller = *cgEdge.NewCall(
 			pool.Get(callerFunc),
 			pool.Get(pkgName),
-			-1,
+			-1, // No position for caller
 			pool.Get(callerParts),
 		)
 
@@ -813,10 +883,12 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			pool.Get(calleeParts),
 		)
 
-		// Apply type parameter resolution to fill CallArgument with correct data
+		// Apply type parameter resolution
 		applyTypeParameterResolution(&cgEdge)
 
-		calleeMap[cgEdge.Callee.ID()] = &cgEdge
+		// Use instance ID for calleeMap indexing to avoid conflicts
+		calleeInstance := cgEdge.Callee.InstanceID()
+		calleeMap[calleeInstance] = &cgEdge
 
 		metadata.CallGraph = append(metadata.CallGraph, cgEdge)
 	}
@@ -940,7 +1012,7 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 							if len(args) > 0 {
 								// Look at the first argument to infer type parameters
 								firstArg := args[0]
-								if firstArg.Kind == "ident" {
+								if firstArg.Kind == kindIdent {
 									// Try to get the type of the argument
 									if argType := info.TypeOf(call.Args[0]); argType != nil {
 										// For function arguments, try to extract parameter types
