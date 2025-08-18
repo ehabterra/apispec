@@ -9,35 +9,8 @@ import (
 )
 
 const (
-	TypeSep = "-->"
-	// TypeSep             = "."
-	kindIdent           = "ident"
-	kindLiteral         = "literal"
-	kindSelector        = "selector"
-	kindCall            = "call"
-	kindRaw             = "raw"
-	kindIndex           = "index"
-	kindUnary           = "unary"
-	kindField           = "field"
-	kindParen           = "paren"
-	kindStar            = "star"
-	kindArrayType       = "array_type"
-	kindSlice           = "slice"
-	kindCompositeLit    = "composite_lit"
-	kindKeyValue        = "key_value"
-	kindTypeAssert      = "type_assert"
-	kindChanType        = "chan_type"
-	kindMapType         = "map_type"
-	kindStructType      = "struct_type"
-	kindInterfaceType   = "interface_type"
-	kindInterfaceMethod = "interface_method"
-	kindEmbed           = "embed"
-	kindEllipsis        = "ellipsis"
-	kindFuncType        = "func_type"
-	kindFuncResults     = "func_results"
-	callEllipsis        = "call(...)"
-	defaultSep          = "."
-	slashSep            = "/"
+	TypeSep    = "-->"
+	defaultSep = "."
 )
 
 // RouteInfo represents extracted route information
@@ -169,13 +142,6 @@ func (e *Extractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath st
 	if node == nil {
 		return
 	}
-
-	// // Prevent infinite recursion
-	// nodeID := node.id
-	// if visited[nodeID] {
-	// 	return
-	// }
-	// visited[nodeID] = true
 
 	// Check for mount patterns first
 	if mountInfo, isMount := e.executeMountPattern(node); isMount {
@@ -338,10 +304,6 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNo
 
 // extractRouteChildren extracts request, response, and params from children nodes
 func (e *Extractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInfo) {
-	// TODO: remove this
-	if route.Path == "/payment/api/v1/reserve" || route.Path == "/api/v1/reserve" {
-		fmt.Println("found")
-	}
 	for _, child := range routeNode.Children {
 		// Extract request
 		if req := e.extractRequestFromNode(child, route); req != nil {

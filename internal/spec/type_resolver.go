@@ -63,7 +63,7 @@ func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node 
 
 // resolveTypeThroughTracing resolves type through variable tracing
 func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, context *TrackerNode) string {
-	if arg.Kind != "ident" {
+	if arg.Kind != metadata.KindIdent {
 		return ""
 	}
 
@@ -91,25 +91,25 @@ func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, 
 // resolveTypeFromArgument resolves type directly from a CallArgument
 func (t *TypeResolverImpl) resolveTypeFromArgument(arg metadata.CallArgument) string {
 	switch arg.Kind {
-	case "ident":
+	case metadata.KindIdent:
 		return t.resolveIdentType(arg)
-	case "selector":
+	case metadata.KindSelector:
 		return t.resolveSelectorType(arg)
-	case "call":
+	case metadata.KindCall:
 		return t.resolveCallType(arg)
-	case "unary", "star":
+	case metadata.KindUnary, metadata.KindStar:
 		return t.resolveUnaryType(arg)
-	case "composite_lit":
+	case metadata.KindCompositeLit:
 		return t.resolveCompositeType(arg)
-	case "index":
+	case metadata.KindIndex:
 		return t.resolveIndexType(arg)
-	case "interface_type":
+	case metadata.KindInterfaceType:
 		return "interface{}"
-	case "map_type":
+	case metadata.KindMapType:
 		return t.resolveMapType(arg)
-	case "literal":
+	case metadata.KindLiteral:
 		return arg.Type
-	case "raw":
+	case metadata.KindRaw:
 		return arg.Raw
 	default:
 		return arg.Type
@@ -205,9 +205,9 @@ func (t *TypeResolverImpl) resolveUnaryType(arg metadata.CallArgument) string {
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)
-	if strings.HasPrefix(baseType, "*") {
+	if after, ok := strings.CutPrefix(baseType, "*"); ok {
 		// Dereference
-		return strings.TrimPrefix(baseType, "*")
+		return after
 	}
 
 	// Add pointer
@@ -217,12 +217,12 @@ func (t *TypeResolverImpl) resolveUnaryType(arg metadata.CallArgument) string {
 // resolveCompositeType resolves type for composite literals
 func (t *TypeResolverImpl) resolveCompositeType(arg metadata.CallArgument) string {
 	if arg.X == nil {
-		return "composite_lit"
+		return metadata.KindCompositeLit
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)
 	if baseType == "" {
-		return "composite_lit"
+		return metadata.KindCompositeLit
 	}
 
 	return baseType
@@ -231,7 +231,7 @@ func (t *TypeResolverImpl) resolveCompositeType(arg metadata.CallArgument) strin
 // resolveIndexType resolves type for index expressions
 func (t *TypeResolverImpl) resolveIndexType(arg metadata.CallArgument) string {
 	if arg.X == nil {
-		return "index"
+		return metadata.KindIndex
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)

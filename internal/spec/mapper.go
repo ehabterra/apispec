@@ -174,7 +174,7 @@ func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
 				In:       "path",
 				Required: true,
 				Schema:   &Schema{Type: "string"},
-				Extensions: map[string]interface{}{
+				Extensions: map[string]any{
 					"x-warning": "This parameter is present in the path but not found in the code.",
 				},
 			})
@@ -213,24 +213,6 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 		}
 		return responses
 	}
-
-	// // Add error responses
-	// responses["400"] = Response{
-	// 	Description: "Bad Request",
-	// 	Content: map[string]MediaType{
-	// 		"application/json": {
-	// 			Schema: &Schema{Type: "object"},
-	// 		},
-	// 	},
-	// }
-	// responses["500"] = Response{
-	// 	Description: "Internal Server Error",
-	// 	Content: map[string]MediaType{
-	// 		"application/json": {
-	// 			Schema: &Schema{Type: "object"},
-	// 		},
-	// 	},
-	// }
 
 	// Add success response
 	for statusCode, resp := range respInfo {
@@ -456,12 +438,10 @@ func isPrimitiveType(typeName string) bool {
 	}
 
 	// Check for slice/array of primitives
-	if strings.HasPrefix(baseType, "[]") {
-		elementType := strings.TrimPrefix(baseType, "[]")
-		for _, primitive := range primitiveTypes {
-			if elementType == primitive {
-				return true
-			}
+	if after, ok := strings.CutPrefix(baseType, "[]"); ok {
+		elementType := after
+		if slices.Contains(primitiveTypes, elementType) {
+			return true
 		}
 	}
 

@@ -156,52 +156,6 @@ func getScope(name string) string {
 	return defaultScopeUnexported
 }
 
-// formatSignature creates a readable function signature string
-func formatSignature(fn *ast.FuncType) string {
-	if fn == nil {
-		return "func()"
-	}
-
-	var params []string
-	if fn.Params != nil {
-		for _, field := range fn.Params.List {
-			typeStr := getTypeName(field.Type)
-			if len(field.Names) == 0 {
-				params = append(params, typeStr)
-			} else {
-				for range field.Names {
-					params = append(params, typeStr)
-				}
-			}
-		}
-	}
-
-	var results []string
-	if fn.Results != nil {
-		for _, field := range fn.Results.List {
-			typeStr := getTypeName(field.Type)
-			if len(field.Names) == 0 {
-				results = append(results, typeStr)
-			} else {
-				for range field.Names {
-					results = append(results, typeStr)
-				}
-			}
-		}
-	}
-
-	signature := fmt.Sprintf("func(%s)", strings.Join(params, ", "))
-	if len(results) > 0 {
-		if len(results) == 1 {
-			signature += " " + results[0]
-		} else {
-			signature += fmt.Sprintf(" (%s)", strings.Join(results, ", "))
-		}
-	}
-
-	return signature
-}
-
 // getImportPath extracts the import path from an import spec
 func getImportPath(imp *ast.ImportSpec) string {
 	if imp == nil || imp.Path == nil {

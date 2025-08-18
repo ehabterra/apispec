@@ -26,7 +26,7 @@ func drawNode(node *TrackerNode, str *strings.Builder, counter *int) {
 	nodeID := fmt.Sprintf("%s%d", nodePrefix, *counter)
 	for _, child := range node.Children {
 		*counter++
-		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.Key, fmt.Sprintf("%s%d", nodePrefix, *counter), child.Key)
+		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.Key(), fmt.Sprintf("%s%d", nodePrefix, *counter), child.Key())
 		drawNode(child, str, counter)
 	}
 }

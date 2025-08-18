@@ -2,6 +2,7 @@ package spec
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/metadata"
@@ -57,38 +58,38 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 	}
 
 	switch arg.Kind {
-	case "literal":
+	case metadata.KindLiteral:
 		// Remove quotes from string literals
 		return strings.Trim(arg.Value, "\"")
 
-	case "key_value":
+	case metadata.KindKeyValue:
 		return ""
 
-	case "map_type":
+	case metadata.KindMapType:
 		if arg.X != nil && arg.Fun != nil {
 			return fmt.Sprintf("map[%s]%s", c.callArgToString(*arg.X, nil), c.callArgToString(*arg.Fun, nil))
 		}
 		return "map"
 
-	case "unary":
+	case metadata.KindUnary:
 		// Handle unary expressions (e.g., *X)
 		if arg.X != nil {
 			return "*" + c.callArgToString(*arg.X, nil)
 		}
 		return "*"
-	case "index":
+	case metadata.KindIndex:
 		// Handle index expressions (e.g., arr[i])
 		if arg.X != nil {
 			return "*" + c.callArgToString(*arg.X, nil)
 		}
 		return "*"
-	case "composite_lit":
+	case metadata.KindCompositeLit:
 		if arg.X != nil {
 			return c.callArgToString(*arg.X, nil)
 		}
 		return ""
 
-	case "ident":
+	case metadata.KindIdent:
 		// Try to resolve as a constant value from metadata
 		if pkg, exists := c.meta.Packages[arg.Pkg]; exists {
 			for _, file := range pkg.Files {
@@ -114,13 +115,11 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 				}
 
 				// Check for slice types with built-in element types
-				if strings.HasPrefix(arg.Type, "[]") {
-					elementType := strings.TrimPrefix(arg.Type, "[]")
+				if after, ok := strings.CutPrefix(arg.Type, "[]"); ok {
+					elementType := after
 					elementType = strings.TrimPrefix(elementType, "*")
-					for _, builtin := range builtinTypes {
-						if elementType == builtin {
-							return arg.Type
-						}
+					if slices.Contains(builtinTypes, elementType) {
+						return arg.Type
 					}
 				}
 
@@ -177,7 +176,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		// Fallback to variable name
 		return argName
 
-	case "selector":
+	case metadata.KindSelector:
 		// Handle selector expressions (e.g., pkg.X.Sel)
 		if arg.X != nil {
 			var pkgKey string
@@ -209,7 +208,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		}
 		return arg.Sel.Name
 
-	case "call":
+	case metadata.KindCall:
 		// Handle function call expressions
 		if arg.Fun != nil {
 			argName := c.callArgToString(*arg.Fun, nil)
@@ -231,10 +230,10 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		}
 		return "call(...)"
 
-	case "interface_type":
+	case metadata.KindInterfaceType:
 		// interface{}
 		return "interface{}"
-	case "raw":
+	case metadata.KindRaw:
 		// Raw string value
 		return arg.Raw
 	}

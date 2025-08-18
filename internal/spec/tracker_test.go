@@ -1068,11 +1068,11 @@ func TestNewTrackerTree(t *testing.T) {
 				for key := range tc.expected.RootAssignmentMap {
 					assignments, ok := roots[i].RootAssignmentMap[key]
 					if !ok {
-						t.Errorf("actual node %q doesn't have key %q", roots[i].Key, key)
+						t.Errorf("actual node %q doesn't have key %q", roots[i].Key(), key)
 						return
 					}
 					if len(assignments) != len(tc.expected.RootAssignmentMap[key]) {
-						t.Errorf("actual node %q doesn't have key %q", roots[i].Key, key)
+						t.Errorf("actual node %q doesn't have key %q", roots[i].Key(), key)
 						return
 					}
 					for i := range assignments {

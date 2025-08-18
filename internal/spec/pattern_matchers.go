@@ -123,7 +123,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node *TrackerNode) RouteInfo {
 	// Extract handler information
 	if r.pattern.HandlerFromArg && len(node.CallGraphEdge.Args) > r.pattern.HandlerArgIndex {
 		handlerArg := node.CallGraphEdge.Args[r.pattern.HandlerArgIndex]
-		if handlerArg.Kind == kindIdent {
+		if handlerArg.Kind == metadata.KindIdent {
 			// Use variable tracing to resolve handler
 			originVar, originPkg, originType, _ := r.traceVariable(
 				handlerArg.Name,
@@ -422,13 +422,13 @@ func (b *BasePatternMatcher) traceVariable(varName, funcName, pkgName string) (o
 func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument, node *TrackerNode) {
 	// Trace router origin based on argument kind
 	switch routerArg.Kind {
-	case kindIdent:
+	case metadata.KindIdent:
 		b.traceVariable(
 			routerArg.Name,
 			b.contextProvider.GetString(node.Caller.Name),
 			b.contextProvider.GetString(node.Caller.Pkg),
 		)
-	case kindUnary, kindStar:
+	case metadata.KindUnary, metadata.KindStar:
 		if routerArg.X != nil {
 			b.traceVariable(
 				routerArg.X.Name,
@@ -436,7 +436,7 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 				b.contextProvider.GetString(node.Caller.Pkg),
 			)
 		}
-	case kindSelector:
+	case metadata.KindSelector:
 		if routerArg.X != nil {
 			b.traceVariable(
 				routerArg.X.Name,
@@ -444,7 +444,7 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 				b.contextProvider.GetString(node.Caller.Pkg),
 			)
 		}
-	case kindCall:
+	case metadata.KindCall:
 		if routerArg.Fun != nil {
 			b.traceVariable(
 				routerArg.Fun.Name,
@@ -473,7 +473,7 @@ func (b *BasePatternMatcher) findAssignmentFunction(arg metadata.CallArgument) *
 				if varName == arg.Name && varPkg == arg.Pkg && varType == arg.X.Type {
 					// Get the function name directly (it's already a string)
 					for _, targetArg := range edge.Args {
-						if targetArg.Kind == kindCall && targetArg.Fun != nil {
+						if targetArg.Kind == metadata.KindCall && targetArg.Fun != nil {
 							return targetArg.Fun
 						}
 					}
@@ -500,7 +500,7 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	}
 
 	// Original logic for type resolution
-	if arg.Kind == "ident" {
+	if arg.Kind == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
 		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
 			for _, assignment := range assignments {
@@ -549,15 +549,6 @@ func (b *BasePatternMatcher) extractMethodFromFunctionName(funcName string) stri
 }
 
 func (b *BasePatternMatcher) mapGoTypeToOpenAPISchema(goType string) *Schema {
-	// switch {
-	// case strings.Contains(goType, TypeSep):
-	// 	parts := strings.Split(goType, TypeSep)
-	// 	goType = metadata.DefaultImportName(parts[0]) + TypeSep + parts[1]
-	// case strings.Contains(goType, defaultSep):
-	// 	parts := strings.Split(goType, defaultSep)
-	// 	goType = metadata.DefaultImportName(parts[0]) + defaultSep + parts[1]
-	// }
-
 	// Use TypeResolver for schema mapping if available
 	if b.typeResolver != nil {
 		return b.typeResolver.MapToOpenAPISchema(goType)

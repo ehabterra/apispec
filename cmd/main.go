@@ -87,7 +87,6 @@ func main() {
 	// --- CLI Flags ---
 	output := flag.String("o", defaultOutputFile, "Output file for the OpenAPI specification (e.g., openapi.json, openapi.yaml)")
 	inputDir := flag.String("d", defaultInputDir, "Directory to parse for Go source files")
-	// excludeDirs := flag.String("exclude", "vendor,testdata,mocks", "A comma-separated list of directories to exclude from parsing.")
 	// Metadata flags
 	title := flag.String("title", defaultTitle, "API Title")
 	apiVersion := flag.String("api.version", defaultAPIVersion, "API Version")
@@ -168,9 +167,6 @@ func main() {
 			importPaths[pkg.GoFiles[i]] = pkg.PkgPath // fallback, can be improved
 		}
 	}
-
-	// // Build funcMap for AST-based handler analysis
-	// funcMap := parser.BuildFuncMap(allFiles)
 
 	log.Println("Finished loading and type-checking packages.")
 

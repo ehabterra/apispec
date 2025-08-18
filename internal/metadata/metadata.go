@@ -172,8 +172,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 				Functions:       make(map[string]*Function),
 				Variables:       make(map[string]*Variable),
 				StructInstances: make([]StructInstance, 0),
-				// Selectors:       make([]Selector, 0),
-				Imports: make(map[int]int),
+				Imports:         make(map[int]int),
 			}
 
 			// Collect constants for this file
@@ -189,10 +188,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 			processVariables(file, info, pkgName, fset, pool, f)
 
 			// Process struct instances and assignments
-			processStructInstances(file, info, pkgName, fset, pool, f, constMap, pkgs, fileToInfo, funcMap, metadata)
-
-			// // // Process selectors
-			// processSelectors(file, info, pkgName, fset, pool, f)
+			processStructInstances(file, info, pkgName, fset, pool, f, constMap)
 
 			// Process imports
 			processImports(file, pool, f)
@@ -550,7 +546,7 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 }
 
 // processStructInstances processes struct literals and assignments
-func processStructInstances(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, constMap map[string]string, pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, metadata *Metadata) {
+func processStructInstances(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File, constMap map[string]string) {
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.CompositeLit:
@@ -695,29 +691,6 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 	return assignments
 }
 
-// // processSelectors processes selector expressions
-// func processSelectors(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, pool *StringPool, f *File) {
-// 	ast.Inspect(file, func(n ast.Node) bool {
-// 		switch x := n.(type) {
-// 		case *ast.CallExpr:
-// 			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
-// 				f.Selectors = append(f.Selectors, Selector{
-// 					Expr:     ExprToCallArgument(sel, info, pkgName, fset),
-// 					Kind:     pool.Get("call"),
-// 					Position: pool.Get(getPosition(sel.Pos(), fset)),
-// 				})
-// 			}
-// 		case *ast.SelectorExpr:
-// 			f.Selectors = append(f.Selectors, Selector{
-// 				Expr:     ExprToCallArgument(x, info, pkgName, fset),
-// 				Kind:     pool.Get("field"),
-// 				Position: pool.Get(getPosition(x.Pos(), fset)),
-// 			})
-// 		}
-// 		return true
-// 	})
-// }
-
 // processImports processes import statements
 func processImports(file *ast.File, pool *StringPool, f *File) {
 	for _, imp := range file.Imports {
@@ -732,8 +705,6 @@ func processImports(file *ast.File, pool *StringPool, f *File) {
 
 // buildCallGraph builds the call graph for all files in a package
 func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, pool *StringPool, metadata *Metadata) {
-	var visited = map[string]bool{}
-
 	for _, file := range files {
 		var argMap = map[string]*CallArgument{}
 		var calleeMap = map[string]*CallGraphEdge{}
@@ -747,14 +718,8 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 				return true
 			}
 
-			// pos := getPosition(n.Pos(), fset)
-			// if _, ok := visited[pos]; ok {
-			// 	return true
-			// }
-			// visited[pos] = true
-
 			if call, ok := n.(*ast.CallExpr); ok {
-				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, visited, calleeMap, argMap)
+				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, calleeMap, argMap)
 				assignVarName = ""
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
 				// Find which variable this call is assigned to
@@ -780,7 +745,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 }
 
 // processCallExpression processes a function call expression
-func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, visited map[string]bool, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
+func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
@@ -800,13 +765,10 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// This is crucial for getting the *declared* generic type parameters
 		extractParamsAndTypeParams(call, info, args, paramArgMap, typeParamMap)
 
-		// funName := handlerName(calleePkg, calleeParts, calleeFunc)
-		// funcName := strings.TrimPrefix(funName, "*")
-
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
 
-		calleeAstFile := astFileFromFn(calleePkg, calleeFunc, pkgs, fset, metadata)
+		calleeAstFile := astFileFromFn(calleePkg, calleeFunc, pkgs, metadata)
 
 		if calleeAstFile != nil {
 			fnInfo := fileToInfo[calleeAstFile]
@@ -824,12 +786,6 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 						return true
 					}
 
-					// pos := getPosition(nd.Pos(), fset)
-					// if _, ok := visited[pos]; ok {
-					// 	return true
-					// }
-					// visited[pos] = true
-
 					switch expr := nd.(type) {
 					case *ast.AssignStmt:
 						// IMPORTANT: The `file` argument in processAssignment should be the file of the *callee*,
@@ -839,7 +795,6 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 						// and `fileToInfo` maps `*ast.File` pointers.
 						assignments := processAssignment(expr, calleeAstFile, fnInfo, calleePkg, fset, pool, fileToInfo, funcMap, metadata)
 						for _, assign := range assignments {
-							// varName := pool.GetString(assign.VariableName)
 							varName := CallArgToString(assign.Lhs)
 							assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 						}
@@ -894,7 +849,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	}
 }
 
-func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File, fset *token.FileSet, metadata *Metadata) *ast.File {
+func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File, metadata *Metadata) *ast.File {
 	var astFile *ast.File
 
 	if pkg, pkgExists := metadata.Packages[pkgName]; pkgExists {
@@ -1012,7 +967,7 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 							if len(args) > 0 {
 								// Look at the first argument to infer type parameters
 								firstArg := args[0]
-								if firstArg.Kind == kindIdent {
+								if firstArg.Kind == KindIdent {
 									// Try to get the type of the argument
 									if argType := info.TypeOf(call.Args[0]); argType != nil {
 										// For function arguments, try to extract parameter types

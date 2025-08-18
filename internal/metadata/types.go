@@ -9,38 +9,38 @@ import (
 )
 
 const (
-	kindIdent           = "ident"
-	kindLiteral         = "literal"
-	kindSelector        = "selector"
-	kindCall            = "call"
-	kindRaw             = "raw"
-	kindString          = "string"
-	kindInt             = "int"
-	kindFloat64         = "float64"
-	kindRune            = "rune"
-	kindComplex128      = "complex128"
-	kindFuncLit         = "func_lit"
-	kindUnary           = "unary"
-	kindBinary          = "binary"
-	kindIndex           = "index"
-	kindIndexList       = "index_list"
-	kindStar            = "star"
-	kindParen           = "paren"
-	kindArrayType       = "array_type"
-	kindSlice           = "slice"
-	kindCompositeLit    = "composite_lit"
-	kindKeyValue        = "key_value"
-	kindTypeAssert      = "type_assert"
-	kindChanType        = "chan_type"
-	kindMapType         = "map_type"
-	kindStructType      = "struct_type"
-	kindInterfaceType   = "interface_type"
-	kindInterfaceMethod = "interface_method"
-	kindEmbed           = "embed"
-	kindField           = "field"
-	kindEllipsis        = "ellipsis"
-	kindFuncType        = "func_type"
-	kindFuncResults     = "func_results"
+	KindIdent           = "ident"
+	KindLiteral         = "literal"
+	KindSelector        = "selector"
+	KindCall            = "call"
+	KindRaw             = "raw"
+	KindString          = "string"
+	KindInt             = "int"
+	KindFloat64         = "float64"
+	KindRune            = "rune"
+	KindComplex128      = "complex128"
+	KindFuncLit         = "func_lit"
+	KindUnary           = "unary"
+	KindBinary          = "binary"
+	KindIndex           = "index"
+	KindIndexList       = "index_list"
+	KindStar            = "star"
+	KindParen           = "paren"
+	KindArrayType       = "array_type"
+	KindSlice           = "slice"
+	KindCompositeLit    = "composite_lit"
+	KindKeyValue        = "key_value"
+	KindTypeAssert      = "type_assert"
+	KindChanType        = "chan_type"
+	KindMapType         = "map_type"
+	KindStructType      = "struct_type"
+	KindInterfaceType   = "interface_type"
+	KindInterfaceMethod = "interface_method"
+	KindEmbed           = "embed"
+	KindField           = "field"
+	KindEllipsis        = "ellipsis"
+	KindFuncType        = "func_type"
+	KindFuncResults     = "func_results"
 )
 
 // StringPool for deduplicating strings across metadata
@@ -496,8 +496,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 	}
 
 	switch a.Kind {
-	case kindIdent:
-		// if a.Type != "" && a.Name == "" && sep == "/" {
+	case KindIdent:
 		if a.Type != "" && sep == "/" {
 			return a.Type, typeParam
 		} else if a.Pkg != "" {
@@ -507,9 +506,9 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return a.Pkg + sep + a.Name, typeParam
 		}
 		return a.Name, typeParam
-	case kindLiteral:
+	case KindLiteral:
 		return a.Value, typeParam
-	case kindSelector:
+	case KindSelector:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
@@ -524,7 +523,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return id, typeParam
 		}
 		return a.Sel.Name, typeParam
-	case kindCall:
+	case KindCall:
 		if a.Fun != nil {
 			funID, funTypeParam := a.Fun.id(".")
 			if funTypeParam != "" {
@@ -533,8 +532,8 @@ func (a *CallArgument) id(sep string) (string, string) {
 
 			return funID, typeParam
 		}
-		return kindCall, typeParam
-	case kindUnary:
+		return KindCall, typeParam
+	case KindUnary:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
@@ -549,7 +548,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return id, typeParam
 		}
 		return "", ""
-	case kindCompositeLit:
+	case KindCompositeLit:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
@@ -564,7 +563,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return id, typeParam
 		}
 		return "", ""
-	case kindIndex:
+	case KindIndex:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {

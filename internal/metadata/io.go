@@ -11,12 +11,10 @@ import (
 )
 
 const (
-	defaultYAMLExtension       = ".yaml"
 	stringPoolSuffix           = "-string-pool.yaml"
 	packagesSuffix             = "-packages.yaml"
 	callGraphSuffix            = "-call-graph.yaml"
 	filePerm                   = 0644
-	defaultBaseFilename        = "metadata.yaml"
 	errorFailedWriteStringPool = "failed to write string pool: %w"
 	errorFailedWritePackages   = "failed to write packages: %w"
 	errorFailedWriteCallGraph  = "failed to write call graph: %w"

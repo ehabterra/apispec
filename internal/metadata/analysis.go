@@ -166,7 +166,7 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 	// Use type info if available (works for stdlib and user code)
 	if info != nil {
 		if typ := info.TypeOf(expr); typ != nil {
-			return pkgName, &CallArgument{Kind: kindIdent, Type: typ.String()}
+			return pkgName, &CallArgument{Kind: KindIdent, Type: typ.String()}
 		}
 	}
 
@@ -184,7 +184,7 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 			return basePkg, baseType
 		}
 		// Fallback: just get type name
-		return pkgName, &CallArgument{Kind: kindIdent, Type: getTypeName(e)}
+		return pkgName, &CallArgument{Kind: KindIdent, Type: getTypeName(e)}
 
 	case *ast.CallExpr:
 		// For function calls, try to trace the return value
@@ -211,7 +211,7 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 			callType := ExprToCallArgument(e.Type, info, pkgName, fset)
 			return pkgName, &callType
 		}
-		return pkgName, &CallArgument{Kind: kindIdent, Type: "interface{}"}
+		return pkgName, &CallArgument{Kind: KindIdent, Type: "interface{}"}
 
 	case *ast.StarExpr:
 		// Pointer dereference: trace the base
@@ -269,7 +269,7 @@ func traceVariableOriginHelper(
 
 			// Type param (generic)
 			if concrete, ok := edge.TypeParamMap[varName]; ok && concrete != "" {
-				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: concrete}, callerName
+				return varName, pkgName, &CallArgument{Kind: KindIdent, Type: concrete}, callerName
 			}
 
 			// See if this parameter is mapped
@@ -287,36 +287,6 @@ func traceVariableOriginHelper(
 
 				baseVar, basePkg, baseType, f := traceVariableOriginHelper(paramName, callerName, callerPkg, metadata, visited)
 				return baseVar, basePkg, baseType, f
-
-				// switch arg.Kind {
-				// case kindIdent:
-				// 	_, _, t, f := traceVariableOriginHelper(paramName, callerName, callerPkg, metadata, visited)
-				// 	return arg.Name, callerPkg, t, f
-				// case kindUnary, kindStar:
-				// 	if arg.X != nil {
-				// 		_, _, t, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
-				// 		return arg.X.Name, callerPkg, t, f
-				// 	}
-				// case kindSelector:
-				// 	if arg.X != nil {
-				// 		baseVar, basePkg, baseType, f := traceVariableOriginHelper(arg.X.Name, callerName, callerPkg, metadata, visited)
-				// 		return baseVar + "." + arg.Sel.Name, basePkg, baseType, f
-				// 	}
-				// case kindCall:
-				// 	if arg.Fun != nil {
-				// 		_, _, t, f := traceVariableOriginHelper(arg.Fun.Name, callerName, callerPkg, metadata, visited)
-				// 		return arg.Fun.Name, callerPkg, t, f
-				// 	}
-				// case kindTypeAssert:
-				// 	// For type assertions, use the asserted type as the concrete type
-				// 	if arg.Fun != nil && arg.Fun.Type != "" {
-				// 		return varName, pkgName, arg.Fun, callerName
-				// 	}
-				// default:
-				// 	if arg.Kind != "" {
-				// 		return arg.Name, pkgName, &arg, callerName
-				// 	}
-				// }
 			}
 
 			break // No need to search again for another edge
@@ -327,7 +297,7 @@ func traceVariableOriginHelper(
 	if pkg, ok := metadata.Packages[pkgName]; ok {
 		for _, file := range pkg.Files {
 			if v, ok := file.Variables[varName]; ok {
-				return varName, pkgName, &CallArgument{Kind: kindIdent, Type: metadata.StringPool.GetString(v.Type)}, funcName
+				return varName, pkgName, &CallArgument{Kind: KindIdent, Type: metadata.StringPool.GetString(v.Type)}, funcName
 			}
 
 			if fn, ok := file.Functions[funcName]; ok {
@@ -335,7 +305,7 @@ func traceVariableOriginHelper(
 					// Use the most recent assignment (last in slice)
 					assign := assigns[len(assigns)-1]
 					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS
-					if assign.Value.Kind == kindIdent && assign.Value.Name != varName {
+					if assign.Value.Kind == KindIdent && assign.Value.Name != varName {
 						_, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
 						return assign.Value.Name, pkgName, t, f
 					}
@@ -349,17 +319,17 @@ func traceVariableOriginHelper(
 									if retIdx < len(calleeFn.ReturnVars) {
 										retArg := calleeFn.ReturnVars[retIdx]
 									OuterLoop:
-										for retArg.Kind != kindIdent {
+										for retArg.Kind != KindIdent {
 											switch retArg.Kind {
-											case kindSelector:
+											case KindSelector:
 												retArg = *retArg.Sel
-											case kindUnary, kindCompositeLit:
+											case KindUnary, KindCompositeLit:
 												retArg = *retArg.X
 											default:
 												break OuterLoop
 											}
 										}
-										if retArg.Kind == kindIdent && retArg.Name != "" {
+										if retArg.Kind == KindIdent && retArg.Name != "" {
 											_, _, t, f := traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
 											return retArg.Name, assign.CalleePkg, t, f
 										}
