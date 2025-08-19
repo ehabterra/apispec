@@ -85,35 +85,83 @@ func main() {
 	fmt.Println(licenseNotice)
 
 	// --- CLI Flags ---
-	output := flag.String("o", defaultOutputFile, "Output file for the OpenAPI specification (e.g., openapi.json, openapi.yaml)")
-	inputDir := flag.String("d", defaultInputDir, "Directory to parse for Go source files")
-	// Metadata flags
-	title := flag.String("title", defaultTitle, "API Title")
-	apiVersion := flag.String("api.version", defaultAPIVersion, "API Version")
-	description := flag.String("description", "", "API Description")
-	termsOfService := flag.String("terms", "", "Terms of Service URL")
-	contactName := flag.String("contact.name", defaultContactName, "Contact Name")
-	contactURL := flag.String("contact.url", defaultContactURL, "Contact URL")
-	contactEmail := flag.String("contact.email", defaultContactEmail, "Contact Email")
-	licenseName := flag.String("license.name", "", "License Name")
-	licenseURL := flag.String("license.url", "", "License URL")
-	openapiVersion := flag.String("openapi.version", defaultOpenAPIVersion, "OpenAPI Specification version (e.g., 3.1.1, 3.0.3)")
-	// Metadata output flags
-	splitMetadata := flag.Bool("split-metadata", false, "Split metadata into separate files (string-pool, packages, call-graph)")
-	configFile := flag.String("config", "", "Path to custom Swagen config YAML file")
-	maxNodesPerTree := flag.Int("max-nodes-per-tree", defaultMaxNodesPerTree, "Maximum number of nodes allowed in a single call graph tree (prevents infinite loops)")
-	maxChildrenPerNode := flag.Int("max-children-per-node", defaultMaxChildrenPerNode, "Maximum number of children allowed per node in the call graph tree")
-	maxArgsPerFunction := flag.Int("max-args-per-function", defaultMaxArgsPerFunction, "Maximum number of arguments to process per function call in the call graph tree")
-	maxNestedArgsDepth := flag.Int("max-nested-args-depth", defaultMaxNestedArgsDepth, "Maximum depth for collecting nested argument IDs in the call graph tree")
-	outputConfig := flag.String("output-config", "", "Output the effective/used config (after CLI overrides) to this YAML file")
-	writeMetadata := flag.Bool("write-metadata", false, "Write metadata.yaml or split metadata files to disk")
-	diagramPath := flag.String("diagram", "", "Path to save the call graph diagram as HTML (optional, if set)")
+	// Output/Input
+	output := flag.String("output", defaultOutputFile, "Output file for OpenAPI spec (e.g., openapi.json)")
+	flag.StringVar(output, "o", defaultOutputFile, "Shorthand for --output")
 
+	inputDir := flag.String("dir", defaultInputDir, "Directory to parse for Go files")
+	flag.StringVar(inputDir, "d", defaultInputDir, "Shorthand for --dir")
+
+	// API Metadata
+	title := flag.String("title", defaultTitle, "API title")
+	flag.StringVar(title, "t", defaultTitle, "Shorthand for --title")
+
+	apiVersion := flag.String("api-version", defaultAPIVersion, "API version")
+	flag.StringVar(apiVersion, "v", defaultAPIVersion, "Shorthand for --api-version")
+
+	description := flag.String("description", "", "API description")
+	flag.StringVar(description, "D", "", "Shorthand for --description")
+
+	termsOfService := flag.String("terms-url", "", "Terms of Service URL")
+	flag.StringVar(termsOfService, "T", "", "Shorthand for --terms-url")
+
+	// Contact
+	contactName := flag.String("contact-name", defaultContactName, "Contact name")
+	flag.StringVar(contactName, "N", defaultContactName, "Shorthand for --contact-name")
+
+	contactURL := flag.String("contact-url", defaultContactURL, "Contact URL")
+	flag.StringVar(contactURL, "U", defaultContactURL, "Shorthand for --contact-url")
+
+	contactEmail := flag.String("contact-email", defaultContactEmail, "Contact email")
+	flag.StringVar(contactEmail, "E", defaultContactEmail, "Shorthand for --contact-email")
+
+	// License
+	licenseName := flag.String("license-name", "", "License name")
+	flag.StringVar(licenseName, "L", "", "Shorthand for --license-name")
+
+	licenseURL := flag.String("license-url", "", "License URL")
+	flag.StringVar(licenseURL, "lu", "", "Shorthand for --license-url")
+
+	// OpenAPI Config
+	openapiVersion := flag.String("openapi-version", defaultOpenAPIVersion, "OpenAPI spec version")
+	flag.StringVar(openapiVersion, "O", defaultOpenAPIVersion, "Shorthand for --openapi-version")
+
+	// Metadata Handling
+	configFile := flag.String("config", "", "Path to custom config YAML")
+	flag.StringVar(configFile, "c", "", "Shorthand for --config")
+
+	outputConfig := flag.String("output-config", "", "Output effective config to YAML")
+	flag.StringVar(outputConfig, "oc", "", "Shorthand for --output-config")
+
+	writeMetadata := flag.Bool("write-metadata", false, "Write metadata.yaml to disk")
+	flag.BoolVar(writeMetadata, "w", false, "Shorthand for --write-metadata")
+
+	splitMetadata := flag.Bool("split-metadata", false, "Split metadata into separate files")
+	flag.BoolVar(splitMetadata, "s", false, "Shorthand for --split-metadata")
+
+	// Diagram
+	diagramPath := flag.String("diagram", "", "Save call graph as HTML")
+	flag.StringVar(diagramPath, "g", "", "Shorthand for --diagram")
+
+	// Limits
+	maxNodesPerTree := flag.Int("max-nodes", defaultMaxNodesPerTree, "Max nodes in call graph tree")
+	flag.IntVar(maxNodesPerTree, "mn", defaultMaxNodesPerTree, "Shorthand for --max-nodes")
+
+	maxChildrenPerNode := flag.Int("max-children", defaultMaxChildrenPerNode, "Max children per node")
+	flag.IntVar(maxChildrenPerNode, "mc", defaultMaxChildrenPerNode, "Shorthand for --max-children")
+
+	maxArgsPerFunction := flag.Int("max-args", defaultMaxArgsPerFunction, "Max arguments per function")
+	flag.IntVar(maxArgsPerFunction, "ma", defaultMaxArgsPerFunction, "Shorthand for --max-args")
+
+	maxNestedArgsDepth := flag.Int("max-depth", defaultMaxNestedArgsDepth, "Max depth for nested args")
+	flag.IntVar(maxNestedArgsDepth, "md", defaultMaxNestedArgsDepth, "Shorthand for --max-depth")
+
+	// Custom help
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "%s\n", copyrightNotice)
-		fmt.Fprintf(os.Stderr, "%s\n\n", licenseNotice)
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s\n%s\n\nUsage: %s [flags]\n\nFlags:\n",
+			copyrightNotice, licenseNotice, os.Args[0])
 		flag.PrintDefaults()
+		fmt.Printf("\nExamples:\n  %s -o spec.yaml -d ./api\n", os.Args[0])
 	}
 
 	flag.Parse()
