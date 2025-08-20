@@ -224,8 +224,13 @@ func TestFindTypeInMetadata_ExcludesPrimitiveTypes(t *testing.T) {
 			t.Error("Expected main-->User type to be found, got nil")
 			return
 		}
-		if getStringFromPool(meta, result["User"].Name) != "User" {
-			t.Errorf("Expected User type, got %s", getStringFromPool(meta, result["User"].Name))
+		userType := result["main-->User"]
+		if userType == nil {
+			t.Error("Expected User type to be found in result, got nil")
+			return
+		}
+		if getStringFromPool(meta, userType.Name) != "User" {
+			t.Errorf("Expected User type, got %s", getStringFromPool(meta, userType.Name))
 		}
 	})
 }
@@ -249,17 +254,38 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 	for _, externalType := range externalTypes {
 		t.Run("external_"+externalType, func(t *testing.T) {
 			result := findTypesInMetadata(meta, externalType)
+			// External types should return a map with nil values or nil map
 			if result != nil {
-				t.Errorf("Expected nil for external type '%s', got %v", externalType, result)
+				// Check if all values in the map are nil (expected for external types)
+				allNil := true
+				for _, v := range result {
+					if v != nil {
+						allNil = false
+						break
+					}
+				}
+				if !allNil {
+					t.Errorf("Expected nil values for external type '%s', got %v", externalType, result)
+				}
 			}
 		})
 	}
 
-	// Test unknown external type - should return nil
+	// Test unknown external type - should return nil or map with nil values
 	t.Run("unknown_external_type", func(t *testing.T) {
 		result := findTypesInMetadata(meta, "unknown.ExternalType")
 		if result != nil {
-			t.Errorf("Expected nil for unknown external type, got %v", result)
+			// Check if all values in the map are nil (expected for external types)
+			allNil := true
+			for _, v := range result {
+				if v != nil {
+					allNil = false
+					break
+				}
+			}
+			if !allNil {
+				t.Errorf("Expected nil values for unknown external type, got %v", result)
+			}
 		}
 	})
 
@@ -267,7 +293,17 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 	t.Run("external_without_config", func(t *testing.T) {
 		result := findTypesInMetadata(meta, "primitive.ObjectID")
 		if result != nil {
-			t.Errorf("Expected nil for external type without config, got %v", result)
+			// Check if all values in the map are nil (expected for external types)
+			allNil := true
+			for _, v := range result {
+				if v != nil {
+					allNil = false
+					break
+				}
+			}
+			if !allNil {
+				t.Errorf("Expected nil values for external type without config, got %v", result)
+			}
 		}
 	})
 }

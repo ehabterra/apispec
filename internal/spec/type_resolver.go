@@ -2,7 +2,6 @@ package spec
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/metadata"
@@ -295,6 +294,17 @@ func (t *TypeResolverImpl) getCallerPkg(context *TrackerNode) string {
 // ResolveGenericType resolves a generic type with concrete type parameters
 func (t *TypeResolverImpl) ResolveGenericType(genericType string, typeParams map[string]string) string {
 	if len(typeParams) == 0 {
+		// If no type parameters provided, clean up empty brackets
+		baseType, paramStr := t.extractBaseTypeAndParams(genericType)
+		if baseType == "" {
+			return genericType
+		}
+
+		// If the parameter string is empty or just whitespace/brackets, return just the base type
+		if strings.TrimSpace(paramStr) == "" || strings.TrimSpace(paramStr) == "[]" {
+			return baseType
+		}
+
 		return genericType
 	}
 
@@ -328,10 +338,7 @@ func (t *TypeResolverImpl) ResolveGenericType(genericType string, typeParams map
 	paramList := t.splitTypeParameters(paramStr)
 	var resolvedParams []string
 
-	// Create a mapping from parameter names to concrete types
-	paramMapping := t.createParameterMapping(paramList, typeParams)
-
-	for i, param := range paramList {
+	for _, param := range paramList {
 		param = strings.TrimSpace(param)
 		if param == "" {
 			continue
@@ -339,12 +346,12 @@ func (t *TypeResolverImpl) ResolveGenericType(genericType string, typeParams map
 
 		// Check if this parameter is itself a generic type that needs resolution
 		if strings.Contains(param, "[") && strings.Contains(param, "]") {
-			// For nested generics, use the parameter mapping
-			resolvedParam := t.ResolveGenericType(param, paramMapping)
+			// For nested generics, recursively resolve them
+			resolvedParam := t.ResolveGenericType(param, typeParams)
 			resolvedParams = append(resolvedParams, resolvedParam)
 		} else {
-			// Get concrete type by index
-			concreteType := t.getConcreteTypeByIndex(typeParams, i)
+			// Try to find a concrete type by parameter name
+			concreteType := t.findConcreteTypeByName(param, typeParams)
 			if concreteType != "" {
 				resolvedParams = append(resolvedParams, concreteType)
 			} else {
@@ -360,6 +367,24 @@ func (t *TypeResolverImpl) ResolveGenericType(genericType string, typeParams map
 	}
 
 	return baseType
+}
+
+// findConcreteTypeByName finds a concrete type by parameter name
+func (t *TypeResolverImpl) findConcreteTypeByName(paramName string, typeParams map[string]string) string {
+	// First try exact match
+	if concreteType, exists := typeParams[paramName]; exists {
+		return concreteType
+	}
+
+	// If no exact match, try to extract the parameter name from complex parameters
+	extractedName := t.extractParameterName(paramName)
+	if extractedName != "" && extractedName != paramName {
+		if concreteType, exists := typeParams[extractedName]; exists {
+			return concreteType
+		}
+	}
+
+	return ""
 }
 
 // extractBaseTypeAndParams extracts the base type name and parameter string
@@ -378,59 +403,6 @@ func (t *TypeResolverImpl) extractBaseTypeAndParams(genericType string) (string,
 	paramStr := strings.TrimSpace(genericType[start+1 : end])
 
 	return baseType, paramStr
-}
-
-// getConcreteTypeByIndex gets a concrete type by index from the typeParams map
-func (t *TypeResolverImpl) getConcreteTypeByIndex(typeParams map[string]string, index int) string {
-	// Convert map to slice for indexed access in a deterministic order
-	var values []string
-	keys := make([]string, 0, len(typeParams))
-	for key := range typeParams {
-		keys = append(keys, key)
-	}
-	// Sort keys for deterministic order
-	sort.Strings(keys)
-	for _, key := range keys {
-		values = append(values, typeParams[key])
-	}
-
-	if index < len(values) {
-		return values[index]
-	}
-
-	return ""
-}
-
-// createParameterMapping creates a mapping from parameter names to concrete types
-func (t *TypeResolverImpl) createParameterMapping(paramList []string, typeParams map[string]string) map[string]string {
-	mapping := make(map[string]string)
-
-	// Convert typeParams map to slice for indexed access in deterministic order
-	var concreteTypes []string
-	keys := make([]string, 0, len(typeParams))
-	for key := range typeParams {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		concreteTypes = append(concreteTypes, typeParams[key])
-	}
-
-	// Map each parameter to its corresponding concrete type
-	for i, param := range paramList {
-		param = strings.TrimSpace(param)
-		if param == "" {
-			continue
-		}
-
-		// Extract the parameter name (e.g., "K" from "K", "T" from "T", etc.)
-		paramName := t.extractParameterName(param)
-		if paramName != "" && i < len(concreteTypes) {
-			mapping[paramName] = concreteTypes[i]
-		}
-	}
-
-	return mapping
 }
 
 // extractParameterName extracts the parameter name from a parameter string

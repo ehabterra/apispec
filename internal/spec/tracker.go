@@ -162,8 +162,6 @@ func NewTrackerTree(meta *metadata.Metadata, limits TrackerLimits) *TrackerTree 
 		variableNodes: make(map[paramKey]*TrackerNode),
 	}
 
-	fmt.Printf("Call graphs: %d\n", len(meta.CallGraph))
-
 	assignmentIndex := assigmentIndexMap{}
 
 	visited := make(map[string]*TrackerNode)
@@ -728,6 +726,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 			calleeID := edge.Callee.ID()
 
+			// Check for cycles to prevent infinite recursion
+			if _, alreadyVisited := visited[calleeID]; alreadyVisited {
+				continue
+			}
+
 			idTypes := metadata.ExtractGenericTypes(id)
 			calleeTypes := metadata.ExtractGenericTypes(calleeID)
 
@@ -743,7 +746,6 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 				continue
 			}
 
-			// rawCalleeID := edge.Callee.ID()
 			if childNode := NewTrackerNode(tree, meta, id, calleeID, &edge, nil, visited, assignmentIndex, limits); childNode != nil {
 				var addedToParent bool
 

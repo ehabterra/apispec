@@ -359,6 +359,11 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 		return nil
 	}
 
+	// Guard against nil metadata
+	if meta == nil {
+		return nil
+	}
+
 	typeParts := TypeParts(typeName)
 
 	// Generics
@@ -369,7 +374,10 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 				metaTypes[genericType[0]+"-"+genericType[1]] = nil
 			} else {
 				genericTypeParts := TypeParts(genericType[0])
-				metaTypes[genericType[0]+"_"+genericType[1]] = typeByName(genericTypeParts, meta, genericType[0])
+
+				if t := typeByName(genericTypeParts, meta, genericType[0]); t != nil {
+					metaTypes[genericType[0]+"_"+genericType[1]] = t
+				}
 			}
 		}
 	}
@@ -380,6 +388,9 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 }
 
 func typeByName(typeParts []string, meta *metadata.Metadata, typeName string) *metadata.Type {
+	if meta == nil {
+		return nil
+	}
 	if len(typeParts) > 1 {
 		pkgName := typeParts[0]
 

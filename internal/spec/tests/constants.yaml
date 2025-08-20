@@ -2,37 +2,37 @@ string_pool:
   - Message
   - constants
   - string
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:15:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:15:2
   - exported
   - init
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:14:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:14:1
   - unexported
   - size
   - int
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:19:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:19:2
   - UseConstants
   - name
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:20:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:18:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:20:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:18:1
   - MaxSize
   - const
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:4:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:4:2
   - "100"
   - Name
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:5:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:5:2
   - test
   - Pi
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:6:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:6:2
   - "3.14"
   - GlobalVar
   - var
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:10:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:10:2
   - "42"
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:11:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:11:2
 packages:
   constants:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go
       : functions:
           UseConstants:
             name: 11
@@ -55,13 +55,13 @@ packages:
                     name: Name
                     pkg: constants
                     type: untyped string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:20:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:20:10
                   lhs:
                     kind: ident
                     name: name
                     pkg: constants
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:20:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:20:2
                   func: 11
               size:
                 - variable_name: 8
@@ -74,13 +74,13 @@ packages:
                     name: MaxSize
                     pkg: constants
                     type: untyped int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:19:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:19:10
                   lhs:
                     kind: ident
                     name: size
                     pkg: constants
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:19:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:19:2
                   func: 11
           init:
             name: 5
@@ -105,7 +105,7 @@ packages:
                     name: Message
                     pkg: constants
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables435699788/constants/src/constants/const.go:15:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables501051960/constants/src/constants/const.go:15:2
                   func: 5
         variables:
           GlobalVar:

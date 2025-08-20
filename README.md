@@ -636,11 +636,12 @@ This configuration system allows Swagen to understand your specific framework pa
 go test ./... -cover
 
 # Build with debug symbols
-go build -gcflags="all=-N -l" ./cmd/main.go
+go build -gcflags="all=-N -l" ./cmd/swagen/main.go
 
 # Generate test coverage
-go test ./... -coverprofile=coverage.out
+go test ./... -covermode=atomic -coverprofile=coverage.out
 go tool cover -html=coverage.out
+go tool cover -func=coverage.out
 ```
 
 ## Contribution Process

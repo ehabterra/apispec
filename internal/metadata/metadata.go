@@ -624,28 +624,28 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 				if concreteTypeArg != nil {
 					concreteType = concreteTypeArg.Type
 				}
-				if concreteType != "" {
-					assignment := Assignment{
-						VariableName: pool.Get(expr.Name),
-						Pkg:          pool.Get(pkgName),
-						ConcreteType: pool.Get(concreteType),
-						Position:     pool.Get(getPosition(assign.Pos(), fset)),
-						Scope:        pool.Get(getScope(expr.Name)),
-						Value:        val,
-						Lhs:          ExprToCallArgument(lhsExpr, info, pkgName, fset),
-						Func:         pool.Get(funcName),
-					}
-					// If RHS is a function call, record callee info
-					if callExpr, ok := rhsExpr.(*ast.CallExpr); ok {
-						calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset)
-						assignment.CalleeFunc = calleeFunc
-						assignment.CalleePkg = calleePkg
-						assignment.ReturnIndex = 0 // For now, always first return value
-					}
-					assignments = append(assignments, assignment)
-					assignmentCount++
+				// if concreteType != "" {
+				assignment := Assignment{
+					VariableName: pool.Get(expr.Name),
+					Pkg:          pool.Get(pkgName),
+					ConcreteType: pool.Get(concreteType),
+					Position:     pool.Get(getPosition(assign.Pos(), fset)),
+					Scope:        pool.Get(getScope(expr.Name)),
+					Value:        val,
+					Lhs:          ExprToCallArgument(lhsExpr, info, pkgName, fset),
+					Func:         pool.Get(funcName),
 				}
+				// If RHS is a function call, record callee info
+				if callExpr, ok := rhsExpr.(*ast.CallExpr); ok {
+					calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset)
+					assignment.CalleeFunc = calleeFunc
+					assignment.CalleePkg = calleePkg
+					assignment.ReturnIndex = 0 // For now, always first return value
+				}
+				assignments = append(assignments, assignment)
+				assignmentCount++
 			}
+			// }
 		// Handle selector assignments (obj.Field = ...)
 		case *ast.SelectorExpr:
 			if rhsExpr != nil {
@@ -711,7 +711,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 
 		info := fileToInfo[file]
 
-		var assignVarName string
+		var assignStmt *ast.AssignStmt
 
 		ast.Inspect(file, func(n ast.Node) bool {
 			if n == nil {
@@ -719,18 +719,19 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			}
 
 			if call, ok := n.(*ast.CallExpr); ok {
-				processCallExpression(call, file, pkgs, pkgName, assignVarName, fileToInfo, funcMap, fset, pool, metadata, info, calleeMap, argMap)
-				assignVarName = ""
+				processCallExpression(call, file, pkgs, pkgName, assignStmt, fileToInfo, funcMap, fset, pool, metadata, info, calleeMap, argMap)
+				assignStmt = nil
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
 				// Find which variable this call is assigned to
-				for i, rhs := range assign.Rhs {
-					if _, ok := rhs.(*ast.CallExpr); ok && i < len(assign.Lhs) {
-						if ident, ok := assign.Lhs[i].(*ast.Ident); ok {
-							assignVarName = ident.Name
-							break
-						}
-					}
-				}
+				assignStmt = assign
+				// for i, rhs := range assign.Rhs {
+				// 	if _, ok := rhs.(*ast.CallExpr); ok && i < len(assign.Lhs) {
+				// 		if ident, ok := assign.Lhs[i].(*ast.Ident); ok {
+				// 			assign = ident.Name
+				// 			break
+				// 		}
+				// 	}
+				// }
 			}
 
 			return true
@@ -745,7 +746,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 }
 
 // processCallExpression processes a function call expression
-func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName, assignVarName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
+func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, parentAssign *ast.AssignStmt, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, pool *StringPool, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
@@ -801,6 +802,19 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 					}
 					return true
 				})
+			}
+		}
+
+		var assignVarName string
+		// If this call's result is assigned to a variable in the caller, record that mapping as an assignment entry
+		if parentAssign != nil {
+			assignments := processAssignment(parentAssign, file, info, pkgName, fset, pool, fileToInfo, funcMap, metadata)
+			for _, assign := range assignments {
+				varName := CallArgToString(assign.Lhs)
+				assignVarName = varName
+				if callerFunc == "main" {
+					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+				}
 			}
 		}
 

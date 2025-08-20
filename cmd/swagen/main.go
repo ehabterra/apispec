@@ -35,6 +35,7 @@ import (
 )
 
 const (
+	toolVersion               = "0.0.1"
 	defaultOutputFile         = "openapi.json"
 	defaultInputDir           = "."
 	defaultTitle              = "Generated API"
@@ -88,6 +89,14 @@ func main() {
 	// Output/Input
 	output := flag.String("output", defaultOutputFile, "Output file for OpenAPI spec (e.g., openapi.json)")
 	flag.StringVar(output, "o", defaultOutputFile, "Shorthand for --output")
+
+	// Track if output flag was explicitly set
+	var outputFlagSet bool
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "output" || f.Name == "o" {
+			outputFlagSet = true
+		}
+	})
 
 	inputDir := flag.String("dir", defaultInputDir, "Directory to parse for Go files")
 	flag.StringVar(inputDir, "d", defaultInputDir, "Shorthand for --dir")
@@ -156,6 +165,10 @@ func main() {
 	maxNestedArgsDepth := flag.Int("max-depth", defaultMaxNestedArgsDepth, "Max depth for nested args")
 	flag.IntVar(maxNestedArgsDepth, "md", defaultMaxNestedArgsDepth, "Shorthand for --max-depth")
 
+	// Version flag
+	showVersion := flag.Bool("version", false, "Show version information")
+	flag.BoolVar(showVersion, "V", false, "Shorthand for --version")
+
 	// Custom help
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n%s\n\nUsage: %s [flags]\n\nFlags:\n",
@@ -166,9 +179,30 @@ func main() {
 
 	flag.Parse()
 
+	// Handle version flag early
+	if *showVersion {
+		fmt.Printf("swagen version %s\n", toolVersion)
+		fmt.Printf("OpenAPI spec version: %s\n", defaultOpenAPIVersion)
+		fmt.Printf("Go version: %s\n", strings.TrimPrefix(strings.TrimSpace(os.Getenv("GOVERSION")), "go"))
+		fmt.Printf("Build time: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Printf("%s\n", copyrightNotice)
+		fmt.Printf("%s\n", licenseNotice)
+		os.Exit(0)
+	}
+
+	// Handle positional arguments (override --dir flag)
+	if len(flag.Args()) > 0 {
+		*inputDir = flag.Args()[0]
+	}
+
 	targetPath, err := filepath.Abs(*inputDir) // your target path
 	if err != nil {
 		log.Fatalf("Could not find Go module: %v", err)
+	}
+
+	// Validate that the input directory exists
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		log.Fatalf("Input directory does not exist: %s", targetPath)
 	}
 
 	// Find and switch to module root
@@ -353,10 +387,14 @@ func main() {
 		panic(fmt.Errorf("failed to marshal spec: %w", err))
 	}
 
-	if err := os.WriteFile(*output, data, 0644); err != nil {
-		panic(fmt.Errorf("failed to write output file: %w", err))
+	// If output is the default (openapi.json) and no explicit output flag was set, output to stdout
+	if *output == defaultOutputFile && !outputFlagSet {
+		fmt.Print(string(data))
+	} else {
+		if err := os.WriteFile(*output, data, 0644); err != nil {
+			panic(fmt.Errorf("failed to write output file: %w", err))
+		}
+		fmt.Println("Successfully generated:", *output)
 	}
-
-	fmt.Println("Successfully generated:", *output)
 	fmt.Printf("Time elapsed: %s\n", time.Since(start))
 }

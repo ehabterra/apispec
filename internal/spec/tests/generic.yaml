@@ -1,15 +1,15 @@
 string_pool:
   - Get
   - '*Container[T]'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:7:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:7:1
   - exported
   - func() T
   - '*generic.Container[T].Value'
   - generic
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:2
   - selector
   - Set
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:11:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:11:1
   - 'func(T) '
   - Container
   - struct
@@ -17,37 +17,37 @@ string_pool:
   - T
   - interface
   - NewContainer
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:15:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:15:1
   - Process
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:19:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:19:1
   - c
   - '*generic.Container[int]'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:2
   - unexported
   - main
   - val
   - int
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:2
   - result
   - string
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:27:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:27:1
   - value
   - Container[T]
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:16:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:16:10
   - '[]string'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:28
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:28
   - len
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:21:5
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:7
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:9
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:21:5
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:7
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
   - '*Container'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:30:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:12
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:30:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:12
 packages:
   generic:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go
       : types:
           Container:
             name: 12
@@ -70,7 +70,7 @@ packages:
                         name: T
                         pkg: generic
                         type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:7:30
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:7:30
                 signature_str: 4
                 position: 2
                 scope: 3
@@ -85,7 +85,7 @@ packages:
                       name: T
                       pkg: generic
                       type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:11:34
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:11:34
                 signature_str: 11
                 position: 10
                 scope: 3
@@ -101,7 +101,7 @@ packages:
                         name: value
                         pkg: generic
                         type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:12
                       lhs:
                         kind: selector
                         x:
@@ -109,14 +109,14 @@ packages:
                           name: c
                           pkg: generic
                           type: '*generic.Container[T]'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:2
                         sel:
                           kind: ident
                           name: Value
                           pkg: generic
                           type: T
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:4
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:4
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:2
             comments: -1
         functions:
           NewContainer:
@@ -134,19 +134,19 @@ packages:
                         name: Container
                         pkg: generic
                         type: Container[T any]
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:15:36
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:15:36
                       fun:
                         kind: ident
                         name: T
                         pkg: generic
                         type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:15:46
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:15:46
               args:
                 - kind: ident
                   name: T
                   pkg: generic
                   type: T
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:15:32
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:15:32
             position: 18
             scope: 3
             comments: -1
@@ -164,13 +164,13 @@ packages:
                       name: Container
                       pkg: generic
                       type: Container[T any]
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:16:10
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:16:10
                     fun:
                       kind: ident
                       name: T
                       pkg: generic
                       type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:16:20
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:16:20
                   args:
                     - kind: key_value
                       x:
@@ -178,13 +178,13 @@ packages:
                         name: Value
                         pkg: generic
                         type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:16:23
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:16:23
                       fun:
                         kind: ident
                         name: value
                         pkg: generic
                         type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:16:30
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:16:30
           Process:
             name: 19
             signature:
@@ -196,7 +196,7 @@ packages:
                     name: T
                     pkg: generic
                     type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:19:39
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:19:39
               args:
                 - kind: array_type
                   x:
@@ -204,7 +204,7 @@ packages:
                     name: T
                     pkg: generic
                     type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:19:36
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:19:36
             position: 20
             scope: 3
             comments: -1
@@ -215,7 +215,7 @@ packages:
                 name: zero
                 pkg: generic
                 type: T
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:22:10
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:22:10
           main:
             name: 25
             signature:
@@ -241,23 +241,23 @@ packages:
                         name: NewContainer
                         pkg: generic
                         type: func[T any](value T) *generic.Container[T]
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:7
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:7
                       fun:
                         kind: ident
                         name: int
                         pkg: generic
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:20
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:20
                     args:
                       - kind: literal
                         value: "42"
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:7
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:7
                   lhs:
                     kind: ident
                     name: c
                     pkg: generic
                     type: '*generic.Container[int]'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:28:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:2
                   func: 25
                   callee_func: NewContainer
                   callee_pkg: generic
@@ -276,13 +276,13 @@ packages:
                         name: Process
                         pkg: generic
                         type: func[T comparable](items []T) T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:12
                       fun:
                         kind: ident
                         name: string
                         pkg: generic
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:20
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:20
                     args:
                       - kind: composite_lit
                         x:
@@ -292,19 +292,19 @@ packages:
                             name: string
                             pkg: generic
                             type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:30
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:30
                         args:
                           - kind: literal
                             value: '"hello"'
                           - kind: literal
                             value: '"world"'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:12
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:12
                   lhs:
                     kind: ident
                     name: result
                     pkg: generic
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:2
                   func: 25
                   callee_func: Process
                   callee_pkg: generic
@@ -323,21 +323,21 @@ packages:
                         name: c
                         pkg: generic
                         type: '*generic.Container[int]'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
                       sel:
                         kind: ident
                         name: Get
                         pkg: generic
                         type: func() int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:11
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:9
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:11
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
                   lhs:
                     kind: ident
                     name: val
                     pkg: generic
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:29:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:2
                   func: 25
                   callee_func: Get
                   callee_pkg: generic
@@ -371,7 +371,7 @@ packages:
                     name: T
                     pkg: generic
                     type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:7:30
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:7:30
             signature_str: 4
             position: 2
             scope: 3
@@ -386,7 +386,7 @@ packages:
                   name: T
                   pkg: generic
                   type: T
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:11:34
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:11:34
             signature_str: 11
             position: 10
             scope: 3
@@ -402,7 +402,7 @@ packages:
                     name: value
                     pkg: generic
                     type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:12
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:12
                   lhs:
                     kind: selector
                     x:
@@ -410,14 +410,14 @@ packages:
                       name: c
                       pkg: generic
                       type: '*generic.Container[T]'
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:2
                     sel:
                       kind: ident
                       name: Value
                       pkg: generic
                       type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:4
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:12:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:4
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:12:2
         comments: -1
 call_graph:
   - caller:
@@ -436,7 +436,8 @@ call_graph:
         name: items
         pkg: generic
         type: '[]T'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:21:9
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:21:9
+    callee_recv_var_name: '*generic.Container[T].Value'
   - caller:
       name: 25
       pkg: 6
@@ -451,6 +452,42 @@ call_graph:
     args:
       - kind: literal
         value: "42"
+    assignments:
+      c:
+        - variable_name: 21
+          pkg: 6
+          concrete_type: 22
+          position: 23
+          scope: 24
+          value:
+            kind: call
+            fun:
+              kind: index
+              x:
+                kind: ident
+                name: NewContainer
+                pkg: generic
+                type: func[T any](value T) *generic.Container[T]
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:7
+              fun:
+                kind: ident
+                name: int
+                pkg: generic
+                type: int
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:20
+            args:
+              - kind: literal
+                value: "42"
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:7
+          lhs:
+            kind: ident
+            name: c
+            pkg: generic
+            type: '*generic.Container[int]'
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:28:2
+          func: 25
+          callee_func: NewContainer
+          callee_pkg: generic
     param_arg_map:
       value:
         kind: literal
@@ -468,6 +505,40 @@ call_graph:
       position: 41
       recv_type: 42
     position: 3933305
+    assignments:
+      val:
+        - variable_name: 26
+          pkg: 6
+          concrete_type: 27
+          position: 28
+          scope: 24
+          value:
+            kind: call
+            fun:
+              kind: selector
+              x:
+                kind: ident
+                name: c
+                pkg: generic
+                type: '*generic.Container[int]'
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
+              sel:
+                kind: ident
+                name: Get
+                pkg: generic
+                type: func() int
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:11
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:9
+          lhs:
+            kind: ident
+            name: val
+            pkg: generic
+            type: int
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:29:2
+          func: 25
+          callee_func: Get
+          callee_pkg: generic
     callee_var_name: c
     callee_recv_var_name: val
   - caller:
@@ -509,12 +580,60 @@ call_graph:
             name: string
             pkg: generic
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:30
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:30
         args:
           - kind: literal
             value: '"hello"'
           - kind: literal
             value: '"world"'
+    assignments:
+      result:
+        - variable_name: 29
+          pkg: 6
+          concrete_type: 30
+          position: 31
+          scope: 24
+          value:
+            kind: call
+            fun:
+              kind: index
+              x:
+                kind: ident
+                name: Process
+                pkg: generic
+                type: func[T comparable](items []T) T
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:12
+              fun:
+                kind: ident
+                name: string
+                pkg: generic
+                type: string
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:20
+            args:
+              - kind: composite_lit
+                x:
+                  kind: array_type
+                  x:
+                    kind: ident
+                    name: string
+                    pkg: generic
+                    type: string
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:30
+                args:
+                  - kind: literal
+                    value: '"hello"'
+                  - kind: literal
+                    value: '"world"'
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:12
+          lhs:
+            kind: ident
+            name: result
+            pkg: generic
+            type: string
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:2
+          func: 25
+          callee_func: Process
+          callee_pkg: generic
     param_arg_map:
       items:
         kind: composite_lit
@@ -525,7 +644,7 @@ call_graph:
             name: string
             pkg: generic
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types3901425598/generic/src/generic/generic.go:32:30
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types1858113603/generic/src/generic/generic.go:32:30
         args:
           - kind: literal
             value: '"hello"'

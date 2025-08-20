@@ -97,6 +97,9 @@ func LoadMetadata(filename string) (*Metadata, error) {
 		metadata.CallGraph[i].Callee.Meta = &metadata
 	}
 
+	// Build the Callers map from the loaded call graph
+	metadata.BuildCallGraphMaps()
+
 	return &metadata, nil
 }
 

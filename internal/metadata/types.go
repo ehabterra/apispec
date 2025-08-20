@@ -257,7 +257,20 @@ const MaxSelfCallingDepth = 50
 
 // TraverseCallerChildren traverses the call graph using base IDs
 func (m *Metadata) TraverseCallerChildren(edge *CallGraphEdge, action func(parent, child *CallGraphEdge)) {
+	m.traverseCallerChildrenHelper(edge, action, make(map[string]bool))
+}
+
+// traverseCallerChildrenHelper is the internal implementation with cycle detection
+func (m *Metadata) traverseCallerChildrenHelper(edge *CallGraphEdge, action func(parent, child *CallGraphEdge), visited map[string]bool) {
 	calleeBase := edge.Callee.BaseID()
+
+	// Check for cycles
+	if visited[calleeBase] {
+		return
+	}
+	visited[calleeBase] = true
+	defer delete(visited, calleeBase)
+
 	if children, ok := m.Callers[calleeBase]; ok {
 		for _, child := range children {
 			if calleeBase == child.Callee.BaseID() { // Limit self calling
@@ -267,8 +280,7 @@ func (m *Metadata) TraverseCallerChildren(edge *CallGraphEdge, action func(paren
 				m.callDepth[calleeBase]++
 			}
 			action(edge, child)
-			m.TraverseCallerChildren(child, action)
-
+			m.traverseCallerChildrenHelper(child, action, visited)
 		}
 	}
 }
@@ -286,14 +298,20 @@ func (m *Metadata) CallGraphRoots() []*CallGraphEdge {
 
 		var isRoot = true
 
-		// Check if this function is called by anyone (using base ID)
-		if _, exists := m.Callees[callerBase]; exists {
-			isRoot = false
-		}
+		// Always consider main function as a root
+		callerName := m.StringPool.GetString(edge.Caller.Name)
+		if callerName == "main" {
+			isRoot = true
+		} else {
+			// Check if this function is called by anyone (using base ID)
+			if _, exists := m.Callees[callerBase]; exists {
+				isRoot = false
+			}
 
-		// Check if this function appears as an argument (using base ID)
-		if _, exists := m.Args[callerBase]; exists {
-			isRoot = false
+			// Check if this function appears as an argument (using base ID)
+			if _, exists := m.Args[callerBase]; exists {
+				isRoot = false
+			}
 		}
 
 		if isRoot {

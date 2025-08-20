@@ -882,10 +882,22 @@ var DefaultFormat = "uppercase"`,
 							return
 						}
 						for i := range expectedType.Implements {
-							ok = assert.Equal(t, expectedType.Implements[i], meta.StringPool.GetString(actualType.Implements[i]),
-								"Type implements mismatch for %s", expectedType.Name)
-							if !ok {
-								return
+							var found bool
+
+							for j := range actualType.Implements {
+								if expectedType.Implements[i] == meta.StringPool.GetString(actualType.Implements[j]) {
+									ok = assert.Equal(t, expectedType.Implements[i], meta.StringPool.GetString(actualType.Implements[j]),
+										"Type implements mismatch for %s", expectedType.Name)
+									if !ok {
+										return
+									}
+									found = true
+									break
+								}
+							}
+
+							if !found {
+								t.Errorf("Type implements not found for %s", expectedType.Name)
 							}
 						}
 
@@ -1087,7 +1099,14 @@ var DefaultFormat = "uppercase"`,
 											return
 										}
 										if ok {
-											equals = assert.Equal(t, expectedType, actualType,
+											// Convert actual assignments to slice of callee function names for comparison
+											var actualCallees []string
+											for _, asg := range actualType {
+												if asg.CalleeFunc != "" {
+													actualCallees = append(actualCallees, asg.CalleeFunc)
+												}
+											}
+											equals = assert.Equal(t, expectedType, actualCallees,
 												"Assignment value mismatch for %s in call %s->%s", expectedParam, expectedEdge.Caller, expectedEdge.Callee)
 											if !equals {
 												return
@@ -1135,4 +1154,188 @@ func TestStringPool(t *testing.T) {
 
 	// Test size
 	assert.Equal(t, 2, pool.GetSize()) // "test" and "another"
+}
+
+// TestMethodChaining tests the ability to analyze method chaining patterns
+func TestMethodChaining(t *testing.T) {
+	fset := token.NewFileSet()
+
+	src := []packagestest.Module{{
+		Name: "chaining",
+		Files: map[string]interface{}{
+			"builder.go": `package chaining
+
+import "strings"
+
+type Builder struct {
+	value string
+}
+
+func NewBuilder() *Builder {
+	return &Builder{}
+}
+
+func (b *Builder) SetValue(val string) *Builder {
+	b.value = val
+	return b
+}
+
+func (b *Builder) Append(text string) *Builder {
+	b.value += text
+	return b
+}
+
+func (b *Builder) Transform() *Builder {
+	b.value = strings.ToUpper(b.value)
+	return b
+}
+
+func (b *Builder) Build() string {
+	return b.value
+}
+
+func main() {
+	// Method chaining example
+	result := NewBuilder().
+		SetValue("hello").
+		Append(" world").
+		Transform().
+		Build()
+	
+	// Another chaining pattern
+	builder := NewBuilder()
+	final := builder.SetValue("test").Append("!").Build()
+	
+	_ = result
+	_ = final
+}`,
+		}}}
+
+	exported := packagestest.Export(t, packagestest.GOPATH, src)
+	defer exported.Cleanup()
+
+	pkgsMetadata := map[string]map[string]*ast.File{}
+	fileToInfo := map[*ast.File]*types.Info{}
+	importPaths := map[string]string{}
+
+	exported.Config.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
+	exported.Config.Fset = fset
+	exported.Config.Tests = false
+
+	pkgs, err := packages.Load(exported.Config, "./...")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pkg := range pkgs {
+		if pkg.PkgPath == "" {
+			continue
+		}
+		pkgsMetadata[pkg.PkgPath] = make(map[string]*ast.File)
+
+		for i, f := range pkg.Syntax {
+			if i < len(pkg.GoFiles) {
+				pkgsMetadata[pkg.PkgPath][pkg.GoFiles[i]] = f
+				fileToInfo[f] = pkg.TypesInfo
+				importPaths[pkg.GoFiles[i]] = pkg.PkgPath
+			}
+		}
+	}
+
+	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
+
+	// Verify that method chaining calls are captured
+	expectedCallEdges := map[string][]string{
+		"main": {"NewBuilder", "SetValue", "Append", "Transform", "Build"},
+	}
+
+	actualEdges := make(map[string][]string)
+	for _, edge := range meta.CallGraph {
+		caller := meta.StringPool.GetString(edge.Caller.Name)
+		callee := meta.StringPool.GetString(edge.Callee.Name)
+		actualEdges[caller] = append(actualEdges[caller], callee)
+	}
+
+	for expectedCaller, expectedCallees := range expectedCallEdges {
+		actualCallees, ok := actualEdges[expectedCaller]
+		assert.True(t, ok, "No calls found for %s", expectedCaller)
+
+		if ok {
+			// Check that all expected callees are present (order doesn't matter for this test)
+			for _, expectedCallee := range expectedCallees {
+				found := false
+				for _, actualCallee := range actualCallees {
+					if actualCallee == expectedCallee {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Call %s->%s not found in method chaining analysis", expectedCaller, expectedCallee)
+			}
+		}
+	}
+
+	// Verify that the Builder type and its methods are captured
+	pkg, ok := meta.Packages["chaining"]
+	assert.True(t, ok, "Package 'chaining' not found")
+
+	if ok {
+		var builderFile *metadata.File
+		for _, file := range pkg.Files {
+			if len(file.Types) > 0 {
+				builderFile = file
+				break
+			}
+		}
+		assert.NotNil(t, builderFile, "File with types not found")
+
+		if builderFile != nil {
+			builderType, ok := builderFile.Types["Builder"]
+			assert.True(t, ok, "Builder type not found")
+
+			if ok {
+				// Verify Builder methods
+				expectedMethods := []string{"SetValue", "Append", "Transform", "Build"}
+				actualMethods := make([]string, len(builderType.Methods))
+				for i, method := range builderType.Methods {
+					actualMethods[i] = meta.StringPool.GetString(method.Name)
+				}
+
+				for _, expectedMethod := range expectedMethods {
+					found := false
+					for _, actualMethod := range actualMethods {
+						if actualMethod == expectedMethod {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "Method %s not found on Builder type", expectedMethod)
+				}
+			}
+		}
+	}
+
+	// Verify assignments from chained calls
+	var mainFunc *metadata.Function
+	var foundMain bool
+	for _, file := range pkg.Files {
+		if fn, exists := file.Functions["main"]; exists {
+			mainFunc = fn
+			foundMain = true
+			break
+		}
+	}
+	assert.True(t, foundMain, "main function not found")
+
+	if foundMain {
+		expectedAssignments := []string{"result", "builder", "final"}
+		for _, expectedAssign := range expectedAssignments {
+			_, found := mainFunc.AssignmentMap[expectedAssign]
+			assert.True(t, found, "Assignment %s not found in main function", expectedAssign)
+		}
+	}
+
+	t.Logf("Method chaining test completed successfully")
+	t.Logf("Total call graph edges: %d", len(meta.CallGraph))
+	t.Logf("Package count: %d", len(meta.Packages))
 }

@@ -304,10 +304,12 @@ func traceVariableOriginHelper(
 				if assigns, ok := fn.AssignmentMap[varName]; ok && len(assigns) > 0 {
 					// Use the most recent assignment (last in slice)
 					assign := assigns[len(assigns)-1]
-					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS
+					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS to the base variable
 					if assign.Value.Kind == KindIdent && assign.Value.Name != varName {
-						_, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
-						return assign.Value.Name, pkgName, t, f
+						// _, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+						// return assign.Value.Name, pkgName, t, f
+						baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+						return baseVar, basePkg, t, f
 					}
 					// If the assignment is from a function call, follow the return value
 					if assign.CalleeFunc != "" && assign.CalleePkg != "" {
