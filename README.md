@@ -1,6 +1,6 @@
 # Swagen: Generate OpenAPI from Go code
 
-![Coverage](https://img.shields.io/badge/coverage-47.6%25-red.svg)
+![Coverage](https://img.shields.io/badge/coverage-47.7%25-red.svg)
 
 > **Disclaimer:**  
 > Swagen is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
