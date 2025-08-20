@@ -10,7 +10,7 @@ The issue was in the `TestGenerateMetadata` function in `internal/metadata/metad
 
 1. **Temporary Directory Creation**: `packagestest.Export()` creates temporary directories with random names
 2. **File Path Storage**: The generated metadata contains file paths that include these temporary directory names
-3. **Test File Writing**: The test writes this metadata to YAML files in `../spec/tests/%s.yaml`
+3. **Test File Writing**: The test writes this metadata to YAML files in `../../internal/spec/tests/%s.yaml`
 4. **Git Tracking**: These files are tracked by git, so changes appear as diffs
 
 ## Solution Implemented
@@ -23,7 +23,7 @@ Modified the test to only write metadata files when explicitly enabled via an en
 // Only write metadata files during development/testing, not during CI/CD
 // This prevents temporary directory paths from being committed to git
 if os.Getenv("SWAGEN_WRITE_TEST_FILES") == "1" {
-    if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
+    if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../../internal/spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
         t.Errorf("Failed to write metadata.yaml: %v", err)
     }
 }

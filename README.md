@@ -2,7 +2,6 @@
 
 ![Coverage](https://img.shields.io/badge/coverage-47.6%25-red.svg)
 
-
 > **Disclaimer:**  
 > Swagen is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
 
@@ -18,6 +17,8 @@
 - **Configurable**: YAML config plus CLI flags; flags always win.
 - **Visualize**: Optional HTML call-graph diagram for debugging.
 - **Extensible**: Pattern-based framework config; add new frameworks without changing core logic.
+
+> **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
 ## Golang Feature Support
 Swagen focuses on practical coverage for real-world services. Current coverage includes:
@@ -40,8 +41,6 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 - [x] **Pointers and dereference**: detects `*T` and automatically dereferences when configured.
 - [x] **Selectors and field access**: resolves `pkg.Type.Field` and nested selectors where possible.
 - [x] **Struct fields**: reads field types, embedded fields, and struct tags (`json`, `xml`, `form`, etc.).
-
-
 
 ## Architecture Overview
 
@@ -72,67 +71,60 @@ graph TD
     Q -.-> R[metadata.yaml]
 ```
 
-## Key Features
+### How It Works
 
-- **Framework Agnostic**: Gin, Echo, Chi, Fiber, and standard net/http
-- **Deep Code Analysis**: Complete call graphs to understand API structure
-- **Configurable Output**: OpenAPI 3.1 in JSON or YAML
-- **Visualization Tools**: Optional call-graph diagrams (Cytoscape)
-- **Metadata Export**: Intermediate representation for custom processing
+Swagen executes a multi-stage process to analyze your code and generate the OpenAPI specification. The workflow is designed to be robust and flexible, handling complex Go projects with ease.
 
-> **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
+ 1. **Initialization & Flag Parsing**: The tool starts, prints license information, and parses all command-line flags provided by the user.
 
-## Installation
+ 2. **Module Discovery**: It finds the root of the Go module by searching for the `go.mod` file and changes the working directory to the module root.
 
-### From Source
+ 3. **Package Loading & Type-Checking**: Swagen loads and performs a full type-check on all Go packages within the module (`./...`), building a rich understanding of the code's types and syntax.
+
+ 4. **Framework Detection**: It analyzes the project's dependencies to automatically detect the web framework being used (e.g., Gin, Chi, Echo, Fiber, or standard `net/http`).
+
+ 5. **Configuration Loading**: The tool loads a framework-specific default configuration. If a custom `--config` file is provided, it loads that instead. CLI flags always override settings from any configuration file.
+
+ 6. **Metadata Generation**: It traverses the Abstract Syntax Trees (AST) of the parsed packages to generate a detailed `metadata` object. This object contains information about packages, function calls, and string constants. 
+
+ 7. **Call Graph Construction**: Using the generated metadata, Swagen constructs a call graph tree. This tree traces the flow of execution from router definitions to the final handler functions, respecting limits set by flags like `--max-nodes` to prevent infinite recursion.
+
+ 8. **OpenAPI Mapping**: The call graph and metadata are processed by a framework-specific mapper. This mapper identifies API routes, parameters, request bodies, and responses, translating them into the OpenAPI specification structure.
+
+ 9. **Specification Generation**: The final OpenAPI object is marshaled into either YAML or JSON format, based on the output file extension (`.yaml`, or `.json`).
+
+10. **File Output**: The resulting specification file is written to the path specified by the `--output` flag. If requested, an interactive HTML call graph diagram is also generated.
+
+## Quick Start
+
+### Installation
+
 ```bash
+# Clone the repository
 git clone https://github.com/ehabterra/swagen.git
 cd swagen
+
+# Build the binary
+make build
+
+# Or build directly with Go
 go build -o swagen ./cmd/swagen
-sudo mv swagen /usr/local/bin/
 ```
 
-### Using Go Install
+### Basic Usage
+
 ```bash
-go install github.com/ehabterra/swagen/cmd/swagen@latest
-```
+# Generate OpenAPI spec from your Go project
+./swagen --output openapi.yaml
 
-## Usage
+# Generate with custom config
+./swagen --config my-config.yaml --output openapi.yaml
 
-### Help
-```bash
-swagen --help
-```
+# Generate with call graph diagram
+./swagen --output openapi.yaml --diagram
 
-### Basic Generation
-```bash
-swagen -d ./your-project -o openapi.yaml
-```
-
-### Advanced Options
-```bash
-swagen \
-  -d ./your-project \
-  -o openapi.json \
-  -t "My API" \
-  -v "1.2.0" \
-  -D "Production API" \
-  -E "team@example.com" \
-  -g callgraph.html \
-  -w
-```
-
-### **Example Commands**
-
-```sh
-# Full flags
-swagen --output api.json --dir ./src --title "My API" --api-version 2.0.0
-
-# Mixed flags
-swagen -o api.json -d ./src --contact-email admin@example.com
-
-# Short flags only
-swagen -o api.json -t "My API" -v 2.0 -w
+# Generate metadata for debugging
+./swagen --output openapi.yaml --write-metadata
 ```
 
 ### Programmatic usage
@@ -182,346 +174,47 @@ func main() {
 | `--max-depth`         | `-md`        | Max depth for nested arguments                      | `50`                           |
 
 
+### Example Output
 
-### Supported Frameworks
-Swagen automatically detects these frameworks:
-- ✅ Gin
-- ✅ Echo
-- ✅ Chi
-- ✅ Fiber
-- ✅ Standard net/http
+```yaml
+openapi: 3.1.0
+info:
+  title: My API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      summary: List users
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+```
 
-## Configuration Guide
+## Configuration
 
-Swagen is driven by a YAML configuration that defines how to extract routes, bodies, responses, and parameters, and how to map Go types to OpenAPI. Put `swagen.yaml` at your project root. CLI flags override config values.
+Swagen uses YAML configuration files to define framework patterns and behavior. Here's an example for Gin:
 
 ```yaml
 # Example Gin configuration (swagen.yaml)
 info:
-  title: My Awesome API
-  description: |-
-    Copyright 2025 Ehab Terra. Licensed under the Apache License 2.0.
-  version: 1.0.0
-  contact:
-    name: Ehab
-    url: https://ehabterra.github.io/
-    email: ehabterra@hotmail.com
-servers:
-  - url: https://api.example.com
-    description: Production
-securitySchemes:
-  bearerAuth:
-    type: http
-    scheme: bearer
-    bearerFormat: JWT
-security:
-  - bearerAuth: []
-tags:
-  - name: users
-    description: User management
-externalDocs:
-  description: Project docs
-  url: https://docs.example.com
-
-framework:
-  routePatterns:
-    - callRegex: ^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$
-      recvTypeRegex: ^github\.com/gin-gonic/gin\.\*(Engine|RouterGroup)$
-      handlerArgIndex: 1
-      methodFromCall: true
-      pathFromArg: true
-      handlerFromArg: true
-  requestBodyPatterns:
-    - callRegex: ^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$
-      typeFromArg: true
-      deref: true
-    - callRegex: ^Decode$
-      typeFromArg: true
-      deref: true
-    - callRegex: ^Unmarshal$
-      typeArgIndex: 1
-      typeFromArg: true
-      deref: true
-  responsePatterns:
-    - callRegex: ^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$
-      typeArgIndex: 1
-      statusFromArg: true
-      typeFromArg: true
-    - callRegex: ^Marshal$
-      typeFromArg: true
-      deref: true
-    - callRegex: ^Encode$
-      typeFromArg: true
-      deref: true
-  paramPatterns:
-    - callRegex: ^Param$
-      paramIn: path
-    - callRegex: ^Query$
-      paramIn: query
-    - callRegex: ^DefaultQuery$
-      paramIn: query
-    - callRegex: ^GetHeader$
-      paramIn: header
-  mountPatterns:
-    - callRegex: ^Group$
-      recvTypeRegex: ^github\.com/gin-gonic/gin\.\*(Engine|RouterGroup)$
-      routerArgIndex: 1
-      pathFromArg: true
-      routerFromArg: true
-      isMount: true
-
-typeMapping:
-  - goType: time.Time
-    openapiType:
-      type: string
-      format: date-time
-
-externalTypes:
-  - name: github.com/gin-gonic/gin.H
-    openapiType:
-      type: object
-  - name: go.mongodb.org/mongo-driver/bson/primitive.ObjectID
-    openapiType:
-      type: string
-      format: objectid
-
-overrides: []
-
-include:
-  files: []
-  packages: []
-  functions: []
-  types: []
-
-exclude:
-  files: []
-  packages: []
-  functions: []
-  types: []
-
-defaults:
-  requestContentType: application/json
-  responseContentType: application/json
-  responseStatus: 200
-```
-
-### How It Works
-
-Swagen executes a multi-stage process to analyze your code and generate the OpenAPI specification. The workflow is designed to be robust and flexible, handling complex Go projects with ease.
-
- 1. **Initialization & Flag Parsing**: The tool starts, prints license information, and parses all command-line flags provided by the user.
-
- 2. **Module Discovery**: It finds the root of the Go module by searching for the `go.mod` file and changes the working directory to the module root.
-
- 3. **Package Loading & Type-Checking**: Swagen loads and performs a full type-check on all Go packages within the module (`./...`), building a rich understanding of the code's types and syntax.
-
- 4. **Framework Detection**: It analyzes the project's dependencies to automatically detect the web framework being used (e.g., Gin, Chi, Echo, Fiber, or standard `net/http`).
-
- 5. **Configuration Loading**: The tool loads a framework-specific default configuration. If a custom `--config` file is provided, it loads that instead. CLI flags always override settings from any configuration file.
-
- 6. **Metadata Generation**: It traverses the Abstract Syntax Trees (AST) of the parsed packages to generate a detailed `metadata` object. This object contains information about packages, function calls, and string constants. 
-
- 7. **Call Graph Construction**: Using the generated metadata, Swagen constructs a call graph tree. This tree traces the flow of execution from router definitions to the final handler functions, respecting limits set by flags like `--max-nodes` to prevent infinite recursion.
-
- 8. **OpenAPI Mapping**: The call graph and metadata are processed by a framework-specific mapper. This mapper identifies API routes, parameters, request bodies, and responses, translating them into the OpenAPI specification structure.
-
- 9. **Specification Generation**: The final OpenAPI object is marshaled into either YAML or JSON format, based on the output file extension (`.yaml`, `.yml`, or `.json`).
-
-10. **File Output**: The resulting specification file is written to the path specified by the `--output` flag. If requested, an interactive HTML call graph diagram is also generated.
-
-### Configuration Reference
-
-Here is the structure of a `swagen.yaml` file. Only the `framework` and `info` sections are required; everything else is optional.
-
-```yaml
-framework:
-  routePatterns: []
-  requestBodyPatterns: []
-  responsePatterns: []
-  paramPatterns: []
-  mountPatterns: []
-typeMapping: []
-externalTypes: []
-overrides: []
-include:
-  files: []
-  packages: []
-  functions: []
-  types: []
-exclude:
-  files: []
-  packages: []
-  functions: []
-  types: []
-defaults:
-  requestContentType: application/json
-  responseContentType: application/json
-  responseStatus: 200
-info:
   title: My API
-  description: API description
   version: 1.0.0
-servers:
-  - url: https://api.example.com
-security: []
-securitySchemes: {}
-tags: []
-externalDocs: null
-```
 
-### Framework-Specific Patterns
-
-#### Route Patterns
-Route patterns identify how your framework defines HTTP routes:
-
-```yaml
-routePatterns:
-  - callRegex: ^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$
-    recvTypeRegex: ^github\.com/gin-gonic/gin\.\*(Engine|RouterGroup)$
-    handlerArgIndex: 1
-    methodFromCall: true
-    pathFromArg: true
-    handlerFromArg: true
-```
-
-#### Request Body Patterns
-These patterns identify how request bodies are processed:
-
-```yaml
-requestBodyPatterns:
-  - callRegex: ^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$
-    typeFromArg: true
-    deref: true
-  - callRegex: ^Decode$
-    typeFromArg: true
-    deref: true
-```
-
-#### Response Patterns
-Response patterns identify how responses are formatted:
-
-```yaml
-responsePatterns:
-  - callRegex: ^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$
-    typeArgIndex: 1
-    statusFromArg: true
-    typeFromArg: true
-```
-
-#### Parameter Patterns
-Parameter patterns identify how parameters are extracted:
-
-```yaml
-paramPatterns:
-  - callRegex: ^Param$
-    paramIn: path
-  - callRegex: ^Query$
-    paramIn: query
-```
-
-#### Mount Patterns
-Mount patterns identify router mounting/sub-routing:
-
-```yaml
-mountPatterns:
-  - callRegex: ^Group$
-    recvTypeRegex: ^github\.com/gin-gonic/gin\.\*(Engine|RouterGroup)$
-    routerArgIndex: 1
-    pathFromArg: true
-    routerFromArg: true
-    isMount: true
-```
-
-### Type Mapping
-
-Map Go types to OpenAPI schemas:
-
-```yaml
-typeMapping:
-  - goType: time.Time
-    openapiType:
-      type: string
-      format: date-time
-```
-
-### External Types
-
-Define external types that should be treated as known:
-
-```yaml
-externalTypes:
-  - name: github.com/gin-gonic/gin.H
-    openapiType:
-      type: object
-```
-
-### Using Predefined Configurations
-
-Swagen provides predefined configurations for popular frameworks:
-
-```go
-import "github.com/ehabterra/swagen/spec"
-
-// Use predefined configuration
-config := spec.DefaultGinConfig()  // For Gin framework
-// or
-config := spec.DefaultChiConfig()   // For Chi router
-// or
-config := spec.DefaultEchoConfig()  // For Echo framework
-// or
-config := spec.DefaultFiberConfig() // For Fiber framework
-// or
-config := spec.DefaultHTTPConfig()  // For net/http
-```
-
-### Customizing Configuration
-
-You can customize any predefined configuration:
-
-```go
-config := spec.DefaultGinConfig()
-config.Info.Title = "My Custom API"
-config.Info.Version = "2.0.0"
-
-// Add custom type mappings
-config.TypeMapping = append(config.TypeMapping, spec.TypeMapping{
-    GoType: "mypackage.CustomType",
-    OpenAPIType: &spec.Schema{
-        Type:   "string",
-        Format: "custom-format",
-    },
-})
-```
-
-### Loading Configuration from File
-
-To load configuration from a YAML file:
-
-```go
-import "gopkg.in/yaml.v3"
-import "os"
-
-func LoadConfig(filename string) (*spec.SwagenConfig, error) {
-    data, err := os.ReadFile(filename)
-    if err != nil {
-        return nil, err
-    }
-    
-    var config spec.SwagenConfig
-    err = yaml.Unmarshal(data, &config)
-    if err != nil {
-        return nil, err
-    }
-    
-    return &config, nil
-}
-```
-
-### Example: Complete Gin Configuration
-
-Here's a complete example configuration for the Gin framework:
-
-```yaml
 framework:
   routePatterns:
     - callRegex: ^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$
@@ -569,51 +262,17 @@ framework:
       routerFromArg: true
       isMount: true
 
+typeMapping:
+  - goType: time.Time
+    openapiType:
+      type: string
+      format: date-time
+
 externalTypes:
   - name: github.com/gin-gonic/gin.H
     openapiType:
       type: object
-
-defaults:
-  requestContentType: application/json
-  responseContentType: application/json
-  responseStatus: 200
-
-info:
-  title: My Awesome API
-  description: |4-
-    Copyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE.
-  version: 1.0.0
-  contact:
-    name: Ehab
-    url: https://ehabterra.github.io/
-    email: ehabterra@hotmail.com
 ```
-
-### Using the Configuration
-
-Once you have your configuration, pass it to the Swagen generator:
-
-```go
-import "github.com/ehabterra/swagen/generator"
-
-func main() {
-    config := spec.DefaultGinConfig() // or load from file
-    
-    gen := generator.NewGenerator(config)
-    spec, err := gen.GenerateFromDirectory("./myapp")
-    if err != nil {
-        panic(err)
-    }
-    
-    // Output OpenAPI spec
-    yamlData, _ := yaml.Marshal(spec)
-    os.WriteFile("openapi.yaml", yamlData, 0644)
-}
-```
-
-This configuration system allows Swagen to understand your specific framework patterns and generate accurate OpenAPI specifications from your Go code.
-
 
 ## Development Guide
 
@@ -622,29 +281,40 @@ This configuration system allows Swagen to understand your specific framework pa
 - Understanding of AST (Abstract Syntax Tree)
 - Familiarity with OpenAPI 3.1 specification
 
-### Code Structure
+### Project Structure
 ```
-├── cmd/swagen
-│   └── main.go          # CLI entry point
+swagen/
+├── cmd/
+│   └── swagen/           # CLI entry point
+│       └── main.go
+├── generator/            # High-level generator interface
+│   ├── generator.go
+│   └── generator_test.go
 ├── internal/
-│   ├── core/            # Framework detection
+│   ├── core/            # Framework detection and core logic
+│   ├── engine/          # Processing engine
 │   ├── metadata/        # Code analysis and metadata extraction
-│   └── spec/            # OpenAPI spec generation
-└── testdata/            # Example projects
+│   └── spec/            # OpenAPI spec generation and mapping
+├── spec/                # Public spec package
+├── testdata/            # Example projects for testing
+├── scripts/             # Build and utility scripts
+├── docs/                # Documentation files
+└── .github/             # GitHub workflows and templates
 ```
 
 ### Building and Testing
 ```bash
 # Run all tests
-go test ./... -cover
+make test
 
-# Build with debug symbols
-go build -gcflags="all=-N -l" ./cmd/swagen/main.go
+# Run tests with coverage
+make coverage
 
-# Generate test coverage
-go test ./... -covermode=atomic -coverprofile=coverage.out
-go tool cover -html=coverage.out
-go tool cover -func=coverage.out
+# Build the binary
+make build
+
+# Update coverage badge
+make update-badge
 ```
 
 ## Contributing
@@ -661,9 +331,9 @@ go tool cover -func=coverage.out
 8. **Open** a Pull Request
 
 ### Adding Framework Support
-1. Create a new detector in `internal/core/detectors/`
-2. Add default configuration in `internal/spec/configs/`
-3. Update the framework detection logic in `main.go`
+1. Update the framework detection logic in `internal/core/detector.go`
+2. Add default configuration in `internal/spec/config.go`
+3. Update the framework detection logic in `cmd/swagen/main.go`
 4. Add test cases in `testdata/`
 
 ### Code Quality
@@ -685,6 +355,14 @@ Swagen implements several safeguards to prevent excessive resource usage:
 | MaxNestedArgsDepth | 50 | Argument nesting depth |
 
 Adjust these with CLI flags if needed for large codebases.
+
+## Documentation
+
+- **[docs/SOLUTION_SUMMARY.md](docs/SOLUTION_SUMMARY.md)**: Solution to test file changes issue
+- **[docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md)**: Guide to using TrackerTree for call graph analysis
+- **[docs/CYTOGRAPHE_README.md](docs/CYTOGRAPHE_README.md)**: Documentation for the call graph visualization feature
+- **[internal/metadata/README.md](internal/metadata/README.md)**: Metadata package documentation
+- **[internal/spec/README.md](internal/spec/README.md)**: Spec generation package documentation
 
 ## License
 

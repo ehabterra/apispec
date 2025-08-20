@@ -40,3 +40,7 @@ test_output.txt
 coverage.txt
 
 swagen
+
+# Test temporary directories
+testdata/temp/
+cmd/swagen/testdata/temp/

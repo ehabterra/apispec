@@ -86,7 +86,7 @@ type RouteInfo struct {
 }
 ```
 
-### 3. Mapping (`mapper_new.go`)
+### 3. Mapping (`mapper.go`)
 
 The mapper converts extracted route information into OpenAPI specifications:
 
