@@ -726,11 +726,6 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 			calleeID := edge.Callee.ID()
 
-			// Check for cycles to prevent infinite recursion
-			if _, alreadyVisited := visited[calleeID]; alreadyVisited {
-				continue
-			}
-
 			idTypes := metadata.ExtractGenericTypes(id)
 			calleeTypes := metadata.ExtractGenericTypes(calleeID)
 
