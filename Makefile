@@ -24,7 +24,7 @@ help:
 # Build the swagen binary
 build:
 	@echo "Building $(APP_NAME) version $(VERSION)..."
-    go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) ./cmd/swagen
+	go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) ./cmd/swagen
 
 # Run all tests
 test:
@@ -39,7 +39,6 @@ coverage:
 
 # Update coverage badge in README.md
 update-badge:
-	@echo "Updating coverage badge..."
 	./scripts/update-coverage-badge.sh
 
 # Clean build artifacts
@@ -51,10 +50,10 @@ run: build
 	./$(APP_NAME) --version
 
 version:
-    @echo "Version: $(VERSION)"
-    @echo "Commit: $(COMMIT)"
-    @echo "Build Date: $(BUILD_DATE)"
-    @echo "Go Version: $(GO_VERSION)"
+	@echo "Version: $(VERSION)"
+	@echo "Commit: $(COMMIT)"
+	@echo "Build Date: $(BUILD_DATE)"
+	@echo "Go Version: $(GO_VERSION)"
 # Install dependencies
 deps:
 	go mod download

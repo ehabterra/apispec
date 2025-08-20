@@ -3,7 +3,7 @@ set -euo pipefail
 
 COVERAGE_FILE="coverage.txt"
 README_FILE="README.md"
-THRESHOLD=45  # Minimum acceptable coverage %
+THRESHOLD=45  # Minimum acceptable coverage %   
 
 # Run tests and generate coverage report
 go test ./... -coverprofile=$COVERAGE_FILE
@@ -26,14 +26,19 @@ if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
     exit 1
 fi
 
-# Update badge in README.md
-# Replace the first occurrence of a coverage badge line or insert if not present
+# Prepare badge URL
 BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}.svg"
 
+# Update or insert badge
 if grep -q "img.shields.io/badge/coverage" "$README_FILE"; then
+    echo "Updating coverage badge..."
     sed -i.bak -E "s|!\[Coverage\]\(https://img.shields.io/badge/coverage-[0-9]+(\.[0-9]+)?%25-[a-z]+\.svg\)|![Coverage](${BADGE_URL})|" "$README_FILE"
 else
-    echo -e "\n![Coverage](${BADGE_URL})" >> "$README_FILE"
+    echo "Adding new coverage badge after the title..."
+    # Insert badge after first title line (starts with '# ')
+    awk -v badge="![Coverage](${BADGE_URL})" '
+    NR==1 {print; print ""; print badge; next} {print}
+    ' "$README_FILE" > "${README_FILE}.tmp" && mv "${README_FILE}.tmp" "$README_FILE"
 fi
 
 echo "Coverage updated: ${COVERAGE}% (${COLOR})"

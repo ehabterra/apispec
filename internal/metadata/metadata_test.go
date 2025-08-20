@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -756,10 +755,8 @@ var DefaultFormat = "uppercase"`,
 
 			// Only write metadata files during development/testing, not during CI/CD
 			// This prevents temporary directory paths from being committed to git
-			if os.Getenv("SWAGEN_WRITE_TEST_FILES") == "1" {
-				if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
-					t.Errorf("Failed to write metadata.yaml: %v", err)
-				}
+			if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
+				t.Errorf("Failed to write metadata.yaml: %v", err)
 			}
 
 			// Validate packages
@@ -994,6 +991,9 @@ var DefaultFormat = "uppercase"`,
 							if expectedVar.Type != "" {
 								ok = assert.Equal(t, expectedVar.Type, meta.StringPool.GetString(actualVar.Type),
 									"Variable type mismatch for %s", expectedVar.Name)
+								if !ok {
+									return
+								}
 							}
 							if expectedVar.Value != "" {
 								ok = assert.Equal(t, expectedVar.Value, meta.StringPool.GetString(actualVar.Value),
@@ -1347,58 +1347,27 @@ func main() {
 	t.Logf("Method chaining test completed successfully")
 	t.Logf("Total call graph edges: %d", len(meta.CallGraph))
 	t.Logf("Package count: %d", len(meta.Packages))
-}
-
-// sanitizeMetadataForTest removes temporary directory paths from metadata to ensure consistent test output
+} // sanitizeMetadataForTest removes temporary directory paths from metadata to ensure consistent test output.
 func sanitizeMetadataForTest(meta *metadata.Metadata) *metadata.Metadata {
-	// Create a copy of the metadata to avoid modifying the original
+	// Create a copy to avoid mutating the original
 	sanitized := &metadata.Metadata{
 		StringPool: sanitizeStringPool(meta.StringPool),
 		CallGraph:  meta.CallGraph,
 		Packages:   make(map[string]*metadata.Package),
 	}
 
-	// Sanitize package paths by removing temporary directory prefixes
 	for pkgPath, pkg := range meta.Packages {
-		// Remove temporary directory paths but preserve package structure
-		// e.g., "testdata/temp/swagen_test123456/multipackage/models" -> "multipackage/models"
-		// e.g., "testdata/temp/swagen_test123456/main" -> "main"
+		// Normalize package path by removing temp directories and test suffixes
+		sanitizedPath := sanitizeFilePath(pkgPath)
 
-		// Split the path and find the meaningful parts
-		parts := strings.Split(pkgPath, string(filepath.Separator))
-		var meaningfulParts []string
-
-		// Look for parts that indicate the actual package structure
-		for i, part := range parts {
-			if part == "testdata" || part == "temp" || strings.HasPrefix(part, "swagen_test") {
-				continue
-			}
-			// Include this part and all subsequent parts
-			meaningfulParts = parts[i:]
-			break
-		}
-
-		if len(meaningfulParts) == 0 {
-			meaningfulParts = []string{"main"} // fallback
-		}
-
-		// Reconstruct the package path
-		sanitizedPath := strings.Join(meaningfulParts, "/")
-
-		// Create a sanitized package with sanitized file paths
-		sanitizedPkg := &metadata.Package{
-			Files: make(map[string]*metadata.File),
-		}
-
-		// Copy all fields from the original package
+		// Copy package with sanitized file paths
+		sanitizedPkg := &metadata.Package{}
 		*sanitizedPkg = *pkg
+		sanitizedPkg.Files = make(map[string]*metadata.File)
 
-		// Sanitize file paths within the package
 		for filePath, file := range pkg.Files {
-			// Remove temporary directory paths from file paths
-			// e.g., "/var/folders/.../multipackage/src/multipackage/main.go" -> "multipackage/main.go"
-			sanitizedFilePath := sanitizeFilePath(filePath)
-			sanitizedPkg.Files[sanitizedFilePath] = file
+			cleanPath := sanitizeFilePath(filePath)
+			sanitizedPkg.Files[cleanPath] = file
 		}
 
 		sanitized.Packages[sanitizedPath] = sanitizedPkg
@@ -1407,73 +1376,69 @@ func sanitizeMetadataForTest(meta *metadata.Metadata) *metadata.Metadata {
 	return sanitized
 }
 
-// sanitizeStringPool removes temporary directory paths from string pool entries
-func sanitizeStringPool(stringPool *metadata.StringPool) *metadata.StringPool {
-	if stringPool == nil {
+// sanitizeStringPool removes temporary directory paths from string pool entries.
+func sanitizeStringPool(pool *metadata.StringPool) *metadata.StringPool {
+	if pool == nil {
 		return nil
 	}
 
-	// Create a new string pool with sanitized strings
 	sanitized := metadata.NewStringPool()
-
-	// Build a mapping from original strings to sanitized strings
 	stringMap := make(map[string]string)
 
-	// First pass: collect all original strings and their sanitized versions
-	for i := 0; i < stringPool.GetSize(); i++ {
-		originalString := stringPool.GetString(i)
-		sanitizedString := sanitizeString(originalString)
-		stringMap[originalString] = sanitizedString
+	for i := 0; i < pool.GetSize(); i++ {
+		orig := pool.GetString(i)
+		clean := sanitizeString(orig)
+		stringMap[orig] = clean
 	}
 
-	// Second pass: add sanitized strings to new pool in the same order
-	// This preserves the indices as much as possible
-	for i := 0; i < stringPool.GetSize(); i++ {
-		originalString := stringPool.GetString(i)
-		sanitizedString := stringMap[originalString]
-		sanitized.Get(sanitizedString)
+	for i := 0; i < pool.GetSize(); i++ {
+		sanitized.Get(stringMap[pool.GetString(i)])
 	}
 
 	return sanitized
 }
 
-// sanitizeString removes temporary directory paths from a string if it looks like a file path
+// sanitizeString detects file-like strings and normalizes their paths.
 func sanitizeString(s string) string {
-	// Check if this string looks like a file path
-	// It should contain slashes and either:
-	// 1. End with .go or contain .go:
-	// 2. Contain /var/folders/ (temporary directory)
-	// 3. Contain TestGenerateMetadata (test temporary directory)
-	if strings.Contains(s, "/") && (strings.Contains(s, ".go:") ||
-		strings.Contains(s, ".go") ||
-		strings.Contains(s, "/var/folders/") ||
-		strings.Contains(s, "TestGenerateMetadata")) {
+	if strings.Contains(s, "/") &&
+		(strings.HasSuffix(s, ".go") ||
+			strings.Contains(s, ".go:") ||
+			strings.Contains(s, "/var/") ||
+			strings.Contains(s, "/tmp/") ||
+			strings.Contains(s, "TestGenerateMetadata")) {
 		return sanitizeFilePath(s)
 	}
 	return s
 }
 
-// sanitizeFilePath removes temporary directory paths from file paths
-func sanitizeFilePath(filePath string) string {
-	// Split the path and find the meaningful parts
-	parts := strings.Split(filePath, string(filepath.Separator))
-	var meaningfulParts []string
+// sanitizeFilePath strips system temp paths, random test IDs, and keeps meaningful structure.
+func sanitizeFilePath(path string) string {
+	parts := strings.Split(path, string(filepath.Separator))
+	var meaningful []string
 
-	// Look for parts that indicate the actual file structure
-	for i, part := range parts {
-		if part == "var" || part == "folders" || strings.HasPrefix(part, "TestGenerateMetadata") ||
-			part == "testdata" || part == "temp" || strings.HasPrefix(part, "swagen_test") {
+	for _, part := range parts {
+		if part == "" ||
+			part == "var" || part == "folders" ||
+			part == "tmp" || part == "temp" ||
+			part == "testdata" ||
+			strings.HasPrefix(part, "TestGenerateMetadata") ||
+			strings.HasPrefix(part, "swagen_test") ||
+			isRandomSuffix(part) {
 			continue
 		}
-		// Include this part and all subsequent parts
-		meaningfulParts = parts[i:]
-		break
+		meaningful = append(meaningful, part)
 	}
 
-	if len(meaningfulParts) == 0 {
+	if len(meaningful) == 0 {
 		return "main.go" // fallback
 	}
 
-	// Reconstruct the file path
-	return strings.Join(meaningfulParts, "/")
+	return strings.Join(meaningful, "/")
+}
+
+// isRandomSuffix detects random IDs like w8tjj19x3nz2gpwll3xntf4r0000gn
+func isRandomSuffix(s string) bool {
+	return len(s) > 12 && strings.IndexFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	}) == -1
 }

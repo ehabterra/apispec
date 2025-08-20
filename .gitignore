@@ -37,5 +37,6 @@ Thumbs.db
 openapi.json
 output.txt
 test_output.txt
+coverage.txt
 
 swagen
