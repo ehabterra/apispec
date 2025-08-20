@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	intspec "github.com/ehabterra/swagen/internal/spec"
 	"github.com/ehabterra/swagen/spec"
 )
 
@@ -156,9 +157,9 @@ func main() {
 	}
 }
 
-func TestFindModuleRoot(t *testing.T) {
-	// Test with a directory that has go.mod
-	tempDir, err := os.MkdirTemp("", "swagen_test_module")
+func TestGenerateFromDirectory_WithSwagenConfig(t *testing.T) {
+	// Create a temporary directory with a Go module
+	tempDir, err := os.MkdirTemp("", "swagen_test_with_swagen_config")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -169,49 +170,78 @@ func TestFindModuleRoot(t *testing.T) {
 	goModContent := `module testapp
 
 go 1.21`
-
 	err = os.WriteFile(goModFile, []byte(goModContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write go.mod: %v", err)
 	}
 
-	moduleRoot, err := findModuleRoot(tempDir)
+	// Create a simple Go file
+	goFile := filepath.Join(tempDir, "main.go")
+	goContent := `package main
+
+import "net/http"
+
+func main() {
+	http.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("users"))
+	})
+	http.ListenAndServe(":8080", nil)
+}`
+	err = os.WriteFile(goFile, []byte(goContent), 0644)
 	if err != nil {
-		t.Fatalf("findModuleRoot failed: %v", err)
-	}
-	if moduleRoot != tempDir {
-		t.Errorf("Expected module root %s, got %s", tempDir, moduleRoot)
+		t.Fatalf("Failed to write main.go: %v", err)
 	}
 
-	// Test with a subdirectory
-	subDir := filepath.Join(tempDir, "subdir")
-	err = os.Mkdir(subDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create subdirectory: %v", err)
+	// Create a custom SwagenConfig
+	customConfig := &spec.SwagenConfig{
+		Info: spec.Info{
+			Title:       "Custom API from Config",
+			Description: "This API was generated using a custom SwagenConfig",
+			Version:     "2.0.0",
+		},
+		Framework: intspec.FrameworkConfig{
+			RoutePatterns: []intspec.RoutePattern{
+				{
+					CallRegex:       "^HandleFunc$",
+					PathFromArg:     true,
+					HandlerFromArg:  true,
+					PathArgIndex:    0,
+					MethodArgIndex:  -1,
+					HandlerArgIndex: 1,
+					RecvTypeRegex:   "^net/http(\\.\\*ServeMux)?$",
+				},
+			},
+		},
+		Defaults: intspec.Defaults{
+			RequestContentType:  "application/json",
+			ResponseContentType: "application/json",
+			ResponseStatus:      200,
+		},
 	}
 
-	moduleRoot, err = findModuleRoot(subDir)
-	if err != nil {
-		t.Fatalf("findModuleRoot failed: %v", err)
-	}
-	if moduleRoot != tempDir {
-		t.Errorf("Expected module root %s, got %s", tempDir, moduleRoot)
-	}
-}
+	// Create generator with custom config
+	gen := NewGenerator(customConfig)
 
-func TestFindModuleRoot_NoGoMod(t *testing.T) {
-	// Test with a directory that doesn't have go.mod
-	tempDir, err := os.MkdirTemp("", "swagen_test_no_module")
+	// Generate OpenAPI spec
+	spec, err := gen.GenerateFromDirectory(tempDir)
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf("Expected successful generation, got error: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
 
-	moduleRoot, err := findModuleRoot(tempDir)
-	if err == nil {
-		t.Error("Expected error for directory without go.mod")
+	if spec == nil {
+		t.Fatal("Expected non-nil OpenAPI spec")
 	}
-	if moduleRoot != "" {
-		t.Errorf("Expected empty module root, got %s", moduleRoot)
+
+	// Verify that the custom config was used
+	if spec.Info.Title != "Custom API from Config" {
+		t.Errorf("Expected title 'Custom API from Config', got %s", spec.Info.Title)
+	}
+
+	if spec.Info.Description != "This API was generated using a custom SwagenConfig" {
+		t.Errorf("Expected description 'This API was generated using a custom SwagenConfig', got %s", spec.Info.Description)
+	}
+
+	if spec.Info.Version != "2.0.0" {
+		t.Errorf("Expected version '2.0.0', got %s", spec.Info.Version)
 	}
 }

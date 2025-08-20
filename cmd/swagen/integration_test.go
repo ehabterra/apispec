@@ -37,11 +37,11 @@ func TestMainCLI_Version(t *testing.T) {
 	if !strings.Contains(outputStr, "swagen version") {
 		t.Error("Version output should contain 'swagen version'")
 	}
-	if !strings.Contains(outputStr, "OpenAPI spec version") {
-		t.Error("Version output should contain 'OpenAPI spec version'")
+	if !strings.Contains(outputStr, "Commit") {
+		t.Error("Version output should contain 'Commit'")
 	}
-	if !strings.Contains(outputStr, "Build time") {
-		t.Error("Version output should contain 'Build time'")
+	if !strings.Contains(outputStr, "Build date") {
+		t.Error("Version output should contain 'Build date'")
 	}
 }
 
@@ -205,8 +205,8 @@ func TestMainCLI_InvalidDirectory(t *testing.T) {
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, "Input directory does not exist") {
-		t.Error("Error output should contain 'Input directory does not exist'")
+	if !strings.Contains(outputStr, "input directory does not exist") {
+		t.Error("Error output should contain 'input directory does not exist'")
 	}
 }
 
@@ -250,8 +250,8 @@ go 1.21`
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, "Failed to load config") {
-		t.Error("Error output should contain 'Failed to load config'")
+	if !strings.Contains(outputStr, "failed to load config") {
+		t.Error("Error output should contain 'failed to load config'")
 	}
 }
 
@@ -280,8 +280,8 @@ func TestMainCLI_NoGoFiles(t *testing.T) {
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, "Could not find Go module") {
-		t.Error("Error output should contain 'Could not find Go module'")
+	if !strings.Contains(outputStr, "could not find Go module") {
+		t.Error("Error output should contain 'could not find Go module'")
 	}
 }
 

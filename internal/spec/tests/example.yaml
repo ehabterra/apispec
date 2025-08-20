@@ -1,15 +1,15 @@
 string_pool:
   - GetName
   - '*User'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:20:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:20:1
   - exported
   - func() string
   - '*example.User.Age'
   - example
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:2
   - selector
   - SetAge
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:24:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:24:1
   - 'func(int) '
   - User
   - struct
@@ -27,28 +27,28 @@ string_pool:
   - 'func(string) '
   - u
   - '*example.User'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:2
   - unexported
   - NewUser
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:28:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:28:1
   - user
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:2
   - main
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:39:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:39:1
   - name
   - age
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:8
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:8
   - example.Namer
   - example.User
   - example.Ager
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:34:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:34:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:10
   - Println
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:41:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:41:2
 packages:
   example:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go
       : types:
           Ager:
             name: 22
@@ -67,7 +67,7 @@ packages:
                       name: int
                       pkg: example
                       type: int
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:13:13
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:13:13
                 signature_str: 11
                 scope: 3
                 comments: -1
@@ -88,7 +88,7 @@ packages:
                         name: string
                         pkg: example
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:9:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:9:12
                 signature_str: 4
                 scope: 3
                 comments: -1
@@ -108,7 +108,7 @@ packages:
                       name: string
                       pkg: example
                       type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:17:16
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:17:16
                 signature_str: 25
                 scope: 3
                 comments: -1
@@ -142,7 +142,7 @@ packages:
                         name: string
                         pkg: example
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:20:26
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:20:26
                 signature_str: 4
                 position: 2
                 scope: 3
@@ -157,7 +157,7 @@ packages:
                       name: int
                       pkg: example
                       type: int
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:24:27
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:24:27
                 signature_str: 11
                 position: 10
                 scope: 3
@@ -173,7 +173,7 @@ packages:
                         name: age
                         pkg: example
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:10
                       lhs:
                         kind: selector
                         x:
@@ -181,14 +181,14 @@ packages:
                           name: u
                           pkg: example
                           type: '*example.User'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:2
                         sel:
                           kind: ident
                           name: Age
                           pkg: example
                           type: int
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:4
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:4
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:2
             comments: -1
         functions:
           NewUser:
@@ -204,18 +204,18 @@ packages:
                       name: User
                       pkg: example
                       type: User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:28:37
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:28:37
               args:
                 - kind: ident
                   name: string
                   pkg: example
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:28:19
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:28:19
                 - kind: ident
                   name: int
                   pkg: example
                   type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:28:31
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:28:31
             position: 31
             scope: 3
             comments: -1
@@ -224,7 +224,7 @@ packages:
                 name: u
                 pkg: example
                 type: '*example.User'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:36:9
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:36:9
             assignments:
               u:
                 - variable_name: 26
@@ -242,7 +242,7 @@ packages:
                         name: User
                         pkg: example
                         type: User
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:8
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:8
                       args:
                         - kind: key_value
                           x:
@@ -250,32 +250,32 @@ packages:
                             name: Name
                             pkg: example
                             type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:30:3
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:30:3
                           fun:
                             kind: ident
                             name: name
                             pkg: example
                             type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:30:9
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:30:9
                         - kind: key_value
                           x:
                             kind: ident
                             name: Age
                             pkg: example
                             type: int
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:31:3
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:31:3
                           fun:
                             kind: ident
                             name: age
                             pkg: example
                             type: int
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:31:9
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:31:9
                   lhs:
                     kind: ident
                     name: u
                     pkg: example
                     type: '*example.User'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:2
                   func: 30
           main:
             name: 34
@@ -300,19 +300,19 @@ packages:
                       name: NewUser
                       pkg: example
                       type: func(name string, age int) *example.User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:10
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:10
                     args:
                       - kind: literal
                         value: '"User Name"'
                       - kind: literal
                         value: "40"
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:10
                   lhs:
                     kind: ident
                     name: user
                     pkg: example
                     type: '*example.User'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:2
                   func: 34
                   callee_func: NewUser
                   callee_pkg: example
@@ -341,7 +341,7 @@ packages:
                   name: int
                   pkg: example
                   type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:13:13
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:13:13
             signature_str: 11
             scope: 3
             comments: -1
@@ -362,7 +362,7 @@ packages:
                     name: string
                     pkg: example
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:9:12
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:9:12
             signature_str: 4
             scope: 3
             comments: -1
@@ -382,7 +382,7 @@ packages:
                   name: string
                   pkg: example
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:17:16
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:17:16
             signature_str: 25
             scope: 3
             comments: -1
@@ -416,7 +416,7 @@ packages:
                     name: string
                     pkg: example
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:20:26
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:20:26
             signature_str: 4
             position: 2
             scope: 3
@@ -431,7 +431,7 @@ packages:
                   name: int
                   pkg: example
                   type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:24:27
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:24:27
             signature_str: 11
             position: 10
             scope: 3
@@ -447,7 +447,7 @@ packages:
                     name: age
                     pkg: example
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:10
                   lhs:
                     kind: selector
                     x:
@@ -455,14 +455,14 @@ packages:
                       name: u
                       pkg: example
                       type: '*example.User'
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:2
                     sel:
                       kind: ident
                       name: Age
                       pkg: example
                       type: int
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:4
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:25:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:4
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:25:2
         comments: -1
 call_graph:
   - caller:
@@ -481,14 +481,14 @@ call_graph:
         name: age
         pkg: example
         type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:34:11
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:34:11
     param_arg_map:
       age:
         kind: ident
         name: age
         pkg: example
         type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:34:11
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:34:11
     callee_var_name: u
     callee_recv_var_name: u
   - caller:
@@ -524,7 +524,7 @@ call_graph:
                 name: User
                 pkg: example
                 type: User
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:8
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:8
               args:
                 - kind: key_value
                   x:
@@ -532,32 +532,32 @@ call_graph:
                     name: Name
                     pkg: example
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:30:3
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:30:3
                   fun:
                     kind: ident
                     name: name
                     pkg: example
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:30:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:30:9
                 - kind: key_value
                   x:
                     kind: ident
                     name: Age
                     pkg: example
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:31:3
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:31:3
                   fun:
                     kind: ident
                     name: age
                     pkg: example
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:31:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:31:9
           lhs:
             kind: ident
             name: u
             pkg: example
             type: '*example.User'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:29:2
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:29:2
           func: 30
       user:
         - variable_name: 32
@@ -572,19 +572,19 @@ call_graph:
               name: NewUser
               pkg: example
               type: func(name string, age int) *example.User
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:10
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:10
             args:
               - kind: literal
                 value: '"User Name"'
               - kind: literal
                 value: "40"
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:10
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:10
           lhs:
             kind: ident
             name: user
             pkg: example
             type: '*example.User'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:40:2
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:40:2
           func: 34
           callee_func: NewUser
           callee_pkg: example
@@ -614,4 +614,4 @@ call_graph:
           name: user
           pkg: example
           type: '*example.User'
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces4084065773/example/src/example/types.go:41:15
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Struct_types_with_methods_and_interfaces1498452083/example/src/example/types.go:41:15

@@ -1,5 +1,7 @@
 ## Swagen: Generate OpenAPI from Go code
 
+![Coverage](https://img.shields.io/badge/coverage-47.6%25-brightgreen?style=flat&logo=go&logoColor=white)
+
 > **Disclaimer:**  
 > Swagen is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
 
@@ -644,19 +646,31 @@ go tool cover -html=coverage.out
 go tool cover -func=coverage.out
 ```
 
-## Contribution Process
+## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/new-feature`)
-3. Commit your changes (`git commit -am 'Add new feature'`)
-4. Push to the branch (`git push origin feat/new-feature`)
-5. Open a Pull Request
+### How to Contribute
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Add tests** for new functionality
+4. **Run tests** to ensure everything works (`make test`)
+5. **Update coverage** badge (`make update-badge`)
+6. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+7. **Push** to the branch (`git push origin feature/amazing-feature`)
+8. **Open** a Pull Request
 
 ### Adding Framework Support
 1. Create a new detector in `internal/core/detectors/`
 2. Add default configuration in `internal/spec/configs/`
 3. Update the framework detection logic in `main.go`
 4. Add test cases in `testdata/`
+
+### Code Quality
+
+- All code should have tests
+- Aim to maintain or improve test coverage
+- Follow Go coding standards
+- Add documentation for new features
 
 ## Performance Considerations
 

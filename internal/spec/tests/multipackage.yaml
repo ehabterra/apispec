@@ -1,113 +1,113 @@
 string_pool:
-  - GetName
-  - '*User'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:13:1
-  - exported
-  - func() string
-  - GetAge
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:17:1
-  - func() int
-  - User
-  - struct
-  - Name
-  - string
-  - json:"name"
-  - Age
-  - int
-  - json:"age"
-  - interface
-  - UserInterface
-  - NewUser
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:21:1
   - name
-  - age
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:22:10
   - multipackage/services
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:2
+  - string
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:2
   - unexported
   - ProcessUser
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:2
+  - age
+  - int
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:2
   - '*UserService'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:1
+  - exported
   - func(*models.User) string
   - '*multipackage/services.UserService.prefix'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:2
   - selector
   - SetPrefix
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:22:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:22:1
   - 'func(string) '
   - UserService
+  - struct
   - prefix
+  - interface
   - NewUserService
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:12:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:12:1
   - 'User:'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:13:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:13:10
   - fmt
   - multipackage/models
   - user
   - multipackage
   - '*multipackage/models.User'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:2
   - main
   - service
   - '*multipackage/services.UserService'
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:2
   - result
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:9:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:9:1
   - FormatString
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:5:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:5:1
   - ValidateAge
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:9:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:9:1
   - MinAge
   - const
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:14:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:14:2
   - "1"
   - MaxAge
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:15:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:15:2
   - "149"
   - DefaultFormat
   - var
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:18:5
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:18:5
   - uppercase
   - strings
+  - GetName
+  - '*User'
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:13:1
+  - func() string
+  - GetAge
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:17:1
+  - func() int
+  - User
+  - Name
+  - json:"name"
+  - Age
+  - json:"age"
+  - UserInterface
+  - NewUser
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:21:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:22:10
   - multipackage/models.UserInterface
   - multipackage/models.User
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
   - Sprintf
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:9
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:9
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
   - Println
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:14:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:14:2
   - multipackage/utils
   - ToUpper
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:9
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:9
   - TrimSpace
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
 packages:
   multipackage:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go
       : functions:
           main:
-            name: 49
+            name: 33
             signature:
               kind: func_type
               fun:
                 kind: func_results
-            position: 55
-            scope: 25
+            position: 39
+            scope: 4
             comments: -1
             assignments:
               result:
-                - variable_name: 53
-                  pkg: 46
-                  concrete_type: 11
-                  position: 54
-                  scope: 25
+                - variable_name: 37
+                  pkg: 30
+                  concrete_type: 2
+                  position: 38
+                  scope: 4
                   value:
                     kind: call
                     fun:
@@ -117,36 +117,36 @@ packages:
                         name: service
                         pkg: multipackage
                         type: '*multipackage/services.UserService'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
                       sel:
                         kind: ident
                         name: ProcessUser
                         pkg: multipackage/services
                         type: func(user *multipackage/models.User) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:20
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:20
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
                     args:
                       - kind: ident
                         name: user
                         pkg: multipackage
                         type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:32
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:32
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
                   lhs:
                     kind: ident
                     name: result
                     pkg: multipackage
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:2
-                  func: 49
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:2
+                  func: 33
                   callee_func: ProcessUser
                   callee_pkg: multipackage/services
               service:
-                - variable_name: 50
-                  pkg: 46
-                  concrete_type: 51
-                  position: 52
-                  scope: 25
+                - variable_name: 34
+                  pkg: 30
+                  concrete_type: 35
+                  position: 36
+                  scope: 4
                   value:
                     kind: call
                     fun:
@@ -155,30 +155,30 @@ packages:
                         kind: ident
                         name: services
                         pkg: multipackage/services
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
                       sel:
                         kind: ident
                         name: NewUserService
                         pkg: multipackage/services
                         type: func() *multipackage/services.UserService
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:22
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:22
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
                   lhs:
                     kind: ident
                     name: service
                     pkg: multipackage
                     type: '*multipackage/services.UserService'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:2
-                  func: 49
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:2
+                  func: 33
                   callee_func: NewUserService
                   callee_pkg: multipackage/services
               user:
-                - variable_name: 45
-                  pkg: 46
-                  concrete_type: 47
-                  position: 48
-                  scope: 25
+                - variable_name: 29
+                  pkg: 30
+                  concrete_type: 31
+                  position: 32
+                  scope: 4
                   value:
                     kind: call
                     fun:
@@ -187,56 +187,57 @@ packages:
                         kind: ident
                         name: models
                         pkg: multipackage/models
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
                       sel:
                         kind: ident
                         name: NewUser
                         pkg: multipackage/models
                         type: func(name string, age int) *multipackage/models.User
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:17
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:17
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
                     args:
                       - kind: literal
                         value: '"John"'
                       - kind: literal
                         value: "25"
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
                   lhs:
                     kind: ident
                     name: user
                     pkg: multipackage
                     type: '*multipackage/models.User'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:2
-                  func: 49
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:2
+                  func: 33
                   callee_func: NewUser
                   callee_pkg: multipackage/models
         imports:
-          23: 23
-          43: 43
-          44: 44
+          1: 1
+          27: 27
+          28: 28
   multipackage/models:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go
       : types:
           User:
-            name: 8
-            kind: 9
+            name: 63
+            kind: 20
             implements:
               - 72
             fields:
-              - name: 10
-                type: 11
-                tag: 12
-                scope: 3
+              - name: 64
+                type: 2
+                tag: 65
+                scope: 11
                 comments: -1
-              - name: 13
-                type: 14
-                tag: 15
-                scope: 3
+              - name: 66
+                type: 7
+                tag: 67
+                scope: 11
                 comments: -1
-            scope: 3
+            scope: 11
             methods:
-              - receiver: 1
+              - name: 56
+                receiver: 57
                 signature:
                   kind: func_type
                   fun:
@@ -246,12 +247,12 @@ packages:
                         name: string
                         pkg: multipackage/models
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:13:26
-                signature_str: 4
-                position: 2
-                scope: 3
-              - name: 5
-                receiver: 1
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:13:26
+                signature_str: 59
+                position: 58
+                scope: 11
+              - name: 60
+                receiver: 57
                 signature:
                   kind: func_type
                   fun:
@@ -261,19 +262,20 @@ packages:
                         name: int
                         pkg: multipackage/models
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:17:25
-                signature_str: 7
-                position: 6
-                scope: 3
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:17:25
+                signature_str: 62
+                position: 61
+                scope: 11
             comments: -1
           UserInterface:
-            name: 17
-            kind: 16
+            name: 68
+            kind: 22
             implemented_by:
               - 73
-            scope: 3
+            scope: 11
             methods:
-              - signature:
+              - name: 56
+                signature:
                   kind: func_type
                   fun:
                     kind: func_results
@@ -282,11 +284,11 @@ packages:
                         name: string
                         pkg: multipackage/models
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:9:12
-                signature_str: 4
-                scope: 3
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:9:12
+                signature_str: 59
+                scope: 11
                 comments: -1
-              - name: 5
+              - name: 60
                 signature:
                   kind: func_type
                   fun:
@@ -296,14 +298,14 @@ packages:
                         name: int
                         pkg: multipackage/models
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:10:11
-                signature_str: 7
-                scope: 3
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:10:11
+                signature_str: 62
+                scope: 11
                 comments: -1
             comments: -1
         functions:
           NewUser:
-            name: 18
+            name: 69
             signature:
               kind: func_type
               fun:
@@ -315,20 +317,20 @@ packages:
                       name: User
                       pkg: multipackage/models
                       type: User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:21:37
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:21:37
               args:
                 - kind: ident
                   name: string
                   pkg: multipackage/models
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:21:19
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:21:19
                 - kind: ident
                   name: int
                   pkg: multipackage/models
                   type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:21:31
-            position: 19
-            scope: 3
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:21:31
+            position: 70
+            scope: 11
             comments: -1
             return_vars:
               - kind: unary
@@ -340,7 +342,7 @@ packages:
                     name: User
                     pkg: multipackage/models
                     type: User
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:22:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:22:10
                   args:
                     - kind: key_value
                       x:
@@ -348,53 +350,54 @@ packages:
                         name: Name
                         pkg: multipackage/models
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:23:3
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:23:3
                       fun:
                         kind: ident
                         name: name
                         pkg: multipackage/models
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:23:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:23:9
                     - kind: key_value
                       x:
                         kind: ident
                         name: Age
                         pkg: multipackage/models
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:24:3
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:24:3
                       fun:
                         kind: ident
                         name: age
                         pkg: multipackage/models
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:24:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:24:9
         struct_instances:
-          - type: 8
-            position: 22
+          - type: 63
+            position: 71
             fields:
-              10: 20
-              13: 21
+              64: 0
+              66: 6
         imports: {}
     types:
       User:
-        name: 8
-        kind: 9
+        name: 63
+        kind: 20
         implements:
           - 72
         fields:
-          - name: 10
-            type: 11
-            tag: 12
-            scope: 3
+          - name: 64
+            type: 2
+            tag: 65
+            scope: 11
             comments: -1
-          - name: 13
-            type: 14
-            tag: 15
-            scope: 3
+          - name: 66
+            type: 7
+            tag: 67
+            scope: 11
             comments: -1
-        scope: 3
+        scope: 11
         methods:
-          - receiver: 1
+          - name: 56
+            receiver: 57
             signature:
               kind: func_type
               fun:
@@ -404,12 +407,12 @@ packages:
                     name: string
                     pkg: multipackage/models
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:13:26
-            signature_str: 4
-            position: 2
-            scope: 3
-          - name: 5
-            receiver: 1
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:13:26
+            signature_str: 59
+            position: 58
+            scope: 11
+          - name: 60
+            receiver: 57
             signature:
               kind: func_type
               fun:
@@ -419,19 +422,20 @@ packages:
                     name: int
                     pkg: multipackage/models
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:17:25
-            signature_str: 7
-            position: 6
-            scope: 3
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:17:25
+            signature_str: 62
+            position: 61
+            scope: 11
         comments: -1
       UserInterface:
-        name: 17
-        kind: 16
+        name: 68
+        kind: 22
         implemented_by:
           - 73
-        scope: 3
+        scope: 11
         methods:
-          - signature:
+          - name: 56
+            signature:
               kind: func_type
               fun:
                 kind: func_results
@@ -440,11 +444,11 @@ packages:
                     name: string
                     pkg: multipackage/models
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:9:12
-            signature_str: 4
-            scope: 3
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:9:12
+            signature_str: 59
+            scope: 11
             comments: -1
-          - name: 5
+          - name: 60
             signature:
               kind: func_type
               fun:
@@ -454,28 +458,28 @@ packages:
                     name: int
                     pkg: multipackage/models
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/models/user.go:10:11
-            signature_str: 7
-            scope: 3
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/models/user.go:10:11
+            signature_str: 62
+            scope: 11
             comments: -1
         comments: -1
   multipackage/services:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go
       : types:
           UserService:
-            name: 37
-            kind: 9
+            name: 19
+            kind: 20
             fields:
-              - name: 38
-                type: 11
+              - name: 21
+                type: 2
                 tag: -1
-                scope: 25
+                scope: 4
                 comments: -1
-            scope: 3
+            scope: 11
             methods:
-              - name: 26
-                receiver: 28
+              - name: 5
+                receiver: 9
                 signature:
                   kind: func_type
                   fun:
@@ -485,7 +489,7 @@ packages:
                         name: string
                         pkg: multipackage/services
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:54
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:54
                   args:
                     - kind: star
                       x:
@@ -494,24 +498,24 @@ packages:
                           kind: ident
                           name: models
                           pkg: multipackage/models
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:41
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:41
                         sel:
                           kind: ident
                           name: User
                           pkg: multipackage/models
                           type: User
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:48
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:41
-                signature_str: 30
-                position: 29
-                scope: 3
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:48
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:41
+                signature_str: 12
+                position: 10
+                scope: 11
                 assignments:
                   age:
-                    - variable_name: 21
-                      pkg: 23
-                      concrete_type: 14
-                      position: 27
-                      scope: 25
+                    - variable_name: 6
+                      pkg: 1
+                      concrete_type: 7
+                      position: 8
+                      scope: 4
                       value:
                         kind: call
                         fun:
@@ -521,30 +525,29 @@ packages:
                             name: user
                             pkg: multipackage/services
                             type: '*multipackage/models.User'
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
                           sel:
                             kind: ident
                             name: GetAge
                             pkg: multipackage/models
                             type: func() int
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:14
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:14
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
                       lhs:
                         kind: ident
                         name: age
                         pkg: multipackage/services
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:2
-                      func: 26
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:2
+                      func: 5
                       callee_func: GetAge
                       callee_pkg: multipackage/models
                   name:
-                    - variable_name: 20
-                      pkg: 23
-                      concrete_type: 11
-                      position: 24
-                      scope: 25
+                    - pkg: 1
+                      concrete_type: 2
+                      position: 3
+                      scope: 4
                       value:
                         kind: call
                         fun:
@@ -554,26 +557,26 @@ packages:
                             name: user
                             pkg: multipackage/services
                             type: '*multipackage/models.User'
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
                           sel:
                             kind: ident
                             name: GetName
                             pkg: multipackage/models
                             type: func() string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:15
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
+                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:15
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
                       lhs:
                         kind: ident
                         name: name
                         pkg: multipackage/services
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:2
-                      func: 26
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:2
+                      func: 5
                       callee_func: GetName
                       callee_pkg: multipackage/models
-              - name: 34
-                receiver: 28
+              - name: 16
+                receiver: 9
                 signature:
                   kind: func_type
                   fun:
@@ -583,23 +586,23 @@ packages:
                       name: string
                       pkg: multipackage/services
                       type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:22:40
-                signature_str: 36
-                position: 35
-                scope: 3
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:22:40
+                signature_str: 18
+                position: 17
+                scope: 11
                 assignments:
                   '*multipackage/services.UserService.prefix':
-                    - variable_name: 31
-                      pkg: 23
+                    - variable_name: 13
+                      pkg: 1
                       concrete_type: -1
-                      position: 32
-                      scope: 33
+                      position: 14
+                      scope: 15
                       value:
                         kind: ident
                         name: prefix
                         pkg: multipackage/services
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:13
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:13
                       lhs:
                         kind: selector
                         x:
@@ -607,18 +610,18 @@ packages:
                           name: s
                           pkg: multipackage/services
                           type: '*multipackage/services.UserService'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:2
                         sel:
                           kind: ident
                           name: prefix
                           pkg: multipackage/services
                           type: string
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:4
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:2
+                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:4
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:2
             comments: -1
         functions:
           NewUserService:
-            name: 39
+            name: 23
             signature:
               kind: func_type
               fun:
@@ -630,9 +633,9 @@ packages:
                       name: UserService
                       pkg: multipackage/services
                       type: UserService
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:12:24
-            position: 40
-            scope: 3
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:12:24
+            position: 24
+            scope: 11
             comments: -1
             return_vars:
               - kind: unary
@@ -644,7 +647,7 @@ packages:
                     name: UserService
                     pkg: multipackage/services
                     type: UserService
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:13:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:13:10
                   args:
                     - kind: key_value
                       x:
@@ -652,32 +655,32 @@ packages:
                         name: prefix
                         pkg: multipackage/services
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:13:22
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:13:22
                       fun:
                         kind: literal
                         value: '"User:"'
         struct_instances:
-          - type: 37
-            position: 42
+          - type: 19
+            position: 26
             fields:
-              38: 41
+              21: 25
         imports:
-          43: 43
-          44: 44
+          27: 27
+          28: 28
     types:
       UserService:
-        name: 37
-        kind: 9
+        name: 19
+        kind: 20
         fields:
-          - name: 38
-            type: 11
+          - name: 21
+            type: 2
             tag: -1
-            scope: 25
+            scope: 4
             comments: -1
-        scope: 3
+        scope: 11
         methods:
-          - name: 26
-            receiver: 28
+          - name: 5
+            receiver: 9
             signature:
               kind: func_type
               fun:
@@ -687,7 +690,7 @@ packages:
                     name: string
                     pkg: multipackage/services
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:54
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:54
               args:
                 - kind: star
                   x:
@@ -696,24 +699,24 @@ packages:
                       kind: ident
                       name: models
                       pkg: multipackage/models
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:41
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:41
                     sel:
                       kind: ident
                       name: User
                       pkg: multipackage/models
                       type: User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:48
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:16:41
-            signature_str: 30
-            position: 29
-            scope: 3
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:48
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:16:41
+            signature_str: 12
+            position: 10
+            scope: 11
             assignments:
               age:
-                - variable_name: 21
-                  pkg: 23
-                  concrete_type: 14
-                  position: 27
-                  scope: 25
+                - variable_name: 6
+                  pkg: 1
+                  concrete_type: 7
+                  position: 8
+                  scope: 4
                   value:
                     kind: call
                     fun:
@@ -723,30 +726,29 @@ packages:
                         name: user
                         pkg: multipackage/services
                         type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
                       sel:
                         kind: ident
                         name: GetAge
                         pkg: multipackage/models
                         type: func() int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:14
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:14
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:9
                   lhs:
                     kind: ident
                     name: age
                     pkg: multipackage/services
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:18:2
-                  func: 26
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:18:2
+                  func: 5
                   callee_func: GetAge
                   callee_pkg: multipackage/models
               name:
-                - variable_name: 20
-                  pkg: 23
-                  concrete_type: 11
-                  position: 24
-                  scope: 25
+                - pkg: 1
+                  concrete_type: 2
+                  position: 3
+                  scope: 4
                   value:
                     kind: call
                     fun:
@@ -756,26 +758,26 @@ packages:
                         name: user
                         pkg: multipackage/services
                         type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
                       sel:
                         kind: ident
                         name: GetName
                         pkg: multipackage/models
                         type: func() string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:15
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:10
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:15
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:10
                   lhs:
                     kind: ident
                     name: name
                     pkg: multipackage/services
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:17:2
-                  func: 26
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:17:2
+                  func: 5
                   callee_func: GetName
                   callee_pkg: multipackage/models
-          - name: 34
-            receiver: 28
+          - name: 16
+            receiver: 9
             signature:
               kind: func_type
               fun:
@@ -785,23 +787,23 @@ packages:
                   name: string
                   pkg: multipackage/services
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:22:40
-            signature_str: 36
-            position: 35
-            scope: 3
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:22:40
+            signature_str: 18
+            position: 17
+            scope: 11
             assignments:
               '*multipackage/services.UserService.prefix':
-                - variable_name: 31
-                  pkg: 23
+                - variable_name: 13
+                  pkg: 1
                   concrete_type: -1
-                  position: 32
-                  scope: 33
+                  position: 14
+                  scope: 15
                   value:
                     kind: ident
                     name: prefix
                     pkg: multipackage/services
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:13
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:13
                   lhs:
                     kind: selector
                     x:
@@ -809,21 +811,21 @@ packages:
                       name: s
                       pkg: multipackage/services
                       type: '*multipackage/services.UserService'
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:2
                     sel:
                       kind: ident
                       name: prefix
                       pkg: multipackage/services
                       type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:4
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:23:2
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:4
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:23:2
         comments: -1
   multipackage/utils:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go
       : functions:
           FormatString:
-            name: 56
+            name: 40
             signature:
               kind: func_type
               fun:
@@ -833,15 +835,15 @@ packages:
                     name: string
                     pkg: multipackage/utils
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:5:33
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:5:33
               args:
                 - kind: ident
                   name: string
                   pkg: multipackage/utils
                   type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:5:25
-            position: 57
-            scope: 3
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:5:25
+            position: 41
+            scope: 11
             comments: -1
             return_vars:
               - kind: call
@@ -851,14 +853,14 @@ packages:
                     kind: ident
                     name: strings
                     pkg: strings
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:9
                   sel:
                     kind: ident
                     name: ToUpper
                     pkg: strings
                     type: func(s string) string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:17
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:17
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:9
                 args:
                   - kind: call
                     fun:
@@ -867,24 +869,24 @@ packages:
                         kind: ident
                         name: strings
                         pkg: strings
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
                       sel:
                         kind: ident
                         name: TrimSpace
                         pkg: strings
                         type: func(s string) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:33
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:33
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
                     args:
                       - kind: ident
                         name: input
                         pkg: multipackage/utils
                         type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:43
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:9
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:43
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:9
           ValidateAge:
-            name: 58
+            name: 42
             signature:
               kind: func_type
               fun:
@@ -894,15 +896,15 @@ packages:
                     name: bool
                     pkg: multipackage/utils
                     type: bool
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:9:27
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:9:27
               args:
                 - kind: ident
                   name: int
                   pkg: multipackage/utils
                   type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:9:22
-            position: 59
-            scope: 3
+                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:9:22
+            position: 43
+            scope: 11
             comments: -1
             return_vars:
               - kind: binary
@@ -915,7 +917,7 @@ packages:
                     name: age
                     pkg: multipackage/utils
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:10:9
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:10:9
                   fun:
                     kind: literal
                     value: "0"
@@ -927,68 +929,69 @@ packages:
                     name: age
                     pkg: multipackage/utils
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:10:20
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:10:20
                   fun:
                     kind: literal
                     value: "150"
         variables:
           DefaultFormat:
-            name: 67
-            tok: 68
+            name: 51
+            tok: 52
             type: -1
-            value: 70
-            position: 69
+            value: 54
+            position: 53
             comments: -1
           MaxAge:
-            name: 64
-            tok: 61
+            name: 48
+            tok: 45
             type: -1
-            value: 66
-            position: 65
+            value: 50
+            position: 49
             comments: -1
           MinAge:
-            name: 60
-            tok: 61
+            name: 44
+            tok: 45
             type: -1
-            value: 63
-            position: 62
+            value: 47
+            position: 46
             comments: -1
         imports:
-          71: 71
+          55: 55
 call_graph:
   - caller:
-      name: 26
-      pkg: 23
+      name: 5
+      pkg: 1
       position: -1
-      recv_type: 28
+      recv_type: 9
     callee:
-      pkg: 44
+      name: 56
+      pkg: 28
       position: 74
-      recv_type: 1
+      recv_type: 57
     position: 10226756
     callee_var_name: user
     callee_recv_var_name: name
   - caller:
-      name: 26
-      pkg: 23
-      position: -1
-      recv_type: 28
-    callee:
       name: 5
-      pkg: 44
+      pkg: 1
+      position: -1
+      recv_type: 9
+    callee:
+      name: 60
+      pkg: 28
       position: 75
-      recv_type: 1
+      recv_type: 57
     position: 10226779
     callee_var_name: user
     callee_recv_var_name: age
   - caller:
-      name: 26
-      pkg: 23
+      name: 5
+      pkg: 1
       position: -1
-      recv_type: 28
+      recv_type: 9
     callee:
       name: 76
-      pkg: 43
+      pkg: 27
       position: 77
       recv_type: -1
     position: 10226801
@@ -1001,24 +1004,24 @@ call_graph:
           name: s
           pkg: multipackage/services
           type: '*multipackage/services.UserService'
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:46
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:46
         sel:
           kind: ident
           name: prefix
           pkg: multipackage/services
           type: string
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:48
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:46
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:48
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:46
       - kind: ident
         name: name
         pkg: multipackage/services
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:56
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:56
       - kind: ident
         name: age
         pkg: multipackage/services
         type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:62
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:62
     param_arg_map:
       a:
         kind: selector
@@ -1027,25 +1030,25 @@ call_graph:
           name: s
           pkg: multipackage/services
           type: '*multipackage/services.UserService'
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:46
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:46
         sel:
           kind: ident
           name: prefix
           pkg: multipackage/services
           type: string
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:48
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/services/user_service.go:19:46
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:48
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/services/user_service.go:19:46
       format:
         kind: literal
         value: '"%s %s is %d years old"'
   - caller:
-      name: 49
-      pkg: 46
+      name: 33
+      pkg: 30
       position: -1
       recv_type: -1
     callee:
-      name: 18
-      pkg: 44
+      name: 69
+      pkg: 28
       position: 78
       recv_type: -1
     position: 10227036
@@ -1056,11 +1059,11 @@ call_graph:
         value: "25"
     assignments:
       user:
-        - variable_name: 45
-          pkg: 46
-          concrete_type: 47
-          position: 48
-          scope: 25
+        - variable_name: 29
+          pkg: 30
+          concrete_type: 31
+          position: 32
+          scope: 4
           value:
             kind: call
             fun:
@@ -1069,27 +1072,27 @@ call_graph:
                 kind: ident
                 name: models
                 pkg: multipackage/models
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
               sel:
                 kind: ident
                 name: NewUser
                 pkg: multipackage/models
                 type: func(name string, age int) *multipackage/models.User
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:17
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:17
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
             args:
               - kind: literal
                 value: '"John"'
               - kind: literal
                 value: "25"
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:10
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:10
           lhs:
             kind: ident
             name: user
             pkg: multipackage
             type: '*multipackage/models.User'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:10:2
-          func: 49
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:10:2
+          func: 33
           callee_func: NewUser
           callee_pkg: multipackage/models
     param_arg_map:
@@ -1101,23 +1104,23 @@ call_graph:
         value: '"John"'
     callee_recv_var_name: user
   - caller:
-      name: 49
-      pkg: 46
+      name: 33
+      pkg: 30
       position: -1
       recv_type: -1
     callee:
-      name: 39
-      pkg: 23
+      name: 23
+      pkg: 1
       position: 79
       recv_type: -1
     position: 10227075
     assignments:
       service:
-        - variable_name: 50
-          pkg: 46
-          concrete_type: 51
-          position: 52
-          scope: 25
+        - variable_name: 34
+          pkg: 30
+          concrete_type: 35
+          position: 36
+          scope: 4
           value:
             kind: call
             fun:
@@ -1126,49 +1129,49 @@ call_graph:
                 kind: ident
                 name: services
                 pkg: multipackage/services
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
               sel:
                 kind: ident
                 name: NewUserService
                 pkg: multipackage/services
                 type: func() *multipackage/services.UserService
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:22
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:13
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:22
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:13
           lhs:
             kind: ident
             name: service
             pkg: multipackage
             type: '*multipackage/services.UserService'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:11:2
-          func: 49
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:11:2
+          func: 33
           callee_func: NewUserService
           callee_pkg: multipackage/services
     callee_recv_var_name: service
   - caller:
-      name: 49
-      pkg: 46
+      name: 33
+      pkg: 30
       position: -1
       recv_type: -1
     callee:
-      name: 26
-      pkg: 23
+      name: 5
+      pkg: 1
       position: 80
-      recv_type: 28
+      recv_type: 9
     position: 10227114
     args:
       - kind: ident
         name: user
         pkg: multipackage
         type: '*multipackage/models.User'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:32
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:32
     assignments:
       result:
-        - variable_name: 53
-          pkg: 46
-          concrete_type: 11
-          position: 54
-          scope: 25
+        - variable_name: 37
+          pkg: 30
+          concrete_type: 2
+          position: 38
+          scope: 4
           value:
             kind: call
             fun:
@@ -1178,28 +1181,28 @@ call_graph:
                 name: service
                 pkg: multipackage
                 type: '*multipackage/services.UserService'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
               sel:
                 kind: ident
                 name: ProcessUser
                 pkg: multipackage/services
                 type: func(user *multipackage/models.User) string
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:20
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:20
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
             args:
               - kind: ident
                 name: user
                 pkg: multipackage
                 type: '*multipackage/models.User'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:32
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:12
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:32
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:12
           lhs:
             kind: ident
             name: result
             pkg: multipackage
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:2
-          func: 49
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:2
+          func: 33
           callee_func: ProcessUser
           callee_pkg: multipackage/services
     param_arg_map:
@@ -1208,17 +1211,17 @@ call_graph:
         name: user
         pkg: multipackage
         type: '*multipackage/models.User'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:13:32
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:13:32
     callee_var_name: service
     callee_recv_var_name: result
   - caller:
-      name: 49
-      pkg: 46
+      name: 33
+      pkg: 30
       position: -1
       recv_type: -1
     callee:
       name: 81
-      pkg: 43
+      pkg: 27
       position: 82
       recv_type: -1
     position: 10227141
@@ -1227,22 +1230,22 @@ call_graph:
         name: result
         pkg: multipackage
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:14:14
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:14:14
     param_arg_map:
       a:
         kind: ident
         name: result
         pkg: multipackage
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/main.go:14:14
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/main.go:14:14
   - caller:
-      name: 56
+      name: 40
       pkg: 83
       position: -1
       recv_type: -1
     callee:
       name: 84
-      pkg: 71
+      pkg: 55
       position: 85
       recv_type: -1
     position: 7866992
@@ -1254,21 +1257,21 @@ call_graph:
             kind: ident
             name: strings
             pkg: strings
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
           sel:
             kind: ident
             name: TrimSpace
             pkg: strings
             type: func(s string) string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:33
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:33
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
         args:
           - kind: ident
             name: input
             pkg: multipackage/utils
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:43
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:43
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
     param_arg_map:
       s:
         kind: call
@@ -1278,29 +1281,29 @@ call_graph:
             kind: ident
             name: strings
             pkg: strings
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
           sel:
             kind: ident
             name: TrimSpace
             pkg: strings
             type: func(s string) string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:33
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:33
+          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
         args:
           - kind: ident
             name: input
             pkg: multipackage/utils
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:43
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:43
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:25
   - caller:
-      name: 56
+      name: 40
       pkg: 83
       position: -1
       recv_type: -1
     callee:
       name: 86
-      pkg: 71
+      pkg: 55
       position: 87
       recv_type: -1
     position: 7867008
@@ -1309,11 +1312,11 @@ call_graph:
         name: input
         pkg: multipackage/utils
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:43
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:43
     param_arg_map:
       s:
         kind: ident
         name: input
         pkg: multipackage/utils
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies807706192/multipackage/src/multipackage/utils/helper.go:6:43
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies4260473606/multipackage/src/multipackage/utils/helper.go:6:43
