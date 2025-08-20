@@ -1,6 +1,6 @@
 # Swagen: Generate OpenAPI from Go code
 
-![Coverage](https://img.shields.io/badge/coverage-47.2%25-red.svg)
+![Coverage](https://img.shields.io/badge/coverage-47.6%25-red.svg)
 
 
 > **Disclaimer:**  
