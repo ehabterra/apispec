@@ -1,55 +1,39 @@
 #!/bin/bash
+set -euo pipefail
 
-# Script to update coverage badge in README.md
-# Usage: ./scripts/update-coverage-badge.sh
+COVERAGE_FILE="coverage.txt"
+README_FILE="README.md"
+THRESHOLD=80  # Minimum acceptable coverage %
 
-set -e
+# Run tests and generate coverage report
+go test ./... -coverprofile=$COVERAGE_FILE
 
-# Get the directory of this script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# Extract coverage percentage
+COVERAGE=$(go tool cover -func=$COVERAGE_FILE | grep total | awk '{print substr($3, 1, length($3)-1)}')
 
-cd "$PROJECT_ROOT"
-
-echo "Running tests with coverage..."
-go test -coverprofile=coverage.out ./...
-
-echo "Extracting coverage percentage..."
-COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
-
-echo "Coverage: $COVERAGE%"
-
-# Create coverage badge URL
-BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-brightgreen?style=flat&logo=go&logoColor=white"
-
-echo "Badge URL: $BADGE_URL"
-
-# Create a temporary file for the new README content
-TEMP_README=$(mktemp)
-
-# Check if coverage badge already exists
-if grep -q "!\[Coverage\]" README.md; then
-    echo "Updating existing coverage badge..."
-    # Replace the existing badge line using a more precise pattern
-    awk -v badge="![Coverage]($BADGE_URL)" '
-        /!\[Coverage\]/ { print badge; next }
-        { print }
-    ' README.md > "$TEMP_README"
+# Determine badge color
+if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
+    COLOR="brightgreen"
+elif (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+    COLOR="yellow"
 else
-    echo "Adding new coverage badge..."
-    # Add badge after the title line
-    awk -v badge="![Coverage]($BADGE_URL)" '
-        NR==1 { print; print badge; next }
-        { print }
-    ' README.md > "$TEMP_README"
+    COLOR="red"
 fi
 
-# Replace the original README with the updated version
-mv "$TEMP_README" README.md
+# Enforce coverage threshold
+if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+    echo "Coverage ($COVERAGE%) is below threshold ($THRESHOLD%). Failing."
+    exit 1
+fi
 
-echo "README.md updated with coverage badge: $COVERAGE%"
+# Update badge in README.md
+# Replace the first occurrence of a coverage badge line or insert if not present
+BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}.svg"
 
-# Clean up
-rm -f coverage.out
+if grep -q "img.shields.io/badge/coverage" "$README_FILE"; then
+    sed -i.bak -E "s|!\[Coverage\]\(https://img.shields.io/badge/coverage-[0-9]+(\.[0-9]+)?%25-[a-z]+\.svg\)|![Coverage](${BADGE_URL})|" "$README_FILE"
+else
+    echo -e "\n![Coverage](${BADGE_URL})" >> "$README_FILE"
+fi
 
-echo "Done!"
+echo "Coverage updated: ${COVERAGE}% (${COLOR})"

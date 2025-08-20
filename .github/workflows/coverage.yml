@@ -10,44 +10,29 @@ on:
 jobs:
   coverage:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
-        
-    - name: Run tests with coverage
-      run: |
-        go test -coverprofile=coverage.out ./...
-        
-    - name: Extract coverage percentage
-      run: |
-        COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
-        echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
-        echo "Coverage: $COVERAGE%"
-        
-    - name: Update README with coverage badge
-      run: |
-        # Create coverage badge URL
-        BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-brightgreen?style=flat&logo=go&logoColor=white"
-        
-        # Check if coverage badge already exists
-        if grep -q "!\[Coverage\]" README.md; then
-          # Update existing badge
-          sed -i "s|!\[Coverage\](.*)|![Coverage]($BADGE_URL)|" README.md
-        else
-          # Add badge after the title
-          sed -i "1a\\![Coverage]($BADGE_URL)" README.md
-        fi
-        
+
+    - name: Install bc (for floating-point comparison)
+      run: sudo apt-get update && sudo apt-get install -y bc
+
+    - name: Make script executable
+      run: chmod +x scripts/update-coverage-badge.sh
+
+    - name: Run coverage badge update script
+      run: ./scripts/update-coverage-badge.sh
+
     - name: Commit and push changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add README.md
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update coverage badge: ${COVERAGE}%"
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update coverage badge"
         git push
