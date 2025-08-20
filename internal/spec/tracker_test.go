@@ -41,6 +41,106 @@ func TestNewTrackerTree(t *testing.T) {
 		expected     Expected
 	}
 
+	meta := &metadata.Metadata{}
+
+	argLiteralD := metadata.NewCallArgument(meta)
+	argLiteralD.SetKind(metadata.KindLiteral)
+	argLiteralD.SetValue(`"%d"`)
+	argLiteralU := metadata.NewCallArgument(meta)
+	argLiteralU.SetKind(metadata.KindLiteral)
+	argLiteralU.SetValue(`"User Name"`)
+	argLiteral40 := metadata.NewCallArgument(meta)
+	argLiteral40.SetKind(metadata.KindLiteral)
+	argLiteral40.SetValue("40")
+	argLiteral42 := metadata.NewCallArgument(meta)
+	argLiteral42.SetKind(metadata.KindLiteral)
+	argLiteral42.SetValue("42")
+	argLiteral100 := metadata.NewCallArgument(meta)
+	argLiteral100.SetKind(metadata.KindLiteral)
+	argLiteral100.SetValue("100")
+	argIdent := metadata.NewCallArgument(meta)
+	argIdent.SetKind(metadata.KindIdent)
+	argIdent.SetName("x")
+	argIdent.SetPkg("main")
+	argIdent.SetType("int")
+	argIdentZ := metadata.NewCallArgument(meta)
+	argIdentZ.SetKind(metadata.KindIdent)
+	argIdentZ.SetName("z")
+	argIdentZ.SetPkg("main")
+	argIdentZ.SetType("string")
+
+	argIdentY := metadata.NewCallArgument(meta)
+	argIdentY.SetKind(metadata.KindIdent)
+	argIdentY.SetName("y")
+	argIdentY.SetPkg("main")
+	argIdentY.SetType("string")
+
+	argIdentUser := metadata.NewCallArgument(meta)
+	argIdentUser.SetKind(metadata.KindIdent)
+	argIdentUser.SetName("user")
+	argIdentUser.SetPkg("example")
+	argIdentUser.SetType("**example.User")
+
+	argLiteralS := metadata.NewCallArgument(meta)
+	argLiteralS.SetKind(metadata.KindLiteral)
+	argLiteralS.SetValue(`"test-service"`)
+
+	argIdentS := metadata.NewCallArgument(meta)
+	argIdentS.SetKind(metadata.KindIdent)
+	argIdentS.SetName("svc")
+	argIdentS.SetPkg("complex")
+	argIdentS.SetType("*complex.Service")
+
+	argLiteralTestData := metadata.NewCallArgument(meta)
+	argLiteralTestData.SetKind(metadata.KindLiteral)
+	argLiteralTestData.SetValue(`"test-data"`)
+
+	argIdentString := metadata.NewCallArgument(meta)
+	argIdentString.SetKind(metadata.KindIdent)
+	argIdentString.SetName("string")
+	argIdentString.SetPkg("main")
+	argIdentString.SetType("string")
+
+	argLiteralHello := metadata.NewCallArgument(meta)
+	argLiteralHello.SetKind(metadata.KindLiteral)
+	argLiteralHello.SetValue("hello")
+
+	argLiteralWorld := metadata.NewCallArgument(meta)
+	argLiteralWorld.SetKind(metadata.KindLiteral)
+	argLiteralWorld.SetValue("world")
+
+	argCompositeLit := metadata.NewCallArgument(meta)
+	argCompositeLit.SetKind(metadata.KindCompositeLit)
+	argCompositeLit.X = metadata.NewCallArgument(meta)
+	argCompositeLit.X.SetKind(metadata.KindArrayType)
+	argCompositeLit.X.X = metadata.NewCallArgument(meta)
+	argCompositeLit.X.X.SetKind(metadata.KindIdent)
+	argCompositeLit.X.X.SetName("string")
+	argCompositeLit.X.X.SetType("string")
+	argCompositeLit.Args = []metadata.CallArgument{
+		*argLiteralHello,
+		*argLiteralWorld,
+	}
+
+	argLiteralJohn := metadata.NewCallArgument(meta)
+	argLiteralJohn.SetKind(metadata.KindLiteral)
+	argLiteralJohn.SetValue(`"John"`)
+	argLiteral25 := metadata.NewCallArgument(meta)
+	argLiteral25.SetKind(metadata.KindLiteral)
+	argLiteral25.SetValue("25")
+
+	argIdentUserMultipackage := metadata.NewCallArgument(meta)
+	argIdentUserMultipackage.SetKind(metadata.KindIdent)
+	argIdentUserMultipackage.SetName("user")
+	argIdentUserMultipackage.SetPkg("multipackage")
+	argIdentUserMultipackage.SetType("*multipackage/models.User")
+
+	argIdentResult := metadata.NewCallArgument(meta)
+	argIdentResult.SetKind(metadata.KindIdent)
+	argIdentResult.SetName("result")
+	argIdentResult.SetPkg("multipackage")
+	argIdentResult.SetType("string")
+
 	tests := []testCase{
 		{
 			name:         "Empty tree",
@@ -63,16 +163,8 @@ func TestNewTrackerTree(t *testing.T) {
 								Caller: "main",
 								Callee: "Sprintf",
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: `"%d"`,
-									},
-									{
-										Kind: "ident",
-										Name: "x",
-										Pkg:  "main",
-										Type: "int",
-									},
+									*argLiteralD,
+									*argIdent,
 								},
 								ParamMap:          []string{"a", "format"},
 								CalleeRecvVarName: "z",
@@ -83,12 +175,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "Println",
 								ParamMap: []string{"a"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "ident",
-										Name: "z",
-										Pkg:  "main",
-										Type: "string",
-									},
+									*argIdentZ,
 								},
 							},
 							{
@@ -97,12 +184,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "ToUpper",
 								ParamMap: []string{"s"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "ident",
-										Name: "y",
-										Pkg:  "main",
-										Type: "string",
-									},
+									*argIdentY,
 								},
 							},
 						},
@@ -128,14 +210,8 @@ func TestNewTrackerTree(t *testing.T) {
 								CalleeRecvVarName: "user",
 								ParamMap:          []string{"name", "age"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: `"User Name"`,
-									},
-									{
-										Kind:  "literal",
-										Value: "40",
-									},
+									*argLiteralU,
+									*argLiteral40,
 								},
 							},
 							{
@@ -144,12 +220,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "Println",
 								ParamMap: []string{},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "star",
-										Name: "user",
-										Pkg:  "example",
-										Type: "**example.User",
-									},
+									*argIdentUser,
 								},
 							},
 						},
@@ -424,10 +495,7 @@ func TestNewTrackerTree(t *testing.T) {
 								ParamMap:          []string{"name"},
 								CalleeRecvVarName: "svc",
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: `"test-service"`,
-									},
+									*argLiteralS,
 								},
 							},
 							{
@@ -437,12 +505,7 @@ func TestNewTrackerTree(t *testing.T) {
 								ParamMap:          []string{"svc"},
 								CalleeRecvVarName: "handler",
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "ident",
-										Name: "svc",
-										Pkg:  "complex",
-										Type: "*complex.Service",
-									},
+									*argIdentS,
 								},
 							},
 							{
@@ -451,10 +514,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "Handle",
 								ParamMap: []string{"input"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: `"test-data"`,
-									},
+									*argLiteralTestData,
 								},
 							},
 						},
@@ -481,10 +541,7 @@ func TestNewTrackerTree(t *testing.T) {
 								CalleeRecvVarName: "c",
 								TypeMap:           map[string]string{"T": "int"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: "42",
-									},
+									*argLiteral42,
 								},
 							},
 							{
@@ -501,10 +558,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "Set",
 								ParamMap: []string{"value"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: "100",
-									},
+									*argLiteral100,
 								},
 							},
 							{
@@ -515,27 +569,7 @@ func TestNewTrackerTree(t *testing.T) {
 								CalleeRecvVarName: "result",
 								TypeMap:           map[string]string{"T": "string"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "composite_lit",
-										X: &metadata.CallArgument{
-											Kind: "array_type",
-											X: &metadata.CallArgument{
-												Kind: "ident",
-												Name: "string",
-												Type: "string",
-											},
-										},
-										Args: []metadata.CallArgument{
-											{
-												Kind:  "literal",
-												Value: "hello",
-											},
-											{
-												Kind:  "literal",
-												Value: "world",
-											},
-										},
-									},
+									*argCompositeLit,
 								},
 							},
 						},
@@ -561,14 +595,8 @@ func TestNewTrackerTree(t *testing.T) {
 								ParamMap:          []string{"name", "age"},
 								CalleeRecvVarName: "user",
 								Arguments: []metadata.CallArgument{
-									{
-										Kind:  "literal",
-										Value: `"John"`,
-									},
-									{
-										Kind:  "literal",
-										Value: "25",
-									},
+									*argLiteralJohn,
+									*argLiteral25,
 								},
 							},
 							{
@@ -586,12 +614,7 @@ func TestNewTrackerTree(t *testing.T) {
 								ParamMap:          []string{"user"},
 								CalleeRecvVarName: "result",
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "ident",
-										Name: "user",
-										Pkg:  "multipackage",
-										Type: "*multipackage/models.User",
-									},
+									*argIdentUserMultipackage,
 								},
 							},
 							{
@@ -600,12 +623,7 @@ func TestNewTrackerTree(t *testing.T) {
 								Callee:   "Println",
 								ParamMap: []string{"a"},
 								Arguments: []metadata.CallArgument{
-									{
-										Kind: "ident",
-										Name: "result",
-										Pkg:  "multipackage",
-										Type: "string",
-									},
+									*argIdentResult,
 								},
 							},
 						},
@@ -617,10 +635,7 @@ func TestNewTrackerTree(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var (
-				meta = &metadata.Metadata{}
-				err  error
-			)
+			var err error
 
 			if tc.metaFileName != "" {
 				meta, err = metadata.LoadMetadata(tc.metaFileName)

@@ -487,21 +487,21 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node *TrackerNode) *Respons
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
 func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
-	if arg.ResolvedType != "" {
-		return arg.ResolvedType
+	if arg.ResolvedType != -1 {
+		return arg.GetResolvedType()
 	}
 
 	// If it's a generic type with a concrete resolution, use it
-	if arg.IsGenericType && arg.GenericTypeName != "" {
-		if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
+	if arg.IsGenericType && arg.GenericTypeName != -1 {
+		if concreteType, exists := node.TypeParams()[arg.GetGenericTypeName()]; exists {
 			return concreteType
 		}
 	}
 
 	// Original logic for type resolution
-	if arg.Kind == "ident" {
+	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
-		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
+		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := r.contextProvider.GetString(assignment.ConcreteType)
@@ -635,21 +635,21 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node *TrackerNode) *Parameter {
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
 func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
-	if arg.ResolvedType != "" {
-		return arg.ResolvedType
+	if arg.ResolvedType != -1 {
+		return arg.GetResolvedType()
 	}
 
 	// If it's a generic type with a concrete resolution, use it
-	if arg.IsGenericType && arg.GenericTypeName != "" {
-		if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
+	if arg.IsGenericType && arg.GenericTypeName != -1 {
+		if concreteType, exists := node.TypeParams()[arg.GetGenericTypeName()]; exists {
 			return concreteType
 		}
 	}
 
 	// Original logic for type resolution
-	if arg.Kind == "ident" {
+	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
-		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
+		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := p.contextProvider.GetString(assignment.ConcreteType)

@@ -1,21 +1,35 @@
 string_pool:
+  - literal
+  - "1"
+  - ident
+  - int
   - x
   - main
-  - int
   - r1/T/main/src/main/test.go:9:2
   - unexported
-  - "y"
+  - '"hello"'
   - string
+  - "y"
   - r1/T/main/src/main/test.go:10:2
+  - '"%d"'
+  - r1/T/main/src/main/test.go:11:25
+  - fmt
+  - r1/T/main/src/main/test.go:11:7
+  - Sprintf
+  - func(format string, a ...any) string
+  - r1/T/main/src/main/test.go:11:11
+  - selector
+  - call
   - z
   - r1/T/main/src/main/test.go:11:2
+  - func_type
+  - func_results
   - r1/T/main/src/main/test.go:8:1
-  - fmt
   - strings
-  - Sprintf
-  - r1/T/main/src/main/test.go:11:7
+  - r1/T/main/src/main/test.go:12:14
   - Println
   - r1/T/main/src/main/test.go:12:2
+  - r1/T/main/src/main/test.go:13:18
   - ToUpper
   - r1/T/main/src/main/test.go:13:2
 packages:
@@ -24,206 +38,359 @@ packages:
       r1/T/main/src/main/test.go:
         functions:
           main:
-            name: 1
+            name: 5
             signature:
-              kind: func_type
+              kind: 23
+              name: -1
+              value: -1
               fun:
-                kind: func_results
-            position: 10
-            scope: 4
+                kind: 24
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 25
+            scope: 7
             comments: -1
             assignments:
               x:
-                - pkg: 1
-                  concrete_type: 2
-                  position: 3
-                  scope: 4
+                - variable_name: 4
+                  pkg: 5
+                  concrete_type: 3
+                  position: 6
+                  scope: 7
                   value:
-                    kind: literal
-                    value: "1"
+                    kind: 0
+                    name: -1
+                    value: 1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: x
-                    pkg: main
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:9:2
-                  func: 1
+                    kind: 2
+                    name: 4
+                    value: -1
+                    raw: -1
+                    pkg: 5
+                    type: 3
+                    position: 6
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 5
               "y":
-                - variable_name: 5
-                  pkg: 1
-                  concrete_type: 6
-                  position: 7
-                  scope: 4
+                - variable_name: 10
+                  pkg: 5
+                  concrete_type: 9
+                  position: 11
+                  scope: 7
                   value:
-                    kind: literal
-                    value: '"hello"'
+                    kind: 0
+                    name: -1
+                    value: 8
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: "y"
-                    pkg: main
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:10:2
-                  func: 1
+                    kind: 2
+                    name: 10
+                    value: -1
+                    raw: -1
+                    pkg: 5
+                    type: 9
+                    position: 11
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 5
               z:
-                - variable_name: 8
-                  pkg: 1
-                  concrete_type: 6
-                  position: 9
-                  scope: 4
+                - variable_name: 21
+                  pkg: 5
+                  concrete_type: 9
+                  position: 22
+                  scope: 7
                   value:
-                    kind: call
+                    kind: 20
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 19
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: fmt
-                        pkg: fmt
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+                        kind: 2
+                        name: 14
+                        value: -1
+                        raw: -1
+                        pkg: 14
+                        type: -1
+                        position: 15
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: Sprintf
-                        pkg: fmt
-                        type: func(format string, a ...any) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:11
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+                        kind: 2
+                        name: 16
+                        value: -1
+                        raw: -1
+                        pkg: 14
+                        type: 17
+                        position: 18
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 15
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: literal
-                        value: '"%d"'
-                      - kind: ident
-                        name: x
-                        pkg: main
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:25
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+                      - kind: 0
+                        name: -1
+                        value: 12
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                      - kind: 2
+                        name: 4
+                        value: -1
+                        raw: -1
+                        pkg: 5
+                        type: 3
+                        position: 13
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 15
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: z
-                    pkg: main
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:2
-                  func: 1
+                    kind: 2
+                    name: 21
+                    value: -1
+                    raw: -1
+                    pkg: 5
+                    type: 9
+                    position: 22
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 5
                   callee_func: Sprintf
                   callee_pkg: fmt
         imports:
-          11: 11
-          12: 12
+          14: 14
+          26: 26
 call_graph:
   - caller:
-      name: 1
-      pkg: 1
+      name: 5
+      pkg: 5
       position: -1
       recv_type: -1
     callee:
-      name: 13
-      pkg: 11
-      position: 14
+      name: 16
+      pkg: 14
+      position: 15
       recv_type: -1
     position: 3932307
     args:
-      - kind: literal
-        value: '"%d"'
-      - kind: ident
-        name: x
-        pkg: main
-        type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:25
+      - kind: 0
+        name: -1
+        value: 12
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 4
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 3
+        position: 13
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       z:
-        - variable_name: 8
-          pkg: 1
-          concrete_type: 6
-          position: 9
-          scope: 4
+        - variable_name: 21
+          pkg: 5
+          concrete_type: 9
+          position: 22
+          scope: 7
           value:
-            kind: call
+            kind: 20
+            name: -1
+            value: -1
             fun:
-              kind: selector
+              kind: 19
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: fmt
-                pkg: fmt
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+                kind: 2
+                name: 14
+                value: -1
+                raw: -1
+                pkg: 14
+                type: -1
+                position: 15
+                resolved_type: -1
+                generic_type_name: -1
               sel:
-                kind: ident
-                name: Sprintf
-                pkg: fmt
-                type: func(format string, a ...any) string
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:11
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+                kind: 2
+                name: 16
+                value: -1
+                raw: -1
+                pkg: 14
+                type: 17
+                position: 18
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 15
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: literal
-                value: '"%d"'
-              - kind: ident
-                name: x
-                pkg: main
-                type: int
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:25
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:7
+              - kind: 0
+                name: -1
+                value: 12
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              - kind: 2
+                name: 4
+                value: -1
+                raw: -1
+                pkg: 5
+                type: 3
+                position: 13
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 15
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: z
-            pkg: main
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:2
-          func: 1
+            kind: 2
+            name: 21
+            value: -1
+            raw: -1
+            pkg: 5
+            type: 9
+            position: 22
+            resolved_type: -1
+            generic_type_name: -1
+          func: 5
           callee_func: Sprintf
           callee_pkg: fmt
     param_arg_map:
       a:
-        kind: ident
-        name: x
-        pkg: main
-        type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:11:25
+        kind: 2
+        name: 4
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 3
+        position: 13
+        resolved_type: -1
+        generic_type_name: -1
       format:
-        kind: literal
-        value: '"%d"'
+        kind: 0
+        name: -1
+        value: 12
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: z
   - caller:
-      name: 1
-      pkg: 1
+      name: 5
+      pkg: 5
       position: -1
       recv_type: -1
     callee:
-      name: 15
-      pkg: 11
-      position: 16
+      name: 28
+      pkg: 14
+      position: 29
       recv_type: -1
     position: 3932329
     args:
-      - kind: ident
-        name: z
-        pkg: main
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:12:14
+      - kind: 2
+        name: 21
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 9
+        position: 27
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       a:
-        kind: ident
-        name: z
-        pkg: main
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:12:14
+        kind: 2
+        name: 21
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 9
+        position: 27
+        resolved_type: -1
+        generic_type_name: -1
   - caller:
-      name: 1
-      pkg: 1
+      name: 5
+      pkg: 5
       position: -1
       recv_type: -1
     callee:
-      name: 17
-      pkg: 12
-      position: 18
+      name: 31
+      pkg: 26
+      position: 32
       recv_type: -1
     position: 3932345
     args:
-      - kind: ident
-        name: "y"
-        pkg: main
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:13:18
+      - kind: 2
+        name: 10
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 9
+        position: 30
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       s:
-        kind: ident
-        name: "y"
-        pkg: main
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2036849107/main/src/main/test.go:13:18
+        kind: 2
+        name: 10
+        value: -1
+        raw: -1
+        pkg: 5
+        type: 9
+        position: 30
+        resolved_type: -1
+        generic_type_name: -1

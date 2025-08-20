@@ -9,6 +9,8 @@ import (
 func TestTypeResolver_ResolveType(t *testing.T) {
 	// Create test metadata
 	stringPool := metadata.NewStringPool()
+
+	// Create metadata without the circular reference first
 	meta := &metadata.Metadata{
 		StringPool: stringPool,
 		Packages: map[string]*metadata.Package{
@@ -56,14 +58,20 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				},
 				ParamArgMap: map[string]metadata.CallArgument{
 					"user": {
-						Kind: "ident",
-						Name: "user",
-						Type: "User",
+						Meta: nil, // Will be set after metadata is fully created
+						Kind: stringPool.Get(metadata.KindIdent),
+						Name: stringPool.Get("user"),
+						Type: stringPool.Get("User"),
 					},
 				},
 			},
 		},
 	}
+
+	// Now set the Meta field for the CallArgument in ParamArgMap
+	userArg := meta.CallGraph[0].ParamArgMap["user"]
+	userArg.Meta = meta
+	meta.CallGraph[0].ParamArgMap["user"] = userArg
 
 	cfg := DefaultSwagenConfig()
 	schemaMapper := NewSchemaMapper(cfg)
@@ -78,26 +86,30 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve identifier with direct type",
 			arg: metadata.CallArgument{
-				Kind: "ident",
-				Name: "user",
-				Type: "User",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindIdent),
+				Name: stringPool.Get("user"),
+				Type: stringPool.Get("User"),
 			},
 			expected: "User",
 		},
 		{
 			name: "resolve identifier from metadata",
 			arg: metadata.CallArgument{
-				Kind: "ident",
-				Name: "user",
-				Pkg:  "main",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindIdent),
+				Name: stringPool.Get("user"),
+				Pkg:  stringPool.Get("main"),
+				Type: -1, // Explicitly set to -1 to force metadata lookup
 			},
 			expected: "User",
 		},
 		{
 			name: "resolve type parameter",
 			arg: metadata.CallArgument{
-				Kind: "ident",
-				Name: "T",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindIdent),
+				Name: stringPool.Get("T"),
 			},
 			context: &TrackerNode{
 				CallGraphEdge: &meta.CallGraph[0],
@@ -107,8 +119,9 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve parameter mapping",
 			arg: metadata.CallArgument{
-				Kind: "ident",
-				Name: "user",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindIdent),
+				Name: stringPool.Get("user"),
 			},
 			context: &TrackerNode{
 				CallGraphEdge: &meta.CallGraph[0],
@@ -118,16 +131,19 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve selector expression",
 			arg: metadata.CallArgument{
-				Kind: "selector",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindSelector),
 				Sel: &metadata.CallArgument{
-					Kind: "ident",
-					Name: "Name",
-					Type: "",
+					Meta: meta,
+					Kind: stringPool.Get(metadata.KindIdent),
+					Name: stringPool.Get("Name"),
+					Type: stringPool.Get(""),
 				},
 				X: &metadata.CallArgument{
-					Kind: "ident",
-					Name: "user",
-					Type: "User",
+					Meta: meta,
+					Kind: stringPool.Get(metadata.KindIdent),
+					Name: stringPool.Get("user"),
+					Type: stringPool.Get("User"),
 				},
 			},
 			expected: "string",
@@ -135,11 +151,13 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve unary expression",
 			arg: metadata.CallArgument{
-				Kind: "unary",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindUnary),
 				X: &metadata.CallArgument{
-					Kind: "ident",
-					Name: "ptr",
-					Type: "*User",
+					Meta: meta,
+					Kind: stringPool.Get(metadata.KindIdent),
+					Name: stringPool.Get("ptr"),
+					Type: stringPool.Get("*User"),
 				},
 			},
 			expected: "User",
@@ -147,16 +165,19 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve map type",
 			arg: metadata.CallArgument{
-				Kind: "map_type",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindMapType),
 				X: &metadata.CallArgument{
-					Kind: "ident",
-					Name: "key",
-					Type: "string",
+					Meta: meta,
+					Kind: stringPool.Get(metadata.KindIdent),
+					Name: stringPool.Get("key"),
+					Type: stringPool.Get("string"),
 				},
 				Fun: &metadata.CallArgument{
-					Kind: "ident",
-					Name: "value",
-					Type: "int",
+					Meta: meta,
+					Kind: stringPool.Get(metadata.KindIdent),
+					Name: stringPool.Get("value"),
+					Type: stringPool.Get("int"),
 				},
 			},
 			expected: "map[string]int",
@@ -164,7 +185,8 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		{
 			name: "resolve interface type",
 			arg: metadata.CallArgument{
-				Kind: "interface_type",
+				Meta: meta,
+				Kind: stringPool.Get(metadata.KindInterfaceType),
 			},
 			expected: "interface{}",
 		},

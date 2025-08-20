@@ -166,7 +166,10 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 	// Use type info if available (works for stdlib and user code)
 	if info != nil {
 		if typ := info.TypeOf(expr); typ != nil {
-			return pkgName, &CallArgument{Kind: KindIdent, Type: typ.String()}
+			arg := NewCallArgument(metadata)
+			arg.SetKind(KindIdent)
+			arg.SetType(typ.String())
+			return pkgName, arg
 		}
 	}
 
@@ -184,7 +187,10 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 			return basePkg, baseType
 		}
 		// Fallback: just get type name
-		return pkgName, &CallArgument{Kind: KindIdent, Type: getTypeName(e)}
+		arg := NewCallArgument(metadata)
+		arg.SetKind(KindIdent)
+		arg.SetType(getTypeName(e))
+		return pkgName, arg
 
 	case *ast.CallExpr:
 		// For function calls, try to trace the return value
@@ -201,17 +207,20 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 			}
 		}
 
-		callType := ExprToCallArgument(e, info, pkgName, fset)
+		callType := ExprToCallArgument(e, info, pkgName, fset, metadata)
 		// Fallback: just get type name
-		return pkgName, &callType
+		return pkgName, callType
 
 	case *ast.TypeAssertExpr:
 		// Type assertion: try to get asserted type
 		if e.Type != nil {
-			callType := ExprToCallArgument(e.Type, info, pkgName, fset)
-			return pkgName, &callType
+			callType := ExprToCallArgument(e.Type, info, pkgName, fset, metadata)
+			return pkgName, callType
 		}
-		return pkgName, &CallArgument{Kind: KindIdent, Type: "interface{}"}
+		arg := NewCallArgument(metadata)
+		arg.SetKind(KindIdent)
+		arg.SetType("interface{}")
+		return pkgName, arg
 
 	case *ast.StarExpr:
 		// Pointer dereference: trace the base
@@ -219,12 +228,12 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 
 	case *ast.CompositeLit:
 		// Struct or array literal: get type name
-		callType := ExprToCallArgument(e.Type, info, pkgName, fset)
-		return pkgName, &callType
+		callType := ExprToCallArgument(e.Type, info, pkgName, fset, metadata)
+		return pkgName, callType
 
 	default:
-		callType := ExprToCallArgument(e, info, pkgName, fset)
-		return pkgName, &callType
+		callType := ExprToCallArgument(e, info, pkgName, fset, metadata)
+		return pkgName, callType
 	}
 }
 
@@ -269,7 +278,10 @@ func traceVariableOriginHelper(
 
 			// Type param (generic)
 			if concrete, ok := edge.TypeParamMap[varName]; ok && concrete != "" {
-				return varName, pkgName, &CallArgument{Kind: KindIdent, Type: concrete}, callerName
+				arg := NewCallArgument(metadata)
+				arg.SetKind(KindIdent)
+				arg.SetType(concrete)
+				return varName, pkgName, arg, callerName
 			}
 
 			// See if this parameter is mapped
@@ -297,7 +309,10 @@ func traceVariableOriginHelper(
 	if pkg, ok := metadata.Packages[pkgName]; ok {
 		for _, file := range pkg.Files {
 			if v, ok := file.Variables[varName]; ok {
-				return varName, pkgName, &CallArgument{Kind: KindIdent, Type: metadata.StringPool.GetString(v.Type)}, funcName
+				arg := NewCallArgument(metadata)
+				arg.SetKind(KindIdent)
+				arg.Type = v.Type
+				return varName, pkgName, arg, funcName
 			}
 
 			if fn, ok := file.Functions[funcName]; ok {
@@ -305,10 +320,10 @@ func traceVariableOriginHelper(
 					// Use the most recent assignment (last in slice)
 					assign := assigns[len(assigns)-1]
 					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS to the base variable
-					if assign.Value.Kind == KindIdent && assign.Value.Name != varName {
+					if assign.Value.GetKind() == KindIdent && assign.Value.GetName() != varName {
 						// _, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
 						// return assign.Value.Name, pkgName, t, f
-						baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
+						baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.GetName(), funcName, pkgName, metadata, visited)
 						return baseVar, basePkg, t, f
 					}
 					// If the assignment is from a function call, follow the return value
@@ -321,8 +336,8 @@ func traceVariableOriginHelper(
 									if retIdx < len(calleeFn.ReturnVars) {
 										retArg := calleeFn.ReturnVars[retIdx]
 									OuterLoop:
-										for retArg.Kind != KindIdent {
-											switch retArg.Kind {
+										for retArg.GetKind() != KindIdent {
+											switch retArg.GetKind() {
 											case KindSelector:
 												retArg = *retArg.Sel
 											case KindUnary, KindCompositeLit:
@@ -331,12 +346,12 @@ func traceVariableOriginHelper(
 												break OuterLoop
 											}
 										}
-										if retArg.Kind == KindIdent && retArg.Name != "" {
-											_, _, t, f := traceVariableOriginHelper(retArg.Name, assign.CalleeFunc, assign.CalleePkg, metadata, visited)
-											return retArg.Name, assign.CalleePkg, t, f
+										if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+											_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+											return retArg.GetName(), assign.CalleePkg, t, f
 										}
 										// For literals or other expressions, return as is
-										return retArg.Name, assign.CalleePkg, &retArg, funcName
+										return retArg.GetName(), assign.CalleePkg, &retArg, funcName
 									}
 								}
 							}

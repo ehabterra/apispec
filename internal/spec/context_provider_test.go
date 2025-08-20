@@ -58,8 +58,8 @@ func TestContextProvider_GetArgumentInfo(t *testing.T) {
 	provider := NewContextProvider(meta)
 
 	// Test with empty argument
-	arg := metadata.CallArgument{}
-	result := provider.GetArgumentInfo(arg)
+	arg := metadata.NewCallArgument(meta)
+	result := provider.GetArgumentInfo(*arg)
 	if result != "" {
 		t.Errorf("Expected empty string for empty argument, got '%s'", result)
 	}
@@ -70,8 +70,8 @@ func TestContextProvider_callArgToString(t *testing.T) {
 	provider := NewContextProvider(meta)
 
 	// Test with empty argument
-	arg := metadata.CallArgument{}
-	result := provider.callArgToString(arg, nil)
+	arg := metadata.NewCallArgument(meta)
+	result := provider.callArgToString(*arg, nil)
 	if result != "" {
 		t.Errorf("Expected empty string for empty argument, got '%s'", result)
 	}

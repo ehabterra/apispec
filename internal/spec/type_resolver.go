@@ -47,13 +47,13 @@ func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context *Track
 func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node *TrackerNode) string {
 	// Check if this argument corresponds to a type parameter
 	for paramName, concreteType := range node.TypeParams() {
-		if arg.Name == paramName {
+		if arg.GetName() == paramName {
 			return concreteType
 		}
 	}
 
 	// Check if this argument is mapped to a parameter
-	if paramArg, exists := node.CallGraphEdge.ParamArgMap[arg.Name]; exists {
+	if paramArg, exists := node.CallGraphEdge.ParamArgMap[arg.GetName()]; exists {
 		return t.resolveTypeFromArgument(paramArg)
 	}
 
@@ -62,13 +62,13 @@ func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node 
 
 // resolveTypeThroughTracing resolves type through variable tracing
 func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, context *TrackerNode) string {
-	if arg.Kind != metadata.KindIdent {
+	if arg.GetKind() != metadata.KindIdent {
 		return ""
 	}
 
 	// Use metadata.TraceVariableOrigin to trace the variable
 	originVar, _, originType, _ := metadata.TraceVariableOrigin(
-		arg.Name,
+		arg.GetName(),
 		t.getCallerName(context),
 		t.getCallerPkg(context),
 		t.meta,
@@ -80,7 +80,7 @@ func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, 
 	}
 
 	// If the origin variable is different, try to resolve it
-	if originVar != arg.Name {
+	if originVar != arg.GetName() {
 		return originVar
 	}
 
@@ -89,7 +89,7 @@ func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, 
 
 // resolveTypeFromArgument resolves type directly from a CallArgument
 func (t *TypeResolverImpl) resolveTypeFromArgument(arg metadata.CallArgument) string {
-	switch arg.Kind {
+	switch arg.GetKind() {
 	case metadata.KindIdent:
 		return t.resolveIdentType(arg)
 	case metadata.KindSelector:
@@ -107,26 +107,28 @@ func (t *TypeResolverImpl) resolveTypeFromArgument(arg metadata.CallArgument) st
 	case metadata.KindMapType:
 		return t.resolveMapType(arg)
 	case metadata.KindLiteral:
-		return arg.Type
+		return arg.GetType()
 	case metadata.KindRaw:
-		return arg.Raw
+		return arg.GetRaw()
 	default:
-		return arg.Type
+		return arg.GetType()
 	}
 }
 
 // resolveIdentType resolves type for identifier arguments
 func (t *TypeResolverImpl) resolveIdentType(arg metadata.CallArgument) string {
 	// If we have a direct type, use it
-	if arg.Type != "" {
-		return arg.Type
+	if arg.Type != -1 {
+		return arg.GetType()
 	}
 
 	// Try to find the variable in metadata
-	if arg.Pkg != "" {
-		if pkg, exists := t.meta.Packages[arg.Pkg]; exists {
+	if arg.Pkg != -1 {
+		pkgName := arg.GetPkg()
+		if pkg, exists := t.meta.Packages[pkgName]; exists {
 			for _, file := range pkg.Files {
-				if variable, exists := file.Variables[arg.Name]; exists {
+				varName := arg.GetName()
+				if variable, exists := file.Variables[varName]; exists {
 					return t.getString(variable.Type)
 				}
 			}
@@ -134,18 +136,18 @@ func (t *TypeResolverImpl) resolveIdentType(arg metadata.CallArgument) string {
 	}
 
 	// Fallback to name
-	return arg.Name
+	return arg.GetName()
 }
 
 // resolveSelectorType resolves type for selector expressions
 func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string {
 	if arg.X == nil {
-		return arg.Sel.Name
+		return arg.Sel.GetName()
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)
 	if baseType == "" {
-		return arg.Sel.Name
+		return arg.Sel.GetName()
 	}
 
 	// For field access, try to find the field type in metadata
@@ -157,7 +159,7 @@ func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string
 				if typ, exists := file.Types[typeName]; exists {
 					// Find the field
 					for _, field := range typ.Fields {
-						if t.getString(field.Name) == arg.Sel.Name {
+						if t.getString(field.Name) == arg.Sel.GetName() {
 							return t.getString(field.Type)
 						}
 					}
@@ -167,7 +169,7 @@ func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string
 	}
 
 	// Fallback to concatenated form
-	return baseType + "." + arg.Sel.Name
+	return baseType + "." + arg.Sel.GetName()
 }
 
 // resolveCallType resolves type for function calls
@@ -200,7 +202,7 @@ func (t *TypeResolverImpl) resolveCallType(arg metadata.CallArgument) string {
 // resolveUnaryType resolves type for unary expressions
 func (t *TypeResolverImpl) resolveUnaryType(arg metadata.CallArgument) string {
 	if arg.X == nil {
-		return "*" + arg.Type
+		return "*" + arg.GetType()
 	}
 
 	baseType := t.resolveTypeFromArgument(*arg.X)

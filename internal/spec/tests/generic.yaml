@@ -1,655 +1,1301 @@
 string_pool:
   - Get
   - '*Container[T]'
+  - ident
+  - T
+  - generic
+  - r1/T/generic/src/generic/generic.go:7:30
+  - func_type
+  - func_results
   - r1/T/generic/src/generic/generic.go:7:1
   - exported
   - func() T
-  - '*generic.Container[T].Value'
-  - generic
+  - c
+  - '*generic.Container[T]'
   - r1/T/generic/src/generic/generic.go:12:2
+  - Value
+  - r1/T/generic/src/generic/generic.go:12:4
   - selector
+  - '*generic.Container[T].Value'
+  - value
+  - r1/T/generic/src/generic/generic.go:12:12
   - Set
+  - r1/T/generic/src/generic/generic.go:11:34
   - r1/T/generic/src/generic/generic.go:11:1
   - 'func(T) '
   - Container
   - struct
-  - Value
-  - T
   - interface
+  - Container[T any]
+  - r1/T/generic/src/generic/generic.go:16:10
+  - r1/T/generic/src/generic/generic.go:16:20
+  - index
+  - r1/T/generic/src/generic/generic.go:16:23
+  - r1/T/generic/src/generic/generic.go:16:30
+  - key_value
+  - composite_lit
+  - unary
+  - '&'
+  - r1/T/generic/src/generic/generic.go:16:9
   - NewContainer
+  - r1/T/generic/src/generic/generic.go:15:32
+  - r1/T/generic/src/generic/generic.go:15:36
+  - r1/T/generic/src/generic/generic.go:15:46
+  - star
+  - r1/T/generic/src/generic/generic.go:15:35
   - r1/T/generic/src/generic/generic.go:15:1
+  - zero
+  - r1/T/generic/src/generic/generic.go:22:10
   - Process
+  - r1/T/generic/src/generic/generic.go:19:36
+  - array_type
+  - r1/T/generic/src/generic/generic.go:19:34
+  - r1/T/generic/src/generic/generic.go:19:39
   - r1/T/generic/src/generic/generic.go:19:1
-  - c
+  - literal
+  - "42"
+  - func[T any](value T) *generic.Container[T]
+  - r1/T/generic/src/generic/generic.go:28:7
+  - int
+  - r1/T/generic/src/generic/generic.go:28:20
+  - call
   - '*generic.Container[int]'
   - r1/T/generic/src/generic/generic.go:28:2
   - unexported
   - main
+  - r1/T/generic/src/generic/generic.go:29:9
+  - func() int
+  - r1/T/generic/src/generic/generic.go:29:11
   - val
-  - int
   - r1/T/generic/src/generic/generic.go:29:2
-  - result
   - string
+  - r1/T/generic/src/generic/generic.go:32:30
+  - r1/T/generic/src/generic/generic.go:32:28
+  - '"hello"'
+  - '"world"'
+  - func[T comparable](items []T) T
+  - r1/T/generic/src/generic/generic.go:32:12
+  - r1/T/generic/src/generic/generic.go:32:20
+  - result
   - r1/T/generic/src/generic/generic.go:32:2
   - r1/T/generic/src/generic/generic.go:27:1
-  - value
   - Container[T]
-  - r1/T/generic/src/generic/generic.go:16:10
   - '[]string'
-  - r1/T/generic/src/generic/generic.go:32:28
+  - items
+  - '[]T'
+  - r1/T/generic/src/generic/generic.go:21:9
   - len
   - r1/T/generic/src/generic/generic.go:21:5
-  - r1/T/generic/src/generic/generic.go:28:7
-  - r1/T/generic/src/generic/generic.go:29:9
   - '*Container'
+  - "100"
   - r1/T/generic/src/generic/generic.go:30:2
-  - r1/T/generic/src/generic/generic.go:32:12
 packages:
   generic:
     files:
       r1/T/generic/src/generic/generic.go:
         types:
           Container:
-            name: 12
-            kind: 13
+            name: 24
+            kind: 25
             fields:
               - name: 14
-                type: 15
+                type: 3
                 tag: -1
-                scope: 3
+                scope: 9
                 comments: -1
-            scope: 3
+            scope: 9
             methods:
               - receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: T
-                        pkg: generic
-                        type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:7:30
-                signature_str: 4
-                position: 2
-                scope: 3
-              - name: 9
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 5
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 10
+                position: 8
+                scope: 9
+              - name: 20
                 receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: ident
-                      name: T
-                      pkg: generic
-                      type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:11:34
-                signature_str: 11
-                position: 10
-                scope: 3
+                    - kind: 2
+                      name: 3
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 3
+                      position: 21
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 23
+                position: 22
+                scope: 9
                 assignments:
                   '*generic.Container[T].Value':
-                    - variable_name: 5
-                      pkg: 6
+                    - variable_name: 17
+                      pkg: 4
                       concrete_type: -1
-                      position: 7
-                      scope: 8
+                      position: 13
+                      scope: 16
                       value:
-                        kind: ident
-                        name: value
-                        pkg: generic
-                        type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:12
+                        kind: 2
+                        name: 18
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 19
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: selector
+                        kind: 16
+                        name: -1
+                        value: -1
                         x:
-                          kind: ident
-                          name: c
-                          pkg: generic
-                          type: '*generic.Container[T]'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:2
+                          kind: 2
+                          name: 11
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 12
+                          position: 13
+                          resolved_type: -1
+                          generic_type_name: -1
                         sel:
-                          kind: ident
-                          name: Value
-                          pkg: generic
-                          type: T
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:4
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:2
+                          kind: 2
+                          name: 14
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 3
+                          position: 15
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 13
+                        resolved_type: -1
+                        generic_type_name: -1
             comments: -1
         functions:
           NewContainer:
-            name: 17
+            name: 38
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: star
+                  - kind: 42
+                    name: -1
+                    value: -1
                     x:
-                      kind: index
+                      kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: Container
-                        pkg: generic
-                        type: Container[T any]
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:15:36
+                        kind: 2
+                        name: 24
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 27
+                        position: 40
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: T
-                        pkg: generic
-                        type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:15:46
+                        kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 41
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 40
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 43
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: T
-                  pkg: generic
-                  type: T
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:15:32
-            position: 18
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 39
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 44
+            scope: 9
             comments: -1
             type_params:
               - T
             return_vars:
-              - kind: unary
-                value: '&'
+              - kind: 35
+                name: -1
+                value: 36
                 x:
-                  kind: composite_lit
+                  kind: 34
+                  name: -1
+                  value: -1
                   x:
-                    kind: index
+                    kind: 30
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: Container
-                      pkg: generic
-                      type: Container[T any]
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:16:10
+                      kind: 2
+                      name: 24
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 27
+                      position: 28
+                      resolved_type: -1
+                      generic_type_name: -1
                     fun:
-                      kind: ident
-                      name: T
-                      pkg: generic
-                      type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:16:20
+                      kind: 2
+                      name: 3
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 3
+                      position: 29
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 28
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: key_value
+                    - kind: 33
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: Value
-                        pkg: generic
-                        type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:16:23
+                        kind: 2
+                        name: 14
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 31
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: value
-                        pkg: generic
-                        type: T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:16:30
+                        kind: 2
+                        name: 18
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 32
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 31
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 28
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 37
+                resolved_type: -1
+                generic_type_name: -1
           Process:
-            name: 19
+            name: 47
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: T
-                    pkg: generic
-                    type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:19:39
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 51
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: array_type
+                - kind: 49
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: T
-                    pkg: generic
-                    type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:19:36
-            position: 20
-            scope: 3
+                    kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 48
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 50
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 52
+            scope: 9
             comments: -1
             type_params:
               - T
             return_vars:
-              - kind: ident
-                name: zero
-                pkg: generic
-                type: T
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:22:10
+              - kind: 2
+                name: 45
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 3
+                position: 46
+                resolved_type: -1
+                generic_type_name: -1
           main:
-            name: 25
+            name: 63
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
-            position: 32
-            scope: 24
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 79
+            scope: 62
             comments: -1
             assignments:
               c:
-                - variable_name: 21
-                  pkg: 6
-                  concrete_type: 22
-                  position: 23
-                  scope: 24
+                - variable_name: 11
+                  pkg: 4
+                  concrete_type: 60
+                  position: 61
+                  scope: 62
                   value:
-                    kind: call
+                    kind: 59
+                    name: -1
+                    value: -1
                     fun:
-                      kind: index
+                      kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: NewContainer
-                        pkg: generic
-                        type: func[T any](value T) *generic.Container[T]
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:7
+                        kind: 2
+                        name: 38
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 55
+                        position: 56
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: int
-                        pkg: generic
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:20
+                        kind: 2
+                        name: 57
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 57
+                        position: 58
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 56
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: literal
-                        value: "42"
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:7
+                      - kind: 53
+                        name: -1
+                        value: 54
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 56
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: c
-                    pkg: generic
-                    type: '*generic.Container[int]'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:2
-                  func: 25
+                    kind: 2
+                    name: 11
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 60
+                    position: 61
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 63
                   callee_func: NewContainer
                   callee_pkg: generic
               result:
-                - variable_name: 29
-                  pkg: 6
-                  concrete_type: 30
-                  position: 31
-                  scope: 24
+                - variable_name: 77
+                  pkg: 4
+                  concrete_type: 69
+                  position: 78
+                  scope: 62
                   value:
-                    kind: call
+                    kind: 59
+                    name: -1
+                    value: -1
                     fun:
-                      kind: index
+                      kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: Process
-                        pkg: generic
-                        type: func[T comparable](items []T) T
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:12
+                        kind: 2
+                        name: 47
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 74
+                        position: 75
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: string
-                        pkg: generic
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:20
+                        kind: 2
+                        name: 69
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 69
+                        position: 76
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 75
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: composite_lit
+                      - kind: 34
+                        name: -1
+                        value: -1
                         x:
-                          kind: array_type
+                          kind: 49
+                          name: -1
+                          value: -1
                           x:
-                            kind: ident
-                            name: string
-                            pkg: generic
-                            type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:30
+                            kind: 2
+                            name: 69
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 69
+                            position: 70
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 71
+                          resolved_type: -1
+                          generic_type_name: -1
                         args:
-                          - kind: literal
-                            value: '"hello"'
-                          - kind: literal
-                            value: '"world"'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:12
+                          - kind: 53
+                            name: -1
+                            value: 72
+                            raw: -1
+                            pkg: -1
+                            type: -1
+                            position: -1
+                            resolved_type: -1
+                            generic_type_name: -1
+                          - kind: 53
+                            name: -1
+                            value: 73
+                            raw: -1
+                            pkg: -1
+                            type: -1
+                            position: -1
+                            resolved_type: -1
+                            generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 71
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 75
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: result
-                    pkg: generic
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:2
-                  func: 25
+                    kind: 2
+                    name: 77
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 69
+                    position: 78
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 63
                   callee_func: Process
                   callee_pkg: generic
               val:
-                - variable_name: 26
-                  pkg: 6
-                  concrete_type: 27
-                  position: 28
-                  scope: 24
+                - variable_name: 67
+                  pkg: 4
+                  concrete_type: 57
+                  position: 68
+                  scope: 62
                   value:
-                    kind: call
+                    kind: 59
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 16
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: c
-                        pkg: generic
-                        type: '*generic.Container[int]'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
+                        kind: 2
+                        name: 11
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 60
+                        position: 64
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: Get
-                        pkg: generic
-                        type: func() int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:11
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
+                        kind: 2
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 65
+                        position: 66
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 64
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 64
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: val
-                    pkg: generic
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:2
-                  func: 25
+                    kind: 2
+                    name: 67
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 57
+                    position: 68
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 63
                   callee_func: Get
                   callee_pkg: generic
         struct_instances:
-          - type: 34
-            position: 35
+          - type: 80
+            position: 28
             fields:
-              14: 33
-          - type: 36
-            position: 37
+              14: 18
+          - type: 81
+            position: 71
         imports: {}
     types:
       Container:
-        name: 12
-        kind: 13
+        name: 24
+        kind: 25
         fields:
           - name: 14
-            type: 15
+            type: 3
             tag: -1
-            scope: 3
+            scope: 9
             comments: -1
-        scope: 3
+        scope: 9
         methods:
           - receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: T
-                    pkg: generic
-                    type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:7:30
-            signature_str: 4
-            position: 2
-            scope: 3
-          - name: 9
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 5
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 10
+            position: 8
+            scope: 9
+          - name: 20
             receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: T
-                  pkg: generic
-                  type: T
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:11:34
-            signature_str: 11
-            position: 10
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 21
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 23
+            position: 22
+            scope: 9
             assignments:
               '*generic.Container[T].Value':
-                - variable_name: 5
-                  pkg: 6
+                - variable_name: 17
+                  pkg: 4
                   concrete_type: -1
-                  position: 7
-                  scope: 8
+                  position: 13
+                  scope: 16
                   value:
-                    kind: ident
-                    name: value
-                    pkg: generic
-                    type: T
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:12
+                    kind: 2
+                    name: 18
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 19
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: selector
+                    kind: 16
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: c
-                      pkg: generic
-                      type: '*generic.Container[T]'
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:2
+                      kind: 2
+                      name: 11
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 12
+                      position: 13
+                      resolved_type: -1
+                      generic_type_name: -1
                     sel:
-                      kind: ident
-                      name: Value
-                      pkg: generic
-                      type: T
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:4
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:12:2
+                      kind: 2
+                      name: 14
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 3
+                      position: 15
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 13
+                    resolved_type: -1
+                    generic_type_name: -1
         comments: -1
 call_graph:
   - caller:
-      name: 19
-      pkg: 6
+      name: 47
+      pkg: 4
+      position: -1
+      recv_type: -1
+    callee:
+      name: 85
+      pkg: 4
+      position: 86
+      recv_type: -1
+    position: 3933200
+    args:
+      - kind: 2
+        name: 82
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 83
+        position: 84
+        resolved_type: -1
+        generic_type_name: -1
+    callee_recv_var_name: '*generic.Container[T].Value'
+  - caller:
+      name: 63
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
       name: 38
-      pkg: 6
-      position: 39
-      recv_type: -1
-    position: 3933200
-    args:
-      - kind: ident
-        name: items
-        pkg: generic
-        type: '[]T'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:21:9
-    callee_recv_var_name: '*generic.Container[T].Value'
-  - caller:
-      name: 25
-      pkg: 6
-      position: -1
-      recv_type: -1
-    callee:
-      name: 17
-      pkg: 6
-      position: 40
+      pkg: 4
+      position: 56
       recv_type: -1
     position: 3933275
     args:
-      - kind: literal
-        value: "42"
+      - kind: 53
+        name: -1
+        value: 54
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       c:
-        - variable_name: 21
-          pkg: 6
-          concrete_type: 22
-          position: 23
-          scope: 24
+        - variable_name: 11
+          pkg: 4
+          concrete_type: 60
+          position: 61
+          scope: 62
           value:
-            kind: call
+            kind: 59
+            name: -1
+            value: -1
             fun:
-              kind: index
+              kind: 30
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: NewContainer
-                pkg: generic
-                type: func[T any](value T) *generic.Container[T]
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:7
+                kind: 2
+                name: 38
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 55
+                position: 56
+                resolved_type: -1
+                generic_type_name: -1
               fun:
-                kind: ident
-                name: int
-                pkg: generic
-                type: int
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:20
+                kind: 2
+                name: 57
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 57
+                position: 58
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 56
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: literal
-                value: "42"
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:7
+              - kind: 53
+                name: -1
+                value: 54
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 56
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: c
-            pkg: generic
-            type: '*generic.Container[int]'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:28:2
-          func: 25
+            kind: 2
+            name: 11
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 60
+            position: 61
+            resolved_type: -1
+            generic_type_name: -1
+          func: 63
           callee_func: NewContainer
           callee_pkg: generic
     param_arg_map:
       value:
-        kind: literal
-        value: "42"
+        kind: 53
+        name: -1
+        value: 54
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     type_param_map:
       T: int
     callee_recv_var_name: c
   - caller:
-      name: 25
-      pkg: 6
+      name: 63
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      pkg: 6
-      position: 41
-      recv_type: 42
+      pkg: 4
+      position: 64
+      recv_type: 87
     position: 3933305
     assignments:
       val:
-        - variable_name: 26
-          pkg: 6
-          concrete_type: 27
-          position: 28
-          scope: 24
+        - variable_name: 67
+          pkg: 4
+          concrete_type: 57
+          position: 68
+          scope: 62
           value:
-            kind: call
+            kind: 59
+            name: -1
+            value: -1
             fun:
-              kind: selector
+              kind: 16
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: c
-                pkg: generic
-                type: '*generic.Container[int]'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
+                kind: 2
+                name: 11
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 60
+                position: 64
+                resolved_type: -1
+                generic_type_name: -1
               sel:
-                kind: ident
-                name: Get
-                pkg: generic
-                type: func() int
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:11
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:9
+                kind: 2
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 65
+                position: 66
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 64
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 64
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: val
-            pkg: generic
-            type: int
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:29:2
-          func: 25
+            kind: 2
+            name: 67
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 57
+            position: 68
+            resolved_type: -1
+            generic_type_name: -1
+          func: 63
           callee_func: Get
           callee_pkg: generic
     callee_var_name: c
     callee_recv_var_name: val
   - caller:
-      name: 25
-      pkg: 6
+      name: 63
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      name: 9
-      pkg: 6
-      position: 43
-      recv_type: 42
+      name: 20
+      pkg: 4
+      position: 89
+      recv_type: 87
     position: 3933314
     args:
-      - kind: literal
-        value: "100"
+      - kind: 53
+        name: -1
+        value: 88
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       value:
-        kind: literal
-        value: "100"
+        kind: 53
+        name: -1
+        value: 88
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_var_name: c
   - caller:
-      name: 25
-      pkg: 6
+      name: 63
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      name: 19
-      pkg: 6
-      position: 44
+      name: 47
+      pkg: 4
+      position: 75
       recv_type: -1
     position: 3933338
     args:
-      - kind: composite_lit
+      - kind: 34
+        name: -1
+        value: -1
         x:
-          kind: array_type
+          kind: 49
+          name: -1
+          value: -1
           x:
-            kind: ident
-            name: string
-            pkg: generic
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:30
+            kind: 2
+            name: 69
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 69
+            position: 70
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 71
+          resolved_type: -1
+          generic_type_name: -1
         args:
-          - kind: literal
-            value: '"hello"'
-          - kind: literal
-            value: '"world"'
+          - kind: 53
+            name: -1
+            value: 72
+            raw: -1
+            pkg: -1
+            type: -1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+          - kind: 53
+            name: -1
+            value: 73
+            raw: -1
+            pkg: -1
+            type: -1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 71
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       result:
-        - variable_name: 29
-          pkg: 6
-          concrete_type: 30
-          position: 31
-          scope: 24
+        - variable_name: 77
+          pkg: 4
+          concrete_type: 69
+          position: 78
+          scope: 62
           value:
-            kind: call
+            kind: 59
+            name: -1
+            value: -1
             fun:
-              kind: index
+              kind: 30
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: Process
-                pkg: generic
-                type: func[T comparable](items []T) T
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:12
+                kind: 2
+                name: 47
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 74
+                position: 75
+                resolved_type: -1
+                generic_type_name: -1
               fun:
-                kind: ident
-                name: string
-                pkg: generic
-                type: string
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:20
+                kind: 2
+                name: 69
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 69
+                position: 76
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 75
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: composite_lit
+              - kind: 34
+                name: -1
+                value: -1
                 x:
-                  kind: array_type
+                  kind: 49
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: string
-                    pkg: generic
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:30
+                    kind: 2
+                    name: 69
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 69
+                    position: 70
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 71
+                  resolved_type: -1
+                  generic_type_name: -1
                 args:
-                  - kind: literal
-                    value: '"hello"'
-                  - kind: literal
-                    value: '"world"'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:12
+                  - kind: 53
+                    name: -1
+                    value: 72
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  - kind: 53
+                    name: -1
+                    value: 73
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 71
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 75
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: result
-            pkg: generic
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:2
-          func: 25
+            kind: 2
+            name: 77
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 69
+            position: 78
+            resolved_type: -1
+            generic_type_name: -1
+          func: 63
           callee_func: Process
           callee_pkg: generic
     param_arg_map:
       items:
-        kind: composite_lit
+        kind: 34
+        name: -1
+        value: -1
         x:
-          kind: array_type
+          kind: 49
+          name: -1
+          value: -1
           x:
-            kind: ident
-            name: string
-            pkg: generic
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Generic_functions_and_types2338784471/generic/src/generic/generic.go:32:30
+            kind: 2
+            name: 69
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 69
+            position: 70
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 71
+          resolved_type: -1
+          generic_type_name: -1
         args:
-          - kind: literal
-            value: '"hello"'
-          - kind: literal
-            value: '"world"'
+          - kind: 53
+            name: -1
+            value: 72
+            raw: -1
+            pkg: -1
+            type: -1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+          - kind: 53
+            name: -1
+            value: 73
+            raw: -1
+            pkg: -1
+            type: -1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 71
+        resolved_type: -1
+        generic_type_name: -1
     type_param_map:
       T: string
     callee_recv_var_name: result

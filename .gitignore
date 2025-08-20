@@ -38,6 +38,7 @@ openapi.json
 output.txt
 test_output.txt
 coverage.txt
+coverage.html
 
 swagen
 

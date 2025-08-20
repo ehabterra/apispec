@@ -1,29 +1,39 @@
 string_pool:
+  - literal
+  - "100"
+  - '"test"'
+  - "3.14"
+  - '"initialized"'
+  - ident
+  - string
   - Message
   - constants
-  - string
   - r1/T/constants/src/constants/const.go:15:2
   - exported
   - init
+  - func_type
+  - func_results
   - r1/T/constants/src/constants/const.go:14:1
   - unexported
-  - size
+  - MaxSize
+  - untyped int
+  - r1/T/constants/src/constants/const.go:19:10
   - int
+  - size
   - r1/T/constants/src/constants/const.go:19:2
   - UseConstants
+  - Name
+  - untyped string
+  - r1/T/constants/src/constants/const.go:20:10
   - name
   - r1/T/constants/src/constants/const.go:20:2
   - r1/T/constants/src/constants/const.go:18:1
-  - MaxSize
   - const
   - r1/T/constants/src/constants/const.go:4:2
-  - "100"
-  - Name
   - r1/T/constants/src/constants/const.go:5:2
   - test
   - Pi
   - r1/T/constants/src/constants/const.go:6:2
-  - "3.14"
   - GlobalVar
   - var
   - r1/T/constants/src/constants/const.go:10:2
@@ -35,110 +45,171 @@ packages:
       r1/T/constants/src/constants/const.go:
         functions:
           UseConstants:
-            name: 11
+            name: 22
             signature:
-              kind: func_type
+              kind: 12
+              name: -1
+              value: -1
               fun:
-                kind: func_results
-            position: 14
-            scope: 4
+                kind: 13
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 28
+            scope: 10
             comments: -1
             assignments:
               name:
-                - variable_name: 12
-                  pkg: 1
-                  concrete_type: 2
-                  position: 13
-                  scope: 7
+                - variable_name: 26
+                  pkg: 8
+                  concrete_type: 6
+                  position: 27
+                  scope: 15
                   value:
-                    kind: ident
-                    name: Name
-                    pkg: constants
-                    type: untyped string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables3407558249/constants/src/constants/const.go:20:10
+                    kind: 5
+                    name: 23
+                    value: -1
+                    raw: -1
+                    pkg: 8
+                    type: 24
+                    position: 25
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: name
-                    pkg: constants
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables3407558249/constants/src/constants/const.go:20:2
-                  func: 11
+                    kind: 5
+                    name: 26
+                    value: -1
+                    raw: -1
+                    pkg: 8
+                    type: 6
+                    position: 27
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 22
               size:
-                - variable_name: 8
-                  pkg: 1
-                  concrete_type: 9
-                  position: 10
-                  scope: 7
+                - variable_name: 20
+                  pkg: 8
+                  concrete_type: 19
+                  position: 21
+                  scope: 15
                   value:
-                    kind: ident
-                    name: MaxSize
-                    pkg: constants
-                    type: untyped int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables3407558249/constants/src/constants/const.go:19:10
+                    kind: 5
+                    name: 16
+                    value: -1
+                    raw: -1
+                    pkg: 8
+                    type: 17
+                    position: 18
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: size
-                    pkg: constants
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables3407558249/constants/src/constants/const.go:19:2
-                  func: 11
+                    kind: 5
+                    name: 20
+                    value: -1
+                    raw: -1
+                    pkg: 8
+                    type: 19
+                    position: 21
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 22
           init:
-            name: 5
+            name: 11
             signature:
-              kind: func_type
+              kind: 12
+              name: -1
+              value: -1
               fun:
-                kind: func_results
-            position: 6
-            scope: 7
+                kind: 13
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 14
+            scope: 15
             comments: -1
             assignments:
               Message:
-                - pkg: 1
-                  concrete_type: 2
-                  position: 3
-                  scope: 4
+                - variable_name: 7
+                  pkg: 8
+                  concrete_type: 6
+                  position: 9
+                  scope: 10
                   value:
-                    kind: literal
-                    value: '"initialized"'
+                    kind: 0
+                    name: -1
+                    value: 4
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: Message
-                    pkg: constants
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Constants_and_variables3407558249/constants/src/constants/const.go:15:2
-                  func: 5
+                    kind: 5
+                    name: 7
+                    value: -1
+                    raw: -1
+                    pkg: 8
+                    type: 6
+                    position: 9
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 11
         variables:
           GlobalVar:
-            name: 25
-            tok: 26
-            type: 9
-            value: 28
-            position: 27
+            name: 35
+            tok: 36
+            type: 19
+            value: 38
+            position: 37
             comments: -1
           MaxSize:
-            name: 15
-            tok: 16
+            name: 16
+            tok: 29
             type: -1
-            value: 18
-            position: 17
+            value: 1
+            position: 30
             comments: -1
           Message:
-            tok: 26
-            type: 2
-            position: 29
+            name: 7
+            tok: 36
+            type: 6
+            position: 39
             comments: -1
           Name:
-            name: 19
-            tok: 16
+            name: 23
+            tok: 29
             type: -1
-            value: 21
-            position: 20
+            value: 32
+            position: 31
             comments: -1
           Pi:
-            name: 22
-            tok: 16
+            name: 33
+            tok: 29
             type: -1
-            value: 24
-            position: 23
+            value: 3
+            position: 34
             comments: -1
         imports: {}

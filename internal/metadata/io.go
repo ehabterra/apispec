@@ -78,6 +78,24 @@ func WriteSplitMetadata(metadata *Metadata, baseFilename string) error {
 	return nil
 }
 
+// setCallArgumentMeta recursively sets the Meta field for a CallArgument and all its nested CallArguments
+func setCallArgumentMeta(arg *CallArgument, meta *Metadata) {
+	if arg == nil {
+		return
+	}
+	arg.Meta = meta
+
+	// Set Meta for nested CallArguments
+	setCallArgumentMeta(arg.X, meta)
+	setCallArgumentMeta(arg.Sel, meta)
+	setCallArgumentMeta(arg.Fun, meta)
+
+	// Set Meta for all arguments in Args slice
+	for i := range arg.Args {
+		setCallArgumentMeta(&arg.Args[i], meta)
+	}
+}
+
 // LoadMetadata loads metadata from a YAML file
 func LoadMetadata(filename string) (*Metadata, error) {
 	data, err := os.ReadFile(filename)
@@ -91,10 +109,55 @@ func LoadMetadata(filename string) (*Metadata, error) {
 		return nil, err
 	}
 
+	// Set Meta field for all CallArgument structs
 	for i := range metadata.CallGraph {
-		metadata.CallGraph[i].meta = &metadata
-		metadata.CallGraph[i].Caller.Meta = &metadata
-		metadata.CallGraph[i].Callee.Meta = &metadata
+		edge := &metadata.CallGraph[i]
+		edge.meta = &metadata
+		edge.Caller.Meta = &metadata
+		edge.Callee.Meta = &metadata
+
+		// Set Meta for all arguments
+		for j := range edge.Args {
+			setCallArgumentMeta(&edge.Args[j], &metadata)
+		}
+
+		// Set Meta for all parameter arguments
+		for key, arg := range edge.ParamArgMap {
+			setCallArgumentMeta(&arg, &metadata)
+			edge.ParamArgMap[key] = arg
+		}
+
+		// Set Meta for all assignments
+		for varName, assignments := range edge.AssignmentMap {
+			for j := range assignments {
+				setCallArgumentMeta(&assignments[j].Value, &metadata)
+				setCallArgumentMeta(&assignments[j].Lhs, &metadata)
+			}
+			edge.AssignmentMap[varName] = assignments
+		}
+	}
+
+	// Set Meta for all assignments and return vars in packages
+	for _, pkg := range metadata.Packages {
+		for _, file := range pkg.Files {
+			for funcName, fn := range file.Functions {
+				// Set Meta for assignments
+				for varName, assignments := range fn.AssignmentMap {
+					for j := range assignments {
+						setCallArgumentMeta(&assignments[j].Value, &metadata)
+						setCallArgumentMeta(&assignments[j].Lhs, &metadata)
+					}
+					fn.AssignmentMap[varName] = assignments
+				}
+
+				// Set Meta for return vars
+				for j := range fn.ReturnVars {
+					setCallArgumentMeta(&fn.ReturnVars[j], &metadata)
+				}
+
+				file.Functions[funcName] = fn
+			}
+		}
 	}
 
 	// Build the Callers map from the loaded call graph

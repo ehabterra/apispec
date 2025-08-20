@@ -115,7 +115,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node *TrackerNode) RouteInfo {
 	}
 
 	if routeInfo.File == "" && node.CallArgument != nil {
-		routeInfo.File = node.CallArgument.Position
+		routeInfo.File = node.CallArgument.GetPosition()
 	}
 
 	r.extractRouteDetails(node, &routeInfo)
@@ -123,10 +123,10 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node *TrackerNode) RouteInfo {
 	// Extract handler information
 	if r.pattern.HandlerFromArg && len(node.CallGraphEdge.Args) > r.pattern.HandlerArgIndex {
 		handlerArg := node.CallGraphEdge.Args[r.pattern.HandlerArgIndex]
-		if handlerArg.Kind == metadata.KindIdent {
+		if handlerArg.GetKind() == metadata.KindIdent {
 			// Use variable tracing to resolve handler
 			originVar, originPkg, originType, _ := r.traceVariable(
-				handlerArg.Name,
+				handlerArg.GetName(),
 				r.contextProvider.GetString(node.Caller.Name),
 				r.contextProvider.GetString(node.Caller.Pkg),
 			)
@@ -156,7 +156,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node *TrackerNode, routeIn
 		funcName := r.contextProvider.GetString(node.CallGraphEdge.Callee.Name)
 		routeInfo.Method = r.extractMethodFromFunctionName(funcName)
 	} else if r.pattern.MethodArgIndex >= 0 {
-		routeInfo.Method = node.CallGraphEdge.Args[r.pattern.MethodArgIndex].Value
+		routeInfo.Method = node.CallGraphEdge.Args[r.pattern.MethodArgIndex].GetValue()
 	}
 
 	if r.pattern.PathFromArg && len(node.CallGraphEdge.Args) > r.pattern.PathArgIndex {
@@ -167,10 +167,10 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node *TrackerNode, routeIn
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[r.pattern.HandlerArgIndex])
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[r.pattern.HandlerArgIndex])
 
-		pkg := node.CallGraphEdge.Args[r.pattern.HandlerArgIndex].Pkg
+		pkg := node.CallGraphEdge.Args[r.pattern.HandlerArgIndex].GetPkg()
 		if pkg == "" {
 			if node != nil && node.CallGraphEdge != nil && node.CallGraphEdge.Args[r.pattern.HandlerArgIndex].Fun != nil {
-				pkg = node.CallGraphEdge.Args[r.pattern.HandlerArgIndex].Fun.Pkg
+				pkg = node.CallGraphEdge.Args[r.pattern.HandlerArgIndex].Fun.GetPkg()
 			}
 		}
 		routeInfo.Package = pkg
@@ -370,11 +370,11 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node *TrackerNode, route *Rou
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
 		// Check for resolved type information in the CallArgument
-		if arg.ResolvedType != "" {
-			bodyType = arg.ResolvedType
-		} else if arg.IsGenericType && arg.GenericTypeName != "" {
+		if arg.ResolvedType != -1 {
+			bodyType = arg.GetResolvedType()
+		} else if arg.IsGenericType && arg.GenericTypeName != -1 {
 			// If it's a generic type, try to resolve it from the edge's type parameters
-			if concreteType, exists := node.TypeParams()[arg.GenericTypeName]; exists {
+			if concreteType, exists := node.TypeParams()[arg.GetGenericTypeName()]; exists {
 				bodyType = concreteType
 			}
 		}
@@ -421,17 +421,17 @@ func (b *BasePatternMatcher) traceVariable(varName, funcName, pkgName string) (o
 
 func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument, node *TrackerNode) {
 	// Trace router origin based on argument kind
-	switch routerArg.Kind {
+	switch routerArg.GetKind() {
 	case metadata.KindIdent:
 		b.traceVariable(
-			routerArg.Name,
+			routerArg.GetName(),
 			b.contextProvider.GetString(node.Caller.Name),
 			b.contextProvider.GetString(node.Caller.Pkg),
 		)
 	case metadata.KindUnary, metadata.KindStar:
 		if routerArg.X != nil {
 			b.traceVariable(
-				routerArg.X.Name,
+				routerArg.X.GetName(),
 				b.contextProvider.GetString(node.Caller.Name),
 				b.contextProvider.GetString(node.Caller.Pkg),
 			)
@@ -439,7 +439,7 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 	case metadata.KindSelector:
 		if routerArg.X != nil {
 			b.traceVariable(
-				routerArg.X.Name,
+				routerArg.X.GetName(),
 				b.contextProvider.GetString(node.Caller.Name),
 				b.contextProvider.GetString(node.Caller.Pkg),
 			)
@@ -447,7 +447,7 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 	case metadata.KindCall:
 		if routerArg.Fun != nil {
 			b.traceVariable(
-				routerArg.Fun.Name,
+				routerArg.Fun.GetName(),
 				b.contextProvider.GetString(node.Caller.Name),
 				b.contextProvider.GetString(node.Caller.Pkg),
 			)
@@ -470,10 +470,10 @@ func (b *BasePatternMatcher) findAssignmentFunction(arg metadata.CallArgument) *
 				varType := b.contextProvider.GetString(assign.ConcreteType)
 				varPkg := b.contextProvider.GetString(assign.Pkg)
 
-				if varName == arg.Name && varPkg == arg.Pkg && varType == arg.X.Type {
+				if varName == arg.GetName() && varPkg == arg.GetPkg() && varType == arg.X.GetType() {
 					// Get the function name directly (it's already a string)
 					for _, targetArg := range edge.Args {
-						if targetArg.Kind == metadata.KindCall && targetArg.Fun != nil {
+						if targetArg.GetKind() == metadata.KindCall && targetArg.Fun != nil {
 							return targetArg.Fun
 						}
 					}
@@ -487,8 +487,8 @@ func (b *BasePatternMatcher) findAssignmentFunction(arg metadata.CallArgument) *
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
 func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
-	if arg.ResolvedType != "" {
-		return arg.ResolvedType
+	if arg.ResolvedType != -1 {
+		return arg.GetResolvedType()
 	}
 
 	typeParts := TypeParts(originalType)
@@ -500,9 +500,9 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	}
 
 	// Original logic for type resolution
-	if arg.Kind == metadata.KindIdent {
+	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
-		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.Name]; exists {
+		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := r.contextProvider.GetString(assignment.ConcreteType)

@@ -1,462 +1,897 @@
 string_pool:
   - GetName
   - '*User'
+  - ident
+  - string
+  - multipackage/models
+  - r1/T/multipackage/src/multipackage/models/user.go:13:26
+  - func_type
+  - func_results
   - r1/T/multipackage/src/multipackage/models/user.go:13:1
   - exported
   - func() string
   - GetAge
+  - int
+  - r1/T/multipackage/src/multipackage/models/user.go:17:25
   - r1/T/multipackage/src/multipackage/models/user.go:17:1
   - func() int
   - User
   - struct
   - Name
-  - string
   - json:"name"
   - Age
-  - int
   - json:"age"
   - interface
   - UserInterface
-  - NewUser
-  - r1/T/multipackage/src/multipackage/models/user.go:21:1
-  - name
-  - age
+  - r1/T/multipackage/src/multipackage/models/user.go:9:12
+  - r1/T/multipackage/src/multipackage/models/user.go:10:11
   - r1/T/multipackage/src/multipackage/models/user.go:22:10
+  - r1/T/multipackage/src/multipackage/models/user.go:23:3
+  - name
+  - r1/T/multipackage/src/multipackage/models/user.go:23:9
+  - key_value
+  - r1/T/multipackage/src/multipackage/models/user.go:24:3
+  - age
+  - r1/T/multipackage/src/multipackage/models/user.go:24:9
+  - composite_lit
+  - unary
+  - '&'
+  - r1/T/multipackage/src/multipackage/models/user.go:22:9
+  - NewUser
+  - r1/T/multipackage/src/multipackage/models/user.go:21:19
+  - r1/T/multipackage/src/multipackage/models/user.go:21:31
+  - r1/T/multipackage/src/multipackage/models/user.go:21:37
+  - star
+  - r1/T/multipackage/src/multipackage/models/user.go:21:36
+  - r1/T/multipackage/src/multipackage/models/user.go:21:1
+  - user
   - multipackage/services
+  - '*multipackage/models.User'
+  - r1/T/multipackage/src/multipackage/services/user_service.go:17:10
+  - r1/T/multipackage/src/multipackage/services/user_service.go:17:15
+  - selector
+  - call
   - r1/T/multipackage/src/multipackage/services/user_service.go:17:2
   - unexported
   - ProcessUser
+  - r1/T/multipackage/src/multipackage/services/user_service.go:18:9
+  - r1/T/multipackage/src/multipackage/services/user_service.go:18:14
   - r1/T/multipackage/src/multipackage/services/user_service.go:18:2
   - '*UserService'
+  - models
+  - r1/T/multipackage/src/multipackage/services/user_service.go:16:41
+  - r1/T/multipackage/src/multipackage/services/user_service.go:16:48
+  - r1/T/multipackage/src/multipackage/services/user_service.go:16:40
+  - r1/T/multipackage/src/multipackage/services/user_service.go:16:54
   - r1/T/multipackage/src/multipackage/services/user_service.go:16:1
   - func(*models.User) string
-  - '*multipackage/services.UserService.prefix'
+  - s
+  - '*multipackage/services.UserService'
   - r1/T/multipackage/src/multipackage/services/user_service.go:23:2
-  - selector
+  - prefix
+  - r1/T/multipackage/src/multipackage/services/user_service.go:23:4
+  - '*multipackage/services.UserService.prefix'
+  - r1/T/multipackage/src/multipackage/services/user_service.go:23:13
   - SetPrefix
+  - r1/T/multipackage/src/multipackage/services/user_service.go:22:40
   - r1/T/multipackage/src/multipackage/services/user_service.go:22:1
   - 'func(string) '
   - UserService
-  - prefix
+  - r1/T/multipackage/src/multipackage/services/user_service.go:13:10
+  - r1/T/multipackage/src/multipackage/services/user_service.go:13:22
+  - literal
+  - '"User:"'
+  - r1/T/multipackage/src/multipackage/services/user_service.go:13:9
   - NewUserService
+  - r1/T/multipackage/src/multipackage/services/user_service.go:12:24
+  - r1/T/multipackage/src/multipackage/services/user_service.go:12:23
   - r1/T/multipackage/src/multipackage/services/user_service.go:12:1
   - 'User:'
-  - r1/T/multipackage/src/multipackage/services/user_service.go:13:10
   - fmt
-  - multipackage/models
-  - user
+  - '"John"'
+  - "25"
+  - r1/T/multipackage/src/multipackage/main.go:10:10
+  - func(name string, age int) *multipackage/models.User
+  - r1/T/multipackage/src/multipackage/main.go:10:17
   - multipackage
-  - '*multipackage/models.User'
   - r1/T/multipackage/src/multipackage/main.go:10:2
   - main
+  - services
+  - r1/T/multipackage/src/multipackage/main.go:11:13
+  - func() *multipackage/services.UserService
+  - r1/T/multipackage/src/multipackage/main.go:11:22
   - service
-  - '*multipackage/services.UserService'
   - r1/T/multipackage/src/multipackage/main.go:11:2
+  - r1/T/multipackage/src/multipackage/main.go:13:32
+  - r1/T/multipackage/src/multipackage/main.go:13:12
+  - func(user *multipackage/models.User) string
+  - r1/T/multipackage/src/multipackage/main.go:13:20
   - result
   - r1/T/multipackage/src/multipackage/main.go:13:2
   - r1/T/multipackage/src/multipackage/main.go:9:1
+  - "1"
+  - "149"
+  - input
+  - multipackage/utils
+  - r1/T/multipackage/src/multipackage/utils/helper.go:6:43
+  - strings
+  - r1/T/multipackage/src/multipackage/utils/helper.go:6:25
+  - TrimSpace
+  - func(s string) string
+  - r1/T/multipackage/src/multipackage/utils/helper.go:6:33
+  - r1/T/multipackage/src/multipackage/utils/helper.go:6:9
+  - ToUpper
+  - r1/T/multipackage/src/multipackage/utils/helper.go:6:17
   - FormatString
+  - r1/T/multipackage/src/multipackage/utils/helper.go:5:25
+  - r1/T/multipackage/src/multipackage/utils/helper.go:5:33
   - r1/T/multipackage/src/multipackage/utils/helper.go:5:1
+  - r1/T/multipackage/src/multipackage/utils/helper.go:10:9
+  - "0"
+  - binary
+  - '>'
+  - r1/T/multipackage/src/multipackage/utils/helper.go:10:20
+  - "150"
+  - <
+  - '&&'
   - ValidateAge
+  - r1/T/multipackage/src/multipackage/utils/helper.go:9:22
+  - bool
+  - r1/T/multipackage/src/multipackage/utils/helper.go:9:27
   - r1/T/multipackage/src/multipackage/utils/helper.go:9:1
   - MinAge
   - const
   - r1/T/multipackage/src/multipackage/utils/helper.go:14:2
-  - "1"
   - MaxAge
   - r1/T/multipackage/src/multipackage/utils/helper.go:15:2
-  - "149"
   - DefaultFormat
   - var
   - r1/T/multipackage/src/multipackage/utils/helper.go:18:5
+  - '"uppercase"'
   - uppercase
-  - strings
   - multipackage/models.UserInterface
   - multipackage/models.User
-  - r1/T/multipackage/src/multipackage/services/user_service.go:17:10
-  - r1/T/multipackage/src/multipackage/services/user_service.go:18:9
+  - '"%s %s is %d years old"'
+  - r1/T/multipackage/src/multipackage/services/user_service.go:19:46
+  - r1/T/multipackage/src/multipackage/services/user_service.go:19:48
+  - r1/T/multipackage/src/multipackage/services/user_service.go:19:56
+  - r1/T/multipackage/src/multipackage/services/user_service.go:19:62
   - Sprintf
   - r1/T/multipackage/src/multipackage/services/user_service.go:19:9
-  - r1/T/multipackage/src/multipackage/main.go:10:10
-  - r1/T/multipackage/src/multipackage/main.go:11:13
-  - r1/T/multipackage/src/multipackage/main.go:13:12
+  - r1/T/multipackage/src/multipackage/main.go:14:14
   - Println
   - r1/T/multipackage/src/multipackage/main.go:14:2
-  - multipackage/utils
-  - ToUpper
-  - r1/T/multipackage/src/multipackage/utils/helper.go:6:9
-  - TrimSpace
-  - r1/T/multipackage/src/multipackage/utils/helper.go:6:25
 packages:
   multipackage:
     files:
       r1/T/multipackage/src/multipackage/main.go:
         functions:
           main:
-            name: 49
+            name: 96
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
-            position: 55
-            scope: 25
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 109
+            scope: 53
             comments: -1
             assignments:
               result:
-                - variable_name: 53
-                  pkg: 46
-                  concrete_type: 11
-                  position: 54
-                  scope: 25
+                - variable_name: 107
+                  pkg: 94
+                  concrete_type: 3
+                  position: 108
+                  scope: 53
                   value:
-                    kind: call
+                    kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: service
-                        pkg: multipackage
-                        type: '*multipackage/services.UserService'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+                        kind: 2
+                        name: 101
+                        value: -1
+                        raw: -1
+                        pkg: 94
+                        type: 67
+                        position: 104
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: ProcessUser
-                        pkg: multipackage/services
-                        type: func(user *multipackage/models.User) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:20
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+                        kind: 2
+                        name: 54
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 105
+                        position: 106
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 104
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: ident
-                        name: user
-                        pkg: multipackage
-                        type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:32
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+                      - kind: 2
+                        name: 45
+                        value: -1
+                        raw: -1
+                        pkg: 94
+                        type: 47
+                        position: 103
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 104
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: result
-                    pkg: multipackage
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:2
-                  func: 49
+                    kind: 2
+                    name: 107
+                    value: -1
+                    raw: -1
+                    pkg: 94
+                    type: 3
+                    position: 108
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 96
                   callee_func: ProcessUser
                   callee_pkg: multipackage/services
               service:
-                - variable_name: 50
-                  pkg: 46
-                  concrete_type: 51
-                  position: 52
-                  scope: 25
+                - variable_name: 101
+                  pkg: 94
+                  concrete_type: 67
+                  position: 102
+                  scope: 53
                   value:
-                    kind: call
+                    kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: services
-                        pkg: multipackage/services
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
+                        kind: 2
+                        name: 97
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: -1
+                        position: 98
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: NewUserService
-                        pkg: multipackage/services
-                        type: func() *multipackage/services.UserService
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:22
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
+                        kind: 2
+                        name: 83
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 99
+                        position: 100
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 98
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 98
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: service
-                    pkg: multipackage
-                    type: '*multipackage/services.UserService'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:2
-                  func: 49
+                    kind: 2
+                    name: 101
+                    value: -1
+                    raw: -1
+                    pkg: 94
+                    type: 67
+                    position: 102
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 96
                   callee_func: NewUserService
                   callee_pkg: multipackage/services
               user:
                 - variable_name: 45
-                  pkg: 46
+                  pkg: 94
                   concrete_type: 47
-                  position: 48
-                  scope: 25
+                  position: 95
+                  scope: 53
                   value:
-                    kind: call
+                    kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: models
-                        pkg: multipackage/models
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+                        kind: 2
+                        name: 59
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: -1
+                        position: 91
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: NewUser
-                        pkg: multipackage/models
-                        type: func(name string, age int) *multipackage/models.User
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:17
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+                        kind: 2
+                        name: 38
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 92
+                        position: 93
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 91
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: literal
-                        value: '"John"'
-                      - kind: literal
-                        value: "25"
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+                      - kind: 80
+                        name: -1
+                        value: 89
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                      - kind: 80
+                        name: -1
+                        value: 90
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 91
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: user
-                    pkg: multipackage
-                    type: '*multipackage/models.User'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:2
-                  func: 49
+                    kind: 2
+                    name: 45
+                    value: -1
+                    raw: -1
+                    pkg: 94
+                    type: 47
+                    position: 95
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 96
                   callee_func: NewUser
                   callee_pkg: multipackage/models
         imports:
-          23: 23
-          43: 43
-          44: 44
+          4: 4
+          46: 46
+          88: 88
   multipackage/models:
     files:
       r1/T/multipackage/src/multipackage/models/user.go:
         types:
           User:
-            name: 8
-            kind: 9
+            name: 16
+            kind: 17
             implements:
-              - 72
+              - 150
             fields:
-              - name: 10
-                type: 11
-                tag: 12
-                scope: 3
+              - name: 18
+                type: 3
+                tag: 19
+                scope: 9
                 comments: -1
-              - name: 13
-                type: 14
-                tag: 15
-                scope: 3
+              - name: 20
+                type: 12
+                tag: 21
+                scope: 9
                 comments: -1
-            scope: 3
+            scope: 9
             methods:
               - receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: string
-                        pkg: multipackage/models
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:13:26
-                signature_str: 4
-                position: 2
-                scope: 3
-              - name: 5
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 5
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 10
+                position: 8
+                scope: 9
+              - name: 11
                 receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: int
-                        pkg: multipackage/models
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:17:25
-                signature_str: 7
-                position: 6
-                scope: 3
+                      - kind: 2
+                        name: 12
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 12
+                        position: 13
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 15
+                position: 14
+                scope: 9
             comments: -1
           UserInterface:
-            name: 17
-            kind: 16
+            name: 23
+            kind: 22
             implemented_by:
-              - 73
-            scope: 3
+              - 151
+            scope: 9
             methods:
               - signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: string
-                        pkg: multipackage/models
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:9:12
-                signature_str: 4
-                scope: 3
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 24
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 10
+                scope: 9
                 comments: -1
-              - name: 5
+              - name: 11
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: int
-                        pkg: multipackage/models
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:10:11
-                signature_str: 7
-                scope: 3
+                      - kind: 2
+                        name: 12
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 12
+                        position: 25
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 15
+                scope: 9
                 comments: -1
             comments: -1
         functions:
           NewUser:
-            name: 18
+            name: 38
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: star
+                  - kind: 42
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: User
-                      pkg: multipackage/models
-                      type: User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:21:37
+                      kind: 2
+                      name: 16
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 16
+                      position: 41
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 43
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: string
-                  pkg: multipackage/models
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:21:19
-                - kind: ident
-                  name: int
-                  pkg: multipackage/models
-                  type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:21:31
-            position: 19
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 39
+                  resolved_type: -1
+                  generic_type_name: -1
+                - kind: 2
+                  name: 12
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 12
+                  position: 40
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 44
+            scope: 9
             comments: -1
             return_vars:
-              - kind: unary
-                value: '&'
+              - kind: 35
+                name: -1
+                value: 36
                 x:
-                  kind: composite_lit
+                  kind: 34
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: User
-                    pkg: multipackage/models
-                    type: User
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:22:10
+                    kind: 2
+                    name: 16
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 16
+                    position: 26
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: key_value
+                    - kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: Name
-                        pkg: multipackage/models
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:23:3
+                        kind: 2
+                        name: 18
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 27
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: name
-                        pkg: multipackage/models
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:23:9
-                    - kind: key_value
+                        kind: 2
+                        name: 28
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 29
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 27
+                      resolved_type: -1
+                      generic_type_name: -1
+                    - kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: Age
-                        pkg: multipackage/models
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:24:3
+                        kind: 2
+                        name: 20
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 12
+                        position: 31
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: ident
-                        name: age
-                        pkg: multipackage/models
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:24:9
+                        kind: 2
+                        name: 32
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 12
+                        position: 33
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 31
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 26
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 37
+                resolved_type: -1
+                generic_type_name: -1
         struct_instances:
-          - type: 8
-            position: 22
+          - type: 16
+            position: 26
             fields:
-              10: 20
-              13: 21
+              18: 28
+              20: 32
         imports: {}
     types:
       User:
-        name: 8
-        kind: 9
+        name: 16
+        kind: 17
         implements:
-          - 72
+          - 150
         fields:
-          - name: 10
-            type: 11
-            tag: 12
-            scope: 3
+          - name: 18
+            type: 3
+            tag: 19
+            scope: 9
             comments: -1
-          - name: 13
-            type: 14
-            tag: 15
-            scope: 3
+          - name: 20
+            type: 12
+            tag: 21
+            scope: 9
             comments: -1
-        scope: 3
+        scope: 9
         methods:
           - receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: multipackage/models
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:13:26
-            signature_str: 4
-            position: 2
-            scope: 3
-          - name: 5
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 5
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 10
+            position: 8
+            scope: 9
+          - name: 11
             receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: int
-                    pkg: multipackage/models
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:17:25
-            signature_str: 7
-            position: 6
-            scope: 3
+                  - kind: 2
+                    name: 12
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 12
+                    position: 13
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 15
+            position: 14
+            scope: 9
         comments: -1
       UserInterface:
-        name: 17
-        kind: 16
+        name: 23
+        kind: 22
         implemented_by:
-          - 73
-        scope: 3
+          - 151
+        scope: 9
         methods:
           - signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: multipackage/models
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:9:12
-            signature_str: 4
-            scope: 3
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 24
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 10
+            scope: 9
             comments: -1
-          - name: 5
+          - name: 11
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: int
-                    pkg: multipackage/models
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/models/user.go:10:11
-            signature_str: 7
-            scope: 3
+                  - kind: 2
+                    name: 12
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 12
+                    position: 25
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 15
+            scope: 9
             comments: -1
         comments: -1
   multipackage/services:
@@ -464,856 +899,1587 @@ packages:
       r1/T/multipackage/src/multipackage/services/user_service.go:
         types:
           UserService:
-            name: 37
-            kind: 9
+            name: 77
+            kind: 17
             fields:
-              - name: 38
-                type: 11
+              - name: 69
+                type: 3
                 tag: -1
-                scope: 25
+                scope: 53
                 comments: -1
-            scope: 3
+            scope: 9
             methods:
-              - name: 26
-                receiver: 28
+              - name: 54
+                receiver: 58
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: string
-                        pkg: multipackage/services
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:54
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 3
+                        position: 63
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: star
+                    - kind: 42
+                      name: -1
+                      value: -1
                       x:
-                        kind: selector
+                        kind: 50
+                        name: -1
+                        value: -1
                         x:
-                          kind: ident
-                          name: models
-                          pkg: multipackage/models
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:41
+                          kind: 2
+                          name: 59
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: -1
+                          position: 60
+                          resolved_type: -1
+                          generic_type_name: -1
                         sel:
-                          kind: ident
-                          name: User
-                          pkg: multipackage/models
-                          type: User
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:48
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:41
-                signature_str: 30
-                position: 29
-                scope: 3
+                          kind: 2
+                          name: 16
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 16
+                          position: 61
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 60
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 62
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 65
+                position: 64
+                scope: 9
                 assignments:
                   age:
-                    - variable_name: 21
-                      pkg: 23
-                      concrete_type: 14
-                      position: 27
-                      scope: 25
+                    - variable_name: 32
+                      pkg: 46
+                      concrete_type: 12
+                      position: 57
+                      scope: 53
                       value:
-                        kind: call
+                        kind: 51
+                        name: -1
+                        value: -1
                         fun:
-                          kind: selector
+                          kind: 50
+                          name: -1
+                          value: -1
                           x:
-                            kind: ident
-                            name: user
-                            pkg: multipackage/services
-                            type: '*multipackage/models.User'
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
+                            kind: 2
+                            name: 45
+                            value: -1
+                            raw: -1
+                            pkg: 46
+                            type: 47
+                            position: 55
+                            resolved_type: -1
+                            generic_type_name: -1
                           sel:
-                            kind: ident
-                            name: GetAge
-                            pkg: multipackage/models
-                            type: func() int
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:14
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
+                            kind: 2
+                            name: 11
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 15
+                            position: 56
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 55
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 55
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: ident
-                        name: age
-                        pkg: multipackage/services
-                        type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:2
-                      func: 26
+                        kind: 2
+                        name: 32
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 12
+                        position: 57
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 54
                       callee_func: GetAge
                       callee_pkg: multipackage/models
                   name:
-                    - variable_name: 20
-                      pkg: 23
-                      concrete_type: 11
-                      position: 24
-                      scope: 25
+                    - variable_name: 28
+                      pkg: 46
+                      concrete_type: 3
+                      position: 52
+                      scope: 53
                       value:
-                        kind: call
+                        kind: 51
+                        name: -1
+                        value: -1
                         fun:
-                          kind: selector
+                          kind: 50
+                          name: -1
+                          value: -1
                           x:
-                            kind: ident
-                            name: user
-                            pkg: multipackage/services
-                            type: '*multipackage/models.User'
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
+                            kind: 2
+                            name: 45
+                            value: -1
+                            raw: -1
+                            pkg: 46
+                            type: 47
+                            position: 48
+                            resolved_type: -1
+                            generic_type_name: -1
                           sel:
-                            kind: ident
-                            name: GetName
-                            pkg: multipackage/models
-                            type: func() string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:15
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
+                            kind: 2
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 10
+                            position: 49
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 48
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 48
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: ident
-                        name: name
-                        pkg: multipackage/services
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:2
-                      func: 26
+                        kind: 2
+                        name: 28
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 3
+                        position: 52
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 54
                       callee_func: GetName
                       callee_pkg: multipackage/models
-              - name: 34
-                receiver: 28
+              - name: 73
+                receiver: 58
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: ident
-                      name: string
-                      pkg: multipackage/services
-                      type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:22:40
-                signature_str: 36
-                position: 35
-                scope: 3
+                    - kind: 2
+                      name: 3
+                      value: -1
+                      raw: -1
+                      pkg: 46
+                      type: 3
+                      position: 74
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 76
+                position: 75
+                scope: 9
                 assignments:
                   '*multipackage/services.UserService.prefix':
-                    - variable_name: 31
-                      pkg: 23
+                    - variable_name: 71
+                      pkg: 46
                       concrete_type: -1
-                      position: 32
-                      scope: 33
+                      position: 68
+                      scope: 50
                       value:
-                        kind: ident
-                        name: prefix
-                        pkg: multipackage/services
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:13
+                        kind: 2
+                        name: 69
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 3
+                        position: 72
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: selector
+                        kind: 50
+                        name: -1
+                        value: -1
                         x:
-                          kind: ident
-                          name: s
-                          pkg: multipackage/services
-                          type: '*multipackage/services.UserService'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:2
+                          kind: 2
+                          name: 66
+                          value: -1
+                          raw: -1
+                          pkg: 46
+                          type: 67
+                          position: 68
+                          resolved_type: -1
+                          generic_type_name: -1
                         sel:
-                          kind: ident
-                          name: prefix
-                          pkg: multipackage/services
-                          type: string
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:4
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:2
+                          kind: 2
+                          name: 69
+                          value: -1
+                          raw: -1
+                          pkg: 46
+                          type: 3
+                          position: 70
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 68
+                        resolved_type: -1
+                        generic_type_name: -1
             comments: -1
         functions:
           NewUserService:
-            name: 39
+            name: 83
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: star
+                  - kind: 42
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: UserService
-                      pkg: multipackage/services
-                      type: UserService
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:12:24
-            position: 40
-            scope: 3
+                      kind: 2
+                      name: 77
+                      value: -1
+                      raw: -1
+                      pkg: 46
+                      type: 77
+                      position: 84
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 85
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 86
+            scope: 9
             comments: -1
             return_vars:
-              - kind: unary
-                value: '&'
+              - kind: 35
+                name: -1
+                value: 36
                 x:
-                  kind: composite_lit
+                  kind: 34
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: UserService
-                    pkg: multipackage/services
-                    type: UserService
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:13:10
+                    kind: 2
+                    name: 77
+                    value: -1
+                    raw: -1
+                    pkg: 46
+                    type: 77
+                    position: 78
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: key_value
+                    - kind: 30
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: prefix
-                        pkg: multipackage/services
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:13:22
+                        kind: 2
+                        name: 69
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 3
+                        position: 79
+                        resolved_type: -1
+                        generic_type_name: -1
                       fun:
-                        kind: literal
-                        value: '"User:"'
+                        kind: 80
+                        name: -1
+                        value: 81
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 79
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 78
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 82
+                resolved_type: -1
+                generic_type_name: -1
         struct_instances:
-          - type: 37
-            position: 42
+          - type: 77
+            position: 78
             fields:
-              38: 41
+              69: 87
         imports:
-          43: 43
-          44: 44
+          4: 4
+          88: 88
     types:
       UserService:
-        name: 37
-        kind: 9
+        name: 77
+        kind: 17
         fields:
-          - name: 38
-            type: 11
+          - name: 69
+            type: 3
             tag: -1
-            scope: 25
+            scope: 53
             comments: -1
-        scope: 3
+        scope: 9
         methods:
-          - name: 26
-            receiver: 28
+          - name: 54
+            receiver: 58
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: multipackage/services
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:54
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 46
+                    type: 3
+                    position: 63
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: star
+                - kind: 42
+                  name: -1
+                  value: -1
                   x:
-                    kind: selector
+                    kind: 50
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: models
-                      pkg: multipackage/models
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:41
+                      kind: 2
+                      name: 59
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: -1
+                      position: 60
+                      resolved_type: -1
+                      generic_type_name: -1
                     sel:
-                      kind: ident
-                      name: User
-                      pkg: multipackage/models
-                      type: User
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:48
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:16:41
-            signature_str: 30
-            position: 29
-            scope: 3
+                      kind: 2
+                      name: 16
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 16
+                      position: 61
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 60
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 62
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 65
+            position: 64
+            scope: 9
             assignments:
               age:
-                - variable_name: 21
-                  pkg: 23
-                  concrete_type: 14
-                  position: 27
-                  scope: 25
+                - variable_name: 32
+                  pkg: 46
+                  concrete_type: 12
+                  position: 57
+                  scope: 53
                   value:
-                    kind: call
+                    kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: user
-                        pkg: multipackage/services
-                        type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
+                        kind: 2
+                        name: 45
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 47
+                        position: 55
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: GetAge
-                        pkg: multipackage/models
-                        type: func() int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:14
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:9
+                        kind: 2
+                        name: 11
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 15
+                        position: 56
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 55
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 55
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: age
-                    pkg: multipackage/services
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:18:2
-                  func: 26
+                    kind: 2
+                    name: 32
+                    value: -1
+                    raw: -1
+                    pkg: 46
+                    type: 12
+                    position: 57
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 54
                   callee_func: GetAge
                   callee_pkg: multipackage/models
               name:
-                - variable_name: 20
-                  pkg: 23
-                  concrete_type: 11
-                  position: 24
-                  scope: 25
+                - variable_name: 28
+                  pkg: 46
+                  concrete_type: 3
+                  position: 52
+                  scope: 53
                   value:
-                    kind: call
+                    kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: user
-                        pkg: multipackage/services
-                        type: '*multipackage/models.User'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
+                        kind: 2
+                        name: 45
+                        value: -1
+                        raw: -1
+                        pkg: 46
+                        type: 47
+                        position: 48
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: GetName
-                        pkg: multipackage/models
-                        type: func() string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:15
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:10
+                        kind: 2
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 10
+                        position: 49
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 48
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 48
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: name
-                    pkg: multipackage/services
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:17:2
-                  func: 26
+                    kind: 2
+                    name: 28
+                    value: -1
+                    raw: -1
+                    pkg: 46
+                    type: 3
+                    position: 52
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 54
                   callee_func: GetName
                   callee_pkg: multipackage/models
-          - name: 34
-            receiver: 28
+          - name: 73
+            receiver: 58
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: string
-                  pkg: multipackage/services
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:22:40
-            signature_str: 36
-            position: 35
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 46
+                  type: 3
+                  position: 74
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 76
+            position: 75
+            scope: 9
             assignments:
               '*multipackage/services.UserService.prefix':
-                - variable_name: 31
-                  pkg: 23
+                - variable_name: 71
+                  pkg: 46
                   concrete_type: -1
-                  position: 32
-                  scope: 33
+                  position: 68
+                  scope: 50
                   value:
-                    kind: ident
-                    name: prefix
-                    pkg: multipackage/services
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:13
+                    kind: 2
+                    name: 69
+                    value: -1
+                    raw: -1
+                    pkg: 46
+                    type: 3
+                    position: 72
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: selector
+                    kind: 50
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: s
-                      pkg: multipackage/services
-                      type: '*multipackage/services.UserService'
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:2
+                      kind: 2
+                      name: 66
+                      value: -1
+                      raw: -1
+                      pkg: 46
+                      type: 67
+                      position: 68
+                      resolved_type: -1
+                      generic_type_name: -1
                     sel:
-                      kind: ident
-                      name: prefix
-                      pkg: multipackage/services
-                      type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:4
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:23:2
+                      kind: 2
+                      name: 69
+                      value: -1
+                      raw: -1
+                      pkg: 46
+                      type: 3
+                      position: 70
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 68
+                    resolved_type: -1
+                    generic_type_name: -1
         comments: -1
   multipackage/utils:
     files:
       r1/T/multipackage/src/multipackage/utils/helper.go:
         functions:
           FormatString:
-            name: 56
+            name: 123
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: multipackage/utils
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:5:33
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 113
+                    type: 3
+                    position: 125
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: string
-                  pkg: multipackage/utils
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:5:25
-            position: 57
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 113
+                  type: 3
+                  position: 124
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 126
+            scope: 9
             comments: -1
             return_vars:
-              - kind: call
+              - kind: 51
+                name: -1
+                value: -1
                 fun:
-                  kind: selector
+                  kind: 50
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: strings
-                    pkg: strings
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:9
+                    kind: 2
+                    name: 115
+                    value: -1
+                    raw: -1
+                    pkg: 115
+                    type: -1
+                    position: 120
+                    resolved_type: -1
+                    generic_type_name: -1
                   sel:
-                    kind: ident
-                    name: ToUpper
-                    pkg: strings
-                    type: func(s string) string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:17
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:9
+                    kind: 2
+                    name: 121
+                    value: -1
+                    raw: -1
+                    pkg: 115
+                    type: 118
+                    position: 122
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 120
+                  resolved_type: -1
+                  generic_type_name: -1
                 args:
-                  - kind: call
+                  - kind: 51
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 50
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: strings
-                        pkg: strings
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+                        kind: 2
+                        name: 115
+                        value: -1
+                        raw: -1
+                        pkg: 115
+                        type: -1
+                        position: 116
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: TrimSpace
-                        pkg: strings
-                        type: func(s string) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:33
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+                        kind: 2
+                        name: 117
+                        value: -1
+                        raw: -1
+                        pkg: 115
+                        type: 118
+                        position: 119
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 116
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: ident
-                        name: input
-                        pkg: multipackage/utils
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:43
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:9
+                      - kind: 2
+                        name: 112
+                        value: -1
+                        raw: -1
+                        pkg: 113
+                        type: 3
+                        position: 114
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 116
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 120
+                resolved_type: -1
+                generic_type_name: -1
           ValidateAge:
-            name: 58
+            name: 135
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: bool
-                    pkg: multipackage/utils
-                    type: bool
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:9:27
+                  - kind: 2
+                    name: 137
+                    value: -1
+                    raw: -1
+                    pkg: 113
+                    type: 137
+                    position: 138
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: int
-                  pkg: multipackage/utils
-                  type: int
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:9:22
-            position: 59
-            scope: 3
+                - kind: 2
+                  name: 12
+                  value: -1
+                  raw: -1
+                  pkg: 113
+                  type: 12
+                  position: 136
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 139
+            scope: 9
             comments: -1
             return_vars:
-              - kind: binary
-                value: '&&'
+              - kind: 129
+                name: -1
+                value: 134
                 x:
-                  kind: binary
-                  value: '>'
+                  kind: 129
+                  name: -1
+                  value: 130
                   x:
-                    kind: ident
-                    name: age
-                    pkg: multipackage/utils
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:10:9
+                    kind: 2
+                    name: 32
+                    value: -1
+                    raw: -1
+                    pkg: 113
+                    type: 12
+                    position: 127
+                    resolved_type: -1
+                    generic_type_name: -1
                   fun:
-                    kind: literal
-                    value: "0"
+                    kind: 80
+                    name: -1
+                    value: 128
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 127
+                  resolved_type: -1
+                  generic_type_name: -1
                 fun:
-                  kind: binary
-                  value: <
+                  kind: 129
+                  name: -1
+                  value: 133
                   x:
-                    kind: ident
-                    name: age
-                    pkg: multipackage/utils
-                    type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:10:20
+                    kind: 2
+                    name: 32
+                    value: -1
+                    raw: -1
+                    pkg: 113
+                    type: 12
+                    position: 131
+                    resolved_type: -1
+                    generic_type_name: -1
                   fun:
-                    kind: literal
-                    value: "150"
+                    kind: 80
+                    name: -1
+                    value: 132
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 131
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 127
+                resolved_type: -1
+                generic_type_name: -1
         variables:
           DefaultFormat:
-            name: 67
-            tok: 68
+            name: 145
+            tok: 146
             type: -1
-            value: 70
-            position: 69
+            value: 149
+            position: 147
             comments: -1
           MaxAge:
-            name: 64
-            tok: 61
+            name: 143
+            tok: 141
             type: -1
-            value: 66
-            position: 65
+            value: 111
+            position: 144
             comments: -1
           MinAge:
-            name: 60
-            tok: 61
+            name: 140
+            tok: 141
             type: -1
-            value: 63
-            position: 62
+            value: 110
+            position: 142
             comments: -1
         imports:
-          71: 71
+          115: 115
 call_graph:
   - caller:
-      name: 26
-      pkg: 23
+      name: 54
+      pkg: 46
       position: -1
-      recv_type: 28
+      recv_type: 58
     callee:
-      pkg: 44
-      position: 74
+      pkg: 4
+      position: 48
       recv_type: 1
     position: 10226756
     callee_var_name: user
     callee_recv_var_name: name
   - caller:
-      name: 26
-      pkg: 23
+      name: 54
+      pkg: 46
       position: -1
-      recv_type: 28
+      recv_type: 58
     callee:
-      name: 5
-      pkg: 44
-      position: 75
+      name: 11
+      pkg: 4
+      position: 55
       recv_type: 1
     position: 10226779
     callee_var_name: user
     callee_recv_var_name: age
   - caller:
-      name: 26
-      pkg: 23
+      name: 54
+      pkg: 46
       position: -1
-      recv_type: 28
+      recv_type: 58
     callee:
-      name: 76
-      pkg: 43
-      position: 77
+      name: 157
+      pkg: 88
+      position: 158
       recv_type: -1
     position: 10226801
     args:
-      - kind: literal
-        value: '"%s %s is %d years old"'
-      - kind: selector
+      - kind: 80
+        name: -1
+        value: 152
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 50
+        name: -1
+        value: -1
         x:
-          kind: ident
-          name: s
-          pkg: multipackage/services
-          type: '*multipackage/services.UserService'
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:46
+          kind: 2
+          name: 66
+          value: -1
+          raw: -1
+          pkg: 46
+          type: 67
+          position: 153
+          resolved_type: -1
+          generic_type_name: -1
         sel:
-          kind: ident
-          name: prefix
-          pkg: multipackage/services
-          type: string
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:48
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:46
-      - kind: ident
-        name: name
-        pkg: multipackage/services
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:56
-      - kind: ident
-        name: age
-        pkg: multipackage/services
-        type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:62
+          kind: 2
+          name: 69
+          value: -1
+          raw: -1
+          pkg: 46
+          type: 3
+          position: 154
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 153
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 28
+        value: -1
+        raw: -1
+        pkg: 46
+        type: 3
+        position: 155
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 32
+        value: -1
+        raw: -1
+        pkg: 46
+        type: 12
+        position: 156
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       a:
-        kind: selector
+        kind: 50
+        name: -1
+        value: -1
         x:
-          kind: ident
-          name: s
-          pkg: multipackage/services
-          type: '*multipackage/services.UserService'
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:46
+          kind: 2
+          name: 66
+          value: -1
+          raw: -1
+          pkg: 46
+          type: 67
+          position: 153
+          resolved_type: -1
+          generic_type_name: -1
         sel:
-          kind: ident
-          name: prefix
-          pkg: multipackage/services
-          type: string
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:48
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/services/user_service.go:19:46
+          kind: 2
+          name: 69
+          value: -1
+          raw: -1
+          pkg: 46
+          type: 3
+          position: 154
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 153
+        resolved_type: -1
+        generic_type_name: -1
       format:
-        kind: literal
-        value: '"%s %s is %d years old"'
+        kind: 80
+        name: -1
+        value: 152
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
   - caller:
-      name: 49
-      pkg: 46
+      name: 96
+      pkg: 94
       position: -1
       recv_type: -1
     callee:
-      name: 18
-      pkg: 44
-      position: 78
+      name: 38
+      pkg: 4
+      position: 91
       recv_type: -1
     position: 10227036
     args:
-      - kind: literal
-        value: '"John"'
-      - kind: literal
-        value: "25"
+      - kind: 80
+        name: -1
+        value: 89
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 80
+        name: -1
+        value: 90
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       user:
         - variable_name: 45
-          pkg: 46
+          pkg: 94
           concrete_type: 47
-          position: 48
-          scope: 25
+          position: 95
+          scope: 53
           value:
-            kind: call
+            kind: 51
+            name: -1
+            value: -1
             fun:
-              kind: selector
+              kind: 50
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: models
-                pkg: multipackage/models
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+                kind: 2
+                name: 59
+                value: -1
+                raw: -1
+                pkg: 4
+                type: -1
+                position: 91
+                resolved_type: -1
+                generic_type_name: -1
               sel:
-                kind: ident
-                name: NewUser
-                pkg: multipackage/models
-                type: func(name string, age int) *multipackage/models.User
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:17
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+                kind: 2
+                name: 38
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 92
+                position: 93
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 91
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: literal
-                value: '"John"'
-              - kind: literal
-                value: "25"
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:10
+              - kind: 80
+                name: -1
+                value: 89
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              - kind: 80
+                name: -1
+                value: 90
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 91
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: user
-            pkg: multipackage
-            type: '*multipackage/models.User'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:10:2
-          func: 49
+            kind: 2
+            name: 45
+            value: -1
+            raw: -1
+            pkg: 94
+            type: 47
+            position: 95
+            resolved_type: -1
+            generic_type_name: -1
+          func: 96
           callee_func: NewUser
           callee_pkg: multipackage/models
     param_arg_map:
       age:
-        kind: literal
-        value: "25"
+        kind: 80
+        name: -1
+        value: 90
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
       name:
-        kind: literal
-        value: '"John"'
+        kind: 80
+        name: -1
+        value: 89
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: user
   - caller:
-      name: 49
-      pkg: 46
+      name: 96
+      pkg: 94
       position: -1
       recv_type: -1
     callee:
-      name: 39
-      pkg: 23
-      position: 79
+      name: 83
+      pkg: 46
+      position: 98
       recv_type: -1
     position: 10227075
     assignments:
       service:
-        - variable_name: 50
-          pkg: 46
-          concrete_type: 51
-          position: 52
-          scope: 25
+        - variable_name: 101
+          pkg: 94
+          concrete_type: 67
+          position: 102
+          scope: 53
           value:
-            kind: call
+            kind: 51
+            name: -1
+            value: -1
             fun:
-              kind: selector
+              kind: 50
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: services
-                pkg: multipackage/services
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
+                kind: 2
+                name: 97
+                value: -1
+                raw: -1
+                pkg: 46
+                type: -1
+                position: 98
+                resolved_type: -1
+                generic_type_name: -1
               sel:
-                kind: ident
-                name: NewUserService
-                pkg: multipackage/services
-                type: func() *multipackage/services.UserService
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:22
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:13
+                kind: 2
+                name: 83
+                value: -1
+                raw: -1
+                pkg: 46
+                type: 99
+                position: 100
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 98
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 98
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: service
-            pkg: multipackage
-            type: '*multipackage/services.UserService'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:11:2
-          func: 49
+            kind: 2
+            name: 101
+            value: -1
+            raw: -1
+            pkg: 94
+            type: 67
+            position: 102
+            resolved_type: -1
+            generic_type_name: -1
+          func: 96
           callee_func: NewUserService
           callee_pkg: multipackage/services
     callee_recv_var_name: service
   - caller:
-      name: 49
-      pkg: 46
+      name: 96
+      pkg: 94
       position: -1
       recv_type: -1
     callee:
-      name: 26
-      pkg: 23
-      position: 80
-      recv_type: 28
+      name: 54
+      pkg: 46
+      position: 104
+      recv_type: 58
     position: 10227114
     args:
-      - kind: ident
-        name: user
-        pkg: multipackage
-        type: '*multipackage/models.User'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:32
+      - kind: 2
+        name: 45
+        value: -1
+        raw: -1
+        pkg: 94
+        type: 47
+        position: 103
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       result:
-        - variable_name: 53
-          pkg: 46
-          concrete_type: 11
-          position: 54
-          scope: 25
+        - variable_name: 107
+          pkg: 94
+          concrete_type: 3
+          position: 108
+          scope: 53
           value:
-            kind: call
+            kind: 51
+            name: -1
+            value: -1
             fun:
-              kind: selector
+              kind: 50
+              name: -1
+              value: -1
               x:
-                kind: ident
-                name: service
-                pkg: multipackage
-                type: '*multipackage/services.UserService'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+                kind: 2
+                name: 101
+                value: -1
+                raw: -1
+                pkg: 94
+                type: 67
+                position: 104
+                resolved_type: -1
+                generic_type_name: -1
               sel:
-                kind: ident
-                name: ProcessUser
-                pkg: multipackage/services
-                type: func(user *multipackage/models.User) string
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:20
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+                kind: 2
+                name: 54
+                value: -1
+                raw: -1
+                pkg: 46
+                type: 105
+                position: 106
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: 104
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: ident
-                name: user
-                pkg: multipackage
-                type: '*multipackage/models.User'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:32
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:12
+              - kind: 2
+                name: 45
+                value: -1
+                raw: -1
+                pkg: 94
+                type: 47
+                position: 103
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 104
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: result
-            pkg: multipackage
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:2
-          func: 49
+            kind: 2
+            name: 107
+            value: -1
+            raw: -1
+            pkg: 94
+            type: 3
+            position: 108
+            resolved_type: -1
+            generic_type_name: -1
+          func: 96
           callee_func: ProcessUser
           callee_pkg: multipackage/services
     param_arg_map:
       user:
-        kind: ident
-        name: user
-        pkg: multipackage
-        type: '*multipackage/models.User'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:13:32
+        kind: 2
+        name: 45
+        value: -1
+        raw: -1
+        pkg: 94
+        type: 47
+        position: 103
+        resolved_type: -1
+        generic_type_name: -1
     callee_var_name: service
     callee_recv_var_name: result
   - caller:
-      name: 49
-      pkg: 46
+      name: 96
+      pkg: 94
       position: -1
       recv_type: -1
     callee:
-      name: 81
-      pkg: 43
-      position: 82
+      name: 160
+      pkg: 88
+      position: 161
       recv_type: -1
     position: 10227141
     args:
-      - kind: ident
-        name: result
-        pkg: multipackage
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:14:14
+      - kind: 2
+        name: 107
+        value: -1
+        raw: -1
+        pkg: 94
+        type: 3
+        position: 159
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       a:
-        kind: ident
-        name: result
-        pkg: multipackage
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/main.go:14:14
+        kind: 2
+        name: 107
+        value: -1
+        raw: -1
+        pkg: 94
+        type: 3
+        position: 159
+        resolved_type: -1
+        generic_type_name: -1
   - caller:
-      name: 56
-      pkg: 83
+      name: 123
+      pkg: 113
       position: -1
       recv_type: -1
     callee:
-      name: 84
-      pkg: 71
-      position: 85
+      name: 121
+      pkg: 115
+      position: 120
       recv_type: -1
     position: 7866992
     args:
-      - kind: call
+      - kind: 51
+        name: -1
+        value: -1
         fun:
-          kind: selector
+          kind: 50
+          name: -1
+          value: -1
           x:
-            kind: ident
-            name: strings
-            pkg: strings
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+            kind: 2
+            name: 115
+            value: -1
+            raw: -1
+            pkg: 115
+            type: -1
+            position: 116
+            resolved_type: -1
+            generic_type_name: -1
           sel:
-            kind: ident
-            name: TrimSpace
-            pkg: strings
-            type: func(s string) string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:33
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+            kind: 2
+            name: 117
+            value: -1
+            raw: -1
+            pkg: 115
+            type: 118
+            position: 119
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 116
+          resolved_type: -1
+          generic_type_name: -1
         args:
-          - kind: ident
-            name: input
-            pkg: multipackage/utils
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:43
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+          - kind: 2
+            name: 112
+            value: -1
+            raw: -1
+            pkg: 113
+            type: 3
+            position: 114
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 116
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       s:
-        kind: call
+        kind: 51
+        name: -1
+        value: -1
         fun:
-          kind: selector
+          kind: 50
+          name: -1
+          value: -1
           x:
-            kind: ident
-            name: strings
-            pkg: strings
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+            kind: 2
+            name: 115
+            value: -1
+            raw: -1
+            pkg: 115
+            type: -1
+            position: 116
+            resolved_type: -1
+            generic_type_name: -1
           sel:
-            kind: ident
-            name: TrimSpace
-            pkg: strings
-            type: func(s string) string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:33
-          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+            kind: 2
+            name: 117
+            value: -1
+            raw: -1
+            pkg: 115
+            type: 118
+            position: 119
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 116
+          resolved_type: -1
+          generic_type_name: -1
         args:
-          - kind: ident
-            name: input
-            pkg: multipackage/utils
-            type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:43
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:25
+          - kind: 2
+            name: 112
+            value: -1
+            raw: -1
+            pkg: 113
+            type: 3
+            position: 114
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 116
+        resolved_type: -1
+        generic_type_name: -1
   - caller:
-      name: 56
-      pkg: 83
+      name: 123
+      pkg: 113
       position: -1
       recv_type: -1
     callee:
-      name: 86
-      pkg: 71
-      position: 87
+      name: 117
+      pkg: 115
+      position: 116
       recv_type: -1
     position: 7867008
     args:
-      - kind: ident
-        name: input
-        pkg: multipackage/utils
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:43
+      - kind: 2
+        name: 112
+        value: -1
+        raw: -1
+        pkg: 113
+        type: 3
+        position: 114
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       s:
-        kind: ident
-        name: input
-        pkg: multipackage/utils
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Multi-package_with_cross-package_dependencies1980335890/multipackage/src/multipackage/utils/helper.go:6:43
+        kind: 2
+        name: 112
+        value: -1
+        raw: -1
+        pkg: 113
+        type: 3
+        position: 114
+        resolved_type: -1
+        generic_type_name: -1

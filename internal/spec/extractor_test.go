@@ -12,6 +12,11 @@ func TestRefactoredExtractor(t *testing.T) {
 		StringPool: metadata.NewStringPool(),
 	}
 
+	arg := metadata.NewCallArgument(meta)
+	arg.SetKind(metadata.KindIdent)
+	arg.SetName("router")
+	arg.SetType("*chi.Mux")
+
 	// Create call graph after meta is defined
 	meta.CallGraph = []metadata.CallGraphEdge{
 		{
@@ -26,11 +31,7 @@ func TestRefactoredExtractor(t *testing.T) {
 				Pkg:  3,
 			},
 			Args: []metadata.CallArgument{
-				{
-					Kind: "ident",
-					Name: "router",
-					Type: "*chi.Mux",
-				},
+				*arg,
 			},
 		},
 	}

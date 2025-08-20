@@ -440,30 +440,174 @@ type Assignment struct {
 // CallArgument represents a function call argument or expression
 type CallArgument struct {
 	idstr    string
-	Kind     string                 `yaml:"kind"`            // ident, literal, selector, call, raw
-	Name     string                 `yaml:"name,omitempty"`  // for ident
-	Value    string                 `yaml:"value,omitempty"` // for literal
+	Kind     int                    `yaml:"kind"`            // ident, literal, selector, call, raw
+	Name     int                    `yaml:"name,omitempty"`  // for ident
+	Value    int                    `yaml:"value,omitempty"` // for literal
 	X        *CallArgument          `yaml:"x,omitempty"`     // for selector/call
 	Sel      *CallArgument          `yaml:"sel,omitempty"`   // for selector
 	Fun      *CallArgument          `yaml:"fun,omitempty"`   // for call
 	Args     []CallArgument         `yaml:"args,omitempty"`  // for call
-	Raw      string                 `yaml:"raw,omitempty"`   // fallback
+	Raw      int                    `yaml:"raw,omitempty"`   // fallback
 	Extra    map[string]interface{} `yaml:"extra,omitempty"` // extensibility
-	Pkg      string                 `yaml:"pkg,omitempty"`   // for ident
-	Type     string                 `yaml:"type,omitempty"`  // for ident
-	Position string                 `yaml:"position,omitempty"`
+	Pkg      int                    `yaml:"pkg,omitempty"`   // for ident
+	Type     int                    `yaml:"type,omitempty"`  // for ident
+	Position int                    `yaml:"position,omitempty"`
 
 	// Callee edge for the same call if it's kind is call
 	Edge *CallGraphEdge `yaml:"-"`
 
-	// New fields for argument-to-parameter and type parameter mapping
+	// fields for argument-to-parameter and type parameter mapping
 	ParamArgMap  map[string]CallArgument `yaml:"-"` // parameter name -> argument
 	TypeParamMap map[string]string       `yaml:"-"` // type parameter name -> concrete type
 
-	// NEW: Type parameter resolution information
-	ResolvedType    string `yaml:"resolved_type,omitempty"`     // The concrete type after type parameter resolution
-	IsGenericType   bool   `yaml:"is_generic_type,omitempty"`   // Whether this argument represents a generic type
-	GenericTypeName string `yaml:"generic_type_name,omitempty"` // The generic type parameter name (e.g., "TRequest", "TData")
+	// Type parameter resolution information
+	ResolvedType    int  `yaml:"resolved_type,omitempty"`     // The concrete type after type parameter resolution
+	IsGenericType   bool `yaml:"is_generic_type,omitempty"`   // Whether this argument represents a generic type
+	GenericTypeName int  `yaml:"generic_type_name,omitempty"` // The generic type parameter name (e.g., "TRequest", "TData")
+
+	// Reference to metadata for StringPool access
+	Meta *Metadata `yaml:"-"`
+}
+
+// Helper methods to get string values from StringPool indices
+func (a *CallArgument) GetKind() string {
+	if a.Kind >= 0 && a.Meta.StringPool != nil {
+		kind := a.Meta.StringPool.GetString(a.Kind)
+		return kind
+	}
+	return ""
+}
+
+func (a *CallArgument) GetName() string {
+	if a.Name >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.Name)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetValue() string {
+	if a.Value >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.Value)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetRaw() string {
+	if a.Raw >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.Raw)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetPkg() string {
+	if a.Pkg >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.Pkg)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetType() string {
+	if a.Type >= 0 && a.Meta.StringPool != nil {
+		typ := a.Meta.StringPool.GetString(a.Type)
+		return typ
+	}
+	return ""
+}
+
+func (a *CallArgument) GetPosition() string {
+	if a.Position >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.Position)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetResolvedType() string {
+	if a.ResolvedType >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.ResolvedType)
+	}
+	return ""
+}
+
+func (a *CallArgument) GetGenericTypeName() string {
+	if a.GenericTypeName >= 0 && a.Meta.StringPool != nil {
+		return a.Meta.StringPool.GetString(a.GenericTypeName)
+	}
+	return ""
+}
+
+// NewCallArgument creates a new CallArgument with metadata reference
+func NewCallArgument(meta *Metadata) *CallArgument {
+	if meta == nil {
+		panic("metadata is nil")
+	}
+
+	return &CallArgument{
+		Kind:            -1,
+		Name:            -1,
+		Value:           -1,
+		Raw:             -1,
+		Pkg:             -1,
+		Type:            -1,
+		Position:        -1,
+		ResolvedType:    -1,
+		GenericTypeName: -1,
+		Meta:            meta,
+	}
+}
+
+// SetString methods to set string values using StringPool
+func (a *CallArgument) SetKind(kind string) {
+	if a.Meta.StringPool != nil {
+		a.Kind = a.Meta.StringPool.Get(kind)
+	}
+}
+
+func (a *CallArgument) SetName(name string) {
+	if a.Meta.StringPool != nil {
+		a.Name = a.Meta.StringPool.Get(name)
+	}
+}
+
+func (a *CallArgument) SetValue(value string) {
+	if a.Meta.StringPool != nil {
+		a.Value = a.Meta.StringPool.Get(value)
+	}
+}
+
+func (a *CallArgument) SetRaw(raw string) {
+	if a.Meta.StringPool != nil {
+		a.Raw = a.Meta.StringPool.Get(raw)
+	}
+}
+
+func (a *CallArgument) SetPkg(pkg string) {
+	if a.Meta.StringPool != nil {
+		a.Pkg = a.Meta.StringPool.Get(pkg)
+	}
+}
+
+func (a *CallArgument) SetType(typeStr string) {
+	if a.Meta.StringPool != nil {
+		a.Type = a.Meta.StringPool.Get(typeStr)
+	}
+}
+
+func (a *CallArgument) SetPosition(position string) {
+	if a.Meta.StringPool != nil {
+		a.Position = a.Meta.StringPool.Get(position)
+	}
+}
+
+func (a *CallArgument) SetResolvedType(resolvedType string) {
+	if a.Meta.StringPool != nil {
+		a.ResolvedType = a.Meta.StringPool.Get(resolvedType)
+	}
+}
+
+func (a *CallArgument) SetGenericTypeName(genericTypeName string) {
+	if a.Meta.StringPool != nil {
+		a.GenericTypeName = a.Meta.StringPool.Get(genericTypeName)
+	}
 }
 
 func (a *CallArgument) TypeParams() map[string]string {
@@ -486,8 +630,9 @@ func (a *CallArgument) ID() string {
 		return a.idstr
 	}
 
-	if len(a.Position) > 0 {
-		pos = "@" + a.Position
+	position := a.GetPosition()
+	if position != "" {
+		pos = "@" + position
 	}
 
 	id, typeParam := a.id(".")
@@ -513,26 +658,31 @@ func (a *CallArgument) id(sep string) (string, string) {
 		typeParam = fmt.Sprintf("[%s]", strings.Join(genericParts, ","))
 	}
 
-	switch a.Kind {
+	kind := a.GetKind()
+	switch kind {
 	case KindIdent:
-		if a.Type != "" && sep == "/" {
-			return a.Type, typeParam
-		} else if a.Pkg != "" {
+		typeStr := a.GetType()
+		pkgStr := a.GetPkg()
+		nameStr := a.GetName()
+
+		if typeStr != "" && sep == "/" {
+			return typeStr, typeParam
+		} else if pkgStr != "" {
 			if sep == "/" {
 				return "", typeParam
 			}
-			return a.Pkg + sep + a.Name, typeParam
+			return pkgStr + sep + nameStr, typeParam
 		}
-		return a.Name, typeParam
+		return nameStr, typeParam
 	case KindLiteral:
-		return a.Value, typeParam
+		return a.GetValue(), typeParam
 	case KindSelector:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
-				xID = a.Sel.Pkg
+				xID = a.Sel.GetPkg()
 			}
-			id := xID + sep + a.Sel.Name
+			id := xID + sep + a.Sel.GetName()
 
 			if xTypeParam != "" {
 				typeParam = xTypeParam
@@ -540,7 +690,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 
 			return id, typeParam
 		}
-		return a.Sel.Name, typeParam
+		return a.Sel.GetName(), typeParam
 	case KindCall:
 		if a.Fun != nil {
 			funID, funTypeParam := a.Fun.id(".")
@@ -555,9 +705,9 @@ func (a *CallArgument) id(sep string) (string, string) {
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
-				xID = a.Pkg
+				xID = a.GetPkg()
 			}
-			id := a.Value + xID
+			id := a.GetValue() + xID
 
 			if xTypeParam != "" {
 				typeParam = xTypeParam
@@ -570,7 +720,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
-				xID = a.Pkg
+				xID = a.GetPkg()
 			}
 			id := xID
 
@@ -585,7 +735,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
-				xID = a.Pkg
+				xID = a.GetPkg()
 			}
 			id := xID
 
@@ -597,7 +747,7 @@ func (a *CallArgument) id(sep string) (string, string) {
 		}
 		return "", ""
 	default:
-		return a.Raw, typeParam
+		return a.GetRaw(), typeParam
 	}
 }
 

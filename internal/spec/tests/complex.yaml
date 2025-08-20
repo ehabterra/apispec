@@ -1,53 +1,102 @@
 string_pool:
   - GetName
   - '*Service'
+  - ident
+  - string
+  - complex
+  - r1/T/complex/src/complex/service.go:9:29
+  - func_type
+  - func_results
   - r1/T/complex/src/complex/service.go:9:1
   - exported
   - func() string
+  - literal
+  - '"Processing: %s"'
+  - data
+  - r1/T/complex/src/complex/service.go:14:42
+  - fmt
+  - r1/T/complex/src/complex/service.go:14:12
+  - Sprintf
+  - func(format string, a ...any) string
+  - r1/T/complex/src/complex/service.go:14:16
+  - selector
+  - call
   - result
-  - complex
-  - string
   - r1/T/complex/src/complex/service.go:14:2
   - unexported
   - Process
+  - r1/T/complex/src/complex/service.go:13:32
+  - r1/T/complex/src/complex/service.go:13:40
   - r1/T/complex/src/complex/service.go:13:1
   - func(string) string
+  - h
+  - '*complex.Handler'
+  - r1/T/complex/src/complex/service.go:23:10
+  - service
+  - '*complex.Service'
+  - r1/T/complex/src/complex/service.go:23:12
+  - r1/T/complex/src/complex/service.go:23:20
   - name
   - r1/T/complex/src/complex/service.go:23:2
   - Handle
+  - input
+  - r1/T/complex/src/complex/service.go:24:33
+  - r1/T/complex/src/complex/service.go:24:15
+  - r1/T/complex/src/complex/service.go:24:17
+  - func(data string) string
+  - r1/T/complex/src/complex/service.go:24:25
   - processed
   - r1/T/complex/src/complex/service.go:24:2
   - '*Handler'
+  - r1/T/complex/src/complex/service.go:22:32
   - r1/T/complex/src/complex/service.go:22:1
   - 'func(string) '
   - Service
   - struct
   - interface
   - Handler
-  - service
+  - r1/T/complex/src/complex/service.go:29:10
+  - r1/T/complex/src/complex/service.go:29:18
+  - r1/T/complex/src/complex/service.go:29:24
+  - key_value
+  - composite_lit
+  - unary
+  - '&'
+  - r1/T/complex/src/complex/service.go:29:9
   - NewService
+  - r1/T/complex/src/complex/service.go:28:22
+  - r1/T/complex/src/complex/service.go:28:31
+  - star
+  - r1/T/complex/src/complex/service.go:28:30
   - r1/T/complex/src/complex/service.go:28:1
-  - NewHandler
-  - r1/T/complex/src/complex/service.go:32:1
+  - r1/T/complex/src/complex/service.go:33:10
+  - r1/T/complex/src/complex/service.go:33:18
   - svc
-  - '*complex.Service'
+  - r1/T/complex/src/complex/service.go:33:27
+  - r1/T/complex/src/complex/service.go:33:9
+  - NewHandler
+  - r1/T/complex/src/complex/service.go:32:22
+  - r1/T/complex/src/complex/service.go:32:21
+  - r1/T/complex/src/complex/service.go:32:32
+  - r1/T/complex/src/complex/service.go:32:31
+  - r1/T/complex/src/complex/service.go:32:1
+  - '"test-service"'
+  - func(name string) *complex.Service
+  - r1/T/complex/src/complex/service.go:37:9
   - r1/T/complex/src/complex/service.go:37:2
   - main
+  - r1/T/complex/src/complex/service.go:38:24
+  - func(svc *complex.Service) *complex.Handler
+  - r1/T/complex/src/complex/service.go:38:13
   - handler
-  - '*complex.Handler'
   - r1/T/complex/src/complex/service.go:38:2
   - r1/T/complex/src/complex/service.go:36:1
-  - r1/T/complex/src/complex/service.go:29:10
-  - r1/T/complex/src/complex/service.go:33:10
-  - fmt
-  - Sprintf
-  - r1/T/complex/src/complex/service.go:14:12
-  - r1/T/complex/src/complex/service.go:23:10
-  - r1/T/complex/src/complex/service.go:24:15
+  - '"Handler %s: %s\n"'
+  - r1/T/complex/src/complex/service.go:25:33
+  - r1/T/complex/src/complex/service.go:25:39
   - Printf
   - r1/T/complex/src/complex/service.go:25:2
-  - r1/T/complex/src/complex/service.go:37:9
-  - r1/T/complex/src/complex/service.go:38:13
+  - '"test-data"'
   - r1/T/complex/src/complex/service.go:39:2
 packages:
   complex:
@@ -55,815 +104,1505 @@ packages:
       r1/T/complex/src/complex/service.go:
         types:
           Handler:
-            name: 24
-            kind: 22
+            name: 55
+            kind: 53
             fields:
-              - name: 25
+              - name: 33
                 type: 1
                 tag: -1
-                scope: 9
+                scope: 24
                 comments: -1
-            scope: 3
+            scope: 9
             methods:
-              - name: 15
-                receiver: 18
+              - name: 39
+                receiver: 48
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: ident
-                      name: string
-                      pkg: complex
-                      type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:22:32
-                signature_str: 20
-                position: 19
-                scope: 3
+                    - kind: 2
+                      name: 3
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 3
+                      position: 49
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 51
+                position: 50
+                scope: 9
                 assignments:
                   name:
-                    - variable_name: 13
-                      pkg: 6
-                      concrete_type: 7
-                      position: 14
-                      scope: 9
+                    - variable_name: 37
+                      pkg: 4
+                      concrete_type: 3
+                      position: 38
+                      scope: 24
                       value:
-                        kind: call
+                        kind: 21
+                        name: -1
+                        value: -1
                         fun:
-                          kind: selector
+                          kind: 20
+                          name: -1
+                          value: -1
                           x:
-                            kind: selector
+                            kind: 20
+                            name: -1
+                            value: -1
                             x:
-                              kind: ident
-                              name: h
-                              pkg: complex
-                              type: '*complex.Handler'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                              kind: 2
+                              name: 30
+                              value: -1
+                              raw: -1
+                              pkg: 4
+                              type: 31
+                              position: 32
+                              resolved_type: -1
+                              generic_type_name: -1
                             sel:
-                              kind: ident
-                              name: service
-                              pkg: complex
-                              type: '*complex.Service'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:12
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                              kind: 2
+                              name: 33
+                              value: -1
+                              raw: -1
+                              pkg: 4
+                              type: 34
+                              position: 35
+                              resolved_type: -1
+                              generic_type_name: -1
+                            raw: -1
+                            pkg: -1
+                            type: -1
+                            position: 32
+                            resolved_type: -1
+                            generic_type_name: -1
                           sel:
-                            kind: ident
-                            name: GetName
-                            pkg: complex
-                            type: func() string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:20
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                            kind: 2
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 10
+                            position: 36
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 32
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 32
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: ident
-                        name: name
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:2
-                      func: 15
+                        kind: 2
+                        name: 37
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 38
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 39
                       callee_func: GetName
                       callee_pkg: complex
                   processed:
-                    - variable_name: 16
-                      pkg: 6
-                      concrete_type: 7
-                      position: 17
-                      scope: 9
+                    - variable_name: 46
+                      pkg: 4
+                      concrete_type: 3
+                      position: 47
+                      scope: 24
                       value:
-                        kind: call
+                        kind: 21
+                        name: -1
+                        value: -1
                         fun:
-                          kind: selector
+                          kind: 20
+                          name: -1
+                          value: -1
                           x:
-                            kind: selector
+                            kind: 20
+                            name: -1
+                            value: -1
                             x:
-                              kind: ident
-                              name: h
-                              pkg: complex
-                              type: '*complex.Handler'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                              kind: 2
+                              name: 30
+                              value: -1
+                              raw: -1
+                              pkg: 4
+                              type: 31
+                              position: 42
+                              resolved_type: -1
+                              generic_type_name: -1
                             sel:
-                              kind: ident
-                              name: service
-                              pkg: complex
-                              type: '*complex.Service'
-                              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:17
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                              kind: 2
+                              name: 33
+                              value: -1
+                              raw: -1
+                              pkg: 4
+                              type: 34
+                              position: 43
+                              resolved_type: -1
+                              generic_type_name: -1
+                            raw: -1
+                            pkg: -1
+                            type: -1
+                            position: 42
+                            resolved_type: -1
+                            generic_type_name: -1
                           sel:
-                            kind: ident
-                            name: Process
-                            pkg: complex
-                            type: func(data string) string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:25
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                            kind: 2
+                            name: 25
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 44
+                            position: 45
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 42
+                          resolved_type: -1
+                          generic_type_name: -1
                         args:
-                          - kind: ident
-                            name: input
-                            pkg: complex
-                            type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:33
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                          - kind: 2
+                            name: 40
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 3
+                            position: 41
+                            resolved_type: -1
+                            generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 42
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: ident
-                        name: processed
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:2
-                      func: 15
+                        kind: 2
+                        name: 46
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 47
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 39
                       callee_func: Process
                       callee_pkg: complex
             comments: -1
           Service:
-            name: 21
-            kind: 22
+            name: 52
+            kind: 53
             fields:
-              - name: 13
-                type: 7
+              - name: 37
+                type: 3
                 tag: -1
-                scope: 9
+                scope: 24
                 comments: -1
-            scope: 3
+            scope: 9
             methods:
               - receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: string
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:9:29
-                signature_str: 4
-                position: 2
-                scope: 3
-              - name: 10
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 5
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 10
+                position: 8
+                scope: 9
+              - name: 25
                 receiver: 1
                 signature:
-                  kind: func_type
+                  kind: 6
+                  name: -1
+                  value: -1
                   fun:
-                    kind: func_results
+                    kind: 7
+                    name: -1
+                    value: -1
                     args:
-                      - kind: ident
-                        name: string
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:13:40
+                      - kind: 2
+                        name: 3
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 27
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
                   args:
-                    - kind: ident
-                      name: string
-                      pkg: complex
-                      type: string
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:13:32
-                signature_str: 12
-                position: 11
-                scope: 3
+                    - kind: 2
+                      name: 3
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 3
+                      position: 26
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+                signature_str: 29
+                position: 28
+                scope: 9
                 assignments:
                   result:
-                    - variable_name: 5
-                      pkg: 6
-                      concrete_type: 7
-                      position: 8
-                      scope: 9
+                    - variable_name: 22
+                      pkg: 4
+                      concrete_type: 3
+                      position: 23
+                      scope: 24
                       value:
-                        kind: call
+                        kind: 21
+                        name: -1
+                        value: -1
                         fun:
-                          kind: selector
+                          kind: 20
+                          name: -1
+                          value: -1
                           x:
-                            kind: ident
-                            name: fmt
-                            pkg: fmt
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                            kind: 2
+                            name: 15
+                            value: -1
+                            raw: -1
+                            pkg: 15
+                            type: -1
+                            position: 16
+                            resolved_type: -1
+                            generic_type_name: -1
                           sel:
-                            kind: ident
-                            name: Sprintf
-                            pkg: fmt
-                            type: func(format string, a ...any) string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:16
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                            kind: 2
+                            name: 17
+                            value: -1
+                            raw: -1
+                            pkg: 15
+                            type: 18
+                            position: 19
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 16
+                          resolved_type: -1
+                          generic_type_name: -1
                         args:
-                          - kind: literal
-                            value: '"Processing: %s"'
-                          - kind: ident
-                            name: data
-                            pkg: complex
-                            type: string
-                            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:42
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                          - kind: 11
+                            name: -1
+                            value: 12
+                            raw: -1
+                            pkg: -1
+                            type: -1
+                            position: -1
+                            resolved_type: -1
+                            generic_type_name: -1
+                          - kind: 2
+                            name: 13
+                            value: -1
+                            raw: -1
+                            pkg: 4
+                            type: 3
+                            position: 14
+                            resolved_type: -1
+                            generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 16
+                        resolved_type: -1
+                        generic_type_name: -1
                       lhs:
-                        kind: ident
-                        name: result
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:2
-                      func: 10
+                        kind: 2
+                        name: 22
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 23
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 25
                       callee_func: Sprintf
                       callee_pkg: fmt
             comments: -1
         functions:
           NewHandler:
-            name: 28
+            name: 75
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: star
+                  - kind: 67
+                    name: -1
+                    value: -1
                     x:
-                      kind: ident
-                      name: Handler
-                      pkg: complex
-                      type: Handler
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:32:32
+                      kind: 2
+                      name: 55
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 55
+                      position: 78
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 79
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: star
+                - kind: 67
+                  name: -1
+                  value: -1
                   x:
-                    kind: ident
-                    name: Service
-                    pkg: complex
-                    type: Service
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:32:22
-            position: 29
-            scope: 3
-            comments: -1
-            return_vars:
-              - kind: unary
-                value: '&'
-                x:
-                  kind: composite_lit
-                  x:
-                    kind: ident
-                    name: Handler
-                    pkg: complex
-                    type: Handler
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:33:10
-                  args:
-                    - kind: key_value
-                      x:
-                        kind: ident
-                        name: service
-                        pkg: complex
-                        type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:33:18
-                      fun:
-                        kind: ident
-                        name: svc
-                        pkg: complex
-                        type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:33:27
-          NewService:
-            name: 26
-            signature:
-              kind: func_type
-              fun:
-                kind: func_results
-                args:
-                  - kind: star
-                    x:
-                      kind: ident
-                      name: Service
-                      pkg: complex
-                      type: Service
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:28:31
-              args:
-                - kind: ident
-                  name: string
-                  pkg: complex
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:28:22
-            position: 27
-            scope: 3
-            comments: -1
-            return_vars:
-              - kind: unary
-                value: '&'
-                x:
-                  kind: composite_lit
-                  x:
-                    kind: ident
-                    name: Service
-                    pkg: complex
-                    type: Service
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:29:10
-                  args:
-                    - kind: key_value
-                      x:
-                        kind: ident
-                        name: name
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:29:18
-                      fun:
-                        kind: ident
-                        name: name
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:29:24
-          main:
-            name: 33
-            signature:
-              kind: func_type
-              fun:
-                kind: func_results
-            position: 37
+                    kind: 2
+                    name: 52
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 52
+                    position: 76
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 77
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 80
             scope: 9
+            comments: -1
+            return_vars:
+              - kind: 61
+                name: -1
+                value: 62
+                x:
+                  kind: 60
+                  name: -1
+                  value: -1
+                  x:
+                    kind: 2
+                    name: 55
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 55
+                    position: 70
+                    resolved_type: -1
+                    generic_type_name: -1
+                  args:
+                    - kind: 59
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 2
+                        name: 33
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 34
+                        position: 71
+                        resolved_type: -1
+                        generic_type_name: -1
+                      fun:
+                        kind: 2
+                        name: 72
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 34
+                        position: 73
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 71
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 70
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 74
+                resolved_type: -1
+                generic_type_name: -1
+          NewService:
+            name: 64
+            signature:
+              kind: 6
+              name: -1
+              value: -1
+              fun:
+                kind: 7
+                name: -1
+                value: -1
+                args:
+                  - kind: 67
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 2
+                      name: 52
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 52
+                      position: 66
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 68
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              args:
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 65
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 69
+            scope: 9
+            comments: -1
+            return_vars:
+              - kind: 61
+                name: -1
+                value: 62
+                x:
+                  kind: 60
+                  name: -1
+                  value: -1
+                  x:
+                    kind: 2
+                    name: 52
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 52
+                    position: 56
+                    resolved_type: -1
+                    generic_type_name: -1
+                  args:
+                    - kind: 59
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 2
+                        name: 37
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 57
+                        resolved_type: -1
+                        generic_type_name: -1
+                      fun:
+                        kind: 2
+                        name: 37
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 58
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 57
+                      resolved_type: -1
+                      generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 56
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 63
+                resolved_type: -1
+                generic_type_name: -1
+          main:
+            name: 85
+            signature:
+              kind: 6
+              name: -1
+              value: -1
+              fun:
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            position: 91
+            scope: 24
             comments: -1
             assignments:
               handler:
-                - variable_name: 34
-                  pkg: 6
-                  concrete_type: 35
-                  position: 36
-                  scope: 9
+                - variable_name: 89
+                  pkg: 4
+                  concrete_type: 31
+                  position: 90
+                  scope: 24
                   value:
-                    kind: call
+                    kind: 21
+                    name: -1
+                    value: -1
                     fun:
-                      kind: ident
-                      name: NewHandler
-                      pkg: complex
-                      type: func(svc *complex.Service) *complex.Handler
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:13
+                      kind: 2
+                      name: 75
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 87
+                      position: 88
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: ident
-                        name: svc
-                        pkg: complex
-                        type: '*complex.Service'
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:24
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:13
+                      - kind: 2
+                        name: 72
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 34
+                        position: 86
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 88
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: handler
-                    pkg: complex
-                    type: '*complex.Handler'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:2
-                  func: 33
+                    kind: 2
+                    name: 89
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 31
+                    position: 90
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 85
                   callee_func: NewHandler
                   callee_pkg: complex
               svc:
-                - variable_name: 30
-                  pkg: 6
-                  concrete_type: 31
-                  position: 32
-                  scope: 9
+                - variable_name: 72
+                  pkg: 4
+                  concrete_type: 34
+                  position: 84
+                  scope: 24
                   value:
-                    kind: call
+                    kind: 21
+                    name: -1
+                    value: -1
                     fun:
-                      kind: ident
-                      name: NewService
-                      pkg: complex
-                      type: func(name string) *complex.Service
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:9
+                      kind: 2
+                      name: 64
+                      value: -1
+                      raw: -1
+                      pkg: 4
+                      type: 82
+                      position: 83
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: literal
-                        value: '"test-service"'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:9
+                      - kind: 11
+                        name: -1
+                        value: 81
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 83
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: svc
-                    pkg: complex
-                    type: '*complex.Service'
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:2
-                  func: 33
+                    kind: 2
+                    name: 72
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 34
+                    position: 84
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 85
                   callee_func: NewService
                   callee_pkg: complex
         struct_instances:
-          - type: 21
-            position: 38
+          - type: 52
+            position: 56
             fields:
-              13: 13
-          - type: 24
-            position: 39
+              37: 37
+          - type: 55
+            position: 70
             fields:
-              25: 30
+              33: 72
         imports:
-          40: 40
+          15: 15
     types:
       Handler:
-        name: 24
-        kind: 22
+        name: 55
+        kind: 53
         fields:
-          - name: 25
+          - name: 33
             type: 1
             tag: -1
-            scope: 9
+            scope: 24
             comments: -1
-        scope: 3
+        scope: 9
         methods:
-          - name: 15
-            receiver: 18
+          - name: 39
+            receiver: 48
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: string
-                  pkg: complex
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:22:32
-            signature_str: 20
-            position: 19
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 49
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 51
+            position: 50
+            scope: 9
             assignments:
               name:
-                - variable_name: 13
-                  pkg: 6
-                  concrete_type: 7
-                  position: 14
-                  scope: 9
+                - variable_name: 37
+                  pkg: 4
+                  concrete_type: 3
+                  position: 38
+                  scope: 24
                   value:
-                    kind: call
+                    kind: 21
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 20
+                      name: -1
+                      value: -1
                       x:
-                        kind: selector
+                        kind: 20
+                        name: -1
+                        value: -1
                         x:
-                          kind: ident
-                          name: h
-                          pkg: complex
-                          type: '*complex.Handler'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                          kind: 2
+                          name: 30
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 31
+                          position: 32
+                          resolved_type: -1
+                          generic_type_name: -1
                         sel:
-                          kind: ident
-                          name: service
-                          pkg: complex
-                          type: '*complex.Service'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:12
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                          kind: 2
+                          name: 33
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 34
+                          position: 35
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 32
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: GetName
-                        pkg: complex
-                        type: func() string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:20
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:10
+                        kind: 2
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 10
+                        position: 36
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 32
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 32
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: name
-                    pkg: complex
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:23:2
-                  func: 15
+                    kind: 2
+                    name: 37
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 38
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 39
                   callee_func: GetName
                   callee_pkg: complex
               processed:
-                - variable_name: 16
-                  pkg: 6
-                  concrete_type: 7
-                  position: 17
-                  scope: 9
+                - variable_name: 46
+                  pkg: 4
+                  concrete_type: 3
+                  position: 47
+                  scope: 24
                   value:
-                    kind: call
+                    kind: 21
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 20
+                      name: -1
+                      value: -1
                       x:
-                        kind: selector
+                        kind: 20
+                        name: -1
+                        value: -1
                         x:
-                          kind: ident
-                          name: h
-                          pkg: complex
-                          type: '*complex.Handler'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                          kind: 2
+                          name: 30
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 31
+                          position: 42
+                          resolved_type: -1
+                          generic_type_name: -1
                         sel:
-                          kind: ident
-                          name: service
-                          pkg: complex
-                          type: '*complex.Service'
-                          position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:17
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                          kind: 2
+                          name: 33
+                          value: -1
+                          raw: -1
+                          pkg: 4
+                          type: 34
+                          position: 43
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 42
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: Process
-                        pkg: complex
-                        type: func(data string) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:25
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                        kind: 2
+                        name: 25
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 44
+                        position: 45
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 42
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: ident
-                        name: input
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:33
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:15
+                      - kind: 2
+                        name: 40
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 41
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 42
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: processed
-                    pkg: complex
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:2
-                  func: 15
+                    kind: 2
+                    name: 46
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 47
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 39
                   callee_func: Process
                   callee_pkg: complex
         comments: -1
       Service:
-        name: 21
-        kind: 22
+        name: 52
+        kind: 53
         fields:
-          - name: 13
-            type: 7
+          - name: 37
+            type: 3
             tag: -1
-            scope: 9
+            scope: 24
             comments: -1
-        scope: 3
+        scope: 9
         methods:
           - receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: complex
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:9:29
-            signature_str: 4
-            position: 2
-            scope: 3
-          - name: 10
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 5
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 10
+            position: 8
+            scope: 9
+          - name: 25
             receiver: 1
             signature:
-              kind: func_type
+              kind: 6
+              name: -1
+              value: -1
               fun:
-                kind: func_results
+                kind: 7
+                name: -1
+                value: -1
                 args:
-                  - kind: ident
-                    name: string
-                    pkg: complex
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:13:40
+                  - kind: 2
+                    name: 3
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 27
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
               args:
-                - kind: ident
-                  name: string
-                  pkg: complex
-                  type: string
-                  position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:13:32
-            signature_str: 12
-            position: 11
-            scope: 3
+                - kind: 2
+                  name: 3
+                  value: -1
+                  raw: -1
+                  pkg: 4
+                  type: 3
+                  position: 26
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 29
+            position: 28
+            scope: 9
             assignments:
               result:
-                - variable_name: 5
-                  pkg: 6
-                  concrete_type: 7
-                  position: 8
-                  scope: 9
+                - variable_name: 22
+                  pkg: 4
+                  concrete_type: 3
+                  position: 23
+                  scope: 24
                   value:
-                    kind: call
+                    kind: 21
+                    name: -1
+                    value: -1
                     fun:
-                      kind: selector
+                      kind: 20
+                      name: -1
+                      value: -1
                       x:
-                        kind: ident
-                        name: fmt
-                        pkg: fmt
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                        kind: 2
+                        name: 15
+                        value: -1
+                        raw: -1
+                        pkg: 15
+                        type: -1
+                        position: 16
+                        resolved_type: -1
+                        generic_type_name: -1
                       sel:
-                        kind: ident
-                        name: Sprintf
-                        pkg: fmt
-                        type: func(format string, a ...any) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:16
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                        kind: 2
+                        name: 17
+                        value: -1
+                        raw: -1
+                        pkg: 15
+                        type: 18
+                        position: 19
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 16
+                      resolved_type: -1
+                      generic_type_name: -1
                     args:
-                      - kind: literal
-                        value: '"Processing: %s"'
-                      - kind: ident
-                        name: data
-                        pkg: complex
-                        type: string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:42
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:12
+                      - kind: 11
+                        name: -1
+                        value: 12
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                      - kind: 2
+                        name: 13
+                        value: -1
+                        raw: -1
+                        pkg: 4
+                        type: 3
+                        position: 14
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 16
+                    resolved_type: -1
+                    generic_type_name: -1
                   lhs:
-                    kind: ident
-                    name: result
-                    pkg: complex
-                    type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:2
-                  func: 10
+                    kind: 2
+                    name: 22
+                    value: -1
+                    raw: -1
+                    pkg: 4
+                    type: 3
+                    position: 23
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 25
                   callee_func: Sprintf
                   callee_pkg: fmt
         comments: -1
 call_graph:
   - caller:
-      name: 10
-      pkg: 6
+      name: 25
+      pkg: 4
       position: -1
       recv_type: 1
     callee:
-      name: 41
-      pkg: 40
-      position: 42
+      name: 17
+      pkg: 15
+      position: 16
       recv_type: -1
     position: 6293163
     args:
-      - kind: literal
-        value: '"Processing: %s"'
-      - kind: ident
-        name: data
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:42
+      - kind: 11
+        name: -1
+        value: 12
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 13
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 14
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       a:
-        kind: ident
-        name: data
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:14:42
+        kind: 2
+        name: 13
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 14
+        resolved_type: -1
+        generic_type_name: -1
       format:
-        kind: literal
-        value: '"Processing: %s"'
+        kind: 11
+        name: -1
+        value: 12
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: result
   - caller:
-      name: 15
-      pkg: 6
+      name: 39
+      pkg: 4
       position: -1
-      recv_type: 18
+      recv_type: 48
     callee:
-      pkg: 6
-      position: 43
+      pkg: 4
+      position: 32
       recv_type: 1
     position: 6293310
     callee_recv_var_name: name
   - caller:
-      name: 15
-      pkg: 6
+      name: 39
+      pkg: 4
       position: -1
-      recv_type: 18
+      recv_type: 48
     callee:
-      name: 10
-      pkg: 6
-      position: 44
+      name: 25
+      pkg: 4
+      position: 42
       recv_type: 1
     position: 6293344
     args:
-      - kind: ident
-        name: input
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:33
+      - kind: 2
+        name: 40
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 41
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       data:
-        kind: ident
-        name: input
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:24:33
+        kind: 2
+        name: 40
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 41
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: processed
   - caller:
-      name: 15
-      pkg: 6
+      name: 39
+      pkg: 4
       position: -1
-      recv_type: 18
+      recv_type: 48
     callee:
-      name: 45
-      pkg: 40
-      position: 46
+      name: 95
+      pkg: 15
+      position: 96
       recv_type: -1
     position: 6293370
     args:
-      - kind: literal
-        value: '"Handler %s: %s\n"'
-      - kind: ident
-        name: name
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:25:33
-      - kind: ident
-        name: processed
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:25:39
+      - kind: 11
+        name: -1
+        value: 92
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 37
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 93
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 2
+        name: 46
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 94
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       a:
-        kind: ident
-        name: name
-        pkg: complex
-        type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:25:33
+        kind: 2
+        name: 37
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 3
+        position: 93
+        resolved_type: -1
+        generic_type_name: -1
       format:
-        kind: literal
-        value: '"Handler %s: %s\n"'
+        kind: 11
+        name: -1
+        value: 92
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
   - caller:
-      name: 33
-      pkg: 6
+      name: 85
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      name: 26
-      pkg: 6
-      position: 47
+      name: 64
+      pkg: 4
+      position: 83
       recv_type: -1
     position: 6293590
     args:
-      - kind: literal
-        value: '"test-service"'
+      - kind: 11
+        name: -1
+        value: 81
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       svc:
-        - variable_name: 30
-          pkg: 6
-          concrete_type: 31
-          position: 32
-          scope: 9
+        - variable_name: 72
+          pkg: 4
+          concrete_type: 34
+          position: 84
+          scope: 24
           value:
-            kind: call
+            kind: 21
+            name: -1
+            value: -1
             fun:
-              kind: ident
-              name: NewService
-              pkg: complex
-              type: func(name string) *complex.Service
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:9
+              kind: 2
+              name: 64
+              value: -1
+              raw: -1
+              pkg: 4
+              type: 82
+              position: 83
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: literal
-                value: '"test-service"'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:9
+              - kind: 11
+                name: -1
+                value: 81
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 83
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: svc
-            pkg: complex
-            type: '*complex.Service'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:37:2
-          func: 33
+            kind: 2
+            name: 72
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 34
+            position: 84
+            resolved_type: -1
+            generic_type_name: -1
+          func: 85
           callee_func: NewService
           callee_pkg: complex
     param_arg_map:
       name:
-        kind: literal
-        value: '"test-service"'
+        kind: 11
+        name: -1
+        value: 81
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: svc
   - caller:
-      name: 33
-      pkg: 6
+      name: 85
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      name: 28
-      pkg: 6
-      position: 48
+      name: 75
+      pkg: 4
+      position: 88
       recv_type: -1
     position: 6293629
     args:
-      - kind: ident
-        name: svc
-        pkg: complex
-        type: '*complex.Service'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:24
+      - kind: 2
+        name: 72
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 34
+        position: 86
+        resolved_type: -1
+        generic_type_name: -1
     assignments:
       handler:
-        - variable_name: 34
-          pkg: 6
-          concrete_type: 35
-          position: 36
-          scope: 9
+        - variable_name: 89
+          pkg: 4
+          concrete_type: 31
+          position: 90
+          scope: 24
           value:
-            kind: call
+            kind: 21
+            name: -1
+            value: -1
             fun:
-              kind: ident
-              name: NewHandler
-              pkg: complex
-              type: func(svc *complex.Service) *complex.Handler
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:13
+              kind: 2
+              name: 75
+              value: -1
+              raw: -1
+              pkg: 4
+              type: 87
+              position: 88
+              resolved_type: -1
+              generic_type_name: -1
             args:
-              - kind: ident
-                name: svc
-                pkg: complex
-                type: '*complex.Service'
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:24
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:13
+              - kind: 2
+                name: 72
+                value: -1
+                raw: -1
+                pkg: 4
+                type: 34
+                position: 86
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: -1
+            position: 88
+            resolved_type: -1
+            generic_type_name: -1
           lhs:
-            kind: ident
-            name: handler
-            pkg: complex
-            type: '*complex.Handler'
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:2
-          func: 33
+            kind: 2
+            name: 89
+            value: -1
+            raw: -1
+            pkg: 4
+            type: 31
+            position: 90
+            resolved_type: -1
+            generic_type_name: -1
+          func: 85
           callee_func: NewHandler
           callee_pkg: complex
     param_arg_map:
       svc:
-        kind: ident
-        name: svc
-        pkg: complex
-        type: '*complex.Service'
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Complex_call_graph_with_method_chains3665479430/complex/src/complex/service.go:38:24
+        kind: 2
+        name: 72
+        value: -1
+        raw: -1
+        pkg: 4
+        type: 34
+        position: 86
+        resolved_type: -1
+        generic_type_name: -1
     callee_recv_var_name: handler
   - caller:
-      name: 33
-      pkg: 6
+      name: 85
+      pkg: 4
       position: -1
       recv_type: -1
     callee:
-      name: 15
-      pkg: 6
-      position: 49
-      recv_type: 18
+      name: 39
+      pkg: 4
+      position: 98
+      recv_type: 48
     position: 6293646
     args:
-      - kind: literal
-        value: '"test-data"'
+      - kind: 11
+        name: -1
+        value: 97
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     param_arg_map:
       input:
-        kind: literal
-        value: '"test-data"'
+        kind: 11
+        name: -1
+        value: 97
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
     callee_var_name: handler
