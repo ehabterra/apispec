@@ -35,7 +35,6 @@ import (
 )
 
 const (
-	toolVersion               = "0.0.1"
 	defaultOutputFile         = "openapi.json"
 	defaultInputDir           = "."
 	defaultTitle              = "Generated API"
@@ -53,6 +52,23 @@ const (
 	licenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 	fullLicenseNotice         = "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 )
+
+// Version info injected at build time via -ldflags
+var (
+	Version   = "0.0.1"
+	Commit    = "unknown"
+	BuildDate = "unknown"
+	GoVersion = "unknown"
+)
+
+func printVersion() {
+	fmt.Printf("swagen version: %s\n", Version)
+	fmt.Printf("Commit: %s\n", Commit)
+	fmt.Printf("Build date: %s\n", BuildDate)
+	fmt.Printf("Go version: %s\n", GoVersion)
+	fmt.Println(copyrightNotice)
+	fmt.Println(licenseNotice)
+}
 
 // findModuleRoot finds the root directory of a Go module by looking for go.mod
 func findModuleRoot(startPath string) (string, error) {
@@ -78,7 +94,6 @@ func findModuleRoot(startPath string) (string, error) {
 	return "", fmt.Errorf("no go.mod found in %s or any parent directory", startPath)
 }
 
-// main is the entry point for the CLI tool. It parses flags, collects Go files, runs type-checking, detects the framework, parses routes, and generates the OpenAPI spec.
 func main() {
 	start := time.Now()
 	// Print copyright and license info at the very start
@@ -86,7 +101,6 @@ func main() {
 	fmt.Println(licenseNotice)
 
 	// --- CLI Flags ---
-	// Output/Input
 	output := flag.String("output", defaultOutputFile, "Output file for OpenAPI spec (e.g., openapi.json)")
 	flag.StringVar(output, "o", defaultOutputFile, "Shorthand for --output")
 
@@ -101,7 +115,6 @@ func main() {
 	inputDir := flag.String("dir", defaultInputDir, "Directory to parse for Go files")
 	flag.StringVar(inputDir, "d", defaultInputDir, "Shorthand for --dir")
 
-	// API Metadata
 	title := flag.String("title", defaultTitle, "API title")
 	flag.StringVar(title, "t", defaultTitle, "Shorthand for --title")
 
@@ -114,7 +127,6 @@ func main() {
 	termsOfService := flag.String("terms-url", "", "Terms of Service URL")
 	flag.StringVar(termsOfService, "T", "", "Shorthand for --terms-url")
 
-	// Contact
 	contactName := flag.String("contact-name", defaultContactName, "Contact name")
 	flag.StringVar(contactName, "N", defaultContactName, "Shorthand for --contact-name")
 
@@ -124,18 +136,15 @@ func main() {
 	contactEmail := flag.String("contact-email", defaultContactEmail, "Contact email")
 	flag.StringVar(contactEmail, "E", defaultContactEmail, "Shorthand for --contact-email")
 
-	// License
 	licenseName := flag.String("license-name", "", "License name")
 	flag.StringVar(licenseName, "L", "", "Shorthand for --license-name")
 
 	licenseURL := flag.String("license-url", "", "License URL")
 	flag.StringVar(licenseURL, "lu", "", "Shorthand for --license-url")
 
-	// OpenAPI Config
 	openapiVersion := flag.String("openapi-version", defaultOpenAPIVersion, "OpenAPI spec version")
 	flag.StringVar(openapiVersion, "O", defaultOpenAPIVersion, "Shorthand for --openapi-version")
 
-	// Metadata Handling
 	configFile := flag.String("config", "", "Path to custom config YAML")
 	flag.StringVar(configFile, "c", "", "Shorthand for --config")
 
@@ -148,11 +157,9 @@ func main() {
 	splitMetadata := flag.Bool("split-metadata", false, "Split metadata into separate files")
 	flag.BoolVar(splitMetadata, "s", false, "Shorthand for --split-metadata")
 
-	// Diagram
 	diagramPath := flag.String("diagram", "", "Save call graph as HTML")
 	flag.StringVar(diagramPath, "g", "", "Shorthand for --diagram")
 
-	// Limits
 	maxNodesPerTree := flag.Int("max-nodes", defaultMaxNodesPerTree, "Max nodes in call graph tree")
 	flag.IntVar(maxNodesPerTree, "mn", defaultMaxNodesPerTree, "Shorthand for --max-nodes")
 
@@ -165,11 +172,9 @@ func main() {
 	maxNestedArgsDepth := flag.Int("max-depth", defaultMaxNestedArgsDepth, "Max depth for nested args")
 	flag.IntVar(maxNestedArgsDepth, "md", defaultMaxNestedArgsDepth, "Shorthand for --max-depth")
 
-	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 	flag.BoolVar(showVersion, "V", false, "Shorthand for --version")
 
-	// Custom help
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n%s\n\nUsage: %s [flags]\n\nFlags:\n",
 			copyrightNotice, licenseNotice, os.Args[0])
@@ -179,39 +184,29 @@ func main() {
 
 	flag.Parse()
 
-	// Handle version flag early
 	if *showVersion {
-		fmt.Printf("swagen version %s\n", toolVersion)
-		fmt.Printf("OpenAPI spec version: %s\n", defaultOpenAPIVersion)
-		fmt.Printf("Go version: %s\n", strings.TrimPrefix(strings.TrimSpace(os.Getenv("GOVERSION")), "go"))
-		fmt.Printf("Build time: %s\n", time.Now().Format(time.RFC3339))
-		fmt.Printf("%s\n", copyrightNotice)
-		fmt.Printf("%s\n", licenseNotice)
+		printVersion()
 		os.Exit(0)
 	}
 
-	// Handle positional arguments (override --dir flag)
 	if len(flag.Args()) > 0 {
 		*inputDir = flag.Args()[0]
 	}
 
-	targetPath, err := filepath.Abs(*inputDir) // your target path
+	targetPath, err := filepath.Abs(*inputDir)
 	if err != nil {
 		log.Fatalf("Could not find Go module: %v", err)
 	}
 
-	// Validate that the input directory exists
 	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 		log.Fatalf("Input directory does not exist: %s", targetPath)
 	}
 
-	// Find and switch to module root
 	moduleRoot, err := findModuleRoot(targetPath)
 	if err != nil {
 		log.Fatalf("Could not find Go module: %v", err)
 	}
 
-	// Change working directory to module root
 	originalWd, _ := os.Getwd()
 	os.Chdir(moduleRoot)
 	defer os.Chdir(originalWd)
@@ -224,7 +219,7 @@ func main() {
 		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:   moduleRoot,
 		Fset:  fset,
-		Tests: false, // Explicitly exclude test files to speed up processing
+		Tests: false,
 	}
 
 	pkgs, err := packages.Load(cfg, "./...")
@@ -235,8 +230,6 @@ func main() {
 		log.Fatalf("packages contain errors")
 	}
 
-	// --- Generate and save metadata ---
-	// Group files by package for metadata
 	pkgsMetadata := make(map[string]map[string]*ast.File)
 	importPaths := make(map[string]string)
 
@@ -246,13 +239,12 @@ func main() {
 		for i, f := range pkg.Syntax {
 			pkgsMetadata[pkg.PkgPath][pkg.GoFiles[i]] = f
 			fileToInfo[f] = pkg.TypesInfo
-			importPaths[pkg.GoFiles[i]] = pkg.PkgPath // fallback, can be improved
+			importPaths[pkg.GoFiles[i]] = pkg.PkgPath
 		}
 	}
 
 	log.Println("Finished loading and type-checking packages.")
 
-	// --- Detect framework (Gin, Echo, etc.) ---
 	detector := core.NewFrameworkDetector()
 	framework, err := detector.Detect(moduleRoot)
 	if err != nil {
@@ -260,7 +252,6 @@ func main() {
 	}
 	fmt.Println("Detected framework:", framework)
 
-	// --- Load SwagenConfig: custom or default per framework ---
 	var swagenConfig *spec.SwagenConfig
 	if *configFile != "" {
 		swagenConfig, err = spec.LoadSwagenConfig(*configFile)
@@ -278,18 +269,17 @@ func main() {
 		case "fiber":
 			swagenConfig = spec.DefaultFiberConfig()
 		default:
-			swagenConfig = spec.DefaultHTTPConfig() // fallback
+			swagenConfig = spec.DefaultHTTPConfig()
 		}
 	}
 
-	// After parsing flags:
 	desc := *description
 	licenseNotice := fullLicenseNotice
 	if !strings.HasSuffix(desc, licenseNotice) {
 		desc += licenseNotice
 	}
 	info := spec.Info{
-		Title:          *title, // assuming you have a title flag
+		Title:          *title,
 		Description:    desc,
 		Version:        *apiVersion,
 		TermsOfService: *termsOfService,
@@ -304,10 +294,8 @@ func main() {
 		},
 	}
 
-	// Set this info on your config (assuming swagenConfig is your config variable)
 	swagenConfig.Info = info
 
-	// If --output-config is set, write the effective config to the specified file
 	if *outputConfig != "" {
 		cfgYaml, err := yaml.Marshal(swagenConfig)
 		if err != nil {
@@ -322,7 +310,6 @@ func main() {
 
 	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
 
-	// Write metadata (split or combined) only if --write-metadata is set
 	if *writeMetadata {
 		if *splitMetadata {
 			if err := metadata.WriteSplitMetadata(meta, defaultMetadataFile); err != nil {
@@ -342,14 +329,12 @@ func main() {
 		}
 	}
 
-	// --- Prepare OpenAPI generator config ---
 	config := spec.GeneratorConfig{
 		OpenAPIVersion: *openapiVersion,
 		Title:          *title,
 		APIVersion:     *apiVersion,
 	}
 
-	// Construct the tree
 	limits := spec.TrackerLimits{
 		MaxNodesPerTree:    *maxNodesPerTree,
 		MaxChildrenPerNode: *maxChildrenPerNode,
@@ -358,7 +343,6 @@ func main() {
 	}
 	tree := spec.NewTrackerTree(meta, limits)
 
-	// Only generate diagram if diagramPath is set
 	if *diagramPath != "" {
 		err := spec.GenerateCytoscapeHTML(tree.GetRoots(), *diagramPath)
 		if err != nil {
@@ -368,13 +352,11 @@ func main() {
 		}
 	}
 
-	// --- Generate OpenAPI spec from metadata using config-driven extractor/mapper ---
 	openAPISpec, err := spec.MapMetadataToOpenAPI(tree, swagenConfig, config)
 	if err != nil {
 		panic(err)
 	}
 
-	// --- Output OpenAPI spec as JSON or YAML based on file extension ---
 	var data []byte
 	ext := strings.ToLower(filepath.Ext(*output))
 	if ext == ".yaml" || ext == ".yml" {
@@ -387,7 +369,6 @@ func main() {
 		panic(fmt.Errorf("failed to marshal spec: %w", err))
 	}
 
-	// If output is the default (openapi.json) and no explicit output flag was set, output to stdout
 	if *output == defaultOutputFile && !outputFlagSet {
 		fmt.Print(string(data))
 	} else {
