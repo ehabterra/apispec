@@ -2,26 +2,26 @@ string_pool:
   - x
   - main
   - int
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:9:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:9:2
   - unexported
   - "y"
   - string
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:10:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:10:2
   - z
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:2
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:8:1
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:8:1
   - fmt
   - strings
   - Sprintf
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
   - Println
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:12:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:12:2
   - ToUpper
-  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:13:2
+  - /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:13:2
 packages:
   main:
     files:
-      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go
+      ? /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go
       : functions:
           main:
             name: 1
@@ -46,7 +46,7 @@ packages:
                     name: x
                     pkg: main
                     type: int
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:9:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:9:2
                   func: 1
               "y":
                 - variable_name: 5
@@ -62,7 +62,7 @@ packages:
                     name: "y"
                     pkg: main
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:10:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:10:2
                   func: 1
               z:
                 - variable_name: 8
@@ -78,14 +78,14 @@ packages:
                         kind: ident
                         name: fmt
                         pkg: fmt
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
                       sel:
                         kind: ident
                         name: Sprintf
                         pkg: fmt
                         type: func(format string, a ...any) string
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:11
-                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:11
+                      position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
                     args:
                       - kind: literal
                         value: '"%d"'
@@ -93,14 +93,14 @@ packages:
                         name: x
                         pkg: main
                         type: int
-                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:25
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:25
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
                   lhs:
                     kind: ident
                     name: z
                     pkg: main
                     type: string
-                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:2
+                    position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:2
                   func: 1
                   callee_func: Sprintf
                   callee_pkg: fmt
@@ -126,7 +126,7 @@ call_graph:
         name: x
         pkg: main
         type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:25
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:25
     assignments:
       z:
         - variable_name: 8
@@ -142,14 +142,14 @@ call_graph:
                 kind: ident
                 name: fmt
                 pkg: fmt
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
               sel:
                 kind: ident
                 name: Sprintf
                 pkg: fmt
                 type: func(format string, a ...any) string
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:11
-              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:11
+              position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
             args:
               - kind: literal
                 value: '"%d"'
@@ -157,14 +157,14 @@ call_graph:
                 name: x
                 pkg: main
                 type: int
-                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:25
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:7
+                position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:25
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:7
           lhs:
             kind: ident
             name: z
             pkg: main
             type: string
-            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:2
+            position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:2
           func: 1
           callee_func: Sprintf
           callee_pkg: fmt
@@ -174,7 +174,7 @@ call_graph:
         name: x
         pkg: main
         type: int
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:11:25
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:11:25
       format:
         kind: literal
         value: '"%d"'
@@ -195,14 +195,14 @@ call_graph:
         name: z
         pkg: main
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:12:14
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:12:14
     param_arg_map:
       a:
         kind: ident
         name: z
         pkg: main
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:12:14
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:12:14
   - caller:
       name: 1
       pkg: 1
@@ -219,11 +219,11 @@ call_graph:
         name: "y"
         pkg: main
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:13:18
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:13:18
     param_arg_map:
       s:
         kind: ident
         name: "y"
         pkg: main
         type: string
-        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2463469554/main/src/main/test.go:13:18
+        position: /var/folders/r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/TestGenerateMetadata_Simple_function_with_variables_and_imports2732898228/main/src/main/test.go:13:18
