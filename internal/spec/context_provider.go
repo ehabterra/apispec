@@ -28,14 +28,6 @@ func (c *ContextProviderImpl) GetString(idx int) string {
 	return c.meta.StringPool.GetString(idx)
 }
 
-// GetCallerInfo gets caller information from a node
-func (c *ContextProviderImpl) GetCallerInfo(node *TrackerNode) (name, pkg string) {
-	if node == nil || node.CallGraphEdge == nil {
-		return "", ""
-	}
-	return c.GetString(node.CallGraphEdge.Caller.Name), c.GetString(node.CallGraphEdge.Caller.Pkg)
-}
-
 // GetCalleeInfo gets callee information from a node
 func (c *ContextProviderImpl) GetCalleeInfo(node *TrackerNode) (name, pkg, recvType string) {
 	if node == nil || node.CallGraphEdge == nil {

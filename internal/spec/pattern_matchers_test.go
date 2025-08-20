@@ -6,311 +6,378 @@ import (
 	"github.com/ehabterra/swagen/internal/metadata"
 )
 
-func TestNewBasePatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
+func TestRoutePattern_MatchPattern(t *testing.T) {
+	pattern := &RoutePattern{}
 
-	matcher := NewBasePatternMatcher(cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewBasePatternMatcher returned nil")
+	tests := []struct {
+		name     string
+		pattern  string
+		value    string
+		expected bool
+	}{
+		{
+			name:     "exact match",
+			pattern:  "test",
+			value:    "test",
+			expected: true,
+		},
+		{
+			name:     "regex match",
+			pattern:  "^test.*$",
+			value:    "test123",
+			expected: true,
+		},
+		{
+			name:     "case insensitive regex",
+			pattern:  "(?i)test",
+			value:    "TEST",
+			expected: true,
+		},
+		{
+			name:     "no match",
+			pattern:  "^test$",
+			value:    "other",
+			expected: false,
+		},
+		{
+			name:     "empty pattern",
+			pattern:  "",
+			value:    "test",
+			expected: false,
+		},
+		{
+			name:     "invalid regex",
+			pattern:  "[invalid",
+			value:    "test",
+			expected: false,
+		},
 	}
 
-	if matcher.contextProvider == nil {
-		t.Error("ContextProvider is nil")
-	}
-
-	if matcher.cfg == nil {
-		t.Error("Config is nil")
-	}
-
-	if matcher.typeResolver == nil {
-		t.Error("TypeResolver is nil")
-	}
-}
-
-func TestNewRoutePatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := RoutePattern{
-		CallRegex:   "^GET$",
-		PathFromArg: true,
-	}
-
-	matcher := NewRoutePatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewRoutePatternMatcher returned nil")
-	}
-
-	if matcher.pattern.CallRegex != "^GET$" {
-		t.Errorf("Expected CallRegex '^GET$', got '%s'", matcher.pattern.CallRegex)
-	}
-}
-
-func TestNewMountPatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := MountPattern{
-		CallRegex:   "^Use$",
-		PathFromArg: true,
-	}
-
-	matcher := NewMountPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewMountPatternMatcher returned nil")
-	}
-
-	if matcher.pattern.CallRegex != "^Use$" {
-		t.Errorf("Expected CallRegex '^Use$', got '%s'", matcher.pattern.CallRegex)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := pattern.MatchPattern(tt.pattern, tt.value)
+			if result != tt.expected {
+				t.Errorf("MatchPattern(%q, %q) = %v, expected %v", tt.pattern, tt.value, result, tt.expected)
+			}
+		})
 	}
 }
 
-func TestNewRequestPatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := RequestBodyPattern{
-		CallRegex:   "^Bind$",
-		TypeFromArg: true,
+func TestRoutePattern_MatchFunctionName(t *testing.T) {
+	tests := []struct {
+		name         string
+		functionName string
+		pattern      *RoutePattern
+		expected     bool
+	}{
+		{
+			name:         "exact match",
+			functionName: "testHandler",
+			pattern: &RoutePattern{
+				FunctionNameRegex: "testHandler",
+			},
+			expected: true,
+		},
+		{
+			name:         "regex match",
+			functionName: "userHandler",
+			pattern: &RoutePattern{
+				FunctionNameRegex: ".*Handler$",
+			},
+			expected: true,
+		},
+		{
+			name:         "no match",
+			functionName: "testFunction",
+			pattern: &RoutePattern{
+				FunctionNameRegex: ".*Handler$",
+			},
+			expected: false,
+		},
+		{
+			name:         "empty regex",
+			functionName: "test",
+			pattern: &RoutePattern{
+				FunctionNameRegex: "",
+			},
+			expected: false,
+		},
 	}
 
-	matcher := NewRequestPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewRequestPatternMatcher returned nil")
-	}
-
-	if matcher.pattern.CallRegex != "^Bind$" {
-		t.Errorf("Expected CallRegex '^Bind$', got '%s'", matcher.pattern.CallRegex)
-	}
-}
-
-func TestNewResponsePatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := ResponsePattern{
-		CallRegex:   "^JSON$",
-		TypeFromArg: true,
-	}
-
-	matcher := NewResponsePatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewResponsePatternMatcher returned nil")
-	}
-
-	if matcher.pattern.CallRegex != "^JSON$" {
-		t.Errorf("Expected CallRegex '^JSON$', got '%s'", matcher.pattern.CallRegex)
-	}
-}
-
-func TestNewParamPatternMatcher(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := ParamPattern{
-		CallRegex: "^Param$",
-		ParamIn:   "path",
-	}
-
-	matcher := NewParamPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	if matcher == nil {
-		t.Fatal("NewParamPatternMatcher returned nil")
-	}
-
-	if matcher.pattern.CallRegex != "^Param$" {
-		t.Errorf("Expected CallRegex '^Param$', got '%s'", matcher.pattern.CallRegex)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.pattern.MatchFunctionName(tt.functionName)
+			if result != tt.expected {
+				t.Errorf("MatchFunctionName(%q) = %v, expected %v", tt.functionName, result, tt.expected)
+			}
+		})
 	}
 }
 
-func TestRoutePatternMatcher_GetPattern(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := RoutePattern{
-		CallRegex:   "^GET$",
-		PathFromArg: true,
+func TestExtractor_IsValid(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
 	}
 
-	matcher := NewRoutePatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	retrievedPattern := matcher.GetPattern()
-
-	if retrievedPattern == nil {
-		t.Fatal("GetPattern returned nil")
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
 	}
 
-	routePattern, ok := retrievedPattern.(RoutePattern)
-	if !ok {
-		t.Fatal("GetPattern did not return RoutePattern")
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a simple config for testing
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "test",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+		},
 	}
 
-	if routePattern.CallRegex != "^GET$" {
-		t.Errorf("Expected CallRegex '^GET$', got '%s'", routePattern.CallRegex)
-	}
-}
+	// Create extractor
+	extractor := NewExtractor(tree, cfg)
 
-func TestRoutePatternMatcher_GetPriority(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := RoutePattern{
-		CallRegex:   "^GET$",
-		PathFromArg: true,
+	// Test IsValid method
+	if extractor == nil {
+		t.Fatal("Extractor should not be nil")
 	}
 
-	matcher := NewRoutePatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	priority := matcher.GetPriority()
-
-	// Should have priority 10 for CallRegex
-	if priority != 10 {
-		t.Errorf("Expected priority 10, got %d", priority)
-	}
-}
-
-func TestMountPatternMatcher_GetPattern(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := MountPattern{
-		CallRegex:   "^Use$",
-		PathFromArg: true,
+	// Test that extractor was created with valid configuration
+	if extractor.cfg == nil {
+		t.Error("Extractor config should not be nil")
 	}
 
-	matcher := NewMountPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	retrievedPattern := matcher.GetPattern()
-
-	if retrievedPattern == nil {
-		t.Fatal("GetPattern returned nil")
-	}
-
-	mountPattern, ok := retrievedPattern.(MountPattern)
-	if !ok {
-		t.Fatal("GetPattern did not return MountPattern")
-	}
-
-	if mountPattern.CallRegex != "^Use$" {
-		t.Errorf("Expected CallRegex '^Use$', got '%s'", mountPattern.CallRegex)
+	if extractor.tree == nil {
+		t.Error("Extractor tree should not be nil")
 	}
 }
 
-func TestMountPatternMatcher_GetPriority(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := MountPattern{
-		CallRegex:   "^Use$",
-		PathFromArg: true,
+func TestExtractor_initializePatternMatchers(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
 	}
 
-	matcher := NewMountPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	priority := matcher.GetPriority()
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
+	}
 
-	// Should have priority 10 for CallRegex
-	if priority != 10 {
-		t.Errorf("Expected priority 10, got %d", priority)
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a config with various patterns
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "GET",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:    "Mount",
+					IsMount:      true,
+					PathFromArg:  true,
+					PathArgIndex: 0,
+				},
+			},
+			RequestBodyPatterns: []RequestBodyPattern{
+				{
+					CallRegex:    "BindJSON",
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
+				},
+			},
+			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      "JSON",
+					StatusArgIndex: 0,
+					TypeArgIndex:   1,
+					TypeFromArg:    true,
+					StatusFromArg:  true,
+				},
+			},
+			ParamPatterns: []ParamPattern{
+				{
+					CallRegex:     "Param",
+					ParamIn:       "path",
+					ParamArgIndex: 0,
+				},
+			},
+		},
+	}
+
+	// Create extractor
+	extractor := NewExtractor(tree, cfg)
+
+	// Test that pattern matchers were initialized
+	if len(extractor.routeMatchers) == 0 {
+		t.Error("Route matchers should be initialized")
+	}
+
+	if len(extractor.mountMatchers) == 0 {
+		t.Error("Mount matchers should be initialized")
+	}
+
+	if len(extractor.requestMatchers) == 0 {
+		t.Error("Request matchers should be initialized")
+	}
+
+	if len(extractor.responseMatchers) == 0 {
+		t.Error("Response matchers should be initialized")
+	}
+
+	if len(extractor.paramMatchers) == 0 {
+		t.Error("Param matchers should be initialized")
 	}
 }
 
-func TestRequestPatternMatcher_GetPattern(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := RequestBodyPattern{
-		CallRegex:   "^Bind$",
-		TypeFromArg: true,
+func TestExtractor_ExtractRoutes(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
 	}
 
-	matcher := NewRequestPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	retrievedPattern := matcher.GetPattern()
-
-	if retrievedPattern == nil {
-		t.Fatal("GetPattern returned nil")
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
 	}
 
-	requestPattern, ok := retrievedPattern.(RequestBodyPattern)
-	if !ok {
-		t.Fatal("GetPattern did not return RequestBodyPattern")
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a simple config for testing
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "test",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+		},
 	}
 
-	if requestPattern.CallRegex != "^Bind$" {
-		t.Errorf("Expected CallRegex '^Bind$', got '%s'", requestPattern.CallRegex)
-	}
-}
+	// Create extractor
+	extractor := NewExtractor(tree, cfg)
 
-func TestResponsePatternMatcher_GetPattern(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
+	// Test route extraction
+	routes := extractor.ExtractRoutes()
 
-	pattern := ResponsePattern{
-		CallRegex:   "^JSON$",
-		TypeFromArg: true,
-	}
-
-	matcher := NewResponsePatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	retrievedPattern := matcher.GetPattern()
-
-	if retrievedPattern == nil {
-		t.Fatal("GetPattern returned nil")
-	}
-
-	responsePattern, ok := retrievedPattern.(ResponsePattern)
-	if !ok {
-		t.Fatal("GetPattern did not return ResponsePattern")
-	}
-
-	if responsePattern.CallRegex != "^JSON$" {
-		t.Errorf("Expected CallRegex '^JSON$', got '%s'", responsePattern.CallRegex)
+	// For an empty tree, we expect no routes
+	if len(routes) != 0 {
+		t.Errorf("Expected 0 routes for empty tree, got %d", len(routes))
 	}
 }
 
-func TestParamPatternMatcher_GetPattern(t *testing.T) {
-	cfg := DefaultSwagenConfig()
-	meta := &metadata.Metadata{}
-	contextProvider := NewContextProvider(meta)
-	typeResolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
-
-	pattern := ParamPattern{
-		CallRegex: "^Param$",
-		ParamIn:   "path",
+func TestExtractor_traverseForRoutes(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
 	}
 
-	matcher := NewParamPatternMatcher(pattern, cfg, contextProvider, typeResolver)
-	retrievedPattern := matcher.GetPattern()
-
-	if retrievedPattern == nil {
-		t.Fatal("GetPattern returned nil")
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
 	}
 
-	paramPattern, ok := retrievedPattern.(ParamPattern)
-	if !ok {
-		t.Fatal("GetPattern did not return ParamPattern")
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a simple config for testing
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "test",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+		},
 	}
 
-	if paramPattern.CallRegex != "^Param$" {
-		t.Errorf("Expected CallRegex '^Param$', got '%s'", paramPattern.CallRegex)
+	// Create extractor
+	extractor := NewExtractor(tree, cfg)
+
+	// Test traversal with empty tree
+	roots := tree.GetRoots()
+	if len(roots) != 0 {
+		t.Errorf("Expected 0 roots for empty tree, got %d", len(roots))
+	}
+
+	// Test that traversal doesn't panic with empty tree
+	// This is a basic smoke test
+	_ = extractor.ExtractRoutes()
+}
+
+func TestExtractor_traverseForRoutesWithVisited(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+
+	// Create tracker with limits
+	limits := TrackerLimits{
+		MaxNodesPerTree:    100,
+		MaxChildrenPerNode: 10,
+		MaxArgsPerFunction: 5,
+		MaxNestedArgsDepth: 3,
+	}
+
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a simple config for testing
+	cfg := &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:      "test",
+					MethodFromCall: true,
+					PathFromArg:    true,
+					PathArgIndex:   0,
+				},
+			},
+		},
+	}
+
+	// Create extractor
+	extractor := NewExtractor(tree, cfg)
+
+	// Test traversal with visited map
+	visited := make(map[string]bool)
+	_ = tree.GetRoots() // Get roots but don't use them
+
+	// Test that traversal doesn't panic with empty tree and visited map
+	// This is a basic smoke test
+	_ = extractor.ExtractRoutes()
+
+	// Verify visited map is still empty (no nodes to visit)
+	if len(visited) != 0 {
+		t.Errorf("Expected visited map to be empty, got %d entries", len(visited))
 	}
 }

@@ -15,21 +15,8 @@ The issue was in the `TestGenerateMetadata` function in `internal/metadata/metad
 
 ## Solution Implemented
 
-### 1. Environment Variable Control
 
-Modified the test to only write metadata files when explicitly enabled via an environment variable:
-
-```go
-// Only write metadata files during development/testing, not during CI/CD
-// This prevents temporary directory paths from being committed to git
-if os.Getenv("SWAGEN_WRITE_TEST_FILES") == "1" {
-    if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../../internal/spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
-        t.Errorf("Failed to write metadata.yaml: %v", err)
-    }
-}
-```
-
-### 2. Helper Script
+### 1. Helper Script
 
 Created `scripts/enable-test-files.sh` to easily enable test file generation during development:
 
@@ -39,17 +26,15 @@ export SWAGEN_WRITE_TEST_FILES=1
 echo "Test file generation enabled. Run: go test ./internal/metadata -v"
 ```
 
-### 3. Documentation Updates
+### 2. Documentation Updates
 
 Updated `internal/metadata/README.md` with clear instructions on how to use the environment variable and warnings about temporary directory paths.
 
 ## Benefits
 
-1. **No More Test Diffs**: Tests no longer generate files that change on every run
-2. **Clean PRs**: No more unnecessary file changes in pull requests
-3. **Development Flexibility**: Developers can still generate test files when needed for debugging
-4. **CI/CD Safety**: Automated tests won't accidentally modify tracked files
-5. **Clear Documentation**: Developers understand when and how to enable test file generation
+1. **Clean PRs**: No more unnecessary file changes in pull requests
+2. **Development Flexibility**: Developers can still generate test files when needed for debugging
+3. **Clear Documentation**: Developers understand when and how to enable test file generation
 
 ## Usage
 

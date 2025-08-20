@@ -117,9 +117,6 @@ type ContextProvider interface {
 	// GetString gets a string from the string pool
 	GetString(idx int) string
 
-	// GetCallerInfo gets caller information from a node
-	GetCallerInfo(node *TrackerNode) (name, pkg string)
-
 	// GetCalleeInfo gets callee information from a node
 	GetCalleeInfo(node *TrackerNode) (name, pkg, recvType string)
 

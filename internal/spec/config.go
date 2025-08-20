@@ -3,7 +3,6 @@ package spec
 import (
 	"net/http"
 	"regexp"
-	"strings"
 )
 
 const (
@@ -235,34 +234,9 @@ func (p *RoutePattern) MatchPattern(pattern, value string) bool {
 	return re.MatchString(value)
 }
 
-// MatchCallRegex checks if the call regex matches
-func (p *RoutePattern) MatchCallRegex(callName string) bool {
-	return p.MatchPattern(p.CallRegex, callName)
-}
-
 // MatchFunctionName checks if the function name regex matches
 func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 	return p.MatchPattern(p.FunctionNameRegex, functionName)
-}
-
-// MatchCallChain checks if a call chain matches
-func (p *RoutePattern) MatchCallChain(chain []string, selectors []string) bool {
-	if len(chain) == 0 || len(selectors) < len(chain) {
-		return false
-	}
-	for i := 0; i <= len(selectors)-len(chain); i++ {
-		matched := true
-		for j := 0; j < len(chain); j++ {
-			if !strings.Contains(selectors[i+j], chain[j]) {
-				matched = false
-				break
-			}
-		}
-		if matched {
-			return true
-		}
-	}
-	return false
 }
 
 // DefaultChiConfig returns a default configuration for Chi router

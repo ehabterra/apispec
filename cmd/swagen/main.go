@@ -45,161 +45,229 @@ func printVersion() {
 	fmt.Println(engine.LicenseNotice)
 }
 
-func main() {
-	start := time.Now()
-	// Print copyright and license info at the very start
-	fmt.Println(engine.CopyrightNotice)
+// CLIConfig holds the configuration parsed from command line arguments
+type CLIConfig struct {
+	InputDir           string
+	OutputFile         string
+	Title              string
+	APIVersion         string
+	Description        string
+	TermsOfService     string
+	ContactName        string
+	ContactURL         string
+	ContactEmail       string
+	LicenseName        string
+	LicenseURL         string
+	OpenAPIVersion     string
+	ConfigFile         string
+	OutputConfig       string
+	WriteMetadata      bool
+	SplitMetadata      bool
+	DiagramPath        string
+	MaxNodesPerTree    int
+	MaxChildrenPerNode int
+	MaxArgsPerFunction int
+	MaxNestedArgsDepth int
+	ShowVersion        bool
+	OutputFlagSet      bool
+}
+
+// parseFlags parses command line arguments and returns a CLIConfig
+func parseFlags(args []string) (*CLIConfig, error) {
+	// Create a new flag set to avoid global state
+	fs := flag.NewFlagSet("swagen", flag.ContinueOnError)
+
+	config := &CLIConfig{}
 
 	// Version flag
-	showVersion := flag.Bool("version", false, "Show version information")
-	flag.BoolVar(showVersion, "V", false, "Shorthand for --version")
+	fs.BoolVar(&config.ShowVersion, "version", false, "Show version information")
+	fs.BoolVar(&config.ShowVersion, "V", false, "Shorthand for --version")
 
 	// Custom help
-	flag.Usage = func() {
+	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n%s\n\nUsage: %s [flags]\n\nFlags:\n",
 			engine.CopyrightNotice, engine.LicenseNotice, os.Args[0])
-		flag.PrintDefaults()
+		fs.PrintDefaults()
 		fmt.Printf("\nExamples:\n  %s -o spec.yaml -d ./api\n", os.Args[0])
 	}
 
 	// Parse flags
-	inputDir := flag.String("dir", engine.DefaultInputDir, "Input directory containing Go source files")
-	flag.StringVar(inputDir, "d", engine.DefaultInputDir, "Shorthand for --dir")
+	fs.StringVar(&config.InputDir, "dir", engine.DefaultInputDir, "Input directory containing Go source files")
+	fs.StringVar(&config.InputDir, "d", engine.DefaultInputDir, "Shorthand for --dir")
 
-	outputFile := flag.String("output", engine.DefaultOutputFile, "Output file path")
-	flag.StringVar(outputFile, "o", engine.DefaultOutputFile, "Shorthand for --output")
+	fs.StringVar(&config.OutputFile, "output", engine.DefaultOutputFile, "Output file path")
+	fs.StringVar(&config.OutputFile, "o", engine.DefaultOutputFile, "Shorthand for --output")
 
-	title := flag.String("title", engine.DefaultTitle, "API title")
-	flag.StringVar(title, "t", engine.DefaultTitle, "Shorthand for --title")
+	fs.StringVar(&config.Title, "title", engine.DefaultTitle, "API title")
+	fs.StringVar(&config.Title, "t", engine.DefaultTitle, "Shorthand for --title")
 
-	apiVersion := flag.String("api-version", engine.DefaultAPIVersion, "API version")
-	flag.StringVar(apiVersion, "v", engine.DefaultAPIVersion, "Shorthand for --api-version")
+	fs.StringVar(&config.APIVersion, "api-version", engine.DefaultAPIVersion, "API version")
+	fs.StringVar(&config.APIVersion, "v", engine.DefaultAPIVersion, "Shorthand for --api-version")
 
-	description := flag.String("description", "", "API description")
-	flag.StringVar(description, "D", "", "Shorthand for --description")
+	fs.StringVar(&config.Description, "description", "", "API description")
+	fs.StringVar(&config.Description, "D", "", "Shorthand for --description")
 
-	termsOfService := flag.String("terms", "", "Terms of service URL")
-	flag.StringVar(termsOfService, "T", "", "Shorthand for --terms")
+	fs.StringVar(&config.TermsOfService, "terms", "", "Terms of service URL")
+	fs.StringVar(&config.TermsOfService, "T", "", "Shorthand for --terms")
 
-	contactName := flag.String("contact-name", engine.DefaultContactName, "Contact name")
-	flag.StringVar(contactName, "N", engine.DefaultContactName, "Shorthand for --contact-name")
+	fs.StringVar(&config.ContactName, "contact-name", engine.DefaultContactName, "Contact name")
+	fs.StringVar(&config.ContactName, "N", engine.DefaultContactName, "Shorthand for --contact-name")
 
-	contactURL := flag.String("contact-url", engine.DefaultContactURL, "Contact URL")
-	flag.StringVar(contactURL, "U", engine.DefaultContactURL, "Shorthand for --contact-url")
+	fs.StringVar(&config.ContactURL, "contact-url", engine.DefaultContactURL, "Contact URL")
+	fs.StringVar(&config.ContactURL, "U", engine.DefaultContactURL, "Shorthand for --contact-url")
 
-	contactEmail := flag.String("contact-email", engine.DefaultContactEmail, "Contact email")
-	flag.StringVar(contactEmail, "E", engine.DefaultContactEmail, "Shorthand for --contact-email")
+	fs.StringVar(&config.ContactEmail, "contact-email", engine.DefaultContactEmail, "Contact email")
+	fs.StringVar(&config.ContactEmail, "E", engine.DefaultContactEmail, "Shorthand for --contact-email")
 
-	licenseName := flag.String("license-name", "", "License name")
-	flag.StringVar(licenseName, "L", "", "Shorthand for --license-name")
+	fs.StringVar(&config.LicenseName, "license-name", "", "License name")
+	fs.StringVar(&config.LicenseName, "L", "", "Shorthand for --license-name")
 
-	licenseURL := flag.String("license-url", "", "License URL")
-	flag.StringVar(licenseURL, "lu", "", "Shorthand for --license-url")
+	fs.StringVar(&config.LicenseURL, "license-url", "", "License URL")
+	fs.StringVar(&config.LicenseURL, "lu", "", "Shorthand for --license-url")
 
-	openAPIVersion := flag.String("openapi-version", engine.DefaultOpenAPIVersion, "OpenAPI specification version")
-	flag.StringVar(openAPIVersion, "O", engine.DefaultOpenAPIVersion, "Shorthand for --openapi-version")
+	fs.StringVar(&config.OpenAPIVersion, "openapi-version", engine.DefaultOpenAPIVersion, "OpenAPI specification version")
+	fs.StringVar(&config.OpenAPIVersion, "O", engine.DefaultOpenAPIVersion, "Shorthand for --openapi-version")
 
-	configFile := flag.String("config", "", "Configuration file path")
-	flag.StringVar(configFile, "c", "", "Shorthand for --config")
+	fs.StringVar(&config.ConfigFile, "config", "", "Configuration file path")
+	fs.StringVar(&config.ConfigFile, "c", "", "Shorthand for --config")
 
-	outputConfig := flag.String("output-config", "", "Output effective configuration to file")
-	flag.StringVar(outputConfig, "oc", "", "Shorthand for --output-config")
+	fs.StringVar(&config.OutputConfig, "output-config", "", "Output effective configuration to file")
+	fs.StringVar(&config.OutputConfig, "oc", "", "Shorthand for --output-config")
 
-	writeMetadata := flag.Bool("write-metadata", false, "Write metadata to file")
-	flag.BoolVar(writeMetadata, "w", false, "Shorthand for --write-metadata")
+	fs.BoolVar(&config.WriteMetadata, "write-metadata", false, "Write metadata to file")
+	fs.BoolVar(&config.WriteMetadata, "w", false, "Shorthand for --write-metadata")
 
-	splitMetadata := flag.Bool("split-metadata", false, "Write split metadata files")
-	flag.BoolVar(splitMetadata, "s", false, "Shorthand for --split-metadata")
+	fs.BoolVar(&config.SplitMetadata, "split-metadata", false, "Write split metadata files")
+	fs.BoolVar(&config.SplitMetadata, "s", false, "Shorthand for --split-metadata")
 
-	diagramPath := flag.String("diagram", "", "Generate call graph diagram")
-	flag.StringVar(diagramPath, "g", "", "Shorthand for --diagram")
+	fs.StringVar(&config.DiagramPath, "diagram", "", "Generate call graph diagram")
+	fs.StringVar(&config.DiagramPath, "g", "", "Shorthand for --diagram")
 
-	maxNodesPerTree := flag.Int("max-nodes", engine.DefaultMaxNodesPerTree, "Maximum nodes per tracker tree")
-	flag.IntVar(maxNodesPerTree, "mn", engine.DefaultMaxNodesPerTree, "Shorthand for --max-nodes")
+	fs.IntVar(&config.MaxNodesPerTree, "max-nodes", engine.DefaultMaxNodesPerTree, "Maximum nodes per tracker tree")
+	fs.IntVar(&config.MaxNodesPerTree, "mn", engine.DefaultMaxNodesPerTree, "Shorthand for --max-nodes")
 
-	maxChildrenPerNode := flag.Int("max-children", engine.DefaultMaxChildrenPerNode, "Maximum children per node")
-	flag.IntVar(maxChildrenPerNode, "mc", engine.DefaultMaxChildrenPerNode, "Shorthand for --max-children")
+	fs.IntVar(&config.MaxChildrenPerNode, "max-children", engine.DefaultMaxChildrenPerNode, "Maximum children per node")
+	fs.IntVar(&config.MaxChildrenPerNode, "mc", engine.DefaultMaxChildrenPerNode, "Shorthand for --max-children")
 
-	maxArgsPerFunction := flag.Int("max-args", engine.DefaultMaxArgsPerFunction, "Maximum arguments per function")
-	flag.IntVar(maxArgsPerFunction, "ma", engine.DefaultMaxArgsPerFunction, "Shorthand for --max-args")
+	fs.IntVar(&config.MaxArgsPerFunction, "max-args", engine.DefaultMaxArgsPerFunction, "Maximum arguments per function")
+	fs.IntVar(&config.MaxArgsPerFunction, "ma", engine.DefaultMaxArgsPerFunction, "Shorthand for --max-args")
 
-	maxNestedArgsDepth := flag.Int("max-nested-args", engine.DefaultMaxNestedArgsDepth, "Maximum nested arguments depth")
-	flag.IntVar(maxNestedArgsDepth, "md", engine.DefaultMaxNestedArgsDepth, "Shorthand for --max-nested-args")
+	fs.IntVar(&config.MaxNestedArgsDepth, "max-nested-args", engine.DefaultMaxNestedArgsDepth, "Maximum nested arguments depth")
+	fs.IntVar(&config.MaxNestedArgsDepth, "md", engine.DefaultMaxNestedArgsDepth, "Shorthand for --max-nested-args")
 
-	flag.Parse()
-
-	// Handle version flag early
-	if *showVersion {
-		printVersion()
-		os.Exit(0)
+	if err := fs.Parse(args); err != nil {
+		return nil, err
 	}
 
 	// Handle positional arguments (override --dir flag)
-	if len(flag.Args()) > 0 {
-		*inputDir = flag.Args()[0]
+	if len(fs.Args()) > 0 {
+		config.InputDir = fs.Args()[0]
 	}
 
+	// Check if output flag was explicitly set
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "output" || f.Name == "o" {
+			config.OutputFlagSet = true
+		}
+	})
+
+	return config, nil
+}
+
+// runGeneration generates the OpenAPI specification based on the configuration
+func runGeneration(config *CLIConfig) ([]byte, *engine.Engine, error) {
 	// Create engine configuration
 	engineConfig := &engine.EngineConfig{
-		InputDir:           *inputDir,
-		OutputFile:         *outputFile,
-		Title:              *title,
-		APIVersion:         *apiVersion,
-		Description:        *description,
-		TermsOfService:     *termsOfService,
-		ContactName:        *contactName,
-		ContactURL:         *contactURL,
-		ContactEmail:       *contactEmail,
-		LicenseName:        *licenseName,
-		LicenseURL:         *licenseURL,
-		OpenAPIVersion:     *openAPIVersion,
-		ConfigFile:         *configFile,
-		OutputConfig:       *outputConfig,
-		WriteMetadata:      *writeMetadata,
-		SplitMetadata:      *splitMetadata,
-		DiagramPath:        *diagramPath,
-		MaxNodesPerTree:    *maxNodesPerTree,
-		MaxChildrenPerNode: *maxChildrenPerNode,
-		MaxArgsPerFunction: *maxArgsPerFunction,
-		MaxNestedArgsDepth: *maxNestedArgsDepth,
+		InputDir:           config.InputDir,
+		OutputFile:         config.OutputFile,
+		Title:              config.Title,
+		APIVersion:         config.APIVersion,
+		Description:        config.Description,
+		TermsOfService:     config.TermsOfService,
+		ContactName:        config.ContactName,
+		ContactURL:         config.ContactURL,
+		ContactEmail:       config.ContactEmail,
+		LicenseName:        config.LicenseName,
+		LicenseURL:         config.LicenseURL,
+		OpenAPIVersion:     config.OpenAPIVersion,
+		ConfigFile:         config.ConfigFile,
+		OutputConfig:       config.OutputConfig,
+		WriteMetadata:      config.WriteMetadata,
+		SplitMetadata:      config.SplitMetadata,
+		DiagramPath:        config.DiagramPath,
+		MaxNodesPerTree:    config.MaxNodesPerTree,
+		MaxChildrenPerNode: config.MaxChildrenPerNode,
+		MaxArgsPerFunction: config.MaxArgsPerFunction,
+		MaxNestedArgsDepth: config.MaxNestedArgsDepth,
 	}
 
 	// Create engine and generate OpenAPI spec
 	genEngine := engine.NewEngine(engineConfig)
 	openAPISpec, err := genEngine.GenerateOpenAPI()
 	if err != nil {
-		log.Fatalf("Failed to generate OpenAPI spec: %v", err)
+		return nil, nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
 	}
 
 	var data []byte
-	ext := strings.ToLower(filepath.Ext(*outputFile))
+	ext := strings.ToLower(filepath.Ext(config.OutputFile))
 	if ext == ".yaml" || ext == ".yml" {
 		data, err = yaml.Marshal(openAPISpec)
 	} else {
 		data, err = json.MarshalIndent(openAPISpec, "", "  ")
 	}
 	if err != nil {
-		log.Fatalf("Failed to marshal OpenAPI spec: %v", err)
+		return nil, nil, fmt.Errorf("failed to marshal OpenAPI spec: %w", err)
 	}
 
-	// Check if output flag was explicitly set
-	outputFlagSet := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "output" {
-			outputFlagSet = true
-		}
-	})
+	return data, genEngine, nil
+}
 
+// writeOutput writes the generated data to the appropriate output destination
+func writeOutput(data []byte, config *CLIConfig, genEngine *engine.Engine) error {
 	// If output is the default (openapi.json) and no explicit output flag was set, output to stdout
-	if *outputFile == engine.DefaultOutputFile && !outputFlagSet {
+	if config.OutputFile == engine.DefaultOutputFile && !config.OutputFlagSet {
 		fmt.Print(string(data))
 	} else {
-		outputPath := filepath.Join(genEngine.ModuleRoot(), *outputFile)
+		outputPath := filepath.Join(genEngine.ModuleRoot(), config.OutputFile)
 
 		if err := os.WriteFile(outputPath, data, 0644); err != nil {
-			panic(fmt.Errorf("failed to write output file: %w", err))
+			return fmt.Errorf("failed to write output file: %w", err)
 		}
 		fmt.Println("Successfully generated:", outputPath)
 	}
+	return nil
+}
+
+func main() {
+	start := time.Now()
+	// Print copyright and license info at the very start
+	fmt.Println(engine.CopyrightNotice)
+
+	// Parse command line arguments
+	config, err := parseFlags(os.Args[1:])
+	if err != nil {
+		if err == flag.ErrHelp {
+			return
+		}
+		log.Fatalf("Failed to parse flags: %v", err)
+	}
+
+	// Handle version flag early
+	if config.ShowVersion {
+		printVersion()
+		os.Exit(0)
+	}
+
+	// Generate OpenAPI specification
+	data, genEngine, err := runGeneration(config)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	// Write output
+	if err := writeOutput(data, config, genEngine); err != nil {
+		log.Fatalf("%v", err)
+	}
+
 	fmt.Printf("Time elapsed: %s\n", time.Since(start))
 }
