@@ -28,6 +28,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// stringSliceFlag implements flag.Value for string slices
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 const (
 	// Version info injected at build time via -ldflags
 	Version   = "0.0.1"
@@ -70,6 +82,14 @@ type CLIConfig struct {
 	MaxNestedArgsDepth int
 	ShowVersion        bool
 	OutputFlagSet      bool
+	IncludeFiles       []string
+	IncludePackages    []string
+	IncludeFunctions   []string
+	IncludeTypes       []string
+	ExcludeFiles       []string
+	ExcludePackages    []string
+	ExcludeFunctions   []string
+	ExcludeTypes       []string
 }
 
 // parseFlags parses command line arguments and returns a CLIConfig
@@ -155,6 +175,17 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.MaxNestedArgsDepth, "max-nested-args", engine.DefaultMaxNestedArgsDepth, "Maximum nested arguments depth")
 	fs.IntVar(&config.MaxNestedArgsDepth, "md", engine.DefaultMaxNestedArgsDepth, "Shorthand for --max-nested-args")
 
+	// Include/exclude flags
+	fs.Var((*stringSliceFlag)(&config.IncludeFiles), "include-file", "Include files matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.IncludePackages), "include-package", "Include packages matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.IncludeFunctions), "include-function", "Include functions matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.IncludeTypes), "include-type", "Include types matching pattern (can be specified multiple times)")
+
+	fs.Var((*stringSliceFlag)(&config.ExcludeFiles), "exclude-file", "Exclude files matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.ExcludePackages), "exclude-package", "Exclude packages matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.ExcludeFunctions), "exclude-function", "Exclude functions matching pattern (can be specified multiple times)")
+	fs.Var((*stringSliceFlag)(&config.ExcludeTypes), "exclude-type", "Exclude types matching pattern (can be specified multiple times)")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -199,6 +230,14 @@ func runGeneration(config *CLIConfig) ([]byte, *engine.Engine, error) {
 		MaxChildrenPerNode: config.MaxChildrenPerNode,
 		MaxArgsPerFunction: config.MaxArgsPerFunction,
 		MaxNestedArgsDepth: config.MaxNestedArgsDepth,
+		IncludeFiles:       config.IncludeFiles,
+		IncludePackages:    config.IncludePackages,
+		IncludeFunctions:   config.IncludeFunctions,
+		IncludeTypes:       config.IncludeTypes,
+		ExcludeFiles:       config.ExcludeFiles,
+		ExcludePackages:    config.ExcludePackages,
+		ExcludeFunctions:   config.ExcludeFunctions,
+		ExcludeTypes:       config.ExcludeTypes,
 	}
 
 	// Create engine and generate OpenAPI spec

@@ -164,7 +164,7 @@ func NewTrackerTree(meta *metadata.Metadata, limits TrackerLimits) *TrackerTree 
 
 	assignmentIndex := assigmentIndexMap{}
 
-	visited := make(map[string]*TrackerNode)
+	visited := make(map[string]int)
 
 	// Search for assignments
 	for i := range meta.CallGraph {
@@ -368,7 +368,7 @@ func classifyArgument(arg metadata.CallArgument) ArgumentType {
 }
 
 // processArguments processes arguments with enhanced classification and tracking
-func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, visited map[string]*TrackerNode, assignmentIndex *assigmentIndexMap, limits TrackerLimits) []*TrackerNode {
+func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, visited map[string]int, assignmentIndex *assigmentIndexMap, limits TrackerLimits) []*TrackerNode {
 	if edge == nil {
 		return nil
 	}
@@ -665,7 +665,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 }
 
 // NewTrackerNode creates a new TrackerNode for the tree.
-func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id string, parentEdge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]*TrackerNode, assignmentIndex *assigmentIndexMap, limits TrackerLimits) *TrackerNode {
+func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id string, parentEdge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]int, assignmentIndex *assigmentIndexMap, limits TrackerLimits) *TrackerNode {
 	if id == "" {
 		return nil
 	}
@@ -688,13 +688,17 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		return node
 	}
 
+	if visited[nodeKey] > limits.MaxNodesPerTree {
+		return nil
+	}
+
 	// Create new node
 	node := &TrackerNode{
 		CallGraphEdge: parentEdge, CallArgument: callArg, RootAssignmentMap: make(map[string][]metadata.Assignment)}
 	if parentEdge == nil && callArg == nil {
 		node.key = id
 	}
-	visited[nodeKey] = node
+	visited[nodeKey]++
 
 	// Process children (callees)
 	callerID := stripToBase(id)

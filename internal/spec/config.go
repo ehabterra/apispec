@@ -2,6 +2,7 @@ package spec
 
 import (
 	"net/http"
+	"path/filepath"
 	"regexp"
 )
 
@@ -178,6 +179,134 @@ type IncludeExclude struct {
 	Types     []string `yaml:"types"`
 }
 
+// ShouldIncludeFile checks if a file should be included based on include/exclude patterns
+func (ie *IncludeExclude) ShouldIncludeFile(filePath string) bool {
+	// If no patterns specified, include everything
+	if len(ie.Files) == 0 {
+		return true
+	}
+
+	// Check if file matches any include pattern
+	for _, pattern := range ie.Files {
+		if matched, _ := filepath.Match(pattern, filePath); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldIncludePackage checks if a package should be included based on include/exclude patterns
+func (ie *IncludeExclude) ShouldIncludePackage(pkgPath string) bool {
+	// If no patterns specified, include everything
+	if len(ie.Packages) == 0 {
+		return true
+	}
+
+	// Check if package matches any include pattern
+	for _, pattern := range ie.Packages {
+		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldIncludeFunction checks if a function should be included based on include/exclude patterns
+func (ie *IncludeExclude) ShouldIncludeFunction(funcName string) bool {
+	// If no patterns specified, include everything
+	if len(ie.Functions) == 0 {
+		return true
+	}
+
+	// Check if function matches any include pattern
+	for _, pattern := range ie.Functions {
+		if matched, _ := filepath.Match(pattern, funcName); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldIncludeType checks if a type should be included based on include/exclude patterns
+func (ie *IncludeExclude) ShouldIncludeType(typeName string) bool {
+	// If no patterns specified, include everything
+	if len(ie.Types) == 0 {
+		return true
+	}
+
+	// Check if type matches any include pattern
+	for _, pattern := range ie.Types {
+		if matched, _ := filepath.Match(pattern, typeName); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldExcludeFile checks if a file should be excluded based on exclude patterns
+func (ie *IncludeExclude) ShouldExcludeFile(filePath string) bool {
+	// If no patterns specified, exclude nothing
+	if len(ie.Files) == 0 {
+		return false
+	}
+
+	// Check if file matches any exclude pattern
+	for _, pattern := range ie.Files {
+		if matched, _ := filepath.Match(pattern, filePath); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldExcludePackage checks if a package should be excluded based on exclude patterns
+func (ie *IncludeExclude) ShouldExcludePackage(pkgPath string) bool {
+	// If no patterns specified, exclude nothing
+	if len(ie.Packages) == 0 {
+		return false
+	}
+
+	// Check if package matches any exclude pattern
+	for _, pattern := range ie.Packages {
+		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldExcludeFunction checks if a function should be excluded based on exclude patterns
+func (ie *IncludeExclude) ShouldExcludeFunction(funcName string) bool {
+	// If no patterns specified, exclude nothing
+	if len(ie.Functions) == 0 {
+		return false
+	}
+
+	// Check if function matches any exclude pattern
+	for _, pattern := range ie.Functions {
+		if matched, _ := filepath.Match(pattern, funcName); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldExcludeType checks if a type should be excluded based on exclude patterns
+func (ie *IncludeExclude) ShouldExcludeType(typeName string) bool {
+	// If no patterns specified, exclude nothing
+	if len(ie.Types) == 0 {
+		return false
+	}
+
+	// Check if type matches any exclude pattern
+	for _, pattern := range ie.Types {
+		if matched, _ := filepath.Match(pattern, typeName); matched {
+			return true
+		}
+	}
+	return false
+}
+
 // Defaults provides default values
 type Defaults struct {
 	RequestContentType  string `yaml:"requestContentType,omitempty"`
@@ -220,6 +349,50 @@ type SwagenConfig struct {
 	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes"`
 	Tags            []Tag                     `yaml:"tags"`
 	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs"`
+}
+
+// ShouldIncludeFile checks if a file should be included based on include/exclude filters
+func (c *SwagenConfig) ShouldIncludeFile(filePath string) bool {
+	// First check exclude patterns (exclude takes precedence)
+	if c.Exclude.ShouldExcludeFile(filePath) {
+		return false
+	}
+
+	// Then check include patterns
+	return c.Include.ShouldIncludeFile(filePath)
+}
+
+// ShouldIncludePackage checks if a package should be included based on include/exclude filters
+func (c *SwagenConfig) ShouldIncludePackage(pkgPath string) bool {
+	// First check exclude patterns (exclude takes precedence)
+	if c.Exclude.ShouldExcludePackage(pkgPath) {
+		return false
+	}
+
+	// Then check include patterns
+	return c.Include.ShouldIncludePackage(pkgPath)
+}
+
+// ShouldIncludeFunction checks if a function should be included based on include/exclude filters
+func (c *SwagenConfig) ShouldIncludeFunction(funcName string) bool {
+	// First check exclude patterns (exclude takes precedence)
+	if c.Exclude.ShouldExcludeFunction(funcName) {
+		return false
+	}
+
+	// Then check include patterns
+	return c.Include.ShouldIncludeFunction(funcName)
+}
+
+// ShouldIncludeType checks if a type should be included based on include/exclude filters
+func (c *SwagenConfig) ShouldIncludeType(typeName string) bool {
+	// First check exclude patterns (exclude takes precedence)
+	if c.Exclude.ShouldExcludeType(typeName) {
+		return false
+	}
+
+	// Then check include patterns
+	return c.Include.ShouldIncludeType(typeName)
 }
 
 // MatchPattern checks if a pattern matches a value
@@ -460,7 +633,13 @@ func DefaultEchoConfig() *SwagenConfig {
 					PathArgIndex:   0,
 					RouterArgIndex: 1,
 					IsMount:        true,
+					RecvTypeRegex:  "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
 				},
+			},
+		},
+		Exclude: IncludeExclude{
+			Files: []string{
+				"docs/*",
 			},
 		},
 		Defaults: Defaults{

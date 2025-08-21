@@ -8,10 +8,16 @@ import (
 func main() {
 	e := echo.New()
 
-	g := e.Group("/users")
+	v1 := e.Group("/v1")
+
+	users := v1.Group("/users", func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			return next(c)
+		}
+	})
 
 	// Register all API routes
-	RegisterUsersRoutes(g, NewHandler(&defaultUserService{}))
+	RegisterUsersRoutes(users, NewHandler(&defaultUserService{}))
 
 	// Health check
 	e.GET("/health", healthCheck)

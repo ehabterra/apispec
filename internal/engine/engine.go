@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"go/types"
 
 	"github.com/ehabterra/swagen/internal/core"
 	"github.com/ehabterra/swagen/internal/metadata"
@@ -63,6 +64,16 @@ type EngineConfig struct {
 	MaxChildrenPerNode int
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
+
+	// Include/exclude filters
+	IncludeFiles     []string
+	IncludePackages  []string
+	IncludeFunctions []string
+	IncludeTypes     []string
+	ExcludeFiles     []string
+	ExcludePackages  []string
+	ExcludeFunctions []string
+	ExcludeTypes     []string
 
 	moduleRoot string
 }
@@ -167,22 +178,23 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		return nil, fmt.Errorf("could not find Go module: %w", err)
 	}
 
-	// Load and type-check packages
+	// Create file set and file info mapping for metadata generation
 	fset := token.NewFileSet()
 	fileToInfo := make(map[*ast.File]*types.Info)
 
+	// Load Go packages
 	cfg := &packages.Config{
-		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-		Dir:   e.config.moduleRoot,
-		Fset:  fset,
-		Tests: false, // Explicitly exclude test files to speed up processing
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax,
+		Dir:  e.config.moduleRoot,
+		Fset: fset,
 	}
 
-	pkgs, err := packages.Load(cfg, "./...")
+	// Filter packages and files based on include/exclude patterns
+	filteredPkgs, err := e.loadFilteredPackages(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load packages: %w", err)
+		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
 	}
-	if packages.PrintErrors(pkgs) > 0 {
+	if packages.PrintErrors(filteredPkgs) > 0 {
 		return nil, fmt.Errorf("packages contain errors")
 	}
 
@@ -190,12 +202,24 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	pkgsMetadata := make(map[string]map[string]*ast.File)
 	importPaths := make(map[string]string)
 
-	for _, pkg := range pkgs {
+	for _, pkg := range filteredPkgs {
+		// Check if package should be included/excluded
+		if !e.shouldIncludePackage(pkg.PkgPath) {
+			continue
+		}
+
 		pkgsMetadata[pkg.PkgPath] = make(map[string]*ast.File)
 		for i, f := range pkg.Syntax {
-			pkgsMetadata[pkg.PkgPath][pkg.GoFiles[i]] = f
+			fileName := pkg.GoFiles[i]
+
+			// Check if file should be included/excluded
+			if !e.shouldIncludeFile(fileName) {
+				continue
+			}
+
+			pkgsMetadata[pkg.PkgPath][fileName] = f
 			fileToInfo[f] = pkg.TypesInfo
-			importPaths[pkg.GoFiles[i]] = pkg.PkgPath
+			importPaths[fileName] = pkg.PkgPath
 		}
 	}
 
@@ -265,6 +289,9 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			URL:  e.config.LicenseURL,
 		}
 	}
+
+	// Merge CLI include/exclude patterns with loaded configuration
+	e.mergeIncludeExcludePatterns(swagenConfig)
 
 	// Prepare generator config
 	generatorConfig := intspec.GeneratorConfig{
@@ -342,6 +369,37 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	return openAPISpec, nil
 }
 
+// mergeIncludeExcludePatterns merges CLI include/exclude patterns with the loaded configuration
+func (e *Engine) mergeIncludeExcludePatterns(config *spec.SwagenConfig) {
+	// Merge include patterns
+	if len(e.config.IncludeFiles) > 0 {
+		config.Include.Files = append(config.Include.Files, e.config.IncludeFiles...)
+	}
+	if len(e.config.IncludePackages) > 0 {
+		config.Include.Packages = append(config.Include.Packages, e.config.IncludePackages...)
+	}
+	if len(e.config.IncludeFunctions) > 0 {
+		config.Include.Functions = append(config.Include.Functions, e.config.IncludeFunctions...)
+	}
+	if len(e.config.IncludeTypes) > 0 {
+		config.Include.Types = append(config.Include.Types, e.config.IncludeTypes...)
+	}
+
+	// Merge exclude patterns
+	if len(e.config.ExcludeFiles) > 0 {
+		config.Exclude.Files = append(config.Exclude.Files, e.config.ExcludeFiles...)
+	}
+	if len(e.config.ExcludePackages) > 0 {
+		config.Exclude.Packages = append(config.Exclude.Packages, e.config.ExcludePackages...)
+	}
+	if len(e.config.ExcludeFunctions) > 0 {
+		config.Exclude.Functions = append(config.Exclude.Functions, e.config.ExcludeFunctions...)
+	}
+	if len(e.config.ExcludeTypes) > 0 {
+		config.Exclude.Types = append(config.Exclude.Types, e.config.ExcludeTypes...)
+	}
+}
+
 func (e *Engine) ModuleRoot() string {
 	return e.config.moduleRoot
 }
@@ -368,4 +426,121 @@ func (e *Engine) findModuleRoot(startPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no go.mod found in %s or any parent directory", startPath)
+}
+
+// shouldIncludePackage checks if a package should be included based on include/exclude patterns
+func (e *Engine) shouldIncludePackage(pkgPath string) bool {
+	// If no include/exclude patterns specified, include everything
+	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 &&
+		len(e.config.IncludePackages) == 0 && len(e.config.ExcludePackages) == 0 {
+		return true
+	}
+
+	// Check exclude patterns first (exclude takes precedence)
+	for _, pattern := range e.config.ExcludePackages {
+		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+			return false
+		}
+		// Also check if the pattern matches the last part of the package path
+		parts := strings.Split(pkgPath, "/")
+		if len(parts) > 0 {
+			lastPart := parts[len(parts)-1]
+			if matched, _ := filepath.Match(pattern, lastPart); matched {
+				return false
+			}
+		}
+	}
+
+	// Check include patterns
+	if len(e.config.IncludePackages) > 0 {
+		for _, pattern := range e.config.IncludePackages {
+			if matched, _ := filepath.Match(pattern, pkgPath); matched {
+				return true
+			}
+			// Also check if the pattern matches the last part of the package path
+			parts := strings.Split(pkgPath, "/")
+			if len(parts) > 0 {
+				lastPart := parts[len(parts)-1]
+				if matched, _ := filepath.Match(pattern, lastPart); matched {
+					return true
+				}
+			}
+		}
+		return false // Not matched by any include pattern
+	}
+
+	return true // No include patterns specified, so include
+}
+
+// shouldIncludeFile checks if a file should be included based on include/exclude patterns
+func (e *Engine) shouldIncludeFile(fileName string) bool {
+	// If no include/exclude patterns specified, include everything
+	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 {
+		return true
+	}
+
+	// Check exclude patterns first (exclude takes precedence)
+	for _, pattern := range e.config.ExcludeFiles {
+		if matched, _ := filepath.Match(pattern, fileName); matched {
+			return false
+		}
+	}
+
+	// Check include patterns
+	if len(e.config.IncludeFiles) > 0 {
+		for _, pattern := range e.config.IncludeFiles {
+			if matched, _ := filepath.Match(pattern, fileName); matched {
+				return true
+			}
+		}
+		return false // Not matched by any include pattern
+	}
+
+	return true // No include patterns specified, so include
+}
+
+// loadFilteredPackages loads packages with filtering based on include/exclude patterns
+func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package, error) {
+	// Load all packages first to ensure proper Go module resolution
+	pkgs, err := packages.Load(cfg, "./...")
+	if err != nil {
+		return nil, err
+	}
+
+	// If no filtering is specified, return all packages
+	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 &&
+		len(e.config.IncludePackages) == 0 && len(e.config.ExcludePackages) == 0 {
+		return pkgs, nil
+	}
+
+	// Filter packages based on include/exclude patterns
+	var filteredPkgs []*packages.Package
+	for _, pkg := range pkgs {
+		if e.shouldIncludePackage(pkg.PkgPath) {
+			// Filter files within the package
+			var filteredFiles []string
+			var filteredSyntax []*ast.File
+
+			for i, file := range pkg.GoFiles {
+				fileName := filepath.Base(file)
+				if e.shouldIncludeFile(fileName) {
+					filteredFiles = append(filteredFiles, file)
+					if i < len(pkg.Syntax) {
+						filteredSyntax = append(filteredSyntax, pkg.Syntax[i])
+					}
+				}
+			}
+
+			// Only include package if it has files after filtering
+			if len(filteredFiles) > 0 {
+				// Create a copy of the package with filtered files
+				filteredPkg := *pkg
+				filteredPkg.GoFiles = filteredFiles
+				filteredPkg.Syntax = filteredSyntax
+				filteredPkgs = append(filteredPkgs, &filteredPkg)
+			}
+		}
+	}
+
+	return filteredPkgs, nil
 }
