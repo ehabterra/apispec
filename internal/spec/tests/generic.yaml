@@ -84,8 +84,8 @@ string_pool:
   - items
   - '[]T'
   - r1/T/generic/src/generic/generic.go:21:9
-  - len
   - r1/T/generic/src/generic/generic.go:21:5
+  - len
   - '*Container'
   - "100"
   - r1/T/generic/src/generic/generic.go:30:2
@@ -852,11 +852,11 @@ call_graph:
       position: -1
       recv_type: -1
     callee:
-      name: 85
+      name: 86
       pkg: 4
-      position: 86
+      position: 85
       recv_type: -1
-    position: 3933200
+    position: 85
     args:
       - kind: 2
         name: 82
@@ -878,7 +878,7 @@ call_graph:
       pkg: 4
       position: 56
       recv_type: -1
-    position: 3933275
+    position: 56
     args:
       - kind: 53
         name: -1
@@ -982,7 +982,7 @@ call_graph:
       pkg: 4
       position: 64
       recv_type: 87
-    position: 3933305
+    position: 64
     assignments:
       val:
         - variable_name: 67
@@ -1054,7 +1054,7 @@ call_graph:
       pkg: 4
       position: 89
       recv_type: 87
-    position: 3933314
+    position: 89
     args:
       - kind: 53
         name: -1
@@ -1087,7 +1087,7 @@ call_graph:
       pkg: 4
       position: 75
       recv_type: -1
-    position: 3933338
+    position: 75
     args:
       - kind: 34
         name: -1

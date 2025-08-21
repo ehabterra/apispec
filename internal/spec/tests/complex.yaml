@@ -94,8 +94,8 @@ string_pool:
   - '"Handler %s: %s\n"'
   - r1/T/complex/src/complex/service.go:25:33
   - r1/T/complex/src/complex/service.go:25:39
-  - Printf
   - r1/T/complex/src/complex/service.go:25:2
+  - Printf
   - '"test-data"'
   - r1/T/complex/src/complex/service.go:39:2
 packages:
@@ -1261,7 +1261,7 @@ call_graph:
       pkg: 15
       position: 16
       recv_type: -1
-    position: 6293163
+    position: 16
     args:
       - kind: 11
         name: -1
@@ -1312,7 +1312,7 @@ call_graph:
       pkg: 4
       position: 32
       recv_type: 1
-    position: 6293310
+    position: 32
     callee_recv_var_name: name
   - caller:
       name: 39
@@ -1324,7 +1324,7 @@ call_graph:
       pkg: 4
       position: 42
       recv_type: 1
-    position: 6293344
+    position: 42
     args:
       - kind: 2
         name: 40
@@ -1353,11 +1353,11 @@ call_graph:
       position: -1
       recv_type: 48
     callee:
-      name: 95
+      name: 96
       pkg: 15
-      position: 96
+      position: 95
       recv_type: -1
-    position: 6293370
+    position: 95
     args:
       - kind: 11
         name: -1
@@ -1417,7 +1417,7 @@ call_graph:
       pkg: 4
       position: 83
       recv_type: -1
-    position: 6293590
+    position: 83
     args:
       - kind: 11
         name: -1
@@ -1500,7 +1500,7 @@ call_graph:
       pkg: 4
       position: 88
       recv_type: -1
-    position: 6293629
+    position: 88
     args:
       - kind: 2
         name: 72
@@ -1583,7 +1583,7 @@ call_graph:
       pkg: 4
       position: 98
       recv_type: 48
-    position: 6293646
+    position: 98
     args:
       - kind: 11
         name: -1

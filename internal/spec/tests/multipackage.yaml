@@ -156,11 +156,11 @@ string_pool:
   - r1/T/multipackage/src/multipackage/services/user_service.go:19:48
   - r1/T/multipackage/src/multipackage/services/user_service.go:19:56
   - r1/T/multipackage/src/multipackage/services/user_service.go:19:62
-  - Sprintf
   - r1/T/multipackage/src/multipackage/services/user_service.go:19:9
+  - Sprintf
   - r1/T/multipackage/src/multipackage/main.go:14:14
-  - Println
   - r1/T/multipackage/src/multipackage/main.go:14:2
+  - Println
 packages:
   multipackage:
     files:
@@ -1875,7 +1875,7 @@ call_graph:
       pkg: 4
       position: 48
       recv_type: 1
-    position: 10226756
+    position: 48
     callee_var_name: user
     callee_recv_var_name: name
   - caller:
@@ -1888,7 +1888,7 @@ call_graph:
       pkg: 4
       position: 55
       recv_type: 1
-    position: 10226779
+    position: 55
     callee_var_name: user
     callee_recv_var_name: age
   - caller:
@@ -1897,11 +1897,11 @@ call_graph:
       position: -1
       recv_type: 58
     callee:
-      name: 157
+      name: 158
       pkg: 88
-      position: 158
+      position: 157
       recv_type: -1
-    position: 10226801
+    position: 157
     args:
       - kind: 80
         name: -1
@@ -2010,7 +2010,7 @@ call_graph:
       pkg: 4
       position: 91
       recv_type: -1
-    position: 10227036
+    position: 91
     args:
       - kind: 80
         name: -1
@@ -2141,7 +2141,7 @@ call_graph:
       pkg: 46
       position: 98
       recv_type: -1
-    position: 10227075
+    position: 98
     assignments:
       service:
         - variable_name: 101
@@ -2213,7 +2213,7 @@ call_graph:
       pkg: 46
       position: 104
       recv_type: 58
-    position: 10227114
+    position: 104
     args:
       - kind: 2
         name: 45
@@ -2313,11 +2313,11 @@ call_graph:
       position: -1
       recv_type: -1
     callee:
-      name: 160
+      name: 161
       pkg: 88
-      position: 161
+      position: 160
       recv_type: -1
-    position: 10227141
+    position: 160
     args:
       - kind: 2
         name: 107
@@ -2349,7 +2349,7 @@ call_graph:
       pkg: 115
       position: 120
       recv_type: -1
-    position: 7866992
+    position: 120
     args:
       - kind: 51
         name: -1
@@ -2461,7 +2461,7 @@ call_graph:
       pkg: 115
       position: 116
       recv_type: -1
-    position: 7867008
+    position: 116
     args:
       - kind: 2
         name: 112

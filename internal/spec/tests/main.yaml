@@ -27,11 +27,11 @@ string_pool:
   - r1/T/main/src/main/test.go:8:1
   - strings
   - r1/T/main/src/main/test.go:12:14
-  - Println
   - r1/T/main/src/main/test.go:12:2
+  - Println
   - r1/T/main/src/main/test.go:13:18
-  - ToUpper
   - r1/T/main/src/main/test.go:13:2
+  - ToUpper
 packages:
   main:
     files:
@@ -209,7 +209,7 @@ call_graph:
       pkg: 14
       position: 15
       recv_type: -1
-    position: 3932307
+    position: 15
     args:
       - kind: 0
         name: -1
@@ -336,11 +336,11 @@ call_graph:
       position: -1
       recv_type: -1
     callee:
-      name: 28
+      name: 29
       pkg: 14
-      position: 29
+      position: 28
       recv_type: -1
-    position: 3932329
+    position: 28
     args:
       - kind: 2
         name: 21
@@ -368,11 +368,11 @@ call_graph:
       position: -1
       recv_type: -1
     callee:
-      name: 31
+      name: 32
       pkg: 26
-      position: 32
+      position: 31
       recv_type: -1
-    position: 3932345
+    position: 31
     args:
       - kind: 2
         name: 10

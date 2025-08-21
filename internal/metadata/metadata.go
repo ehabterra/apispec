@@ -820,7 +820,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		}
 
 		cgEdge := CallGraphEdge{
-			Position:          int(call.Pos()),
+			Position:          metadata.StringPool.Get(getPosition(call.Pos(), fset)),
 			Args:              args,
 			AssignmentMap:     assignmentsInFunc,
 			ParamArgMap:       paramArgMap,
