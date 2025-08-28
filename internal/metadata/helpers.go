@@ -53,6 +53,8 @@ func getTypeName(nd ast.Node) string {
 	case *ast.InterfaceType:
 		return "interface{}"
 	case *ast.StructType:
+		// For nested struct types, we'll return a placeholder
+		// The actual structure will be captured in the Field.NestedType
 		return "struct{}"
 	case *ast.FuncType:
 		return "func"

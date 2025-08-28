@@ -512,3 +512,124 @@ func TestResolvedTypeInResolveTypeOrigin(t *testing.T) {
 		t.Errorf("Expected empty resolved type, got %q", resolvedType3)
 	}
 }
+
+func TestNestedStructTypes(t *testing.T) {
+	// Test source code with nested struct types
+	src := `
+package main
+
+type X struct {
+	Y struct {
+		Z string ` + "`json:\"z\"`" + `
+	} ` + "`json:\"y\"`" + `
+}
+
+type Container struct {
+	Data struct {
+		ID   int    ` + "`json:\"id\"`" + `
+		Name string ` + "`json:\"name\"`" + `
+	} ` + "`json:\"data\"`" + `
+}
+`
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "test.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	pkgs := map[string]map[string]*ast.File{"main": {"test.go": file}}
+	importPaths := map[string]string{"main": "main"}
+	fileToInfo := map[*ast.File]*types.Info{}
+
+	// Generate metadata
+	metadata := GenerateMetadata(pkgs, fileToInfo, importPaths, fset)
+
+	// Check that nested struct types are captured
+	for _, pkg := range metadata.Packages {
+		for _, file := range pkg.Files {
+			// Check X type
+			if xType, exists := file.Types["X"]; exists {
+				if len(xType.Fields) != 1 {
+					t.Errorf("Expected 1 field in X, got %d", len(xType.Fields))
+				}
+
+				field := xType.Fields[0]
+				fieldName := metadata.StringPool.GetString(field.Name)
+				if fieldName != "Y" {
+					t.Errorf("Expected field name 'Y', got '%s'", fieldName)
+				}
+
+				// Check that nested type is captured
+				if field.NestedType == nil {
+					t.Error("Expected nested type to be captured for field Y")
+				} else {
+					if len(field.NestedType.Fields) != 1 {
+						t.Errorf("Expected 1 field in nested Y struct, got %d", len(field.NestedType.Fields))
+					}
+
+					nestedField := field.NestedType.Fields[0]
+					nestedFieldName := metadata.StringPool.GetString(nestedField.Name)
+					if nestedFieldName != "Z" {
+						t.Errorf("Expected nested field name 'Z', got '%s'", nestedFieldName)
+					}
+
+					nestedFieldType := metadata.StringPool.GetString(nestedField.Type)
+					if nestedFieldType != "string" {
+						t.Errorf("Expected nested field type 'string', got '%s'", nestedFieldType)
+					}
+				}
+			} else {
+				t.Error("Expected to find type X")
+			}
+
+			// Check Container type
+			if containerType, exists := file.Types["Container"]; exists {
+				if len(containerType.Fields) != 1 {
+					t.Errorf("Expected 1 field in Container, got %d", len(containerType.Fields))
+				}
+
+				field := containerType.Fields[0]
+				fieldName := metadata.StringPool.GetString(field.Name)
+				if fieldName != "Data" {
+					t.Errorf("Expected field name 'Data', got '%s'", fieldName)
+				}
+
+				// Check that nested type is captured
+				if field.NestedType == nil {
+					t.Error("Expected nested type to be captured for field Data")
+				} else {
+					if len(field.NestedType.Fields) != 2 {
+						t.Errorf("Expected 2 fields in nested Data struct, got %d", len(field.NestedType.Fields))
+					}
+
+					// Check ID field
+					idField := field.NestedType.Fields[0]
+					idFieldName := metadata.StringPool.GetString(idField.Name)
+					if idFieldName != "ID" {
+						t.Errorf("Expected nested field name 'ID', got '%s'", idFieldName)
+					}
+
+					idFieldType := metadata.StringPool.GetString(idField.Type)
+					if idFieldType != "int" {
+						t.Errorf("Expected nested field type 'int', got '%s'", idFieldType)
+					}
+
+					// Check Name field
+					nameField := field.NestedType.Fields[1]
+					nameFieldName := metadata.StringPool.GetString(nameField.Name)
+					if nameFieldName != "Name" {
+						t.Errorf("Expected nested field name 'Name', got '%s'", nameFieldName)
+					}
+
+					nameFieldType := metadata.StringPool.GetString(nameField.Type)
+					if nameFieldType != "string" {
+						t.Errorf("Expected nested field type 'string', got '%s'", nameFieldType)
+					}
+				}
+			} else {
+				t.Error("Expected to find type Container")
+			}
+		}
+	}
+}

@@ -41,6 +41,8 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 - [x] **Pointers and dereference**: detects `*T` and automatically dereferences when configured.
 - [x] **Selectors and field access**: resolves `pkg.Type.Field` and nested selectors where possible.
 - [x] **Struct fields**: reads field types, embedded fields, and struct tags (`json`, `xml`, `form`, etc.).
+- [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation.
+- [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers.
 
 ## Architecture Overview
 

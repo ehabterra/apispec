@@ -534,7 +534,13 @@ func generateStructSchema(key string, typ *metadata.Type, meta *metadata.Metadat
 		}
 
 		// Generate schema for field type
-		fieldSchema := mapGoTypeToOpenAPISchema(fieldType, meta, cfg)
+		var fieldSchema *Schema
+		if field.NestedType != nil {
+			// Handle nested struct type
+			fieldSchema = generateSchemaFromType(fieldName, field.NestedType, meta, cfg)
+		} else {
+			fieldSchema = mapGoTypeToOpenAPISchema(fieldType, meta, cfg)
+		}
 		schema.Properties[fieldName] = fieldSchema
 	}
 

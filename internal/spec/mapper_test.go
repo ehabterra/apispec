@@ -1,6 +1,10 @@
 package spec
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"reflect"
 	"testing"
 
@@ -1108,5 +1112,138 @@ func TestExtractJSONName(t *testing.T) {
 				t.Errorf("extractJSONName(%q) = %q, expected %q", tt.tag, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestCompleteNestedStructFlow(t *testing.T) {
+	// Test source code with nested struct types
+	src := `
+package main
+
+type X struct {
+	Y struct {
+		Z string ` + "`json:\"z\"`" + `
+	} ` + "`json:\"y\"`" + `
+}
+
+type Container struct {
+	Data struct {
+		ID   int    ` + "`json:\"id\"`" + `
+		Name string ` + "`json:\"name\"`" + `
+	} ` + "`json:\"data\"`" + `
+}
+`
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "test.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	pkgs := map[string]map[string]*ast.File{"main": {"test.go": file}}
+	importPaths := map[string]string{"main": "main"}
+	fileToInfo := map[*ast.File]*types.Info{}
+
+	// Generate metadata
+	metadata := metadata.GenerateMetadata(pkgs, fileToInfo, importPaths, fset)
+
+	// Create config
+	cfg := &SwagenConfig{
+		TypeMapping:   []TypeMapping{},
+		ExternalTypes: []ExternalType{},
+	}
+
+	// Test schema generation for type X
+	for _, pkg := range metadata.Packages {
+		for _, file := range pkg.Files {
+			if xType, exists := file.Types["X"]; exists {
+				schema := generateSchemaFromType("X", xType, metadata, cfg)
+
+				// Verify the schema structure
+				if schema.Type != "object" {
+					t.Errorf("Expected schema type 'object', got '%s'", schema.Type)
+				}
+
+				if len(schema.Properties) != 1 {
+					t.Errorf("Expected 1 property, got %d", len(schema.Properties))
+				}
+
+				// Check Y property
+				yProp, exists := schema.Properties["y"]
+				if !exists {
+					t.Error("Expected property 'y' to exist")
+				} else {
+					if yProp.Type != "object" {
+						t.Errorf("Expected Y property type 'object', got '%s'", yProp.Type)
+					}
+
+					if len(yProp.Properties) != 1 {
+						t.Errorf("Expected 1 property in Y, got %d", len(yProp.Properties))
+					}
+
+					// Check Z property
+					zProp, exists := yProp.Properties["z"]
+					if !exists {
+						t.Error("Expected property 'z' to exist in Y")
+					} else {
+						if zProp.Type != "string" {
+							t.Errorf("Expected Z property type 'string', got '%s'", zProp.Type)
+						}
+					}
+				}
+			} else {
+				t.Error("Expected to find type X")
+			}
+
+			// Test schema generation for type Container
+			if containerType, exists := file.Types["Container"]; exists {
+				schema := generateSchemaFromType("Container", containerType, metadata, cfg)
+
+				// Verify the schema structure
+				if schema.Type != "object" {
+					t.Errorf("Expected schema type 'object', got '%s'", schema.Type)
+				}
+
+				if len(schema.Properties) != 1 {
+					t.Errorf("Expected 1 property, got %d", len(schema.Properties))
+				}
+
+				// Check Data property
+				dataProp, exists := schema.Properties["data"]
+				if !exists {
+					t.Error("Expected property 'data' to exist")
+				} else {
+					if dataProp.Type != "object" {
+						t.Errorf("Expected Data property type 'object', got '%s'", dataProp.Type)
+					}
+
+					if len(dataProp.Properties) != 2 {
+						t.Errorf("Expected 2 properties in Data, got %d", len(dataProp.Properties))
+					}
+
+					// Check ID property
+					idProp, exists := dataProp.Properties["id"]
+					if !exists {
+						t.Error("Expected property 'id' to exist in Data")
+					} else {
+						if idProp.Type != "integer" {
+							t.Errorf("Expected ID property type 'integer', got '%s'", idProp.Type)
+						}
+					}
+
+					// Check Name property
+					nameProp, exists := dataProp.Properties["name"]
+					if !exists {
+						t.Error("Expected property 'name' to exist in Data")
+					} else {
+						if nameProp.Type != "string" {
+							t.Errorf("Expected Name property type 'string', got '%s'", nameProp.Type)
+						}
+					}
+				}
+			} else {
+				t.Error("Expected to find type Container")
+			}
+		}
 	}
 }

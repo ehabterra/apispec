@@ -907,6 +907,20 @@ func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type
 				Scope:    metadata.StringPool.Get(scope),
 				Comments: metadata.StringPool.Get(comments),
 			}
+
+			// Check if this field has a nested struct type
+			if structTypeExpr, ok := field.Type.(*ast.StructType); ok {
+				// Create a nested type for this field
+				nestedType := &Type{
+					Name:     metadata.StringPool.Get(name.Name + "_nested"),
+					Kind:     metadata.StringPool.Get("struct"),
+					Scope:    metadata.StringPool.Get(getScope(name.Name)),
+					Comments: metadata.StringPool.Get(comments),
+				}
+				processStructFields(structTypeExpr, metadata, nestedType)
+				f.NestedType = nestedType
+			}
+
 			t.Fields = append(t.Fields, f)
 		}
 	}

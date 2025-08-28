@@ -366,6 +366,9 @@ type Field struct {
 	Tag      int `yaml:"tag,omitempty"`
 	Scope    int `yaml:"scope,omitempty"`
 	Comments int `yaml:"comments,omitempty"`
+
+	// For nested struct types, store the nested type definition
+	NestedType *Type `yaml:"nested_type,omitempty"`
 }
 
 // Method represents a method
