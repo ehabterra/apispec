@@ -10,12 +10,16 @@ import (
 	"strings"
 )
 
+const MainFunc = "main"
+
 // CallIdentifierType represents different types of identifiers used in the call graph
 type CallIdentifierType int
 
 const (
 	// BaseID - Function/method name with package, no position or generics
 	BaseID CallIdentifierType = iota
+	// GenericID - Includes generic type parameters but no position
+	GenericID
 	// InstanceID - Includes position and generic type parameters for specific call instances
 	InstanceID
 )
@@ -57,6 +61,17 @@ func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
 
 	switch idType {
 	case BaseID:
+		return base
+	case GenericID:
+		// Include generics but no position
+		if len(ci.generics) > 0 {
+			var genericParts []string
+			for param, concrete := range ci.generics {
+				genericParts = append(genericParts, fmt.Sprintf("%s=%s", param, concrete))
+			}
+			sort.Slice(genericParts, func(i, j int) bool { return genericParts[i] < genericParts[j] })
+			return fmt.Sprintf("%s[%s]", base, strings.Join(genericParts, ","))
+		}
 		return base
 	case InstanceID:
 		// Include generics and position for instance identification
@@ -123,7 +138,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		allTypes := make(map[string]*Type)
 
 		// First pass: collect all methods
-		for _, file := range files {
+		for fileName, file := range files {
 			info := fileToInfo[file]
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
@@ -131,6 +146,40 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 					continue
 				}
 				recvType := getTypeName(fn.Recv.List[0].Type)
+
+				// Extract type parameter names for generics
+				typeParams := []string{}
+				if fn.Type != nil && fn.Type.TypeParams != nil {
+					for _, tparam := range fn.Type.TypeParams.List {
+						for _, name := range tparam.Names {
+							typeParams = append(typeParams, name.Name)
+						}
+					}
+				}
+
+				// Extract return value origins
+				var returnVars []CallArgument
+				var maxReturnCount int
+
+				if fn.Body != nil {
+					ast.Inspect(fn.Body, func(n ast.Node) bool {
+						ret, ok := n.(*ast.ReturnStmt)
+						if !ok {
+							return true
+						}
+
+						// Track the maximum number of return values seen
+						if len(ret.Results) > maxReturnCount {
+							maxReturnCount = len(ret.Results)
+							returnVars = nil // Clear and rebuild with the most complete return
+							for _, expr := range ret.Results {
+								returnVars = append(returnVars, *ExprToCallArgument(expr, info, pkgName, fset, metadata))
+							}
+						}
+
+						return true // Continue traversal to see all returns
+					})
+				}
 
 				// Use funcMap to get callee function declaration
 				var assignmentsInFunc = make(map[string][]Assignment)
@@ -155,6 +204,9 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 					Position:      metadata.StringPool.Get(getFuncPosition(fn, fset)),
 					Scope:         metadata.StringPool.Get(getScope(fn.Name.Name)),
 					AssignmentMap: assignmentsInFunc,
+					TypeParams:    typeParams,
+					ReturnVars:    returnVars,
+					Filename:      metadata.StringPool.Get(fileName),
 				}
 				m.SignatureStr = metadata.StringPool.Get(CallArgToString(m.Signature))
 				allTypeMethods[recvType] = append(allTypeMethods[recvType], m)
@@ -235,6 +287,9 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		})
 	}
 
+	// Process function return types to fill ResolvedType
+	metadata.ProcessFunctionReturnTypes()
+
 	// Finalize string pool
 	metadata.StringPool.Finalize()
 
@@ -242,6 +297,450 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	fmt.Println("assignment Count:", assignmentCount)
 
 	return metadata
+}
+
+// NEW: Enhanced metadata methods for tracker tree simplification
+
+// GetArgumentProcessor returns the argument processor instance
+func (m *Metadata) GetArgumentProcessor() *ArgumentProcessor {
+	if m.argumentProcessor == nil {
+		m.argumentProcessor = &ArgumentProcessor{
+			argTypeCache:        make(map[string]ArgumentType),
+			variableOriginCache: make(map[string]VariableOrigin),
+			assignmentLinkCache: make(map[string][]AssignmentLink),
+		}
+	}
+	return m.argumentProcessor
+}
+
+// GetGenericTypeResolver returns the generic type resolver instance
+func (m *Metadata) GetGenericTypeResolver() *GenericTypeResolver {
+	if m.genericResolver == nil {
+		m.genericResolver = &GenericTypeResolver{
+			typeParamCache:     make(map[string]map[string]string),
+			compatibilityCache: make(map[string]bool),
+		}
+	}
+	return m.genericResolver
+}
+
+// ClassifyArgument determines the type of an argument for enhanced processing
+func (m *Metadata) ClassifyArgument(arg CallArgument) ArgumentType {
+	switch arg.GetKind() {
+	case KindCall:
+		return ArgTypeFunctionCall
+	case KindIdent:
+		if strings.HasPrefix(arg.GetType(), "func(") {
+			return ArgTypeFunctionCall
+		}
+		return ArgTypeVariable
+	case KindLiteral:
+		return ArgTypeLiteral
+	case KindSelector:
+		return ArgTypeSelector
+	case KindUnary:
+		return ArgTypeUnary
+	case KindBinary:
+		return ArgTypeBinary
+	case KindIndex:
+		return ArgTypeIndex
+	case KindCompositeLit:
+		return ArgTypeComposite
+	case KindTypeAssert:
+		return ArgTypeTypeAssert
+	default:
+		return ArgTypeComplex
+	}
+}
+
+// ProcessArguments processes arguments with enhanced classification and tracking
+func (m *Metadata) ProcessArguments(edge *CallGraphEdge, limits TrackerLimits) []*ProcessedArgument {
+	var processed []*ProcessedArgument
+	argCount := 0
+
+	for i, arg := range edge.Args {
+		if argCount >= limits.MaxArgsPerFunction {
+			break
+		}
+
+		// Skip certain arguments
+		if edge.Caller.ID() == stripToBase(arg.ID()) ||
+			edge.Callee.ID() == arg.ID() ||
+			arg.GetName() == "nil" ||
+			arg.ID() == "" {
+			continue
+		}
+
+		processedArg := &ProcessedArgument{
+			Argument: &arg,
+			Edge:     edge,
+			ArgType:  m.ClassifyArgument(arg),
+			ArgIndex: i,
+			ArgContext: fmt.Sprintf("%s.%s",
+				m.StringPool.GetString(edge.Caller.Name),
+				m.StringPool.GetString(edge.Callee.Name)),
+		}
+
+		processed = append(processed, processedArg)
+		argCount++
+	}
+
+	return processed
+}
+
+// BuildAssignmentRelationships builds assignment relationships for all call graph edges
+func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentLink {
+	relationships := make(map[AssignmentKey]*AssignmentLink)
+
+	for i := range m.CallGraph {
+		edge := &m.CallGraph[i]
+
+		callerName := m.StringPool.GetString(edge.Caller.Name)
+		calleeName := m.StringPool.GetString(edge.Callee.Name)
+		callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
+
+		// TODO: remove this
+		_ = calleeName
+
+		// Get root assignments
+		if pkg, ok := m.Packages[callerPkg]; ok {
+			for _, file := range pkg.Files {
+				if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
+					for recvVarName, assigns := range fn.AssignmentMap {
+						assignment := assigns[len(assigns)-1]
+
+						if edge.CalleeRecvVarName != recvVarName {
+							continue
+						}
+
+						akey := AssignmentKey{
+							Name:      recvVarName,
+							Pkg:       callerPkg,
+							Type:      m.StringPool.GetString(assignment.ConcreteType),
+							Container: callerName,
+						}
+
+						relationships[akey] = &AssignmentLink{
+							AssignmentKey: akey,
+							Assignment:    &assignment,
+							Edge:          edge,
+						}
+					}
+				}
+			}
+		}
+
+		// Process assignments for this edge
+		for recvVarName, assigns := range edge.AssignmentMap {
+			assignment := assigns[len(assigns)-1] // Latest assignment
+
+			akey := AssignmentKey{
+				Name:      recvVarName,
+				Pkg:       m.StringPool.GetString(assignment.Pkg),
+				Type:      m.StringPool.GetString(assignment.ConcreteType),
+				Container: m.StringPool.GetString(assignment.Func),
+			}
+
+			var assignmentEdge *CallGraphEdge = edge
+
+			// Get nested edges to link to the assignment
+			if callers, exists := m.Callers[edge.Callee.BaseID()]; exists {
+				for _, nestedEdge := range callers {
+					if nestedEdge.CalleeRecvVarName == recvVarName {
+						assignmentEdge = nestedEdge
+						break
+					}
+				}
+			}
+
+			relationships[akey] = &AssignmentLink{
+				AssignmentKey: akey,
+				Assignment:    &assignment,
+				Edge:          assignmentEdge,
+			}
+		}
+	}
+
+	return relationships
+}
+
+// BuildVariableRelationships builds variable relationships for all call graph edges
+func (m *Metadata) BuildVariableRelationships() map[ParamKey]*VariableLink {
+	relationships := make(map[ParamKey]*VariableLink)
+
+	for i := range m.CallGraph {
+		edge := &m.CallGraph[i]
+
+		for param, arg := range edge.ParamArgMap {
+			originVar, originPkg, _, originFunc := TraceVariableOrigin(
+				param,
+				m.StringPool.GetString(edge.Callee.Name),
+				m.StringPool.GetString(edge.Callee.Pkg),
+				m,
+			)
+
+			if originVar == "" {
+				continue
+			}
+
+			pkey := ParamKey{
+				Name:      param,
+				Pkg:       m.StringPool.GetString(edge.Callee.Pkg),
+				Container: m.StringPool.GetString(edge.Callee.Name),
+			}
+
+			relationships[pkey] = &VariableLink{
+				ParamKey:   pkey,
+				OriginVar:  originVar,
+				OriginPkg:  originPkg,
+				OriginFunc: originFunc,
+				Edge:       edge,
+				Argument:   &arg,
+			}
+		}
+	}
+
+	return relationships
+}
+
+// GetAssignmentRelationships returns the cached assignment relationships
+func (m *Metadata) GetAssignmentRelationships() map[AssignmentKey]*AssignmentLink {
+	if m.assignmentRelationships == nil {
+		m.assignmentRelationships = m.BuildAssignmentRelationships()
+	}
+	return m.assignmentRelationships
+}
+
+// GetVariableRelationships returns the cached variable relationships
+func (m *Metadata) GetVariableRelationships() map[ParamKey]*VariableLink {
+	if m.variableRelationships == nil {
+		m.variableRelationships = m.BuildVariableRelationships()
+	}
+	return m.variableRelationships
+}
+
+// FindRelatedAssignments finds assignments related to a variable
+func (m *Metadata) FindRelatedAssignments(varName, pkg, container string) []*AssignmentLink {
+	akey := AssignmentKey{
+		Name:      varName,
+		Pkg:       pkg,
+		Container: container,
+	}
+
+	if link, exists := m.GetAssignmentRelationships()[akey]; exists {
+		return []*AssignmentLink{link}
+	}
+
+	// Find partial matches
+	var matches []*AssignmentLink
+	for key, link := range m.GetAssignmentRelationships() {
+		if key.Name == varName && key.Pkg == pkg {
+			matches = append(matches, link)
+		}
+	}
+
+	return matches
+}
+
+// FindRelatedVariables finds variables related to a parameter
+func (m *Metadata) FindRelatedVariables(varName, pkg, container string) []*VariableLink {
+	pkey := ParamKey{
+		Name:      varName,
+		Pkg:       pkg,
+		Container: container,
+	}
+
+	if link, exists := m.GetVariableRelationships()[pkey]; exists {
+		return []*VariableLink{link}
+	}
+
+	// Find partial matches
+	var matches []*VariableLink
+	for key, link := range m.GetVariableRelationships() {
+		if key.Name == varName && key.Pkg == pkg {
+			matches = append(matches, link)
+		}
+	}
+
+	return matches
+}
+
+// TraverseCallGraph traverses the call graph with a visitor function
+func (m *Metadata) TraverseCallGraph(startFrom string, visitor func(*CallGraphEdge, int) bool) {
+	visited := make(map[string]bool)
+	m.traverseCallGraphHelper(startFrom, 0, visitor, visited)
+}
+
+// traverseCallGraphHelper is the internal implementation with cycle detection
+func (m *Metadata) traverseCallGraphHelper(current string, depth int, visitor func(*CallGraphEdge, int) bool, visited map[string]bool) {
+	if visited[current] {
+		return
+	}
+	visited[current] = true
+
+	if edges, exists := m.Callers[current]; exists {
+		for _, edge := range edges {
+			if !visitor(edge, depth) {
+				return
+			}
+			m.traverseCallGraphHelper(edge.Callee.BaseID(), depth+1, visitor, visited)
+		}
+	}
+}
+
+// GetCallDepth returns the call depth for a function
+func (m *Metadata) GetCallDepth(funcID string) int {
+	if depth, exists := m.callDepth[funcID]; exists {
+		return depth
+	}
+
+	// Calculate depth by traversing up the call graph
+	depth := 0
+	current := funcID
+
+	for {
+		if callers, exists := m.Callees[current]; exists && len(callers) > 0 {
+			depth++
+			current = callers[0].Caller.BaseID()
+		} else {
+			break
+		}
+	}
+
+	m.callDepth[funcID] = depth
+	return depth
+}
+
+// GetFunctionsAtDepth returns all functions at a specific call depth
+func (m *Metadata) GetFunctionsAtDepth(targetDepth int) []*CallGraphEdge {
+	var result []*CallGraphEdge
+
+	for funcID := range m.Callers {
+		if m.GetCallDepth(funcID) == targetDepth {
+			if edges, exists := m.Callers[funcID]; exists {
+				result = append(result, edges...)
+			}
+		}
+	}
+
+	return result
+}
+
+// IsReachableFrom checks if a function is reachable from another function
+func (m *Metadata) IsReachableFrom(fromFunc, toFunc string) bool {
+	visited := make(map[string]bool)
+
+	var dfs func(current string) bool
+	dfs = func(current string) bool {
+		if current == toFunc {
+			return true
+		}
+		if visited[current] {
+			return false
+		}
+		visited[current] = true
+
+		if edges, exists := m.Callers[current]; exists {
+			for _, edge := range edges {
+				if dfs(edge.Callee.BaseID()) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	return dfs(fromFunc)
+}
+
+// GetCallPath returns the call path from one function to another
+func (m *Metadata) GetCallPath(fromFunc, toFunc string) []*CallGraphEdge {
+	visited := make(map[string]bool)
+	var path []*CallGraphEdge
+
+	var dfs func(current string) bool
+	dfs = func(current string) bool {
+		if current == toFunc {
+			return true
+		}
+		if visited[current] {
+			return false
+		}
+		visited[current] = true
+
+		if edges, exists := m.Callers[current]; exists {
+			for _, edge := range edges {
+				path = append(path, edge)
+				if dfs(edge.Callee.BaseID()) {
+					return true
+				}
+				path = path[:len(path)-1] // backtrack
+			}
+		}
+		return false
+	}
+
+	if dfs(fromFunc) {
+		return path
+	}
+	return nil
+}
+
+// Generic Type Resolver Methods
+
+// ResolveTypeParameters resolves type parameters for a call graph edge
+func (m *Metadata) ResolveTypeParameters(edge *CallGraphEdge) map[string]string {
+	resolver := m.GetGenericTypeResolver()
+	return resolver.ResolveTypeParameters(edge)
+}
+
+// IsGenericTypeCompatible checks if generic types are compatible
+func (m *Metadata) IsGenericTypeCompatible(callerTypes, calleeTypes []string) bool {
+	resolver := m.GetGenericTypeResolver()
+	return resolver.IsCompatible(callerTypes, calleeTypes)
+}
+
+// ResolveTypeParameters resolves type parameters for a call graph edge
+func (r *GenericTypeResolver) ResolveTypeParameters(edge *CallGraphEdge) map[string]string {
+	cacheKey := edge.Caller.ID() + "->" + edge.Callee.ID()
+
+	if cached, exists := r.typeParamCache[cacheKey]; exists {
+		return cached
+	}
+
+	// Extract and resolve type parameters
+	resolved := r.extractTypeParameters(edge)
+	r.typeParamCache[cacheKey] = resolved
+
+	return resolved
+}
+
+// extractTypeParameters extracts type parameters from a call graph edge
+func (r *GenericTypeResolver) extractTypeParameters(edge *CallGraphEdge) map[string]string {
+	resolved := make(map[string]string)
+
+	// Copy existing type parameter map
+	if edge.TypeParamMap != nil {
+		for k, v := range edge.TypeParamMap {
+			resolved[k] = v
+		}
+	}
+
+	return resolved
+}
+
+// IsCompatible checks if caller types are compatible with callee types
+func (r *GenericTypeResolver) IsCompatible(callerTypes, calleeTypes []string) bool {
+	cacheKey := strings.Join(callerTypes, ",") + "->" + strings.Join(calleeTypes, ",")
+
+	if cached, exists := r.compatibilityCache[cacheKey]; exists {
+		return cached
+	}
+
+	compatible := IsSubset(callerTypes, calleeTypes)
+	r.compatibilityCache[cacheKey] = compatible
+
+	return compatible
 }
 
 // BuildFuncMap creates a map of function names to their declarations.
@@ -623,6 +1122,11 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 				if concreteTypeArg != nil {
 					concreteType = concreteTypeArg.GetType()
 				}
+
+				if funcName == "" {
+					continue
+				}
+
 				// if concreteType != "" {
 				assignment := Assignment{
 					VariableName: metadata.StringPool.Get(expr.Name),
@@ -770,6 +1274,8 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			if calleeParts == "" {
 				funcName = calleePkg + "." + calleeFunc
 			} else {
+				calleeParts = strings.TrimPrefix(calleeParts, "*")
+
 				funcName = calleePkg + "." + calleeParts + "." + calleeFunc
 			}
 
@@ -804,7 +1310,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			for _, assign := range assignments {
 				varName := CallArgToString(assign.Lhs)
 				assignVarName = varName
-				if callerFunc == "main" {
+				if callerFunc == MainFunc {
 					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 				}
 			}
@@ -864,6 +1370,16 @@ func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File,
 				astFile = pkgs[pkgName][fileName]
 				break
 			}
+			for _, t := range f.Types {
+				for _, method := range t.Methods {
+					methodName := metadata.StringPool.GetString(method.Name)
+					if methodName == fnName {
+						astFile = pkgs[pkgName][metadata.StringPool.GetString(method.Filename)]
+						break
+					}
+				}
+			}
+
 		}
 	}
 

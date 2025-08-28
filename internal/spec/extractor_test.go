@@ -43,14 +43,22 @@ func TestRefactoredExtractor(t *testing.T) {
 	meta.CallGraph[0].Callee.Pkg = meta.StringPool.Get("chi")
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	// Use MockTrackerTree for isolated unit testing
+	tree := NewMockTrackerTree(meta, limits)
+
+	// Add a test root node for the extractor to process
+	testNode := &SimplifiedTrackerNode{
+		Key:  "test-router",
+		Edge: &meta.CallGraph[0],
+	}
+	tree.AddRoot(testNode)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{

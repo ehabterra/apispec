@@ -120,11 +120,31 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) *CallArgument {
 	x := ExprToCallArgument(e.X, info, pkgName, fset, meta)
 	sel := ExprToCallArgument(e.Sel, info, pkgName, fset, meta)
+	pkg := pkgName
+	typeStr := ""
+
+	if info != nil {
+		if obj := info.ObjectOf(e.Sel); obj != nil {
+			if typePkgName, ok := obj.(*types.PkgName); ok {
+				// This is an imported package identifier
+				// Use the real import path and the real package name
+				pkg = typePkgName.Imported().Path() // The real import path
+				// Do NOT trim the package name from the import path
+			} else {
+				if obj.Pkg() != nil {
+					pkg = obj.Pkg().Path()
+				}
+				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+			}
+		}
+	}
 
 	arg := NewCallArgument(meta)
 	arg.SetKind(KindSelector)
 	arg.X = x
 	arg.Sel = sel
+	arg.SetPkg(pkg)
+	arg.SetType(typeStr)
 	arg.SetPosition(getPosition(e.Pos(), fset))
 	return arg
 }

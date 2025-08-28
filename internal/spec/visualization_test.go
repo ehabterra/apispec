@@ -14,7 +14,7 @@ func TestDrawTrackerTree(t *testing.T) {
 	}
 
 	// Test with empty nodes slice
-	emptyNodes := []*TrackerNode{}
+	emptyNodes := []TrackerNodeInterface{}
 	result = DrawTrackerTree(emptyNodes)
 	if result == "" {
 		t.Error("Expected non-empty result for empty nodes slice")
@@ -35,7 +35,7 @@ func TestDrawTrackerTreeCytoscape(t *testing.T) {
 	}
 
 	// Test with empty nodes slice
-	emptyNodes := []*TrackerNode{}
+	emptyNodes := []TrackerNodeInterface{}
 	result = DrawTrackerTreeCytoscape(emptyNodes)
 	if result == nil {
 		t.Error("Expected non-nil result for empty nodes slice")

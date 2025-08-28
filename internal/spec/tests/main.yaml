@@ -152,8 +152,8 @@ packages:
                         resolved_type: -1
                         generic_type_name: -1
                       raw: -1
-                      pkg: -1
-                      type: -1
+                      pkg: 14
+                      type: 17
                       position: 15
                       resolved_type: -1
                       generic_type_name: -1
@@ -265,8 +265,8 @@ call_graph:
                 resolved_type: -1
                 generic_type_name: -1
               raw: -1
-              pkg: -1
-              type: -1
+              pkg: 14
+              type: 17
               position: 15
               resolved_type: -1
               generic_type_name: -1

@@ -8,8 +8,6 @@ import (
 	"github.com/ehabterra/swagen/internal/metadata"
 )
 
-const MainFunc = "main"
-
 // ArgumentType represents the classification of an argument
 type ArgumentType int
 
@@ -26,14 +24,6 @@ const (
 	ArgTypeComposite                        // Composite literal (struct{})
 	ArgTypeTypeAssert                       // Type assertion (val.(type))
 )
-
-// TrackerLimits holds configuration for tree/graph traversal limits.
-type TrackerLimits struct {
-	MaxNodesPerTree    int
-	MaxChildrenPerNode int
-	MaxArgsPerFunction int
-	MaxNestedArgsDepth int
-}
 
 // TrackerNode represents a node in the call graph tree.
 type TrackerNode struct {
@@ -68,6 +58,11 @@ func (nd *TrackerNode) Key() string {
 	return nd.key
 }
 
+// GetKey returns the unique key of the node
+func (nd *TrackerNode) GetKey() string {
+	return nd.Key()
+}
+
 func (nd *TrackerNode) TypeParams() map[string]string {
 	if nd.typeParamMap == nil {
 		nd.typeParamMap = map[string]string{}
@@ -87,6 +82,84 @@ func (nd *TrackerNode) TypeParams() map[string]string {
 	}
 
 	return nd.typeParamMap
+}
+
+// GetParent returns the parent node
+func (nd *TrackerNode) GetParent() TrackerNodeInterface {
+	if nd.Parent == nil {
+		return nil
+	}
+	return nd.Parent
+}
+
+// GetChildren returns the children nodes
+func (nd *TrackerNode) GetChildren() []TrackerNodeInterface {
+	children := make([]TrackerNodeInterface, len(nd.Children))
+	for i, child := range nd.Children {
+		children[i] = child
+	}
+	return children
+}
+
+// GetEdge returns the call graph edge
+func (nd *TrackerNode) GetEdge() *metadata.CallGraphEdge {
+	return nd.CallGraphEdge
+}
+
+// GetArgument returns the call argument
+func (nd *TrackerNode) GetArgument() *metadata.CallArgument {
+	return nd.CallArgument
+}
+
+// GetArgType returns the argument type
+func (nd *TrackerNode) GetArgType() metadata.ArgumentType {
+	// Convert local ArgumentType to metadata.ArgumentType
+	switch nd.ArgType {
+	case ArgTypeDirectCallee:
+		return metadata.ArgTypeDirectCallee
+	case ArgTypeFunctionCall:
+		return metadata.ArgTypeFunctionCall
+	case ArgTypeVariable:
+		return metadata.ArgTypeVariable
+	case ArgTypeLiteral:
+		return metadata.ArgTypeLiteral
+	case ArgTypeSelector:
+		return metadata.ArgTypeSelector
+	case ArgTypeComplex:
+		return metadata.ArgTypeComplex
+	case ArgTypeUnary:
+		return metadata.ArgTypeUnary
+	case ArgTypeBinary:
+		return metadata.ArgTypeBinary
+	case ArgTypeIndex:
+		return metadata.ArgTypeIndex
+	case ArgTypeComposite:
+		return metadata.ArgTypeComposite
+	case ArgTypeTypeAssert:
+		return metadata.ArgTypeTypeAssert
+	default:
+		return metadata.ArgTypeComplex
+	}
+}
+
+// GetArgIndex returns the argument index
+func (nd *TrackerNode) GetArgIndex() int {
+	return nd.ArgIndex
+}
+
+// GetArgContext returns the argument context
+func (nd *TrackerNode) GetArgContext() string {
+	return nd.ArgContext
+}
+
+// GetTypeParamMap returns the type parameter map
+func (nd *TrackerNode) GetTypeParamMap() map[string]string {
+	return nd.TypeParams()
+}
+
+// GetRootAssignmentMap returns the root assignment map
+func (nd *TrackerNode) GetRootAssignmentMap() map[string][]metadata.Assignment {
+	return nd.RootAssignmentMap
 }
 
 func (nd *TrackerNode) AddChild(child *TrackerNode) {
@@ -130,6 +203,7 @@ type TrackerTree struct {
 	meta      *metadata.Metadata
 	positions map[string]bool
 	roots     []*TrackerNode
+	limits    metadata.TrackerLimits
 
 	// Enhanced tracking indices
 	variableNodes map[paramKey]*TrackerNode // Track variable nodes by name
@@ -155,67 +229,51 @@ func (k assignmentKey) String() string {
 type assigmentIndexMap map[assignmentKey]*TrackerNode
 
 // NewTrackerTree constructs a TrackerTree from metadata and limits.
-func NewTrackerTree(meta *metadata.Metadata, limits TrackerLimits) *TrackerTree {
+func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *TrackerTree {
 	t := &TrackerTree{
 		meta:          meta,
 		positions:     make(map[string]bool),
 		variableNodes: make(map[paramKey]*TrackerNode),
+		limits:        limits,
 	}
 
 	assignmentIndex := assigmentIndexMap{}
 
 	visited := make(map[string]int)
 
+	// Get pre-built relationships from metadata
+	assignmentRelationships := meta.GetAssignmentRelationships()
+
 	// Search for assignments
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 
-		callerName := getString(meta, edge.Caller.Name)
-		callerPkg := getString(meta, edge.Caller.Pkg)
-
-		calleeID := edge.Callee.ID()
 		calleeName := getString(meta, edge.Callee.Name)
 
-		var assignmentMap = map[string][]metadata.Assignment{}
-
-		// Get root assignments
-		if pkg, ok := meta.Packages[callerPkg]; ok {
-			for _, file := range pkg.Files {
-				if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
-					maps.Copy(assignmentMap, fn.AssignmentMap)
-				}
-			}
-		}
-
-		maps.Copy(assignmentMap, edge.AssignmentMap)
-
-		for recvVarName, assigns := range assignmentMap {
-			// This in some cases is comparing parent objects with children which is not correct
-			// Need to be revised, I comment and check the possible issues
-			assignment := assigns[len(assigns)-1]
-
-			assignFunc := getString(meta, assignment.Func)
+		for _, assignment := range assignmentRelationships {
+			recvVarName := getString(meta, assignment.Assignment.VariableName)
 
 			akey := assignmentKey{
 				Name:      recvVarName,
-				Pkg:       getString(meta, assignment.Pkg),
-				Type:      getString(meta, assignment.ConcreteType),
-				Container: assignFunc,
+				Pkg:       getString(meta, assignment.Assignment.Pkg),
+				Type:      getString(meta, assignment.Assignment.ConcreteType),
+				Container: getString(meta, assignment.Assignment.Func),
 			}
 
-			if assignment.Lhs.X != nil && assignment.Lhs.X.Type != -1 {
-				akey.Container = assignment.Lhs.X.GetType()
-			}
-
-			if recvVarName != edge.CalleeRecvVarName && assignment.Value.GetKind() == metadata.KindCall {
-				akey.Name = edge.CalleeRecvVarName
+			switch assignment.Assignment.Lhs.GetKind() {
+			case metadata.KindSelector:
+				if assignment.Assignment.Lhs.X != nil && assignment.Assignment.Lhs.X.Type != -1 {
+					akey.Container = assignment.Assignment.Lhs.X.GetType()
+				}
 			}
 
 			assignmentIndex[akey] = &TrackerNode{
-				key:           calleeID,
-				CallGraphEdge: edge,
+				key:           assignment.Edge.Callee.ID(),
+				CallGraphEdge: assignment.Edge,
 			}
 		}
+
+		// t.variableRelationships = meta.GetVariableRelationships()
 
 		for param, arg := range edge.ParamArgMap {
 			// Enhanced variable tracing and assignment linking
@@ -262,8 +320,8 @@ func NewTrackerTree(meta *metadata.Metadata, limits TrackerLimits) *TrackerTree 
 
 		// Only select main function from root function to be the root
 		// and construct the tree based on it
-		if !exists && callerName == MainFunc {
-			if node := NewTrackerNode(t, meta, "", callerID, nil, nil, visited, &assignmentIndex, limits); node != nil {
+		if !exists && callerName == metadata.MainFunc {
+			if node := NewTrackerNode(t, meta, "", callerID, nil, nil, visited, &assignmentIndex, t.limits); node != nil {
 				node.key = callerID
 				t.roots = append(t.roots, node)
 			}
@@ -368,7 +426,7 @@ func classifyArgument(arg metadata.CallArgument) ArgumentType {
 }
 
 // processArguments processes arguments with enhanced classification and tracking
-func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, visited map[string]int, assignmentIndex *assigmentIndexMap, limits TrackerLimits) []*TrackerNode {
+func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *TrackerNode, edge *metadata.CallGraphEdge, visited map[string]int, assignmentIndex *assigmentIndexMap, limits metadata.TrackerLimits) []*TrackerNode {
 	if edge == nil {
 		return nil
 	}
@@ -473,8 +531,6 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 				// Process nested arguments
 				if len(arg.Args) > 0 {
-					childArgs := make([]metadata.CallArgument, len(arg.Args))
-					copy(childArgs, arg.Args)
 					argNode.AddChildren(processArguments(tree, meta, argNode, argEdge, visited, assignmentIndex, limits))
 				}
 
@@ -560,14 +616,19 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					children = append(children, argNode)
 
 					// TODO: Get the correct edge
-					funcNameIndex := meta.StringPool.Get(arg.Sel.GetName())
+					funcNameIndex := arg.Sel.Name
 					recvType := strings.ReplaceAll(originVar, arg.Sel.GetPkg()+".", "")
+					// If the selector is a method, we need to get the type of the receiver
+					if arg.Sel.Type != -1 {
+						recvType = arg.X.GetType()
+						recvType = strings.ReplaceAll(recvType, arg.Sel.GetPkg()+".", "")
+					}
 					recvTypeIndex := meta.StringPool.Get(recvType)
-					pkgNameIndex := meta.StringPool.Get(arg.Sel.GetPkg())
+					pkgNameIndex := arg.Sel.Pkg
 
 					var funcEdge *metadata.CallGraphEdge
 
-					// Look for a call graph edge where this function is the callee
+					// Look for a call graph edge where this function is the caller
 					for _, ArgEdge := range meta.CallGraph {
 						if ArgEdge.Caller.Name == funcNameIndex && ArgEdge.Caller.Pkg == pkgNameIndex && ArgEdge.Caller.RecvType == recvTypeIndex {
 							funcEdge = &ArgEdge
@@ -665,7 +726,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 }
 
 // NewTrackerNode creates a new TrackerNode for the tree.
-func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id string, parentEdge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]int, assignmentIndex *assigmentIndexMap, limits TrackerLimits) *TrackerNode {
+func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id string, parentEdge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]int, assignmentIndex *assigmentIndexMap, limits metadata.TrackerLimits) *TrackerNode {
 	if id == "" {
 		return nil
 	}
@@ -816,24 +877,101 @@ func stripToBase(id string) string {
 }
 
 // GetRoots returns the root nodes of the tracker tree.
-func (t *TrackerTree) GetRoots() []*TrackerNode {
+func (t *TrackerTree) GetRoots() []TrackerNodeInterface {
 	if t == nil {
 		return nil
 	}
 
-	return t.roots
+	roots := make([]TrackerNodeInterface, len(t.roots))
+	for i, root := range t.roots {
+		roots[i] = root
+	}
+	return roots
 }
 
-// GetFunctionContext returns the *metadata.Function, package name, and file name for a TrackerNode.
-func (t *TrackerTree) GetFunctionContext(node *TrackerNode) (*metadata.Function, string, string) {
-	if node == nil || node.CallGraphEdge == nil {
+// FindNodeByKey finds a node by its key in the tracker tree
+func (t *TrackerTree) FindNodeByKey(key string) TrackerNodeInterface {
+	var findNode func(*TrackerNode) *TrackerNode
+
+	findNode = func(node *TrackerNode) *TrackerNode {
+		if node == nil {
+			return nil
+		}
+
+		if node.Key() == key {
+			return node
+		}
+
+		for _, child := range node.Children {
+			if found := findNode(child); found != nil {
+				return found
+			}
+		}
+
+		return nil
+	}
+
+	for _, root := range t.roots {
+		if found := findNode(root); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
+// TraverseTree traverses the tree with a visitor function
+func (t *TrackerTree) TraverseTree(visitor func(node TrackerNodeInterface) bool) {
+	var traverse func(*TrackerNode) bool
+	traverse = func(node *TrackerNode) bool {
+		if node == nil {
+			return true
+		}
+
+		if !visitor(node) {
+			return false
+		}
+
+		for _, child := range node.Children {
+			if !traverse(child) {
+				return false
+			}
+		}
+		return true
+	}
+
+	for _, root := range t.roots {
+		if !traverse(root) {
+			break
+		}
+	}
+}
+
+// GetMetadata returns the underlying metadata
+func (t *TrackerTree) GetMetadata() *metadata.Metadata {
+	return t.meta
+}
+
+// GetLimits returns the tracker limits
+func (t *TrackerTree) GetLimits() metadata.TrackerLimits {
+	return metadata.TrackerLimits{
+		MaxNodesPerTree:    t.limits.MaxNodesPerTree,
+		MaxChildrenPerNode: t.limits.MaxChildrenPerNode,
+		MaxArgsPerFunction: t.limits.MaxArgsPerFunction,
+		MaxNestedArgsDepth: t.limits.MaxNestedArgsDepth,
+	}
+}
+
+// GetFunctionContext returns the *metadata.Function, package name, and file name for a function name.
+func (t *TrackerTree) GetFunctionContext(functionName string) (*metadata.Function, string, string) {
+	if functionName == "" {
 		return nil, "", ""
 	}
-	caller := node.CallGraphEdge.Caller
+
 	for pkgName, pkg := range t.meta.Packages {
 		for fileName, file := range pkg.Files {
 			for _, fn := range file.Functions {
-				if t.meta.StringPool.GetString(fn.Name) == t.meta.StringPool.GetString(caller.Name) {
+				if t.meta.StringPool.GetString(fn.Name) == functionName {
 					return fn, pkgName, fileName
 				}
 			}

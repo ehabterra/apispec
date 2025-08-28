@@ -25,7 +25,7 @@ const (
 
 // GenerateCytoscapeHTML generates an HTML file with Cytoscape.js visualization.
 // The HTML template is loaded from cytoscape_template.html in the same directory.
-func GenerateCytoscapeHTML(nodes []*TrackerNode, outputPath string) error {
+func GenerateCytoscapeHTML(nodes []TrackerNodeInterface, outputPath string) error {
 	cytoscapeData := DrawTrackerTreeCytoscape(nodes)
 	jsonData, err := json.MarshalIndent(cytoscapeData, jsonIndentPrefix, jsonIndent)
 	if err != nil {
@@ -46,7 +46,7 @@ func GenerateCytoscapeHTML(nodes []*TrackerNode, outputPath string) error {
 }
 
 // ExportCytoscapeJSON exports Cytoscape data as JSON file.
-func ExportCytoscapeJSON(nodes []*TrackerNode, outputPath string) error {
+func ExportCytoscapeJSON(nodes []TrackerNodeInterface, outputPath string) error {
 	cytoscapeData := DrawTrackerTreeCytoscape(nodes)
 	jsonData, err := json.MarshalIndent(cytoscapeData, jsonIndentPrefix, jsonIndent)
 	if err != nil {

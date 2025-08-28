@@ -121,14 +121,14 @@ func TestExtractor_IsValid(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -169,14 +169,14 @@ func TestExtractor_initializePatternMatchers(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a config with various patterns
 	cfg := &SwagenConfig{
@@ -256,14 +256,14 @@ func TestExtractor_ExtractRoutes(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -298,14 +298,14 @@ func TestExtractor_traverseForRoutes(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -342,14 +342,14 @@ func TestExtractor_traverseForRoutesWithVisited(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{

@@ -96,6 +96,80 @@ func setCallArgumentMeta(arg *CallArgument, meta *Metadata) {
 	}
 }
 
+// setupMetadataReferences sets the Meta field for all CallArgument structs in the metadata
+func setupMetadataReferences(metadata *Metadata) {
+	// Set Meta field for all CallArgument structs in call graph
+	for i := range metadata.CallGraph {
+		edge := &metadata.CallGraph[i]
+		edge.meta = metadata
+		edge.Caller.Meta = metadata
+		edge.Callee.Meta = metadata
+
+		// Set Meta for all arguments
+		for j := range edge.Args {
+			setCallArgumentMeta(&edge.Args[j], metadata)
+		}
+
+		// Set Meta for all parameter arguments
+		for key, arg := range edge.ParamArgMap {
+			setCallArgumentMeta(&arg, metadata)
+			edge.ParamArgMap[key] = arg
+		}
+
+		// Set Meta for all assignments
+		for varName, assignments := range edge.AssignmentMap {
+			for j := range assignments {
+				setCallArgumentMeta(&assignments[j].Value, metadata)
+				setCallArgumentMeta(&assignments[j].Lhs, metadata)
+			}
+			edge.AssignmentMap[varName] = assignments
+		}
+	}
+
+	// Set Meta for all assignments and return vars in packages
+	for _, pkg := range metadata.Packages {
+		for _, file := range pkg.Files {
+			for funcName, fn := range file.Functions {
+				// Set Meta for assignments
+				for varName, assignments := range fn.AssignmentMap {
+					for j := range assignments {
+						setCallArgumentMeta(&assignments[j].Value, metadata)
+						setCallArgumentMeta(&assignments[j].Lhs, metadata)
+					}
+					fn.AssignmentMap[varName] = assignments
+				}
+
+				// Set Meta for return vars
+				for j := range fn.ReturnVars {
+					setCallArgumentMeta(&fn.ReturnVars[j], metadata)
+				}
+
+				file.Functions[funcName] = fn
+			}
+
+			// Set Meta for all methods
+			for _, t := range file.Types {
+				for i := range t.Methods {
+					method := &t.Methods[i]
+					for j := range method.ReturnVars {
+						setCallArgumentMeta(&method.ReturnVars[j], metadata)
+					}
+					for varName, assignments := range method.AssignmentMap {
+						for j := range assignments {
+							setCallArgumentMeta(&assignments[j].Value, metadata)
+							setCallArgumentMeta(&assignments[j].Lhs, metadata)
+						}
+						method.AssignmentMap[varName] = assignments
+					}
+				}
+			}
+		}
+	}
+
+	// Build the Callers map from the loaded call graph
+	metadata.BuildCallGraphMaps()
+}
+
 // LoadMetadata loads metadata from a YAML file
 func LoadMetadata(filename string) (*Metadata, error) {
 	data, err := os.ReadFile(filename)
@@ -109,59 +183,10 @@ func LoadMetadata(filename string) (*Metadata, error) {
 		return nil, err
 	}
 
-	// Set Meta field for all CallArgument structs
-	for i := range metadata.CallGraph {
-		edge := &metadata.CallGraph[i]
-		edge.meta = &metadata
-		edge.Caller.Meta = &metadata
-		edge.Callee.Meta = &metadata
+	setupMetadataReferences(&metadata)
 
-		// Set Meta for all arguments
-		for j := range edge.Args {
-			setCallArgumentMeta(&edge.Args[j], &metadata)
-		}
-
-		// Set Meta for all parameter arguments
-		for key, arg := range edge.ParamArgMap {
-			setCallArgumentMeta(&arg, &metadata)
-			edge.ParamArgMap[key] = arg
-		}
-
-		// Set Meta for all assignments
-		for varName, assignments := range edge.AssignmentMap {
-			for j := range assignments {
-				setCallArgumentMeta(&assignments[j].Value, &metadata)
-				setCallArgumentMeta(&assignments[j].Lhs, &metadata)
-			}
-			edge.AssignmentMap[varName] = assignments
-		}
-	}
-
-	// Set Meta for all assignments and return vars in packages
-	for _, pkg := range metadata.Packages {
-		for _, file := range pkg.Files {
-			for funcName, fn := range file.Functions {
-				// Set Meta for assignments
-				for varName, assignments := range fn.AssignmentMap {
-					for j := range assignments {
-						setCallArgumentMeta(&assignments[j].Value, &metadata)
-						setCallArgumentMeta(&assignments[j].Lhs, &metadata)
-					}
-					fn.AssignmentMap[varName] = assignments
-				}
-
-				// Set Meta for return vars
-				for j := range fn.ReturnVars {
-					setCallArgumentMeta(&fn.ReturnVars[j], &metadata)
-				}
-
-				file.Functions[funcName] = fn
-			}
-		}
-	}
-
-	// Build the Callers map from the loaded call graph
-	metadata.BuildCallGraphMaps()
+	// Process function return types to fill ResolvedType
+	metadata.ProcessFunctionReturnTypes()
 
 	return &metadata, nil
 }
@@ -192,11 +217,18 @@ func LoadSplitMetadata(baseFilename string) (*Metadata, error) {
 		return nil, fmt.Errorf(errorFailedLoadCallGraph, err)
 	}
 
-	return &Metadata{
+	metadata := &Metadata{
 		StringPool: &stringPool,
 		Packages:   packages,
 		CallGraph:  callGraph,
-	}, nil
+	}
+
+	setupMetadataReferences(metadata)
+
+	// Process function return types to fill ResolvedType
+	metadata.ProcessFunctionReturnTypes()
+
+	return metadata, nil
 }
 
 // LoadYAML loads data from a YAML file

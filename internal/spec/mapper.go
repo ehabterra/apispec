@@ -47,7 +47,7 @@ func DefaultSwagenConfig() *SwagenConfig {
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification
-func MapMetadataToOpenAPI(tree *TrackerTree, cfg *SwagenConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
+func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *SwagenConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
 	// Create extractor
 	extractor := NewExtractor(tree, cfg)
 
@@ -58,7 +58,7 @@ func MapMetadataToOpenAPI(tree *TrackerTree, cfg *SwagenConfig, genCfg Generator
 	paths := buildPathsFromRoutes(routes)
 
 	// Generate component schemas
-	components := generateComponentSchemas(tree.meta, cfg, routes)
+	components := generateComponentSchemas(tree.GetMetadata(), cfg, routes)
 
 	// Use Info from config if present, else fallback to GeneratorConfig
 	var info Info
@@ -119,7 +119,7 @@ func buildPathsFromRoutes(routes []RouteInfo) map[string]PathItem {
 
 		// Create operation
 		operation := &Operation{
-			OperationID: pkg + strings.Replace(route.Function, TypeSep, ".", 1),
+			OperationID: pkg + strings.Replace(strings.Replace(route.Function, TypeSep, ".", 1), pkg, "", 1),
 			Summary:     route.Summary,
 			Tags:        route.Tags,
 		}

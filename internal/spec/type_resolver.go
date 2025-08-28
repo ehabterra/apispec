@@ -24,8 +24,19 @@ func NewTypeResolver(meta *metadata.Metadata, cfg *SwagenConfig, schemaMapper Sc
 }
 
 // ResolveType resolves a Go type to its concrete type, handling generics and type parameters
-func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context *TrackerNode) string {
-	if context == nil || context.CallGraphEdge == nil {
+func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context TrackerNodeInterface) string {
+	// Handle the case where context is an interface containing a nil pointer
+	if context == nil {
+		return t.resolveTypeFromArgument(arg)
+	}
+
+	// Check if the underlying value is nil using type assertion
+	if node, ok := context.(*SimplifiedTrackerNode); ok && node == nil {
+		return t.resolveTypeFromArgument(arg)
+	}
+
+	// Check if the edge is nil
+	if context.GetEdge() == nil {
 		return t.resolveTypeFromArgument(arg)
 	}
 
@@ -44,24 +55,26 @@ func (t *TypeResolverImpl) ResolveType(arg metadata.CallArgument, context *Track
 }
 
 // resolveTypeParameter resolves type parameters from call graph edges
-func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node *TrackerNode) string {
+func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node TrackerNodeInterface) string {
 	// Check if this argument corresponds to a type parameter
-	for paramName, concreteType := range node.TypeParams() {
+	for paramName, concreteType := range node.GetTypeParamMap() {
 		if arg.GetName() == paramName {
 			return concreteType
 		}
 	}
 
 	// Check if this argument is mapped to a parameter
-	if paramArg, exists := node.CallGraphEdge.ParamArgMap[arg.GetName()]; exists {
-		return t.resolveTypeFromArgument(paramArg)
+	if node.GetEdge() != nil {
+		if paramArg, exists := node.GetEdge().ParamArgMap[arg.GetName()]; exists {
+			return t.resolveTypeFromArgument(paramArg)
+		}
 	}
 
 	return ""
 }
 
 // resolveTypeThroughTracing resolves type through variable tracing
-func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, context *TrackerNode) string {
+func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, context TrackerNodeInterface) string {
 	if arg.GetKind() != metadata.KindIdent {
 		return ""
 	}
@@ -279,18 +292,18 @@ func (t *TypeResolverImpl) getString(idx int) string {
 	return t.meta.StringPool.GetString(idx)
 }
 
-func (t *TypeResolverImpl) getCallerName(context *TrackerNode) string {
-	if context == nil || context.CallGraphEdge == nil {
+func (t *TypeResolverImpl) getCallerName(context TrackerNodeInterface) string {
+	if context == nil || context.GetEdge() == nil {
 		return ""
 	}
-	return t.getString(context.CallGraphEdge.Caller.Name)
+	return t.getString(context.GetEdge().Caller.Name)
 }
 
-func (t *TypeResolverImpl) getCallerPkg(context *TrackerNode) string {
-	if context == nil || context.CallGraphEdge == nil {
+func (t *TypeResolverImpl) getCallerPkg(context TrackerNodeInterface) string {
+	if context == nil || context.GetEdge() == nil {
 		return ""
 	}
-	return t.getString(context.CallGraphEdge.Caller.Pkg)
+	return t.getString(context.GetEdge().Caller.Pkg)
 }
 
 // ResolveGenericType resolves a generic type with concrete type parameters

@@ -80,7 +80,7 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 	tests := []struct {
 		name     string
 		arg      metadata.CallArgument
-		context  *TrackerNode
+		context  *SimplifiedTrackerNode
 		expected string
 	}{
 		{
@@ -111,8 +111,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("T"),
 			},
-			context: &TrackerNode{
-				CallGraphEdge: &meta.CallGraph[0],
+			context: &SimplifiedTrackerNode{
+				Edge: &meta.CallGraph[0],
+				TypeParamMap: map[string]string{
+					"T": "string",
+				},
 			},
 			expected: "string",
 		},
@@ -123,8 +126,8 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("user"),
 			},
-			context: &TrackerNode{
-				CallGraphEdge: &meta.CallGraph[0],
+			context: &SimplifiedTrackerNode{
+				Edge: &meta.CallGraph[0],
 			},
 			expected: "User",
 		},

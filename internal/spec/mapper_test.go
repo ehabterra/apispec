@@ -415,14 +415,14 @@ func TestMapMetadataToOpenAPI_WithValidConfig(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config
 	cfg := DefaultGinConfig()
@@ -475,14 +475,14 @@ func TestMapMetadataToOpenAPI_WithConfigInfo(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config with custom info
 	cfg := &SwagenConfig{
@@ -597,14 +597,14 @@ func TestMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config with security schemes
 	cfg := &SwagenConfig{

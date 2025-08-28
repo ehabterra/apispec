@@ -12,7 +12,7 @@ const (
 )
 
 // DrawTrackerTree generates a Mermaid graph for the tracker tree.
-func DrawTrackerTree(nodes []*TrackerNode) string {
+func DrawTrackerTree(nodes []TrackerNodeInterface) string {
 	var str = strings.Builder{}
 	var counter = 0
 	str.WriteString(mermaidGraphHeader)
@@ -22,11 +22,11 @@ func DrawTrackerTree(nodes []*TrackerNode) string {
 	return str.String()
 }
 
-func drawNode(node *TrackerNode, str *strings.Builder, counter *int) {
+func drawNode(node TrackerNodeInterface, str *strings.Builder, counter *int) {
 	nodeID := fmt.Sprintf("%s%d", nodePrefix, *counter)
-	for _, child := range node.Children {
+	for _, child := range node.GetChildren() {
 		*counter++
-		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.Key(), fmt.Sprintf("%s%d", nodePrefix, *counter), child.Key())
+		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.GetKey(), fmt.Sprintf("%s%d", nodePrefix, *counter), child.GetKey())
 		drawNode(child, str, counter)
 	}
 }
@@ -64,7 +64,7 @@ type CytoscapeEdgeData struct {
 }
 
 // DrawTrackerTreeCytoscape generates Cytoscape.js JSON data for the tracker tree.
-func DrawTrackerTreeCytoscape(nodes []*TrackerNode) *CytoscapeData {
+func DrawTrackerTreeCytoscape(nodes []TrackerNodeInterface) *CytoscapeData {
 	data := &CytoscapeData{
 		Nodes: make([]CytoscapeNode, 0),
 		Edges: make([]CytoscapeEdge, 0),
@@ -78,7 +78,7 @@ func DrawTrackerTreeCytoscape(nodes []*TrackerNode) *CytoscapeData {
 	return data
 }
 
-func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[string]string, edgeCounter, nodeCounter *int) {
+func drawNodeCytoscape(node TrackerNodeInterface, data *CytoscapeData, nodeMap map[string]string, edgeCounter, nodeCounter *int) {
 	if node == nil {
 		return
 	}
@@ -86,19 +86,19 @@ func drawNodeCytoscape(node *TrackerNode, data *CytoscapeData, nodeMap map[strin
 	data.Nodes = append(data.Nodes, CytoscapeNode{
 		Data: CytoscapeNodeData{
 			ID:    nodeID,
-			Label: node.Key(),
+			Label: node.GetKey(),
 			Type:  "function",
 		},
 	})
-	for _, child := range node.Children {
+	for _, child := range node.GetChildren() {
 		if child != nil {
 			*nodeCounter++
 			childID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
-			nodeMap[child.Key()] = childID
+			nodeMap[child.GetKey()] = childID
 			data.Nodes = append(data.Nodes, CytoscapeNode{
 				Data: CytoscapeNodeData{
-					ID:    nodeMap[child.Key()],
-					Label: child.Key(),
+					ID:    nodeMap[child.GetKey()],
+					Label: child.GetKey(),
 					Type:  "function",
 				},
 			})

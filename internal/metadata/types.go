@@ -125,6 +125,12 @@ type Metadata struct {
 	roots []*CallGraphEdge `yaml:"-"`
 
 	callDepth map[string]int `yaml:"_"`
+
+	// NEW: Enhanced fields for tracker tree simplification
+	assignmentRelationships map[AssignmentKey]*AssignmentLink `yaml:"-"`
+	variableRelationships   map[ParamKey]*VariableLink        `yaml:"-"`
+	argumentProcessor       *ArgumentProcessor                `yaml:"-"`
+	genericResolver         *GenericTypeResolver              `yaml:"-"`
 }
 
 // BuildCallGraphMaps builds the various lookup maps
@@ -372,6 +378,13 @@ type Method struct {
 	Scope        int          `yaml:"scope,omitempty"`
 	Comments     int          `yaml:"comments,omitempty"`
 	Tags         []int        `yaml:"tags,omitempty"`
+	Filename     int          `yaml:"filename,omitempty"`
+
+	// Type parameter names for generics
+	TypeParams []string `yaml:"type_params,omitempty"`
+
+	// Return value origins for tracing through return values
+	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
@@ -778,6 +791,14 @@ func (c *Call) BaseID() string {
 	return c.identifier.ID(BaseID)
 }
 
+// GenericID returns the identifier with generic type parameters but no position
+func (c *Call) GenericID() string {
+	if c.identifier == nil {
+		c.buildIdentifier()
+	}
+	return c.identifier.ID(GenericID)
+}
+
 // InstanceID returns the full instance identifier with position and generics
 func (c *Call) InstanceID() string {
 	if c.identifier == nil {
@@ -837,4 +858,489 @@ func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
 type GlobalAssignment struct {
 	ConcreteType string `yaml:"-"`
 	PkgName      string `yaml:"-"`
+}
+
+// NEW: Enhanced metadata structures for tracker tree simplification
+
+// ArgumentType represents the classification of an argument
+type ArgumentType int
+
+const (
+	ArgTypeDirectCallee ArgumentType = iota // Direct function call (existing callee)
+	ArgTypeFunctionCall                     // Function call as argument
+	ArgTypeVariable                         // Variable reference
+	ArgTypeLiteral                          // Literal value
+	ArgTypeSelector                         // Field/method selector
+	ArgTypeComplex                          // Complex expression
+	ArgTypeUnary                            // Unary expression (*ptr, &val)
+	ArgTypeBinary                           // Binary expression (a + b)
+	ArgTypeIndex                            // Index expression (arr[i])
+	ArgTypeComposite                        // Composite literal (struct{})
+	ArgTypeTypeAssert                       // Type assertion (val.(type))
+)
+
+// VariableOrigin represents the origin of a variable
+type VariableOrigin struct {
+	OriginVar  string
+	OriginPkg  string
+	OriginFunc string
+	OriginArg  *CallArgument
+}
+
+// AssignmentLink represents a link between an assignment and a call graph edge
+type AssignmentLink struct {
+	AssignmentKey AssignmentKey
+	Assignment    *Assignment
+	Edge          *CallGraphEdge
+}
+
+// VariableLink represents a link between a variable and a call graph edge
+type VariableLink struct {
+	ParamKey   ParamKey
+	OriginVar  string
+	OriginPkg  string
+	OriginFunc string
+	Edge       *CallGraphEdge
+	Argument   *CallArgument
+}
+
+// ProcessedArgument represents a processed argument with enhanced information
+type ProcessedArgument struct {
+	Argument   *CallArgument
+	Edge       *CallGraphEdge
+	ArgType    ArgumentType
+	ArgIndex   int
+	ArgContext string
+	Children   []*ProcessedArgument
+}
+
+// AssignmentKey represents a key for assignment relationships
+type AssignmentKey struct {
+	Name      string
+	Pkg       string
+	Type      string
+	Container string
+}
+
+func (k AssignmentKey) String() string {
+	return k.Pkg + k.Type + k.Name + k.Container
+}
+
+// ParamKey represents a key for parameter relationships
+type ParamKey struct {
+	Name      string
+	Pkg       string
+	Container string
+}
+
+// ArgumentProcessor handles argument processing and classification
+type ArgumentProcessor struct {
+	// Argument classification cache
+	argTypeCache map[string]ArgumentType
+
+	// Variable tracing cache
+	variableOriginCache map[string]VariableOrigin
+
+	// Assignment linking cache
+	assignmentLinkCache map[string][]AssignmentLink
+}
+
+// GenericTypeResolver handles generic type parameter resolution
+type GenericTypeResolver struct {
+	// Type parameter mapping cache
+	typeParamCache map[string]map[string]string
+
+	// Generic type compatibility cache
+	compatibilityCache map[string]bool
+}
+
+// TrackerLimits holds configuration for tree/graph traversal limits
+type TrackerLimits struct {
+	MaxNodesPerTree    int
+	MaxChildrenPerNode int
+	MaxArgsPerFunction int
+	MaxNestedArgsDepth int
+}
+
+// ProcessFunctionReturnTypes processes all functions and methods in the metadata
+// to fill their ResolvedType based on their ReturnVars, assuming the first return value is the target type
+func (m *Metadata) ProcessFunctionReturnTypes() {
+	for _, pkg := range m.Packages {
+		for _, file := range pkg.Files {
+			// Process functions
+			for funcName, fn := range file.Functions {
+				m.processFunctionReturnType(fn)
+				file.Functions[funcName] = fn
+			}
+
+			// Process methods in types
+			for typeName, typ := range file.Types {
+				for i := range typ.Methods {
+					m.processMethodReturnType(&typ.Methods[i])
+				}
+				file.Types[typeName] = typ
+			}
+		}
+	}
+
+	// Process call graph edges to set ResolvedType on function call arguments
+	m.processCallGraphReturnTypes()
+}
+
+// processFunctionReturnType processes a single function to set its ResolvedType
+func (m *Metadata) processFunctionReturnType(fn *Function) {
+	// Set the Meta reference for the signature
+	fn.Signature.Meta = m
+
+	// Extract return type from function signature
+	resolvedType := m.extractReturnTypeFromSignature(fn.Signature)
+
+	if resolvedType != "" {
+		fn.Signature.SetResolvedType(resolvedType)
+	}
+}
+
+// processMethodReturnType processes a single method to set its ResolvedType
+func (m *Metadata) processMethodReturnType(method *Method) {
+	// Set the Meta reference for the signature
+	method.Signature.Meta = m
+
+	// Extract return type from method signature
+	resolvedType := m.extractReturnTypeFromSignature(method.Signature)
+
+	if resolvedType != "" {
+		method.Signature.SetResolvedType(resolvedType)
+	}
+}
+
+// extractReturnTypeFromSignature extracts the return type from a function signature
+func (m *Metadata) extractReturnTypeFromSignature(signature CallArgument) string {
+	// Set the Meta reference
+	signature.Meta = m
+
+	switch signature.GetKind() {
+	case KindFuncType:
+		// For function types, extract the return type from the results
+		if signature.Fun != nil && signature.Fun.GetKind() == KindFuncResults {
+			if len(signature.Fun.Args) > 0 {
+				// Get the first return type
+				firstReturn := signature.Fun.Args[0]
+				firstReturn.Meta = m
+				return m.extractTypeFromCallArgument(firstReturn)
+			}
+		}
+	case KindCall:
+		// For function calls, try to extract return type
+		if signature.Fun != nil {
+			signature.Fun.Meta = m
+			return m.extractTypeFromCallArgument(*signature.Fun)
+		}
+	default:
+		// For other types, try to extract type directly
+		return m.extractTypeFromCallArgument(signature)
+	}
+
+	return ""
+}
+
+// extractTypeFromCallArgument extracts the type from a CallArgument
+func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
+	// Set the Meta reference
+	arg.Meta = m
+
+	switch arg.GetKind() {
+	case KindIdent:
+		// For identifiers, return the type if available
+		if arg.Type != -1 {
+			return arg.GetType()
+		}
+		return arg.GetName()
+	case KindSelector:
+		// For selectors, try to resolve the field type
+		return m.resolveSelectorReturnType(arg, "")
+	case KindCall:
+		// For function calls, try to resolve the return type
+		return m.resolveCallReturnType(arg, "")
+	case KindCompositeLit:
+		// For composite literals, resolve the type
+		return m.resolveCompositeReturnType(arg, "")
+	case KindUnary:
+		// For unary expressions, resolve the underlying type
+		return m.resolveUnaryReturnType(arg, "")
+	case KindLiteral:
+		// For literals, return the literal type
+		return arg.GetType()
+	case KindArrayType:
+		// For array types, extract the element type
+		if arg.X != nil {
+			arg.X.Meta = m
+			elementType := m.extractTypeFromCallArgument(*arg.X)
+			if arg.GetValue() != "" {
+				return "[" + arg.GetValue() + "]" + elementType
+			}
+			return "[]" + elementType
+		}
+		return "[]" + arg.GetType()
+	case KindSlice:
+		// For slice types, extract the element type
+		if arg.X != nil {
+			arg.X.Meta = m
+			elementType := m.extractTypeFromCallArgument(*arg.X)
+			return "[]" + elementType
+		}
+		return "[]" + arg.GetType()
+	case KindMapType:
+		// For map types, extract key and value types
+		if arg.X != nil && arg.Fun != nil {
+			arg.X.Meta = m
+			arg.Fun.Meta = m
+			keyType := m.extractTypeFromCallArgument(*arg.X)
+			valueType := m.extractTypeFromCallArgument(*arg.Fun)
+			if keyType != "" && valueType != "" {
+				return "map[" + keyType + "]" + valueType
+			}
+		}
+		// Try to get type from the Type field as fallback
+		if arg.Type != -1 {
+			return arg.GetType()
+		}
+		return "map"
+	case KindStar:
+		// For pointer types, add asterisk
+		if arg.X != nil {
+			arg.X.Meta = m
+			baseType := m.extractTypeFromCallArgument(*arg.X)
+			return "*" + baseType
+		}
+		return "*" + arg.GetType()
+	default:
+		// Fallback to the type field
+		return arg.GetType()
+	}
+}
+
+// determineResolvedTypeFromReturnVar determines the resolved type from a return variable
+func (m *Metadata) determineResolvedTypeFromReturnVar(returnVar CallArgument, pkgName, contextName string) string {
+	// Set the Meta reference
+	returnVar.Meta = m
+
+	switch returnVar.GetKind() {
+	case KindIdent:
+		// For identifiers, try to resolve the type through variable tracing
+		return m.resolveIdentReturnType(returnVar, pkgName, contextName)
+	case KindSelector:
+		// For selectors, resolve the field type
+		return m.resolveSelectorReturnType(returnVar, pkgName)
+	case KindCall:
+		// For function calls, resolve the return type
+		return m.resolveCallReturnType(returnVar, pkgName)
+	case KindCompositeLit:
+		// For composite literals, resolve the type
+		return m.resolveCompositeReturnType(returnVar, pkgName)
+	case KindUnary, KindStar:
+		// For unary expressions, resolve the underlying type
+		return m.resolveUnaryReturnType(returnVar, pkgName)
+	case KindLiteral:
+		// For literals, return the literal type
+		return returnVar.GetType()
+	default:
+		// Fallback to the type field
+		return returnVar.GetType()
+	}
+}
+
+// resolveIdentReturnType resolves the type of an identifier return value
+func (m *Metadata) resolveIdentReturnType(returnVar CallArgument, pkgName, contextName string) string {
+	varName := returnVar.GetName()
+
+	// First, check if it's a variable in the current package
+	if pkg, exists := m.Packages[pkgName]; exists {
+		for _, file := range pkg.Files {
+			// Check variables
+			if variable, exists := file.Variables[varName]; exists {
+				return m.StringPool.GetString(variable.Type)
+			}
+
+			// Check function assignments
+			if fn, exists := file.Functions[contextName]; exists {
+				if assignments, exists := fn.AssignmentMap[varName]; exists && len(assignments) > 0 {
+					// Use the most recent assignment
+					assign := assignments[len(assignments)-1]
+					if assign.ConcreteType != -1 {
+						return m.StringPool.GetString(assign.ConcreteType)
+					}
+					// Try to resolve from the assignment value
+					assign.Value.Meta = m
+					return m.determineResolvedTypeFromReturnVar(assign.Value, pkgName, contextName)
+				}
+			}
+		}
+	}
+
+	// If not found, return the variable name as type
+	return varName
+}
+
+// resolveSelectorReturnType resolves the type of a selector return value
+func (m *Metadata) resolveSelectorReturnType(returnVar CallArgument, pkgName string) string {
+	if returnVar.X == nil || returnVar.Sel == nil {
+		return returnVar.GetType()
+	}
+
+	// Set Meta references
+	returnVar.X.Meta = m
+	returnVar.Sel.Meta = m
+
+	baseType := m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+	fieldName := returnVar.Sel.GetName()
+
+	// Try to find the field type in metadata
+	for pkgName, pkg := range m.Packages {
+		for _, file := range pkg.Files {
+			// Try both with and without package prefix
+			typeNames := []string{baseType, pkgName + "." + baseType}
+			for _, typeName := range typeNames {
+				if typ, exists := file.Types[typeName]; exists {
+					// Find the field
+					for _, field := range typ.Fields {
+						if m.StringPool.GetString(field.Name) == fieldName {
+							return m.StringPool.GetString(field.Type)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to concatenated form
+	return baseType + "." + fieldName
+}
+
+// resolveCallReturnType resolves the type of a function call return value
+func (m *Metadata) resolveCallReturnType(returnVar CallArgument, pkgName string) string {
+	if returnVar.Fun == nil {
+		return "func()"
+	}
+
+	// Set Meta reference
+	returnVar.Fun.Meta = m
+
+	// Try to determine return type from function signature
+	funcType := m.determineResolvedTypeFromReturnVar(*returnVar.Fun, pkgName, "")
+
+	// If it's a function type, extract return type
+	if strings.HasPrefix(funcType, "func(") {
+		// Simple extraction of return type
+		if strings.Contains(funcType, ")") {
+			parts := strings.Split(funcType, ")")
+			if len(parts) > 1 {
+				returnType := strings.TrimSpace(parts[1])
+				if returnType != "" {
+					return returnType
+				}
+			}
+		}
+	}
+
+	return funcType
+}
+
+// resolveCompositeReturnType resolves the type of a composite literal return value
+func (m *Metadata) resolveCompositeReturnType(returnVar CallArgument, pkgName string) string {
+	if returnVar.X == nil {
+		return returnVar.GetType()
+	}
+
+	// Set Meta reference
+	returnVar.X.Meta = m
+
+	// For composite literals, the type is usually in the X field
+	return m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+}
+
+// resolveUnaryReturnType resolves the type of a unary expression return value
+func (m *Metadata) resolveUnaryReturnType(returnVar CallArgument, pkgName string) string {
+	if returnVar.X == nil {
+		return returnVar.GetType()
+	}
+
+	// Set Meta reference
+	returnVar.X.Meta = m
+
+	baseType := m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+
+	// Handle pointer dereferencing
+	if strings.HasPrefix(returnVar.GetType(), "*") {
+		// Dereference
+		if after, ok := strings.CutPrefix(baseType, "*"); ok {
+			return after
+		}
+		return baseType
+	}
+
+	// Add pointer
+	return "*" + baseType
+}
+
+// processCallGraphReturnTypes processes call graph edges to set ResolvedType on function call arguments
+func (m *Metadata) processCallGraphReturnTypes() {
+	for i := range m.CallGraph {
+		edge := &m.CallGraph[i]
+
+		// Set Meta references
+		edge.Caller.Meta = m
+		edge.Callee.Meta = m
+
+		// Process all arguments in the call
+		for j := range edge.Args {
+			arg := &edge.Args[j]
+			arg.Meta = m
+
+			// If this is a function call, try to resolve its return type
+			if arg.GetKind() == KindCall {
+				m.processFunctionCallReturnType(arg)
+			}
+		}
+	}
+}
+
+// processFunctionCallReturnType processes a function call argument to set its ResolvedType
+func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
+	if arg.Fun == nil {
+		return
+	}
+
+	// Set Meta reference
+	arg.Fun.Meta = m
+
+	// Try to find the function being called
+	funcName := arg.Fun.GetName()
+	if funcName == "" {
+		return
+	}
+
+	// Look for the function in metadata
+	for _, pkg := range m.Packages {
+		for _, file := range pkg.Files {
+			// Check functions
+			if fn, exists := file.Functions[funcName]; exists {
+				if fn.Signature.ResolvedType != -1 {
+					arg.SetResolvedType(fn.Signature.GetResolvedType())
+				}
+				return
+			}
+
+			// Check methods
+			for _, typ := range file.Types {
+				for _, method := range typ.Methods {
+					if m.StringPool.GetString(method.Name) == funcName {
+						if method.Signature.ResolvedType != -1 {
+							arg.SetResolvedType(method.Signature.GetResolvedType())
+						}
+						return
+					}
+				}
+			}
+		}
+	}
 }

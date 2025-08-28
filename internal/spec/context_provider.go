@@ -29,11 +29,12 @@ func (c *ContextProviderImpl) GetString(idx int) string {
 }
 
 // GetCalleeInfo gets callee information from a node
-func (c *ContextProviderImpl) GetCalleeInfo(node *TrackerNode) (name, pkg, recvType string) {
-	if node == nil || node.CallGraphEdge == nil {
+func (c *ContextProviderImpl) GetCalleeInfo(node TrackerNodeInterface) (name, pkg, recvType string) {
+	if node == nil || node.GetEdge() == nil {
 		return "", "", ""
 	}
-	return c.GetString(node.CallGraphEdge.Callee.Name), c.GetString(node.CallGraphEdge.Callee.Pkg), c.GetString(node.CallGraphEdge.Callee.RecvType)
+	edge := node.GetEdge()
+	return c.GetString(edge.Callee.Name), c.GetString(edge.Callee.Pkg), c.GetString(edge.Callee.RecvType)
 }
 
 // GetArgumentInfo gets argument information as a string

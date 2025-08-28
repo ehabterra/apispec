@@ -53,7 +53,7 @@ type ResponseInfo struct {
 
 // Extractor provides a cleaner, more modular approach to extraction
 type Extractor struct {
-	tree            *TrackerTree
+	tree            TrackerTreeInterface
 	cfg             *SwagenConfig
 	contextProvider ContextProvider
 	schemaMapper    SchemaMapper
@@ -69,10 +69,10 @@ type Extractor struct {
 }
 
 // NewExtractor creates a new refactored extractor
-func NewExtractor(tree *TrackerTree, cfg *SwagenConfig) *Extractor {
-	contextProvider := NewContextProvider(tree.meta)
+func NewExtractor(tree TrackerTreeInterface, cfg *SwagenConfig) *Extractor {
+	contextProvider := NewContextProvider(tree.GetMetadata())
 	schemaMapper := NewSchemaMapper(cfg)
-	typeResolver := NewTypeResolver(tree.meta, cfg, schemaMapper)
+	typeResolver := NewTypeResolver(tree.GetMetadata(), cfg, schemaMapper)
 	overrideApplier := NewOverrideApplier(cfg)
 
 	extractor := &Extractor{
@@ -133,12 +133,12 @@ func (e *Extractor) ExtractRoutes() []RouteInfo {
 }
 
 // traverseForRoutes traverses the tree to find routes
-func (e *Extractor) traverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]RouteInfo) {
 	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
 }
 
 // traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
-func (e *Extractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
@@ -156,13 +156,13 @@ func (e *Extractor) traverseForRoutesWithVisited(node *TrackerNode, mountPath st
 	}
 
 	// Continue traversing children
-	for _, child := range node.Children {
+	for _, child := range node.GetChildren() {
 		e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
 	}
 }
 
 // executeMountPattern executes mount pattern matching
-func (e *Extractor) executeMountPattern(node *TrackerNode) (MountInfo, bool) {
+func (e *Extractor) executeMountPattern(node TrackerNodeInterface) (MountInfo, bool) {
 	var bestMatch MountInfo
 	var bestPriority int
 	var found bool
@@ -183,7 +183,7 @@ func (e *Extractor) executeMountPattern(node *TrackerNode) (MountInfo, bool) {
 }
 
 // executeRoutePattern executes route pattern matching
-func (e *Extractor) executeRoutePattern(node *TrackerNode) (RouteInfo, bool) {
+func (e *Extractor) executeRoutePattern(node TrackerNodeInterface) (RouteInfo, bool) {
 	var bestMatch RouteInfo
 	var bestPriority int
 	var found bool
@@ -204,7 +204,7 @@ func (e *Extractor) executeRoutePattern(node *TrackerNode) (RouteInfo, bool) {
 }
 
 // handleMountNode handles a mount node
-func (e *Extractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
@@ -218,7 +218,7 @@ func (e *Extractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, moun
 	}
 
 	// Continue traversing children
-	for _, child := range node.Children {
+	for _, child := range node.GetChildren() {
 		var newTags []string
 		if mountPath != "" {
 			newTags = []string{mountPath}
@@ -230,7 +230,7 @@ func (e *Extractor) handleMountNode(node *TrackerNode, mountInfo MountInfo, moun
 }
 
 // handleRouteNode handles a route node
-func (e *Extractor) handleRouteNode(node *TrackerNode, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
 	// Prepend mount path if present
 	if mountPath != "" && routeInfo.Path != "" {
 		routeInfo.Path = e.joinPaths(mountPath, routeInfo.Path)
@@ -268,7 +268,7 @@ func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string
 	// Find the target node for the assignment
 	targetNode := e.findTargetNode(mountInfo.Assignment)
 	if targetNode != nil {
-		for _, child := range targetNode.Children {
+		for _, child := range targetNode.GetChildren() {
 			var newTags []string
 			if mountPath != "" {
 				newTags = []string{mountPath}
@@ -281,30 +281,30 @@ func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string
 }
 
 // findTargetNode finds the target node for an assignment
-func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) *TrackerNode {
+func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNodeInterface {
 	if assignment == nil {
 		return nil
 	}
 
 	// Use breadth-first search to find the target node
-	queue := e.tree.roots
+	queue := e.tree.GetRoots()
 	for len(queue) > 0 {
 		node := queue[0]
 		queue = queue[1:] // dequeue
 
-		if node.Key() == assignment.ID() {
+		if node.GetKey() == assignment.ID() {
 			return node
 		}
 
-		queue = append(queue, node.Children...)
+		queue = append(queue, node.GetChildren()...)
 	}
 
 	return nil
 }
 
 // extractRouteChildren extracts request, response, and params from children nodes
-func (e *Extractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInfo) {
-	for _, child := range routeNode.Children {
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo) {
+	for _, child := range routeNode.GetChildren() {
 		// Extract request
 		if req := e.extractRequestFromNode(child, route); req != nil {
 			route.Request = req
@@ -331,7 +331,7 @@ func (e *Extractor) extractRouteChildren(routeNode *TrackerNode, route *RouteInf
 }
 
 // extractRequestFromNode extracts request information from a node
-func (e *Extractor) extractRequestFromNode(node *TrackerNode, route *RouteInfo) *RequestInfo {
+func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *RouteInfo) *RequestInfo {
 	for _, matcher := range e.requestMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractRequest(node, route)
@@ -341,7 +341,7 @@ func (e *Extractor) extractRequestFromNode(node *TrackerNode, route *RouteInfo) 
 }
 
 // extractResponseFromNode extracts response information from a node
-func (e *Extractor) extractResponseFromNode(node *TrackerNode) *ResponseInfo {
+func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface) *ResponseInfo {
 	for _, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractResponse(node)
@@ -354,7 +354,7 @@ func (e *Extractor) extractResponseFromNode(node *TrackerNode) *ResponseInfo {
 }
 
 // extractParamFromNode extracts parameter information from a node
-func (e *Extractor) extractParamFromNode(node *TrackerNode) *Parameter {
+func (e *Extractor) extractParamFromNode(node TrackerNodeInterface) *Parameter {
 	for _, matcher := range e.paramMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractParam(node)
@@ -388,14 +388,15 @@ func NewResponsePatternMatcher(pattern ResponsePattern, cfg *SwagenConfig, conte
 }
 
 // MatchNode checks if a node matches the response pattern
-func (r *ResponsePatternMatcherImpl) MatchNode(node *TrackerNode) bool {
-	if node == nil || node.CallGraphEdge == nil {
+func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
+	if node == nil || node.GetEdge() == nil {
 		return false
 	}
 
-	callName := r.contextProvider.GetString(node.CallGraphEdge.Callee.Name)
-	recvType := r.contextProvider.GetString(node.CallGraphEdge.Callee.RecvType)
-	recvPkg := r.contextProvider.GetString(node.CallGraphEdge.Callee.Pkg)
+	edge := node.GetEdge()
+	callName := r.contextProvider.GetString(edge.Callee.Name)
+	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
+	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
 
 	// Build fully qualified receiver type
 	fqRecvType := recvPkg
@@ -412,7 +413,7 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node *TrackerNode) bool {
 
 	// Check function name regex
 	if r.pattern.FunctionNameRegex != "" {
-		funcName := r.contextProvider.GetString(node.CallGraphEdge.Caller.Name)
+		funcName := r.contextProvider.GetString(edge.Caller.Name)
 		if !r.matchPattern(r.pattern.FunctionNameRegex, funcName) {
 			return false
 		}
@@ -452,21 +453,22 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 }
 
 // ExtractResponse extracts response information from a matched node
-func (r *ResponsePatternMatcherImpl) ExtractResponse(node *TrackerNode) *ResponseInfo {
+func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface) *ResponseInfo {
 	respInfo := &ResponseInfo{
 		StatusCode:  r.cfg.Defaults.ResponseStatus,
 		ContentType: r.cfg.Defaults.ResponseContentType,
 	}
 
-	if r.pattern.StatusFromArg && len(node.CallGraphEdge.Args) > r.pattern.StatusArgIndex {
-		statusStr := r.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[r.pattern.StatusArgIndex])
+	edge := node.GetEdge()
+	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
+		statusStr := r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.StatusArgIndex])
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
 			respInfo.StatusCode = status
 		}
 	}
 
-	if r.pattern.TypeFromArg && len(node.CallGraphEdge.Args) > r.pattern.TypeArgIndex {
-		arg := node.CallGraphEdge.Args[r.pattern.TypeArgIndex]
+	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
+		arg := edge.Args[r.pattern.TypeArgIndex]
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
 		// Trace type origin
@@ -485,7 +487,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node *TrackerNode) *Respons
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
-func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
+func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
 	if arg.ResolvedType != -1 {
 		return arg.GetResolvedType()
@@ -493,7 +495,7 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument
 
 	// If it's a generic type with a concrete resolution, use it
 	if arg.IsGenericType && arg.GenericTypeName != -1 {
-		if concreteType, exists := node.TypeParams()[arg.GetGenericTypeName()]; exists {
+		if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
 			return concreteType
 		}
 	}
@@ -501,7 +503,8 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument
 	// Original logic for type resolution
 	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
-		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.GetName()]; exists {
+		edge := node.GetEdge()
+		if assignments, exists := edge.AssignmentMap[arg.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := r.contextProvider.GetString(assignment.ConcreteType)
@@ -531,14 +534,15 @@ func NewParamPatternMatcher(pattern ParamPattern, cfg *SwagenConfig, contextProv
 }
 
 // MatchNode checks if a node matches the param pattern
-func (p *ParamPatternMatcherImpl) MatchNode(node *TrackerNode) bool {
-	if node == nil || node.CallGraphEdge == nil {
+func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
+	if node == nil || node.GetEdge() == nil {
 		return false
 	}
 
-	callName := p.contextProvider.GetString(node.CallGraphEdge.Callee.Name)
-	recvType := p.contextProvider.GetString(node.CallGraphEdge.Callee.RecvType)
-	recvPkg := p.contextProvider.GetString(node.CallGraphEdge.Callee.Pkg)
+	edge := node.GetEdge()
+	callName := p.contextProvider.GetString(edge.Callee.Name)
+	recvType := p.contextProvider.GetString(edge.Callee.RecvType)
+	recvPkg := p.contextProvider.GetString(edge.Callee.Pkg)
 
 	// Build fully qualified receiver type
 	fqRecvType := recvPkg
@@ -555,7 +559,7 @@ func (p *ParamPatternMatcherImpl) MatchNode(node *TrackerNode) bool {
 
 	// Check function name regex
 	if p.pattern.FunctionNameRegex != "" {
-		funcName := p.contextProvider.GetString(node.CallGraphEdge.Caller.Name)
+		funcName := p.contextProvider.GetString(edge.Caller.Name)
 		if !p.matchPattern(p.pattern.FunctionNameRegex, funcName) {
 			return false
 		}
@@ -595,17 +599,18 @@ func (p *ParamPatternMatcherImpl) GetPriority() int {
 }
 
 // ExtractParam extracts parameter information from a matched node
-func (p *ParamPatternMatcherImpl) ExtractParam(node *TrackerNode) *Parameter {
+func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface) *Parameter {
 	param := &Parameter{
 		In: p.pattern.ParamIn,
 	}
 
-	if len(node.CallGraphEdge.Args) > p.pattern.ParamArgIndex {
-		param.Name = p.contextProvider.GetArgumentInfo(node.CallGraphEdge.Args[p.pattern.ParamArgIndex])
+	edge := node.GetEdge()
+	if len(edge.Args) > p.pattern.ParamArgIndex {
+		param.Name = p.contextProvider.GetArgumentInfo(edge.Args[p.pattern.ParamArgIndex])
 	}
 
-	if p.pattern.TypeFromArg && len(node.CallGraphEdge.Args) > p.pattern.TypeArgIndex {
-		arg := node.CallGraphEdge.Args[p.pattern.TypeArgIndex]
+	if p.pattern.TypeFromArg && len(edge.Args) > p.pattern.TypeArgIndex {
+		arg := edge.Args[p.pattern.TypeArgIndex]
 		paramType := p.contextProvider.GetArgumentInfo(arg)
 
 		// Trace type origin
@@ -633,7 +638,7 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node *TrackerNode) *Parameter {
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
-func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node *TrackerNode, originalType string) string {
+func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
 	if arg.ResolvedType != -1 {
 		return arg.GetResolvedType()
@@ -641,7 +646,7 @@ func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, n
 
 	// If it's a generic type with a concrete resolution, use it
 	if arg.IsGenericType && arg.GenericTypeName != -1 {
-		if concreteType, exists := node.TypeParams()[arg.GetGenericTypeName()]; exists {
+		if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
 			return concreteType
 		}
 	}
@@ -649,7 +654,8 @@ func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, n
 	// Original logic for type resolution
 	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
-		if assignments, exists := node.CallGraphEdge.AssignmentMap[arg.GetName()]; exists {
+		edge := node.GetEdge()
+		if assignments, exists := edge.AssignmentMap[arg.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := p.contextProvider.GetString(assignment.ConcreteType)

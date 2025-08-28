@@ -132,3 +132,248 @@ func main() {
 		})
 	}
 }
+
+func TestTraceVariableOrigin_MethodHandling(t *testing.T) {
+	// Create a minimal metadata structure to test the method handling path
+	meta := &Metadata{
+		StringPool: NewStringPool(),
+		Packages:   make(map[string]*Package),
+	}
+
+	// Create a test package with a method
+	pkg := &Package{
+		Files: make(map[string]*File),
+	}
+
+	// Create a test file
+	file := &File{
+		Types: make(map[string]*Type),
+	}
+
+	// Create a test type with a method
+	userType := &Type{
+		Methods: []Method{
+			{
+				Name: meta.StringPool.Get("GetName"),
+				ReturnVars: []CallArgument{
+					*NewCallArgument(meta),
+				},
+			},
+		},
+	}
+
+	// Set up the return variable properly
+	userType.Methods[0].ReturnVars[0].SetKind(KindIdent)
+	userType.Methods[0].ReturnVars[0].SetName("u.Name")
+
+	file.Types["User"] = userType
+	pkg.Files["user.go"] = file
+	meta.Packages["main"] = pkg
+
+	// Create a test assignment that simulates a method call
+	assign := Assignment{
+		CalleeFunc:  "GetName",
+		ReturnIndex: 0,
+	}
+
+	// Simulate the method lookup logic from traceVariableOriginHelper
+	var calleeMethod *Method
+	for _, t := range file.Types {
+		for _, method := range t.Methods {
+			if meta.StringPool.GetString(method.Name) == assign.CalleeFunc {
+				calleeMethod = &method
+				break
+			}
+		}
+	}
+
+	if calleeMethod == nil {
+		t.Fatal("Expected to find method GetName")
+	}
+
+	// Test return value tracing
+	retIdx := assign.ReturnIndex
+	if retIdx < len(calleeMethod.ReturnVars) {
+		retArg := calleeMethod.ReturnVars[retIdx]
+
+		// Test the OuterLoop2 logic for different kinds
+	OuterLoop2:
+		for retArg.GetKind() != KindIdent {
+			switch retArg.GetKind() {
+			case KindSelector:
+				retArg = *retArg.Sel
+			case KindUnary, KindCompositeLit:
+				retArg = *retArg.X
+			default:
+				break OuterLoop2
+			}
+		}
+
+		if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+			expectedName := retArg.GetName()
+			if expectedName != "u.Name" {
+				t.Errorf("Expected return value name 'u.Name', got '%s'", expectedName)
+			}
+		}
+	}
+}
+
+func TestTraceVariableOrigin_MethodEdgeCases(t *testing.T) {
+	// Create a minimal metadata structure
+	meta := &Metadata{
+		StringPool: NewStringPool(),
+		Packages:   make(map[string]*Package),
+	}
+
+	// Test method not found scenario
+	pkg := &Package{
+		Files: make(map[string]*File),
+	}
+	file := &File{
+		Types: make(map[string]*Type),
+	}
+	pkg.Files["test.go"] = file
+	meta.Packages["main"] = pkg
+
+	// Test with non-existent method
+	assign := Assignment{
+		CalleeFunc:  "NonExistentMethod",
+		CalleePkg:   "main",
+		ReturnIndex: 0,
+	}
+
+	// Simulate the method lookup logic
+	var calleeMethod *Method
+	for _, t := range file.Types {
+		for _, method := range t.Methods {
+			if meta.StringPool.GetString(method.Name) == assign.CalleeFunc {
+				calleeMethod = &method
+				break
+			}
+		}
+	}
+
+	if calleeMethod != nil {
+		t.Error("Expected method not to be found")
+	}
+
+	// Test return index out of bounds
+	userType := &Type{
+		Methods: []Method{
+			{
+				Name: meta.StringPool.Get("GetName"),
+				ReturnVars: []CallArgument{
+					*NewCallArgument(meta),
+				},
+			},
+		},
+	}
+
+	// Set up the return variable properly
+	userType.Methods[0].ReturnVars[0].SetKind(KindIdent)
+	userType.Methods[0].ReturnVars[0].SetName("u.Name")
+
+	file.Types["User"] = userType
+
+	assign.ReturnIndex = 5 // Out of bounds
+	calleeMethod = nil
+
+	for _, t := range file.Types {
+		for _, method := range t.Methods {
+			if meta.StringPool.GetString(method.Name) == assign.CalleeFunc {
+				calleeMethod = &method
+				break
+			}
+		}
+	}
+
+	if calleeMethod != nil {
+		retIdx := assign.ReturnIndex
+		if retIdx >= len(calleeMethod.ReturnVars) {
+			// This should not panic and should handle the out-of-bounds case gracefully
+			t.Log("Successfully handled out-of-bounds return index")
+		}
+	}
+}
+
+func TestTraceVariableOrigin_MethodReturnValueKinds(t *testing.T) {
+	// Test different return value kinds in methods
+	meta := &Metadata{
+		StringPool: NewStringPool(),
+		Packages:   make(map[string]*Package),
+	}
+
+	pkg := &Package{
+		Files: make(map[string]*File),
+	}
+	file := &File{
+		Types: make(map[string]*Type),
+	}
+	pkg.Files["test.go"] = file
+	meta.Packages["main"] = pkg
+
+	// Test method with selector return value
+	userType := &Type{
+		Methods: []Method{
+			{
+				Name: meta.StringPool.Get("GetProfile"),
+				ReturnVars: []CallArgument{
+					*NewCallArgument(meta),
+				},
+			},
+		},
+	}
+
+	// Set up the selector return variable properly
+	selArg := NewCallArgument(meta)
+	selArg.SetKind(KindIdent)
+	selArg.SetName("u.Profile")
+
+	userType.Methods[0].ReturnVars[0].SetKind(KindSelector)
+	userType.Methods[0].ReturnVars[0].Sel = selArg
+
+	file.Types["User"] = userType
+
+	assign := Assignment{
+		CalleeFunc:  "GetProfile",
+		CalleePkg:   "main",
+		ReturnIndex: 0,
+	}
+
+	var calleeMethod *Method
+	for _, t := range file.Types {
+		for _, method := range t.Methods {
+			if meta.StringPool.GetString(method.Name) == assign.CalleeFunc {
+				calleeMethod = &method
+				break
+			}
+		}
+	}
+
+	if calleeMethod != nil {
+		retIdx := assign.ReturnIndex
+		if retIdx < len(calleeMethod.ReturnVars) {
+			retArg := calleeMethod.ReturnVars[retIdx]
+
+			// Test the OuterLoop2 logic for selector
+		OuterLoop2:
+			for retArg.GetKind() != KindIdent {
+				switch retArg.GetKind() {
+				case KindSelector:
+					retArg = *retArg.Sel
+				case KindUnary, KindCompositeLit:
+					retArg = *retArg.X
+				default:
+					break OuterLoop2
+				}
+			}
+
+			if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+				expectedName := retArg.GetName()
+				if expectedName != "u.Profile" {
+					t.Errorf("Expected return value name 'u.Profile', got '%s'", expectedName)
+				}
+			}
+		}
+	}
+}

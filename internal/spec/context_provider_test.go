@@ -122,9 +122,9 @@ func TestContextProvider_GetCalleeInfo_WithValidNode(t *testing.T) {
 		Callee: callee,
 	}
 
-	// Create a tracker node
-	node := &TrackerNode{
-		CallGraphEdge: &edge,
+	// Create a mock tracker node using the interface
+	node := &SimplifiedTrackerNode{
+		Edge: &edge,
 	}
 
 	provider := NewContextProvider(meta)

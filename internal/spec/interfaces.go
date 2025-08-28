@@ -7,7 +7,7 @@ import (
 // PatternMatcher defines the interface for pattern matching operations
 type PatternMatcher interface {
 	// MatchNode checks if a node matches a specific pattern
-	MatchNode(node *TrackerNode) bool
+	MatchNode(node TrackerNodeInterface) bool
 
 	// GetPattern returns the pattern that was matched
 	GetPattern() interface{}
@@ -21,7 +21,7 @@ type RoutePatternMatcher interface {
 	PatternMatcher
 
 	// ExtractRoute extracts route information from a matched node
-	ExtractRoute(node *TrackerNode) RouteInfo
+	ExtractRoute(node TrackerNodeInterface) RouteInfo
 }
 
 // MountPatternMatcher matches mount patterns
@@ -29,7 +29,7 @@ type MountPatternMatcher interface {
 	PatternMatcher
 
 	// ExtractMount extracts mount information from a matched node
-	ExtractMount(node *TrackerNode) MountInfo
+	ExtractMount(node TrackerNodeInterface) MountInfo
 }
 
 // RequestPatternMatcher matches request body patterns
@@ -37,7 +37,7 @@ type RequestPatternMatcher interface {
 	PatternMatcher
 
 	// ExtractRequest extracts request information from a matched node
-	ExtractRequest(node *TrackerNode, route *RouteInfo) *RequestInfo
+	ExtractRequest(node TrackerNodeInterface, route *RouteInfo) *RequestInfo
 }
 
 // ResponsePatternMatcher matches response patterns
@@ -45,7 +45,7 @@ type ResponsePatternMatcher interface {
 	PatternMatcher
 
 	// ExtractResponse extracts response information from a matched node
-	ExtractResponse(node *TrackerNode) *ResponseInfo
+	ExtractResponse(node TrackerNodeInterface) *ResponseInfo
 }
 
 // ParamPatternMatcher matches parameter patterns
@@ -53,13 +53,13 @@ type ParamPatternMatcher interface {
 	PatternMatcher
 
 	// ExtractParam extracts parameter information from a matched node
-	ExtractParam(node *TrackerNode) *Parameter
+	ExtractParam(node TrackerNodeInterface) *Parameter
 }
 
 // TypeResolver defines the interface for type resolution operations
 type TypeResolver interface {
 	// ResolveType resolves a Go type to its concrete type
-	ResolveType(arg metadata.CallArgument, context *TrackerNode) string
+	ResolveType(arg metadata.CallArgument, context TrackerNodeInterface) string
 
 	// MapToOpenAPISchema maps a Go type to OpenAPI schema
 	MapToOpenAPISchema(goType string) *Schema
@@ -80,10 +80,10 @@ type RouteExtractor interface {
 	ExtractRoutes() []RouteInfo
 
 	// ExtractRouteFromNode extracts a single route from a node
-	ExtractRouteFromNode(node *TrackerNode, pattern RoutePattern) RouteInfo
+	ExtractRouteFromNode(node TrackerNodeInterface, pattern RoutePattern) RouteInfo
 
 	// TraverseForRoutes traverses the tree to find routes
-	TraverseForRoutes(node *TrackerNode, mountPath string, mountTags []string, routes *[]RouteInfo)
+	TraverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]RouteInfo)
 }
 
 // MountInfo represents extracted mount information
@@ -97,19 +97,19 @@ type MountInfo struct {
 // PatternExecutor defines the interface for pattern execution
 type PatternExecutor interface {
 	// ExecuteRoutePattern executes a route pattern match
-	ExecuteRoutePattern(node *TrackerNode) (RouteInfo, bool)
+	ExecuteRoutePattern(node TrackerNodeInterface) (RouteInfo, bool)
 
 	// ExecuteMountPattern executes a mount pattern match
-	ExecuteMountPattern(node *TrackerNode) (MountInfo, bool)
+	ExecuteMountPattern(node TrackerNodeInterface) (MountInfo, bool)
 
 	// ExecuteRequestPattern executes a request pattern match
-	ExecuteRequestPattern(node *TrackerNode, route *RouteInfo) (*RequestInfo, bool)
+	ExecuteRequestPattern(node TrackerNodeInterface, route *RouteInfo) (*RequestInfo, bool)
 
 	// ExecuteResponsePattern executes a response pattern match
-	ExecuteResponsePattern(node *TrackerNode) (*ResponseInfo, bool)
+	ExecuteResponsePattern(node TrackerNodeInterface) (*ResponseInfo, bool)
 
 	// ExecuteParamPattern executes a parameter pattern match
-	ExecuteParamPattern(node *TrackerNode) (*Parameter, bool)
+	ExecuteParamPattern(node TrackerNodeInterface) (*Parameter, bool)
 }
 
 // ContextProvider defines the interface for providing context information
@@ -118,7 +118,7 @@ type ContextProvider interface {
 	GetString(idx int) string
 
 	// GetCalleeInfo gets callee information from a node
-	GetCalleeInfo(node *TrackerNode) (name, pkg, recvType string)
+	GetCalleeInfo(node TrackerNodeInterface) (name, pkg, recvType string)
 
 	// GetArgumentInfo gets argument information
 	GetArgumentInfo(arg metadata.CallArgument) string
@@ -143,4 +143,61 @@ type OverrideApplier interface {
 
 	// HasOverride checks if there's an override for a function
 	HasOverride(functionName string) bool
+}
+
+// TrackerNodeInterface defines the interface for tracker tree nodes
+type TrackerNodeInterface interface {
+	// GetKey returns the unique key of the node
+	GetKey() string
+
+	// GetParent returns the parent node
+	GetParent() TrackerNodeInterface
+
+	// GetChildren returns the children nodes
+	GetChildren() []TrackerNodeInterface
+
+	// GetEdge returns the call graph edge
+	GetEdge() *metadata.CallGraphEdge
+
+	// GetArgument returns the call argument
+	GetArgument() *metadata.CallArgument
+
+	// GetArgType returns the argument type
+	GetArgType() metadata.ArgumentType
+
+	// GetArgIndex returns the argument index
+	GetArgIndex() int
+
+	// GetArgContext returns the argument context
+	GetArgContext() string
+
+	// GetTypeParamMap returns the type parameter map
+	GetTypeParamMap() map[string]string
+
+	// GetRootAssignmentMap returns the root assignment map
+	GetRootAssignmentMap() map[string][]metadata.Assignment
+}
+
+// TrackerTreeInterface defines the interface for tracker tree operations
+type TrackerTreeInterface interface {
+	// GetRoots returns the root nodes of the tracker tree
+	GetRoots() []TrackerNodeInterface
+
+	// GetNodeCount returns the total number of nodes in the tree
+	GetNodeCount() int
+
+	// FindNodeByKey finds a node by its key
+	FindNodeByKey(key string) TrackerNodeInterface
+
+	// GetFunctionContext returns context information for a function
+	GetFunctionContext(functionName string) (*metadata.Function, string, string)
+
+	// TraverseTree traverses the tree with a visitor function
+	TraverseTree(visitor func(node TrackerNodeInterface) bool)
+
+	// GetMetadata returns the underlying metadata
+	GetMetadata() *metadata.Metadata
+
+	// GetLimits returns the tracker limits
+	GetLimits() metadata.TrackerLimits
 }

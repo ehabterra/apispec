@@ -88,14 +88,14 @@ func TestExtractor_ComplexRouteExtraction(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create a comprehensive config for testing
 	cfg := &SwagenConfig{
@@ -252,14 +252,14 @@ func TestExtractor_TypeResolution(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config
 	cfg := DefaultGinConfig()
@@ -285,14 +285,14 @@ func TestExtractor_PatternMatching(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config with various pattern types
 	cfg := &SwagenConfig{
@@ -446,14 +446,14 @@ func TestExtractor_EdgeCases(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Test with nil config - this should panic due to nil pointer dereference
 	// We'll test this with a defer to catch the panic
@@ -553,14 +553,14 @@ func TestExtractor_ComplexTypeHandling(t *testing.T) {
 	}
 
 	// Create tracker with limits
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Create config with complex type handling
 	cfg := &SwagenConfig{

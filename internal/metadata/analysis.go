@@ -67,19 +67,21 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 
 	case *ast.SelectorExpr:
 		if ident, ok := x.X.(*ast.Ident); ok {
-			// Try to match ident.Name to an import alias or default import name
-			for _, imp := range file.Imports {
-				importPath := strings.Trim(imp.Path.Value, "\"")
-				defaultName := DefaultImportName(importPath)
-				if (imp.Name != nil && imp.Name.Name == ident.Name) ||
-					(imp.Name == nil && defaultName == ident.Name) {
-					return x.Sel.Name, importPath, ""
-				}
-			}
+			// // Try to match ident.Name to an import alias or default import name
+			// for _, imp := range file.Imports {
+			// 	importPath := strings.Trim(imp.Path.Value, "\"")
+			// 	defaultName := DefaultImportName(importPath)
+			// 	if (imp.Name != nil && imp.Name.Name == ident.Name) ||
+			// 		(imp.Name == nil && defaultName == ident.Name) {
+			// 		return x.Sel.Name, importPath, ""
+			// 	}
+			// }
 			// If not an import, try to resolve as variable/method
 			if info, exists := fileToInfo[file]; exists {
 				if obj := info.ObjectOf(ident); obj != nil {
-					if varObj, ok := obj.(*types.Var); ok {
+					if pkg, ok := obj.(*types.PkgName); ok {
+						return x.Sel.Name, pkg.Imported().Path(), ""
+					} else if varObj, ok := obj.(*types.Var); ok {
 						t := varObj.Type()
 						receiverType := getReceiverTypeString(t)
 						switch t := t.(type) {
@@ -344,6 +346,40 @@ func traceVariableOriginHelper(
 												retArg = *retArg.X
 											default:
 												break OuterLoop
+											}
+										}
+										if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+											_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+											return retArg.GetName(), assign.CalleePkg, t, f
+										}
+										// For literals or other expressions, return as is
+										return retArg.GetName(), assign.CalleePkg, &retArg, funcName
+									}
+								}
+
+								// Looking for methods
+								var calleeMethod *Method
+								for _, t := range calleeFile.Types {
+									for _, method := range t.Methods {
+										if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
+											calleeMethod = &method
+											break
+										}
+									}
+								}
+								if calleeMethod != nil {
+									retIdx := assign.ReturnIndex
+									if retIdx < len(calleeMethod.ReturnVars) {
+										retArg := calleeMethod.ReturnVars[retIdx]
+									OuterLoop2:
+										for retArg.GetKind() != KindIdent {
+											switch retArg.GetKind() {
+											case KindSelector:
+												retArg = *retArg.Sel
+											case KindUnary, KindCompositeLit:
+												retArg = *retArg.X
+											default:
+												break OuterLoop2
 											}
 										}
 										if retArg.GetKind() == KindIdent && retArg.Name != -1 {

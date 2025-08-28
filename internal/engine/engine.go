@@ -182,9 +182,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	fset := token.NewFileSet()
 	fileToInfo := make(map[*ast.File]*types.Info)
 
-	// Load Go packages
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:  e.config.moduleRoot,
 		Fset: fset,
 	}
@@ -301,7 +300,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 
 	// Construct the tracker tree
-	limits := intspec.TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    e.config.MaxNodesPerTree,
 		MaxChildrenPerNode: e.config.MaxChildrenPerNode,
 		MaxArgsPerFunction: e.config.MaxArgsPerFunction,

@@ -18,13 +18,13 @@ func TestGenerateCytoscapeHTML(t *testing.T) {
 
 	// Create a simple tracker tree for testing
 	meta := &metadata.Metadata{}
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Test HTML generation
 	outputPath := filepath.Join(tempDir, "test_diagram.html")
@@ -59,13 +59,13 @@ func TestExportCytoscapeJSON(t *testing.T) {
 
 	// Create a simple tracker tree for testing
 	meta := &metadata.Metadata{}
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Test JSON export
 	outputPath := filepath.Join(tempDir, "test_diagram.json")
@@ -100,13 +100,13 @@ func TestExportWithEmptyTree(t *testing.T) {
 
 	// Create an empty tracker tree
 	meta := &metadata.Metadata{}
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Test HTML generation with empty tree
 	htmlPath := filepath.Join(tempDir, "empty_diagram.html")
@@ -122,26 +122,42 @@ func TestExportWithEmptyTree(t *testing.T) {
 		t.Fatalf("Failed to export JSON with empty tree: %v", err)
 	}
 
-	// Both files should exist
+	// Check if files were created
 	if _, err := os.Stat(htmlPath); os.IsNotExist(err) {
-		t.Error("Expected HTML file to be created even with empty tree")
+		t.Fatal("Expected HTML file to be created for empty tree")
+	}
+	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
+		t.Fatal("Expected JSON file to be created for empty tree")
 	}
 
-	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
-		t.Error("Expected JSON file to be created even with empty tree")
+	// Check file sizes
+	htmlInfo, err := os.Stat(htmlPath)
+	if err != nil {
+		t.Fatalf("Failed to get HTML file info: %v", err)
+	}
+	jsonInfo, err := os.Stat(jsonPath)
+	if err != nil {
+		t.Fatalf("Failed to get JSON file info: %v", err)
+	}
+
+	if htmlInfo.Size() < 1000 {
+		t.Errorf("Generated HTML file seems too small: %d bytes", htmlInfo.Size())
+	}
+	if jsonInfo.Size() < 30 {
+		t.Errorf("Generated JSON file seems too small: %d bytes", jsonInfo.Size())
 	}
 }
 
 func TestExportWithInvalidPath(t *testing.T) {
 	// Create a simple tracker tree for testing
 	meta := &metadata.Metadata{}
-	limits := TrackerLimits{
+	limits := metadata.TrackerLimits{
 		MaxNodesPerTree:    100,
 		MaxChildrenPerNode: 10,
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewSimplifiedTrackerTree(meta, limits)
 
 	// Test with invalid path (parent directory doesn't exist)
 	invalidPath := "/non/existent/path/diagram.html"

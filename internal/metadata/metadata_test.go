@@ -1328,7 +1328,7 @@ func main() {
 	var mainFunc *metadata.Function
 	var foundMain bool
 	for _, file := range pkg.Files {
-		if fn, exists := file.Functions["main"]; exists {
+		if fn, exists := file.Functions[metadata.MainFunc]; exists {
 			mainFunc = fn
 			foundMain = true
 			break
