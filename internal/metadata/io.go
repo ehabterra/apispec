@@ -130,6 +130,9 @@ func setupMetadataReferences(metadata *Metadata) {
 	for _, pkg := range metadata.Packages {
 		for _, file := range pkg.Files {
 			for funcName, fn := range file.Functions {
+				// Set Meta for function signature
+				setCallArgumentMeta(&fn.Signature, metadata)
+
 				// Set Meta for assignments
 				for varName, assignments := range fn.AssignmentMap {
 					for j := range assignments {
@@ -151,6 +154,9 @@ func setupMetadataReferences(metadata *Metadata) {
 			for _, t := range file.Types {
 				for i := range t.Methods {
 					method := &t.Methods[i]
+					// Set Meta for method signature
+					setCallArgumentMeta(&method.Signature, metadata)
+
 					for j := range method.ReturnVars {
 						setCallArgumentMeta(&method.ReturnVars[j], metadata)
 					}
