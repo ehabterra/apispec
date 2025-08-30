@@ -68,19 +68,36 @@ func (nd *TrackerNode) TypeParams() map[string]string {
 		nd.typeParamMap = map[string]string{}
 	}
 
-	// bubbling type resolving
-	if nd.CallGraphEdge != nil && len(nd.CallGraphEdge.TypeParamMap) > 0 {
-		maps.Copy(nd.typeParamMap, nd.CallGraphEdge.TypeParamMap)
+	// Use a visited map to avoid cycles
+	visited := make(map[*TrackerNode]struct{})
+	var collect func(n *TrackerNode, out map[string]string)
+	collect = func(n *TrackerNode, out map[string]string) {
+		if n == nil {
+			return
+		}
+		if _, ok := visited[n]; ok {
+			return
+		}
+		visited[n] = struct{}{}
+
+		// Copy from CallGraphEdge
+		if n.CallGraphEdge != nil && len(n.CallGraphEdge.TypeParamMap) > 0 {
+			maps.Copy(out, n.CallGraphEdge.TypeParamMap)
+		}
+		// Copy from CallArgument
+		if n.CallArgument != nil {
+			maps.Copy(out, n.CallArgument.TypeParams())
+		}
+		// Copy from parent
+		if n.Parent != nil {
+			collect(n.Parent, out)
+		}
 	}
 
-	if nd.CallArgument != nil {
-		maps.Copy(nd.typeParamMap, nd.CallArgument.TypeParams())
-	}
-
-	if nd.Parent != nil {
-		maps.Copy(nd.typeParamMap, nd.Parent.TypeParams())
-	}
-
+	// Always start with a fresh map to avoid stale/cyclic state
+	result := map[string]string{}
+	collect(nd, result)
+	nd.typeParamMap = result
 	return nd.typeParamMap
 }
 
@@ -244,34 +261,34 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 	// Get pre-built relationships from metadata
 	assignmentRelationships := meta.GetAssignmentRelationships()
 
+	for _, assignment := range assignmentRelationships {
+		recvVarName := getString(meta, assignment.Assignment.VariableName)
+
+		akey := assignmentKey{
+			Name:      recvVarName,
+			Pkg:       getString(meta, assignment.Assignment.Pkg),
+			Type:      getString(meta, assignment.Assignment.ConcreteType),
+			Container: getString(meta, assignment.Assignment.Func),
+		}
+
+		switch assignment.Assignment.Lhs.GetKind() {
+		case metadata.KindSelector:
+			if assignment.Assignment.Lhs.X != nil && assignment.Assignment.Lhs.X.Type != -1 {
+				akey.Container = assignment.Assignment.Lhs.X.GetType()
+			}
+		}
+
+		assignmentIndex[akey] = &TrackerNode{
+			key:           assignment.Edge.Callee.ID(),
+			CallGraphEdge: assignment.Edge,
+		}
+	}
+
 	// Search for assignments
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 
 		calleeName := getString(meta, edge.Callee.Name)
-
-		for _, assignment := range assignmentRelationships {
-			recvVarName := getString(meta, assignment.Assignment.VariableName)
-
-			akey := assignmentKey{
-				Name:      recvVarName,
-				Pkg:       getString(meta, assignment.Assignment.Pkg),
-				Type:      getString(meta, assignment.Assignment.ConcreteType),
-				Container: getString(meta, assignment.Assignment.Func),
-			}
-
-			switch assignment.Assignment.Lhs.GetKind() {
-			case metadata.KindSelector:
-				if assignment.Assignment.Lhs.X != nil && assignment.Assignment.Lhs.X.Type != -1 {
-					akey.Container = assignment.Assignment.Lhs.X.GetType()
-				}
-			}
-
-			assignmentIndex[akey] = &TrackerNode{
-				key:           assignment.Edge.Callee.ID(),
-				CallGraphEdge: assignment.Edge,
-			}
-		}
 
 		// t.variableRelationships = meta.GetVariableRelationships()
 
@@ -375,13 +392,28 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 
 		mapObject.Assign(func(tn *TrackerNode) bool {
 			if node.Key() == tn.Key() {
+				nodeTypeParams := node.TypeParams()
 				nodeCount[node.Key()]++
 
 				if len(tn.Children) > 0 {
-					node.AddChildren(tn.Children)
+					if len(nodeTypeParams) > 0 {
+						// Filter out children that have type parameters that are not in the node type parameters
+						children := filterChildren(tn.Children, nodeTypeParams)
+
+						node.AddChildren(children)
+					} else {
+						node.AddChildren(tn.Children)
+					}
 					return true
 				} else if tn.Parent != nil {
-					tn.Parent.AddChild(node)
+					if len(nodeTypeParams) > 0 {
+						// Filter out parent that have type parameters that are not in the node type parameters
+						children := filterChildren([]*TrackerNode{node}, nodeTypeParams)
+
+						tn.Parent.AddChildren(children)
+					} else {
+						tn.Parent.AddChild(node)
+					}
 					return true
 				}
 			}
@@ -394,6 +426,24 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 	}
 
 	return false
+}
+
+func filterChildren(children []*TrackerNode, nodeTypeParams map[string]string) []*TrackerNode {
+	filteredChildren := []*TrackerNode{}
+	hasMatch := true
+	for _, child := range children {
+		childTypeParams := child.TypeParams()
+		for key, value := range nodeTypeParams {
+			if childValue, ok := childTypeParams[key]; !ok || value != childValue {
+				hasMatch = false
+				break
+			}
+		}
+		if hasMatch {
+			filteredChildren = append(filteredChildren, child)
+		}
+	}
+	return filteredChildren
 }
 
 // classifyArgument determines the type of an argument for enhanced processing
@@ -619,7 +669,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					funcNameIndex := arg.Sel.Name
 					recvType := strings.ReplaceAll(originVar, arg.Sel.GetPkg()+".", "")
 					// If the selector is a method, we need to get the type of the receiver
-					if arg.Sel.Type != -1 {
+					if arg.Sel.Type != -1 && originVar == varName {
 						recvType = arg.X.GetType()
 						recvType = strings.ReplaceAll(recvType, arg.Sel.GetPkg()+".", "")
 					}
