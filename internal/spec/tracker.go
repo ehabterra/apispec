@@ -224,6 +224,9 @@ type TrackerTree struct {
 
 	// Enhanced tracking indices
 	variableNodes map[paramKey]*TrackerNode // Track variable nodes by name
+
+	// Interface resolution cache
+	interfaceResolutionMap map[interfaceKey]string
 }
 
 type paramKey struct {
@@ -245,13 +248,25 @@ func (k assignmentKey) String() string {
 
 type assigmentIndexMap map[assignmentKey]*TrackerNode
 
+// interfaceKey represents a key for interface resolution in struct fields
+type interfaceKey struct {
+	InterfaceType string // The interface type name
+	StructType    string // The struct type containing the embedded interface
+	Pkg           string // Package where the struct is defined
+}
+
+func (k interfaceKey) String() string {
+	return k.Pkg + k.StructType + k.InterfaceType
+}
+
 // NewTrackerTree constructs a TrackerTree from metadata and limits.
 func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *TrackerTree {
 	t := &TrackerTree{
-		meta:          meta,
-		positions:     make(map[string]bool),
-		variableNodes: make(map[paramKey]*TrackerNode),
-		limits:        limits,
+		meta:                   meta,
+		positions:              make(map[string]bool),
+		variableNodes:          make(map[paramKey]*TrackerNode),
+		limits:                 limits,
+		interfaceResolutionMap: make(map[interfaceKey]string),
 	}
 
 	assignmentIndex := assigmentIndexMap{}
@@ -319,6 +334,9 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 		}
 
 	}
+
+	// Sync interface resolutions from metadata
+	t.SyncInterfaceResolutionsFromMetadata()
 
 	// Search for root functions
 	roots := meta.CallGraphRoots()
@@ -551,6 +569,25 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					// TODO: Get the correct edge
 					funcNameIndex := meta.StringPool.Get(selectorArg.Sel.GetName())
 					recvType := strings.ReplaceAll(originVar, selectorArg.Sel.GetPkg()+".", "")
+
+					var FuncType string
+
+					if selectorArg.X.GetKind() == metadata.KindSelector && selectorArg.X.X.Type != -1 {
+						FuncType = selectorArg.X.X.GetType()
+						FuncType = strings.ReplaceAll(FuncType, selectorArg.X.X.GetPkg()+".", "")
+						FuncType = strings.TrimPrefix(FuncType, "*")
+					} else if selectorArg.X.GetKind() == metadata.KindCall && selectorArg.X.Fun.Type != -1 {
+						FuncType = selectorArg.X.Fun.GetType()
+						FuncType = strings.ReplaceAll(FuncType, selectorArg.X.X.GetPkg()+".", "")
+						FuncType = strings.TrimPrefix(FuncType, "*")
+					}
+
+					// Resolve interface types to concrete types using interface resolution
+					concreteRecvType := tree.ResolveInterfaceFromMetadata(recvType, FuncType, selectorArg.Sel.GetPkg())
+					if concreteRecvType != recvType {
+						recvType = concreteRecvType
+					}
+
 					recvTypeIndex := meta.StringPool.Get(recvType)
 					starRecvTypeIndex := meta.StringPool.Get("*" + recvType)
 					pkgNameIndex := meta.StringPool.Get(selectorArg.Sel.GetPkg())
@@ -632,6 +669,20 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 			// Handling a function inside the selector
 			// Process field/method access
 			if arg.X != nil {
+				if arg.X.GetKind() == metadata.KindSelector {
+					if arg.X.Sel.GetKind() == metadata.KindIdent {
+						varName := metadata.CallArgToString(*arg.X.X)
+						// Enhanced variable tracing and assignment linking
+						originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+							varName,
+							getString(meta, edge.Caller.Name),
+							getString(meta, edge.Caller.Pkg),
+							meta,
+						)
+
+						_, _ = originVar, originPkg
+					}
+				}
 				if arg.Sel.GetKind() == metadata.KindIdent && strings.HasPrefix(arg.Sel.GetType(), "func(") || strings.HasPrefix(arg.Sel.GetType(), "func[") {
 					varName := metadata.CallArgToString(*arg.X)
 					// Enhanced variable tracing and assignment linking
@@ -673,6 +724,25 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						recvType = arg.X.GetType()
 						recvType = strings.ReplaceAll(recvType, arg.Sel.GetPkg()+".", "")
 					}
+
+					var FuncType string
+
+					if arg.X.GetKind() == metadata.KindSelector && arg.X.X.Type != -1 {
+						FuncType = arg.X.X.GetType()
+						FuncType = strings.ReplaceAll(FuncType, arg.X.X.GetPkg()+".", "")
+						FuncType = strings.TrimPrefix(FuncType, "*")
+					} else if arg.X.GetKind() == metadata.KindCall && arg.X.Fun.Type != -1 {
+						FuncType = arg.X.Fun.GetType()
+						FuncType = strings.ReplaceAll(FuncType, arg.X.Fun.GetPkg()+".", "")
+						FuncType = strings.TrimPrefix(FuncType, "*")
+					}
+
+					// Resolve interface types to concrete types using interface resolution
+					concreteRecvType := tree.ResolveInterfaceFromMetadata(recvType, FuncType, arg.Sel.GetPkg())
+					if concreteRecvType != recvType {
+						recvType = concreteRecvType
+					}
+
 					recvTypeIndex := meta.StringPool.Get(recvType)
 					pkgNameIndex := arg.Sel.Pkg
 
@@ -870,6 +940,12 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 					calleeRecvType := getString(meta, edge.Callee.RecvType)
 					calleePkg := getString(meta, edge.Callee.Pkg)
 					if calleeRecvType != "" {
+						// Resolve interface types to concrete types using interface resolution
+						concreteRecvType := tree.ResolveInterfaceFromMetadata(calleeRecvType, "", calleePkg)
+						if concreteRecvType != calleeRecvType {
+							calleeRecvType = concreteRecvType
+						}
+
 						if strings.HasPrefix(calleeRecvType, "*") {
 							calleeRecvType = "*" + calleePkg + "." + calleeRecvType[1:]
 						} else {
@@ -1093,4 +1169,77 @@ func (t *TrackerTree) FindVariableNodes() []*TrackerNode {
 		result = append(result, node)
 	}
 	return result
+}
+
+// RegisterInterfaceResolution registers a mapping from an interface type to its concrete implementation
+// in a specific struct context. This is used to resolve embedded interfaces in structs.
+func (t *TrackerTree) RegisterInterfaceResolution(interfaceType, structType, pkg, concreteType string) {
+	key := interfaceKey{
+		InterfaceType: interfaceType,
+		StructType:    structType,
+		Pkg:           pkg,
+	}
+	t.interfaceResolutionMap[key] = concreteType
+}
+
+// ResolveInterface resolves an interface type to its concrete implementation in a struct context.
+// Returns the concrete type if found, otherwise returns the original interface type.
+func (t *TrackerTree) ResolveInterface(interfaceType, structType, pkg string) string {
+	key := interfaceKey{
+		InterfaceType: interfaceType,
+		StructType:    structType,
+		Pkg:           pkg,
+	}
+
+	if concreteType, exists := t.interfaceResolutionMap[key]; exists {
+		return concreteType
+	}
+
+	return interfaceType
+}
+
+// GetInterfaceResolutions returns all registered interface resolutions for debugging
+func (t *TrackerTree) GetInterfaceResolutions() map[interfaceKey]string {
+	result := make(map[interfaceKey]string)
+	for k, v := range t.interfaceResolutionMap {
+		result[k] = v
+	}
+	return result
+}
+
+// SyncInterfaceResolutionsFromMetadata copies interface resolutions from metadata
+func (t *TrackerTree) SyncInterfaceResolutionsFromMetadata() {
+	if t.meta == nil {
+		return
+	}
+
+	metaResolutions := t.meta.GetAllInterfaceResolutions()
+	for metaKey, resolution := range metaResolutions {
+		trackerKey := interfaceKey{
+			InterfaceType: metaKey.InterfaceType,
+			StructType:    metaKey.StructType,
+			Pkg:           metaKey.Pkg,
+		}
+		t.interfaceResolutionMap[trackerKey] = resolution.ConcreteType
+	}
+}
+
+// ResolveInterfaceFromMetadata resolves an interface using metadata and local cache
+func (t *TrackerTree) ResolveInterfaceFromMetadata(interfaceType, structType, pkg string) string {
+	// First check local cache
+	concreteType := t.ResolveInterface(interfaceType, structType, pkg)
+	if concreteType != interfaceType {
+		return concreteType
+	}
+
+	// If not found locally, check metadata
+	if t.meta != nil {
+		if resolved, found := t.meta.GetInterfaceResolution(interfaceType, structType, pkg); found {
+			// Cache it locally for future use
+			t.RegisterInterfaceResolution(interfaceType, structType, pkg, resolved)
+			return resolved
+		}
+	}
+
+	return interfaceType
 }

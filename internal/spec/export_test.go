@@ -24,7 +24,7 @@ func TestGenerateCytoscapeHTML(t *testing.T) {
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits)
 
 	// Test HTML generation
 	outputPath := filepath.Join(tempDir, "test_diagram.html")
@@ -65,7 +65,7 @@ func TestExportCytoscapeJSON(t *testing.T) {
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Test JSON export
 	outputPath := filepath.Join(tempDir, "test_diagram.json")
@@ -106,7 +106,7 @@ func TestExportWithEmptyTree(t *testing.T) {
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Test HTML generation with empty tree
 	htmlPath := filepath.Join(tempDir, "empty_diagram.html")
@@ -157,7 +157,7 @@ func TestExportWithInvalidPath(t *testing.T) {
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Test with invalid path (parent directory doesn't exist)
 	invalidPath := "/non/existent/path/diagram.html"

@@ -1088,6 +1088,12 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 				}
 			}
 
+			// Check if this might be an interface assignment
+			// Look for patterns like: InterfaceName: &concreteImpl{...}
+			if isEmbeddedInterfaceAssignment(kv) {
+				registerEmbeddedInterfaceResolution(kv, typeName, pkgName, metadata, fset)
+			}
+
 			fields[metadata.StringPool.Get(key)] = metadata.StringPool.Get(val)
 		}
 	}
@@ -1636,5 +1642,62 @@ func applyTypeParameterResolutionToArgument(arg *CallArgument, paramArgMap map[s
 	}
 	for i := range arg.Args {
 		applyTypeParameterResolutionToArgument(&arg.Args[i], paramArgMap, arg.Args[i].TypeParamMap)
+	}
+}
+
+// isEmbeddedInterfaceAssignment checks if a key-value pair represents an interface assignment
+func isEmbeddedInterfaceAssignment(kv *ast.KeyValueExpr) bool {
+	// Check if the value is a concrete type assignment (like &concreteType{...})
+	switch val := kv.Value.(type) {
+	case *ast.UnaryExpr:
+		// Handle &concreteType{...} patterns
+		if val.Op == token.AND {
+			if compositeLit, ok := val.X.(*ast.CompositeLit); ok {
+				concreteType := getTypeName(compositeLit.Type)
+				if concreteType != "" && !strings.Contains(concreteType, ".") {
+					// This looks like an interface assignment
+					return true
+				}
+			}
+		}
+	case *ast.CompositeLit:
+		// Handle direct struct literals
+		concreteType := getTypeName(val.Type)
+		if concreteType != "" && !strings.Contains(concreteType, ".") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// registerEmbeddedInterfaceResolution registers an interface-to-concrete type mapping
+func registerEmbeddedInterfaceResolution(kv *ast.KeyValueExpr, structTypeName, pkgName string, metadata *Metadata, fset *token.FileSet) {
+	// Get the interface field name
+	fieldName := ""
+	if ident, ok := kv.Key.(*ast.Ident); ok {
+		fieldName = ident.Name
+	} else {
+		return
+	}
+
+	// Get the concrete type
+	concreteType := ""
+	switch val := kv.Value.(type) {
+	case *ast.UnaryExpr:
+		// Handle &concreteType{...} patterns
+		if val.Op == token.AND {
+			if compositeLit, ok := val.X.(*ast.CompositeLit); ok {
+				concreteType = "*" + getTypeName(compositeLit.Type)
+			}
+		}
+	case *ast.CompositeLit:
+		// Handle direct struct literals
+		concreteType = getTypeName(val.Type)
+	}
+
+	if concreteType != "" && fieldName != "" {
+		position := getPosition(kv.Pos(), fset)
+		metadata.RegisterInterfaceResolution(fieldName, structTypeName, pkgName, concreteType, position)
 	}
 }

@@ -95,7 +95,7 @@ func TestExtractor_ComplexRouteExtraction(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a comprehensive config for testing
 	cfg := &SwagenConfig{
@@ -259,7 +259,7 @@ func TestExtractor_TypeResolution(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config
 	cfg := DefaultGinConfig()
@@ -292,7 +292,7 @@ func TestExtractor_PatternMatching(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with various pattern types
 	cfg := &SwagenConfig{
@@ -453,7 +453,7 @@ func TestExtractor_EdgeCases(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Test with nil config - this should panic due to nil pointer dereference
 	// We'll test this with a defer to catch the panic
@@ -560,7 +560,7 @@ func TestExtractor_ComplexTypeHandling(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with complex type handling
 	cfg := &SwagenConfig{

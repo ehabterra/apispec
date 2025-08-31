@@ -54,9 +54,9 @@ func TestRefactoredExtractor(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Add a test root node for the extractor to process
-	testNode := &SimplifiedTrackerNode{
-		Key:  "test-router",
-		Edge: &meta.CallGraph[0],
+	testNode := &TrackerNode{
+		key:           "test-router",
+		CallGraphEdge: &meta.CallGraph[0],
 	}
 	tree.AddRoot(testNode)
 
@@ -234,5 +234,95 @@ func TestOverrideApplier(t *testing.T) {
 
 	if len(routeInfo.Tags) != 1 || routeInfo.Tags[0] != "test" {
 		t.Error("Expected tags to be applied")
+	}
+}
+
+func TestExtractResponse_WithLiteralValue(t *testing.T) {
+	// Create a simple metadata structure for testing
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+
+	// Test different types of literals
+	testCases := []struct {
+		name               string
+		literalValue       string
+		expectedType       string
+		expectedSchemaType string
+	}{
+		{"string_literal", "OK", "string", "string"},
+		{"numeric_literal", "42", "int", "integer"},
+		{"float_literal", "3.14", "float64", "number"},
+		{"boolean_literal", "true", "bool", "boolean"},
+		{"nil_literal", "nil", "interface{}", "object"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a call argument that represents a literal value
+			arg := metadata.NewCallArgument(meta)
+			arg.SetKind("literal")        // Set kind to literal
+			arg.SetValue(tc.literalValue) // Set value to the test case value
+
+			// Create call graph edge with the literal argument
+			edge := &metadata.CallGraphEdge{
+				Args: []metadata.CallArgument{*arg},
+			}
+
+			// Create a tracker node
+			node := &TrackerNode{
+				CallGraphEdge: edge,
+			}
+
+			// Create a simple config
+			cfg := &SwagenConfig{
+				Defaults: Defaults{
+					ResponseStatus:      200,
+					ResponseContentType: "application/json",
+				},
+			}
+
+			// Create context provider and schema mapper
+			contextProvider := NewContextProvider(meta)
+			schemaMapper := NewSchemaMapper(cfg)
+
+			// Create the response pattern matcher
+			matcher := &ResponsePatternMatcherImpl{
+				BasePatternMatcher: &BasePatternMatcher{
+					cfg:             cfg,
+					contextProvider: contextProvider,
+					schemaMapper:    schemaMapper,
+				},
+				pattern: ResponsePattern{
+					TypeFromArg:    true,
+					TypeArgIndex:   0,
+					StatusFromArg:  false,
+					StatusArgIndex: -1,
+				},
+			}
+
+			// Extract response
+			result := matcher.ExtractResponse(node)
+
+			// Verify that literal values are handled correctly
+			if result == nil {
+				t.Fatal("Expected non-nil result")
+			}
+
+			// For literal values, we expect the appropriate type based on the value
+			if result.BodyType != tc.expectedType {
+				t.Errorf("Expected BodyType to be '%s' for literal value '%s', got '%s'",
+					tc.expectedType, tc.literalValue, result.BodyType)
+			}
+
+			if result.Schema == nil {
+				t.Fatal("Expected non-nil Schema")
+			}
+
+			// The schema should match the expected OpenAPI type
+			if result.Schema.Type != tc.expectedSchemaType && result.Schema.Type != "" {
+				t.Errorf("Expected Schema.Type to be '%s', got '%s'", tc.expectedSchemaType, result.Schema.Type)
+			}
+		})
 	}
 }

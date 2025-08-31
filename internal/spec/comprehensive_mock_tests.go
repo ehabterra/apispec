@@ -25,9 +25,9 @@ func TestExtractorWithMockTrackerTree(t *testing.T) {
 	mockTree := NewMockTrackerTree(meta, limits)
 
 	// Create a test node that simulates a router pattern
-	testNode := &SimplifiedTrackerNode{
-		Key:  "test-router-node",
-		Edge: nil, // Simple test case without complex edge
+	testNode := &TrackerNode{
+		key:           "test-router-node",
+		CallGraphEdge: nil, // Simple test case without complex edge
 	}
 	mockTree.AddRoot(testNode)
 
@@ -107,9 +107,9 @@ func TestPatternMatchersWithMockNodes(t *testing.T) {
 	matcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider, typeResolver)
 
 	// Create a mock node for testing
-	mockNode := &SimplifiedTrackerNode{
-		Key:  "mock-get-node",
-		Edge: nil, // Simple case for unit testing
+	mockNode := &TrackerNode{
+		key:           "mock-get-node",
+		CallGraphEdge: nil, // Simple case for unit testing
 	}
 
 	// Test pattern matching functionality
@@ -140,9 +140,9 @@ func TestTypeResolverWithMockNodes(t *testing.T) {
 	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
 
 	// Create a mock node for type resolution context
-	mockNode := &SimplifiedTrackerNode{
-		Key: "mock-type-node",
-		TypeParamMap: map[string]string{
+	mockNode := &TrackerNode{
+		key: "mock-type-node",
+		typeParamMap: map[string]string{
 			"T": "string",
 			"U": "int",
 		},
@@ -193,9 +193,9 @@ func TestContextProviderWithMockNodes(t *testing.T) {
 		},
 	}
 
-	mockNode := &SimplifiedTrackerNode{
-		Key:  "mock-node-with-edge",
-		Edge: mockEdge,
+	mockNode := &TrackerNode{
+		key:           "mock-node-with-edge",
+		CallGraphEdge: mockEdge,
 	}
 
 	// Test GetCalleeInfo with mock node
@@ -211,9 +211,9 @@ func TestContextProviderWithMockNodes(t *testing.T) {
 	}
 
 	// Test with mock node without edge
-	mockNodeNoEdge := &SimplifiedTrackerNode{
-		Key:  "mock-node-no-edge",
-		Edge: nil,
+	mockNodeNoEdge := &TrackerNode{
+		key:           "mock-node-no-edge",
+		CallGraphEdge: nil,
 	}
 
 	name, pkg, recvType = provider.GetCalleeInfo(mockNodeNoEdge)
@@ -256,25 +256,25 @@ func TestMockTrackerTree_ComplexHierarchy(t *testing.T) {
 	mockTree := NewMockTrackerTree(meta, limits)
 
 	// Create a hierarchy: root -> child1, child2 -> grandchild
-	grandchild := &SimplifiedTrackerNode{
-		Key:      "grandchild",
-		Children: []*SimplifiedTrackerNode{},
+	grandchild := &TrackerNode{
+		key:      "grandchild",
+		Children: []*TrackerNode{},
 	}
 
-	child1 := &SimplifiedTrackerNode{
-		Key:      "child1",
-		Children: []*SimplifiedTrackerNode{grandchild},
+	child1 := &TrackerNode{
+		key:      "child1",
+		Children: []*TrackerNode{grandchild},
 	}
 	grandchild.Parent = child1
 
-	child2 := &SimplifiedTrackerNode{
-		Key:      "child2",
-		Children: []*SimplifiedTrackerNode{},
+	child2 := &TrackerNode{
+		key:      "child2",
+		Children: []*TrackerNode{},
 	}
 
-	root := &SimplifiedTrackerNode{
-		Key:      "root",
-		Children: []*SimplifiedTrackerNode{child1, child2},
+	root := &TrackerNode{
+		key:      "root",
+		Children: []*TrackerNode{child1, child2},
 	}
 	child1.Parent = root
 	child2.Parent = root
@@ -399,9 +399,9 @@ func TestMockTrackerTree_EarlyTermination(t *testing.T) {
 	mockTree := NewMockTrackerTree(meta, limits)
 
 	// Create multiple root nodes
-	root1 := &SimplifiedTrackerNode{Key: "root1"}
-	root2 := &SimplifiedTrackerNode{Key: "root2"}
-	root3 := &SimplifiedTrackerNode{Key: "root3"}
+	root1 := &TrackerNode{key: "root1"}
+	root2 := &TrackerNode{key: "root2"}
+	root3 := &TrackerNode{key: "root3"}
 
 	mockTree.AddRoot(root1)
 	mockTree.AddRoot(root2)

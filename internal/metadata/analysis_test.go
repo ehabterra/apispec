@@ -237,8 +237,8 @@ func TestTraceVariableOrigin_MethodEdgeCases(t *testing.T) {
 
 	// Test with non-existent method
 	assign := Assignment{
-		CalleeFunc:  "NonExistentMethod",
-		CalleePkg:   "main",
+		CalleeFunc: "NonExistentMethod",
+		// CalleePkg:   "main",
 		ReturnIndex: 0,
 	}
 
@@ -335,8 +335,8 @@ func TestTraceVariableOrigin_MethodReturnValueKinds(t *testing.T) {
 	file.Types["User"] = userType
 
 	assign := Assignment{
-		CalleeFunc:  "GetProfile",
-		CalleePkg:   "main",
+		CalleeFunc: "GetProfile",
+		// CalleePkg:   "main",
 		ReturnIndex: 0,
 	}
 

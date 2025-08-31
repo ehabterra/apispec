@@ -128,7 +128,7 @@ func TestExtractor_IsValid(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -176,7 +176,7 @@ func TestExtractor_initializePatternMatchers(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a config with various patterns
 	cfg := &SwagenConfig{
@@ -263,7 +263,7 @@ func TestExtractor_ExtractRoutes(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -305,7 +305,7 @@ func TestExtractor_traverseForRoutes(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{
@@ -349,7 +349,7 @@ func TestExtractor_traverseForRoutesWithVisited(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
 	cfg := &SwagenConfig{

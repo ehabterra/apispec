@@ -379,25 +379,30 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		arg := edge.Args[r.pattern.TypeArgIndex]
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
-		// Check for resolved type information in the CallArgument
-		if arg.ResolvedType != -1 {
-			bodyType = arg.GetResolvedType()
-		} else if arg.IsGenericType && arg.GenericTypeName != -1 {
-			// If it's a generic type, try to resolve it from the edge's type parameters
-			if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
-				bodyType = concreteType
+		// Check if this is a literal value - if so, determine appropriate type
+		if arg.GetKind() == metadata.KindLiteral {
+			bodyType = determineLiteralType(bodyType)
+		} else {
+			// Check for resolved type information in the CallArgument
+			if arg.ResolvedType != -1 {
+				bodyType = arg.GetResolvedType()
+			} else if arg.IsGenericType && arg.GenericTypeName != -1 {
+				// If it's a generic type, try to resolve it from the edge's type parameters
+				if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
+					bodyType = concreteType
+				}
+			}
+
+			// Trace type origin
+			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+
+			// Apply dereferencing if needed
+			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
+				bodyType = strings.TrimPrefix(bodyType, "*")
 			}
 		}
 
-		// Trace type origin
-		bodyType = r.resolveTypeOrigin(arg, node, bodyType)
-
-		// Apply dereferencing if needed
-		if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
-			bodyType = strings.TrimPrefix(bodyType, "*")
-		}
-
-		reqInfo.BodyType = bodyType
+		reqInfo.BodyType = preprocessingBodyType(bodyType)
 		reqInfo.Schema = r.mapGoTypeToOpenAPISchema(bodyType)
 	}
 

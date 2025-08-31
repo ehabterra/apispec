@@ -426,7 +426,7 @@ func TestMapMetadataToOpenAPI_WithValidConfig(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config
 	cfg := DefaultGinConfig()
@@ -486,7 +486,7 @@ func TestMapMetadataToOpenAPI_WithConfigInfo(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with custom info
 	cfg := &SwagenConfig{
@@ -608,7 +608,7 @@ func TestMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 		MaxNestedArgsDepth: 3,
 	}
 
-	tree := NewSimplifiedTrackerTree(meta, limits)
+	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with security schemes
 	cfg := &SwagenConfig{

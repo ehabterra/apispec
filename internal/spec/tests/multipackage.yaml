@@ -88,7 +88,7 @@ string_pool:
   - func(*models.User) string
   - r1/T/multipackage/src/multipackage/services/user_service.go:23:2
   - r1/T/multipackage/src/multipackage/services/user_service.go:23:4
-  - '*multipackage/services.UserService.prefix'
+  - multipackage/services.UserService.prefix
   - r1/T/multipackage/src/multipackage/services/user_service.go:23:13
   - SetPrefix
   - r1/T/multipackage/src/multipackage/services/user_service.go:22:40
@@ -1375,7 +1375,7 @@ packages:
                 scope: 15
                 filename: 85
                 assignments:
-                  '*multipackage/services.UserService.prefix':
+                  multipackage/services.UserService.prefix:
                     - variable_name: 89
                       pkg: 56
                       concrete_type: 6
@@ -1877,7 +1877,7 @@ packages:
             scope: 15
             filename: 85
             assignments:
-              '*multipackage/services.UserService.prefix':
+              multipackage/services.UserService.prefix:
                 - variable_name: 89
                   pkg: 56
                   concrete_type: 6
@@ -2212,7 +2212,7 @@ call_graph:
       name: 9
       pkg: 2
       position: 70
-      recv_type: 26
+      recv_type: 10
     position: 70
     callee_var_name: user
     callee_recv_var_name: name

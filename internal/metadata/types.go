@@ -131,6 +131,9 @@ type Metadata struct {
 	variableRelationships   map[ParamKey]*VariableLink        `yaml:"-"`
 	argumentProcessor       *ArgumentProcessor                `yaml:"-"`
 	genericResolver         *GenericTypeResolver              `yaml:"-"`
+
+	// NEW: Enhanced metadata structures for tracker tree simplification
+	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
 }
 
 // BuildCallGraphMaps builds the various lookup maps
@@ -694,6 +697,10 @@ func (a *CallArgument) id(sep string) (string, string) {
 		return a.GetValue(), typeParam
 	case KindSelector:
 		if a.X != nil {
+			if a.X.GetType() != "" {
+				sep = "."
+			}
+
 			xID, xTypeParam := a.X.id("/")
 			if xID == "" {
 				xID = a.Sel.GetPkg()
@@ -934,6 +941,26 @@ type ParamKey struct {
 	Name      string
 	Pkg       string
 	Container string
+}
+
+// InterfaceResolution represents a mapping from an interface type to its concrete implementation
+type InterfaceResolution struct {
+	InterfaceType string `yaml:"interface_type,omitempty"`
+	StructType    string `yaml:"struct_type,omitempty"`
+	Pkg           string `yaml:"pkg,omitempty"`
+	ConcreteType  string `yaml:"concrete_type,omitempty"`
+	Position      string `yaml:"position,omitempty"`
+}
+
+// InterfaceResolutionKey represents a key for interface resolution
+type InterfaceResolutionKey struct {
+	InterfaceType string
+	StructType    string
+	Pkg           string
+}
+
+func (k InterfaceResolutionKey) String() string {
+	return k.Pkg + k.StructType + k.InterfaceType
 }
 
 // ArgumentProcessor handles argument processing and classification
@@ -1346,4 +1373,57 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 			}
 		}
 	}
+}
+
+// RegisterInterfaceResolution registers a mapping from an interface type to its concrete implementation
+func (m *Metadata) RegisterInterfaceResolution(interfaceType, structType, pkg, concreteType, position string) {
+	if m.interfaceResolutions == nil {
+		m.interfaceResolutions = make(map[InterfaceResolutionKey]*InterfaceResolution)
+	}
+
+	key := InterfaceResolutionKey{
+		InterfaceType: interfaceType,
+		StructType:    structType,
+		Pkg:           pkg,
+	}
+
+	m.interfaceResolutions[key] = &InterfaceResolution{
+		InterfaceType: interfaceType,
+		StructType:    structType,
+		Pkg:           pkg,
+		ConcreteType:  concreteType,
+		Position:      position,
+	}
+}
+
+// GetInterfaceResolution retrieves the concrete type for an interface in a specific context
+func (m *Metadata) GetInterfaceResolution(interfaceType, structType, pkg string) (string, bool) {
+	if m.interfaceResolutions == nil {
+		return "", false
+	}
+
+	key := InterfaceResolutionKey{
+		InterfaceType: interfaceType,
+		StructType:    structType,
+		Pkg:           pkg,
+	}
+
+	if resolution, exists := m.interfaceResolutions[key]; exists {
+		return resolution.ConcreteType, true
+	}
+
+	return "", false
+}
+
+// GetAllInterfaceResolutions returns all interface resolutions for debugging purposes
+func (m *Metadata) GetAllInterfaceResolutions() map[InterfaceResolutionKey]*InterfaceResolution {
+	if m.interfaceResolutions == nil {
+		return make(map[InterfaceResolutionKey]*InterfaceResolution)
+	}
+
+	result := make(map[InterfaceResolutionKey]*InterfaceResolution)
+	for k, v := range m.interfaceResolutions {
+		result[k] = v
+	}
+	return result
 }

@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/swagen/internal/metadata"
@@ -373,6 +374,49 @@ func (e *Extractor) joinPaths(a, b string) string {
 	return a + "/" + b
 }
 
+// determineLiteralType determines the appropriate Go type for a literal value
+func determineLiteralType(literalValue string) string {
+	// Remove quotes if present
+	cleanValue := strings.Trim(literalValue, "\"`")
+
+	// Check for numeric literals
+	if _, err := strconv.ParseInt(cleanValue, 10, 64); err == nil {
+		return "int"
+	}
+	if _, err := strconv.ParseUint(cleanValue, 10, 64); err == nil {
+		return "uint"
+	}
+	if _, err := strconv.ParseFloat(cleanValue, 64); err == nil {
+		return "float64"
+	}
+
+	// Check for boolean literals
+	if cleanValue == "true" || cleanValue == "false" {
+		return "bool"
+	}
+
+	// Check for nil
+	if cleanValue == "nil" {
+		return "interface{}"
+	}
+
+	// Default to string for everything else
+	return "string"
+}
+
+func preprocessingBodyType(bodyType string) string {
+	if after, ok := strings.CutPrefix(bodyType, "[]"); ok && after != "" {
+		bodyType = after
+	}
+	if after, ok := strings.CutPrefix(bodyType, "*"); ok && after != "" {
+		bodyType = after
+	}
+	if after, ok := strings.CutPrefix(bodyType, "&"); ok && after != "" {
+		bodyType = after
+	}
+	return bodyType
+}
+
 // ResponsePatternMatcherImpl implements ResponsePatternMatcher
 type ResponsePatternMatcherImpl struct {
 	*BasePatternMatcher
@@ -468,18 +512,26 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface) 
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
+
 		arg := edge.Args[r.pattern.TypeArgIndex]
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
-		// Trace type origin
-		bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+		// Check if this is a literal value - if so, determine appropriate type
+		if arg.GetKind() == metadata.KindLiteral {
+			// For literal values, determine the appropriate type based on the value
+			bodyType = determineLiteralType(bodyType)
+		} else {
 
-		// Apply dereferencing if needed
-		if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
-			bodyType = strings.TrimPrefix(bodyType, "*")
+			// Trace type origin for non-literal arguments
+			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+
+			// Apply dereferencing if needed
+			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
+				bodyType = strings.TrimPrefix(bodyType, "*")
+			}
 		}
 
-		respInfo.BodyType = bodyType
+		respInfo.BodyType = preprocessingBodyType(bodyType)
 		respInfo.Schema = r.mapGoTypeToOpenAPISchema(bodyType)
 	}
 
@@ -613,12 +665,18 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface) *Param
 		arg := edge.Args[p.pattern.TypeArgIndex]
 		paramType := p.contextProvider.GetArgumentInfo(arg)
 
-		// Trace type origin
-		paramType = p.resolveTypeOrigin(arg, node, paramType)
+		// Check if this is a literal value - if so, determine appropriate type
+		if arg.GetKind() == metadata.KindLiteral {
+			// For literal values, determine the appropriate type based on the value
+			paramType = determineLiteralType(paramType)
+		} else {
+			// Trace type origin for non-literal arguments
+			paramType = p.resolveTypeOrigin(arg, node, paramType)
 
-		// Apply dereferencing if needed
-		if p.pattern.Deref && strings.HasPrefix(paramType, "*") {
-			paramType = strings.TrimPrefix(paramType, "*")
+			// Apply dereferencing if needed
+			if p.pattern.Deref && strings.HasPrefix(paramType, "*") {
+				paramType = strings.TrimPrefix(paramType, "*")
+			}
 		}
 
 		param.Schema = p.mapGoTypeToOpenAPISchema(paramType)
@@ -694,7 +752,7 @@ func (o *OverrideApplierImpl) ApplyOverrides(routeInfo *RouteInfo) {
 			}
 			if override.ResponseType != "" && routeInfo.Response != nil {
 				for _, res := range routeInfo.Response {
-					res.BodyType = override.ResponseType
+					res.BodyType = preprocessingBodyType(override.ResponseType)
 				}
 			}
 			if len(override.Tags) > 0 {

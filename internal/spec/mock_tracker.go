@@ -8,7 +8,7 @@ import (
 type MockTrackerTree struct {
 	meta   *metadata.Metadata
 	limits metadata.TrackerLimits
-	roots  []*SimplifiedTrackerNode
+	roots  []*TrackerNode
 }
 
 // NewMockTrackerTree creates a new mock tracker tree
@@ -16,12 +16,12 @@ func NewMockTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) 
 	return &MockTrackerTree{
 		meta:   meta,
 		limits: limits,
-		roots:  make([]*SimplifiedTrackerNode, 0),
+		roots:  make([]*TrackerNode, 0),
 	}
 }
 
 // AddRoot adds a root node to the mock tracker
-func (m *MockTrackerTree) AddRoot(root *SimplifiedTrackerNode) {
+func (m *MockTrackerTree) AddRoot(root *TrackerNode) {
 	m.roots = append(m.roots, root)
 }
 
@@ -37,9 +37,9 @@ func (m *MockTrackerTree) GetRoots() []TrackerNodeInterface {
 // GetNodeCount returns the total number of nodes in the mock tree
 func (m *MockTrackerTree) GetNodeCount() int {
 	var count int
-	var countNodes func(*SimplifiedTrackerNode)
+	var countNodes func(*TrackerNode)
 
-	countNodes = func(node *SimplifiedTrackerNode) {
+	countNodes = func(node *TrackerNode) {
 		if node == nil {
 			return
 		}
@@ -58,14 +58,14 @@ func (m *MockTrackerTree) GetNodeCount() int {
 
 // FindNodeByKey finds a node by its key in the mock tree
 func (m *MockTrackerTree) FindNodeByKey(key string) TrackerNodeInterface {
-	var findNode func(*SimplifiedTrackerNode) *SimplifiedTrackerNode
+	var findNode func(*TrackerNode) *TrackerNode
 
-	findNode = func(node *SimplifiedTrackerNode) *SimplifiedTrackerNode {
+	findNode = func(node *TrackerNode) *TrackerNode {
 		if node == nil {
 			return nil
 		}
 
-		if node.Key == key {
+		if node.Key() == key {
 			return node
 		}
 
@@ -103,9 +103,9 @@ func (m *MockTrackerTree) GetFunctionContext(functionName string) (*metadata.Fun
 
 // TraverseTree traverses the mock tree with a visitor function
 func (m *MockTrackerTree) TraverseTree(visitor func(node TrackerNodeInterface) bool) {
-	var traverse func(*SimplifiedTrackerNode) bool
+	var traverse func(*TrackerNode) bool
 
-	traverse = func(node *SimplifiedTrackerNode) bool {
+	traverse = func(node *TrackerNode) bool {
 		if node == nil {
 			return true
 		}

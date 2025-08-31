@@ -21,7 +21,7 @@ string_pool:
   - Age
   - int
   - r1/T/example/src/example/types.go:25:4
-  - '*example.User.Age'
+  - example.User.Age
   - age
   - r1/T/example/src/example/types.go:25:10
   - SetAge
@@ -332,7 +332,7 @@ packages:
                 scope: 15
                 filename: 16
                 assignments:
-                  '*example.User.Age':
+                  example.User.Age:
                     - variable_name: 22
                       pkg: 2
                       concrete_type: 20
@@ -899,7 +899,7 @@ packages:
             scope: 15
             filename: 16
             assignments:
-              '*example.User.Age':
+              example.User.Age:
                 - variable_name: 22
                   pkg: 2
                   concrete_type: 20

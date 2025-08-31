@@ -32,9 +32,9 @@ func TestContextProvider_WithMockTrackerTree(t *testing.T) {
 	}
 
 	// Create a mock node that implements TrackerNodeInterface
-	mockNode := &SimplifiedTrackerNode{
-		Key:  "test-handler",
-		Edge: &edge,
+	mockNode := &TrackerNode{
+		key:           "test-handler",
+		CallGraphEdge: &edge,
 	}
 
 	// Create mock tracker tree
@@ -80,9 +80,9 @@ func TestContextProvider_GetCalleeInfo_WithNilEdge(t *testing.T) {
 	provider := NewContextProvider(meta)
 
 	// Create a mock node with nil edge
-	mockNode := &SimplifiedTrackerNode{
-		Key:  "test-node",
-		Edge: nil, // Nil edge
+	mockNode := &TrackerNode{
+		key:           "test-node",
+		CallGraphEdge: nil, // Nil edge
 	}
 
 	name, pkg, recvType := provider.GetCalleeInfo(mockNode)
@@ -118,9 +118,9 @@ func TestContextProvider_GetCalleeInfo_WithMalformedNode(t *testing.T) {
 		},
 	}
 
-	mockNode := &SimplifiedTrackerNode{
-		Key:  "malformed-node",
-		Edge: &edge,
+	mockNode := &TrackerNode{
+		key:           "malformed-node",
+		CallGraphEdge: &edge,
 	}
 
 	name, pkg, recvType := provider.GetCalleeInfo(mockNode)
@@ -200,25 +200,25 @@ func TestMockTrackerTree_WithComplexHierarchy(t *testing.T) {
 	mockTree := NewMockTrackerTree(meta, limits)
 
 	// Create a hierarchy: root -> child1, child2 -> grandchild
-	grandchild := &SimplifiedTrackerNode{
-		Key:      "grandchild",
-		Children: []*SimplifiedTrackerNode{},
+	grandchild := &TrackerNode{
+		key:      "grandchild",
+		Children: []*TrackerNode{},
 	}
 
-	child1 := &SimplifiedTrackerNode{
-		Key:      "child1",
-		Children: []*SimplifiedTrackerNode{grandchild},
+	child1 := &TrackerNode{
+		key:      "child1",
+		Children: []*TrackerNode{grandchild},
 	}
 	grandchild.Parent = child1
 
-	child2 := &SimplifiedTrackerNode{
-		Key:      "child2",
-		Children: []*SimplifiedTrackerNode{},
+	child2 := &TrackerNode{
+		key:      "child2",
+		Children: []*TrackerNode{},
 	}
 
-	root := &SimplifiedTrackerNode{
-		Key:      "root",
-		Children: []*SimplifiedTrackerNode{child1, child2},
+	root := &TrackerNode{
+		key:      "root",
+		Children: []*TrackerNode{child1, child2},
 	}
 	child1.Parent = root
 	child2.Parent = root

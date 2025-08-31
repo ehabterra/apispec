@@ -495,7 +495,10 @@ func callArgToString(arg CallArgument, parent *CallArgument) string {
 		return strings.Trim(arg.GetValue(), "\"")
 	case KindSelector:
 		if arg.X != nil {
-			return fmt.Sprintf("%s.%s", callArgToString(*arg.X, &arg), arg.Sel.GetName())
+			argX := callArgToString(*arg.X, &arg)
+			argX = strings.TrimPrefix(argX, "*")
+
+			return fmt.Sprintf("%s.%s", argX, arg.Sel.GetName())
 		}
 		return arg.Sel.GetName()
 	case KindCall:

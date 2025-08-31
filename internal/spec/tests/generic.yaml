@@ -19,7 +19,7 @@ string_pool:
   - func() T
   - r1/T/generic/src/generic/generic.go:12:2
   - r1/T/generic/src/generic/generic.go:12:4
-  - '*generic.Container[T].Value'
+  - generic.Container[T].Value
   - value
   - r1/T/generic/src/generic/generic.go:12:12
   - Set
@@ -211,7 +211,7 @@ packages:
                 scope: 15
                 filename: 16
                 assignments:
-                  '*generic.Container[T].Value':
+                  generic.Container[T].Value:
                     - variable_name: 20
                       pkg: 2
                       concrete_type: 6
@@ -868,7 +868,7 @@ packages:
             scope: 15
             filename: 16
             assignments:
-              '*generic.Container[T].Value':
+              generic.Container[T].Value:
                 - variable_name: 20
                   pkg: 2
                   concrete_type: 6
@@ -937,7 +937,7 @@ call_graph:
         position: 87
         resolved_type: -1
         generic_type_name: -1
-    callee_recv_var_name: '*generic.Container[T].Value'
+    callee_recv_var_name: generic.Container[T].Value
   - caller:
       name: 66
       pkg: 2

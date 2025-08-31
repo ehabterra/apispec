@@ -56,22 +56,9 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				TypeParamMap: map[string]string{
 					"T": "string",
 				},
-				ParamArgMap: map[string]metadata.CallArgument{
-					"user": {
-						Meta: nil, // Will be set after metadata is fully created
-						Kind: stringPool.Get(metadata.KindIdent),
-						Name: stringPool.Get("user"),
-						Type: stringPool.Get("User"),
-					},
-				},
 			},
 		},
 	}
-
-	// Now set the Meta field for the CallArgument in ParamArgMap
-	userArg := meta.CallGraph[0].ParamArgMap["user"]
-	userArg.Meta = meta
-	meta.CallGraph[0].ParamArgMap["user"] = userArg
 
 	cfg := DefaultSwagenConfig()
 	schemaMapper := NewSchemaMapper(cfg)
@@ -80,7 +67,7 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 	tests := []struct {
 		name     string
 		arg      metadata.CallArgument
-		context  *SimplifiedTrackerNode
+		context  *TrackerNode
 		expected string
 	}{
 		{
@@ -91,6 +78,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Name: stringPool.Get("user"),
 				Type: stringPool.Get("User"),
 			},
+			context: func() *TrackerNode {
+				node := &TrackerNode{}
+				node.CallGraphEdge = &meta.CallGraph[0]
+				return node
+			}(),
 			expected: "User",
 		},
 		{
@@ -102,6 +94,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Pkg:  stringPool.Get("main"),
 				Type: -1, // Explicitly set to -1 to force metadata lookup
 			},
+			context: func() *TrackerNode {
+				node := &TrackerNode{}
+				node.CallGraphEdge = &meta.CallGraph[0]
+				return node
+			}(),
 			expected: "User",
 		},
 		{
@@ -111,12 +108,14 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("T"),
 			},
-			context: &SimplifiedTrackerNode{
-				Edge: &meta.CallGraph[0],
-				TypeParamMap: map[string]string{
+			context: func() *TrackerNode {
+				node := &TrackerNode{}
+				node.CallGraphEdge = &meta.CallGraph[0]
+				node.typeParamMap = map[string]string{
 					"T": "string",
-				},
-			},
+				}
+				return node
+			}(),
 			expected: "string",
 		},
 		{
@@ -126,9 +125,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("user"),
 			},
-			context: &SimplifiedTrackerNode{
-				Edge: &meta.CallGraph[0],
-			},
+			context: func() *TrackerNode {
+				node := &TrackerNode{}
+				node.CallGraphEdge = &meta.CallGraph[0]
+				return node
+			}(),
 			expected: "User",
 		},
 		{
@@ -149,6 +150,9 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 					Type: stringPool.Get("User"),
 				},
 			},
+			context: &TrackerNode{
+				CallGraphEdge: &meta.CallGraph[0],
+			},
 			expected: "string",
 		},
 		{
@@ -162,6 +166,9 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 					Name: stringPool.Get("ptr"),
 					Type: stringPool.Get("*User"),
 				},
+			},
+			context: &TrackerNode{
+				CallGraphEdge: &meta.CallGraph[0],
 			},
 			expected: "User",
 		},
@@ -183,6 +190,11 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 					Type: stringPool.Get("int"),
 				},
 			},
+			context: func() *TrackerNode {
+				node := &TrackerNode{}
+				node.CallGraphEdge = &meta.CallGraph[0]
+				return node
+			}(),
 			expected: "map[string]int",
 		},
 		{
@@ -190,6 +202,9 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 			arg: metadata.CallArgument{
 				Meta: meta,
 				Kind: stringPool.Get(metadata.KindInterfaceType),
+			},
+			context: &TrackerNode{
+				CallGraphEdge: &meta.CallGraph[0],
 			},
 			expected: "interface{}",
 		},
