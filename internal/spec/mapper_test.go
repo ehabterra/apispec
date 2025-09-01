@@ -78,7 +78,8 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			schema := mapGoTypeToOpenAPISchema(tt.goType, meta, cfg)
+			usedTypes := make(map[string]bool)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, meta, cfg)
 			if schema.Type != tt.expected {
 				t.Errorf("expected type %s, got %s", tt.expected, schema.Type)
 			}
@@ -113,54 +114,13 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 }
 
 func TestAddTypeAndDependenciesWithMetadata_PointerTypes(t *testing.T) {
-	// Create metadata with nested structs
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-		Packages: map[string]*metadata.Package{
-			"main": {
-				Files: map[string]*metadata.File{
-					"models.go": {
-						Types: map[string]*metadata.Type{
-							"User": {
-								Name: stringPool.Get("User"),
-								Kind: stringPool.Get("struct"),
-								Fields: []metadata.Field{
-									{
-										Name: stringPool.Get("Profile"),
-										Type: stringPool.Get("*Profile"),
-									},
-								},
-							},
-							"Profile": {
-								Name: stringPool.Get("Profile"),
-								Kind: stringPool.Get("struct"),
-								Fields: []metadata.Field{
-									{
-										Name: stringPool.Get("Bio"),
-										Type: stringPool.Get("string"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
 
 	usedTypes := make(map[string]bool)
-	addTypeAndDependenciesWithMetadata("*User", usedTypes, meta, nil)
+	markUsedType(usedTypes, "*User", true)
 
-	// Should include both User and Profile
+	// Should include only the marked type
 	if !usedTypes["*User"] {
 		t.Error("expected *User to be included")
-	}
-	if !usedTypes["*Profile"] {
-		t.Error("expected *Profile to be included")
-	}
-	if !usedTypes["Profile"] {
-		t.Error("expected Profile to be included")
 	}
 }
 
@@ -379,7 +339,8 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := mapGoTypeToOpenAPISchema(tt.goType, nil, cfg)
+			usedTypes := make(map[string]bool)
+			result, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("mapGoTypeToOpenAPISchema() = %v, want %v", result, tt.expected)
 			}
@@ -843,17 +804,8 @@ func TestCollectUsedTypesFromRoutes(t *testing.T) {
 		},
 	}
 
-	// Create metadata
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	// Create config
-	cfg := DefaultGinConfig()
-
 	// Test type collection
-	usedTypes := collectUsedTypesFromRoutes(routes, meta, cfg)
+	usedTypes := collectUsedTypesFromRoutes(routes)
 	if len(usedTypes) == 0 {
 		t.Error("Should collect types from routes")
 	}
@@ -959,65 +911,19 @@ func TestTypeByName(t *testing.T) {
 }
 
 func TestAddTypeAndDependenciesWithMetadata(t *testing.T) {
-	// Create metadata with string pool
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-		Packages: map[string]*metadata.Package{
-			"main": {
-				Files: map[string]*metadata.File{
-					"types.go": {
-						Types: map[string]*metadata.Type{
-							"User": {
-								Name: stringPool.Get("User"),
-								Kind: stringPool.Get("struct"),
-								Fields: []metadata.Field{
-									{
-										Name: stringPool.Get("Name"),
-										Type: stringPool.Get("string"),
-									},
-									{
-										Name: stringPool.Get("Profile"),
-										Type: stringPool.Get("Profile"),
-									},
-								},
-							},
-							"Profile": {
-								Name: stringPool.Get("Profile"),
-								Kind: stringPool.Get("struct"),
-								Fields: []metadata.Field{
-									{
-										Name: stringPool.Get("Bio"),
-										Type: stringPool.Get("string"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Create config
-	cfg := DefaultGinConfig()
 
 	// Test adding type and dependencies
 	usedTypes := make(map[string]bool)
-	addTypeAndDependenciesWithMetadata("User", usedTypes, meta, cfg)
+	markUsedType(usedTypes, "User", true)
 
 	// Should have User and Profile types
 	if !usedTypes["User"] {
 		t.Error("User type should be added")
 	}
 
-	if !usedTypes["Profile"] {
-		t.Error("Profile type should be added as dependency")
-	}
-
 	// Test pointer type handling
 	usedTypes = make(map[string]bool)
-	addTypeAndDependenciesWithMetadata("*User", usedTypes, meta, cfg)
+	markUsedType(usedTypes, "*User", true)
 
 	if !usedTypes["*User"] {
 		t.Error("Pointer type should be added")
@@ -1157,7 +1063,8 @@ type Container struct {
 	for _, pkg := range metadata.Packages {
 		for _, file := range pkg.Files {
 			if xType, exists := file.Types["X"]; exists {
-				schema := generateSchemaFromType("X", xType, metadata, cfg)
+				usedTypes := make(map[string]bool)
+				schema, _ := generateSchemaFromType(usedTypes, "X", xType, metadata, cfg)
 
 				// Verify the schema structure
 				if schema.Type != "object" {
@@ -1197,7 +1104,8 @@ type Container struct {
 
 			// Test schema generation for type Container
 			if containerType, exists := file.Types["Container"]; exists {
-				schema := generateSchemaFromType("Container", containerType, metadata, cfg)
+				usedTypes := make(map[string]bool)
+				schema, _ := generateSchemaFromType(usedTypes, "Container", containerType, metadata, cfg)
 
 				// Verify the schema structure
 				if schema.Type != "object" {

@@ -383,6 +383,7 @@ func TestProcessFunctionReturnTypes_CallGraph(t *testing.T) {
 		Fun: &CallArgument{
 			Kind: metadata.StringPool.Get(KindIdent),
 			Name: metadata.StringPool.Get("NewUser"),
+			Pkg:  metadata.StringPool.Get("main"),
 			Meta: metadata,
 		},
 		Meta: metadata,

@@ -544,6 +544,11 @@ func (a *CallArgument) GetResolvedType() string {
 	if a.ResolvedType >= 0 && a.Meta.StringPool != nil {
 		return a.Meta.StringPool.GetString(a.ResolvedType)
 	}
+
+	if a.Meta != nil {
+		a.Meta.processFunctionCallReturnType(a)
+	}
+
 	return ""
 }
 
@@ -1336,6 +1341,9 @@ func (m *Metadata) processCallGraphReturnTypes() {
 
 // processFunctionCallReturnType processes a function call argument to set its ResolvedType
 func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
+	if arg.Sel != nil {
+		m.processFunctionCallReturnType(arg.Sel)
+	}
 	if arg.Fun == nil {
 		return
 	}
@@ -1344,18 +1352,32 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 	arg.Fun.Meta = m
 
 	// Try to find the function being called
-	funcName := arg.Fun.GetName()
+	var funcName, pkgName string
+
+	switch arg.Fun.GetKind() {
+	case KindSelector:
+		funcName = arg.Fun.Sel.GetName()
+		pkgName = arg.Fun.GetPkg()
+	case KindCall:
+		funcName = arg.GetName()
+		pkgName = arg.GetPkg()
+	case KindIdent:
+		funcName = arg.Fun.GetName()
+		pkgName = arg.Fun.GetPkg()
+	}
+
 	if funcName == "" {
 		return
 	}
 
 	// Look for the function in metadata
-	for _, pkg := range m.Packages {
+	if pkg, exists := m.Packages[pkgName]; exists {
 		for _, file := range pkg.Files {
 			// Check functions
 			if fn, exists := file.Functions[funcName]; exists {
 				if fn.Signature.ResolvedType != -1 {
 					arg.SetResolvedType(fn.Signature.GetResolvedType())
+					arg.Fun.SetResolvedType(fn.Signature.GetResolvedType())
 				}
 				return
 			}
@@ -1366,6 +1388,7 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 					if m.StringPool.GetString(method.Name) == funcName {
 						if method.Signature.ResolvedType != -1 {
 							arg.SetResolvedType(method.Signature.GetResolvedType())
+							arg.Fun.SetResolvedType(method.Signature.GetResolvedType())
 						}
 						return
 					}

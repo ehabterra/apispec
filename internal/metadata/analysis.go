@@ -22,7 +22,7 @@ func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
 }
 
 // getEnclosingFunctionName finds the function that contains a given position
-func getEnclosingFunctionName(file *ast.File, pos token.Pos) (string, string) {
+func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info) (string, string) {
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok {
@@ -34,7 +34,7 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos) (string, string) {
 			// Check if this is a method (has a receiver)
 			if fn.Recv != nil && len(fn.Recv.List) > 0 {
 				recv := fn.Recv.List[0]
-				recvType := getTypeName(recv.Type)
+				recvType := getTypeName(recv.Type, info)
 				parts = append(parts, recvType)
 			}
 
@@ -191,7 +191,7 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 		// Fallback: just get type name
 		arg := NewCallArgument(metadata)
 		arg.SetKind(KindIdent)
-		arg.SetType(getTypeName(e))
+		arg.SetType(getTypeName(e, info))
 		return pkgName, arg
 
 	case *ast.CallExpr:

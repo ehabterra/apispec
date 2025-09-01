@@ -10,7 +10,7 @@ const (
 	defaultRequestContentType  = "application/json"
 	defaultResponseContentType = "application/json"
 	defaultResponseStatus      = 200
-	primitiveObjectIDType      = "primitive.ObjectID"
+	primitiveObjectIDType      = "go.mongodb.org/mongo-driver/bson/primitive.ObjectID"
 	primitiveObjectIDFormat    = "objectid"
 )
 
