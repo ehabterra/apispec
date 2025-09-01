@@ -17,6 +17,8 @@
 - **Configurable**: YAML config plus CLI flags; flags always win.
 - **Visualize**: Optional HTML call-graph diagram for debugging.
 - **Extensible**: Pattern-based framework config; add new frameworks without changing core logic.
+- **Smart Type Resolution**: Automatically resolves underlying primitive types for aliases and enums. <strong style="color:green;">✨NEW</strong>
+- **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs. <strong style="color:green;">✨NEW</strong>
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
@@ -24,7 +26,8 @@
 Swagen focuses on practical coverage for real-world services. Current coverage includes:
 
 - [x] **Alias imports**: supports import aliases in analysis.
-- [ ] **Alias types**: type aliases are detected but may need manual typeMapping for desired schema.
+- [x] **Alias types**: type aliases are detected and resolved to underlying primitive types. <strong style="color:green;">✨NEW</strong>
+- [x] **Enum resolution**: automatically resolves enum types to their underlying primitive types (string, int, etc.). <strong style="color:green;">✨NEW</strong>
 - [x] **Assignment and alias tracking**: short `:=`, `=`, multi-assign, tuple returns, latest-wins resolution, alias chains, and shadowing.
 - [ ] **Conditional methods**: detecting HTTP methods set via switch/if around net/http `Handle`/`HandleFunc` is not supported.
 - [x] **Composite literals / maps / slices / arrays**: recognizes literal and container types for schema mapping.
@@ -41,8 +44,51 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 - [x] **Pointers and dereference**: detects `*T` and automatically dereferences when configured.
 - [x] **Selectors and field access**: resolves `pkg.Type.Field` and nested selectors where possible.
 - [x] **Struct fields**: reads field types, embedded fields, and struct tags (`json`, `xml`, `form`, etc.).
-- [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation.
-- [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers.
+- [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation. <strong style="color:green;">✨NEW</strong>
+- [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers. <strong style="color:green;">✨NEW</strong>
+
+### Type Resolution Examples
+
+Swagen automatically resolves underlying types for aliases and enums:
+
+```go
+// Enum types are resolved to their underlying primitive type
+type AllowedUserType string
+
+const (
+    UserTypeAdmin AllowedUserType = "admin"
+    UserTypeCustomer AllowedUserType = "user"
+)
+
+// In your struct, AllowedUserTypes will be resolved to []string
+type Permission struct {
+    ID                string
+    Resource          string
+    Operation         string
+    AllowedUserTypes  []domain.AllowedUserType  // Resolves to []string
+}
+
+// Generated OpenAPI schema:
+// AllowedUserTypes:
+//   type: array
+//   items:
+//     type: string
+//     enum: ["admin", "user"]
+```
+
+```go
+// Pointer aliases are also resolved
+type UserID *int64
+
+type User struct {
+    ID UserID  // Resolves to integer
+}
+
+// Generated OpenAPI schema:
+// ID:
+//   type: integer
+//   format: int64
+```
 
 ## Architecture Overview
 
@@ -181,41 +227,142 @@ func main() {
 ```yaml
 openapi: 3.1.0
 info:
-  title: My API
+  title: User Management API
   version: 1.0.0
+  description: API for managing users and permissions
 paths:
   /users:
     get:
       summary: List users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         '200':
           description: List of users
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+    post:
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request data
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
 components:
   schemas:
     User:
       type: object
       properties:
         id:
-          type: integer
+          type: string
+          format: uuid
         name:
           type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: ["active", "inactive", "pending"]
+        createdAt:
+          type: string
+          format: date-time
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: ["admin", "user", "driver", "store_manager", "picker"]
+      required: ["id", "name", "email"]
+    CreateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        permissions:
+          type: array
+          items:
+            type: string
+      required: ["name", "email"]
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+        totalPages:
+          type: integer
 ```
 
 ## Configuration
 
-Swagen uses YAML configuration files to define framework patterns and behavior. Here's an example for Gin:
+Swagen uses YAML configuration files to define framework patterns and behavior. Here are examples for different frameworks:
+
+### Gin Framework Configuration
 
 ```yaml
 # Example Gin configuration (swagen.yaml)
 info:
   title: My API
   version: 1.0.0
+  description: A comprehensive API for user management
 
 framework:
   routePatterns:
@@ -264,16 +411,120 @@ framework:
       routerFromArg: true
       isMount: true
 
+# Type mappings for custom types and external packages
 typeMapping:
   - goType: time.Time
     openapiType:
       type: string
       format: date-time
+  - goType: uuid.UUID
+    openapiType:
+      type: string
+      format: uuid
+  - goType: decimal.Decimal
+    openapiType:
+      type: string
+      format: decimal
 
+# External types that can't be introspected automatically
 externalTypes:
   - name: github.com/gin-gonic/gin.H
     openapiType:
       type: object
+      additionalProperties: true
+  - name: github.com/your-package/CustomResponse
+    openapiType:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        message:
+          type: string
+```
+
+### Echo Framework Configuration
+
+```yaml
+# Example Echo configuration
+framework:
+  routePatterns:
+    - callRegex: ^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$
+      recvTypeRegex: ^github\.com/labstack/echo\.\*(Echo|Group)$
+      handlerArgIndex: 1
+      methodFromCall: true
+      pathFromArg: true
+      handlerFromArg: true
+  requestBodyPatterns:
+    - callRegex: ^(?i)(Bind|BindJSON|BindXML|BindYAML)$
+      typeFromArg: true
+      deref: true
+  responsePatterns:
+    - callRegex: ^(?i)(JSON|String|XML|YAML|Blob|File|Stream)$
+      typeArgIndex: 1
+      statusFromArg: true
+      typeFromArg: true
+  paramPatterns:
+    - callRegex: ^Param$
+      paramIn: path
+    - callRegex: ^QueryParam$
+      paramIn: query
+    - callRegex: ^FormValue$
+      paramIn: formData
+```
+
+### Advanced Configuration Examples
+
+#### Custom Type Resolution
+
+```yaml
+# Handle custom domain types
+typeMapping:
+  - goType: domain.UserStatus
+    openapiType:
+      type: string
+      enum: ["active", "inactive", "pending"]
+  - goType: domain.Priority
+    openapiType:
+      type: integer
+      enum: [1, 2, 3, 4, 5]
+  - goType: []domain.Tag
+    openapiType:
+      type: array
+      items:
+        type: string
+```
+
+#### External Package Types
+
+```yaml
+# Define schemas for external packages
+externalTypes:
+  - name: github.com/your-org/shared.Response
+    openapiType:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+  - name: github.com/your-org/shared.Pagination
+    openapiType:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
 ```
 
 ## Development Guide
@@ -312,11 +563,34 @@ make test
 # Run tests with coverage
 make coverage
 
+# Run comprehensive mapper tests
+go test ./internal/spec -v -run "Test.*Comprehensive"
+
 # Build the binary
 make build
 
 # Update coverage badge
 make update-badge
+```
+
+### Testing
+
+Swagen includes comprehensive test suites covering:
+- **Unit tests** for all packages
+- **Integration tests** for framework detection and OpenAPI generation
+- **Comprehensive mapper tests** for edge cases and type resolution
+- **Framework-specific tests** for Gin, Echo, Chi, and Fiber
+
+Run specific test categories:
+```bash
+# Test mapper functionality
+go test ./internal/spec -v
+
+# Test metadata extraction
+go test ./internal/metadata -v
+
+# Test with coverage
+go test ./... -cover
 ```
 
 ## Contributing

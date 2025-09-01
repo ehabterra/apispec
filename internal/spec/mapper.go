@@ -268,7 +268,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes
 	}
 
 	// Collect all types used in routes
-	usedTypes := collectUsedTypesFromRoutes(routes, meta, cfg)
+	usedTypes := collectUsedTypesFromRoutes(routes)
 
 	// Generate schemas for used types
 	generateSchemas(usedTypes, cfg, components, meta)
@@ -319,7 +319,7 @@ func generateSchemas(usedTypes map[string]bool, cfg *SwagenConfig, components Co
 }
 
 // collectUsedTypesFromRoutes collects all types used in routes
-func collectUsedTypesFromRoutes(routes []RouteInfo, meta *metadata.Metadata, cfg *SwagenConfig) map[string]bool {
+func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]bool {
 	usedTypes := make(map[string]bool)
 
 	for _, route := range routes {

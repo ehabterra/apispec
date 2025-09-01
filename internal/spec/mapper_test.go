@@ -804,17 +804,8 @@ func TestCollectUsedTypesFromRoutes(t *testing.T) {
 		},
 	}
 
-	// Create metadata
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	// Create config
-	cfg := DefaultGinConfig()
-
 	// Test type collection
-	usedTypes := collectUsedTypesFromRoutes(routes, meta, cfg)
+	usedTypes := collectUsedTypesFromRoutes(routes)
 	if len(usedTypes) == 0 {
 		t.Error("Should collect types from routes")
 	}
