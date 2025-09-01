@@ -145,7 +145,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 				if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
 					continue
 				}
-				recvType := getTypeName(fn.Recv.List[0].Type)
+				recvType := getTypeName(fn.Recv.List[0].Type, info)
 
 				// Extract type parameter names for generics
 				typeParams := []string{}
@@ -851,7 +851,7 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 
 			// Add methods for non-interface types
 			if t.Kind != metadata.StringPool.Get("interface") {
-				specName := getTypeName(tspec)
+				specName := getTypeName(tspec, info)
 				t.Methods = allTypeMethods[specName]
 				t.Methods = append(t.Methods, allTypeMethods["*"+specName]...)
 			}
@@ -866,7 +866,7 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 	switch ut := tspec.Type.(type) {
 	case *ast.StructType:
 		t.Kind = metadata.StringPool.Get("struct")
-		processStructFields(ut, metadata, t)
+		processStructFields(ut, metadata, t, info)
 		allTypes[tspec.Name.Name] = t
 
 	case *ast.InterfaceType:
@@ -886,9 +886,9 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 }
 
 // processStructFields processes fields of a struct type
-func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type) {
+func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type, info *types.Info) {
 	for _, field := range structType.Fields.List {
-		fieldType := getTypeName(field.Type)
+		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
 		comments := getComments(field)
 
@@ -917,7 +917,7 @@ func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type
 					Scope:    metadata.StringPool.Get(getScope(name.Name)),
 					Comments: metadata.StringPool.Get(comments),
 				}
-				processStructFields(structTypeExpr, metadata, nestedType)
+				processStructFields(structTypeExpr, metadata, nestedType, info)
 				f.NestedType = nestedType
 			}
 
@@ -1042,7 +1042,7 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 				v := &Variable{
 					Name:     metadata.StringPool.Get(name.Name),
 					Tok:      metadata.StringPool.Get(tok),
-					Type:     metadata.StringPool.Get(getTypeName(vspec.Type)),
+					Type:     metadata.StringPool.Get(getTypeName(vspec.Type, info)),
 					Position: metadata.StringPool.Get(getVarPosition(name, fset)),
 					Comments: metadata.StringPool.Get(comments),
 				}
@@ -1070,7 +1070,7 @@ func processStructInstances(file *ast.File, info *types.Info, pkgName string, fs
 
 // processStructInstance processes a struct literal
 func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName string, fset *token.FileSet, f *File, constMap map[string]string, metadata *Metadata) {
-	typeName := getTypeName(cl.Type)
+	typeName := getTypeName(cl.Type, info)
 	if typeName == "" {
 		return
 	}
@@ -1090,8 +1090,8 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 
 			// Check if this might be an interface assignment
 			// Look for patterns like: InterfaceName: &concreteImpl{...}
-			if isEmbeddedInterfaceAssignment(kv) {
-				registerEmbeddedInterfaceResolution(kv, typeName, pkgName, metadata, fset)
+			if isEmbeddedInterfaceAssignment(kv, info) {
+				registerEmbeddedInterfaceResolution(kv, typeName, pkgName, metadata, info, fset)
 			}
 
 			fields[metadata.StringPool.Get(key)] = metadata.StringPool.Get(val)
@@ -1126,7 +1126,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 		}
 
 		// Find the enclosing function name for this assignment
-		funcName, _ := getEnclosingFunctionName(file, assign.Pos())
+		funcName, _ := getEnclosingFunctionName(file, assign.Pos(), info)
 
 		// Handle identifier assignments (var = ...)
 		switch expr := lhsExpr.(type) {
@@ -1263,7 +1263,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 
 // processCallExpression processes a function call expression
 func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, parentAssign *ast.AssignStmt, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
-	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos())
+	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
 	if callerFunc != "" && calleeFunc != "" {
@@ -1467,7 +1467,7 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []Cal
 								if typeOfTypeArg := info.TypeOf(typeArgExpr); typeOfTypeArg != nil {
 									typeParamMap[name] = typeOfTypeArg.String()
 								} else {
-									typeParamMap[name] = getTypeName(typeArgExpr)
+									typeParamMap[name] = getTypeName(typeArgExpr, info)
 								}
 							}
 						}
@@ -1646,14 +1646,14 @@ func applyTypeParameterResolutionToArgument(arg *CallArgument, paramArgMap map[s
 }
 
 // isEmbeddedInterfaceAssignment checks if a key-value pair represents an interface assignment
-func isEmbeddedInterfaceAssignment(kv *ast.KeyValueExpr) bool {
+func isEmbeddedInterfaceAssignment(kv *ast.KeyValueExpr, info *types.Info) bool {
 	// Check if the value is a concrete type assignment (like &concreteType{...})
 	switch val := kv.Value.(type) {
 	case *ast.UnaryExpr:
 		// Handle &concreteType{...} patterns
 		if val.Op == token.AND {
 			if compositeLit, ok := val.X.(*ast.CompositeLit); ok {
-				concreteType := getTypeName(compositeLit.Type)
+				concreteType := getTypeName(compositeLit.Type, info)
 				if concreteType != "" && !strings.Contains(concreteType, ".") {
 					// This looks like an interface assignment
 					return true
@@ -1662,7 +1662,7 @@ func isEmbeddedInterfaceAssignment(kv *ast.KeyValueExpr) bool {
 		}
 	case *ast.CompositeLit:
 		// Handle direct struct literals
-		concreteType := getTypeName(val.Type)
+		concreteType := getTypeName(val.Type, info)
 		if concreteType != "" && !strings.Contains(concreteType, ".") {
 			return true
 		}
@@ -1672,7 +1672,7 @@ func isEmbeddedInterfaceAssignment(kv *ast.KeyValueExpr) bool {
 }
 
 // registerEmbeddedInterfaceResolution registers an interface-to-concrete type mapping
-func registerEmbeddedInterfaceResolution(kv *ast.KeyValueExpr, structTypeName, pkgName string, metadata *Metadata, fset *token.FileSet) {
+func registerEmbeddedInterfaceResolution(kv *ast.KeyValueExpr, structTypeName, pkgName string, metadata *Metadata, info *types.Info, fset *token.FileSet) {
 	// Get the interface field name
 	fieldName := ""
 	if ident, ok := kv.Key.(*ast.Ident); ok {
@@ -1688,12 +1688,12 @@ func registerEmbeddedInterfaceResolution(kv *ast.KeyValueExpr, structTypeName, p
 		// Handle &concreteType{...} patterns
 		if val.Op == token.AND {
 			if compositeLit, ok := val.X.(*ast.CompositeLit); ok {
-				concreteType = "*" + getTypeName(compositeLit.Type)
+				concreteType = "*" + getTypeName(compositeLit.Type, info)
 			}
 		}
 	case *ast.CompositeLit:
 		// Handle direct struct literals
-		concreteType = getTypeName(val.Type)
+		concreteType = getTypeName(val.Type, info)
 	}
 
 	if concreteType != "" && fieldName != "" {

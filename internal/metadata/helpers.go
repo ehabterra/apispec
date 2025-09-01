@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"strings"
 )
 
@@ -13,7 +14,7 @@ const (
 )
 
 // getTypeName extracts a type name from an AST expression
-func getTypeName(nd ast.Node) string {
+func getTypeName(nd ast.Node, info *types.Info) string {
 	if nd == nil {
 		return ""
 	}
@@ -23,7 +24,7 @@ func getTypeName(nd ast.Node) string {
 		var list string
 
 		if t.TypeParams != nil {
-			list = getTypeName(t.TypeParams)
+			list = getTypeName(t.TypeParams, info)
 		}
 
 		return t.Name.Name + list
@@ -38,18 +39,24 @@ func getTypeName(nd ast.Node) string {
 	case *ast.Ident:
 		return t.Name
 	case *ast.StarExpr:
-		return "*" + getTypeName(t.X)
+		return "*" + getTypeName(t.X, info)
 	case *ast.IndexExpr:
-		return fmt.Sprintf("%s[%s]", getTypeName(t.X), getTypeName(t.Index))
+		return fmt.Sprintf("%s[%s]", getTypeName(t.X, info), getTypeName(t.Index, info))
 	case *ast.SelectorExpr:
 		if x, ok := t.X.(*ast.Ident); ok {
+			if obj := info.ObjectOf(x); obj != nil {
+				if pkg, ok := obj.(*types.PkgName); ok {
+					return pkg.Imported().Path() + "." + t.Sel.Name
+				}
+				return obj.Name() + "." + t.Sel.Name
+			}
 			return x.Name + "." + t.Sel.Name
 		}
 		return t.Sel.Name
 	case *ast.ArrayType:
-		return "[]" + getTypeName(t.Elt)
+		return "[]" + getTypeName(t.Elt, info)
 	case *ast.MapType:
-		return "map[" + getTypeName(t.Key) + "]" + getTypeName(t.Value)
+		return "map[" + getTypeName(t.Key, info) + "]" + getTypeName(t.Value, info)
 	case *ast.InterfaceType:
 		return "interface{}"
 	case *ast.StructType:
@@ -61,11 +68,11 @@ func getTypeName(nd ast.Node) string {
 	case *ast.ChanType:
 		switch t.Dir {
 		case ast.SEND:
-			return "chan<- " + getTypeName(t.Value)
+			return "chan<- " + getTypeName(t.Value, info)
 		case ast.RECV:
-			return "<-chan " + getTypeName(t.Value)
+			return "<-chan " + getTypeName(t.Value, info)
 		}
-		return "chan " + getTypeName(t.Value)
+		return "chan " + getTypeName(t.Value, info)
 	}
 	return ""
 }

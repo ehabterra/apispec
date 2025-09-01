@@ -384,8 +384,8 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 			bodyType = determineLiteralType(bodyType)
 		} else {
 			// Check for resolved type information in the CallArgument
-			if arg.ResolvedType != -1 {
-				bodyType = arg.GetResolvedType()
+			if resolvedType := arg.GetResolvedType(); resolvedType != "" {
+				bodyType = resolvedType
 			} else if arg.IsGenericType && arg.GenericTypeName != -1 {
 				// If it's a generic type, try to resolve it from the edge's type parameters
 				if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
@@ -503,8 +503,8 @@ func (b *BasePatternMatcher) findAssignmentFunction(arg metadata.CallArgument) *
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
 func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
-	if arg.ResolvedType != -1 {
-		return arg.GetResolvedType()
+	if resolvedType := arg.GetResolvedType(); resolvedType != "" {
+		return resolvedType
 	}
 
 	typeParts := TypeParts(originalType)

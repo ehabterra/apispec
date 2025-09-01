@@ -174,10 +174,10 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		if arg.X != nil {
 			var pkgKey string
 
-			if arg.X.GetType() == "" && strings.HasSuffix(arg.X.GetPkg(), arg.X.GetName()) {
-				pkgKey = arg.X.GetPkg()
-			} else {
+			if arg.X.Type == -1 && !strings.HasSuffix(arg.X.GetPkg(), arg.X.GetName()) {
 				pkgKey = arg.X.GetPkg() + "/" + arg.X.GetName()
+			} else {
+				pkgKey = arg.X.GetPkg()
 			}
 
 			if pkg, exists := c.meta.Packages[pkgKey]; exists {
@@ -208,6 +208,10 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 			if arg.GetPkg() != "" {
 				argName = arg.GetPkg() + separator + arg.GetName()
 			}
+
+			// if resolvedType := arg.GetResolvedType(); resolvedType != "" {
+			// 	argName = resolvedType
+			// }
 
 			typeParams := arg.TypeParams()
 			if len(typeParams) > 0 {
