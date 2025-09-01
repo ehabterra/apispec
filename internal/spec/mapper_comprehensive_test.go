@@ -856,13 +856,6 @@ func TestSetOperationOnPathItem_Comprehensive(t *testing.T) {
 	}
 }
 
-// Helper function to create a mock tracker tree with metadata
-func createMockTrackerTree(meta *metadata.Metadata) TrackerTreeInterface {
-	return &MockTrackerTree{
-		meta: meta,
-	}
-}
-
 // TestMapGoTypeToOpenAPISchema_Comprehensive tests type mapping with various scenarios
 func TestMapGoTypeToOpenAPISchema_Comprehensive(t *testing.T) {
 	tests := []struct {
@@ -1107,7 +1100,9 @@ func testMapGoTypeToOpenAPISchema_NilMetadata(t *testing.T) {
 	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
 	if schema == nil {
 		t.Error("Expected non-nil schema")
+		return
 	}
+
 	if schema.Ref == "" {
 		t.Error("Expected reference schema for unknown type")
 	}
