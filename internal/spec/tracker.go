@@ -283,19 +283,22 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 
 	for _, assignment := range assignmentRelationships {
 		recvVarName := getString(meta, assignment.Assignment.VariableName)
+		pkgStr := getString(meta, assignment.Assignment.Pkg)
+		typeStr := getString(meta, assignment.Assignment.ConcreteType)
+		funcStr := getString(meta, assignment.Assignment.Func)
 
 		akey := assignmentKey{
 			Name:      recvVarName,
-			Pkg:       getString(meta, assignment.Assignment.Pkg),
-			Type:      getString(meta, assignment.Assignment.ConcreteType),
-			Container: getString(meta, assignment.Assignment.Func),
+			Pkg:       pkgStr,
+			Type:      typeStr,
+			Container: funcStr,
 		}
 
-		switch assignment.Assignment.Lhs.GetKind() {
-		case metadata.KindSelector:
-			if assignment.Assignment.Lhs.X != nil && assignment.Assignment.Lhs.X.Type != -1 {
-				akey.Container = assignment.Assignment.Lhs.X.GetType()
-			}
+		// Handle selector assignments more efficiently
+		if assignment.Assignment.Lhs.GetKind() == metadata.KindSelector &&
+			assignment.Assignment.Lhs.X != nil &&
+			assignment.Assignment.Lhs.X.Type != -1 {
+			akey.Container = getString(meta, assignment.Assignment.Lhs.X.Type)
 		}
 
 		assignmentIndex[akey] = &TrackerNode{
@@ -304,31 +307,31 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 		}
 	}
 
-	// Search for assignments
+	// Search for assignments and variables - optimized batch processing
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 
+		// Cache string lookups to avoid repeated calls
 		calleeName := getString(meta, edge.Callee.Name)
-
-		// t.variableRelationships = meta.GetVariableRelationships()
+		calleePkg := getString(meta, edge.Callee.Pkg)
 
 		for param, arg := range edge.ParamArgMap {
 			// Enhanced variable tracing and assignment linking
 			_, _, originArg, _ := metadata.TraceVariableOrigin(
 				param,
-				getString(meta, edge.Callee.Name),
-				getString(meta, edge.Callee.Pkg),
+				calleeName, // Use cached value
+				calleePkg,  // Use cached value
 				meta,
 			)
 
-			pkey := paramKey{
-				Name:      param,
-				Pkg:       getString(meta, edge.Callee.Pkg),
-				Container: calleeName,
-			}
-
 			if originArg == nil {
 				continue
+			}
+
+			pkey := paramKey{
+				Name:      param,
+				Pkg:       calleePkg,  // Use cached value
+				Container: calleeName, // Use cached value
 			}
 
 			t.variableNodes[pkey] = &TrackerNode{
@@ -1013,23 +1016,29 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 				if childNode.CallGraphEdge != nil && childNode.CalleeVarName != "" && edge.Callee.RecvType != -1 {
 					funcName := getString(meta, edge.Caller.Name)
 					callerPkg := getString(meta, edge.Caller.Pkg)
-
-					calleeRecvType := getString(meta, edge.Callee.RecvType)
 					calleePkg := getString(meta, edge.Callee.Pkg)
-					if calleeRecvType != "" {
-						// Resolve interface types to concrete types using interface resolution
-						concreteRecvType := tree.ResolveInterfaceFromMetadata(calleeRecvType, "", calleePkg)
-						if concreteRecvType != calleeRecvType {
-							calleeRecvType = concreteRecvType
-						}
 
-						if strings.HasPrefix(calleeRecvType, "*") {
-							calleeRecvType = "*" + calleePkg + "." + calleeRecvType[1:]
-						} else {
-							calleeRecvType = calleePkg + "." + calleeRecvType
+					// Optimize receiver type resolution
+					var calleeRecvType string
+					if edge.Callee.RecvType != -1 {
+						calleeRecvType = getString(meta, edge.Callee.RecvType)
+						if calleeRecvType != "" {
+							// Resolve interface types to concrete types using interface resolution
+							concreteRecvType := tree.ResolveInterfaceFromMetadata(calleeRecvType, "", calleePkg)
+							if concreteRecvType != calleeRecvType {
+								calleeRecvType = concreteRecvType
+							}
+
+							// Build fully qualified type name efficiently
+							if strings.HasPrefix(calleeRecvType, "*") {
+								calleeRecvType = "*" + calleePkg + "." + calleeRecvType[1:]
+							} else {
+								calleeRecvType = calleePkg + "." + calleeRecvType
+							}
 						}
 					}
 
+					// Trace variable origin once and cache results
 					originVar, originPkg, _, originFunc := metadata.TraceVariableOrigin(
 						edge.CalleeVarName,
 						funcName,
@@ -1037,19 +1046,24 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 						meta,
 					)
 
-					if parent, ok := (*assignmentIndex)[assignmentKey{
-						Name:      originVar,
-						Pkg:       originPkg,
-						Type:      calleeRecvType,
-						Container: originFunc,
-					}]; ok {
-						parent.Children = append(parent.Children, childNode)
+					// Link to assignment node if found
+					if originVar != "" && originPkg != "" && originFunc != "" {
+						assignmentKey := assignmentKey{
+							Name:      originVar,
+							Pkg:       originPkg,
+							Type:      calleeRecvType,
+							Container: originFunc,
+						}
+						if parent, ok := (*assignmentIndex)[assignmentKey]; ok {
+							parent.Children = append(parent.Children, childNode)
+						}
 					}
 
+					// Link to variable node if found
 					pkey := paramKey{
 						Name:      edge.CalleeVarName,
-						Pkg:       getString(meta, edge.Caller.Pkg),
-						Container: getString(meta, edge.Caller.Name),
+						Pkg:       callerPkg, // Use cached value
+						Container: funcName,  // Use cached value
 					}
 
 					if parent, ok := tree.variableNodes[pkey]; ok {
