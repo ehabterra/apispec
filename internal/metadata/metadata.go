@@ -396,11 +396,7 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 		edge := &m.CallGraph[i]
 
 		callerName := m.StringPool.GetString(edge.Caller.Name)
-		calleeName := m.StringPool.GetString(edge.Callee.Name)
 		callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
-
-		// TODO: remove this
-		_ = calleeName
 
 		// Get root assignments
 		if pkg, ok := m.Packages[callerPkg]; ok {
@@ -1282,6 +1278,33 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// This is crucial for getting the *declared* generic type parameters
 		extractParamsAndTypeParams(call, info, args, paramArgMap, typeParamMap)
 
+		cgEdge := &CallGraphEdge{
+			Args:         args,
+			Position:     metadata.StringPool.Get(getPosition(call.Pos(), fset)),
+			ParamArgMap:  paramArgMap,
+			TypeParamMap: typeParamMap,
+			meta:         metadata,
+		}
+
+		cgEdge.Caller = *cgEdge.NewCall(
+			metadata.StringPool.Get(callerFunc),
+			metadata.StringPool.Get(pkgName),
+			-1, // No position for caller
+			metadata.StringPool.Get(callerParts),
+		)
+
+		cgEdge.Callee = *cgEdge.NewCall(
+			metadata.StringPool.Get(calleeFunc),
+			metadata.StringPool.Get(calleePkg),
+			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
+			metadata.StringPool.Get(calleeParts),
+		)
+		// Use instance ID for calleeMap indexing to avoid conflicts
+		calleeInstance := cgEdge.Callee.InstanceID()
+		if _, ok := calleeMap[calleeInstance]; ok {
+			return
+		}
+
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
 
@@ -1338,46 +1361,48 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		// Create the call graph edge
 		var calleeVarName string
+		var chainParent *CallGraphEdge
+		var chainRoot string
+		var chainDepth int
+
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 			if ident, ok := sel.X.(*ast.Ident); ok && ident.Obj != nil {
-				// This identifies the variable name of the receiver for method calls (e.g., "myStruct.Method()")
+				// Simple method call on a variable (e.g., "app.Method()")
 				calleeVarName = ident.Name
+				chainRoot = ident.Name
+				chainDepth = 0
+			} else if chainCall, ok := sel.X.(*ast.CallExpr); ok {
+				// Chained method call (e.g., "app.Group().Use()")
+				// Find the parent call in our current callees
+				processCallExpression(chainCall, file, pkgs, pkgName, parentAssign, fileToInfo, funcMap, fset, metadata, info, calleeMap, argMap)
+				chainParent = &metadata.CallGraph[len(metadata.CallGraph)-1]
+				chainRoot = chainParent.CalleeVarName
+				chainDepth = chainParent.ChainDepth + 1
+
+				// Fallback: try to extract root variable from the chain
+				if chainRoot == "" {
+					if rootVar := extractRootVariable(sel.X); rootVar != "" {
+						calleeVarName = rootVar
+						chainRoot = rootVar
+						chainDepth = 1
+					}
+				}
 			}
 		}
 
-		cgEdge := CallGraphEdge{
-			Position:          metadata.StringPool.Get(getPosition(call.Pos(), fset)),
-			Args:              args,
-			AssignmentMap:     assignmentsInFunc,
-			ParamArgMap:       paramArgMap,
-			TypeParamMap:      typeParamMap,
-			CalleeVarName:     calleeVarName,
-			CalleeRecvVarName: assignVarName,
-			meta:              metadata,
-		}
-
-		cgEdge.Caller = *cgEdge.NewCall(
-			metadata.StringPool.Get(callerFunc),
-			metadata.StringPool.Get(pkgName),
-			-1, // No position for caller
-			metadata.StringPool.Get(callerParts),
-		)
-
-		cgEdge.Callee = *cgEdge.NewCall(
-			metadata.StringPool.Get(calleeFunc),
-			metadata.StringPool.Get(calleePkg),
-			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
-			metadata.StringPool.Get(calleeParts),
-		)
+		cgEdge.AssignmentMap = assignmentsInFunc
+		cgEdge.CalleeVarName = calleeVarName
+		cgEdge.CalleeRecvVarName = assignVarName
+		cgEdge.ChainParent = chainParent
+		cgEdge.ChainRoot = chainRoot
+		cgEdge.ChainDepth = chainDepth
 
 		// Apply type parameter resolution
-		applyTypeParameterResolution(&cgEdge)
+		applyTypeParameterResolution(cgEdge)
 
-		// Use instance ID for calleeMap indexing to avoid conflicts
-		calleeInstance := cgEdge.Callee.InstanceID()
-		calleeMap[calleeInstance] = &cgEdge
+		calleeMap[calleeInstance] = cgEdge
 
-		metadata.CallGraph = append(metadata.CallGraph, cgEdge)
+		metadata.CallGraph = append(metadata.CallGraph, *cgEdge)
 	}
 }
 
@@ -1404,6 +1429,21 @@ func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File,
 	}
 
 	return astFile
+}
+
+// extractRootVariable recursively extracts the root variable from a chained expression
+func extractRootVariable(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name
+	case *ast.SelectorExpr:
+		return extractRootVariable(e.X)
+	case *ast.CallExpr:
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok {
+			return extractRootVariable(sel.X)
+		}
+	}
+	return ""
 }
 
 func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []CallArgument, paramArgMap map[string]CallArgument, typeParamMap map[string]string) {

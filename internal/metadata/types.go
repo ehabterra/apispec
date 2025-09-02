@@ -855,6 +855,11 @@ type CallGraphEdge struct {
 	CalleeVarName     string `yaml:"callee_var_name,omitempty"`
 	CalleeRecvVarName string `yaml:"callee_recv_var_name,omitempty"`
 
+	// Chain tracking for chained method calls like app.Group().Use()
+	ChainParent *CallGraphEdge `yaml:"-"`                     // Reference to parent call in chain
+	ChainRoot   string         `yaml:"chain_root,omitempty"`  // Root variable name (e.g., "app")
+	ChainDepth  int            `yaml:"chain_depth,omitempty"` // Depth in chain (0 = root)
+
 	meta *Metadata
 }
 

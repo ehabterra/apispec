@@ -981,6 +981,7 @@ call_graph:
         generic_type_name: -1
     callee_var_name: u
     callee_recv_var_name: u
+    chain_root: u
   - caller:
       name: 71
       pkg: 2

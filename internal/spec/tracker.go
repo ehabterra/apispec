@@ -225,6 +225,9 @@ type TrackerTree struct {
 	// Enhanced tracking indices
 	variableNodes map[paramKey]*TrackerNode // Track variable nodes by name
 
+	// Chain relationships for efficient lookup
+	chainParentMap map[string]*metadata.CallGraphEdge
+
 	// Interface resolution cache
 	interfaceResolutionMap map[interfaceKey]string
 }
@@ -232,14 +235,14 @@ type TrackerTree struct {
 type paramKey struct {
 	Name      string
 	Pkg       string
-	Container string // new field for function name
+	Container string
 }
 
 type assignmentKey struct {
 	Name      string
 	Pkg       string
 	Type      string
-	Container string // new field for function name
+	Container string
 }
 
 func (k assignmentKey) String() string {
@@ -262,10 +265,12 @@ func (k interfaceKey) String() string {
 // NewTrackerTree constructs a TrackerTree from metadata and limits.
 func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *TrackerTree {
 	t := &TrackerTree{
-		meta:                   meta,
-		positions:              make(map[string]bool),
-		variableNodes:          make(map[paramKey]*TrackerNode),
+		meta:          meta,
+		positions:     make(map[string]bool),
+		variableNodes: make(map[paramKey]*TrackerNode),
+
 		limits:                 limits,
+		chainParentMap:         make(map[string]*metadata.CallGraphEdge),
 		interfaceResolutionMap: make(map[interfaceKey]string),
 	}
 
@@ -332,8 +337,21 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 				CallArgument:  &arg,
 			}
 		}
-
 	}
+
+	// Pre-process chain relationships for efficient lookup
+	chainParentMap := make(map[string]*metadata.CallGraphEdge)
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		if edge.ChainParent != nil {
+			// Use a simple string key for fast lookup
+			chainKey := edge.ChainParent.Callee.ID()
+			chainParentMap[chainKey] = edge.ChainParent
+		}
+	}
+
+	// Store chain parent map in tree for efficient access
+	t.chainParentMap = chainParentMap
 
 	// Sync interface resolutions from metadata
 	t.SyncInterfaceResolutionsFromMetadata()
@@ -369,7 +387,61 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 	// Assign children to nodes by params
 	traverseTree(t.roots, &variableNodes{variables: t.variableNodes}, metadata.MaxSelfCallingDepth, nil)
 
+	// Process chain calls efficiently - establish parent-child relationships
+	t.processChainRelationships()
+
 	return t
+}
+
+// processChainRelationships efficiently establishes parent-child relationships for chain calls
+func (t *TrackerTree) processChainRelationships() {
+	// Process chain relationships in a single pass through the call graph
+	for _, edge := range t.meta.CallGraph {
+		if edge.ChainParent != nil {
+			// Find the parent node in the tree
+			parentKey := edge.ChainParent.Callee.ID()
+			parentNode := t.findNodeByEdgeID(parentKey)
+
+			if parentNode != nil {
+				// Find the child node in the tree
+				childKey := edge.Callee.ID()
+				childNode := t.findNodeByEdgeID(childKey)
+
+				if childNode != nil && parentNode != childNode {
+					// Establish parent-child relationship
+					parentNode.AddChild(childNode)
+				}
+			}
+		}
+	}
+}
+
+// findNodeByEdgeID finds a node by its edge ID in the existing tree structure
+func (t *TrackerTree) findNodeByEdgeID(edgeID string) *TrackerNode {
+	// Search in roots
+	for _, root := range t.roots {
+		if root.CallGraphEdge != nil && root.CallGraphEdge.Callee.ID() == edgeID {
+			return root
+		}
+		// Search in children recursively
+		if found := t.findNodeInSubtree(root, edgeID); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// findNodeInSubtree recursively searches for a node with the given edge ID
+func (t *TrackerTree) findNodeInSubtree(node *TrackerNode, edgeID string) *TrackerNode {
+	if node.CallGraphEdge != nil && node.CallGraphEdge.Callee.ID() == edgeID {
+		return node
+	}
+	for _, child := range node.Children {
+		if found := t.findNodeInSubtree(child, edgeID); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 type assignmentNodes struct {
@@ -402,16 +474,21 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 	}
 
 	for _, node := range nodes {
-		if count, ok := nodeCount[node.Key()]; ok {
+		nodeKey := node.Key()
+		if nodeKey == "" {
+			continue
+		}
+
+		if count, ok := nodeCount[nodeKey]; ok {
 			if count > limit {
 				return false
 			}
 		}
 
 		mapObject.Assign(func(tn *TrackerNode) bool {
-			if node.Key() == tn.Key() {
+			if nodeKey != "" && nodeKey == tn.Key() {
 				nodeTypeParams := node.TypeParams()
-				nodeCount[node.Key()]++
+				nodeCount[nodeKey]++
 
 				if len(tn.Children) > 0 {
 					if len(nodeTypeParams) > 0 {
@@ -566,7 +643,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 					children = append(children, argNode)
 
-					// TODO: Get the correct edge
+					// Get the correct edge for selector arguments
 					funcNameIndex := meta.StringPool.Get(selectorArg.Sel.GetName())
 					recvType := strings.ReplaceAll(originVar, selectorArg.Sel.GetPkg()+".", "")
 
@@ -716,7 +793,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					}
 					children = append(children, argNode)
 
-					// TODO: Get the correct edge
+					// Get the correct edge for method calls
 					funcNameIndex := arg.Sel.Name
 					recvType := strings.ReplaceAll(originVar, arg.Sel.GetPkg()+".", "")
 					// If the selector is a method, we need to get the type of the receiver

@@ -282,7 +282,7 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 		m.traceRouterOrigin(mountInfo.RouterArg, node)
 
 		// Find assignment function
-		mountInfo.Assignment = m.findAssignmentFunction(*mountInfo.RouterArg)
+		mountInfo.Assignment = m.findAssignmentFunction(mountInfo.RouterArg)
 	}
 
 	return mountInfo
@@ -471,7 +471,7 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 	}
 }
 
-func (b *BasePatternMatcher) findAssignmentFunction(arg metadata.CallArgument) *metadata.CallArgument {
+func (b *BasePatternMatcher) findAssignmentFunction(arg *metadata.CallArgument) *metadata.CallArgument {
 	// Use contextProvider to access metadata
 	ctxImpl, ok := b.contextProvider.(*ContextProviderImpl)
 	if !ok || ctxImpl.meta == nil {
