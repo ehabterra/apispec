@@ -12,7 +12,13 @@ func main() {
 
 	// Mount user, product, and payment services using a consistent pattern.
 	app.Mount("/users", users.Routes())
-	app.Mount("/products", products.Routes())
+
+	// Test case 2: Chained group with Use
+	g := app.Group("/products").Use(func(c *fiber.Ctx) error {
+		return c.Next()
+	})
+	products.Routes(g)
+
 	app.Mount("/payment", payment.Routes())
 
 	// Health and API info endpoints can be mounted here or in a separate group/module if desired

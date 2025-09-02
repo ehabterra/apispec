@@ -1116,6 +1116,7 @@ call_graph:
           callee_pkg: generic
     callee_var_name: c
     callee_recv_var_name: val
+    chain_root: c
   - caller:
       name: 66
       pkg: 2
@@ -1149,6 +1150,7 @@ call_graph:
         resolved_type: -1
         generic_type_name: -1
     callee_var_name: c
+    chain_root: c
   - caller:
       name: 66
       pkg: 2

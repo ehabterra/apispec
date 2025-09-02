@@ -54,6 +54,10 @@ func WriteMetadata(metadata *Metadata, filename string) error {
 
 // WriteSplitMetadata writes metadata split into 3 separate files
 func WriteSplitMetadata(metadata *Metadata, baseFilename string) error {
+	if metadata == nil {
+		return fmt.Errorf("metadata cannot be nil")
+	}
+
 	// Extract base path without extension
 	basePath := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename))
 

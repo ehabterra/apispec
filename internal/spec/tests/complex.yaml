@@ -1950,3 +1950,4 @@ call_graph:
         resolved_type: -1
         generic_type_name: -1
     callee_var_name: handler
+    chain_root: handler

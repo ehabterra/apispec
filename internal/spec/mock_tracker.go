@@ -41,6 +41,7 @@ func (m *MockTrackerTree) GetNodeCount() int {
 
 	countNodes = func(node *TrackerNode) {
 		if node == nil {
+			count++ // Count nil nodes as well
 			return
 		}
 		count++

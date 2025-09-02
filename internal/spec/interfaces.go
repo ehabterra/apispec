@@ -71,7 +71,7 @@ type VariableTracer interface {
 	TraceVariable(varName, funcName, pkgName string) (originVar, originPkg string, originType *metadata.CallArgument)
 
 	// FindAssignmentFunction finds the assignment function for a variable
-	FindAssignmentFunction(arg metadata.CallArgument) *metadata.CallArgument
+	FindAssignmentFunction(arg *metadata.CallArgument) *metadata.CallArgument
 }
 
 // RouteExtractor defines the interface for route extraction operations

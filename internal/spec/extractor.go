@@ -126,7 +126,7 @@ func (e *Extractor) initializePatternMatchers() {
 
 // ExtractRoutes extracts all routes from the tracker tree
 func (e *Extractor) ExtractRoutes() []RouteInfo {
-	var routes []RouteInfo
+	routes := make([]RouteInfo, 0)
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, &routes)
 	}

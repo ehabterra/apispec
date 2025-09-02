@@ -38,8 +38,10 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 - [ ] **Generics (types)**: generic struct and type instantiation are partially supported.
 - [ ] **Inferred status codes**: status codes assigned via variables are not inferred.
 - [x] **Interfaces**: captures interface types and methods; unresolved dynamic values are represented generically.
+- [x] **Chain calls**: efficiently processes method chaining and establishes parent-child relationships in the call graph. <strong style="color:green;">✨NEW</strong>
 - [x] **Nested calls**: handles chained/method calls and nested expressions.
 - [x] **Parameter tracing across calls**: follows arguments across the call graph; maps function parameters to call arguments.
+- [ ] **Interface param resolution**: interface type parameters in functions are not yet fully resolved to concrete types.
 - [ ] **Parent object type tracing**: limited ability to trace the receiver/parent type; `Decode` on non-body targets may be misclassified.
 - [x] **Pointers and dereference**: detects `*T` and automatically dereferences when configured.
 - [x] **Selectors and field access**: resolves `pkg.Type.Field` and nested selectors where possible.
