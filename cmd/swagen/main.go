@@ -58,36 +58,58 @@ func detectVersionInfo() {
 
 	// Try to get build info from runtime/debug
 	if info, ok := debug.ReadBuildInfo(); ok {
+		// Always get Go version from build info
+		if info.GoVersion != "" {
+			GoVersion = info.GoVersion
+		}
+
 		// Get version from build info (usually the module version or VCS tag)
 		if info.Main.Version != "" && info.Main.Version != "(devel)" {
 			Version = info.Main.Version
 		}
 
-		// Extract commit, build time, and Go version from build settings
+		// Extract commit, build time, and other VCS info from build settings
+		hasVCSInfo := false
+		isModified := false
 		for _, setting := range info.Settings {
 			switch setting.Key {
 			case "vcs.revision":
+				hasVCSInfo = true
 				if len(setting.Value) >= 7 {
 					Commit = setting.Value[:7] // Short commit hash
 				} else {
 					Commit = setting.Value
 				}
 			case "vcs.time":
+				hasVCSInfo = true
 				BuildDate = setting.Value
+			case "vcs.modified":
+				if setting.Value == "true" {
+					isModified = true
+				}
 			}
 		}
 
-		// Get Go version from build info
-		if info.GoVersion != "" {
-			GoVersion = info.GoVersion
+		// Add dirty flag if modified (but only if we don't already have it)
+		if isModified && !strings.Contains(Version, "+dirty") {
+			Version += "+dirty"
+		}
+
+		// If we have VCS info but no version, we're likely in development
+		if hasVCSInfo && (Version == "0.0.1" || Version == "(devel)") {
+			Version = "dev"
 		}
 	}
 
-	// If we still don't have a meaningful version, try to detect from module info
+	// Final fallback - if we still don't have meaningful info
 	if Version == "0.0.1" || Version == "(devel)" {
-		// This happens when installed via go install without a tagged version
-		// We'll show a more informative message
-		Version = "dev (installed via go install)"
+		// This happens when installed via go install without VCS info
+		// Try to at least show that it's a go install version
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Path == "github.com/ehabterra/swagen" {
+			Version = "latest (go install)"
+		} else {
+			Version = "unknown (go install)"
+		}
 	}
 }
 
