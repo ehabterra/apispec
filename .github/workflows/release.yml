@@ -58,17 +58,28 @@ jobs:
       - name: Build for multiple platforms
         run: |
           # Build with updated version info
+          VERSION=${{ steps.version.outputs.version }} \
+          COMMIT=${{ steps.version.outputs.commit }} \
+          BUILD_DATE=${{ steps.version.outputs.build_date }} \
+          GO_VERSION=${{ steps.version.outputs.go_version }} \
           make release
           
           # List built files
+          echo "=== Contents of dist/ directory ==="
           ls -la dist/
+          echo "=== Contents of root directory ==="
+          ls -la
+          echo "=== Looking for tar.gz files ==="
+          ls -la *.tar.gz || echo "No tar.gz files found in root"
+          echo "=== Current working directory ==="
+          pwd
 
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            swagen-${{ github.ref_name }}.tar.gz
+            swagen-${{ steps.version.outputs.version }}.tar.gz
             dist/swagen-linux-amd64
             dist/swagen-linux-arm64
             dist/swagen-darwin-amd64
@@ -82,12 +93,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/
-          asset_name: swagen-${{ github.ref_name }}-binaries
-          asset_content_type: application/octet-stream
+

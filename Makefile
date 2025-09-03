@@ -1,8 +1,8 @@
 APP_NAME = swagen
-VERSION = 0.0.1
-COMMIT = $(shell git rev-parse --short HEAD)
-BUILD_DATE = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-GO_VERSION = $(shell go version | awk '{print $$3}')
+VERSION ?= 0.0.1
+COMMIT ?= $(shell git rev-parse --short HEAD)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+GO_VERSION ?= $(shell go version | awk '{print $$3}')
 
 LDFLAGS = -X 'main.Version=$(VERSION)' \
           -X 'main.Commit=$(COMMIT)' \
@@ -96,7 +96,7 @@ uninstall-local:
 # Build for multiple platforms and create release package
 release:
 	@echo "Creating release package for $(APP_NAME) version $(VERSION)..."
-	./scripts/release.sh build
+	VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE) GO_VERSION=$(GO_VERSION) ./scripts/release.sh build
 
 # Create a new release tag
 create-tag:
