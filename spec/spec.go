@@ -21,6 +21,7 @@ func DefaultGinConfig() *SwagenConfig   { return intspec.DefaultGinConfig() }
 func DefaultChiConfig() *SwagenConfig   { return intspec.DefaultChiConfig() }
 func DefaultEchoConfig() *SwagenConfig  { return intspec.DefaultEchoConfig() }
 func DefaultFiberConfig() *SwagenConfig { return intspec.DefaultFiberConfig() }
+func DefaultMuxConfig() *SwagenConfig   { return intspec.DefaultMuxConfig() }
 func DefaultHTTPConfig() *SwagenConfig  { return intspec.DefaultHTTPConfig() }
 
 // LoadSwagenConfig loads a YAML configuration file.

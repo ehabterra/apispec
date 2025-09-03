@@ -1407,7 +1407,7 @@ call_graph:
       name: 9
       pkg: 2
       position: 39
-      recv_type: 57
+      recv_type: 10
     position: 39
     callee_recv_var_name: name
   - caller:
@@ -1419,7 +1419,7 @@ call_graph:
       name: 32
       pkg: 2
       position: 47
-      recv_type: 57
+      recv_type: 10
     position: 47
     args:
       - kind: 0
@@ -1757,7 +1757,7 @@ call_graph:
       name: 44
       pkg: 2
       position: 103
-      recv_type: 60
+      recv_type: 53
     position: 103
     args:
       - kind: 20

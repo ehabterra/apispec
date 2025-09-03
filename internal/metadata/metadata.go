@@ -121,6 +121,7 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	funcMap := BuildFuncMap(pkgs)
 
 	fmt.Println("funcMap Count:", len(funcMap))
+	fmt.Printf("Processing %d packages...\n", len(pkgs))
 
 	metadata := &Metadata{
 		StringPool: NewStringPool(),
@@ -254,10 +255,12 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	// Analyze interface implementations
 	analyzeInterfaceImplementations(metadata.Packages, metadata.StringPool)
 
+	fmt.Println("Building call graph...")
 	for pkgName, files := range pkgs {
 		// Build call graph
 		buildCallGraph(files, pkgs, pkgName, fileToInfo, fset, funcMap, metadata)
 	}
+	fmt.Printf("Call graph built with %d edges\n", len(metadata.CallGraph))
 
 	metadata.BuildCallGraphMaps()
 
@@ -329,6 +332,9 @@ func (m *Metadata) ClassifyArgument(arg CallArgument) ArgumentType {
 	switch arg.GetKind() {
 	case KindCall:
 		return ArgTypeFunctionCall
+	case KindTypeConversion:
+		// Type conversions are not function calls and should be handled differently
+		return ArgTypeComplex
 	case KindIdent:
 		if strings.HasPrefix(arg.GetType(), "func(") {
 			return ArgTypeFunctionCall
@@ -1259,6 +1265,11 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 
 // processCallExpression processes a function call expression
 func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, parentAssign *ast.AssignStmt, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
+	// Skip type conversions as they are not function calls
+	if isTypeConversion(call, info) {
+		return
+	}
+
 	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 

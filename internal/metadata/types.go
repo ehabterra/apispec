@@ -13,6 +13,7 @@ const (
 	KindLiteral         = "literal"
 	KindSelector        = "selector"
 	KindCall            = "call"
+	KindTypeConversion  = "type_conversion"
 	KindRaw             = "raw"
 	KindString          = "string"
 	KindInt             = "int"
@@ -490,7 +491,7 @@ type CallArgument struct {
 
 // Helper methods to get string values from StringPool indices
 func (a *CallArgument) GetKind() string {
-	if a.Kind >= 0 && a.Meta.StringPool != nil {
+	if a != nil && a.Meta != nil && a.Kind >= 0 && a.Meta.StringPool != nil {
 		kind := a.Meta.StringPool.GetString(a.Kind)
 		return kind
 	}
@@ -512,7 +513,7 @@ func (a *CallArgument) GetValue() string {
 }
 
 func (a *CallArgument) GetRaw() string {
-	if a.Raw >= 0 && a.Meta.StringPool != nil {
+	if a != nil && a.Meta != nil && a.Raw >= 0 && a.Meta.StringPool != nil {
 		return a.Meta.StringPool.GetString(a.Raw)
 	}
 	return ""
@@ -729,6 +730,17 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return funID, typeParam
 		}
 		return KindCall, typeParam
+	case KindTypeConversion:
+		if a.Fun != nil {
+			// For type conversions, use the type name as the identifier
+			funID, funTypeParam := a.Fun.id(".")
+			if funTypeParam != "" {
+				typeParam = funTypeParam
+			}
+
+			return funID, typeParam
+		}
+		return KindTypeConversion, typeParam
 	case KindUnary:
 		if a.X != nil {
 			xID, xTypeParam := a.X.id("/")

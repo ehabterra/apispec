@@ -90,6 +90,7 @@ type CLIConfig struct {
 	ExcludePackages    []string
 	ExcludeFunctions   []string
 	ExcludeTypes       []string
+	SkipCGOPackages    bool
 }
 
 // parseFlags parses command line arguments and returns a CLIConfig
@@ -186,6 +187,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.Var((*stringSliceFlag)(&config.ExcludeFunctions), "exclude-function", "Exclude functions matching pattern (can be specified multiple times)")
 	fs.Var((*stringSliceFlag)(&config.ExcludeTypes), "exclude-type", "Exclude types matching pattern (can be specified multiple times)")
 
+	fs.BoolVar(&config.SkipCGOPackages, "skip-cgo", true, "Skip packages with CGO dependencies that may cause build errors")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -238,6 +241,7 @@ func runGeneration(config *CLIConfig) ([]byte, *engine.Engine, error) {
 		ExcludePackages:    config.ExcludePackages,
 		ExcludeFunctions:   config.ExcludeFunctions,
 		ExcludeTypes:       config.ExcludeTypes,
+		SkipCGOPackages:    config.SkipCGOPackages,
 	}
 
 	// Create engine and generate OpenAPI spec

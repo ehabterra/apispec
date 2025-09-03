@@ -104,6 +104,8 @@ func (t *TypeResolverImpl) resolveTypeFromArgument(arg metadata.CallArgument) st
 		return t.resolveSelectorType(arg)
 	case metadata.KindCall:
 		return t.resolveCallType(arg)
+	case metadata.KindTypeConversion:
+		return t.resolveTypeConversionType(arg)
 	case metadata.KindUnary, metadata.KindStar:
 		return t.resolveUnaryType(arg)
 	case metadata.KindCompositeLit:
@@ -205,6 +207,25 @@ func (t *TypeResolverImpl) resolveCallType(arg metadata.CallArgument) string {
 	}
 
 	return funcType
+}
+
+// resolveTypeConversionType resolves type for type conversion expressions
+func (t *TypeResolverImpl) resolveTypeConversionType(arg metadata.CallArgument) string {
+	if arg.Fun == nil {
+		return ""
+	}
+
+	// For type conversions, the Fun field contains the target type
+	// We want to return the target type that the value is being converted to
+	targetType := t.resolveTypeFromArgument(*arg.Fun)
+
+	// Clean up the target type representation
+	if targetType != "" {
+		return targetType
+	}
+
+	// Fallback to raw representation if available
+	return arg.GetRaw()
 }
 
 // resolveUnaryType resolves type for unary expressions

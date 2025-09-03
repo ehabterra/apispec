@@ -1,0 +1,82 @@
+# Example: Custom Method Detection Configuration
+# This shows how to configure Swagen to extract HTTP methods from function names
+# with custom patterns and behavior.
+
+framework:
+  routePatterns:
+    - callRegex: "^HandleFunc$"
+      pathFromArg: true
+      handlerFromArg: true
+      pathArgIndex: 0
+      handlerArgIndex: 1
+      recvTypeRegex: "^github\\.com/gorilla/mux\\.\\*?(Router|Route)$"
+      
+      # Custom method extraction configuration
+      methodExtraction:
+        # Define custom method mappings
+        methodMappings:
+          # High priority patterns (checked first)
+          - patterns: ["get", "retrieve", "fetch", "find"]
+            method: "GET"
+            priority: 20
+          - patterns: ["create", "add", "insert"]
+            method: "POST"
+            priority: 20
+          - patterns: ["update", "modify", "edit"]
+            method: "PUT"
+            priority: 20
+          - patterns: ["delete", "remove", "destroy"]
+            method: "DELETE"
+            priority: 20
+          
+          # Medium priority patterns
+          - patterns: ["list", "show"]
+            method: "GET"
+            priority: 15
+          - patterns: ["patch", "partial"]
+            method: "PATCH"
+            priority: 15
+            
+          # Low priority patterns (fallback)
+          - patterns: ["post"]
+            method: "POST"
+            priority: 5
+          - patterns: ["put"]
+            method: "PUT"
+            priority: 5
+        
+        # Extraction strategy
+        usePrefix: true      # Check for prefix matches (getUser -> GET)
+        useContains: true    # Check for contains matches (userGet -> GET)
+        caseSensitive: false # Case insensitive matching
+        
+        # Fallback behavior
+        defaultMethod: "GET"        # Default method when none found
+        inferFromContext: false     # Disable context inference for testing
+
+# You can also disable certain behaviors:
+# methodExtraction:
+#   usePrefix: true
+#   useContains: false  # Only check prefixes, not contains
+#   caseSensitive: true # Make matching case sensitive
+#   defaultMethod: "POST" # Change default method
+
+# Or create completely custom patterns:
+# methodExtraction:
+#   methodMappings:
+#     - patterns: ["handle", "process"]
+#       method: "POST"
+#       priority: 10
+#   usePrefix: true
+#   useContains: false
+#   defaultMethod: "GET"
+
+info:
+  title: "Custom Method Detection API"
+  version: "1.0.0"
+  description: "Example showing custom method detection configuration"
+
+defaults:
+  requestContentType: "application/json"
+  responseContentType: "application/json"
+  responseStatus: 200

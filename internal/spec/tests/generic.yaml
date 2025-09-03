@@ -89,6 +89,7 @@ string_pool:
   - r1/T/generic/src/generic/generic.go:21:9
   - r1/T/generic/src/generic/generic.go:21:5
   - len
+  - '*Container'
   - "100"
   - r1/T/generic/src/generic/generic.go:30:2
   - '*'
@@ -329,7 +330,7 @@ packages:
               pkg: -1
               type: -1
               position: -1
-              resolved_type: 92
+              resolved_type: 93
               generic_type_name: -1
             position: 47
             scope: 15
@@ -1052,7 +1053,7 @@ call_graph:
       name: 9
       pkg: 2
       position: 67
-      recv_type: 27
+      recv_type: 90
     position: 67
     assignments:
       val:
@@ -1125,13 +1126,13 @@ call_graph:
     callee:
       name: 23
       pkg: 2
-      position: 91
-      recv_type: 27
-    position: 91
+      position: 92
+      recv_type: 90
+    position: 92
     args:
       - kind: 56
         name: -1
-        value: 90
+        value: 91
         raw: -1
         pkg: -1
         type: -1
@@ -1142,7 +1143,7 @@ call_graph:
       value:
         kind: 56
         name: -1
-        value: 90
+        value: 91
         raw: -1
         pkg: -1
         type: -1

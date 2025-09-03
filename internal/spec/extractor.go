@@ -514,6 +514,12 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface) 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
 
 		arg := edge.Args[r.pattern.TypeArgIndex]
+
+		// If the argument is a type conversion, get the value of the original argument
+		if arg.GetKind() == metadata.KindTypeConversion {
+			arg = arg.Args[0]
+		}
+
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
 		// Check if this is a literal value - if so, determine appropriate type
