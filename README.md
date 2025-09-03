@@ -9,9 +9,11 @@
 
 **TL;DR**: Point Swagen at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
 
-## Demo Video
+## 🎬 Demo Video
 
-<iframe width="560" height="315" src="https://youtu.be/fMHDshOeQVs" frameborder="0" allowfullscreen></iframe>
+[![Swagen Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/fMHDshOeQVs)
+
+*Click the image above to watch the full demo on YouTube*
 
 ## Features
 
