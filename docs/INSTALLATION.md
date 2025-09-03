@@ -136,12 +136,32 @@ swagen --version
 ```
 
 You should see output like:
+
+**When installed from a tagged release:**
 ```
-swagen version: 0.0.1
-Commit: abc1234
-Build date: 2025-01-01T00:00:00Z
-Go version: go1.24.3
+swagen version: v1.0.0
+Commit: abc123
+Build date: 2024-01-01T00:00:00Z
+Go version: go1.21.0
 ```
+
+**When installed via `go install` from latest main:**
+```
+swagen version: v1.0.1-0.20240101120000-abc123def456
+Commit: abc123d
+Build date: 2024-01-01T12:00:00Z
+Go version: go1.21.0
+```
+
+**When installed via `go install` without VCS info:**
+```
+swagen version: latest (go install)
+Commit: unknown
+Build date: unknown
+Go version: go1.21.0
+```
+
+> **Note:** Version information depends on how `swagen` was built. When using `go install`, Go automatically embeds VCS information when available, providing accurate version details.
 
 ## Updating
 
