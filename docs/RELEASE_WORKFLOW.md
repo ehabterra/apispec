@@ -194,6 +194,11 @@ Use [semantic versioning](https://semver.org/):
 - Check file sizes and GitHub limits
 - Ensure all required files exist
 
+#### 4. Missing Release Archive
+- Ensure the `make release` command completes successfully
+- Check that environment variables are passed correctly
+- Verify the release script creates the tar.gz file in the root directory
+
 ### Debugging
 
 #### Enable Debug Output
@@ -205,6 +210,13 @@ Use [semantic versioning](https://semver.org/):
     echo "Build Date: ${{ steps.version.outputs.build_date }}"
     echo "Go Version: ${{ steps.version.outputs.go_version }}"
 ```
+
+#### Common Fixes Applied
+
+1. **Environment Variables Not Passed**: Ensure the Makefile uses `?=` instead of `=` for variables that should be overridable
+2. **Missing Release Archive**: Verify that `make release` passes environment variables to the release script
+3. **File Path Mismatches**: Check that the workflow looks for files in the correct locations
+4. **Permission Issues**: Ensure the workflow has proper permissions to create releases (check repository settings)
 
 #### Check Generated Files
 ```yaml
