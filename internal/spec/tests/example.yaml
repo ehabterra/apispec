@@ -72,9 +72,9 @@ string_pool:
   - r1/T/example/src/example/types.go:40:2
   - main
   - r1/T/example/src/example/types.go:39:1
-  - example.Ager
-  - example.User
   - example.Namer
+  - example.User
+  - example.Ager
   - r1/T/example/src/example/types.go:34:11
   - r1/T/example/src/example/types.go:34:2
   - r1/T/example/src/example/types.go:41:15

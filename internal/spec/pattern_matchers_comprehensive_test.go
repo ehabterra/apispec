@@ -1533,7 +1533,7 @@ func TestBasePatternMatcher_extractMethodFromFunctionName(t *testing.T) {
 		{
 			name:         "no method found",
 			functionName: "processUser",
-			expected:     "",
+			expected:     "GET", // The DefaultMethodExtractionConfig() has DefaultMethod: "GET"
 		},
 		{
 			name:         "case insensitive",
