@@ -6,10 +6,10 @@
 set -e
 
 APP_NAME="swagen"
-VERSION="0.0.1"
-COMMIT=$(git rev-parse --short HEAD)
-BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-GO_VERSION=$(go version | awk '{print $3}')
+VERSION="${VERSION:-0.0.1}"  # Allow VERSION to be set from environment
+COMMIT="${COMMIT:-$(git rev-parse --short HEAD)}"
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+GO_VERSION="${GO_VERSION:-$(go version | awk '{print $3}')}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -65,7 +65,7 @@ build_for_platform() {
     export GOARCH=$GOARCH
     export CGO_ENABLED=0
     
-    # Build flags
+    # Build flags - use environment variables if available, fallback to script variables
     LDFLAGS="-X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.BuildDate=$BUILD_DATE' -X 'main.GoVersion=$GO_VERSION'"
     
     # Build
@@ -119,9 +119,16 @@ show_usage() {
     echo "  clean         Clean build artifacts"
     echo "  help          Show this help message"
     echo ""
+    echo "Environment Variables:"
+    echo "  VERSION       Override version (default: auto-detected)"
+    echo "  COMMIT        Override commit hash (default: auto-detected)"
+    echo "  BUILD_DATE    Override build date (default: auto-detected)"
+    echo "  GO_VERSION    Override Go version (default: auto-detected)"
+    echo ""
     echo "Examples:"
     echo "  $0 build      # Build for all platforms"
     echo "  $0 clean      # Clean build artifacts"
+    echo "  VERSION=1.0.0 $0 build  # Build with specific version"
 }
 
 # Function to clean build artifacts

@@ -20,11 +20,25 @@ help:
 	@echo "  uninstall     - Remove swagen from /usr/local/bin"
 	@echo "  uninstall-local - Remove swagen from ~/go/bin"
 	@echo "  release       - Build for multiple platforms and create release package"
+	@echo "  create-tag    - Create a new release tag (e.g., make create-tag VERSION=1.0.0)"
+	@echo "  tags          - Show current git tags"
 	@echo "  test          - Run all tests"
 	@echo "  coverage      - Run tests with coverage report"
 	@echo "  update-badge  - Update coverage badge in README.md"
 	@echo "  clean         - Clean build artifacts"
 	@echo "  help          - Show this help message"
+	@echo ""
+	@echo "Environment Variables:"
+	@echo "  VERSION       - Override version (default: auto-detected)"
+	@echo "  COMMIT        - Override commit hash (default: auto-detected)"
+	@echo "  BUILD_DATE    - Override build date (default: auto-detected)"
+	@echo "  GO_VERSION    - Override Go version (default: auto-detected)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build                    # Build with auto-detected values"
+	@echo "  make VERSION=1.0.0 build     # Build with specific version"
+	@echo "  make release                  # Create release package"
+	@echo "  make create-tag VERSION=1.0.0 # Create release tag v1.0.0"
 
 # Build the swagen binary
 build:
@@ -84,6 +98,15 @@ release:
 	@echo "Creating release package for $(APP_NAME) version $(VERSION)..."
 	./scripts/release.sh build
 
+# Create a new release tag
+create-tag:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required. Use: make create-tag VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@echo "Creating release tag v$(VERSION)..."
+	./scripts/create-release.sh $(VERSION)
+
 run: build
 	./$(APP_NAME) --version
 
@@ -92,6 +115,11 @@ version:
 	@echo "Commit: $(COMMIT)"
 	@echo "Build Date: $(BUILD_DATE)"
 	@echo "Go Version: $(GO_VERSION)"
+
+# Show current git tags
+tags:
+	@echo "Current git tags:"
+	@git tag -l --sort=-version:refname | head -10
 # Install dependencies
 deps:
 	go mod download
