@@ -11,28 +11,60 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for proper versioning
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.24'
 
-      - name: Build for multiple platforms
+      - name: Extract version from tag
+        id: version
         run: |
-          # Set version from tag
+          # Extract version from tag (remove 'v' prefix)
           VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
           
-          # Update version in scripts
-          sed -i "s/VERSION=\"0.0.1\"/VERSION=\"$VERSION\"/g" scripts/release.sh
+          # Get git info
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          GO_VERSION=$(go version | awk '{print $3}')
           
-          # Build for all platforms
-          ./scripts/release.sh build
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version in Makefile
+        run: |
+          # Update VERSION in Makefile
+          sed -i "s/^VERSION = .*/VERSION = ${{ steps.version.outputs.version }}/" Makefile
+          
+          # Update VERSION in scripts/release.sh if it exists
+          if [ -f "scripts/release.sh" ]; then
+            sed -i "s/VERSION=\"[^\"]*\"/VERSION=\"${{ steps.version.outputs.version }}\"/g" scripts/release.sh
+          fi
+
+      - name: Update version constants in main.go
+        run: |
+          # Update version constants in cmd/swagen/main.go
+          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/swagen/main.go
+          sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/swagen/main.go
+          sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/swagen/main.go
+          sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/swagen/main.go
+
+      - name: Build for multiple platforms
+        run: |
+          # Build with updated version info
+          make release
           
           # List built files
           ls -la dist/
 
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |

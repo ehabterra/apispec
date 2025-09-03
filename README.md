@@ -686,6 +686,8 @@ Adjust these with CLI flags if needed for large codebases.
 
 ## Documentation
 
+- **[docs/INSTALLATION.md](docs/INSTALLATION.md)**: Detailed installation instructions
+- **[docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md)**: Automated release process with GitHub Actions
 - **[docs/SOLUTION_SUMMARY.md](docs/SOLUTION_SUMMARY.md)**: Solution to test file changes issue
 - **[docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md)**: Guide to using TrackerTree for call graph analysis
 - **[docs/CYTOGRAPHE_README.md](docs/CYTOGRAPHE_README.md)**: Documentation for the call graph visualization feature
