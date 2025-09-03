@@ -40,10 +40,10 @@
 - [ ] **Conditional routing**: Dynamic route registration based on runtime conditions is not supported
 
 ### Other Frameworks
-- [x] **Gin**: Full support for route registration, middleware, and parameter handling
+- [x] **Gin**: Full support for route registration, and parameter handling
 - [x] **Chi**: Full support for route mounting, grouping, and parameter extraction
-- [x] **Echo**: Full support for route registration and parameter handling
-- [x] **Fiber**: Full support for route registration and parameter handling
+- [x] **Echo**: Full support for route registration, grouping, and parameter handling
+- [x] **Fiber**: Full support for route registration, grouping, and parameter handling
 - [x] **Standard net/http**: Basic support for `HandleFunc` and `Handle` calls
 
 ## Golang Feature Support
