@@ -70,6 +70,12 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 			return "*" + c.callArgToString(*arg.X, nil)
 		}
 		return "*"
+	case metadata.KindArrayType:
+		// Handle index expressions (e.g., arr[i])
+		if arg.X != nil {
+			return "[]" + c.callArgToString(*arg.X, nil)
+		}
+		return "[]"
 	case metadata.KindIndex:
 		// Handle index expressions (e.g., arr[i])
 		if arg.X != nil {
@@ -226,6 +232,16 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 			return argName
 		}
 		return "call(...)"
+
+	case metadata.KindTypeConversion:
+		// Handle type conversions like []byte("value")
+		if arg.Fun != nil {
+			// For type conversions, we want to get the target type
+			targetType := c.callArgToString(*arg.Fun, nil)
+
+			return targetType
+		}
+		return ""
 
 	case metadata.KindInterfaceType:
 		// interface{}

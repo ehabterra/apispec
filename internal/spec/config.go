@@ -32,6 +32,28 @@ type FrameworkConfig struct {
 	MountPatterns []MountPattern `yaml:"mountPatterns"`
 }
 
+// MethodMapping defines how to extract HTTP methods from function names
+type MethodMapping struct {
+	Patterns []string `yaml:"patterns,omitempty"` // Function name patterns (e.g., ["get", "list", "show"])
+	Method   string   `yaml:"method,omitempty"`   // HTTP method (e.g., "GET")
+	Priority int      `yaml:"priority,omitempty"` // Higher priority = checked first
+}
+
+// MethodExtractionConfig defines how to extract HTTP methods
+type MethodExtractionConfig struct {
+	// Method mappings from function names
+	MethodMappings []MethodMapping `yaml:"methodMappings,omitempty"`
+
+	// Extraction strategy
+	UsePrefix     bool `yaml:"usePrefix,omitempty"`     // Check for prefix matches (getUser -> GET)
+	UseContains   bool `yaml:"useContains,omitempty"`   // Check for contains matches (userGet -> GET)
+	CaseSensitive bool `yaml:"caseSensitive,omitempty"` // Case sensitive matching
+
+	// Fallback behavior
+	DefaultMethod    string `yaml:"defaultMethod,omitempty"`    // Default method when none found
+	InferFromContext bool   `yaml:"inferFromContext,omitempty"` // Try to infer from call context
+}
+
 // RoutePattern defines how to extract route information
 type RoutePattern struct {
 	// Function call patterns to match
@@ -46,9 +68,13 @@ type RoutePattern struct {
 	HandlerArgIndex int `yaml:"handlerArgIndex,omitempty"` // Which arg contains handler
 
 	// Extraction hints
-	MethodFromCall bool `yaml:"methodFromCall,omitempty"` // Extract method from function name
-	PathFromArg    bool `yaml:"pathFromArg,omitempty"`    // Extract path from argument
-	HandlerFromArg bool `yaml:"handlerFromArg,omitempty"` // Extract handler from argument
+	MethodFromCall    bool `yaml:"methodFromCall,omitempty"`    // Extract method from function name
+	MethodFromHandler bool `yaml:"methodFromHandler,omitempty"` // Extract method from handler function name
+	PathFromArg       bool `yaml:"pathFromArg,omitempty"`       // Extract path from argument
+	HandlerFromArg    bool `yaml:"handlerFromArg,omitempty"`    // Extract handler from argument
+
+	// Method extraction configuration
+	MethodExtraction *MethodExtractionConfig `yaml:"methodExtraction,omitempty"`
 
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
@@ -895,6 +921,133 @@ func DefaultGinConfig() *SwagenConfig {
 					Type: "object",
 				},
 			},
+		},
+	}
+}
+
+// DefaultMethodExtractionConfig returns a default method extraction configuration
+func DefaultMethodExtractionConfig() *MethodExtractionConfig {
+	return &MethodExtractionConfig{
+		MethodMappings: []MethodMapping{
+			{Patterns: []string{"get", "list", "show", "find", "fetch", "retrieve"}, Method: "GET", Priority: 10},
+			{Patterns: []string{"post", "create", "add", "new", "insert"}, Method: "POST", Priority: 10},
+			{Patterns: []string{"put", "update", "edit", "modify", "replace"}, Method: "PUT", Priority: 10},
+			{Patterns: []string{"delete", "remove", "destroy"}, Method: "DELETE", Priority: 10},
+			{Patterns: []string{"patch", "partial"}, Method: "PATCH", Priority: 10},
+			{Patterns: []string{"options"}, Method: "OPTIONS", Priority: 10},
+			{Patterns: []string{"head"}, Method: "HEAD", Priority: 10},
+		},
+		UsePrefix:        true,
+		UseContains:      true,
+		CaseSensitive:    false,
+		DefaultMethod:    "GET",
+		InferFromContext: true,
+	}
+}
+
+// DefaultMuxConfig returns a default configuration for Gorilla Mux framework
+func DefaultMuxConfig() *SwagenConfig {
+	return &SwagenConfig{
+		Framework: FrameworkConfig{
+			RoutePatterns: []RoutePattern{
+				{
+					CallRegex:         `^HandleFunc$`,
+					MethodFromHandler: true,
+					PathFromArg:       true,
+					HandlerFromArg:    true,
+					PathArgIndex:      0,
+					HandlerArgIndex:   1,
+					RecvTypeRegex:     `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
+					MethodExtraction:  DefaultMethodExtractionConfig(),
+				},
+				{
+					CallRegex:         `^Handle$`,
+					MethodFromHandler: true,
+					PathFromArg:       true,
+					HandlerFromArg:    true,
+					PathArgIndex:      0,
+					HandlerArgIndex:   1,
+					RecvTypeRegex:     `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
+					MethodExtraction:  DefaultMethodExtractionConfig(),
+				},
+			},
+			RequestBodyPatterns: []RequestBodyPattern{
+				{
+					CallRegex:     `^Decode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*?Decoder",
+				},
+				{
+					CallRegex:     `^Unmarshal$`,
+					TypeArgIndex:  1,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: "json",
+				},
+			},
+			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:    `^Marshal$`,
+					TypeArgIndex: 0,
+					TypeFromArg:  true,
+					Deref:        true,
+				},
+				{
+					CallRegex:     `^Encode$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
+				},
+			},
+			ParamPatterns: []ParamPattern{ // @note: mux does not have a ParamPattern and it's not supported in this version
+				{
+					CallRegex:     `^Vars$`,
+					ParamIn:       "path",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gorilla/mux$`,
+				},
+			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:      `^PathPrefix$`,
+					PathFromArg:    true,
+					RouterFromArg:  true,
+					PathArgIndex:   0,
+					RouterArgIndex: 1,
+					IsMount:        true,
+					RecvTypeRegex:  `^github\.com/gorilla/mux\.\*?Router$`,
+				},
+				{
+					CallRegex:      `^Subrouter$`,
+					PathFromArg:    false,
+					RouterFromArg:  true,
+					RouterArgIndex: 0,
+					IsMount:        true,
+					RecvTypeRegex:  `^github\.com/gorilla/mux\.\*?Route$`,
+				},
+			},
+		},
+		Defaults: Defaults{
+			RequestContentType:  defaultRequestContentType,
+			ResponseContentType: defaultResponseContentType,
+			ResponseStatus:      http.StatusOK,
 		},
 	}
 }

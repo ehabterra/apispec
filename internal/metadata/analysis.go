@@ -58,6 +58,47 @@ func DefaultImportName(importPath string) string {
 	return last
 }
 
+// isTypeConversion checks if a CallExpr represents a type conversion rather than a function call
+func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
+	if info == nil {
+		return false
+	}
+
+	// Check if the function part is a type rather than a function
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		// Check if this identifier refers to a type
+		if obj := info.ObjectOf(fun); obj != nil {
+			_, isTypeName := obj.(*types.TypeName)
+			return isTypeName
+		}
+	case *ast.SelectorExpr:
+		// Check if this selector refers to a type (e.g., pkg.TypeName)
+		if obj := info.ObjectOf(fun.Sel); obj != nil {
+			_, isTypeName := obj.(*types.TypeName)
+			return isTypeName
+		}
+	case *ast.ArrayType, *ast.SliceExpr, *ast.MapType, *ast.ChanType:
+		// These are definitely type expressions
+		return true
+	case *ast.StarExpr:
+		// Pointer type conversion
+		return true
+	case *ast.InterfaceType, *ast.StructType, *ast.FuncType:
+		// These are type expressions
+		return true
+	}
+
+	// Additional check: if the call has exactly one argument and the Fun resolves to a type
+	if len(call.Args) == 1 {
+		if tv, exists := info.Types[call.Fun]; exists && tv.IsType() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // getCalleeFunctionNameAndPackage extracts function name, package, and receiver type from a call expression
 func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet) (string, string, string) {
 	switch x := expr.(type) {
@@ -67,15 +108,7 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 
 	case *ast.SelectorExpr:
 		if ident, ok := x.X.(*ast.Ident); ok {
-			// // Try to match ident.Name to an import alias or default import name
-			// for _, imp := range file.Imports {
-			// 	importPath := strings.Trim(imp.Path.Value, "\"")
-			// 	defaultName := DefaultImportName(importPath)
-			// 	if (imp.Name != nil && imp.Name.Name == ident.Name) ||
-			// 		(imp.Name == nil && defaultName == ident.Name) {
-			// 		return x.Sel.Name, importPath, ""
-			// 	}
-			// }
+
 			// If not an import, try to resolve as variable/method
 			if info, exists := fileToInfo[file]; exists {
 				if obj := info.ObjectOf(ident); obj != nil {

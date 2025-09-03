@@ -158,7 +158,19 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	}
 	fun := ExprToCallArgument(e.Fun, info, pkgName, fset, meta)
 
-	// Build parameter-to-argument mapping
+	arg := NewCallArgument(meta)
+	arg.Fun = fun
+	arg.Args = args
+	arg.SetPosition(getPosition(e.Pos(), fset))
+
+	// Check if this is a type conversion rather than a function call
+	if isTypeConversion(e, info) {
+		arg.SetKind(KindTypeConversion)
+		// For type conversions, we don't need parameter mapping
+		return arg
+	}
+
+	// Build parameter-to-argument mapping for actual function calls
 	paramArgMap := make(map[string]CallArgument)
 	typeParamMap := make(map[string]string)
 
@@ -166,12 +178,8 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	// This is crucial for getting the *declared* generic type parameters
 	extractParamsAndTypeParams(e, info, args, paramArgMap, typeParamMap)
 
-	arg := NewCallArgument(meta)
 	arg.SetKind(KindCall)
-	arg.Fun = fun
-	arg.Args = args
 	arg.ParamArgMap = paramArgMap
-	arg.SetPosition(getPosition(e.Pos(), fset))
 	arg.TypeParamMap = typeParamMap
 	return arg
 }

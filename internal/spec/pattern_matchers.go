@@ -157,9 +157,42 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	edge := node.GetEdge()
 	if r.pattern.MethodFromCall {
 		funcName := r.contextProvider.GetString(edge.Callee.Name)
-		routeInfo.Method = r.extractMethodFromFunctionName(funcName)
-	} else if r.pattern.MethodArgIndex >= 0 {
-		routeInfo.Method = edge.Args[r.pattern.MethodArgIndex].GetValue()
+		routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(funcName, r.pattern.MethodExtraction)
+	} else if r.pattern.MethodFromHandler && r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
+		// Extract method from handler function name
+		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
+		handlerName := r.contextProvider.GetArgumentInfo(handlerArg)
+		if handlerName != "" {
+			routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
+		}
+	} else if r.pattern.MethodArgIndex >= 0 && len(edge.Args) > r.pattern.MethodArgIndex {
+		methodArg := edge.Args[r.pattern.MethodArgIndex]
+		methodValue := methodArg.GetValue()
+
+		// Handle different method extraction patterns
+		if methodValue != "" {
+			// Clean up method value - remove quotes and extract HTTP method
+			cleanMethod := strings.Trim(methodValue, "\"'")
+
+			// Check if it's a valid HTTP method
+			if r.isValidHTTPMethod(cleanMethod) {
+				routeInfo.Method = strings.ToUpper(cleanMethod)
+			} else {
+				// If not a valid method, try to extract from argument info
+				argInfo := r.contextProvider.GetArgumentInfo(methodArg)
+				if argInfo != "" {
+					cleanArgInfo := strings.Trim(argInfo, "\"'")
+					if r.isValidHTTPMethod(cleanArgInfo) {
+						routeInfo.Method = strings.ToUpper(cleanArgInfo)
+					}
+				}
+			}
+		}
+
+		// If we still don't have a method, try to infer from context (if enabled)
+		if (routeInfo.Method == "" || routeInfo.Method == http.MethodPost) && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
+			routeInfo.Method = r.inferMethodFromContext(node, edge)
+		}
 	}
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
@@ -181,6 +214,84 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		}
 		routeInfo.Package = pkg
 	}
+}
+
+// isValidHTTPMethod checks if a string is a valid HTTP method
+func (r *RoutePatternMatcherImpl) isValidHTTPMethod(method string) bool {
+	validMethods := []string{
+		"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "TRACE", "CONNECT",
+	}
+
+	upperMethod := strings.ToUpper(method)
+	for _, valid := range validMethods {
+		if upperMethod == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// inferMethodFromContext attempts to infer HTTP method from context
+func (r *RoutePatternMatcherImpl) inferMethodFromContext(node TrackerNodeInterface, edge *metadata.CallGraphEdge) string {
+	// Check if context inference is enabled
+	if r.pattern.MethodExtraction == nil || !r.pattern.MethodExtraction.InferFromContext {
+		return ""
+	}
+
+	// Try to find method from chained calls (like Mux .Methods("GET"))
+	if node != nil {
+		// Look for parent or sibling nodes that might contain method info
+		parent := node.GetParent()
+		if parent != nil {
+			// Check if parent has method information
+			for _, child := range parent.GetChildren() {
+				if child != node && child.GetEdge() != nil {
+					childEdge := child.GetEdge()
+					callName := r.contextProvider.GetString(childEdge.Callee.Name)
+
+					// Look for Methods call
+					if callName == "Methods" && len(childEdge.Args) > 0 {
+						methodArg := childEdge.Args[0]
+						methodValue := strings.Trim(methodArg.GetValue(), "\"'")
+						if r.isValidHTTPMethod(methodValue) {
+							return strings.ToUpper(methodValue)
+						}
+
+						// Try argument info as well
+						argInfo := r.contextProvider.GetArgumentInfo(methodArg)
+						cleanArgInfo := strings.Trim(argInfo, "\"'")
+						if r.isValidHTTPMethod(cleanArgInfo) {
+							return strings.ToUpper(cleanArgInfo)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Try to infer from handler function name using pattern's method extraction config
+	handlerName := r.contextProvider.GetString(edge.Caller.Name)
+	if handlerName != "" {
+		method := r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
+		if method != "" && method != "POST" { // Don't use POST as default
+			return method
+		}
+	}
+
+	// Also try the handler from the arguments if available
+	if len(edge.Args) > 1 {
+		handlerArg := edge.Args[1] // Typically the handler is the second argument
+		argInfo := r.contextProvider.GetArgumentInfo(handlerArg)
+		if argInfo != "" {
+			method := r.extractMethodFromFunctionNameWithConfig(argInfo, r.pattern.MethodExtraction)
+			if method != "" && method != "POST" {
+				return method
+			}
+		}
+	}
+
+	// Default fallback
+	return "GET"
 }
 
 // MountPatternMatcherImpl implements MountPatternMatcher
@@ -556,13 +667,79 @@ func traceGenericOrigin(node TrackerNodeInterface, typeParts []string) string {
 }
 
 func (b *BasePatternMatcher) extractMethodFromFunctionName(funcName string) string {
-	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
-	for _, method := range methods {
-		if strings.Contains(strings.ToUpper(funcName), method) {
-			return method
+	return b.extractMethodFromFunctionNameWithConfig(funcName, nil)
+}
+
+func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName string, config *MethodExtractionConfig) string {
+	if funcName == "" {
+		return ""
+	}
+
+	// Use default config if none provided
+	if config == nil {
+		config = DefaultMethodExtractionConfig()
+	}
+
+	// Prepare function name based on case sensitivity
+	searchName := funcName
+	if !config.CaseSensitive {
+		searchName = strings.ToLower(funcName)
+	}
+
+	// Sort mappings by priority (highest first)
+	mappings := make([]MethodMapping, len(config.MethodMappings))
+	copy(mappings, config.MethodMappings)
+
+	// Simple bubble sort by priority (descending)
+	for i := 0; i < len(mappings)-1; i++ {
+		for j := 0; j < len(mappings)-i-1; j++ {
+			if mappings[j].Priority < mappings[j+1].Priority {
+				mappings[j], mappings[j+1] = mappings[j+1], mappings[j]
+			}
 		}
 	}
-	return ""
+
+	// Check prefix matches first if enabled
+	if config.UsePrefix {
+		for _, mapping := range mappings {
+			for _, pattern := range mapping.Patterns {
+				searchPattern := pattern
+				if !config.CaseSensitive {
+					searchPattern = strings.ToLower(pattern)
+				}
+
+				if strings.HasPrefix(searchName, searchPattern) {
+					// Make sure it's a word boundary (not part of another word)
+					if len(searchName) == len(searchPattern) || !b.isLetter(rune(searchName[len(searchPattern)])) {
+						return mapping.Method
+					}
+				}
+			}
+		}
+	}
+
+	// Check contains matches if enabled
+	if config.UseContains {
+		for _, mapping := range mappings {
+			for _, pattern := range mapping.Patterns {
+				searchPattern := pattern
+				if !config.CaseSensitive {
+					searchPattern = strings.ToLower(pattern)
+				}
+
+				if strings.Contains(searchName, searchPattern) {
+					return mapping.Method
+				}
+			}
+		}
+	}
+
+	return config.DefaultMethod
+}
+
+// isLetter checks if a rune is a letter
+func (b *BasePatternMatcher) isLetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 func (b *BasePatternMatcher) mapGoTypeToOpenAPISchema(goType string) *Schema {

@@ -44,6 +44,8 @@ func (d *FrameworkDetector) Detect(dir string) (string, error) {
 				return "echo", nil
 			case strings.Contains(importPath, "gofiber/fiber"):
 				return "fiber", nil
+			case strings.Contains(importPath, "gorilla/mux"):
+				return "mux", nil
 			}
 		}
 	}

@@ -22,6 +22,24 @@
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
+## Framework Support
+
+### Gorilla Mux
+- [x] **Route registration**: Detects `HandleFunc` and `Handle` calls with path and handler arguments
+- [x] **Handler function detection**: Identifies handler functions passed as arguments to route registration
+- [x] **HTTP method extraction**: Automatically extracts HTTP methods from handler function names or explicit method calls
+- [x] **Path parameter detection**: Recognizes path parameters in route patterns (e.g., `/users/{id}`)
+- [x] **Subrouter support**: Handles nested routing with `PathPrefix` and `Subrouter`
+- [ ] **Parameter extraction**: Path parameters are not yet fully resolved to handler function parameters
+- [ ] **Conditional routing**: Dynamic route registration based on runtime conditions is not supported
+
+### Other Frameworks
+- [x] **Gin**: Full support for route registration, middleware, and parameter handling
+- [x] **Chi**: Full support for route mounting, grouping, and parameter extraction
+- [x] **Echo**: Full support for route registration and parameter handling
+- [x] **Fiber**: Full support for route registration and parameter handling
+- [x] **Standard net/http**: Basic support for `HandleFunc` and `Handle` calls
+
 ## Golang Feature Support
 Swagen focuses on practical coverage for real-world services. Current coverage includes:
 
@@ -48,6 +66,7 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 - [x] **Struct fields**: reads field types, embedded fields, and struct tags (`json`, `xml`, `form`, etc.).
 - [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation. <strong style="color:green;">✨NEW</strong>
 - [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers. <strong style="color:green;">✨NEW</strong>
+- [x] **CGO support**: includes a flag to skip CGO packages during analysis, useful for projects with complex C dependencies. <strong style="color:green;">✨NEW</strong>
 
 ### Type Resolution Examples
 

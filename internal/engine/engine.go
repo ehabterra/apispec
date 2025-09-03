@@ -74,6 +74,7 @@ type EngineConfig struct {
 	ExcludePackages  []string
 	ExcludeFunctions []string
 	ExcludeTypes     []string
+	SkipCGOPackages  bool
 
 	moduleRoot string
 }
@@ -193,9 +194,35 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
 	}
-	if packages.PrintErrors(filteredPkgs) > 0 {
-		return nil, fmt.Errorf("packages contain errors")
+	// Filter out packages with errors and continue with valid packages
+	var validPkgs []*packages.Package
+	var errorCount int
+
+	for _, pkg := range filteredPkgs {
+		if len(pkg.Errors) > 0 {
+			errorCount++
+			// Log errors but continue processing other packages
+			fmt.Printf("Warning: Skipping package %s due to errors:\n", pkg.PkgPath)
+			for _, err := range pkg.Errors {
+				fmt.Printf("  - %s\n", err.Msg)
+			}
+			continue
+		}
+		validPkgs = append(validPkgs, pkg)
 	}
+
+	// If all packages have errors, that's a problem
+	if len(validPkgs) == 0 {
+		return nil, fmt.Errorf("no valid packages found - all %d packages contain errors", errorCount)
+	}
+
+	if errorCount > 0 {
+		fmt.Printf("Info: Continuing analysis with %d valid packages (%d packages skipped due to errors)\n",
+			len(validPkgs), errorCount)
+	}
+
+	// Use valid packages instead of all filtered packages
+	filteredPkgs = validPkgs
 
 	// Group files by package for metadata
 	pkgsMetadata := make(map[string]map[string]*ast.File)
@@ -253,6 +280,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			swagenConfig = spec.DefaultEchoConfig()
 		case "fiber":
 			swagenConfig = spec.DefaultFiberConfig()
+		case "mux":
+			swagenConfig = spec.DefaultMuxConfig()
 		default:
 			swagenConfig = spec.DefaultHTTPConfig() // fallback
 		}
@@ -429,7 +458,30 @@ func (e *Engine) findModuleRoot(startPath string) (string, error) {
 
 // shouldIncludePackage checks if a package should be included based on include/exclude patterns
 func (e *Engine) shouldIncludePackage(pkgPath string) bool {
-	// If no include/exclude patterns specified, include everything
+	// Auto-exclude known problematic CGO dependencies if enabled
+	if e.config.SkipCGOPackages {
+		cgoProblematicPatterns := []string{
+			"*/tensorflow/*",     // TensorFlow C bindings
+			"*/govips/*",         // VIPS image processing
+			"*/opencv/*",         // OpenCV bindings
+			"*/ffmpeg/*",         // FFmpeg bindings
+			"*/sqlite3",          // SQLite3 CGO driver
+			"*/go-sqlite3",       // Alternative SQLite3 driver
+			"*/graft/tensorflow", // Specific TensorFlow graft package
+		}
+
+		for _, pattern := range cgoProblematicPatterns {
+			if matched, _ := filepath.Match(pattern, pkgPath); matched {
+				return false
+			}
+			// Also check with wildcards for nested paths
+			if strings.Contains(pkgPath, strings.Replace(pattern, "*/", "", 1)) {
+				return false
+			}
+		}
+	}
+
+	// If no include/exclude patterns specified, include everything (except CGO problematic)
 	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 &&
 		len(e.config.IncludePackages) == 0 && len(e.config.ExcludePackages) == 0 {
 		return true
