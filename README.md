@@ -9,6 +9,10 @@
 
 **TL;DR**: Point Swagen at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
 
+## Demo Video
+
+<iframe width="560" height="315" src="https://youtu.be/fMHDshOeQVs" frameborder="0" allowfullscreen></iframe>
+
 ## Features
 
 - **Automated OpenAPI**: Generate OpenAPI 3.1 from real Go code.
