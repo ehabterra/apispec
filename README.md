@@ -168,6 +168,37 @@ Swagen executes a multi-stage process to analyze your code and generate the Open
 
 ### Installation
 
+📖 **For detailed installation instructions, see [INSTALLATION.md](docs/INSTALLATION.md)**
+
+#### Option 1: Go Install (Recommended)
+```bash
+go install github.com/ehabterra/swagen/cmd/swagen@latest
+```
+
+#### Option 2: From Source
+```bash
+# Clone the repository
+git clone https://github.com/ehabterra/swagen.git
+cd swagen
+
+# Build and install
+make install-local    # Install to ~/go/bin (no sudo required)
+# OR
+make install          # Install to /usr/local/bin (requires sudo)
+```
+
+#### Option 3: Using Installation Script
+```bash
+# Download and run the installation script
+curl -sSL https://raw.githubusercontent.com/ehabterra/swagen/main/scripts/install.sh | bash -s go-install
+```
+
+**Note**: Make sure your Go bin directory is in your PATH. Add this to your shell profile:
+```bash
+export PATH=$HOME/go/bin:$PATH
+```
+
+#### Building from Source (Development)
 ```bash
 # Clone the repository
 git clone https://github.com/ehabterra/swagen.git

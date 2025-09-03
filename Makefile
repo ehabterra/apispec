@@ -15,6 +15,11 @@ LDFLAGS = -X 'main.Version=$(VERSION)' \
 help:
 	@echo "Available targets:"
 	@echo "  build         - Build the swagen binary"
+	@echo "  install       - Install swagen to /usr/local/bin (requires sudo)"
+	@echo "  install-local - Install swagen to ~/go/bin (no sudo required)"
+	@echo "  uninstall     - Remove swagen from /usr/local/bin"
+	@echo "  uninstall-local - Remove swagen from ~/go/bin"
+	@echo "  release       - Build for multiple platforms and create release package"
 	@echo "  test          - Run all tests"
 	@echo "  coverage      - Run tests with coverage report"
 	@echo "  update-badge  - Update coverage badge in README.md"
@@ -45,6 +50,39 @@ update-badge:
 clean:
 	rm -f $(APP_NAME) coverage.out coverage.html
 	go clean -cache
+
+# Install swagen to system (requires sudo)
+install: build
+	@echo "Installing $(APP_NAME) to /usr/local/bin/..."
+	sudo cp $(APP_NAME) /usr/local/bin/
+	@echo "$(APP_NAME) installed successfully!"
+	@echo "You can now run 'swagen --help' from anywhere"
+
+# Install to user's local bin directory (no sudo required)
+install-local: build
+	@echo "Installing $(APP_NAME) to ~/go/bin/..."
+	mkdir -p ~/go/bin
+	cp $(APP_NAME) ~/go/bin/
+	@echo "$(APP_NAME) installed successfully!"
+	@echo "Make sure ~/go/bin is in your PATH"
+	@echo "Add this to your shell profile: export PATH=\$$HOME/go/bin:\$$PATH"
+
+# Uninstall swagen from system
+uninstall:
+	@echo "Uninstalling $(APP_NAME) from /usr/local/bin/..."
+	sudo rm -f /usr/local/bin/$(APP_NAME)
+	@echo "$(APP_NAME) uninstalled successfully!"
+
+# Uninstall from user's local bin directory
+uninstall-local:
+	@echo "Uninstalling $(APP_NAME) from ~/go/bin/..."
+	rm -f ~/go/bin/$(APP_NAME)
+	@echo "$(APP_NAME) uninstalled successfully!"
+
+# Build for multiple platforms and create release package
+release:
+	@echo "Creating release package for $(APP_NAME) version $(VERSION)..."
+	./scripts/release.sh build
 
 run: build
 	./$(APP_NAME) --version
