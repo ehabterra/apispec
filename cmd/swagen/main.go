@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -40,15 +41,60 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
-const (
-	// Version info injected at build time via -ldflags
-	Version   = "0.0.1"
+// Version info - can be injected at build time via -ldflags or detected at runtime
+var (
+	Version   = "0.0.1" // Default version, overridden by -ldflags or runtime detection
 	Commit    = "unknown"
 	BuildDate = "unknown"
 	GoVersion = "unknown"
 )
 
+// detectVersionInfo attempts to detect version information at runtime
+func detectVersionInfo() {
+	// If version info was already injected via -ldflags, don't override it
+	if Version != "0.0.1" {
+		return
+	}
+
+	// Try to get build info from runtime/debug
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// Get version from build info (usually the module version or VCS tag)
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			Version = info.Main.Version
+		}
+
+		// Extract commit, build time, and Go version from build settings
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				if len(setting.Value) >= 7 {
+					Commit = setting.Value[:7] // Short commit hash
+				} else {
+					Commit = setting.Value
+				}
+			case "vcs.time":
+				BuildDate = setting.Value
+			}
+		}
+
+		// Get Go version from build info
+		if info.GoVersion != "" {
+			GoVersion = info.GoVersion
+		}
+	}
+
+	// If we still don't have a meaningful version, try to detect from module info
+	if Version == "0.0.1" || Version == "(devel)" {
+		// This happens when installed via go install without a tagged version
+		// We'll show a more informative message
+		Version = "dev (installed via go install)"
+	}
+}
+
 func printVersion() {
+	// Detect version info if not already set via -ldflags
+	detectVersionInfo()
+
 	fmt.Printf("swagen version: %s\n", Version)
 	fmt.Printf("Commit: %s\n", Commit)
 	fmt.Printf("Build date: %s\n", BuildDate)
