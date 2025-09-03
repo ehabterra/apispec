@@ -98,7 +98,6 @@ type Permission struct {
 //   type: array
 //   items:
 //     type: string
-//     enum: ["admin", "user"]
 ```
 
 ```go
