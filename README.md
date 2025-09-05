@@ -11,7 +11,7 @@
 
 ## 🎬 Demo Video
 
-[![APISpec Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/fMHDshOeQVs)
+[![APISpec Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/lkKO-a0-ZTU)
 
 *Click the image above to watch the full demo on YouTube*
 
