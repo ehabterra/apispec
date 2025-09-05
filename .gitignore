@@ -40,7 +40,7 @@ test_output.txt
 coverage.txt
 coverage.html
 
-apispec
+/apispec
 
 # Test temporary directories
 testdata/temp/
