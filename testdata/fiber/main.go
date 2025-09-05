@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/ehabterra/swagen/testdata/fiber/payment"
-	"github.com/ehabterra/swagen/testdata/fiber/products"
-	"github.com/ehabterra/swagen/testdata/fiber/users"
+	"github.com/ehabterra/apispec/testdata/fiber/payment"
+	"github.com/ehabterra/apispec/testdata/fiber/products"
+	"github.com/ehabterra/apispec/testdata/fiber/users"
 	"github.com/gofiber/fiber/v2"
 )
 

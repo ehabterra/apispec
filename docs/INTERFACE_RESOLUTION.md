@@ -1,8 +1,8 @@
-# Interface Resolution in Swagen
+# Interface Resolution in APISpec
 
 ## Overview
 
-Swagen now includes a minimal interface resolution system that allows you to resolve embedded interfaces in Go structs to their concrete implementations. This is particularly useful for handling dependency injection patterns like those found in go-clean-echo and similar frameworks.
+APISpec now includes a minimal interface resolution system that allows you to resolve embedded interfaces in Go structs to their concrete implementations. This is particularly useful for handling dependency injection patterns like those found in go-clean-echo and similar frameworks.
 
 ## The Problem
 
@@ -112,7 +112,7 @@ Returns all registered interface resolutions for debugging purposes.
 
 ## Integration with Existing Code
 
-The interface resolution system is designed to integrate seamlessly with Swagen's existing architecture:
+The interface resolution system is designed to integrate seamlessly with APISpec's existing architecture:
 
 1. **Minimal Changes**: Only adds a new map and three methods to TrackerTree
 2. **No Breaking Changes**: All existing functionality remains unchanged
@@ -130,7 +130,7 @@ Use interface resolution when you encounter:
 
 ## Example Integration
 
-Here's how you might integrate this into your existing Swagen analysis:
+Here's how you might integrate this into your existing APISpec analysis:
 
 ```go
 // In your existing analysis code

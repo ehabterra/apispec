@@ -27,7 +27,7 @@ print_error() {
 
 print_header() {
     echo -e "${BLUE}================================${NC}"
-    echo -e "${BLUE}  Swagen Release Creator${NC}"
+    echo -e "${BLUE}  APISpec Release Creator${NC}"
     echo -e "${BLUE}================================${NC}"
 }
 

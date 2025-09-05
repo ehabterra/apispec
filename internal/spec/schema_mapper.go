@@ -8,11 +8,11 @@ import (
 
 // SchemaMapperImpl implements SchemaMapper
 type SchemaMapperImpl struct {
-	cfg *SwagenConfig
+	cfg *APISpecConfig
 }
 
 // NewSchemaMapper creates a new schema mapper
-func NewSchemaMapper(cfg *SwagenConfig) *SchemaMapperImpl {
+func NewSchemaMapper(cfg *APISpecConfig) *SchemaMapperImpl {
 	return &SchemaMapperImpl{
 		cfg: cfg,
 	}

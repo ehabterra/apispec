@@ -11,7 +11,7 @@ The spec package is organized into several focused components:
 The configuration system is framework-agnostic and uses pattern-based extraction:
 
 ```go
-type SwagenConfig struct {
+type APISpecConfig struct {
     Framework FrameworkConfig `yaml:"framework"`  // Framework-specific patterns
     TypeMapping []TypeMapping `yaml:"typeMapping"` // Go to OpenAPI type mappings
     Overrides []Override `yaml:"overrides"`        // Manual overrides
@@ -62,7 +62,7 @@ The extractor system uses the configuration patterns to extract information from
 ```go
 type Extractor struct {
     meta *metadata.Metadata
-    cfg  *SwagenConfig
+    cfg  *APISpecConfig
 }
 
 func (e *Extractor) ExtractRoutes() []RouteInfo
@@ -91,7 +91,7 @@ type RouteInfo struct {
 The mapper converts extracted route information into OpenAPI specifications:
 
 ```go
-func MapMetadataToOpenAPI(meta *metadata.Metadata, cfg *SwagenConfig, genCfg GeneratorConfig) (*OpenAPISpec, error)
+func MapMetadataToOpenAPI(meta *metadata.Metadata, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error)
 ```
 
 ### 4. OpenAPI Types (`openapi.go`)
@@ -104,7 +104,7 @@ Complete OpenAPI 3.0 specification types for building the final output.
 
 ```go
 // Load configuration
-cfg, err := LoadSwagenConfig("swagen.yaml")
+cfg, err := LoadAPISpecConfig("apispec.yaml")
 if err != nil {
     log.Fatal(err)
 }

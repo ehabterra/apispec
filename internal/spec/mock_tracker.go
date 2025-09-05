@@ -1,7 +1,7 @@
 package spec
 
 import (
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // MockTrackerTree is a mock implementation of TrackerTreeInterface for testing

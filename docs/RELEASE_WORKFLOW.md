@@ -1,6 +1,6 @@
 # Release Workflow
 
-This document explains how to create releases for swagen using the automated GitHub Actions workflow.
+This document explains how to create releases for apispec using the automated GitHub Actions workflow.
 
 ## Overview
 
@@ -32,7 +32,7 @@ git push origin v1.0.0
 
 ### 3. Monitor the Workflow
 
-- Go to [Actions](https://github.com/ehabterra/swagen/actions) in your GitHub repository
+- Go to [Actions](https://github.com/ehabterra/apispec/actions) in your GitHub repository
 - The "Release" workflow will automatically start
 - Monitor the progress and check for any errors
 
@@ -62,10 +62,10 @@ The workflow triggers when you push a tag matching the pattern `v*` (e.g., `v1.0
 
 - name: Update version constants in main.go
   run: |
-    sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/swagen/main.go
-    sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/swagen/main.go
-    sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/swagen/main.go
-    sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/swagen/main.go
+    sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/apispec/main.go
+    sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/apispec/main.go
+    sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/apispec/main.go
+    sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/apispec/main.go
 ```
 
 #### Step 3: Build and Release
@@ -77,13 +77,13 @@ The workflow triggers when you push a tag matching the pattern `v*` (e.g., `v1.0
   uses: softprops/action-gh-release@v1
   with:
     files: |
-      swagen-${{ github.ref_name }}.tar.gz
-      dist/swagen-linux-amd64
-      dist/swagen-linux-arm64
-      dist/swagen-darwin-amd64
-      dist/swagen-darwin-arm64
-      dist/swagen-windows-amd64.exe
-      dist/swagen-windows-arm64.exe
+      apispec-${{ github.ref_name }}.tar.gz
+      dist/apispec-linux-amd64
+      dist/apispec-linux-arm64
+      dist/apispec-darwin-amd64
+      dist/apispec-darwin-arm64
+      dist/apispec-windows-amd64.exe
+      dist/apispec-windows-arm64.exe
       dist/*.sha256
 ```
 
@@ -98,10 +98,10 @@ LDFLAGS = -X 'main.Version=$(VERSION)' \
           -X 'main.GoVersion=$(GO_VERSION)'
 ```
 
-This updates the constants in `cmd/swagen/main.go`:
+This updates the constants in `cmd/apispec/main.go`:
 
 ```go
-const (
+var (
     Version   = "1.0.0"        // Injected at build time
     Commit    = "abc1234"      // Git commit hash
     BuildDate = "2025-01-01T12:00:00Z"  // Build timestamp
@@ -121,7 +121,7 @@ The workflow builds binaries for:
 
 Each release includes:
 
-1. **Platform-specific binaries** (e.g., `swagen-linux-amd64`)
+1. **Platform-specific binaries** (e.g., `apispec-linux-amd64`)
 2. **Checksums** (`.sha256` files for verification)
 3. **Release archive** (`.tar.gz` containing all binaries)
 4. **Release notes** (auto-generated from commits)
@@ -225,7 +225,7 @@ Use [semantic versioning](https://semver.org/):
     echo "Makefile VERSION:"
     grep "^VERSION = " Makefile
     echo "main.go Version:"
-    grep "Version   = " cmd/swagen/main.go
+    grep "Version   = " cmd/apispec/main.go
 ```
 
 ## Manual Release Process
@@ -254,7 +254,7 @@ Potential improvements to consider:
 
 If you encounter issues with the release workflow:
 
-1. Check the [Actions](https://github.com/ehabterra/swagen/actions) tab
+1. Check the [Actions](https://github.com/ehabterra/apispec/actions) tab
 2. Review the workflow logs for errors
 3. Verify your tag format and naming
 4. Ensure you have proper permissions

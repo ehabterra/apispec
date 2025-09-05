@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestGenerateSchemaFromType_Comprehensive(t *testing.T) {
@@ -468,7 +468,7 @@ func TestSchemaGeneration_TypeMapping(t *testing.T) {
 	}
 
 	// Create config with custom type mappings
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -552,7 +552,7 @@ func TestSchemaGeneration_ExternalTypes(t *testing.T) {
 	}
 
 	// Create config with external types
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{

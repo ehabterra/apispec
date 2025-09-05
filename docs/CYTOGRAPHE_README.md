@@ -1,4 +1,4 @@
-# swagen
+# apispec
 
 **License:** This project is licensed under the Apache License 2.0, Copyright 2025 Ehab Terra. See the [LICENSE](./LICENSE) and [NOTICE](./NOTICE) files for details.
 
@@ -58,10 +58,10 @@ This implementation provides a **tree-based call diagram** using Cytoscape.js th
 
 ## Usage
 
-The diagram is automatically generated when you run the swagen tool:
+The diagram is automatically generated when you run the apispec tool:
 
 ```bash
-./swagen -config your-config.yaml
+./apispec -config your-config.yaml
 ```
 
 This creates `diagram.html` which you can open in any web browser.
@@ -107,7 +107,7 @@ Works in all modern browsers:
 ## File Structure
 
 ```
-swagen/
+apispec/
 ├── internal/spec/mapper.go    # Cytoscape generation logic
 ├── diagram.html              # Generated interactive diagram
 └── CYTOGRAPHE_README.md      # This documentation

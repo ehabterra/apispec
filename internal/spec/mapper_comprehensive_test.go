@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // TestMapMetadataToOpenAPI_Comprehensive tests the main mapping function with various scenarios
@@ -32,7 +32,7 @@ func TestMapMetadataToOpenAPI_Comprehensive(t *testing.T) {
 }
 
 func testMapMetadataToOpenAPI_NilTree(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	genCfg := GeneratorConfig{
 		OpenAPIVersion: "3.0.3",
 		Title:          "Test API",
@@ -58,7 +58,7 @@ func testMapMetadataToOpenAPI_EmptyRoutes(t *testing.T) {
 		},
 	}
 
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	genCfg := GeneratorConfig{
 		OpenAPIVersion: "3.0.3",
 		Title:          "Test API",
@@ -87,7 +87,7 @@ func testMapMetadataToOpenAPI_WithConfigInfo(t *testing.T) {
 		},
 	}
 
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Info: Info{
 			Title:       "Config Title",
 			Description: "Config Description",
@@ -127,7 +127,7 @@ func testMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 		},
 	}
 
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		SecuritySchemes: map[string]SecurityScheme{
 			"bearerAuth": {
 				Type:         "http",
@@ -169,7 +169,7 @@ func testMapMetadataToOpenAPI_WithExternalDocs(t *testing.T) {
 		},
 	}
 
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		ExternalDocs: &ExternalDocumentation{
 			Description: "API Documentation",
 			URL:         "https://example.com/docs",
@@ -208,7 +208,7 @@ func testMapMetadataToOpenAPI_WithServers(t *testing.T) {
 		},
 	}
 
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Servers: []Server{
 			{
 				URL:         "https://api.example.com/v1",
@@ -245,7 +245,7 @@ func testMapMetadataToOpenAPI_WithTags(t *testing.T) {
 		},
 	}
 
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Tags: []Tag{
 			{
 				Name:        "users",
@@ -881,7 +881,7 @@ func TestMapGoTypeToOpenAPISchema_Comprehensive(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	primitiveTests := []struct {
@@ -924,7 +924,7 @@ func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	pointerTests := []struct {
@@ -948,7 +948,7 @@ func testMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	sliceTests := []struct {
@@ -978,7 +978,7 @@ func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_MapTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	mapTests := []struct {
@@ -1006,7 +1006,7 @@ func testMapGoTypeToOpenAPISchema_MapTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_CustomTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	// Create metadata with a custom type
@@ -1042,7 +1042,7 @@ func testMapGoTypeToOpenAPISchema_CustomTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		ExternalTypes: []ExternalType{
 			{
 				Name: "CustomType",
@@ -1070,7 +1070,7 @@ func testMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_TypeMappings(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		TypeMapping: []TypeMapping{
 			{
 				GoType: "CustomType",
@@ -1093,7 +1093,7 @@ func testMapGoTypeToOpenAPISchema_TypeMappings(t *testing.T) {
 }
 
 func testMapGoTypeToOpenAPISchema_NilMetadata(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	// Test with nil metadata
@@ -1133,7 +1133,7 @@ func TestGenerateSchemaFromType_Comprehensive_Extended(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_Struct(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()
@@ -1164,7 +1164,7 @@ func testGenerateSchemaFromType_Struct(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_Interface(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()
@@ -1182,7 +1182,7 @@ func testGenerateSchemaFromType_Interface(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_Alias(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()
@@ -1201,7 +1201,7 @@ func testGenerateSchemaFromType_Alias(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_External(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		ExternalTypes: []ExternalType{
 			{
 				Name: "ExternalType",
@@ -1228,7 +1228,7 @@ func testGenerateSchemaFromType_External(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_Nil(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
@@ -1244,7 +1244,7 @@ func testGenerateSchemaFromType_Nil(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()
@@ -1268,7 +1268,7 @@ func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_WithNestedTypes(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()
@@ -1307,7 +1307,7 @@ func testGenerateSchemaFromType_WithNestedTypes(t *testing.T) {
 }
 
 func testGenerateSchemaFromType_WithJSONTags(t *testing.T) {
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	usedTypes := make(map[string]bool)
 
 	stringPool := metadata.NewStringPool()

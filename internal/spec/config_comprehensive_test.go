@@ -32,7 +32,7 @@ func TestIncludeExclude_ShouldIncludeFile(t *testing.T) {
 		{
 			name:     "directory wildcard",
 			patterns: []string{"cmd/**/*.go"},
-			filePath: "cmd/swagen/main.go",
+			filePath: "cmd/apispec/main.go",
 			expected: true,
 		},
 		{
@@ -88,7 +88,7 @@ func TestIncludeExclude_ShouldIncludePackage(t *testing.T) {
 		{
 			name:     "wildcard match",
 			patterns: []string{"cmd/*"},
-			pkgPath:  "cmd/swagen",
+			pkgPath:  "cmd/apispec",
 			expected: true,
 		},
 		{
@@ -392,8 +392,8 @@ func TestIncludeExclude_ShouldExcludeType(t *testing.T) {
 	}
 }
 
-func TestSwagenConfig_ShouldIncludeFile(t *testing.T) {
-	config := &SwagenConfig{
+func TestAPISpecConfig_ShouldIncludeFile(t *testing.T) {
+	config := &APISpecConfig{
 		Include: IncludeExclude{
 			Files: []string{"*.go"},
 		},
@@ -434,8 +434,8 @@ func TestSwagenConfig_ShouldIncludeFile(t *testing.T) {
 	}
 }
 
-func TestSwagenConfig_ShouldIncludePackage(t *testing.T) {
-	config := &SwagenConfig{
+func TestAPISpecConfig_ShouldIncludePackage(t *testing.T) {
+	config := &APISpecConfig{
 		Include: IncludeExclude{
 			Packages: []string{"internal/*"},
 		},
@@ -461,7 +461,7 @@ func TestSwagenConfig_ShouldIncludePackage(t *testing.T) {
 		},
 		{
 			name:     "neither pattern matches",
-			pkgPath:  "cmd/swagen",
+			pkgPath:  "cmd/apispec",
 			expected: false,
 		},
 	}
@@ -476,8 +476,8 @@ func TestSwagenConfig_ShouldIncludePackage(t *testing.T) {
 	}
 }
 
-func TestSwagenConfig_ShouldIncludeFunction(t *testing.T) {
-	config := &SwagenConfig{
+func TestAPISpecConfig_ShouldIncludeFunction(t *testing.T) {
+	config := &APISpecConfig{
 		Include: IncludeExclude{
 			Functions: []string{"get*"},
 		},
@@ -518,8 +518,8 @@ func TestSwagenConfig_ShouldIncludeFunction(t *testing.T) {
 	}
 }
 
-func TestSwagenConfig_ShouldIncludeType(t *testing.T) {
-	config := &SwagenConfig{
+func TestAPISpecConfig_ShouldIncludeType(t *testing.T) {
+	config := &APISpecConfig{
 		Include: IncludeExclude{
 			Types: []string{"*Handler"},
 		},

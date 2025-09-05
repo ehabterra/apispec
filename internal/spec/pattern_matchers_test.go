@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestRoutePattern_MatchPattern(t *testing.T) {
@@ -131,7 +131,7 @@ func TestExtractor_IsValid(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -179,7 +179,7 @@ func TestExtractor_initializePatternMatchers(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a config with various patterns
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -266,7 +266,7 @@ func TestExtractor_ExtractRoutes(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -308,7 +308,7 @@ func TestExtractor_traverseForRoutes(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -352,7 +352,7 @@ func TestExtractor_traverseForRoutesWithVisited(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{

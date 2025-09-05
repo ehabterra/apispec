@@ -1,4 +1,4 @@
-module github.com/ehabterra/swagen/testdata/echo
+module github.com/ehabterra/apispec/testdata/echo
 
 go 1.20
 

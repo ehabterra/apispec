@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers all the ways to install and use swagen.
+This guide covers all the ways to install and use apispec.
 
 ## Prerequisites
 
@@ -11,10 +11,10 @@ This guide covers all the ways to install and use swagen.
 
 ### 1. Go Install (Recommended)
 
-The easiest way to install swagen is using Go's built-in install command:
+The easiest way to install apispec is using Go's built-in install command:
 
 ```bash
-go install github.com/ehabterra/swagen/cmd/swagen@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 **Pros:**
@@ -32,8 +32,8 @@ If you want to build from source or contribute to the project:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 
 # Install to user directory (no sudo required)
 make install-local
@@ -57,7 +57,7 @@ We provide a convenient installation script:
 
 ```bash
 # Download and run the installation script
-curl -sSL https://raw.githubusercontent.com/ehabterra/swagen/main/scripts/install.sh | bash -s go-install
+curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/install.sh | bash -s go-install
 ```
 
 **Pros:**
@@ -75,14 +75,14 @@ curl -sSL https://raw.githubusercontent.com/ehabterra/swagen/main/scripts/instal
 
 ```bash
 # Using Homebrew (if available)
-brew install ehabterra/tap/swagen
+brew install ehabterra/tap/apispec
 
 # Using Go install
-go install github.com/ehabterra/swagen/cmd/swagen@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 
 # From source
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 make install-local
 ```
 
@@ -90,11 +90,11 @@ make install-local
 
 ```bash
 # Using Go install
-go install github.com/ehabterra/swagen/cmd/swagen@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 
 # From source
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 make install-local
 ```
 
@@ -102,18 +102,18 @@ make install-local
 
 ```bash
 # Using Go install
-go install github.com/ehabterra/swagen/cmd/swagen@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 
 # From source
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
-go build -o swagen.exe ./cmd/swagen
-# Copy swagen.exe to a directory in your PATH
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
+go build -o apispec.exe ./cmd/apispec
+# Copy apispec.exe to a directory in your PATH
 ```
 
 ## Setting Up PATH
 
-After installation, make sure the swagen binary is in your PATH:
+After installation, make sure the apispec binary is in your PATH:
 
 ### Linux/macOS
 
@@ -132,14 +132,14 @@ Add the Go bin directory to your system PATH or use the full path to the binary.
 Verify the installation:
 
 ```bash
-swagen --version
+apispec --version
 ```
 
 You should see output like:
 
 **When installed from a tagged release:**
 ```
-swagen version: v1.0.0
+apispec version: v1.0.0
 Commit: abc123
 Build date: 2024-01-01T00:00:00Z
 Go version: go1.21.0
@@ -147,7 +147,7 @@ Go version: go1.21.0
 
 **When installed via `go install` from latest main:**
 ```
-swagen version: v1.0.1-0.20240101120000-abc123def456
+apispec version: v1.0.1-0.20240101120000-abc123def456
 Commit: abc123d
 Build date: 2024-01-01T12:00:00Z
 Go version: go1.21.0
@@ -155,24 +155,24 @@ Go version: go1.21.0
 
 **When installed via `go install` without VCS info:**
 ```
-swagen version: latest (go install)
+apispec version: latest (go install)
 Commit: unknown
 Build date: unknown
 Go version: go1.21.0
 ```
 
-> **Note:** Version information depends on how `swagen` was built. When using `go install`, Go automatically embeds VCS information when available, providing accurate version details.
+> **Note:** Version information depends on how `apispec` was built. When using `go install`, Go automatically embeds VCS information when available, providing accurate version details.
 
 ## Updating
 
 ### Go Install Method
 ```bash
-go install github.com/ehabterra/swagen/cmd/swagen@latest@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest@latest
 ```
 
 ### From Source
 ```bash
-cd swagen
+cd apispec
 git pull
 make install-local
 ```
@@ -181,7 +181,7 @@ make install-local
 
 ### Go Install Method
 ```bash
-go clean -i github.com/ehabterra/swagen/cmd/swagen
+go clean -i github.com/ehabterra/apispec/cmd/apispec
 ```
 
 ### From Source
@@ -197,7 +197,7 @@ make uninstall
 
 ### Common Issues
 
-1. **"command not found: swagen"**
+1. **"command not found: apispec"**
    - Check if the binary is in your PATH
    - Verify the installation location
    - Restart your terminal after PATH changes
@@ -220,17 +220,17 @@ make uninstall
 
 If you encounter issues:
 
-1. Check the [GitHub Issues](https://github.com/ehabterra/swagen/issues)
+1. Check the [GitHub Issues](https://github.com/ehabterra/apispec/issues)
 2. Review the [README.md](../README.md) for usage examples
 3. Check the [Go documentation](https://golang.org/doc/) for Go-related issues
 
 ## Development Installation
 
-For developers who want to work on swagen:
+For developers who want to work on apispec:
 
 ```bash
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 
 # Install dependencies
 make deps
@@ -247,7 +247,7 @@ make release
 
 ## Release Downloads
 
-Pre-built binaries are available for each release on the [GitHub Releases page](https://github.com/ehabterra/swagen/releases).
+Pre-built binaries are available for each release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases).
 
 Supported platforms:
 - Linux (amd64, arm64)

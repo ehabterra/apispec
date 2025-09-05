@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
@@ -1422,7 +1422,7 @@ func sanitizeFilePath(path string) string {
 			part == "tmp" || part == "temp" ||
 			part == "testdata" ||
 			strings.HasPrefix(part, "TestGenerateMetadata") ||
-			strings.HasPrefix(part, "swagen_test") ||
+			strings.HasPrefix(part, "apispec_test") ||
 			isRandomSuffix(part) {
 			continue
 		}

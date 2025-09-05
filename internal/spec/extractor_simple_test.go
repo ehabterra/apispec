@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestExtractor_joinPaths(t *testing.T) {
@@ -20,7 +20,7 @@ func TestExtractor_joinPaths(t *testing.T) {
 	}
 
 	mockTree := NewMockTrackerTree(meta, limits)
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	extractor := NewExtractor(mockTree, cfg)
 
 	tests := []struct {
@@ -109,7 +109,7 @@ func TestExtractor_ApplyOverrides(t *testing.T) {
 	}
 
 	mockTree := NewMockTrackerTree(meta, limits)
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	_ = NewExtractor(mockTree, cfg)
 
 	// Create a route info
@@ -155,7 +155,7 @@ func TestExtractor_IsValid_Simple(t *testing.T) {
 	}
 
 	mockTree := NewMockTrackerTree(meta, limits)
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	extractor := NewExtractor(mockTree, cfg)
 
 	// Test valid route

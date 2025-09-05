@@ -1,4 +1,4 @@
-module github.com/ehabterra/swagen/testdata/gin
+module github.com/ehabterra/apispec/testdata/gin
 
 go 1.24.3
 

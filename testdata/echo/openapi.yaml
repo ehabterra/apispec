@@ -14,7 +14,7 @@ info:
 paths:
     /api/info:
         get:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.getAPIInfo
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.getAPIInfo
             responses:
                 "200":
                     description: OK
@@ -37,7 +37,7 @@ paths:
                                 type: object
     /health:
         get:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.healthCheck
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.healthCheck
             responses:
                 "200":
                     description: OK
@@ -60,7 +60,7 @@ paths:
                                 type: object
     /users:
         get:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.getUsers
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.getUsers
             responses:
                 "200":
                     description: OK
@@ -69,7 +69,7 @@ paths:
                             schema:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.User'
+                                    $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.User'
                 "400":
                     description: Bad Request
                     content:
@@ -83,19 +83,19 @@ paths:
                             schema:
                                 type: object
         post:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.createUser
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.createUser
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.CreateUserRequest'
+                            $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.CreateUserRequest'
             responses:
                 "201":
                     description: Created
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.SuccessResponse'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.SuccessResponse'
                 "400":
                     description: Bad Request
                     content:
@@ -112,7 +112,7 @@ paths:
                                 type: object
     /users/{id}:
         get:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.getUser
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.getUser
             parameters:
                 - name: id
                   in: path
@@ -125,7 +125,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.User'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.User'
                 "400":
                     description: Bad Request
                     content:
@@ -139,7 +139,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.ErrorResponse'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.ErrorResponse'
                 "500":
                     description: Internal Server Error
                     content:
@@ -147,7 +147,7 @@ paths:
                             schema:
                                 type: object
         put:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.updateUser
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.updateUser
             parameters:
                 - name: id
                   in: path
@@ -158,20 +158,20 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.UpdateUserRequest'
+                            $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.UpdateUserRequest'
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.SuccessResponse'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.SuccessResponse'
                 "400":
                     description: Bad Request
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.ErrorResponse'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.ErrorResponse'
                 "404":
                     description: Not Found
                     content:
@@ -187,7 +187,7 @@ paths:
                             schema:
                                 type: object
         delete:
-            operationId: github.com/ehabterra/swagen/testdata/echo.github.com/ehabterra/swagen/testdata/echo.deleteUser
+            operationId: github.com/ehabterra/apispec/testdata/echo.github.com/ehabterra/apispec/testdata/echo.deleteUser
             parameters:
                 - name: id
                   in: path
@@ -215,7 +215,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_echo.ErrorResponse'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_echo.ErrorResponse'
                 "500":
                     description: Internal Server Error
                     content:
@@ -224,14 +224,14 @@ paths:
                                 type: object
 components:
     schemas:
-        github.com_ehabterra_swagen_testdata_echo.CreateUserRequest:
+        github.com_ehabterra_apispec_testdata_echo.CreateUserRequest:
             type: object
             properties:
                 age:
                     type: integer
                 name:
                     type: string
-        github.com_ehabterra_swagen_testdata_echo.ErrorResponse:
+        github.com_ehabterra_apispec_testdata_echo.ErrorResponse:
             type: object
             properties:
                 code:
@@ -240,7 +240,7 @@ components:
                     type: string
                 message:
                     type: string
-        github.com_ehabterra_swagen_testdata_echo.SuccessResponse:
+        github.com_ehabterra_apispec_testdata_echo.SuccessResponse:
             type: object
             properties:
                 data:
@@ -249,14 +249,14 @@ components:
                     type: string
                 status:
                     type: string
-        github.com_ehabterra_swagen_testdata_echo.UpdateUserRequest:
+        github.com_ehabterra_apispec_testdata_echo.UpdateUserRequest:
             type: object
             properties:
                 age:
                     type: integer
                 name:
                     type: string
-        github.com_ehabterra_swagen_testdata_echo.User:
+        github.com_ehabterra_apispec_testdata_echo.User:
             type: object
             properties:
                 age:

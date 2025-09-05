@@ -32,9 +32,9 @@ func TestDefaultConfigs(t *testing.T) {
 	}
 }
 
-func TestLoadSwagenConfig(t *testing.T) {
+func TestLoadAPISpecConfig(t *testing.T) {
 	// Test loading config from non-existent file
-	_, err := LoadSwagenConfig("/non/existent/config.yaml")
+	_, err := LoadAPISpecConfig("/non/existent/config.yaml")
 	if err == nil {
 		t.Error("Expected error when loading non-existent config file")
 	}

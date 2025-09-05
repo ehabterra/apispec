@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // TestContextProvider_WithMockTrackerTree demonstrates proper use of MockTrackerTree for testing

@@ -12,10 +12,10 @@ import (
 
 	"go/types"
 
-	"github.com/ehabterra/swagen/internal/core"
-	"github.com/ehabterra/swagen/internal/metadata"
-	intspec "github.com/ehabterra/swagen/internal/spec"
-	"github.com/ehabterra/swagen/spec"
+	"github.com/ehabterra/apispec/internal/core"
+	"github.com/ehabterra/apispec/internal/metadata"
+	intspec "github.com/ehabterra/apispec/internal/spec"
+	"github.com/ehabterra/apispec/spec"
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
 )
@@ -35,7 +35,7 @@ const (
 	DefaultMaxArgsPerFunction = 30
 	DefaultMaxNestedArgsDepth = 50
 	DefaultMetadataFile       = "metadata.yaml"
-	CopyrightNotice           = "swagen - Copyright 2025 Ehab Terra"
+	CopyrightNotice           = "apispec - Copyright 2025 Ehab Terra"
 	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 	FullLicenseNotice         = "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 )
@@ -55,7 +55,7 @@ type EngineConfig struct {
 	LicenseURL         string
 	OpenAPIVersion     string
 	ConfigFile         string
-	SwagenConfig       *spec.SwagenConfig // Direct config object (takes precedence over ConfigFile)
+	APISpecConfig      *spec.APISpecConfig // Direct config object (takes precedence over ConfigFile)
 	OutputConfig       string
 	WriteMetadata      bool
 	SplitMetadata      bool
@@ -259,13 +259,13 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		return nil, fmt.Errorf("failed to detect framework: %w", err)
 	}
 
-	var swagenConfig *spec.SwagenConfig
-	if e.config.SwagenConfig != nil {
+	var apispecConfig *spec.APISpecConfig
+	if e.config.APISpecConfig != nil {
 		// Use the directly provided config
-		swagenConfig = e.config.SwagenConfig
+		apispecConfig = e.config.APISpecConfig
 	} else if e.config.ConfigFile != "" {
 		// Load config from file
-		swagenConfig, err = spec.LoadSwagenConfig(e.config.ConfigFile)
+		apispecConfig, err = spec.LoadAPISpecConfig(e.config.ConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
@@ -273,53 +273,53 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		// Auto-detect framework and use defaults
 		switch framework {
 		case "gin":
-			swagenConfig = spec.DefaultGinConfig()
+			apispecConfig = spec.DefaultGinConfig()
 		case "chi":
-			swagenConfig = spec.DefaultChiConfig()
+			apispecConfig = spec.DefaultChiConfig()
 		case "echo":
-			swagenConfig = spec.DefaultEchoConfig()
+			apispecConfig = spec.DefaultEchoConfig()
 		case "fiber":
-			swagenConfig = spec.DefaultFiberConfig()
+			apispecConfig = spec.DefaultFiberConfig()
 		case "mux":
-			swagenConfig = spec.DefaultMuxConfig()
+			apispecConfig = spec.DefaultMuxConfig()
 		default:
-			swagenConfig = spec.DefaultHTTPConfig() // fallback
+			apispecConfig = spec.DefaultHTTPConfig() // fallback
 		}
 	}
 
-	// Set info from configuration (only if not already set in SwagenConfig)
-	if swagenConfig.Info.Title == "" {
-		swagenConfig.Info.Title = e.config.Title
+	// Set info from configuration (only if not already set in APISpecConfig)
+	if apispecConfig.Info.Title == "" {
+		apispecConfig.Info.Title = e.config.Title
 	}
-	if swagenConfig.Info.Description == "" {
+	if apispecConfig.Info.Description == "" {
 		desc := e.config.Description
 		if !strings.HasSuffix(desc, FullLicenseNotice) {
 			desc += FullLicenseNotice
 		}
-		swagenConfig.Info.Description = desc
+		apispecConfig.Info.Description = desc
 	}
-	if swagenConfig.Info.Version == "" {
-		swagenConfig.Info.Version = e.config.APIVersion
+	if apispecConfig.Info.Version == "" {
+		apispecConfig.Info.Version = e.config.APIVersion
 	}
-	if swagenConfig.Info.TermsOfService == "" {
-		swagenConfig.Info.TermsOfService = e.config.TermsOfService
+	if apispecConfig.Info.TermsOfService == "" {
+		apispecConfig.Info.TermsOfService = e.config.TermsOfService
 	}
-	if swagenConfig.Info.Contact == nil {
-		swagenConfig.Info.Contact = &intspec.Contact{
+	if apispecConfig.Info.Contact == nil {
+		apispecConfig.Info.Contact = &intspec.Contact{
 			Name:  e.config.ContactName,
 			URL:   e.config.ContactURL,
 			Email: e.config.ContactEmail,
 		}
 	}
-	if swagenConfig.Info.License == nil {
-		swagenConfig.Info.License = &intspec.License{
+	if apispecConfig.Info.License == nil {
+		apispecConfig.Info.License = &intspec.License{
 			Name: e.config.LicenseName,
 			URL:  e.config.LicenseURL,
 		}
 	}
 
 	// Merge CLI include/exclude patterns with loaded configuration
-	e.mergeIncludeExcludePatterns(swagenConfig)
+	e.mergeIncludeExcludePatterns(apispecConfig)
 
 	// Prepare generator config
 	generatorConfig := intspec.GeneratorConfig{
@@ -352,7 +352,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 
 	// Generate OpenAPI spec
-	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, swagenConfig, generatorConfig)
+	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, apispecConfig, generatorConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
 	}
@@ -384,7 +384,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			configPath = filepath.Join(e.config.moduleRoot, configPath)
 		}
 
-		cfgYaml, err := yaml.Marshal(swagenConfig)
+		cfgYaml, err := yaml.Marshal(apispecConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal effective config: %w", err)
 		}
@@ -398,7 +398,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 }
 
 // mergeIncludeExcludePatterns merges CLI include/exclude patterns with the loaded configuration
-func (e *Engine) mergeIncludeExcludePatterns(config *spec.SwagenConfig) {
+func (e *Engine) mergeIncludeExcludePatterns(config *spec.APISpecConfig) {
 	// Merge include patterns
 	if len(e.config.IncludeFiles) > 0 {
 		config.Include.Files = append(config.Include.Files, e.config.IncludeFiles...)

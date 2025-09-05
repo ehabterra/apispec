@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Script to enable test file generation for swagen metadata tests
+# Script to enable test file generation for apispec metadata tests
 # This sets the environment variable needed to generate test files
 
-echo "Enabling test file generation for swagen metadata tests..."
+echo "Enabling test file generation for apispec metadata tests..."
 echo "This will generate YAML files in internal/spec/tests/ during test runs"
 echo ""
 echo "Note: These files contain temporary directory paths and should NOT be committed to git"

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
@@ -42,7 +42,7 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 		},
 	}
 
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 
 	tests := []struct {
 		name     string
@@ -273,7 +273,7 @@ func TestFindTypeInMetadata_HandlesExternalTypes(t *testing.T) {
 }
 
 func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		ExternalTypes: []ExternalType{
 			{
 				Name: "primitive.ObjectID",
@@ -450,7 +450,7 @@ func TestMapMetadataToOpenAPI_WithConfigInfo(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with custom info
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Info: Info{
 			Title:       "Custom API",
 			Description: "Custom API Description",
@@ -572,7 +572,7 @@ func TestMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with security schemes
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -658,9 +658,9 @@ func TestMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 	}
 }
 
-func TestLoadSwagenConfig(t *testing.T) {
+func TestLoadAPISpecConfig(t *testing.T) {
 	// Test loading non-existent config file
-	_, err := LoadSwagenConfig("/non/existent/path/config.yaml")
+	_, err := LoadAPISpecConfig("/non/existent/path/config.yaml")
 	if err == nil {
 		t.Error("Expected error when loading non-existent config file")
 	}
@@ -668,17 +668,17 @@ func TestLoadSwagenConfig(t *testing.T) {
 	// Test loading invalid YAML file
 	// We can't easily test this without creating a temporary file
 	// So we'll just test that the function exists and can be called
-	_ = LoadSwagenConfig
+	_ = LoadAPISpecConfig
 }
 
-func TestDefaultSwagenConfig(t *testing.T) {
-	config := DefaultSwagenConfig()
+func TestDefaultAPISpecConfig(t *testing.T) {
+	config := DefaultAPISpecConfig()
 	if config == nil {
 		t.Fatal("Default config should not be nil")
 	}
 
 	// Test that default config has empty framework
-	// Note: DefaultSwagenConfig returns an empty config, so framework fields are nil
+	// Note: DefaultAPISpecConfig returns an empty config, so framework fields are nil
 	// This is expected behavior
 }
 
@@ -1054,7 +1054,7 @@ type Container struct {
 	metadata := metadata.GenerateMetadata(pkgs, fileToInfo, importPaths, fset)
 
 	// Create config
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		TypeMapping:   []TypeMapping{},
 		ExternalTypes: []ExternalType{},
 	}

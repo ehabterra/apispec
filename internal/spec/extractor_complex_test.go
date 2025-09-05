@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestExtractor_ComplexRouteExtraction(t *testing.T) {
@@ -98,7 +98,7 @@ func TestExtractor_ComplexRouteExtraction(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create a comprehensive config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -295,7 +295,7 @@ func TestExtractor_PatternMatching(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with various pattern types
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -467,14 +467,14 @@ func TestExtractor_EdgeCases(t *testing.T) {
 	_ = NewExtractor(tree, nil)
 
 	// Test with empty config
-	emptyCfg := &SwagenConfig{}
+	emptyCfg := &APISpecConfig{}
 	extractor := NewExtractor(tree, emptyCfg)
 	if extractor == nil {
 		t.Fatal("Extractor should handle empty config")
 	}
 
 	// Test with config that has no patterns
-	noPatternsCfg := &SwagenConfig{
+	noPatternsCfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns:       []RoutePattern{},
 			MountPatterns:       []MountPattern{},
@@ -563,7 +563,7 @@ func TestExtractor_ComplexTypeHandling(t *testing.T) {
 	tree := NewMockTrackerTree(meta, limits)
 
 	// Create config with complex type handling
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{

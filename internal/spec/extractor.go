@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 const (
@@ -55,7 +55,7 @@ type ResponseInfo struct {
 // Extractor provides a cleaner, more modular approach to extraction
 type Extractor struct {
 	tree            TrackerTreeInterface
-	cfg             *SwagenConfig
+	cfg             *APISpecConfig
 	contextProvider ContextProvider
 	schemaMapper    SchemaMapper
 	typeResolver    TypeResolver
@@ -70,7 +70,7 @@ type Extractor struct {
 }
 
 // NewExtractor creates a new refactored extractor
-func NewExtractor(tree TrackerTreeInterface, cfg *SwagenConfig) *Extractor {
+func NewExtractor(tree TrackerTreeInterface, cfg *APISpecConfig) *Extractor {
 	contextProvider := NewContextProvider(tree.GetMetadata())
 	schemaMapper := NewSchemaMapper(cfg)
 	typeResolver := NewTypeResolver(tree.GetMetadata(), cfg, schemaMapper)
@@ -424,7 +424,7 @@ type ResponsePatternMatcherImpl struct {
 }
 
 // NewResponsePatternMatcher creates a new response pattern matcher
-func NewResponsePatternMatcher(pattern ResponsePattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ResponsePatternMatcherImpl {
+func NewResponsePatternMatcher(pattern ResponsePattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ResponsePatternMatcherImpl {
 	return &ResponsePatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
@@ -584,7 +584,7 @@ type ParamPatternMatcherImpl struct {
 }
 
 // NewParamPatternMatcher creates a new param pattern matcher
-func NewParamPatternMatcher(pattern ParamPattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ParamPatternMatcherImpl {
+func NewParamPatternMatcher(pattern ParamPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ParamPatternMatcherImpl {
 	return &ParamPatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
@@ -736,11 +736,11 @@ func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, n
 
 // OverrideApplierImpl implements OverrideApplier
 type OverrideApplierImpl struct {
-	cfg *SwagenConfig
+	cfg *APISpecConfig
 }
 
 // NewOverrideApplier creates a new override applier
-func NewOverrideApplier(cfg *SwagenConfig) *OverrideApplierImpl {
+func NewOverrideApplier(cfg *APISpecConfig) *OverrideApplierImpl {
 	return &OverrideApplierImpl{
 		cfg: cfg,
 	}

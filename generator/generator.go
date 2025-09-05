@@ -5,24 +5,24 @@ package generator
 import (
 	"fmt"
 
-	"github.com/ehabterra/swagen/internal/engine"
-	"github.com/ehabterra/swagen/spec"
+	"github.com/ehabterra/apispec/internal/engine"
+	"github.com/ehabterra/apispec/spec"
 )
 
 // Generator encapsulates configuration and limits for generation.
 type Generator struct {
-	config *spec.SwagenConfig
+	config *spec.APISpecConfig
 	engine *engine.Engine
 }
 
 // NewGenerator creates a new Generator. If cfg is nil, a framework will be detected
 // during generation and a default config will be used.
-func NewGenerator(cfg *spec.SwagenConfig) *Generator {
+func NewGenerator(cfg *spec.APISpecConfig) *Generator {
 	engineConfig := engine.DefaultEngineConfig()
 
 	// If a config is provided, set it directly in the engine config
 	if cfg != nil {
-		engineConfig.SwagenConfig = cfg
+		engineConfig.APISpecConfig = cfg
 	}
 
 	return &Generator{
@@ -41,9 +41,9 @@ func (g *Generator) GenerateFromDirectory(dir string) (*spec.OpenAPISpec, error)
 	engineConfig := engine.DefaultEngineConfig()
 	engineConfig.InputDir = dir
 
-	// Pass the SwagenConfig directly to the engine
+	// Pass the APISpecConfig directly to the engine
 	if g.config != nil {
-		engineConfig.SwagenConfig = g.config
+		engineConfig.APISpecConfig = g.config
 	}
 
 	// Create a new engine instance for this generation

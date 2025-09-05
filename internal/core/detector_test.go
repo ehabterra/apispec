@@ -15,7 +15,7 @@ func TestNewFrameworkDetector(t *testing.T) {
 
 func TestDetect_NoGoFiles(t *testing.T) {
 	// Create a temporary directory without Go files
-	tempDir, err := os.MkdirTemp("", "swagen_test_no_go")
+	tempDir, err := os.MkdirTemp("", "apispec_test_no_go")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestDetect_NoGoFiles(t *testing.T) {
 
 func TestDetect_WithGoFiles(t *testing.T) {
 	// Create a temporary directory with Go files
-	tempDir, err := os.MkdirTemp("", "swagen_test_with_go")
+	tempDir, err := os.MkdirTemp("", "apispec_test_with_go")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -72,7 +72,7 @@ func main() {
 
 func TestCollectGoFiles(t *testing.T) {
 	// Create a temporary directory with mixed file types
-	tempDir, err := os.MkdirTemp("", "swagen_test_collect")
+	tempDir, err := os.MkdirTemp("", "apispec_test_collect")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}

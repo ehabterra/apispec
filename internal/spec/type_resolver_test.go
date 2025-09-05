@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestTypeResolver_ResolveType(t *testing.T) {
@@ -60,7 +60,7 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 		},
 	}
 
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	schemaMapper := NewSchemaMapper(cfg)
 	resolver := NewTypeResolver(meta, cfg, schemaMapper)
 
@@ -222,7 +222,7 @@ func TestTypeResolver_ResolveType(t *testing.T) {
 
 func TestTypeResolver_MapToOpenAPISchema(t *testing.T) {
 	meta := &metadata.Metadata{}
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	schemaMapper := NewSchemaMapper(cfg)
 	resolver := NewTypeResolver(meta, cfg, schemaMapper)
 
@@ -275,7 +275,7 @@ func TestTypeResolver_MapToOpenAPISchema(t *testing.T) {
 
 func TestTypeResolver_ResolveGenericType(t *testing.T) {
 	meta := &metadata.Metadata{}
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	schemaMapper := NewSchemaMapper(cfg)
 	resolver := NewTypeResolver(meta, cfg, schemaMapper)
 
@@ -359,7 +359,7 @@ func TestTypeResolver_ResolveGenericType(t *testing.T) {
 
 func TestTypeResolver_ExtractTypeParameters(t *testing.T) {
 	meta := &metadata.Metadata{}
-	cfg := DefaultSwagenConfig()
+	cfg := DefaultAPISpecConfig()
 	schemaMapper := NewSchemaMapper(cfg)
 	resolver := NewTypeResolver(meta, cfg, schemaMapper)
 

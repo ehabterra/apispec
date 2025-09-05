@@ -75,7 +75,7 @@ func TestEngine_GenerateOpenAPI_InvalidDirectory(t *testing.T) {
 
 func TestEngine_GenerateOpenAPI_NoGoModule(t *testing.T) {
 	// Create a temporary directory without go.mod
-	tempDir, err := os.MkdirTemp("", "swagen_test_no_module")
+	tempDir, err := os.MkdirTemp("", "apispec_test_no_module")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestEngine_GenerateOpenAPI_NoGoModule(t *testing.T) {
 
 func TestEngine_GenerateOpenAPI_ValidDirectory(t *testing.T) {
 	// Create a temporary directory with a simple Go module
-	tempDir, err := os.MkdirTemp("", "swagen_test_valid")
+	tempDir, err := os.MkdirTemp("", "apispec_test_valid")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -154,7 +154,7 @@ func main() {
 
 func TestEngine_GenerateOpenAPI_WithConfig(t *testing.T) {
 	// Create a temporary directory with a Go module
-	tempDir, err := os.MkdirTemp("", "swagen_test_with_config")
+	tempDir, err := os.MkdirTemp("", "apispec_test_with_config")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -188,7 +188,7 @@ func main() {
 	}
 
 	// Create a custom config file
-	configFile := filepath.Join(tempDir, "swagen.yaml")
+	configFile := filepath.Join(tempDir, "apispec.yaml")
 	configContent := `framework:
   routePatterns:
     - callRegex: "^HandleFunc$"
@@ -234,7 +234,7 @@ defaults:
 
 func TestEngine_GenerateOpenAPI_WithMetadata(t *testing.T) {
 	// Create a temporary directory with a Go module
-	tempDir, err := os.MkdirTemp("", "swagen_test_metadata")
+	tempDir, err := os.MkdirTemp("", "apispec_test_metadata")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -290,7 +290,7 @@ func main() {
 
 func TestEngine_GenerateOpenAPI_WithDiagram(t *testing.T) {
 	// Create a temporary directory with a Go module
-	tempDir, err := os.MkdirTemp("", "swagen_test_diagram")
+	tempDir, err := os.MkdirTemp("", "apispec_test_diagram")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}

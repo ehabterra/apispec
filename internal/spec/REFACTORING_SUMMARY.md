@@ -38,7 +38,7 @@ type ContextProviderImpl struct {
 #### Schema Mapper (`schema_mapper.go`)
 ```go
 type SchemaMapperImpl struct {
-    cfg *SwagenConfig
+    cfg *APISpecConfig
 }
 ```
 - Maps Go types to OpenAPI schemas
@@ -49,7 +49,7 @@ type SchemaMapperImpl struct {
 ```go
 type BasePatternMatcher struct {
     contextProvider ContextProvider
-    cfg             *SwagenConfig
+    cfg             *APISpecConfig
     schemaMapper    SchemaMapper
 }
 ```
@@ -69,7 +69,7 @@ type BasePatternMatcher struct {
 ```go
 type RefactoredExtractor struct {
     tree            *TrackerTree
-    cfg             *SwagenConfig
+    cfg             *APISpecConfig
     contextProvider ContextProvider
     schemaMapper    SchemaMapper
     overrideApplier OverrideApplier
@@ -150,7 +150,7 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode
 ### Creating a Refactored Extractor
 ```go
 tree := NewTrackerTree(meta, limits)
-cfg := &SwagenConfig{...}
+cfg := &APISpecConfig{...}
 extractor := NewRefactoredExtractor(tree, cfg)
 routes := extractor.ExtractRoutes()
 ```

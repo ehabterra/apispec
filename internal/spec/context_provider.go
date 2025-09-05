@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // ContextProviderImpl implements ContextProvider

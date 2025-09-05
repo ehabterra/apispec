@@ -1,11 +1,10 @@
-# Swagen Documentation
+# APISpec Documentation
 
-This directory contains detailed documentation for the Swagen project.
+This directory contains detailed documentation for the APISpec project.
 
 ## Documentation Index
 
 ### Core Documentation
-- **[SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md)** - Solution to test file changes issue due to temporary directory names
 - **[TRACKER_TREE_USAGE.md](TRACKER_TREE_USAGE.md)** - Comprehensive guide to using TrackerTree for call graph analysis
 - **[CYTOGRAPHE_README.md](CYTOGRAPHE_README.md)** - Documentation for the call graph visualization feature
 
@@ -22,6 +21,5 @@ This directory contains detailed documentation for the Swagen project.
 ## Getting Started
 
 1. Start with the [main README](../README.md) for an overview
-2. Check [SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md) if you're having issues with test file changes
-3. Read [TRACKER_TREE_USAGE.md](TRACKER_TREE_USAGE.md) for advanced call graph analysis
-4. Explore [CYTOGRAPHE_README.md](CYTOGRAPHE_README.md) for visualization features
+2. Read [TRACKER_TREE_USAGE.md](TRACKER_TREE_USAGE.md) for advanced call graph analysis
+3. Explore [CYTOGRAPHE_README.md](CYTOGRAPHE_README.md) for visualization features

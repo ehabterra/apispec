@@ -1,7 +1,7 @@
 package spec
 
 import (
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // PatternMatcher defines the interface for pattern matching operations

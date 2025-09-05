@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // TypeResolverImpl implements TypeResolver
 type TypeResolverImpl struct {
 	meta         *metadata.Metadata
-	cfg          *SwagenConfig
+	cfg          *APISpecConfig
 	schemaMapper SchemaMapper
 }
 
 // NewTypeResolver creates a new type resolver
-func NewTypeResolver(meta *metadata.Metadata, cfg *SwagenConfig, schemaMapper SchemaMapper) *TypeResolverImpl {
+func NewTypeResolver(meta *metadata.Metadata, cfg *APISpecConfig, schemaMapper SchemaMapper) *TypeResolverImpl {
 	return &TypeResolverImpl{
 		meta:         meta,
 		cfg:          cfg,

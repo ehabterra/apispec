@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Swagen Release Script
-# This script builds swagen for multiple platforms and creates a release package
+# APISpec Release Script
+# This script builds apispec for multiple platforms and creates a release package
 
 set -e
 
-APP_NAME="swagen"
+APP_NAME="apispec"
 VERSION="${VERSION:-0.0.1}"  # Allow VERSION to be set from environment
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
@@ -33,7 +33,7 @@ print_error() {
 
 print_header() {
     echo -e "${BLUE}================================${NC}"
-    echo -e "${BLUE}  Swagen Release Script${NC}"
+    echo -e "${BLUE}  APISpec Release Script${NC}"
     echo -e "${BLUE}================================${NC}"
 }
 
@@ -69,7 +69,7 @@ build_for_platform() {
     LDFLAGS="-X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.BuildDate=$BUILD_DATE' -X 'main.GoVersion=$GO_VERSION'"
     
     # Build
-    go build -ldflags "$LDFLAGS" -o "dist/${APP_NAME}-${GOOS}-${GOARCH}${EXTENSION}" ./cmd/swagen
+    go build -ldflags "$LDFLAGS" -o "dist/${APP_NAME}-${GOOS}-${GOARCH}${EXTENSION}" ./cmd/apispec
     
     print_status "Built: dist/${APP_NAME}-${GOOS}-${GOARCH}${EXTENSION}"
 }

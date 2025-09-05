@@ -5,7 +5,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // ArgumentType represents the classification of an argument

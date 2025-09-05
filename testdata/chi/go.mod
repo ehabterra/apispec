@@ -1,4 +1,4 @@
-module github.com/ehabterra/swagen/testdata/chi
+module github.com/ehabterra/apispec/testdata/chi
 
 go 1.24.3
 

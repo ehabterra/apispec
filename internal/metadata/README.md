@@ -12,7 +12,7 @@ This package provides functionality for generating metadata from Go source code,
 ## Usage
 
 ```go
-import "github.com/ehabterra/swagen/internal/metadata"
+import "github.com/ehabterra/apispec/internal/metadata"
 
 // Generate metadata from Go packages
 meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)

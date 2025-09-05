@@ -16,7 +16,7 @@ paths:
         get:
             tags:
                 - /users
-            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.ListUsers
+            operationId: github.com/ehabterra/apispec/testdata/gin.github.com/ehabterra/apispec/testdata/gin.ListUsers
             responses:
                 "200":
                     description: OK
@@ -25,7 +25,7 @@ paths:
                             schema:
                                 type: array
                                 items:
-                                    $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                                    $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
@@ -41,19 +41,19 @@ paths:
         post:
             tags:
                 - /users
-            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.CreateUser
+            operationId: github.com/ehabterra/apispec/testdata/gin.github.com/ehabterra/apispec/testdata/gin.CreateUser
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                            $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
             responses:
                 "201":
                     description: Created
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
@@ -70,7 +70,7 @@ paths:
         get:
             tags:
                 - /users
-            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.GetUser
+            operationId: github.com/ehabterra/apispec/testdata/gin.github.com/ehabterra/apispec/testdata/gin.GetUser
             parameters:
                 - name: id
                   in: path
@@ -83,7 +83,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
@@ -105,7 +105,7 @@ paths:
         put:
             tags:
                 - /users
-            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.UpdateUser
+            operationId: github.com/ehabterra/apispec/testdata/gin.github.com/ehabterra/apispec/testdata/gin.UpdateUser
             parameters:
                 - name: id
                   in: path
@@ -116,14 +116,14 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                            $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
             responses:
                 "200":
                     description: OK
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/github.com_ehabterra_swagen_testdata_gin.User'
+                                $ref: '#/components/schemas/github.com_ehabterra_apispec_testdata_gin.User'
                 "400":
                     description: Bad Request
                     content:
@@ -145,7 +145,7 @@ paths:
         delete:
             tags:
                 - /users
-            operationId: github.com/ehabterra/swagen/testdata/gin.github.com/ehabterra/swagen/testdata/gin.DeleteUser
+            operationId: github.com/ehabterra/apispec/testdata/gin.github.com/ehabterra/apispec/testdata/gin.DeleteUser
             parameters:
                 - name: id
                   in: path
@@ -179,7 +179,7 @@ paths:
                                 type: object
 components:
     schemas:
-        github.com_ehabterra_swagen_testdata_gin.User:
+        github.com_ehabterra_apispec_testdata_gin.User:
             type: object
             properties:
                 id:

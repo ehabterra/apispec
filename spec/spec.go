@@ -2,10 +2,10 @@
 // re-exported from the internal spec package.
 package spec
 
-import intspec "github.com/ehabterra/swagen/internal/spec"
+import intspec "github.com/ehabterra/apispec/internal/spec"
 
 // Re-export core configuration types
-type SwagenConfig = intspec.SwagenConfig
+type APISpecConfig = intspec.APISpecConfig
 type Info = intspec.Info
 type Server = intspec.Server
 type SecurityRequirement = intspec.SecurityRequirement
@@ -17,12 +17,12 @@ type Components = intspec.Components
 type OpenAPISpec = intspec.OpenAPISpec
 
 // Default framework configurations
-func DefaultGinConfig() *SwagenConfig   { return intspec.DefaultGinConfig() }
-func DefaultChiConfig() *SwagenConfig   { return intspec.DefaultChiConfig() }
-func DefaultEchoConfig() *SwagenConfig  { return intspec.DefaultEchoConfig() }
-func DefaultFiberConfig() *SwagenConfig { return intspec.DefaultFiberConfig() }
-func DefaultMuxConfig() *SwagenConfig   { return intspec.DefaultMuxConfig() }
-func DefaultHTTPConfig() *SwagenConfig  { return intspec.DefaultHTTPConfig() }
+func DefaultGinConfig() *APISpecConfig   { return intspec.DefaultGinConfig() }
+func DefaultChiConfig() *APISpecConfig   { return intspec.DefaultChiConfig() }
+func DefaultEchoConfig() *APISpecConfig  { return intspec.DefaultEchoConfig() }
+func DefaultFiberConfig() *APISpecConfig { return intspec.DefaultFiberConfig() }
+func DefaultMuxConfig() *APISpecConfig   { return intspec.DefaultMuxConfig() }
+func DefaultHTTPConfig() *APISpecConfig  { return intspec.DefaultHTTPConfig() }
 
-// LoadSwagenConfig loads a YAML configuration file.
-func LoadSwagenConfig(path string) (*SwagenConfig, error) { return intspec.LoadSwagenConfig(path) }
+// LoadAPISpecConfig loads a YAML configuration file.
+func LoadAPISpecConfig(path string) (*APISpecConfig, error) { return intspec.LoadAPISpecConfig(path) }

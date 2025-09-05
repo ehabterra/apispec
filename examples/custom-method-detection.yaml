@@ -1,5 +1,5 @@
 # Example: Custom Method Detection Configuration
-# This shows how to configure Swagen to extract HTTP methods from function names
+# This shows how to configure APISpec to extract HTTP methods from function names
 # with custom patterns and behavior.
 
 framework:

@@ -1,17 +1,17 @@
-# Swagen: Generate OpenAPI from Go code
+# APISpec: Generate OpenAPI from Go code
 
 ![Coverage](https://img.shields.io/badge/coverage-55.0%25-red.svg)
 
 > **Disclaimer:**  
-> Swagen is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
+> APISpec is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
 
-**Swagen** analyzes your Go code and automatically generates an OpenAPI 3.1 spec (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, net/http), follows call graphs to the final handlers, and infers request/response types from real code (struct tags, literals, generics, and more).
+**APISpec** analyzes your Go code and automatically generates an OpenAPI 3.1 spec (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, net/http), follows call graphs to the final handlers, and infers request/response types from real code (struct tags, literals, generics, and more).
 
-**TL;DR**: Point Swagen at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
+**TL;DR**: Point APISpec at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
 
 ## 🎬 Demo Video
 
-[![Swagen Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/fMHDshOeQVs)
+[![APISpec Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/fMHDshOeQVs)
 
 *Click the image above to watch the full demo on YouTube*
 
@@ -47,7 +47,7 @@
 - [x] **Standard net/http**: Basic support for `HandleFunc` and `Handle` calls
 
 ## Golang Feature Support
-Swagen focuses on practical coverage for real-world services. Current coverage includes:
+APISpec focuses on practical coverage for real-world services. Current coverage includes:
 
 - [x] **Alias imports**: supports import aliases in analysis.
 - [x] **Alias types**: type aliases are detected and resolved to underlying primitive types. <strong style="color:green;">✨NEW</strong>
@@ -76,7 +76,7 @@ Swagen focuses on practical coverage for real-world services. Current coverage i
 
 ### Type Resolution Examples
 
-Swagen automatically resolves underlying types for aliases and enums:
+APISpec automatically resolves underlying types for aliases and enums:
 
 ```go
 // Enum types are resolved to their underlying primitive type
@@ -139,7 +139,7 @@ graph TD
     M -.-> N[diagram.html]
     
     H -.-> O[Effective Config Output<br/>--output-config]
-    O -.-> P[swagen-config.yaml]
+    O -.-> P[apispec-config.yaml]
     
     D -.-> Q[Metadata Output<br/>--write-metadata]
     Q -.-> R[metadata.yaml]
@@ -147,13 +147,13 @@ graph TD
 
 ### How It Works
 
-Swagen executes a multi-stage process to analyze your code and generate the OpenAPI specification. The workflow is designed to be robust and flexible, handling complex Go projects with ease.
+APISpec executes a multi-stage process to analyze your code and generate the OpenAPI specification. The workflow is designed to be robust and flexible, handling complex Go projects with ease.
 
  1. **Initialization & Flag Parsing**: The tool starts, prints license information, and parses all command-line flags provided by the user.
 
  2. **Module Discovery**: It finds the root of the Go module by searching for the `go.mod` file and changes the working directory to the module root.
 
- 3. **Package Loading & Type-Checking**: Swagen loads and performs a full type-check on all Go packages within the module (`./...`), building a rich understanding of the code's types and syntax.
+ 3. **Package Loading & Type-Checking**: APISpec loads and performs a full type-check on all Go packages within the module (`./...`), building a rich understanding of the code's types and syntax.
 
  4. **Framework Detection**: It analyzes the project's dependencies to automatically detect the web framework being used (e.g., Gin, Chi, Echo, Fiber, or standard `net/http`).
 
@@ -161,7 +161,7 @@ Swagen executes a multi-stage process to analyze your code and generate the Open
 
  6. **Metadata Generation**: It traverses the Abstract Syntax Trees (AST) of the parsed packages to generate a detailed `metadata` object. This object contains information about packages, function calls, and string constants. 
 
- 7. **Call Graph Construction**: Using the generated metadata, Swagen constructs a call graph tree. This tree traces the flow of execution from router definitions to the final handler functions, respecting limits set by flags like `--max-nodes` to prevent infinite recursion.
+ 7. **Call Graph Construction**: Using the generated metadata, APISpec constructs a call graph tree. This tree traces the flow of execution from router definitions to the final handler functions, respecting limits set by flags like `--max-nodes` to prevent infinite recursion.
 
  8. **OpenAPI Mapping**: The call graph and metadata are processed by a framework-specific mapper. This mapper identifies API routes, parameters, request bodies, and responses, translating them into the OpenAPI specification structure.
 
@@ -177,14 +177,14 @@ Swagen executes a multi-stage process to analyze your code and generate the Open
 
 #### Option 1: Go Install (Recommended)
 ```bash
-go install github.com/ehabterra/swagen/cmd/swagen@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 #### Option 2: From Source
 ```bash
 # Clone the repository
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 
 # Build and install
 make install-local    # Install to ~/go/bin (no sudo required)
@@ -195,7 +195,7 @@ make install          # Install to /usr/local/bin (requires sudo)
 #### Option 3: Using Installation Script
 ```bash
 # Download and run the installation script
-curl -sSL https://raw.githubusercontent.com/ehabterra/swagen/main/scripts/install.sh | bash -s go-install
+curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/install.sh | bash -s go-install
 ```
 
 **Note**: Make sure your Go bin directory is in your PATH. Add this to your shell profile:
@@ -206,30 +206,30 @@ export PATH=$HOME/go/bin:$PATH
 #### Building from Source (Development)
 ```bash
 # Clone the repository
-git clone https://github.com/ehabterra/swagen.git
-cd swagen
+git clone https://github.com/ehabterra/apispec.git
+cd apispec
 
 # Build the binary
 make build
 
 # Or build directly with Go
-go build -o swagen ./cmd/swagen
+go build -o apispec ./cmd/apispec
 ```
 
 ### Basic Usage
 
 ```bash
 # Generate OpenAPI spec from your Go project
-./swagen --output openapi.yaml
+./apispec --output openapi.yaml
 
 # Generate with custom config
-./swagen --config my-config.yaml --output openapi.yaml
+./apispec --config my-config.yaml --output openapi.yaml
 
 # Generate with call graph diagram
-./swagen --output openapi.yaml --diagram
+./apispec --output openapi.yaml --diagram
 
 # Generate metadata for debugging
-./swagen --output openapi.yaml --write-metadata
+./apispec --output openapi.yaml --write-metadata
 ```
 
 ### Programmatic usage
@@ -237,13 +237,13 @@ go build -o swagen ./cmd/swagen
 ```go
 import (
   "os"
-  "github.com/ehabterra/swagen/generator"
-  "github.com/ehabterra/swagen/spec"
+  "github.com/ehabterra/apispec/generator"
+  "github.com/ehabterra/apispec/spec"
   "gopkg.in/yaml.v3"
 )
 
 func main() {
-  cfg := spec.DefaultGinConfig() // or spec.LoadSwagenConfig("swagen.yaml")
+  cfg := spec.DefaultGinConfig() // or spec.LoadAPISpecConfig("apispec.yaml")
   gen := generator.NewGenerator(cfg)
   openapi, err := gen.GenerateFromDirectory("./your-project")
   if err != nil { panic(err) }
@@ -410,12 +410,12 @@ components:
 
 ## Configuration
 
-Swagen uses YAML configuration files to define framework patterns and behavior. Here are examples for different frameworks:
+APISpec uses YAML configuration files to define framework patterns and behavior. Here are examples for different frameworks:
 
 ### Gin Framework Configuration
 
 ```yaml
-# Example Gin configuration (swagen.yaml)
+# Example Gin configuration (apispec.yaml)
 info:
   title: My API
   version: 1.0.0
@@ -593,9 +593,9 @@ externalTypes:
 
 ### Project Structure
 ```
-swagen/
+apispec/
 ├── cmd/
-│   └── swagen/           # CLI entry point
+│   └── apispec/           # CLI entry point
 │       └── main.go
 ├── generator/            # High-level generator interface
 │   ├── generator.go
@@ -632,7 +632,7 @@ make update-badge
 
 ### Testing
 
-Swagen includes comprehensive test suites covering:
+APISpec includes comprehensive test suites covering:
 - **Unit tests** for all packages
 - **Integration tests** for framework detection and OpenAPI generation
 - **Comprehensive mapper tests** for edge cases and type resolution
@@ -666,7 +666,7 @@ go test ./... -cover
 ### Adding Framework Support
 1. Update the framework detection logic in `internal/core/detector.go`
 2. Add default configuration in `internal/spec/config.go`
-3. Update the framework detection logic in `cmd/swagen/main.go`
+3. Update the framework detection logic in `cmd/apispec/main.go`
 4. Add test cases in `testdata/`
 
 ### Code Quality
@@ -678,7 +678,7 @@ go test ./... -cover
 
 ## Performance Considerations
 
-Swagen implements several safeguards to prevent excessive resource usage:
+APISpec implements several safeguards to prevent excessive resource usage:
 
 | Parameter | Default Value | Description |
 |-----------|---------------|-------------|
@@ -693,7 +693,6 @@ Adjust these with CLI flags if needed for large codebases.
 
 - **[docs/INSTALLATION.md](docs/INSTALLATION.md)**: Detailed installation instructions
 - **[docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md)**: Automated release process with GitHub Actions
-- **[docs/SOLUTION_SUMMARY.md](docs/SOLUTION_SUMMARY.md)**: Solution to test file changes issue
 - **[docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md)**: Guide to using TrackerTree for call graph analysis
 - **[docs/CYTOGRAPHE_README.md](docs/CYTOGRAPHE_README.md)**: Documentation for the call graph visualization feature
 - **[internal/metadata/README.md](internal/metadata/README.md)**: Metadata package documentation
@@ -705,4 +704,4 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 
 ---
 
-> **Note**: The actual diagram should visualize the complete workflow from source code analysis to OpenAPI generation. The project includes example configurations for different frameworks in the `testdata` directory. For complex projects, consider using the `--split-metadata` flag to analyze intermediate results.
+> **Note**: [This diagram](README.md#architecture-overview) should visualize the complete workflow from source code analysis to OpenAPI generation. The project includes example configurations for different frameworks in the `testdata` directory. For complex projects, consider using the `--split-metadata` flag to analyze intermediate results.

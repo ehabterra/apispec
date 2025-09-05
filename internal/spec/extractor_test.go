@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 func TestRefactoredExtractor(t *testing.T) {
@@ -61,7 +61,7 @@ func TestRefactoredExtractor(t *testing.T) {
 	tree.AddRoot(testNode)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -121,7 +121,7 @@ func TestPatternMatchers(t *testing.T) {
 		PathArgIndex:   0,
 	}
 
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	schemaMapper := NewSchemaMapper(cfg)
 	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
 	matcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider, typeResolver)
@@ -160,7 +160,7 @@ func TestContextProvider(t *testing.T) {
 }
 
 func TestSchemaMapper(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	// Test basic type mapping
@@ -195,7 +195,7 @@ func TestSchemaMapper(t *testing.T) {
 }
 
 func TestOverrideApplier(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Overrides: []Override{
 			{
 				FunctionName:   "testFunc",
@@ -275,7 +275,7 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 			}
 
 			// Create a simple config
-			cfg := &SwagenConfig{
+			cfg := &APISpecConfig{
 				Defaults: Defaults{
 					ResponseStatus:      200,
 					ResponseContentType: "application/json",

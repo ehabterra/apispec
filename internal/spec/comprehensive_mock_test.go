@@ -3,7 +3,7 @@ package spec
 import (
 	"testing"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // TestExtractorWithMockTrackerTree demonstrates proper use of MockTrackerTree for extractor testing
@@ -32,7 +32,7 @@ func TestExtractorWithMockTrackerTree(t *testing.T) {
 	mockTree.AddRoot(testNode)
 
 	// Create a simple config for testing
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -92,7 +92,7 @@ func TestPatternMatchersWithMockNodes(t *testing.T) {
 	contextProvider := NewContextProvider(meta)
 
 	// Create config and schema mapper
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	schemaMapper := NewSchemaMapper(cfg)
 	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
 
@@ -135,7 +135,7 @@ func TestTypeResolverWithMockNodes(t *testing.T) {
 		StringPool: stringPool,
 	}
 
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	schemaMapper := NewSchemaMapper(cfg)
 	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
 

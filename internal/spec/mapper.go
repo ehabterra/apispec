@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 const (
@@ -25,14 +25,14 @@ type GeneratorConfig struct {
 	APIVersion     string `yaml:"apiVersion"`
 }
 
-// LoadSwagenConfig loads a SwagenConfig from a YAML file
-func LoadSwagenConfig(path string) (*SwagenConfig, error) {
+// LoadAPISpecConfig loads a APISpecConfig from a YAML file
+func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var config SwagenConfig
+	var config APISpecConfig
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
@@ -41,13 +41,13 @@ func LoadSwagenConfig(path string) (*SwagenConfig, error) {
 	return &config, nil
 }
 
-// DefaultSwagenConfig returns a default configuration
-func DefaultSwagenConfig() *SwagenConfig {
-	return &SwagenConfig{}
+// DefaultAPISpecConfig returns a default configuration
+func DefaultAPISpecConfig() *APISpecConfig {
+	return &APISpecConfig{}
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification
-func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *SwagenConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
+func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
 	// Create extractor
 	extractor := NewExtractor(tree, cfg)
 
@@ -262,7 +262,7 @@ func convertPathToOpenAPI(path string) string {
 }
 
 // generateComponentSchemas generates component schemas from metadata
-func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes []RouteInfo) Components {
+func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, routes []RouteInfo) Components {
 	components := Components{
 		Schemas: make(map[string]*Schema),
 	}
@@ -276,7 +276,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *SwagenConfig, routes
 	return components
 }
 
-func generateSchemas(usedTypes map[string]bool, cfg *SwagenConfig, components Components, meta *metadata.Metadata) {
+func generateSchemas(usedTypes map[string]bool, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
 	for typeName := range usedTypes {
 		// Check external types
 		if cfg != nil {
@@ -490,7 +490,7 @@ func isPrimitiveType(typeName string) bool {
 }
 
 // generateSchemaFromType generates an OpenAPI schema from a metadata type
-func generateSchemaFromType(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *SwagenConfig) (*Schema, map[string]*Schema) {
+func generateSchemaFromType(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	// if usedTypes[key] {
@@ -523,7 +523,7 @@ func generateSchemaFromType(usedTypes map[string]bool, key string, typ *metadata
 }
 
 // generateStructSchema generates a schema for a struct type
-func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *SwagenConfig) (*Schema, map[string]*Schema) {
+func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	keyParts := TypeParts(key)
@@ -592,7 +592,7 @@ func generateInterfaceSchema() *Schema {
 }
 
 // generateAliasSchema generates a schema for an alias type
-func generateAliasSchema(usedTypes map[string]bool, typ *metadata.Type, meta *metadata.Metadata, cfg *SwagenConfig) (*Schema, map[string]*Schema) {
+func generateAliasSchema(usedTypes map[string]bool, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
 	return mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg)
 }
@@ -710,7 +710,7 @@ func extractJSONName(tag string) string {
 }
 
 // mapGoTypeToOpenAPISchema maps Go types to OpenAPI schemas
-func mapGoTypeToOpenAPISchema(usedTypes map[string]bool, goType string, meta *metadata.Metadata, cfg *SwagenConfig) (*Schema, map[string]*Schema) {
+func mapGoTypeToOpenAPISchema(usedTypes map[string]bool, goType string, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	// Check type mappings first

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Swagen Installation Script
-# This script provides multiple installation options for swagen
+# APISpec Installation Script
+# This script provides multiple installation options for apispec
 
 set -e
 
-APP_NAME="swagen"
+APP_NAME="apispec"
 VERSION="0.0.1"
-REPO_URL="https://github.com/ehabterra/swagen"
+REPO_URL="https://github.com/ehabterra/apispec"
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,7 +31,7 @@ print_error() {
 
 print_header() {
     echo -e "${BLUE}================================${NC}"
-    echo -e "${BLUE}  Swagen Installation Script${NC}"
+    echo -e "${BLUE}  APISpec Installation Script${NC}"
     echo -e "${BLUE}================================${NC}"
 }
 
@@ -56,17 +56,17 @@ check_go() {
 install_go_install() {
     print_status "Installing using 'go install'..."
     
-    if command_exists swagen; then
-        print_warning "swagen is already installed. Updating..."
-        go install github.com/ehabterra/swagen/cmd/swagen@latest
+    if command_exists apispec; then
+        print_warning "apispec is already installed. Updating..."
+        go install github.com/ehabterra/apispec/cmd/apispec@latest
     else
-        go install github.com/ehabterra/swagen/cmd/swagen@latest
+        go install github.com/ehabterra/apispec/cmd/apispec@latest
     fi
     
     # Check if installation was successful
-    if command_exists swagen; then
-        print_status "swagen installed successfully using go install!"
-        swagen --version
+    if command_exists apispec; then
+        print_status "apispec installed successfully using go install!"
+        apispec --version
     else
         print_error "Installation failed. Please check your Go environment."
         exit 1
@@ -86,19 +86,19 @@ install_from_source() {
     git clone "$REPO_URL" .
     
     # Build and install
-    print_status "Building swagen..."
+    print_status "Building apispec..."
     make build
     
     # Install to system
     if [ "$1" = "system" ]; then
         print_status "Installing to /usr/local/bin (requires sudo)..."
-        sudo cp swagen /usr/local/bin/
-        print_status "swagen installed to /usr/local/bin successfully!"
+        sudo cp apispec /usr/local/bin/
+        print_status "apispec installed to /usr/local/bin successfully!"
     else
         print_status "Installing to ~/go/bin..."
         mkdir -p ~/go/bin
-        cp swagen ~/go/bin/
-        print_status "swagen installed to ~/go/bin successfully!"
+        cp apispec ~/go/bin/
+        print_status "apispec installed to ~/go/bin successfully!"
         print_warning "Make sure ~/go/bin is in your PATH"
         echo "Add this to your shell profile: export PATH=\$HOME/go/bin:\$PATH"
     fi
@@ -154,10 +154,10 @@ main() {
     
     print_status "Installation completed successfully!"
     echo ""
-    echo "You can now use swagen:"
-    echo "  swagen --help          # Show help"
-    echo "  swagen --version       # Show version"
-    echo "  swagen <directory>     # Generate OpenAPI spec"
+    echo "You can now use apispec:"
+    echo "  apispec --help          # Show help"
+    echo "  apispec --version       # Show version"
+    echo "  apispec <directory>     # Generate OpenAPI spec"
 }
 
 # Run main function

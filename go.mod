@@ -1,4 +1,4 @@
-module github.com/ehabterra/swagen
+module github.com/ehabterra/apispec
 
 go 1.24.3
 

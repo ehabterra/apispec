@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewSchemaMapper(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	if mapper == nil {
@@ -19,7 +19,7 @@ func TestNewSchemaMapper(t *testing.T) {
 }
 
 func TestSchemaMapper_TypeMappings(t *testing.T) {
-	cfg := &SwagenConfig{
+	cfg := &APISpecConfig{
 		TypeMapping: []TypeMapping{
 			{
 				GoType: "custom.Time",
@@ -74,7 +74,7 @@ func TestSchemaMapper_TypeMappings(t *testing.T) {
 }
 
 func TestSchemaMapper_PointerTypes(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -120,7 +120,7 @@ func TestSchemaMapper_PointerTypes(t *testing.T) {
 }
 
 func TestSchemaMapper_MapTypes(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -215,7 +215,7 @@ func TestSchemaMapper_MapTypes(t *testing.T) {
 }
 
 func TestSchemaMapper_SliceTypes(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -296,7 +296,7 @@ func TestSchemaMapper_SliceTypes(t *testing.T) {
 }
 
 func TestSchemaMapper_BasicTypes(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -422,7 +422,7 @@ func TestSchemaMapper_BasicTypes(t *testing.T) {
 }
 
 func TestSchemaMapper_CustomTypes(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -463,7 +463,7 @@ func TestSchemaMapper_CustomTypes(t *testing.T) {
 }
 
 func TestMapStatusCode(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {
@@ -625,7 +625,7 @@ func TestMapStatusCode(t *testing.T) {
 }
 
 func TestMapMethodFromFunctionName(t *testing.T) {
-	cfg := &SwagenConfig{}
+	cfg := &APISpecConfig{}
 	mapper := NewSchemaMapper(cfg)
 
 	tests := []struct {

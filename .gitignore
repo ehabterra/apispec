@@ -19,7 +19,7 @@ Gopkg.toml
 *.bak
 .DS_Store
 
-# Swagen generated files
+# APISpec generated files
 metadata.yaml
 metadata-string-pool.yaml
 metadata-packages.yaml
@@ -40,8 +40,8 @@ test_output.txt
 coverage.txt
 coverage.html
 
-swagen
+apispec
 
 # Test temporary directories
 testdata/temp/
-cmd/swagen/testdata/temp/
+cmd/apispec/testdata/temp/

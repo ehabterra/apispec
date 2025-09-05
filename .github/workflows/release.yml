@@ -56,11 +56,11 @@ jobs:
 
       - name: Update version constants in main.go
         run: |
-          # Update version constants in cmd/swagen/main.go
-          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/swagen/main.go
-          sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/swagen/main.go
-          sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/swagen/main.go
-          sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/swagen/main.go
+          # Update version constants in cmd/apispec/main.go
+          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/apispec/main.go
+          sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/apispec/main.go
+          sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/apispec/main.go
+          sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/apispec/main.go
 
       - name: Build for multiple platforms
         run: |
@@ -86,13 +86,13 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            swagen-${{ steps.version.outputs.version }}.tar.gz
-            dist/swagen-linux-amd64
-            dist/swagen-linux-arm64
-            dist/swagen-darwin-amd64
-            dist/swagen-darwin-arm64
-            dist/swagen-windows-amd64.exe
-            dist/swagen-windows-arm64.exe
+            apispec-${{ steps.version.outputs.version }}.tar.gz
+            dist/apispec-linux-amd64
+            dist/apispec-linux-arm64
+            dist/apispec-darwin-amd64
+            dist/apispec-darwin-arm64
+            dist/apispec-windows-amd64.exe
+            dist/apispec-windows-arm64.exe
             dist/*.sha256
           draft: false
           prerelease: false

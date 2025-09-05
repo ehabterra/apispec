@@ -347,8 +347,8 @@ type ExternalType struct {
 	Description string  `yaml:"description,omitempty"`
 }
 
-// SwagenConfig is the main configuration struct
-type SwagenConfig struct {
+// APISpecConfig is the main configuration struct
+type APISpecConfig struct {
 	// Framework-specific patterns
 	Framework FrameworkConfig `yaml:"framework"`
 
@@ -378,7 +378,7 @@ type SwagenConfig struct {
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters
-func (c *SwagenConfig) ShouldIncludeFile(filePath string) bool {
+func (c *APISpecConfig) ShouldIncludeFile(filePath string) bool {
 	// First check exclude patterns (exclude takes precedence)
 	if c.Exclude.ShouldExcludeFile(filePath) {
 		return false
@@ -389,7 +389,7 @@ func (c *SwagenConfig) ShouldIncludeFile(filePath string) bool {
 }
 
 // ShouldIncludePackage checks if a package should be included based on include/exclude filters
-func (c *SwagenConfig) ShouldIncludePackage(pkgPath string) bool {
+func (c *APISpecConfig) ShouldIncludePackage(pkgPath string) bool {
 	// First check exclude patterns (exclude takes precedence)
 	if c.Exclude.ShouldExcludePackage(pkgPath) {
 		return false
@@ -400,7 +400,7 @@ func (c *SwagenConfig) ShouldIncludePackage(pkgPath string) bool {
 }
 
 // ShouldIncludeFunction checks if a function should be included based on include/exclude filters
-func (c *SwagenConfig) ShouldIncludeFunction(funcName string) bool {
+func (c *APISpecConfig) ShouldIncludeFunction(funcName string) bool {
 	// First check exclude patterns (exclude takes precedence)
 	if c.Exclude.ShouldExcludeFunction(funcName) {
 		return false
@@ -411,7 +411,7 @@ func (c *SwagenConfig) ShouldIncludeFunction(funcName string) bool {
 }
 
 // ShouldIncludeType checks if a type should be included based on include/exclude filters
-func (c *SwagenConfig) ShouldIncludeType(typeName string) bool {
+func (c *APISpecConfig) ShouldIncludeType(typeName string) bool {
 	// First check exclude patterns (exclude takes precedence)
 	if c.Exclude.ShouldExcludeType(typeName) {
 		return false
@@ -439,8 +439,8 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 }
 
 // DefaultChiConfig returns a default configuration for Chi router
-func DefaultChiConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultChiConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -567,8 +567,8 @@ func DefaultChiConfig() *SwagenConfig {
 }
 
 // DefaultEchoConfig returns a default configuration for Echo framework
-func DefaultEchoConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultEchoConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -677,8 +677,8 @@ func DefaultEchoConfig() *SwagenConfig {
 }
 
 // DefaultFiberConfig returns a default configuration for Fiber framework
-func DefaultFiberConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultFiberConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -820,8 +820,8 @@ func DefaultFiberConfig() *SwagenConfig {
 }
 
 // DefaultGinConfig returns a default configuration for Gin framework
-func DefaultGinConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultGinConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -946,8 +946,8 @@ func DefaultMethodExtractionConfig() *MethodExtractionConfig {
 }
 
 // DefaultMuxConfig returns a default configuration for Gorilla Mux framework
-func DefaultMuxConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultMuxConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
@@ -1053,8 +1053,8 @@ func DefaultMuxConfig() *SwagenConfig {
 }
 
 // DefaultHTTPConfig returns a default configuration for net/http
-func DefaultHTTPConfig() *SwagenConfig {
-	return &SwagenConfig{
+func DefaultHTTPConfig() *APISpecConfig {
+	return &APISpecConfig{
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{

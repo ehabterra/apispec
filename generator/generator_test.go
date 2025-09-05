@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	intspec "github.com/ehabterra/swagen/internal/spec"
-	"github.com/ehabterra/swagen/spec"
+	intspec "github.com/ehabterra/apispec/internal/spec"
+	"github.com/ehabterra/apispec/spec"
 )
 
 func TestNewGenerator(t *testing.T) {
@@ -24,7 +24,7 @@ func TestNewGenerator(t *testing.T) {
 
 func TestGenerateFromDirectory_ValidDirectory(t *testing.T) {
 	// Create a temporary test directory with Go files
-	tempDir, err := os.MkdirTemp("", "swagen_test")
+	tempDir, err := os.MkdirTemp("", "apispec_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestGenerateFromDirectory_InvalidDirectory(t *testing.T) {
 
 func TestGenerateFromDirectory_NoGoFiles(t *testing.T) {
 	// Create a temporary test directory without Go files
-	tempDir, err := os.MkdirTemp("", "swagen_test_no_go")
+	tempDir, err := os.MkdirTemp("", "apispec_test_no_go")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestGenerateFromDirectory_NoGoFiles(t *testing.T) {
 
 func TestGenerateFromDirectory_InvalidGoCode(t *testing.T) {
 	// Create a temporary test directory with invalid Go code
-	tempDir, err := os.MkdirTemp("", "swagen_test_invalid")
+	tempDir, err := os.MkdirTemp("", "apispec_test_invalid")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -157,9 +157,9 @@ func main() {
 	}
 }
 
-func TestGenerateFromDirectory_WithSwagenConfig(t *testing.T) {
+func TestGenerateFromDirectory_WithAPISpecConfig(t *testing.T) {
 	// Create a temporary directory with a Go module
-	tempDir, err := os.MkdirTemp("", "swagen_test_with_swagen_config")
+	tempDir, err := os.MkdirTemp("", "apispec_test_with_apispec_config")
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
@@ -192,11 +192,11 @@ func main() {
 		t.Fatalf("Failed to write main.go: %v", err)
 	}
 
-	// Create a custom SwagenConfig
-	customConfig := &spec.SwagenConfig{
+	// Create a custom APISpecConfig
+	customConfig := &spec.APISpecConfig{
 		Info: spec.Info{
 			Title:       "Custom API from Config",
-			Description: "This API was generated using a custom SwagenConfig",
+			Description: "This API was generated using a custom APISpecConfig",
 			Version:     "2.0.0",
 		},
 		Framework: intspec.FrameworkConfig{
@@ -237,8 +237,8 @@ func main() {
 		t.Errorf("Expected title 'Custom API from Config', got %s", spec.Info.Title)
 	}
 
-	if spec.Info.Description != "This API was generated using a custom SwagenConfig" {
-		t.Errorf("Expected description 'This API was generated using a custom SwagenConfig', got %s", spec.Info.Description)
+	if spec.Info.Description != "This API was generated using a custom APISpecConfig" {
+		t.Errorf("Expected description 'This API was generated using a custom APISpecConfig', got %s", spec.Info.Description)
 	}
 
 	if spec.Info.Version != "2.0.0" {

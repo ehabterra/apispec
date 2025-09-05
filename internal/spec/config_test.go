@@ -7,7 +7,7 @@ import (
 func TestDefaultConfigs(t *testing.T) {
 	tests := []struct {
 		name string
-		fn   func() *SwagenConfig
+		fn   func() *APISpecConfig
 	}{
 		{"Chi", DefaultChiConfig},
 		{"Echo", DefaultEchoConfig},

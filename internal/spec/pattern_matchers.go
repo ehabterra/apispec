@@ -5,19 +5,19 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ehabterra/swagen/internal/metadata"
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 // BasePatternMatcher provides common functionality for all pattern matchers
 type BasePatternMatcher struct {
 	contextProvider ContextProvider
-	cfg             *SwagenConfig
+	cfg             *APISpecConfig
 	schemaMapper    SchemaMapper
 	typeResolver    TypeResolver
 }
 
 // NewBasePatternMatcher creates a new base pattern matcher
-func NewBasePatternMatcher(cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *BasePatternMatcher {
+func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *BasePatternMatcher {
 	return &BasePatternMatcher{
 		contextProvider: contextProvider,
 		cfg:             cfg,
@@ -33,7 +33,7 @@ type RoutePatternMatcherImpl struct {
 }
 
 // NewRoutePatternMatcher creates a new route pattern matcher
-func NewRoutePatternMatcher(pattern RoutePattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RoutePatternMatcherImpl {
+func NewRoutePatternMatcher(pattern RoutePattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RoutePatternMatcherImpl {
 	return &RoutePatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
@@ -301,7 +301,7 @@ type MountPatternMatcherImpl struct {
 }
 
 // NewMountPatternMatcher creates a new mount pattern matcher
-func NewMountPatternMatcher(pattern MountPattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *MountPatternMatcherImpl {
+func NewMountPatternMatcher(pattern MountPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *MountPatternMatcherImpl {
 	return &MountPatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
@@ -406,7 +406,7 @@ type RequestPatternMatcherImpl struct {
 }
 
 // NewRequestPatternMatcher creates a new request pattern matcher
-func NewRequestPatternMatcher(pattern RequestBodyPattern, cfg *SwagenConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RequestPatternMatcherImpl {
+func NewRequestPatternMatcher(pattern RequestBodyPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RequestPatternMatcherImpl {
 	return &RequestPatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,

@@ -1,4 +1,4 @@
-# Swagen Generator Package
+# APISpec Generator Package
 
 The `generator` package provides a simple, public API to generate OpenAPI specifications from Go project directories.
 
@@ -9,8 +9,8 @@ package main
 
 import (
     "fmt"
-    "github.com/ehabterra/swagen/generator"
-    "github.com/ehabterra/swagen/spec"
+    "github.com/ehabterra/apispec/generator"
+    "github.com/ehabterra/apispec/spec"
 )
 
 func main() {
@@ -29,21 +29,21 @@ func main() {
 
 ## Using Custom Configuration
 
-You can pass a custom `SwagenConfig` object to customize the generation:
+You can pass a custom `APISpecConfig` object to customize the generation:
 
 ```go
 package main
 
 import (
     "fmt"
-    "github.com/ehabterra/swagen/generator"
-    "github.com/ehabterra/swagen/spec"
-    intspec "github.com/ehabterra/swagen/internal/spec"
+    "github.com/ehabterra/apispec/generator"
+    "github.com/ehabterra/apispec/spec"
+    intspec "github.com/ehabterra/apispec/internal/spec"
 )
 
 func main() {
     // Create a custom configuration
-    customConfig := &spec.SwagenConfig{
+    customConfig := &spec.APISpecConfig{
         Info: spec.Info{
             Title:       "My Custom API",
             Description: "This is a custom API configuration",
@@ -86,7 +86,7 @@ func main() {
 
 The generator follows this priority order for configuration:
 
-1. **Direct SwagenConfig object** (highest priority) - If passed to `NewGenerator()`
+1. **Direct APISpecConfig object** (highest priority) - If passed to `NewGenerator()`
 2. **Config file** - If specified via `ConfigFile` field
 3. **Auto-detected framework defaults** - If no config is provided
 
@@ -109,4 +109,4 @@ The generator returns descriptive errors for common issues:
 
 ## Integration
 
-This package is designed to work seamlessly with the main `swagen` CLI tool and can be used as a library in your own Go applications.
+This package is designed to work seamlessly with the main `apispec` CLI tool and can be used as a library in your own Go applications.
