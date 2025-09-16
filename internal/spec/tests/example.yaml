@@ -72,9 +72,9 @@ string_pool:
   - r1/T/example/src/example/types.go:40:2
   - main
   - r1/T/example/src/example/types.go:39:1
-  - example.Namer
-  - example.User
   - example.Ager
+  - example.User
+  - example.Namer
   - r1/T/example/src/example/types.go:34:11
   - r1/T/example/src/example/types.go:34:2
   - r1/T/example/src/example/types.go:41:15
@@ -88,6 +88,7 @@ packages:
         types:
           Ager:
             name: 36
+            pkg: 2
             kind: 33
             implemented_by:
               - 74
@@ -130,6 +131,7 @@ packages:
             comments: -1
           Namer:
             name: 34
+            pkg: 2
             kind: 33
             implemented_by:
               - 74
@@ -172,6 +174,7 @@ packages:
             comments: -1
           Phoner:
             name: 38
+            pkg: 2
             kind: 33
             scope: 15
             methods:
@@ -212,6 +215,7 @@ packages:
             comments: -1
           User:
             name: 29
+            pkg: 2
             kind: 30
             implements:
               - 73
@@ -382,6 +386,7 @@ packages:
         functions:
           NewUser:
             name: 56
+            pkg: 2
             signature:
               kind: 12
               name: -1
@@ -563,6 +568,7 @@ packages:
                   func: 56
           main:
             name: 71
+            pkg: 2
             signature:
               kind: 12
               name: -1
@@ -647,6 +653,7 @@ packages:
                   callee_pkg: example
         struct_instances:
           - type: 29
+            pkg: 2
             position: 43
             fields:
               5: 45
@@ -655,6 +662,7 @@ packages:
     types:
       Ager:
         name: 36
+        pkg: 2
         kind: 33
         implemented_by:
           - 74
@@ -697,6 +705,7 @@ packages:
         comments: -1
       Namer:
         name: 34
+        pkg: 2
         kind: 33
         implemented_by:
           - 74
@@ -739,6 +748,7 @@ packages:
         comments: -1
       Phoner:
         name: 38
+        pkg: 2
         kind: 33
         scope: 15
         methods:
@@ -779,6 +789,7 @@ packages:
         comments: -1
       User:
         name: 29
+        pkg: 2
         kind: 30
         implements:
           - 73
@@ -968,6 +979,53 @@ call_graph:
         position: 76
         resolved_type: -1
         generic_type_name: -1
+    assignments:
+      example.User.Age:
+        - variable_name: 22
+          pkg: 2
+          concrete_type: 20
+          position: 18
+          scope: 8
+          value:
+            kind: 0
+            name: 23
+            value: -1
+            raw: -1
+            pkg: 2
+            type: 20
+            position: 24
+            resolved_type: -1
+            generic_type_name: -1
+          lhs:
+            kind: 8
+            name: -1
+            value: -1
+            x:
+              kind: 0
+              name: 1
+              value: -1
+              raw: -1
+              pkg: 2
+              type: 3
+              position: 18
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 0
+              name: 19
+              value: -1
+              raw: -1
+              pkg: 2
+              type: 20
+              position: 21
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 2
+            type: 20
+            position: 18
+            resolved_type: -1
+            generic_type_name: -1
     param_arg_map:
       age:
         kind: 0

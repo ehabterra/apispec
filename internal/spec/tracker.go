@@ -547,7 +547,7 @@ func filterChildren(children []*TrackerNode, nodeTypeParams map[string]string) [
 // classifyArgument determines the type of an argument for enhanced processing
 func classifyArgument(arg metadata.CallArgument) ArgumentType {
 	switch arg.GetKind() {
-	case metadata.KindCall:
+	case metadata.KindCall, metadata.KindFuncLit:
 		return ArgTypeFunctionCall
 	case metadata.KindIdent:
 		if strings.HasPrefix(arg.GetType(), "func(") {
@@ -647,7 +647,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					children = append(children, argNode)
 
 					// Get the correct edge for selector arguments
-					funcNameIndex := meta.StringPool.Get(selectorArg.Sel.GetName())
+					funcNameIndex := selectorArg.Sel.Name
 					recvType := strings.ReplaceAll(originVar, selectorArg.Sel.GetPkg()+".", "")
 
 					var FuncType string
@@ -963,6 +963,38 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 	// Process children (callees)
 	callerID := stripToBase(id)
+	functionID := callerID
+
+	if parentEdge != nil && parentEdge.CalleeVarName != "" {
+		// Enhanced variable tracing and assignment linking
+		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+			parentEdge.CalleeVarName,
+			getString(meta, parentEdge.Caller.Name),
+			getString(meta, parentEdge.Caller.Pkg),
+			meta,
+		)
+
+		// Get the correct edge for selector arguments
+		recvType := strings.ReplaceAll(originVar, originPkg+".", "")
+
+		functionID = originPkg + "." + recvType + "." + getString(meta, parentEdge.Callee.Name)
+	}
+
+	// Look for parent function edges in the ParentFunctions map
+	if parentEdges, exists := meta.ParentFunctions[functionID]; exists && len(parentEdges) > 0 {
+		var visitedParentFunctionID = make(map[string]bool)
+
+		for _, parentFunctionEdge := range parentEdges {
+			parentFunctionID := parentFunctionEdge.Caller.ID()
+			if visitedParentFunctionID[parentFunctionID] {
+				continue
+			}
+			visitedParentFunctionID[parentFunctionID] = true
+			if childNode := NewTrackerNode(tree, meta, id, parentFunctionID, parentFunctionEdge, nil, visited, assignmentIndex, limits); childNode != nil {
+				node.AddChild(childNode)
+			}
+		}
+	}
 
 	if edges, exists := meta.Callers[callerID]; exists {
 		if parentEdge == nil && len(edges) > 0 {

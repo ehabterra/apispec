@@ -127,6 +127,8 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		StringPool: NewStringPool(),
 		Packages:   make(map[string]*Package),
 		CallGraph:  make([]CallGraphEdge, 0),
+
+		ParentFunctions: make(map[string][]*CallGraphEdge),
 	}
 
 	for pkgName, files := range pkgs {
@@ -330,7 +332,7 @@ func (m *Metadata) GetGenericTypeResolver() *GenericTypeResolver {
 // ClassifyArgument determines the type of an argument for enhanced processing
 func (m *Metadata) ClassifyArgument(arg CallArgument) ArgumentType {
 	switch arg.GetKind() {
-	case KindCall:
+	case KindCall, KindFuncLit:
 		return ArgTypeFunctionCall
 	case KindTypeConversion:
 		// Type conversions are not function calls and should be handled differently
@@ -842,6 +844,7 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 
 			t := &Type{
 				Name:  metadata.StringPool.Get(tspec.Name.Name),
+				Pkg:   metadata.StringPool.Get(pkgName),
 				Scope: metadata.StringPool.Get(getScope(tspec.Name.Name)),
 			}
 
@@ -868,7 +871,7 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 	switch ut := tspec.Type.(type) {
 	case *ast.StructType:
 		t.Kind = metadata.StringPool.Get("struct")
-		processStructFields(ut, metadata, t, info)
+		processStructFields(ut, pkgName, metadata, t, info)
 		allTypes[tspec.Name.Name] = t
 
 	case *ast.InterfaceType:
@@ -888,7 +891,7 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 }
 
 // processStructFields processes fields of a struct type
-func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type, info *types.Info) {
+func processStructFields(structType *ast.StructType, pkgName string, metadata *Metadata, t *Type, info *types.Info) {
 	for _, field := range structType.Fields.List {
 		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
@@ -915,11 +918,12 @@ func processStructFields(structType *ast.StructType, metadata *Metadata, t *Type
 				// Create a nested type for this field
 				nestedType := &Type{
 					Name:     metadata.StringPool.Get(name.Name + "_nested"),
+					Pkg:      metadata.StringPool.Get(pkgName),
 					Kind:     metadata.StringPool.Get("struct"),
 					Scope:    metadata.StringPool.Get(getScope(name.Name)),
 					Comments: metadata.StringPool.Get(comments),
 				}
-				processStructFields(structTypeExpr, metadata, nestedType, info)
+				processStructFields(structTypeExpr, pkgName, metadata, nestedType, info)
 				f.NestedType = nestedType
 			}
 
@@ -1005,6 +1009,7 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 
 		f.Functions[fn.Name.Name] = &Function{
 			Name:          metadata.StringPool.Get(fn.Name.Name),
+			Pkg:           metadata.StringPool.Get(pkgName),
 			Signature:     *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
 			Position:      metadata.StringPool.Get(getFuncPosition(fn, fset)),
 			Scope:         metadata.StringPool.Get(getScope(fn.Name.Name)),
@@ -1018,6 +1023,8 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 
 // processVariables processes all variable and constant declarations in a file
 func processVariables(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, f *File, metadata *Metadata) {
+	groupIndex := 0
+
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok || (genDecl.Tok != token.VAR && genDecl.Tok != token.CONST) {
@@ -1029,6 +1036,7 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 		switch genDecl.Tok {
 		case token.CONST:
 			tok = "const"
+			groupIndex++ // Each const declaration group gets a unique index
 		case token.VAR:
 			tok = "var"
 		}
@@ -1042,11 +1050,29 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 			comments := getComments(vspec)
 			for i, name := range vspec.Names {
 				v := &Variable{
-					Name:     metadata.StringPool.Get(name.Name),
-					Tok:      metadata.StringPool.Get(tok),
-					Type:     metadata.StringPool.Get(getTypeName(vspec.Type, info)),
-					Position: metadata.StringPool.Get(getVarPosition(name, fset)),
-					Comments: metadata.StringPool.Get(comments),
+					Name:       metadata.StringPool.Get(name.Name),
+					Pkg:        metadata.StringPool.Get(pkgName),
+					Tok:        metadata.StringPool.Get(tok),
+					Type:       metadata.StringPool.Get(getTypeName(vspec.Type, info)),
+					Position:   metadata.StringPool.Get(getVarPosition(name, fset)),
+					Comments:   metadata.StringPool.Get(comments),
+					GroupIndex: groupIndex,
+				}
+
+				// Enhanced constant processing with types.Info
+				if tok == "const" && info != nil {
+					if obj := info.ObjectOf(name); obj != nil {
+						if c, ok := obj.(*types.Const); ok {
+							// Get the actual computed value from types.Info
+							if c.Val() != nil {
+								v.ComputedValue = c.Val()
+							}
+							// Get the underlying type
+							if c.Type() != nil && c.Type().Underlying() != nil {
+								v.ResolvedType = metadata.StringPool.Get(c.Type().Underlying().String())
+							}
+						}
+					}
 				}
 
 				if len(vspec.Values) > i {
@@ -1102,6 +1128,7 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 
 	f.StructInstances = append(f.StructInstances, StructInstance{
 		Type:     metadata.StringPool.Get(typeName),
+		Pkg:      metadata.StringPool.Get(pkgName),
 		Position: metadata.StringPool.Get(getPosition(cl.Pos(), fset)),
 		Fields:   fields,
 	})
@@ -1128,7 +1155,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 		}
 
 		// Find the enclosing function name for this assignment
-		funcName, _ := getEnclosingFunctionName(file, assign.Pos(), info)
+		funcName, _ := getEnclosingFunctionName(file, assign.Pos(), info, fset)
 
 		// Handle identifier assignments (var = ...)
 		switch expr := lhsExpr.(type) {
@@ -1270,10 +1297,26 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		return
 	}
 
-	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info)
+	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info, fset)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
 
 	if callerFunc != "" && calleeFunc != "" {
+		// Determine if the caller is a function literal
+		var parentFunction *Call
+		if strings.HasPrefix(callerFunc, "FuncLit:") {
+			// For function literals, we need to find the parent function
+			// that contains this function literal
+			parentFunc, parentParts := findParentFunction(file, call.Pos(), info)
+			if parentFunc != "" {
+				parentFunction = &Call{
+					Meta:     metadata,
+					Name:     metadata.StringPool.Get(parentFunc),
+					Pkg:      metadata.StringPool.Get(pkgName),
+					Position: -1, // No position for parent function
+					RecvType: metadata.StringPool.Get(parentParts),
+				}
+			}
+		}
 		// Collect arguments
 		args := make([]CallArgument, len(call.Args))
 		for i, arg := range call.Args {
@@ -1290,11 +1333,16 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		extractParamsAndTypeParams(call, info, args, paramArgMap, typeParamMap)
 
 		cgEdge := &CallGraphEdge{
-			Args:         args,
-			Position:     metadata.StringPool.Get(getPosition(call.Pos(), fset)),
-			ParamArgMap:  paramArgMap,
-			TypeParamMap: typeParamMap,
-			meta:         metadata,
+			Args:           args,
+			Position:       metadata.StringPool.Get(getPosition(call.Pos(), fset)),
+			ParamArgMap:    paramArgMap,
+			TypeParamMap:   typeParamMap,
+			ParentFunction: parentFunction,
+			meta:           metadata,
+		}
+
+		if parentFunction != nil {
+			metadata.ParentFunctions[parentFunction.ID()] = append(metadata.ParentFunctions[parentFunction.ID()], cgEdge)
 		}
 
 		cgEdge.Caller = *cgEdge.NewCall(

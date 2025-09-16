@@ -1,10 +1,13 @@
 package spec
 
 import (
+	"go/types"
+	"maps"
 	"net/http"
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -276,7 +279,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, route
 	return components
 }
 
-func generateSchemas(usedTypes map[string]bool, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
+func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
 	for typeName := range usedTypes {
 		// Check external types
 		if cfg != nil {
@@ -319,21 +322,21 @@ func generateSchemas(usedTypes map[string]bool, cfg *APISpecConfig, components C
 }
 
 // collectUsedTypesFromRoutes collects all types used in routes
-func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]bool {
-	usedTypes := make(map[string]bool)
+func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]*Schema {
+	usedTypes := make(map[string]*Schema)
 
 	for _, route := range routes {
 		// Add request body types
 		if route.Request != nil && route.Request.BodyType != "" {
 			// addTypeAndDependenciesWithMetadata(route.Request.BodyType, usedTypes, meta, cfg)
-			markUsedType(usedTypes, route.Request.BodyType, true)
+			markUsedType(usedTypes, route.Request.BodyType, nil)
 		}
 
 		// Add response types
 		for _, res := range route.Response {
 			if route.Response != nil && res.BodyType != "" {
 				// addTypeAndDependenciesWithMetadata(res.BodyType, usedTypes, meta, cfg)
-				markUsedType(usedTypes, res.BodyType, true)
+				markUsedType(usedTypes, res.BodyType, nil)
 			}
 		}
 
@@ -345,7 +348,7 @@ func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]bool {
 				if len(refParts) > 0 {
 					typeName := refParts[len(refParts)-1]
 					// addTypeAndDependenciesWithMetadata(typeName, usedTypes, meta, cfg)
-					markUsedType(usedTypes, typeName, true)
+					markUsedType(usedTypes, typeName, nil)
 				}
 			}
 		}
@@ -371,8 +374,8 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	typeParts := TypeParts(typeName)
 
 	// Generics
-	if len(typeParts) > 2 {
-		for _, part := range typeParts[2:] {
+	if len(typeParts.GenericTypes) > 0 {
+		for _, part := range typeParts.GenericTypes {
 			genericType := strings.Split(part, " ")
 			if isPrimitiveType(genericType[1]) {
 				metaTypes[genericType[0]+"-"+genericType[1]] = nil
@@ -386,21 +389,23 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 		}
 	}
 
-	metaTypes[typeName] = typeByName(typeParts, meta, typeName)
+	if typeName != "" {
+		metaTypes[typeName] = typeByName(typeParts, meta, typeName)
+	}
 
 	return metaTypes
 }
 
-func typeByName(typeParts []string, meta *metadata.Metadata, typeName string) *metadata.Type {
+func typeByName(typeParts Parts, meta *metadata.Metadata, typeName string) *metadata.Type {
 	if meta == nil {
 		return nil
 	}
-	if len(typeParts) > 1 {
-		pkgName := typeParts[0]
+	if typeParts.PkgName != "" && typeParts.TypeName != "" {
+		pkgName := typeParts.PkgName
 
 		if pkg, exists := meta.Packages[pkgName]; exists {
 			for _, file := range pkg.Files {
-				if typ, exists := file.Types[typeParts[1]]; exists {
+				if typ, exists := file.Types[typeParts.TypeName]; exists {
 					return typ
 				}
 			}
@@ -417,22 +422,42 @@ func typeByName(typeParts []string, meta *metadata.Metadata, typeName string) *m
 	return nil
 }
 
-func TypeParts(typeName string) []string {
+type Parts struct {
+	PkgName      string
+	TypeName     string
+	GenericTypes []string
+}
+
+func TypeParts(typeName string) Parts {
+	parts := Parts{}
 	typeParts := strings.Split(typeName, TypeSep)
 
 	if len(typeParts) == 1 {
 		lastSep := strings.LastIndex(typeName, defaultSep)
 		if lastSep > 0 {
-			typeParts = []string{typeName[:lastSep], typeName[lastSep+1:]}
+			parts.PkgName = typeName[:lastSep]
+			parts.TypeName = typeName[lastSep+1:]
+		} else {
+			parts.TypeName = typeName
 		}
+	} else if len(typeParts) > 1 {
+		parts.PkgName = typeParts[0]
+		parts.TypeName = typeParts[1]
+		parts.GenericTypes = typeParts[2:]
 	}
 
 	if len(typeParts) == 2 && strings.Contains(typeParts[1], "[") {
-		typeParts = append(typeParts[:1], strings.Split(typeParts[1], "[")...)
-		typeParts[2] = typeParts[2][:len(typeParts[2])-1]
+		genericParts := strings.Split(typeParts[1], "[")
+		if len(genericParts) > 1 {
+			parts.TypeName = genericParts[0]
+			parts.GenericTypes = []string{genericParts[1][:len(genericParts[1])-1]}
+		}
 	}
 
-	return typeParts
+	parts.PkgName = strings.TrimPrefix(parts.PkgName, "*")
+	parts.PkgName = strings.TrimPrefix(parts.PkgName, "[]")
+
+	return parts
 }
 
 // isPrimitiveType checks if a type is a Go primitive type
@@ -490,18 +515,18 @@ func isPrimitiveType(typeName string) bool {
 }
 
 // generateSchemaFromType generates an OpenAPI schema from a metadata type
-func generateSchemaFromType(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
-	// if usedTypes[key] {
-	// 	return nil, schemas
-	// }
-	usedTypes[key] = true
+	if usedTypes[key] != nil {
+		return usedTypes[key], schemas
+	}
 
 	// Check external types
 	if cfg != nil {
 		for _, externalType := range cfg.ExternalTypes {
 			if externalType.Name == strings.ReplaceAll(key, TypeSep, ".") {
+				usedTypes[key] = externalType.OpenAPIType
 				return externalType.OpenAPIType, schemas
 			}
 		}
@@ -510,27 +535,38 @@ func generateSchemaFromType(usedTypes map[string]bool, key string, typ *metadata
 	// Get type kind from string pool
 	kind := getStringFromPool(meta, typ.Kind)
 
+	var schema *Schema
+	var newSchemas = map[string]*Schema{}
+
 	switch kind {
 	case "struct":
-		return generateStructSchema(usedTypes, key, typ, meta, cfg)
+		schema, newSchemas = generateStructSchema(usedTypes, key, typ, meta, cfg)
 	case "interface":
-		return generateInterfaceSchema(), schemas
+		schema, newSchemas = generateInterfaceSchema(), schemas
 	case "alias":
-		return generateAliasSchema(usedTypes, typ, meta, cfg)
+		schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg)
 	default:
-		return &Schema{Type: "object"}, schemas
+		schema, newSchemas = &Schema{Type: "object"}, schemas
 	}
+
+	usedTypes[key] = schema
+
+	for schemaKey, newSchema := range newSchemas {
+		schemas[schemaKey] = newSchema
+	}
+
+	return schema, schemas
 }
 
 // generateStructSchema generates a schema for a struct type
-func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	keyParts := TypeParts(key)
 	genericTypes := map[string]string{}
 
-	if len(keyParts) > 2 {
-		for _, part := range keyParts[2:] {
+	if len(keyParts.GenericTypes) > 0 {
+		for _, part := range keyParts.GenericTypes {
 			genericType := strings.Split(part, " ")
 			genericTypes[genericType[0]] = strings.ReplaceAll(part, " ", "-")
 		}
@@ -539,7 +575,10 @@ func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.T
 	schema := &Schema{
 		Type:       "object",
 		Properties: make(map[string]*Schema),
+		Required:   []string{},
 	}
+
+	pkgName := getStringFromPool(meta, typ.Pkg)
 
 	for _, field := range typ.Fields {
 		fieldName := getStringFromPool(meta, field.Name)
@@ -560,6 +599,9 @@ func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.T
 			fieldName = jsonName
 		}
 
+		// Extract validation constraints from struct tag
+		validationConstraints := extractValidationConstraints(getStringFromPool(meta, field.Tag))
+
 		// Generate schema for field type
 		var fieldSchema *Schema
 		var newSchemas = map[string]*Schema{}
@@ -571,11 +613,63 @@ func generateStructSchema(usedTypes map[string]bool, key string, typ *metadata.T
 				schemas[schemaKey] = newSchema
 			}
 		} else {
-			fieldSchema, newSchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg)
+			isPrimitive := isPrimitiveType(fieldType)
+
+			if !isPrimitive && !strings.Contains(fieldType, ".") {
+				re := regexp.MustCompile(`((\[\])?\*?)(.+)$`)
+				matches := re.FindStringSubmatch(fieldType)
+				if len(matches) >= 4 {
+					fieldType = matches[1] + pkgName + "." + matches[3]
+				}
+			}
+
+			// Check if this field type already exists in usedTypes
+			if bodySchema, ok := usedTypes[fieldType]; !isPrimitive && ok {
+				// Create a reference to the existing schema
+				fieldSchema = addRefSchemaForType(fieldType)
+
+				if bodySchema == nil {
+					var newBodySchemas map[string]*Schema
+
+					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg)
+					maps.Copy(newSchemas, newBodySchemas)
+				}
+				schemas[fieldType] = bodySchema
+				usedTypes[fieldType] = bodySchema
+
+			} else {
+				fieldSchema, newSchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg)
+			}
+
 			for schemaKey, newSchema := range newSchemas {
 				schemas[schemaKey] = newSchema
 			}
 		}
+
+		// Apply validation constraints to the schema
+		if validationConstraints != nil {
+			applyValidationConstraints(fieldSchema, validationConstraints)
+
+			// Add to required fields if marked as required
+			if validationConstraints.Required {
+				schema.Required = append(schema.Required, fieldName)
+			}
+		}
+
+		// Detect and apply enum values from constants if no enum was specified in tags
+		// Only apply enum detection for custom types (not built-in types)
+		if len(fieldSchema.Enum) == 0 {
+			// Use the original field type before resolution for enum detection
+			originalFieldType := getStringFromPool(meta, field.Type)
+
+			// Only detect enums for custom types, not built-in types like string, int, etc.
+			if !isPrimitiveType(originalFieldType) {
+				if enumValues := detectEnumFromConstants(originalFieldType, pkgName, meta); len(enumValues) > 0 {
+					fieldSchema.Enum = enumValues
+				}
+			}
+		}
+
 		schema.Properties[fieldName] = fieldSchema
 	}
 
@@ -592,7 +686,7 @@ func generateInterfaceSchema() *Schema {
 }
 
 // generateAliasSchema generates a schema for an alias type
-func generateAliasSchema(usedTypes map[string]bool, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
 	return mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg)
 }
@@ -656,8 +750,8 @@ func resolveUnderlyingType(typeName string, meta *metadata.Metadata) string {
 	return ""
 }
 
-func markUsedType(usedTypes map[string]bool, typeName string, markValue bool) bool {
-	if usedTypes[typeName] {
+func markUsedType(usedTypes map[string]*Schema, typeName string, markValue *Schema) bool {
+	if usedTypes[typeName] != nil {
 		return true
 	}
 
@@ -668,7 +762,7 @@ func markUsedType(usedTypes map[string]bool, typeName string, markValue bool) bo
 	if strings.HasPrefix(typeName, "*") {
 		dereferencedType = strings.TrimSpace(typeName[1:])
 		// Also add the dereferenced type to used types
-		if !usedTypes[dereferencedType] {
+		if usedTypes[dereferencedType] == nil {
 			usedTypes[dereferencedType] = markValue
 		}
 	}
@@ -709,8 +803,551 @@ func extractJSONName(tag string) string {
 	return ""
 }
 
+// ValidationConstraints represents validation constraints extracted from struct tags
+type ValidationConstraints struct {
+	MinLength *int
+	MaxLength *int
+	Min       *float64
+	Max       *float64
+	Format    string
+	Pattern   string
+	Required  bool
+	Enum      []interface{}
+}
+
+// extractValidationConstraints extracts validation constraints from struct tags
+func extractValidationConstraints(tag string) *ValidationConstraints {
+	if tag == "" {
+		return nil
+	}
+
+	constraints := &ValidationConstraints{}
+
+	// Parse validate tag (common validation libraries like go-playground/validator)
+	if strings.Contains(tag, "validate:") {
+		parts := strings.Split(tag, "validate:")
+		if len(parts) > 1 {
+			validateTag := strings.Trim(parts[1], "\"")
+
+			// Parse common validation rules - improved regex to handle various formats
+			// Matches: required, email, min=5, max=10, len=8, regexp=^[a-z]{2,3}$, oneof=val1 val2, etc.
+			// This regex captures validation rules more accurately:
+			// - Simple rules: required, email, url, etc.
+			// - Rules with values: min=5, max=10, len=8
+			// - Rules with complex values: regexp=^[a-z]{2,3}$, oneof=val1 val2 val3
+			rules := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*(?:=(?:[^,{}]|{[^}]*})*)?)`).FindAllStringSubmatch(validateTag, -1)
+			for _, ruleSet := range rules {
+				rule := strings.TrimSpace(ruleSet[1])
+				if rule == "required" {
+					constraints.Required = true
+				} else if strings.HasPrefix(rule, "min=") {
+					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "min=")); err == nil {
+						// For numeric validation, use Min instead of MinLength
+						constraints.Min = &[]float64{float64(val)}[0]
+					}
+				} else if strings.HasPrefix(rule, "max=") {
+					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "max=")); err == nil {
+						// For numeric validation, use Max instead of MaxLength
+						constraints.Max = &[]float64{float64(val)}[0]
+					}
+				} else if strings.HasPrefix(rule, "len=") {
+					// Length validation for strings, arrays, slices
+					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "len=")); err == nil {
+						constraints.MinLength = &val
+						constraints.MaxLength = &val
+					}
+				} else if strings.HasPrefix(rule, "minlen=") {
+					// Minimum length for strings, arrays, slices
+					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "minlen=")); err == nil {
+						constraints.MinLength = &val
+					}
+				} else if strings.HasPrefix(rule, "maxlen=") {
+					// Maximum length for strings, arrays, slices
+					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "maxlen=")); err == nil {
+						constraints.MaxLength = &val
+					}
+				} else if strings.HasPrefix(rule, "regexp=") {
+					constraints.Pattern = strings.TrimPrefix(rule, "regexp=")
+				} else if strings.HasPrefix(rule, "oneof=") {
+					// One of validation - creates enum values
+					enumPart := strings.TrimPrefix(rule, "oneof=")
+					enumValues := strings.Split(enumPart, " ")
+					for _, val := range enumValues {
+						constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
+					}
+				} else if rule == "email" {
+					// Email validation - set pattern
+					constraints.Format = `email`
+				} else if rule == "url" {
+					// URL validation - set pattern
+					constraints.Format = `uri`
+				} else if rule == "uuid" {
+					// UUID validation - set pattern
+					constraints.Format = `uuid`
+				} else if rule == "alpha" {
+					// Alphabetic characters only
+					constraints.Pattern = `^[a-zA-Z]+$`
+				} else if rule == "alphanum" {
+					// Alphanumeric characters only
+					constraints.Pattern = `^[a-zA-Z0-9]+$`
+				} else if rule == "numeric" {
+					// Numeric characters only
+					constraints.Pattern = `^[0-9]+$`
+				} else if rule == "alphaunicode" {
+					// Unicode alphabetic characters only
+					constraints.Pattern = `^\p{L}+$`
+				} else if rule == "alphanumunicode" {
+					// Unicode alphanumeric characters only
+					constraints.Pattern = `^[\p{L}\p{N}]+$`
+				} else if rule == "hexadecimal" {
+					// Hexadecimal characters only
+					constraints.Pattern = `^[0-9a-fA-F]+$`
+				} else if rule == "hexcolor" {
+					// Hex color validation
+					constraints.Pattern = `^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`
+				} else if rule == "rgb" {
+					// RGB color validation
+					constraints.Pattern = `^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$`
+				} else if rule == "rgba" {
+					// RGBA color validation
+					constraints.Pattern = `^rgba\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
+				} else if rule == "hsl" {
+					// HSL color validation
+					constraints.Pattern = `^hsl\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*\)$`
+				} else if rule == "hsla" {
+					// HSLA color validation
+					constraints.Pattern = `^hsla\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
+				} else if rule == "json" {
+					// JSON validation - basic pattern
+					constraints.Pattern = `^[\s\S]*$` // JSON is complex, this is a basic check
+				} else if rule == "base64" {
+					// Base64 validation
+					constraints.Pattern = `^[A-Za-z0-9+/]*={0,2}$`
+				} else if rule == "base64url" {
+					// Base64URL validation
+					constraints.Pattern = `^[A-Za-z0-9_-]*$`
+				} else if rule == "datetime" {
+					// DateTime validation (RFC3339)
+					constraints.Pattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`
+				} else if rule == "date" {
+					// Date validation (YYYY-MM-DD)
+					constraints.Pattern = `^\d{4}-\d{2}-\d{2}$`
+				} else if rule == "time" {
+					// Time validation (HH:MM:SS)
+					constraints.Pattern = `^\d{2}:\d{2}:\d{2}$`
+				} else if rule == "ip" {
+					// IP address validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+				} else if rule == "ipv4" {
+					// IPv4 address validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+				} else if rule == "ipv6" {
+					// IPv6 address validation
+					constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$`
+				} else if rule == "cidr" {
+					// CIDR validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
+				} else if rule == "cidrv4" {
+					// CIDRv4 validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
+				} else if rule == "cidrv6" {
+					// CIDRv6 validation
+					constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\/(?:[0-9]|[1-9][0-9]|1[0-2][0-8])$`
+				} else if rule == "tcp_addr" {
+					// TCP address validation
+					constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
+				} else if rule == "tcp4_addr" {
+					// TCP4 address validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
+				} else if rule == "tcp6_addr" {
+					// TCP6 address validation
+					constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
+				} else if rule == "udp_addr" {
+					// UDP address validation
+					constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
+				} else if rule == "udp4_addr" {
+					// UDP4 address validation
+					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
+				} else if rule == "udp6_addr" {
+					// UDP6 address validation
+					constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
+				} else if rule == "unix_addr" {
+					// Unix address validation
+					constraints.Pattern = `^[a-zA-Z0-9._/-]+$`
+				} else if rule == "mac" {
+					// MAC address validation
+					constraints.Pattern = `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
+				} else if rule == "hostname" {
+					// Hostname validation
+					constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`
+				} else if rule == "fqdn" {
+					// FQDN validation
+					constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.$`
+				} else if rule == "isbn" {
+					// ISBN validation
+					constraints.Pattern = `^(?:ISBN(?:-1[03])?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$|97[89][0-9]{10}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)(?:97[89][- ]?)?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
+				} else if rule == "isbn10" {
+					// ISBN-10 validation
+					constraints.Pattern = `^(?:ISBN(?:-10)?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$)[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
+				} else if rule == "isbn13" {
+					// ISBN-13 validation
+					constraints.Pattern = `^(?:ISBN(?:-13)?:? )?(?=[0-9]{13}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)97[89][- ]?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9]$`
+				} else if rule == "issn" {
+					// ISSN validation
+					constraints.Pattern = `^[0-9]{4}-[0-9]{3}[0-9X]$`
+				} else if rule == "uuid3" {
+					// UUID v3 validation
+					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$`
+				} else if rule == "uuid4" {
+					// UUID v4 validation
+					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+				} else if rule == "uuid5" {
+					// UUID v5 validation
+					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+				} else if rule == "ulid" {
+					// ULID validation
+					constraints.Pattern = `^[0-9A-HJKMNP-TV-Z]{26}$`
+				} else if rule == "ascii" {
+					// ASCII validation
+					constraints.Pattern = `^[\x00-\x7F]*$`
+				} else if rule == "printascii" {
+					// Printable ASCII validation
+					constraints.Pattern = `^[\x20-\x7E]*$`
+				} else if rule == "multibyte" {
+					// Multibyte validation
+					constraints.Pattern = `^[\x00-\x7F]*$`
+				} else if rule == "datauri" {
+					// Data URI validation
+					constraints.Pattern = `^data:([a-z]+\/[a-z0-9\-\+]+(;[a-z0-9\-\+]+\=[a-z0-9\-\+]+)?)?(;base64)?,([a-z0-9\!\$\&\'\(\)\*\+\,\;\=\-\.\_\~\:\@\/\?\%\s]*)$`
+				} else if rule == "latitude" {
+					// Latitude validation
+					constraints.Pattern = `^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?)$`
+				} else if rule == "longitude" {
+					// Longitude validation
+					constraints.Pattern = `^[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$`
+				} else if rule == "ssn" {
+					// SSN validation
+					constraints.Pattern = `^\d{3}-?\d{2}-?\d{4}$`
+				} else if rule == "credit_card" {
+					// Credit card validation
+					constraints.Pattern = `^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})$`
+				} else if rule == "mongodb" {
+					// MongoDB ObjectID validation
+					constraints.Pattern = `^[0-9a-fA-F]{24}$`
+				} else if rule == "cron" {
+					// Cron expression validation
+					constraints.Pattern = `^(\*|([0-5]?\d)) (\*|([01]?\d|2[0-3])) (\*|([012]?\d|3[01])) (\*|([0]?\d|1[0-2])) (\*|([0-6]))$`
+				}
+			}
+		}
+	}
+
+	// Parse custom validation tags
+	if strings.Contains(tag, "min:") {
+		parts := strings.Split(tag, "min:")
+		if len(parts) > 1 {
+			minPart := strings.Split(parts[1], " ")[0]
+			if val, err := strconv.ParseFloat(strings.Trim(minPart, "\""), 64); err == nil {
+				constraints.Min = &val
+			}
+		}
+	}
+
+	if strings.Contains(tag, "max:") {
+		parts := strings.Split(tag, "max:")
+		if len(parts) > 1 {
+			maxPart := strings.Split(parts[1], " ")[0]
+			if val, err := strconv.ParseFloat(strings.Trim(maxPart, "\""), 64); err == nil {
+				constraints.Max = &val
+			}
+		}
+	}
+
+	if strings.Contains(tag, "regexp:") {
+		parts := strings.Split(tag, "regexp:")
+		if len(parts) > 1 {
+			patternPart := strings.Split(parts[1], " ")[0]
+			constraints.Pattern = strings.Trim(patternPart, "\"")
+		}
+	}
+
+	if strings.Contains(tag, "enum:") {
+		parts := strings.Split(tag, "enum:")
+		if len(parts) > 1 {
+			enumPart := strings.Split(parts[1], " ")[0]
+			enumValues := strings.Split(strings.Trim(enumPart, "\""), ",")
+			for _, val := range enumValues {
+				constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
+			}
+		}
+	}
+
+	// Check if any constraints were found
+	if constraints.MinLength == nil && constraints.MaxLength == nil &&
+		constraints.Min == nil && constraints.Max == nil &&
+		constraints.Pattern == "" && !constraints.Required && len(constraints.Enum) == 0 {
+		return nil
+	}
+
+	return constraints
+}
+
+// applyValidationConstraints applies validation constraints to an OpenAPI schema
+func applyValidationConstraints(schema *Schema, constraints *ValidationConstraints) {
+	if schema == nil || constraints == nil {
+		return
+	}
+
+	// Apply string length constraints (only for string types)
+	if schema.Type == "string" {
+		if constraints.MinLength != nil {
+			schema.MinLength = *constraints.MinLength
+		}
+		if constraints.MaxLength != nil {
+			schema.MaxLength = *constraints.MaxLength
+		}
+	}
+
+	// Apply numeric constraints (for integer and number types)
+	if schema.Type == "integer" || schema.Type == "number" {
+		if constraints.Min != nil {
+			schema.Minimum = *constraints.Min
+		}
+		if constraints.Max != nil {
+			schema.Maximum = *constraints.Max
+		}
+		// Also check min/max from validate tags for numeric types
+		if constraints.MinLength != nil && schema.Type == "integer" {
+			schema.Minimum = float64(*constraints.MinLength)
+		}
+		if constraints.MaxLength != nil && schema.Type == "integer" {
+			schema.Maximum = float64(*constraints.MaxLength)
+		}
+	}
+
+	// Apply pattern constraint
+	if constraints.Pattern != "" {
+		schema.Pattern = constraints.Pattern
+	}
+
+	// Apply format constraint
+	if constraints.Format != "" {
+		schema.Format = constraints.Format
+	}
+
+	// Apply enum constraint
+	if len(constraints.Enum) > 0 {
+		schema.Enum = constraints.Enum
+	}
+}
+
+// detectEnumFromConstants detects if a type has associated constants that form an enum
+// This is a generic implementation using enhanced metadata with types.Info
+func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metadata) []interface{} {
+	if meta == nil {
+		return nil
+	}
+
+	var goTypePkgName string
+
+	goTypeParts := TypeParts(goType)
+	if goTypeParts.PkgName != "" {
+		goTypePkgName = goTypeParts.PkgName
+		goTypePkgName = strings.TrimPrefix(goTypePkgName, "*")
+		goTypePkgName = strings.TrimPrefix(goTypePkgName, "[]")
+
+		goType = goTypeParts.TypeName
+	}
+
+	// Group constants by their resolved type and group index
+	constantGroups := make(map[string]map[int][]EnumConstant)
+
+	targetPkgName := pkgName
+	if goTypePkgName != "" {
+		targetPkgName = goTypePkgName
+	}
+
+	// Collect all constants and group them
+	if pkg, exist := meta.Packages[targetPkgName]; exist {
+		for _, file := range pkg.Files {
+			for _, variable := range file.Variables {
+				if getStringFromPool(meta, variable.Tok) == "const" {
+					varType := getStringFromPool(meta, variable.Type)
+					resolvedType := getStringFromPool(meta, variable.ResolvedType)
+					varName := getStringFromPool(meta, variable.Name)
+
+					// For enum detection, we want to match against the declared type, not the underlying type
+					// Use the declared type if available, otherwise fall back to resolved type
+					targetType := varType
+					if targetType == "" {
+						targetType = resolvedType
+					}
+
+					// Check if this constant's type matches our target enum type
+					// For iota constants, we also need to check if they're in the same group as a typed constant
+					if typeMatches(targetType, goType, meta) ||
+						(varType == "" && isInSameGroupAsTypedConstant(variable.GroupIndex, goType, file.Variables, meta)) {
+						groupIndex := variable.GroupIndex
+
+						if constantGroups[targetType] == nil {
+							constantGroups[targetType] = make(map[int][]EnumConstant)
+						}
+
+						enumConst := EnumConstant{
+							Name:     varName,
+							Type:     varType,
+							Resolved: resolvedType,
+							Value:    variable.ComputedValue,
+							Group:    groupIndex,
+						}
+
+						constantGroups[targetType][groupIndex] = append(
+							constantGroups[targetType][groupIndex],
+							enumConst,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	// Find the best enum group for this type
+	var bestEnumValues []interface{}
+	var maxGroupSize int
+
+	for _, groups := range constantGroups {
+		for _, group := range groups {
+			if len(group) > maxGroupSize {
+				maxGroupSize = len(group)
+				bestEnumValues = extractEnumValues(group)
+			}
+		}
+	}
+
+	return bestEnumValues
+}
+
+// EnumConstant represents a constant that might be part of an enum
+type EnumConstant struct {
+	Name     string
+	Type     string
+	Resolved string
+	Value    interface{}
+	Group    int
+}
+
+// extractEnumValues extracts the actual values from enum constants
+func extractEnumValues(constants []EnumConstant) []interface{} {
+	var values []interface{}
+
+	for _, constant := range constants {
+		if constant.Value != nil {
+			// Use the computed value from types.Info
+			switch v := constant.Value.(type) {
+			case *types.Const:
+				// Handle types.Const values
+				if v.Val() != nil {
+					extracted := extractConstantValue(v.Val())
+					values = append(values, extracted)
+				}
+			default:
+				// The values are already in their proper form (string, int, etc.)
+				// Just extract them using our helper function
+				extracted := extractConstantValue(v)
+				values = append(values, extracted)
+			}
+		}
+	}
+
+	return values
+}
+
+// extractConstantValue extracts the actual value from a constant.Value
+func extractConstantValue(val interface{}) interface{} {
+	if val == nil {
+		return nil
+	}
+
+	// Try to use the String() method if available to extract the value
+	if stringer, ok := val.(interface{ String() string }); ok {
+		str := stringer.String()
+
+		// For string constants, remove quotes if they exist
+		if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
+			return str[1 : len(str)-1] // Remove surrounding quotes
+		}
+
+		// For numeric constants, try to parse
+		if i, err := strconv.ParseInt(str, 10, 64); err == nil {
+			return i
+		}
+		if f, err := strconv.ParseFloat(str, 64); err == nil {
+			return f
+		}
+		if b, err := strconv.ParseBool(str); err == nil {
+			return b
+		}
+
+		// Return the string representation as fallback
+		return str
+	}
+
+	// If it's not a stringer, return as-is
+	return val
+}
+
+// typeMatches checks if a constant type matches the target enum type
+func typeMatches(constantType, targetType string, meta *metadata.Metadata) bool {
+	// Direct match
+	if constantType == targetType {
+		return true
+	}
+
+	// Handle pointer types
+	if strings.HasPrefix(constantType, "*") && constantType[1:] == targetType {
+		return true
+	}
+	if strings.HasPrefix(targetType, "*") && targetType[1:] == constantType {
+		return true
+	}
+
+	// Check if constantType is an alias of targetType
+	if resolvedConstType := resolveUnderlyingType(constantType, meta); resolvedConstType != "" {
+		if resolvedConstType == targetType {
+			return true
+		}
+		// Also check if the resolved type matches the target's underlying type
+		if resolvedTargetType := resolveUnderlyingType(targetType, meta); resolvedTargetType != "" {
+			if resolvedConstType == resolvedTargetType {
+				return true
+			}
+		}
+	}
+
+	// Handle package-qualified types - extract just the type name
+	constTypeParts := strings.Split(constantType, ".")
+	targetTypeParts := strings.Split(targetType, ".")
+
+	if len(constTypeParts) > 1 && len(targetTypeParts) > 1 {
+		// Both are package-qualified, compare the type names
+		constTypeName := constTypeParts[len(constTypeParts)-1]
+		targetTypeName := targetTypeParts[len(targetTypeParts)-1]
+		return constTypeName == targetTypeName
+	} else if len(constTypeParts) > 1 {
+		// Constant is package-qualified, target is not
+		constTypeName := constTypeParts[len(constTypeParts)-1]
+		return constTypeName == targetType
+	} else if len(targetTypeParts) > 1 {
+		// Target is package-qualified, constant is not
+		targetTypeName := targetTypeParts[len(targetTypeParts)-1]
+		return constantType == targetTypeName
+	}
+
+	return false
+}
+
 // mapGoTypeToOpenAPISchema maps Go types to OpenAPI schemas
-func mapGoTypeToOpenAPISchema(usedTypes map[string]bool, goType string, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	// Check type mappings first
@@ -765,6 +1402,25 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]bool, goType string, meta *me
 	// Handle slice types
 	if strings.HasPrefix(goType, "[]") {
 		elementType := strings.TrimSpace(goType[2:])
+
+		// Check if the element type already exists in usedTypes
+		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveType(elementType) && ok {
+			if bodySchema == nil {
+				var newBodySchemas map[string]*Schema
+
+				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg)
+				maps.Copy(schemas, newBodySchemas)
+			}
+			schemas[elementType] = bodySchema
+			usedTypes[elementType] = bodySchema
+
+			// Create a reference to the existing schema
+			return &Schema{
+				Type:  "array",
+				Items: addRefSchemaForType(elementType),
+			}, schemas
+		}
+
 		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg)
 		for schemaKey, newSchema := range newSchemas {
 			schemas[schemaKey] = newSchema
@@ -830,5 +1486,18 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]bool, goType string, meta *me
 func addRefSchemaForType(goType string) *Schema {
 	// For custom types not found in metadata, create a reference
 	return &Schema{Ref: refComponentsSchemasPrefix + schemaComponentNameReplacer.Replace(goType)}
+}
 
+// isInSameGroupAsTypedConstant checks if a constant is in the same group as a typed constant
+func isInSameGroupAsTypedConstant(groupIndex int, targetType string, variables map[string]*metadata.Variable, meta *metadata.Metadata) bool {
+	for _, variable := range variables {
+		if getStringFromPool(meta, variable.Tok) == "const" &&
+			variable.GroupIndex == groupIndex {
+			varType := getStringFromPool(meta, variable.Type)
+			if typeMatches(varType, targetType, meta) {
+				return true
+			}
+		}
+	}
+	return false
 }

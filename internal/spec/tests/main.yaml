@@ -39,6 +39,7 @@ packages:
         functions:
           main:
             name: 5
+            pkg: 5
             signature:
               kind: 23
               name: -1

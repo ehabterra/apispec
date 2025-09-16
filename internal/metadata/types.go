@@ -119,9 +119,10 @@ type Metadata struct {
 	Packages   map[string]*Package `yaml:"packages,omitempty"`
 	CallGraph  []CallGraphEdge     `yaml:"call_graph,omitempty"`
 
-	Callers map[string][]*CallGraphEdge `yaml:"-"`
-	Callees map[string][]*CallGraphEdge `yaml:"-"`
-	Args    map[string][]*CallGraphEdge `yaml:"-"`
+	Callers         map[string][]*CallGraphEdge `yaml:"-"`
+	ParentFunctions map[string][]*CallGraphEdge `yaml:"-"`
+	Callees         map[string][]*CallGraphEdge `yaml:"-"`
+	Args            map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
 
@@ -351,6 +352,7 @@ type File struct {
 // Type represents a Go type
 type Type struct {
 	Name          int      `yaml:"name,omitempty"`
+	Pkg           int      `yaml:"pkg,omitempty"`
 	Kind          int      `yaml:"kind,omitempty"`
 	Target        int      `yaml:"target,omitempty"`
 	Implements    []int    `yaml:"implements,omitempty"`
@@ -400,6 +402,7 @@ type Method struct {
 // Function represents a function
 type Function struct {
 	Name      int          `yaml:"name,omitempty"`
+	Pkg       int          `yaml:"pkg,omitempty"`
 	Signature CallArgument `yaml:"signature,omitempty"`
 	Position  int          `yaml:"position,omitempty"`
 	Scope     int          `yaml:"scope,omitempty"`
@@ -418,12 +421,16 @@ type Function struct {
 
 // Variable represents a variable
 type Variable struct {
-	Name     int `yaml:"name,omitempty"`
-	Tok      int `yaml:"tok,omitempty"`
-	Type     int `yaml:"type,omitempty"`
-	Value    int `yaml:"value,omitempty"`
-	Position int `yaml:"position,omitempty"`
-	Comments int `yaml:"comments,omitempty"`
+	Name          int         `yaml:"name,omitempty"`
+	Tok           int         `yaml:"tok,omitempty"`
+	Pkg           int         `yaml:"pkg,omitempty"`
+	Type          int         `yaml:"type,omitempty"`
+	ResolvedType  int         `yaml:"resolved_type,omitempty"` // underlying type from types.Info
+	Value         int         `yaml:"value,omitempty"`
+	ComputedValue interface{} `yaml:"computed_value,omitempty"` // actual value from types.Info (for constants)
+	Position      int         `yaml:"position,omitempty"`
+	Comments      int         `yaml:"comments,omitempty"`
+	GroupIndex    int         `yaml:"group_index,omitempty"` // which const group this belongs to
 }
 
 // Selector represents a selector expression
@@ -436,6 +443,7 @@ type Selector struct {
 // StructInstance represents a struct literal instance
 type StructInstance struct {
 	Type     int         `yaml:"type,omitempty"`
+	Pkg      int         `yaml:"pkg,omitempty"`
 	Position int         `yaml:"position,omitempty"`
 	Fields   map[int]int `yaml:"fields,omitempty"`
 }
@@ -730,6 +738,11 @@ func (a *CallArgument) id(sep string) (string, string) {
 			return funID, typeParam
 		}
 		return KindCall, typeParam
+	case KindFuncLit:
+		pkgStr := a.GetPkg()
+		nameStr := a.GetName()
+
+		return pkgStr + sep + nameStr, typeParam
 	case KindTypeConversion:
 		if a.Fun != nil {
 			// For type conversions, use the type name as the identifier
@@ -871,6 +884,9 @@ type CallGraphEdge struct {
 	ChainParent *CallGraphEdge `yaml:"-"`                     // Reference to parent call in chain
 	ChainRoot   string         `yaml:"chain_root,omitempty"`  // Root variable name (e.g., "app")
 	ChainDepth  int            `yaml:"chain_depth,omitempty"` // Depth in chain (0 = root)
+
+	// NEW: Parent function tracking for function literals
+	ParentFunction *Call `yaml:"parent_function,omitempty"` // The function that contains this call (for function literals)
 
 	meta *Metadata
 }

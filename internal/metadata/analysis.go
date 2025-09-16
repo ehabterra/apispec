@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -22,13 +23,78 @@ func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
 }
 
 // getEnclosingFunctionName finds the function that contains a given position
-func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info) (string, string) {
+// It can return either a declared function (*ast.FuncDecl) or a function literal (*ast.FuncLit)
+func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, fset *token.FileSet) (string, string) {
+	// First, check for function literals (they can be nested inside declared functions)
+	funcLit := findEnclosingFunctionLiteral(file, pos)
+	if funcLit != nil {
+		// Return the function literal identifier (e.g., "FuncLitmain.go:42:15")
+		position := getPosition(funcLit.Pos(), fset)
+		return fmt.Sprintf("FuncLit:%s", position), ""
+	}
+
+	// Fallback to declared functions
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok {
 			continue
 		}
 		if fn.Pos() <= pos && pos <= fn.End() {
+			var parts []string
+
+			// Check if this is a method (has a receiver)
+			if fn.Recv != nil && len(fn.Recv.List) > 0 {
+				recv := fn.Recv.List[0]
+				recvType := getTypeName(recv.Type, info)
+				parts = append(parts, recvType)
+			}
+
+			return fn.Name.Name, strings.Join(parts, ".")
+		}
+	}
+	return "", ""
+}
+
+// findEnclosingFunctionLiteral recursively searches for the innermost function literal containing the position
+func findEnclosingFunctionLiteral(file *ast.File, pos token.Pos) *ast.FuncLit {
+	var found *ast.FuncLit
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		if n == nil {
+			return true
+		}
+
+		// Check if this node contains our position
+		if n.Pos() <= pos && pos <= n.End() {
+			if funcLit, ok := n.(*ast.FuncLit); ok {
+				// This is a function literal that contains our position
+				// Keep the innermost one (most recent)
+				found = funcLit
+			}
+		}
+
+		return true
+	})
+
+	return found
+}
+
+// findParentFunction finds the parent function that contains a function literal
+func findParentFunction(file *ast.File, pos token.Pos, info *types.Info) (string, string) {
+	// Find the function literal first
+	funcLit := findEnclosingFunctionLiteral(file, pos)
+	if funcLit == nil {
+		return "", ""
+	}
+
+	// Now find the function that contains this function literal
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		// Check if this function contains the function literal
+		if fn.Pos() <= funcLit.Pos() && funcLit.End() <= fn.End() {
 			var parts []string
 
 			// Check if this is a method (has a receiver)
@@ -356,8 +422,6 @@ func traceVariableOriginHelper(
 					assign := assigns[len(assigns)-1]
 					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS to the base variable
 					if assign.Value.GetKind() == KindIdent && assign.Value.GetName() != varName {
-						// _, _, t, f := traceVariableOriginHelper(assign.Value.Name, funcName, pkgName, metadata, visited)
-						// return assign.Value.Name, pkgName, t, f
 						baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.GetName(), funcName, pkgName, metadata, visited)
 						return baseVar, basePkg, t, f
 					}

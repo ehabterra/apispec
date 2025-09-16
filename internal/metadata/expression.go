@@ -59,9 +59,16 @@ func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *t
 	case *ast.TypeAssertExpr:
 		return handleTypeAssertExpr(e, info, pkgName, fset, meta)
 	case *ast.FuncLit:
+		position := getPosition(e.Pos(), fset)
 		arg := NewCallArgument(meta)
 		arg.SetKind(KindFuncLit)
+		arg.SetName(fmt.Sprintf("FuncLit:%s", position))
+		arg.SetPkg(pkgName)
+		typ := ExprToCallArgument(e.Type, info, pkgName, fset, meta)
+		typeStr := callArgToString(*typ, nil)
+		arg.SetType(typeStr)
 		arg.SetValue(valueFuncLit)
+		arg.SetPosition(position)
 		return arg
 	case *ast.ChanType:
 		return handleChanType(e, info, pkgName, fset, meta)
@@ -103,6 +110,11 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 					pkg = obj.Pkg().Path()
 				}
 				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+
+				if obj.Type().String() == "untyped nil" {
+					typeStr = "nil"
+					pkg = ""
+				}
 			}
 		}
 	}
@@ -570,7 +582,7 @@ func callArgToString(arg CallArgument, parent *CallArgument) string {
 		}
 		return "type_assert"
 	case KindFuncLit:
-		return arg.GetValue()
+		return arg.GetName()
 	case KindChanType:
 		if arg.X != nil {
 			return fmt.Sprintf("chan %s", callArgToString(*arg.X, &arg))

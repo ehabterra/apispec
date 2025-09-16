@@ -1432,27 +1432,27 @@ func TestTraceGenericOrigin(t *testing.T) {
 	// Test traceGenericOrigin with different type parts
 	tests := []struct {
 		name      string
-		typeParts []string
+		typeParts Parts
 		expected  string
 	}{
 		{
 			name:      "generic type with concrete resolution",
-			typeParts: []string{"List", "T"},
+			typeParts: Parts{PkgName: "List", TypeName: "T"},
 			expected:  "string",
 		},
 		{
 			name:      "non-generic type",
-			typeParts: []string{"string"},
+			typeParts: Parts{TypeName: "string"},
 			expected:  "",
 		},
 		{
 			name:      "empty type parts",
-			typeParts: []string{},
+			typeParts: Parts{},
 			expected:  "",
 		},
 		{
 			name:      "single type part",
-			typeParts: []string{"User"},
+			typeParts: Parts{TypeName: "User"},
 			expected:  "",
 		},
 	}

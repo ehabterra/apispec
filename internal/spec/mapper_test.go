@@ -78,7 +78,7 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			usedTypes := make(map[string]bool)
+			usedTypes := make(map[string]*Schema)
 			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, meta, cfg)
 			if schema.Type != tt.expected {
 				t.Errorf("expected type %s, got %s", tt.expected, schema.Type)
@@ -115,11 +115,11 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 
 func TestAddTypeAndDependenciesWithMetadata_PointerTypes(t *testing.T) {
 
-	usedTypes := make(map[string]bool)
-	markUsedType(usedTypes, "*User", true)
+	usedTypes := make(map[string]*Schema)
+	markUsedType(usedTypes, "*User", &Schema{Type: "object"})
 
 	// Should include only the marked type
-	if !usedTypes["*User"] {
+	if usedTypes["*User"] == nil {
 		t.Error("expected *User to be included")
 	}
 }
@@ -339,7 +339,7 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			usedTypes := make(map[string]bool)
+			usedTypes := make(map[string]*Schema)
 			result, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("mapGoTypeToOpenAPISchema() = %v, want %v", result, tt.expected)
@@ -813,7 +813,7 @@ func TestCollectUsedTypesFromRoutes(t *testing.T) {
 	// Check that expected types are collected
 	expectedTypes := []string{"CreateUserRequest", "User", "UserID"}
 	for _, expectedType := range expectedTypes {
-		if !usedTypes[expectedType] {
+		if _, exists := usedTypes[expectedType]; !exists {
 			t.Errorf("Type %s should be collected", expectedType)
 		}
 	}
@@ -898,13 +898,13 @@ func TestTypeByName(t *testing.T) {
 	}
 
 	// Test finding type by name
-	typ := typeByName([]string{"main", "User"}, meta, "User")
+	typ := typeByName(Parts{PkgName: "main", TypeName: "User"}, meta, "User")
 	if typ == nil {
 		t.Error("Should find type by name")
 	}
 
 	// Test finding non-existent type
-	typ = typeByName([]string{"main", "NonExistentType"}, meta, "NonExistentType")
+	typ = typeByName(Parts{PkgName: "main", TypeName: "NonExistentType"}, meta, "NonExistentType")
 	if typ != nil {
 		t.Error("Should not find non-existent type")
 	}
@@ -913,23 +913,23 @@ func TestTypeByName(t *testing.T) {
 func TestAddTypeAndDependenciesWithMetadata(t *testing.T) {
 
 	// Test adding type and dependencies
-	usedTypes := make(map[string]bool)
-	markUsedType(usedTypes, "User", true)
+	usedTypes := make(map[string]*Schema)
+	markUsedType(usedTypes, "User", &Schema{Type: "object"})
 
 	// Should have User and Profile types
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("User type should be added")
 	}
 
 	// Test pointer type handling
-	usedTypes = make(map[string]bool)
-	markUsedType(usedTypes, "*User", true)
+	usedTypes = make(map[string]*Schema)
+	markUsedType(usedTypes, "*User", &Schema{Type: "object"})
 
-	if !usedTypes["*User"] {
+	if usedTypes["*User"] == nil {
 		t.Error("Pointer type should be added")
 	}
 
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("Underlying type should be added")
 	}
 }
@@ -1063,7 +1063,7 @@ type Container struct {
 	for _, pkg := range metadata.Packages {
 		for _, file := range pkg.Files {
 			if xType, exists := file.Types["X"]; exists {
-				usedTypes := make(map[string]bool)
+				usedTypes := make(map[string]*Schema)
 				schema, _ := generateSchemaFromType(usedTypes, "X", xType, metadata, cfg)
 
 				// Verify the schema structure
@@ -1104,7 +1104,7 @@ type Container struct {
 
 			// Test schema generation for type Container
 			if containerType, exists := file.Types["Container"]; exists {
-				usedTypes := make(map[string]bool)
+				usedTypes := make(map[string]*Schema)
 				schema, _ := generateSchemaFromType(usedTypes, "Container", containerType, metadata, cfg)
 
 				// Verify the schema structure
