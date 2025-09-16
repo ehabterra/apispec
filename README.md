@@ -24,6 +24,8 @@
 - **Visualize**: Optional HTML call-graph diagram for debugging.
 - **Extensible**: Pattern-based framework config; add new frameworks without changing core logic.
 - **Smart Type Resolution**: Automatically resolves underlying primitive types for aliases and enums. <strong style="color:green;">✨NEW</strong>
+- **Validator Tag Support**: Comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags with automatic OpenAPI constraint mapping. <strong style="color:green;">✨NEW</strong>
+- **Function Literal Analysis**: Full support for anonymous functions in route handlers. <strong style="color:green;">✨NEW</strong>
 - **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs. <strong style="color:green;">✨NEW</strong>
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
@@ -51,7 +53,7 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 
 - [x] **Alias imports**: supports import aliases in analysis.
 - [x] **Alias types**: type aliases are detected and resolved to underlying primitive types. <strong style="color:green;">✨NEW</strong>
-- [x] **Enum resolution**: automatically resolves enum types to their underlying primitive types (string, int, etc.). <strong style="color:green;">✨NEW</strong>
+- [x] **Enum resolution**: automatically resolves enum types to their underlying primitive types (string, int, etc.) from constants, enum tags, or oneof validator tags. <strong style="color:green;">✨NEW</strong>
 - [x] **Assignment and alias tracking**: short `:=`, `=`, multi-assign, tuple returns, latest-wins resolution, alias chains, and shadowing.
 - [ ] **Conditional methods**: detecting HTTP methods set via switch/if around net/http `Handle`/`HandleFunc` is not supported.
 - [x] **Composite literals / maps / slices / arrays**: recognizes literal and container types for schema mapping.
@@ -73,6 +75,8 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 - [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation. <strong style="color:green;">✨NEW</strong>
 - [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers. <strong style="color:green;">✨NEW</strong>
 - [x] **CGO support**: includes a flag to skip CGO packages during analysis, useful for projects with complex C dependencies. <strong style="color:green;">✨NEW</strong>
+- [x] **Function literals**: supports anonymous functions (func literals) in route handlers and call analysis. <strong style="color:green;">✨NEW</strong>
+- [x] **Validator tag support**: comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags including validation rules, constraints, and enum definitions. <strong style="color:green;">✨NEW</strong>
 
 ### Type Resolution Examples
 
@@ -115,6 +119,135 @@ type User struct {
 //   type: integer
 //   format: int64
 ```
+
+### Validator Tag Support
+
+APISpec provides comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags, automatically converting validation rules to OpenAPI schema constraints:
+
+```go
+// Status represents different status values
+type Status string
+
+// Status constants
+const (
+	StatusActive   Status = "active"
+	StatusInactive Status = "inactive"
+	StatusPending  Status = "pending"
+)
+
+type User struct {
+	ID            int    `json:"id" validate:"required,min=1"`
+	Name          string `json:"name" validate:"required,min=2,max=50"`
+	Email         string `json:"email" validate:"required,email"`
+	Age           int    `json:"age" validate:"min=18,max=120"`
+	Status        Status `json:"status"`
+	MaritalStatus string `json:"marital_status" validate:"required,oneof=single married divorced"`
+	Bio           string `json:"bio" min:"10" max:"500"`
+	Website       string `json:"website" pattern:"^https?://.*"`
+	Country       string `json:"country" enum:"US,CA,UK,DE,FR"`
+}
+```
+
+**Generated OpenAPI schema:**
+```yaml
+User:
+    type: object
+    properties:
+        age:
+            type: integer
+            minimum: 18
+            maximum: 120
+        bio:
+            type: string
+        country:
+            type: string
+            enum:
+                - US
+                - CA
+                - UK
+                - DE
+                - FR
+        email:
+            type: string
+            format: email
+        id:
+            type: integer
+            minimum: 1
+        marital_status:
+            type: string
+            enum:
+                - single
+                - married
+                - divorced
+        name:
+            type: string
+        status:
+            type: string
+            enum:
+                - active
+                - inactive
+                - pending
+        website:
+            type: string
+    required:
+        - id
+        - name
+        - email
+        - marital_status
+```
+
+#### Supported Validator Tags
+
+APISpec supports most [go-playground/validator](https://github.com/go-playground/validator) tags:
+
+> **Note**: Some advanced validator tags like `dive` (for array element validation) are not yet supported but are planned for future releases.
+
+| Validator Tag | OpenAPI Mapping | Description |
+|---------------|-----------------|-------------|
+| `required` | `required: true` | Field is required |
+| `omitempty` | `required: false` | Field is optional |
+| `min=N` | `minimum: N` | Minimum value/length |
+| `max=N` | `maximum: N` | Maximum value/length |
+| `len=N` | `minLength: N, maxLength: N` | Exact length |
+| `email` | `format: email` | Email format validation |
+| `url` | `format: uri` | URL format validation |
+| `uuid` | `format: uuid` | UUID format validation |
+| `oneof=val1 val2` | `enum: [val1, val2]` | Enum values |
+| `alphanum` | `pattern: "^[a-zA-Z0-9]+$"` | Alphanumeric characters |
+| `alpha` | `pattern: "^[a-zA-Z]+$"` | Alphabetic characters |
+| `numeric` | `pattern: "^[0-9]+$"` | Numeric characters |
+| `containsany=chars` | `pattern: ".*[chars].*"` | Must contain any of the characters |
+| `e164` | `pattern: "^\\+[1-9]\\d{1,14}$"` | E.164 phone number format |
+| `dive` | ❌ **Not yet supported** | Array element validation |
+
+#### Function Literal Support
+
+APISpec now supports anonymous functions in route handlers:
+
+```go
+// Gin example with function literals
+router.POST("/users", func(c *gin.Context) {
+    var user CreateUserRequest
+    if err := c.ShouldBindJSON(&user); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+    // ... handler logic
+    c.JSON(201, user)
+})
+
+// Echo example with function literals
+e.POST("/products", func(c echo.Context) error {
+    var product Product
+    if err := c.Bind(&product); err != nil {
+        return c.JSON(400, map[string]string{"error": err.Error()})
+    }
+    // ... handler logic
+    return c.JSON(201, product)
+})
+```
+
+These function literals are properly analyzed and their request/response types are extracted for OpenAPI generation.
 
 ## Architecture Overview
 
@@ -482,6 +615,10 @@ typeMapping:
     openapiType:
       type: string
       format: decimal
+
+# Validator tag support is automatically enabled
+# APISpec will parse validate tags and convert them to OpenAPI constraints
+# Example: validate:"required,email" -> required: true, format: email
 
 # External types that can't be introspected automatically
 externalTypes:

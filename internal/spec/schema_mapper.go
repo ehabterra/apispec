@@ -131,7 +131,7 @@ func (s *SchemaMapperImpl) MapGoTypeToOpenAPISchema(goType string) *Schema {
 		return &Schema{Type: "array", Items: &Schema{Type: "string"}}
 	case "[]int":
 		return &Schema{Type: "array", Items: &Schema{Type: "integer"}}
-	case "interface{}", "any", "struct{}":
+	case "interface{}", "any", "struct{}", "nil", "error":
 		// For standalone interface{}, allow any type
 		return &Schema{
 			Type: "object",
@@ -139,7 +139,7 @@ func (s *SchemaMapperImpl) MapGoTypeToOpenAPISchema(goType string) *Schema {
 	default:
 		if goType != "" {
 			// For custom types, create a reference
-			return &Schema{Ref: "#/components/schemas/" + schemaComponentNameReplacer.Replace(goType)}
+			return addRefSchemaForType(goType)
 		}
 
 		return nil

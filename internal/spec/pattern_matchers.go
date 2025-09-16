@@ -125,10 +125,12 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteI
 	// Extract handler information
 	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
 		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
-		if handlerArg.GetKind() == metadata.KindIdent {
+		if handlerArg.GetKind() == metadata.KindIdent || handlerArg.GetKind() == metadata.KindFuncLit {
+
+			handlerName := handlerArg.GetName()
 			// Use variable tracing to resolve handler
 			originVar, originPkg, originType, _ := r.traceVariable(
-				handlerArg.GetName(),
+				handlerName,
 				r.contextProvider.GetString(edge.Caller.Name),
 				r.contextProvider.GetString(edge.Caller.Pkg),
 			)
@@ -627,7 +629,7 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	}
 
 	// Original logic for type resolution
-	if arg.GetKind() == metadata.KindIdent {
+	if arg.GetKind() == metadata.KindIdent || arg.GetKind() == metadata.KindFuncLit {
 		// Check if this variable has assignments that might give us more type information
 		edge := node.GetEdge()
 		if assignments, exists := edge.AssignmentMap[arg.GetName()]; exists {
@@ -645,23 +647,25 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument,
 	return originalType
 }
 
-func traceGenericOrigin(node TrackerNodeInterface, typeParts []string) string {
+func traceGenericOrigin(node TrackerNodeInterface, typeParts Parts) string {
 	typeParams := node.GetTypeParamMap()
 
-	if len(typeParams) > 0 && len(typeParts) > 1 {
-		searchType := typeParts[1]
-		exists := true
+	if len(typeParams) > 0 && typeParts.TypeName != "" {
+		searchType := typeParts.TypeName
+		foundMapping := false
 
-		var concreteType string
-
-		for exists {
-			concreteType, exists = typeParams[searchType]
-
-			if concreteType != "" {
-				searchType = concreteType
+		for {
+			concreteType, exists := typeParams[searchType]
+			if !exists || concreteType == "" {
+				break
 			}
+			searchType = concreteType
+			foundMapping = true
 		}
-		return searchType
+		// Only return the concrete type if we found a mapping
+		if foundMapping {
+			return searchType
+		}
 	}
 	return ""
 }

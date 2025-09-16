@@ -882,7 +882,7 @@ func TestMapGoTypeToOpenAPISchema_Comprehensive(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	primitiveTests := []struct {
 		goType       string
@@ -925,7 +925,7 @@ func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	pointerTests := []struct {
 		goType       string
@@ -949,7 +949,7 @@ func testMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	sliceTests := []struct {
 		goType            string
@@ -979,7 +979,7 @@ func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_MapTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	mapTests := []struct {
 		goType                  string
@@ -1007,7 +1007,7 @@ func testMapGoTypeToOpenAPISchema_MapTypes(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_CustomTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	// Create metadata with a custom type
 	stringPool := metadata.NewStringPool()
@@ -1053,7 +1053,7 @@ func testMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 			},
 		},
 	}
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	_, schemas := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
 	// External types are added to schemas map, not returned directly
@@ -1081,7 +1081,7 @@ func testMapGoTypeToOpenAPISchema_TypeMappings(t *testing.T) {
 			},
 		},
 	}
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
 	if schema.Type != "integer" {
@@ -1094,7 +1094,7 @@ func testMapGoTypeToOpenAPISchema_TypeMappings(t *testing.T) {
 
 func testMapGoTypeToOpenAPISchema_NilMetadata(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	// Test with nil metadata
 	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
@@ -1134,7 +1134,7 @@ func TestGenerateSchemaFromType_Comprehensive_Extended(t *testing.T) {
 
 func testGenerateSchemaFromType_Struct(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1165,7 +1165,7 @@ func testGenerateSchemaFromType_Struct(t *testing.T) {
 
 func testGenerateSchemaFromType_Interface(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1183,7 +1183,7 @@ func testGenerateSchemaFromType_Interface(t *testing.T) {
 
 func testGenerateSchemaFromType_Alias(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1211,7 +1211,7 @@ func testGenerateSchemaFromType_External(t *testing.T) {
 			},
 		},
 	}
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1229,7 +1229,7 @@ func testGenerateSchemaFromType_External(t *testing.T) {
 
 func testGenerateSchemaFromType_Nil(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 
@@ -1245,7 +1245,7 @@ func testGenerateSchemaFromType_Nil(t *testing.T) {
 
 func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1269,7 +1269,7 @@ func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
 
 func testGenerateSchemaFromType_WithNestedTypes(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	nestedType := &metadata.Type{
@@ -1308,7 +1308,7 @@ func testGenerateSchemaFromType_WithNestedTypes(t *testing.T) {
 
 func testGenerateSchemaFromType_WithJSONTags(t *testing.T) {
 	cfg := DefaultAPISpecConfig()
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	stringPool := metadata.NewStringPool()
 	typ := &metadata.Type{
@@ -1483,61 +1483,61 @@ func TestMarkUsedType_Comprehensive(t *testing.T) {
 }
 
 func testMarkUsedType_Basic(t *testing.T) {
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
-	result := markUsedType(usedTypes, "User", true)
+	result := markUsedType(usedTypes, "User", &Schema{Type: "object"})
 	if result {
 		t.Error("Expected false for first marking")
 	}
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("Expected User to be marked as used")
 	}
 }
 
 func testMarkUsedType_Pointer(t *testing.T) {
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
-	result := markUsedType(usedTypes, "*User", true)
+	result := markUsedType(usedTypes, "*User", &Schema{Type: "object"})
 	if result {
 		t.Error("Expected false for first marking")
 	}
-	if !usedTypes["*User"] {
+	if usedTypes["*User"] == nil {
 		t.Error("Expected *User to be marked as used")
 	}
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("Expected User to be marked as used")
 	}
 }
 
 func testMarkUsedType_AlreadyMarked(t *testing.T) {
-	usedTypes := make(map[string]bool)
-	usedTypes["User"] = true
+	usedTypes := make(map[string]*Schema)
+	usedTypes["User"] = &Schema{Type: "object"}
 
-	result := markUsedType(usedTypes, "User", true)
+	result := markUsedType(usedTypes, "User", &Schema{Type: "object"})
 	if !result {
 		t.Error("Expected true for already marked type")
 	}
 }
 
 func testMarkUsedType_DifferentValues(t *testing.T) {
-	usedTypes := make(map[string]bool)
+	usedTypes := make(map[string]*Schema)
 
 	// Mark with true
-	result1 := markUsedType(usedTypes, "User", true)
+	result1 := markUsedType(usedTypes, "User", &Schema{Type: "object"})
 	if result1 {
 		t.Error("Expected false for first marking")
 	}
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("Expected User to be marked as true")
 	}
 
 	// Mark with false
-	result2 := markUsedType(usedTypes, "User", false)
+	result2 := markUsedType(usedTypes, "User", &Schema{Type: "object"})
 	if !result2 {
 		t.Error("Expected true for already marked type")
 	}
 	// Value should remain true (first marking takes precedence)
-	if !usedTypes["User"] {
+	if usedTypes["User"] == nil {
 		t.Error("Expected User to remain marked as true")
 	}
 }
@@ -1657,26 +1657,34 @@ func TestExtractJSONName_Comprehensive(t *testing.T) {
 // TestTypeParts_Comprehensive tests type parts parsing
 func TestTypeParts_Comprehensive(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected []string
+		input                string
+		expectedPkgName      string
+		expectedTypeName     string
+		expectedGenericTypes []string
 	}{
-		{"string", []string{"string"}},
-		{"main-->User", []string{"main", "User"}},
-		{"pkg-->Type-->T", []string{"pkg", "Type", "T"}},
-		{"Container[T]", []string{"Container[T]"}},
-		{"Container[T, U]", []string{"Container[T, U]"}},
-		{"pkg-->Container[T]", []string{"pkg", "Container", "T"}},
+		{"string", "", "string", nil},
+		{"main-->User", "main", "User", nil},
+		{"pkg-->Type-->T", "pkg", "Type", []string{"T"}},
+		{"Container[T]", "", "Container[T]", nil},
+		{"Container[T, U]", "", "Container[T, U]", nil},
+		{"pkg-->Container[T]", "pkg", "Container", []string{"T"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := TypeParts(tt.input)
-			if len(result) != len(tt.expected) {
-				t.Errorf("Expected %d parts, got %d", len(tt.expected), len(result))
+			if result.PkgName != tt.expectedPkgName {
+				t.Errorf("Expected PkgName to be %s, got %s", tt.expectedPkgName, result.PkgName)
 			}
-			for i, expected := range tt.expected {
-				if i < len(result) && result[i] != expected {
-					t.Errorf("Expected part %d to be %s, got %s", i, expected, result[i])
+			if result.TypeName != tt.expectedTypeName {
+				t.Errorf("Expected TypeName to be %s, got %s", tt.expectedTypeName, result.TypeName)
+			}
+			if len(result.GenericTypes) != len(tt.expectedGenericTypes) {
+				t.Errorf("Expected %d generic types, got %d", len(tt.expectedGenericTypes), len(result.GenericTypes))
+			}
+			for i, expected := range tt.expectedGenericTypes {
+				if i < len(result.GenericTypes) && result.GenericTypes[i] != expected {
+					t.Errorf("Expected generic type %d to be %s, got %s", i, expected, result.GenericTypes[i])
 				}
 			}
 		})
@@ -1832,7 +1840,7 @@ func testCollectUsedTypesFromRoutes_WithRequestBody(t *testing.T) {
 	}
 
 	result := collectUsedTypesFromRoutes(routes)
-	if !result["User"] {
+	if _, exists := result["User"]; !exists {
 		t.Error("Expected User type to be collected")
 	}
 }
@@ -1849,7 +1857,7 @@ func testCollectUsedTypesFromRoutes_WithResponseTypes(t *testing.T) {
 	}
 
 	result := collectUsedTypesFromRoutes(routes)
-	if !result["User"] {
+	if _, exists := result["User"]; !exists {
 		t.Error("Expected User type to be collected")
 	}
 }
@@ -1868,7 +1876,7 @@ func testCollectUsedTypesFromRoutes_WithParameters(t *testing.T) {
 	}
 
 	result := collectUsedTypesFromRoutes(routes)
-	if !result["User"] {
+	if _, exists := result["User"]; !exists {
 		t.Error("Expected User type to be collected")
 	}
 }
@@ -1897,7 +1905,7 @@ func testCollectUsedTypesFromRoutes_MixedTypes(t *testing.T) {
 	result := collectUsedTypesFromRoutes(routes)
 	expectedTypes := []string{"CreateUserRequest", "User", "UserID"}
 	for _, expectedType := range expectedTypes {
-		if !result[expectedType] {
+		if _, exists := result[expectedType]; !exists {
 			t.Errorf("Expected %s type to be collected", expectedType)
 		}
 	}

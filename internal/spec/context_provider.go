@@ -88,7 +88,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		}
 		return ""
 
-	case metadata.KindIdent:
+	case metadata.KindIdent, metadata.KindFuncLit:
 		// Try to resolve as a constant value from metadata
 		if pkg, exists := c.meta.Packages[arg.GetPkg()]; exists {
 			for _, file := range pkg.Files {

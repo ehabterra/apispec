@@ -70,7 +70,7 @@ func (t *TypeResolverImpl) resolveTypeParameter(arg metadata.CallArgument, node 
 
 // resolveTypeThroughTracing resolves type through variable tracing
 func (t *TypeResolverImpl) resolveTypeThroughTracing(arg metadata.CallArgument, context TrackerNodeInterface) string {
-	if arg.GetKind() != metadata.KindIdent {
+	if arg.GetKind() != metadata.KindIdent && arg.GetKind() != metadata.KindFuncLit {
 		return ""
 	}
 

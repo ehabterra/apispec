@@ -34,6 +34,7 @@ string_pool:
   - test
   - Pi
   - r1/T/constants/src/constants/const.go:6:2
+  - untyped float
   - GlobalVar
   - var
   - r1/T/constants/src/constants/const.go:10:2
@@ -46,6 +47,7 @@ packages:
         functions:
           UseConstants:
             name: 22
+            pkg: 8
             signature:
               kind: 12
               name: -1
@@ -126,6 +128,7 @@ packages:
                   func: 22
           init:
             name: 11
+            pkg: 8
             signature:
               kind: 12
               name: -1
@@ -179,37 +182,53 @@ packages:
                   func: 11
         variables:
           GlobalVar:
-            name: 35
-            tok: 36
+            name: 36
+            tok: 37
+            pkg: 8
             type: 19
-            value: 38
-            position: 37
+            value: 39
+            position: 38
             comments: -1
+            group_index: 1
           MaxSize:
             name: 16
             tok: 29
+            pkg: 8
             type: -1
+            resolved_type: 17
             value: 1
+            computed_value: 100
             position: 30
             comments: -1
+            group_index: 1
           Message:
             name: 7
-            tok: 36
+            tok: 37
+            pkg: 8
             type: 6
-            position: 39
+            position: 40
             comments: -1
+            group_index: 1
           Name:
             name: 23
             tok: 29
+            pkg: 8
             type: -1
+            resolved_type: 24
             value: 32
+            computed_value: {}
             position: 31
             comments: -1
+            group_index: 1
           Pi:
             name: 33
             tok: 29
+            pkg: 8
             type: -1
+            resolved_type: 35
             value: 3
+            computed_value: {}
             position: 34
             comments: -1
+            group_index: 1
         imports: {}
