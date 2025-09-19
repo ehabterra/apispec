@@ -3,110 +3,110 @@ string_pool:
   - s
   - complex
   - '*complex.Service'
-  - r1/T/complex/src/complex/service.go:10:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:10:9
   - name
   - string
-  - r1/T/complex/src/complex/service.go:10:11
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:10:11
   - selector
   - GetName
   - '*Service'
-  - r1/T/complex/src/complex/service.go:9:29
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:9:29
   - func_type
   - func_results
-  - r1/T/complex/src/complex/service.go:9:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:9:1
   - exported
-  - r1/T/complex/src/complex/service.go
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go
   - func() string
   - result
-  - r1/T/complex/src/complex/service.go:15:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:15:9
   - literal
   - '"Processing: %s"'
   - data
-  - r1/T/complex/src/complex/service.go:14:42
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:14:42
   - fmt
-  - r1/T/complex/src/complex/service.go:14:12
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:14:12
   - Sprintf
   - func(format string, a ...any) string
-  - r1/T/complex/src/complex/service.go:14:16
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:14:16
   - call
-  - r1/T/complex/src/complex/service.go:14:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:14:2
   - unexported
   - Process
-  - r1/T/complex/src/complex/service.go:13:32
-  - r1/T/complex/src/complex/service.go:13:40
-  - r1/T/complex/src/complex/service.go:13:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:13:32
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:13:40
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:13:1
   - func(string) string
   - h
   - '*complex.Handler'
-  - r1/T/complex/src/complex/service.go:23:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:23:10
   - service
-  - r1/T/complex/src/complex/service.go:23:12
-  - r1/T/complex/src/complex/service.go:23:20
-  - r1/T/complex/src/complex/service.go:23:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:23:12
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:23:20
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:23:2
   - Handle
   - input
-  - r1/T/complex/src/complex/service.go:24:33
-  - r1/T/complex/src/complex/service.go:24:15
-  - r1/T/complex/src/complex/service.go:24:17
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:24:33
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:24:15
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:24:17
   - func(data string) string
-  - r1/T/complex/src/complex/service.go:24:25
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:24:25
   - processed
-  - r1/T/complex/src/complex/service.go:24:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:24:2
   - '*Handler'
-  - r1/T/complex/src/complex/service.go:22:32
-  - r1/T/complex/src/complex/service.go:22:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:22:32
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:22:1
   - 'func(string) '
   - Service
   - struct
   - interface
   - Handler
-  - r1/T/complex/src/complex/service.go:29:10
-  - r1/T/complex/src/complex/service.go:29:18
-  - r1/T/complex/src/complex/service.go:29:24
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:29:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:29:18
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:29:24
   - key_value
   - composite_lit
   - unary
   - '&'
-  - r1/T/complex/src/complex/service.go:29:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:29:9
   - NewService
-  - r1/T/complex/src/complex/service.go:28:22
-  - r1/T/complex/src/complex/service.go:28:31
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:28:22
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:28:31
   - star
-  - r1/T/complex/src/complex/service.go:28:30
-  - r1/T/complex/src/complex/service.go:28:1
-  - r1/T/complex/src/complex/service.go:33:10
-  - r1/T/complex/src/complex/service.go:33:18
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:28:30
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:28:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:33:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:33:18
   - svc
-  - r1/T/complex/src/complex/service.go:33:27
-  - r1/T/complex/src/complex/service.go:33:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:33:27
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:33:9
   - NewHandler
-  - r1/T/complex/src/complex/service.go:32:22
-  - r1/T/complex/src/complex/service.go:32:21
-  - r1/T/complex/src/complex/service.go:32:32
-  - r1/T/complex/src/complex/service.go:32:31
-  - r1/T/complex/src/complex/service.go:32:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:32:22
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:32:21
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:32:32
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:32:31
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:32:1
   - '"test-service"'
   - func(name string) *complex.Service
-  - r1/T/complex/src/complex/service.go:37:9
-  - r1/T/complex/src/complex/service.go:37:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:37:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:37:2
   - main
-  - r1/T/complex/src/complex/service.go:38:24
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:38:24
   - func(svc *complex.Service) *complex.Handler
-  - r1/T/complex/src/complex/service.go:38:13
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:38:13
   - handler
-  - r1/T/complex/src/complex/service.go:38:2
-  - r1/T/complex/src/complex/service.go:36:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:38:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:36:1
   - '"Handler %s: %s\n"'
-  - r1/T/complex/src/complex/service.go:25:33
-  - r1/T/complex/src/complex/service.go:25:39
-  - r1/T/complex/src/complex/service.go:25:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:25:33
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:25:39
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:25:2
   - Printf
   - '"test-data"'
-  - r1/T/complex/src/complex/service.go:39:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:39:2
 packages:
   complex:
     files:
-      r1/T/complex/src/complex/service.go:
+      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/complex/src/complex/service.go:
         types:
           Handler:
             name: 60

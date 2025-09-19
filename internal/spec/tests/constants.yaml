@@ -8,42 +8,42 @@ string_pool:
   - string
   - Message
   - constants
-  - r1/T/constants/src/constants/const.go:15:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:15:2
   - exported
   - init
   - func_type
   - func_results
-  - r1/T/constants/src/constants/const.go:14:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:14:1
   - unexported
   - MaxSize
   - untyped int
-  - r1/T/constants/src/constants/const.go:19:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:19:10
   - int
   - size
-  - r1/T/constants/src/constants/const.go:19:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:19:2
   - UseConstants
   - Name
   - untyped string
-  - r1/T/constants/src/constants/const.go:20:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:20:10
   - name
-  - r1/T/constants/src/constants/const.go:20:2
-  - r1/T/constants/src/constants/const.go:18:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:20:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:18:1
   - const
-  - r1/T/constants/src/constants/const.go:4:2
-  - r1/T/constants/src/constants/const.go:5:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:4:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:5:2
   - test
   - Pi
-  - r1/T/constants/src/constants/const.go:6:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:6:2
   - untyped float
   - GlobalVar
   - var
-  - r1/T/constants/src/constants/const.go:10:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:10:2
   - "42"
-  - r1/T/constants/src/constants/const.go:11:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:11:2
 packages:
   constants:
     files:
-      r1/T/constants/src/constants/const.go:
+      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/constants/src/constants/const.go:
         functions:
           UseConstants:
             name: 22
