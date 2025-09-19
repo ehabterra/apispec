@@ -45,7 +45,7 @@ type ResponsePatternMatcher interface {
 	PatternMatcher
 
 	// ExtractResponse extracts response information from a matched node
-	ExtractResponse(node TrackerNodeInterface) *ResponseInfo
+	ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo
 }
 
 // ParamPatternMatcher matches parameter patterns
@@ -53,7 +53,7 @@ type ParamPatternMatcher interface {
 	PatternMatcher
 
 	// ExtractParam extracts parameter information from a matched node
-	ExtractParam(node TrackerNodeInterface) *Parameter
+	ExtractParam(node TrackerNodeInterface, route *RouteInfo) *Parameter
 }
 
 // TypeResolver defines the interface for type resolution operations
