@@ -479,7 +479,7 @@ func isPrimitiveType(typeName string) bool {
 		"uint", "uint8", "uint16", "uint32", "uint64",
 		"float32", "float64", "bool", "byte", "rune",
 		"error", "interface{}", "struct{}", "any",
-		"complex64", "complex128",
+		"complex64", "complex128", "time.Time", "nil",
 	}
 
 	if slices.Contains(primitiveTypes, baseType) {
