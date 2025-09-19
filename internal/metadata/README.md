@@ -21,19 +21,6 @@ meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
 err := metadata.WriteMetadata(meta, "output.yaml")
 ```
 
-## Test File Generation
-
-During testing, this package can generate YAML files containing metadata for validation purposes. By default, these files are **not generated** to prevent temporary directory paths from being committed to version control.
-
-To enable test file generation during development, set the environment variable:
-
-```bash
-export SWAGEN_WRITE_TEST_FILES=1
-go test ./internal/metadata -v
-```
-
-**Note**: Test files contain paths with temporary directory names that change on every test run. Only enable this when you need to inspect the generated metadata for debugging purposes.
-
 ## Architecture
 
 The package consists of several key components:
