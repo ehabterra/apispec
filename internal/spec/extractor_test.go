@@ -302,7 +302,35 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 			}
 
 			// Extract response
-			result := matcher.ExtractResponse(node)
+			result := matcher.ExtractResponse(node, &RouteInfo{
+				Path:     "/test",
+				Method:   "POST",
+				Handler:  "testHandler",
+				Package:  "testPackage",
+				File:     "testFile",
+				Function: "testFunction",
+				Summary:  "testSummary",
+				Tags:     []string{"test"},
+				Request: &RequestInfo{
+					BodyType: "testBodyType",
+				},
+				Response: map[string]*ResponseInfo{
+					"200": {
+						BodyType: "testBodyType",
+					},
+				},
+				Params: []Parameter{
+					{
+						Name: "testParam",
+						Schema: &Schema{
+							Type: "string",
+						},
+					},
+				},
+				UsedTypes:   make(map[string]*Schema),
+				Metadata:    meta,
+				GroupPrefix: "testGroup",
+			})
 
 			// Verify that literal values are handled correctly
 			if result == nil {

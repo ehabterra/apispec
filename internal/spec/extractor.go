@@ -28,6 +28,9 @@ type RouteInfo struct {
 	Response map[string]*ResponseInfo
 	Params   []Parameter
 
+	UsedTypes map[string]*Schema
+	Metadata  *metadata.Metadata
+
 	// Resolved router group prefix (if any)
 	GroupPrefix string
 }
@@ -312,12 +315,12 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		}
 
 		// Extract response
-		if resp := e.extractResponseFromNode(child); resp != nil && resp.BodyType != "" {
+		if resp := e.extractResponseFromNode(child, route); resp != nil && resp.BodyType != "" {
 			route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
 		}
 
 		// Extract parameters
-		if param := e.extractParamFromNode(child); param != nil {
+		if param := e.extractParamFromNode(child, route); param != nil {
 			route.Params = append(route.Params, *param)
 		}
 
@@ -326,7 +329,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 	}
 
 	// Extract parameters from the route node itself
-	if param := e.extractParamFromNode(routeNode); param != nil {
+	if param := e.extractParamFromNode(routeNode, route); param != nil {
 		route.Params = append(route.Params, *param)
 	}
 }
@@ -342,10 +345,10 @@ func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *Rou
 }
 
 // extractResponseFromNode extracts response information from a node
-func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface) *ResponseInfo {
+func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
 	for _, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
-			return matcher.ExtractResponse(node)
+			return matcher.ExtractResponse(node, route)
 		}
 	}
 	return &ResponseInfo{
@@ -355,10 +358,10 @@ func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface) *Response
 }
 
 // extractParamFromNode extracts parameter information from a node
-func (e *Extractor) extractParamFromNode(node TrackerNodeInterface) *Parameter {
+func (e *Extractor) extractParamFromNode(node TrackerNodeInterface, route *RouteInfo) *Parameter {
 	for _, matcher := range e.paramMatchers {
 		if matcher.MatchNode(node) {
-			return matcher.ExtractParam(node)
+			return matcher.ExtractParam(node, route)
 		}
 	}
 	return nil
@@ -497,7 +500,7 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 }
 
 // ExtractResponse extracts response information from a matched node
-func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface) *ResponseInfo {
+func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
 	respInfo := &ResponseInfo{
 		StatusCode:  r.cfg.Defaults.ResponseStatus,
 		ContentType: r.cfg.Defaults.ResponseContentType,
@@ -538,7 +541,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface) 
 		}
 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
-		respInfo.Schema = r.mapGoTypeToOpenAPISchema(bodyType)
+
+		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+		respInfo.Schema = schema
 	}
 
 	return respInfo
@@ -657,7 +662,7 @@ func (p *ParamPatternMatcherImpl) GetPriority() int {
 }
 
 // ExtractParam extracts parameter information from a matched node
-func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface) *Parameter {
+func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route *RouteInfo) *Parameter {
 	param := &Parameter{
 		In: p.pattern.ParamIn,
 	}
@@ -685,7 +690,8 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface) *Param
 			}
 		}
 
-		param.Schema = p.mapGoTypeToOpenAPISchema(paramType)
+		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, paramType, route.Metadata, p.cfg, nil)
+		param.Schema = schema
 	}
 
 	// Ensure all parameters have a schema - default to string if none specified

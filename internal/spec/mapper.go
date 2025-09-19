@@ -305,10 +305,10 @@ func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, component
 			if typ == nil {
 				keyParts := strings.Split(key, "-")
 				if len(keyParts) > 1 {
-					schema, schemas = mapGoTypeToOpenAPISchema(usedTypes, keyParts[1], meta, cfg)
+					schema, schemas = mapGoTypeToOpenAPISchema(usedTypes, keyParts[1], meta, cfg, nil)
 				}
 			} else {
-				schema, schemas = generateSchemaFromType(usedTypes, key, typ, meta, cfg)
+				schema, schemas = generateSchemaFromType(usedTypes, key, typ, meta, cfg, nil)
 			}
 			if schema != nil {
 				components.Schemas[schemaComponentNameReplacer.Replace(key)] = schema
@@ -352,6 +352,10 @@ func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]*Schema {
 				}
 			}
 		}
+
+		for key, usedType := range route.UsedTypes {
+			markUsedType(usedTypes, key, usedType)
+		}
 	}
 
 	return usedTypes
@@ -372,18 +376,23 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	}
 
 	typeParts := TypeParts(typeName)
+	var pkgName string
+
+	if !isPrimitiveType(typeParts.PkgName) && typeParts.PkgName != "" {
+		pkgName = typeParts.PkgName + "."
+	}
 
 	// Generics
 	if len(typeParts.GenericTypes) > 0 {
 		for _, part := range typeParts.GenericTypes {
 			genericType := strings.Split(part, " ")
 			if isPrimitiveType(genericType[1]) {
-				metaTypes[genericType[0]+"-"+genericType[1]] = nil
+				metaTypes[pkgName+genericType[0]+"-"+genericType[1]] = nil
 			} else {
 				genericTypeParts := TypeParts(genericType[0])
 
 				if t := typeByName(genericTypeParts, meta, genericType[0]); t != nil {
-					metaTypes[genericType[0]+"_"+genericType[1]] = t
+					metaTypes[pkgName+genericType[0]+"_"+genericType[1]] = t
 				}
 			}
 		}
@@ -514,19 +523,32 @@ func isPrimitiveType(typeName string) bool {
 	return false
 }
 
+const generateSchemaFromTypeKey = "generateSchemaFromType"
+
 // generateSchemaFromType generates an OpenAPI schema from a metadata type
-func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
-	if usedTypes[key] != nil {
-		return usedTypes[key], schemas
+	if visitedTypes == nil {
+		visitedTypes = map[string]bool{}
+	}
+
+	derivedKey := strings.TrimPrefix(key, "*")
+	if visitedTypes[key+generateSchemaFromTypeKey] && canAddRefSchemaForType(derivedKey) {
+		return addRefSchemaForType(key), schemas
+	}
+	visitedTypes[key+generateSchemaFromTypeKey] = true
+
+	if usedTypes[derivedKey] != nil && canAddRefSchemaForType(derivedKey) {
+		schemas[derivedKey] = usedTypes[derivedKey]
+		return addRefSchemaForType(derivedKey), schemas
 	}
 
 	// Check external types
 	if cfg != nil {
 		for _, externalType := range cfg.ExternalTypes {
-			if externalType.Name == strings.ReplaceAll(key, TypeSep, ".") {
-				usedTypes[key] = externalType.OpenAPIType
+			if externalType.Name == strings.ReplaceAll(derivedKey, TypeSep, ".") {
+				markUsedType(usedTypes, derivedKey, externalType.OpenAPIType)
 				return externalType.OpenAPIType, schemas
 			}
 		}
@@ -540,26 +562,24 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 
 	switch kind {
 	case "struct":
-		schema, newSchemas = generateStructSchema(usedTypes, key, typ, meta, cfg)
+		schema, newSchemas = generateStructSchema(usedTypes, key, typ, meta, cfg, visitedTypes)
 	case "interface":
-		schema, newSchemas = generateInterfaceSchema(), schemas
+		schema = generateInterfaceSchema()
 	case "alias":
-		schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg)
+		schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg, visitedTypes)
 	default:
-		schema, newSchemas = &Schema{Type: "object"}, schemas
+		schema = &Schema{Type: "object"}
 	}
 
-	usedTypes[key] = schema
+	markUsedType(usedTypes, key, schema)
 
-	for schemaKey, newSchema := range newSchemas {
-		schemas[schemaKey] = newSchema
-	}
+	maps.Copy(schemas, newSchemas)
 
 	return schema, schemas
 }
 
 // generateStructSchema generates a schema for a struct type
-func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
 	keyParts := TypeParts(key)
@@ -604,14 +624,18 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 
 		// Generate schema for field type
 		var fieldSchema *Schema
-		var newSchemas = map[string]*Schema{}
+		var newSchemas map[string]*Schema
 
 		if field.NestedType != nil {
 			// Handle nested struct type
-			fieldSchema, newSchemas = generateSchemaFromType(usedTypes, fieldName, field.NestedType, meta, cfg)
-			for schemaKey, newSchema := range newSchemas {
-				schemas[schemaKey] = newSchema
+			fieldOriginalType := getStringFromPool(meta, field.NestedType.Name)
+
+			fieldSchema, newSchemas = generateSchemaFromType(usedTypes, fieldOriginalType, field.NestedType, meta, cfg, visitedTypes)
+			if fieldSchema == nil {
+				fieldSchema = newSchemas[fieldOriginalType]
 			}
+
+			maps.Copy(schemas, newSchemas)
 		} else {
 			isPrimitive := isPrimitiveType(fieldType)
 
@@ -623,26 +647,29 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 				}
 			}
 
+			derivedFieldType := strings.TrimPrefix(fieldType, "*")
 			// Check if this field type already exists in usedTypes
-			if bodySchema, ok := usedTypes[fieldType]; !isPrimitive && ok {
+			if bodySchema, ok := usedTypes[derivedFieldType]; !isPrimitive && ok {
 				// Create a reference to the existing schema
-				fieldSchema = addRefSchemaForType(fieldType)
+				fieldSchema = addRefSchemaForType(derivedFieldType)
 
 				if bodySchema == nil {
 					var newBodySchemas map[string]*Schema
 
-					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg)
-					maps.Copy(newSchemas, newBodySchemas)
+					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg, visitedTypes)
+					maps.Copy(schemas, newBodySchemas)
 				}
-				schemas[fieldType] = bodySchema
-				usedTypes[fieldType] = bodySchema
+				schemas[derivedFieldType] = bodySchema
+				markUsedType(usedTypes, derivedFieldType, bodySchema)
 
 			} else {
-				fieldSchema, newSchemas = mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg)
-			}
+				fieldSchema, newSchemas = mapGoTypeToOpenAPISchema(usedTypes, derivedFieldType, meta, cfg, visitedTypes)
+				if canAddRefSchemaForType(derivedFieldType) {
+					schemas[derivedFieldType] = fieldSchema
+					fieldSchema = addRefSchemaForType(derivedFieldType)
+				}
 
-			for schemaKey, newSchema := range newSchemas {
-				schemas[schemaKey] = newSchema
+				maps.Copy(schemas, newSchemas)
 			}
 		}
 
@@ -658,7 +685,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 
 		// Detect and apply enum values from constants if no enum was specified in tags
 		// Only apply enum detection for custom types (not built-in types)
-		if len(fieldSchema.Enum) == 0 {
+		if fieldSchema != nil && len(fieldSchema.Enum) == 0 {
 			// Use the original field type before resolution for enum detection
 			originalFieldType := getStringFromPool(meta, field.Type)
 
@@ -686,9 +713,10 @@ func generateInterfaceSchema() *Schema {
 }
 
 // generateAliasSchema generates a schema for an alias type
-func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
-	return mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg)
+
+	return mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
 }
 
 // resolveUnderlyingType resolves the underlying type for alias/enum types
@@ -699,20 +727,20 @@ func resolveUnderlyingType(typeName string, meta *metadata.Metadata) string {
 
 	var hasArrayPrefix, hasMapPrefix, hasSlicePrefix, hasStarPrefix bool
 
-	if strings.HasPrefix(typeName, "[]") {
-		typeName = strings.TrimPrefix(typeName, "[]")
+	if after, ok := strings.CutPrefix(typeName, "[]"); ok {
+		typeName = after
 		hasArrayPrefix = true
 	}
-	if strings.HasPrefix(typeName, "map[") {
-		typeName = strings.TrimPrefix(typeName, "map[")
+	if after, ok := strings.CutPrefix(typeName, "map["); ok {
+		typeName = after
 		hasMapPrefix = true
 	}
-	if strings.HasPrefix(typeName, "[]") {
-		typeName = strings.TrimPrefix(typeName, "[]")
+	if after, ok := strings.CutPrefix(typeName, "[]"); ok {
+		typeName = after
 		hasSlicePrefix = true
 	}
-	if strings.HasPrefix(typeName, "*") {
-		typeName = strings.TrimPrefix(typeName, "*")
+	if after, ok := strings.CutPrefix(typeName, "*"); ok {
+		typeName = after
 		hasStarPrefix = true
 	}
 
@@ -758,9 +786,8 @@ func markUsedType(usedTypes map[string]*Schema, typeName string, markValue *Sche
 	usedTypes[typeName] = markValue
 
 	// Handle pointer types by dereferencing them
-	dereferencedType := typeName
 	if strings.HasPrefix(typeName, "*") {
-		dereferencedType = strings.TrimSpace(typeName[1:])
+		dereferencedType := strings.TrimSpace(typeName[1:])
 		// Also add the dereferenced type to used types
 		if usedTypes[dereferencedType] == nil {
 			usedTypes[dereferencedType] = markValue
@@ -1346,14 +1373,38 @@ func typeMatches(constantType, targetType string, meta *metadata.Metadata) bool 
 	return false
 }
 
+const mapGoTypeToOpenAPISchemaKey = "mapGoTypeToOpenAPISchema"
+
 // mapGoTypeToOpenAPISchema maps Go types to OpenAPI schemas
-func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig) (*Schema, map[string]*Schema) {
+func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
+	var schema *Schema
+
+	if visitedTypes == nil {
+		visitedTypes = map[string]bool{}
+	}
+
+	isPrimitive := isPrimitiveType(goType)
+
+	derivedGoType := strings.TrimPrefix(goType, "*")
+
+	if visitedTypes[goType+mapGoTypeToOpenAPISchemaKey] && canAddRefSchemaForType(derivedGoType) {
+		return addRefSchemaForType(goType), schemas
+	}
+	visitedTypes[goType+mapGoTypeToOpenAPISchemaKey] = true
+
+	// Add recursion guard - if we're already processing this type, return a reference
+	if schema, exists := usedTypes[derivedGoType]; exists && schema != nil && canAddRefSchemaForType(derivedGoType) {
+		return addRefSchemaForType(derivedGoType), schemas
+	}
 
 	// Check type mappings first
 	for _, mapping := range cfg.TypeMapping {
 		if mapping.GoType == goType {
-			return mapping.OpenAPIType, schemas
+			schema = mapping.OpenAPIType
+			markUsedType(usedTypes, goType, schema)
+
+			return schema, schemas
 		}
 	}
 
@@ -1371,10 +1422,8 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		underlyingType := strings.TrimSpace(goType[1:])
 		// For pointer types, we generate the same schema as the underlying type
 		// but we could add nullable: true if needed for OpenAPI 3.0+
-		schema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg)
-		for schemaKey, newSchema := range newSchemas {
-			schemas[schemaKey] = newSchema
-		}
+		schema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
+		maps.Copy(schemas, newSchemas)
 		return schema, schemas
 	}
 
@@ -1385,17 +1434,19 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			keyType := goType[4:endIdx]
 			valueType := strings.TrimSpace(goType[endIdx+1:])
 			if keyType == "string" {
-				additionalProperties, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, valueType, meta, cfg)
-				for schemaKey, newSchema := range newSchemas {
-					schemas[schemaKey] = newSchema
-				}
-				return &Schema{
+				additionalProperties, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, valueType, meta, cfg, visitedTypes)
+				maps.Copy(schemas, newSchemas)
+				schema = &Schema{
 					Type:                 "object",
 					AdditionalProperties: additionalProperties,
-				}, schemas
+				}
+
+				return schema, schemas
 			}
 			// Non-string keys are not supported in OpenAPI, fallback to generic object
-			return &Schema{Type: "object"}, schemas
+			schema = &Schema{Type: "object"}
+
+			return schema, schemas
 		}
 	}
 
@@ -1404,31 +1455,32 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		elementType := strings.TrimSpace(goType[2:])
 
 		// Check if the element type already exists in usedTypes
-		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveType(elementType) && ok {
+		if bodySchema, ok := usedTypes[elementType]; !isPrimitive && ok {
 			if bodySchema == nil {
 				var newBodySchemas map[string]*Schema
 
-				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg)
+				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg, visitedTypes)
 				maps.Copy(schemas, newBodySchemas)
 			}
-			schemas[elementType] = bodySchema
-			usedTypes[elementType] = bodySchema
+			markUsedType(usedTypes, elementType, bodySchema)
 
 			// Create a reference to the existing schema
-			return &Schema{
+			schema = &Schema{
 				Type:  "array",
 				Items: addRefSchemaForType(elementType),
-			}, schemas
+			}
+
+			return schema, schemas
 		}
 
-		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg)
-		for schemaKey, newSchema := range newSchemas {
-			schemas[schemaKey] = newSchema
-		}
-		return &Schema{
+		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg, visitedTypes)
+		maps.Copy(schemas, newSchemas)
+		schema = &Schema{
 			Type:  "array",
 			Items: items,
-		}, schemas
+		}
+
+		return schema, schemas
 	}
 
 	// Default mappings
@@ -1466,25 +1518,35 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			for key, typ := range typs {
 				if typ != nil {
 					// Generate inline schema for the type
-					schema, newSchemas := generateSchemaFromType(usedTypes, key, typ, meta, cfg)
-					for schemaKey, newSchema := range newSchemas {
-						schemas[schemaKey] = newSchema
+					schema, newSchemas := generateSchemaFromType(usedTypes, key, typ, meta, cfg, visitedTypes)
+					if schema != nil {
+						maps.Copy(schemas, newSchemas)
+						markUsedType(usedTypes, goType, schema)
+
+						return schema, schemas
 					}
-					return schema, schemas
 				}
 			}
 		}
 
-		if goType != "" {
+		if !isPrimitive && goType != "" {
 			return addRefSchemaForType(goType), schemas
 		}
 
-		return nil, schemas
+		return schema, schemas
 	}
+}
+
+func canAddRefSchemaForType(key string) bool {
+	if isPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.HasPrefix(key, "map[") {
+		return false
+	}
+	return true
 }
 
 func addRefSchemaForType(goType string) *Schema {
 	// For custom types not found in metadata, create a reference
+	goType = strings.TrimPrefix(goType, "*")
 	return &Schema{Ref: refComponentsSchemasPrefix + schemaComponentNameReplacer.Replace(goType)}
 }
 
