@@ -46,7 +46,10 @@ func testMapMetadataToOpenAPI_NilTree(t *testing.T) {
 		}
 	}()
 
-	MapMetadataToOpenAPI(nil, cfg, genCfg)
+	_, err := MapMetadataToOpenAPI(nil, cfg, genCfg)
+	if err != nil {
+		t.Errorf("Expected error for nil metadata, got: %v", err)
+	}
 }
 
 func testMapMetadataToOpenAPI_EmptyRoutes(t *testing.T) {

@@ -48,9 +48,9 @@ func (nd *TrackerNode) Key() string {
 	switch {
 	case nd.key != "":
 	case nd.CallArgument != nil:
-		nd.key = nd.CallArgument.ID()
+		nd.key = nd.ID()
 	case nd.CallGraphEdge != nil:
-		nd.key = nd.CallGraphEdge.Callee.ID()
+		nd.key = nd.Callee.ID()
 	}
 
 	nd.key = strings.TrimPrefix(nd.key, "*")
@@ -423,7 +423,7 @@ func (t *TrackerTree) processChainRelationships() {
 func (t *TrackerTree) findNodeByEdgeID(edgeID string) *TrackerNode {
 	// Search in roots
 	for _, root := range t.roots {
-		if root.CallGraphEdge != nil && root.CallGraphEdge.Callee.ID() == edgeID {
+		if root.CallGraphEdge != nil && root.Callee.ID() == edgeID {
 			return root
 		}
 		// Search in children recursively
@@ -436,7 +436,7 @@ func (t *TrackerTree) findNodeByEdgeID(edgeID string) *TrackerNode {
 
 // findNodeInSubtree recursively searches for a node with the given edge ID
 func (t *TrackerTree) findNodeInSubtree(node *TrackerNode, edgeID string) *TrackerNode {
-	if node.CallGraphEdge != nil && node.CallGraphEdge.Callee.ID() == edgeID {
+	if node.CallGraphEdge != nil && node.Callee.ID() == edgeID {
 		return node
 	}
 	for _, child := range node.Children {
@@ -1266,7 +1266,7 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
 	// For variable arguments, trace back to assignment
 	if argNode.ArgType == ArgTypeVariable && argNode.CallArgument != nil {
 		originVar, originPkg, _, funName := metadata.TraceVariableOrigin(
-			argNode.CallArgument.GetName(),
+			argNode.GetName(),
 			argNode.ArgContext,
 			"", // Use empty string for package, will be determined by TraceVariableOrigin
 			t.meta,

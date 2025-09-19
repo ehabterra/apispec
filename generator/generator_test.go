@@ -28,7 +28,11 @@ func TestGenerateFromDirectory_ValidDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a simple Go file without external dependencies
 	goFile := filepath.Join(tempDir, "main.go")
@@ -103,7 +107,11 @@ func TestGenerateFromDirectory_NoGoFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a non-Go file
 	textFile := filepath.Join(tempDir, "readme.txt")
@@ -127,7 +135,11 @@ func TestGenerateFromDirectory_InvalidGoCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a Go file with syntax errors
 	goFile := filepath.Join(tempDir, "main.go")
@@ -163,7 +175,11 @@ func TestGenerateFromDirectory_WithAPISpecConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create go.mod file
 	goModFile := filepath.Join(tempDir, "go.mod")

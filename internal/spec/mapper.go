@@ -536,7 +536,7 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 	kind := getStringFromPool(meta, typ.Kind)
 
 	var schema *Schema
-	var newSchemas = map[string]*Schema{}
+	var newSchemas map[string]*Schema
 
 	switch kind {
 	case "struct":
@@ -758,9 +758,8 @@ func markUsedType(usedTypes map[string]*Schema, typeName string, markValue *Sche
 	usedTypes[typeName] = markValue
 
 	// Handle pointer types by dereferencing them
-	dereferencedType := typeName
 	if strings.HasPrefix(typeName, "*") {
-		dereferencedType = strings.TrimSpace(typeName[1:])
+		dereferencedType := strings.TrimSpace(typeName[1:])
 		// Also add the dereferenced type to used types
 		if usedTypes[dereferencedType] == nil {
 			usedTypes[dereferencedType] = markValue
