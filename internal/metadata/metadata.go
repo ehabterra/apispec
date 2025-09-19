@@ -445,7 +445,7 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 				Container: m.StringPool.GetString(assignment.Func),
 			}
 
-			var assignmentEdge *CallGraphEdge = edge
+			var assignmentEdge = edge
 
 			// Get nested edges to link to the assignment
 			if callers, exists := m.Callers[edge.Callee.BaseID()]; exists {

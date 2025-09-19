@@ -79,7 +79,11 @@ func TestEngine_GenerateOpenAPI_NoGoModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	engine := NewEngine(&EngineConfig{
 		InputDir: tempDir,
@@ -101,7 +105,11 @@ func TestEngine_GenerateOpenAPI_ValidDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create go.mod file
 	goModFile := filepath.Join(tempDir, "go.mod")
@@ -158,7 +166,11 @@ func TestEngine_GenerateOpenAPI_WithConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create go.mod file
 	goModFile := filepath.Join(tempDir, "go.mod")
@@ -238,7 +250,11 @@ func TestEngine_GenerateOpenAPI_WithMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create go.mod file
 	goModFile := filepath.Join(tempDir, "go.mod")
@@ -294,7 +310,11 @@ func TestEngine_GenerateOpenAPI_WithDiagram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create go.mod file
 	goModFile := filepath.Join(tempDir, "go.mod")

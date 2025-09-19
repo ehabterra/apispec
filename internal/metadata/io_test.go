@@ -303,7 +303,7 @@ func TestSetupMetadataReferences(t *testing.T) {
 				AssignmentMap: map[string][]Assignment{
 					"var1": {
 						{
-							Lhs: CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("var1")},
+							Lhs:   CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("var1")},
 							Value: CallArgument{Kind: stringPool.Get("literal"), Value: stringPool.Get("value1")},
 						},
 					},
@@ -330,7 +330,7 @@ func TestSetupMetadataReferences(t *testing.T) {
 								AssignmentMap: map[string][]Assignment{
 									"funcVar": {
 										{
-											Lhs: CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("funcVar")},
+											Lhs:   CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("funcVar")},
 											Value: CallArgument{Kind: stringPool.Get("literal"), Value: stringPool.Get("funcValue")},
 										},
 									},
@@ -356,7 +356,7 @@ func TestSetupMetadataReferences(t *testing.T) {
 										AssignmentMap: map[string][]Assignment{
 											"methodVar": {
 												{
-													Lhs: CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("methodVar")},
+													Lhs:   CallArgument{Kind: stringPool.Get("ident"), Name: stringPool.Get("methodVar")},
 													Value: CallArgument{Kind: stringPool.Get("literal"), Value: stringPool.Get("methodValue")},
 												},
 											},
@@ -477,7 +477,7 @@ func TestSetCallArgumentMeta(t *testing.T) {
 	meta := &Metadata{}
 	stringPool := NewStringPool()
 	meta.StringPool = stringPool
-	
+
 	arg := &CallArgument{
 		Kind: stringPool.Get("ident"),
 		Name: stringPool.Get("test"),

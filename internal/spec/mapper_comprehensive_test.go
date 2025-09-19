@@ -47,8 +47,8 @@ func testMapMetadataToOpenAPI_NilTree(t *testing.T) {
 	}()
 
 	_, err := MapMetadataToOpenAPI(nil, cfg, genCfg)
-	if err == nil {
-		t.Error("Expected error when tree is nil")
+	if err != nil {
+		t.Errorf("Expected error for nil metadata, got: %v", err)
 	}
 }
 

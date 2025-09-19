@@ -1439,6 +1439,6 @@ func sanitizeFilePath(path string) string {
 // isRandomSuffix detects random IDs like w8tjj19x3nz2gpwll3xntf4r0000gn
 func isRandomSuffix(s string) bool {
 	return len(s) > 12 && strings.IndexFunc(s, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+		return r < 'a' || r > 'z' && (r < '0' || r > '9')
 	}) == -1
 }

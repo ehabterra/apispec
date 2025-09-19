@@ -558,7 +558,7 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 	kind := getStringFromPool(meta, typ.Kind)
 
 	var schema *Schema
-	var newSchemas = map[string]*Schema{}
+	var newSchemas map[string]*Schema
 
 	switch kind {
 	case "struct":

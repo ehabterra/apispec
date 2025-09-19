@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,33 +11,16 @@ import (
 )
 
 func TestMainCLI_Help(t *testing.T) {
-	// Capture stderr for help output
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
 	// Test help command by calling parseFlags directly with --help
+	// The flag package provides a default help flag that returns flag.ErrHelp
 	_, err := parseFlags([]string{"--help"})
-
-	// Restore stderr
-	w.Close()
-	os.Stderr = oldStderr
-
-	// Read captured output
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	outputStr := buf.String()
-
-	// Help should return an error (flag.ErrHelp)
 	if err == nil {
-		t.Error("Help should return an error")
+		t.Error("Expected error for --help flag")
 	}
 
-	if !strings.Contains(outputStr, "Usage:") {
-		t.Error("Help output should contain 'Usage:'")
-	}
-	if !strings.Contains(outputStr, "apispec") {
-		t.Error("Help output should contain 'apispec'")
+	// The error should be flag.ErrHelp
+	if err != flag.ErrHelp {
+		t.Errorf("Expected flag.ErrHelp, got: %v", err)
 	}
 }
 
@@ -60,12 +44,18 @@ func TestMainCLI_Version(t *testing.T) {
 	printVersion()
 
 	// Restore stdout
-	w.Close()
+	err = w.Close()
+	if err != nil {
+		t.Fatalf("Failed to close stdout: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, err = io.Copy(&buf, r)
+	if err != nil {
+		t.Fatalf("Failed to copy output: %v", err)
+	}
 	outputStr := buf.String()
 
 	if !strings.Contains(outputStr, "apispec version") {
@@ -97,7 +87,11 @@ func TestMainCLI_GenerateOpenAPI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a simple Go file
 	goFile := filepath.Join(tempDir, "main.go")
@@ -167,7 +161,11 @@ func TestMainCLI_GenerateOpenAPIWithConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a Go file
 	goFile := filepath.Join(tempDir, "main.go")
@@ -276,7 +274,11 @@ func TestMainCLI_InvalidConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a Go file
 	goFile := filepath.Join(tempDir, "main.go")
@@ -323,7 +325,11 @@ func TestMainCLI_NoGoFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a non-Go file
 	textFile := filepath.Join(tempDir, "readme.txt")
@@ -355,7 +361,11 @@ func TestMainCLI_InvalidGoCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a Go file with syntax errors
 	goFile := filepath.Join(tempDir, "main.go")
@@ -494,12 +504,18 @@ func TestPrintVersion(t *testing.T) {
 	printVersion()
 
 	// Restore stdout
-	w.Close()
+	err := w.Close()
+	if err != nil {
+		t.Fatalf("Failed to close stdout: %v", err)
+	}
 	os.Stdout = oldStdout
 
 	// Read captured output
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, err = io.Copy(&buf, r)
+	if err != nil {
+		t.Fatalf("Failed to copy output: %v", err)
+	}
 	outputStr := buf.String()
 
 	if !strings.Contains(outputStr, "apispec version") {

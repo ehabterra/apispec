@@ -71,7 +71,11 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteUser(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNoContent)
+	vars := mux.Vars(r)
+	_ = vars["id"]
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
