@@ -110,10 +110,17 @@ func (r *RoutePatternMatcherImpl) GetPriority() int {
 func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteInfo {
 	edge := node.GetEdge()
 	routeInfo := RouteInfo{
-		Method:   http.MethodPost, // Default method
-		Package:  r.contextProvider.GetString(edge.Callee.Pkg),
-		File:     r.contextProvider.GetString(edge.Position),
-		Response: make(map[string]*ResponseInfo),
+		Method:    http.MethodPost, // Default method
+		Package:   r.contextProvider.GetString(edge.Callee.Pkg),
+		File:      r.contextProvider.GetString(edge.Position),
+		Response:  make(map[string]*ResponseInfo),
+		UsedTypes: make(map[string]*Schema),
+	}
+
+	if node.GetEdge() != nil {
+		routeInfo.Metadata = node.GetEdge().Callee.Meta
+	} else if node.GetArgument() != nil {
+		routeInfo.Metadata = node.GetArgument().Meta
 	}
 
 	if routeInfo.File == "" && node.GetArgument() != nil {
@@ -516,7 +523,8 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		}
 
 		reqInfo.BodyType = preprocessingBodyType(bodyType)
-		reqInfo.Schema = r.mapGoTypeToOpenAPISchema(bodyType)
+		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+		reqInfo.Schema = schema
 	}
 
 	if reqInfo.BodyType == "" {

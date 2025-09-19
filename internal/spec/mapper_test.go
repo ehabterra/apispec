@@ -79,7 +79,7 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			usedTypes := make(map[string]*Schema)
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, meta, cfg)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, meta, cfg, nil)
 			if schema.Type != tt.expected {
 				t.Errorf("expected type %s, got %s", tt.expected, schema.Type)
 			}
@@ -340,7 +340,7 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			usedTypes := make(map[string]*Schema)
-			result, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
+			result, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, nil)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("mapGoTypeToOpenAPISchema() = %v, want %v", result, tt.expected)
 			}
@@ -935,37 +935,48 @@ func TestAddTypeAndDependenciesWithMetadata(t *testing.T) {
 }
 
 func TestGetStringFromPool(t *testing.T) {
-	// Test with nil metadata - this should panic due to nil pointer dereference
-	defer func() {
-		if r := recover(); r != nil {
-			// Expected panic due to nil metadata
-			t.Log("Expected panic with nil metadata:", r)
+	t.Run("NilMetadataPanic", func(t *testing.T) {
+		// This test expects a panic and should pass when panic is caught
+		panicCaught := false
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					panicCaught = true
+				}
+			}()
+			_ = getStringFromPool(nil, 0)
+		}()
+
+		if !panicCaught {
+			t.Error("Expected panic with nil metadata, but no panic occurred")
 		}
-	}()
+	})
 
-	_ = getStringFromPool(nil, 0)
+	t.Run("NilStringPool", func(t *testing.T) {
+		// Test with nil string pool
+		meta := &metadata.Metadata{
+			StringPool: nil,
+		}
+		result := getStringFromPool(meta, 0)
+		if result != "" {
+			t.Error("Should return empty string for nil string pool")
+		}
+	})
 
-	// Test with nil string pool
-	meta := &metadata.Metadata{
-		StringPool: nil,
-	}
-	result := getStringFromPool(meta, 0)
-	if result != "" {
-		t.Error("Should return empty string for nil string pool")
-	}
+	t.Run("ValidMetadata", func(t *testing.T) {
+		// Test with valid metadata
+		stringPool := metadata.NewStringPool()
+		meta := &metadata.Metadata{
+			StringPool: stringPool,
+		}
 
-	// Test with valid metadata
-	stringPool := metadata.NewStringPool()
-	meta = &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	// Add a string to the pool
-	idx := stringPool.Get("test")
-	result = getStringFromPool(meta, idx)
-	if result != "test" {
-		t.Errorf("Expected 'test', got '%s'", result)
-	}
+		// Add a string to the pool
+		idx := stringPool.Get("test")
+		result := getStringFromPool(meta, idx)
+		if result != "test" {
+			t.Errorf("Expected 'test', got '%s'", result)
+		}
+	})
 }
 
 func TestExtractJSONName(t *testing.T) {
@@ -1022,6 +1033,8 @@ func TestExtractJSONName(t *testing.T) {
 }
 
 func TestCompleteNestedStructFlow(t *testing.T) {
+	defer RecoverFromPanic(t, "TestCompleteNestedStructFlow")
+
 	// Test source code with nested struct types
 	src := `
 package main
@@ -1064,7 +1077,7 @@ type Container struct {
 		for _, file := range pkg.Files {
 			if xType, exists := file.Types["X"]; exists {
 				usedTypes := make(map[string]*Schema)
-				schema, _ := generateSchemaFromType(usedTypes, "X", xType, metadata, cfg)
+				schema, _ := generateSchemaFromType(usedTypes, "X", xType, metadata, cfg, nil)
 
 				// Verify the schema structure
 				if schema.Type != "object" {
@@ -1105,7 +1118,7 @@ type Container struct {
 			// Test schema generation for type Container
 			if containerType, exists := file.Types["Container"]; exists {
 				usedTypes := make(map[string]*Schema)
-				schema, _ := generateSchemaFromType(usedTypes, "Container", containerType, metadata, cfg)
+				schema, _ := generateSchemaFromType(usedTypes, "Container", containerType, metadata, cfg, nil)
 
 				// Verify the schema structure
 				if schema.Type != "object" {
@@ -1153,5 +1166,497 @@ type Container struct {
 				t.Error("Expected to find type Container")
 			}
 		}
+	}
+}
+
+// TestMapGoTypeToOpenAPISchema_CircularReference tests that circular type references
+// don't cause stack overflow by using usedTypes to guard against recursion
+func TestMapGoTypeToOpenAPISchema_CircularReference(t *testing.T) {
+	defer RecoverFromPanic(t, "TestMapGoTypeToOpenAPISchema_CircularReference")
+
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"circular.go": {
+						Types: map[string]*metadata.Type{
+							"Node": {
+								Name: stringPool.Get("Node"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Value"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Next"),
+										Type: stringPool.Get("*Node"), // Circular reference
+									},
+								},
+							},
+							"Parent": {
+								Name: stringPool.Get("Parent"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Name"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Child"),
+										Type: stringPool.Get("Child"), // Circular reference
+									},
+								},
+							},
+							"Child": {
+								Name: stringPool.Get("Child"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Name"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Parent"),
+										Type: stringPool.Get("Parent"), // Circular reference
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	// Test cases that should not cause stack overflow
+	testCases := []struct {
+		name   string
+		goType string
+	}{
+		{
+			name:   "Node with circular reference",
+			goType: "Node",
+		},
+		{
+			name:   "Parent with circular reference",
+			goType: "Parent",
+		},
+		{
+			name:   "Child with circular reference",
+			goType: "Child",
+		},
+		{
+			name:   "Pointer to Node",
+			goType: "*Node",
+		},
+		{
+			name:   "Slice of Nodes",
+			goType: "[]Node",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This should not panic or cause stack overflow
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			// Verify we got a valid schema
+			if schema == nil {
+				t.Errorf("Expected non-nil schema for type %s", tc.goType)
+			}
+
+			// For struct types, verify we have properties
+			if tc.goType == "Node" || tc.goType == "Parent" || tc.goType == "Child" {
+				if schema.Type != "object" {
+					t.Errorf("Expected object type for struct %s, got %s", tc.goType, schema.Type)
+				}
+				if schema.Properties == nil {
+					t.Errorf("Expected properties for struct %s", tc.goType)
+				}
+			}
+		})
+	}
+}
+
+// TestFindTypesInMetadata_CircularReference tests that findTypesInMetadata doesn't cause
+// stack overflow when dealing with circular type references
+func TestFindTypesInMetadata_CircularReference(t *testing.T) {
+	defer RecoverFromPanic(t, "TestFindTypesInMetadata_CircularReference")
+
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"circular.go": {
+						Types: map[string]*metadata.Type{
+							"Node": {
+								Name: stringPool.Get("Node"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Value"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Next"),
+										Type: stringPool.Get("*Node"), // Circular reference
+									},
+								},
+							},
+							"Parent": {
+								Name: stringPool.Get("Parent"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Name"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Child"),
+										Type: stringPool.Get("Child"), // Circular reference
+									},
+								},
+							},
+							"Child": {
+								Name: stringPool.Get("Child"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Name"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Parent"),
+										Type: stringPool.Get("Parent"), // Circular reference
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test cases that should not cause stack overflow
+	testCases := []struct {
+		name     string
+		typeName string
+	}{
+		{
+			name:     "Node with circular reference",
+			typeName: "Node",
+		},
+		{
+			name:     "Parent with circular reference",
+			typeName: "Parent",
+		},
+		{
+			name:     "Child with circular reference",
+			typeName: "Child",
+		},
+		{
+			name:     "Pointer to Node",
+			typeName: "*Node",
+		},
+		{
+			name:     "Slice of Nodes",
+			typeName: "[]Node",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This should not panic or cause stack overflow
+			// The function currently creates a new usedTypes map each time,
+			// which should prevent infinite recursion
+			types := findTypesInMetadata(meta, tc.typeName)
+
+			// Verify we got a valid result
+			if types == nil {
+				t.Errorf("Expected non-nil types for %s", tc.typeName)
+			}
+		})
+	}
+}
+
+// TestResolveUnderlyingType_CircularReference tests that resolveUnderlyingType doesn't cause
+// stack overflow when dealing with circular type references
+func TestResolveUnderlyingType_CircularReference(t *testing.T) {
+	defer RecoverFromPanic(t, "TestResolveUnderlyingType_CircularReference")
+
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"circular.go": {
+						Types: map[string]*metadata.Type{
+							"Node": {
+								Name:   stringPool.Get("Node"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("*Node"), // Circular alias reference
+							},
+							"Parent": {
+								Name:   stringPool.Get("Parent"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("Child"), // Circular alias reference
+							},
+							"Child": {
+								Name:   stringPool.Get("Child"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("Parent"), // Circular alias reference
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test cases that should not cause stack overflow
+	testCases := []struct {
+		name     string
+		typeName string
+	}{
+		{
+			name:     "Node with circular alias",
+			typeName: "Node",
+		},
+		{
+			name:     "Parent with circular alias",
+			typeName: "Parent",
+		},
+		{
+			name:     "Child with circular alias",
+			typeName: "Child",
+		},
+		{
+			name:     "Pointer to Node",
+			typeName: "*Node",
+		},
+		{
+			name:     "Slice of Nodes",
+			typeName: "[]Node",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This should not panic or cause stack overflow
+			// The function currently doesn't have recursion guards,
+			// which should cause infinite recursion
+			underlyingType := resolveUnderlyingType(tc.typeName, meta)
+
+			// For circular references, we expect either empty string or the type itself
+			// depending on the implementation
+			_ = underlyingType // Just ensure it doesn't panic
+		})
+	}
+}
+
+// TestMapGoTypeToOpenAPISchema_DeepCircularReference tests that mapGoTypeToOpenAPISchema
+// doesn't cause stack overflow when dealing with deep circular type references
+func TestMapGoTypeToOpenAPISchema_DeepCircularReference(t *testing.T) {
+	defer RecoverFromPanic(t, "TestMapGoTypeToOpenAPISchema_DeepCircularReference")
+
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"circular.go": {
+						Types: map[string]*metadata.Type{
+							"Node": {
+								Name: stringPool.Get("Node"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Value"),
+										Type: stringPool.Get("string"),
+									},
+									{
+										Name: stringPool.Get("Next"),
+										Type: stringPool.Get("*Node"), // Circular reference
+									},
+									{
+										Name: stringPool.Get("Prev"),
+										Type: stringPool.Get("*Node"), // Another circular reference
+									},
+								},
+							},
+							"Tree": {
+								Name: stringPool.Get("Tree"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Root"),
+										Type: stringPool.Get("*Node"), // References Node
+									},
+									{
+										Name: stringPool.Get("Size"),
+										Type: stringPool.Get("int"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	// Test cases that should not cause stack overflow
+	testCases := []struct {
+		name   string
+		goType string
+	}{
+		{
+			name:   "Node with multiple circular references",
+			goType: "Node",
+		},
+		{
+			name:   "Tree that references Node",
+			goType: "Tree",
+		},
+		{
+			name:   "Pointer to Node",
+			goType: "*Node",
+		},
+		{
+			name:   "Slice of Nodes",
+			goType: "[]Node",
+		},
+		{
+			name:   "Map of string to Node",
+			goType: "map[string]Node",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This should not panic or cause stack overflow
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			// Verify we got a valid schema
+			if schema == nil {
+				t.Errorf("Expected non-nil schema for type %s", tc.goType)
+			}
+
+			// For struct types, verify we have properties
+			if tc.goType == "Node" || tc.goType == "Tree" {
+				if schema.Type != "object" {
+					t.Errorf("Expected object type for struct %s, got %s", tc.goType, schema.Type)
+				}
+				if schema.Properties == nil {
+					t.Errorf("Expected properties for struct %s", tc.goType)
+				}
+			}
+		})
+	}
+}
+
+// TestResolveUnderlyingType_ComplexCircularReference tests that resolveUnderlyingType
+// doesn't cause stack overflow when dealing with complex circular type references
+func TestResolveUnderlyingType_ComplexCircularReference(t *testing.T) {
+	defer RecoverFromPanic(t, "TestResolveUnderlyingType_ComplexCircularReference")
+
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"circular.go": {
+						Types: map[string]*metadata.Type{
+							"Node": {
+								Name:   stringPool.Get("Node"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("*Node"), // Circular alias reference
+							},
+							"Parent": {
+								Name:   stringPool.Get("Parent"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("Child"), // Circular alias reference
+							},
+							"Child": {
+								Name:   stringPool.Get("Child"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("Parent"), // Circular alias reference
+							},
+							"Container": {
+								Name: stringPool.Get("Container"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Node"),
+										Type: stringPool.Get("Node"), // References the circular alias
+									},
+									{
+										Name: stringPool.Get("Parent"),
+										Type: stringPool.Get("Parent"), // References the circular alias
+									},
+									{
+										Name: stringPool.Get("Child"),
+										Type: stringPool.Get("Child"), // References the circular alias
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	// Test cases that should not cause stack overflow
+	testCases := []struct {
+		name   string
+		goType string
+	}{
+		{
+			name:   "Container with circular alias references",
+			goType: "Container",
+		},
+		{
+			name:   "Node with circular alias",
+			goType: "Node",
+		},
+		{
+			name:   "Parent with circular alias",
+			goType: "Parent",
+		},
+		{
+			name:   "Child with circular alias",
+			goType: "Child",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// This should not panic or cause stack overflow
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			// Verify we got a valid schema
+			if schema == nil {
+				t.Errorf("Expected non-nil schema for type %s", tc.goType)
+			}
+		})
 	}
 }

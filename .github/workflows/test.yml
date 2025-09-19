@@ -1,0 +1,40 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          
+    - name: Download dependencies
+      run: go mod download
+      
+    - name: Run tests
+      run: go test -v -race -coverprofile=coverage.out ./...
+      
+    - name: Run integration tests
+      run: go test -v ./cmd/apispec/...
+      
+    - name: Generate coverage report
+      run: go tool cover -func=coverage.out

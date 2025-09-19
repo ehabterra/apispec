@@ -918,7 +918,7 @@ func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
 
 	for _, tt := range primitiveTests {
 		t.Run(tt.goType, func(t *testing.T) {
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, nil)
 			if schema.Type != tt.expectedType {
 				t.Errorf("Expected type %s for %s, got %s", tt.expectedType, tt.goType, schema.Type)
 			}
@@ -942,7 +942,7 @@ func testMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 
 	for _, tt := range pointerTests {
 		t.Run(tt.goType, func(t *testing.T) {
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, nil)
 			if schema.Type != tt.expectedType {
 				t.Errorf("Expected type %s for %s, got %s", tt.expectedType, tt.goType, schema.Type)
 			}
@@ -967,7 +967,7 @@ func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
 
 	for _, tt := range sliceTests {
 		t.Run(tt.goType, func(t *testing.T) {
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, nil)
 			if schema.Type != tt.expectedType {
 				t.Errorf("Expected type %s for %s, got %s", tt.expectedType, tt.goType, schema.Type)
 			}
@@ -997,7 +997,7 @@ func testMapGoTypeToOpenAPISchema_MapTypes(t *testing.T) {
 
 	for _, tt := range mapTests {
 		t.Run(tt.goType, func(t *testing.T) {
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, nil)
 			if schema.Type != tt.expectedType {
 				t.Errorf("Expected type %s for %s, got %s", tt.expectedType, tt.goType, schema.Type)
 			}
@@ -1038,7 +1038,7 @@ func testMapGoTypeToOpenAPISchema_CustomTypes(t *testing.T) {
 		},
 	}
 
-	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "User", meta, cfg)
+	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "User", meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object' for custom type, got %s", schema.Type)
 	}
@@ -1058,7 +1058,7 @@ func testMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 	}
 	usedTypes := make(map[string]*Schema)
 
-	_, schemas := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
+	_, schemas := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg, nil)
 	// External types are added to schemas map, not returned directly
 	if externalSchema, exists := schemas["CustomType"]; exists {
 		if externalSchema.Type != "string" {
@@ -1086,7 +1086,7 @@ func testMapGoTypeToOpenAPISchema_TypeMappings(t *testing.T) {
 	}
 	usedTypes := make(map[string]*Schema)
 
-	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
+	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg, nil)
 	if schema.Type != "integer" {
 		t.Errorf("Expected type 'integer' for mapped type, got %s", schema.Type)
 	}
@@ -1100,7 +1100,7 @@ func testMapGoTypeToOpenAPISchema_NilMetadata(t *testing.T) {
 	usedTypes := make(map[string]*Schema)
 
 	// Test with nil metadata
-	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg)
+	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", nil, cfg, nil)
 	if schema == nil {
 		t.Error("Expected non-nil schema")
 		return
@@ -1157,7 +1157,7 @@ func testGenerateSchemaFromType_Struct(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object', got %s", schema.Type)
 	}
@@ -1178,7 +1178,7 @@ func testGenerateSchemaFromType_Interface(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "Handler", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "Handler", typ, meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object', got %s", schema.Type)
 	}
@@ -1197,7 +1197,7 @@ func testGenerateSchemaFromType_Alias(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "UserID", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "UserID", typ, meta, cfg, nil)
 	if schema.Type != "string" {
 		t.Errorf("Expected type 'string', got %s", schema.Type)
 	}
@@ -1224,7 +1224,7 @@ func testGenerateSchemaFromType_External(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "ExternalType", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "ExternalType", typ, meta, cfg, nil)
 	if schema.Type != "string" {
 		t.Errorf("Expected type 'string', got %s", schema.Type)
 	}
@@ -1243,7 +1243,7 @@ func testGenerateSchemaFromType_Nil(t *testing.T) {
 		}
 	}()
 
-	generateSchemaFromType(usedTypes, "Test", nil, meta, cfg)
+	generateSchemaFromType(usedTypes, "Test", nil, meta, cfg, nil)
 }
 
 func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
@@ -1264,7 +1264,7 @@ func testGenerateSchemaFromType_WithGenerics(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "Container-T", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "Container-T", typ, meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object', got %s", schema.Type)
 	}
@@ -1300,7 +1300,7 @@ func testGenerateSchemaFromType_WithNestedTypes(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object', got %s", schema.Type)
 	}
@@ -1328,7 +1328,7 @@ func testGenerateSchemaFromType_WithJSONTags(t *testing.T) {
 
 	meta := &metadata.Metadata{StringPool: stringPool}
 
-	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg)
+	schema, _ := generateSchemaFromType(usedTypes, "User", typ, meta, cfg, nil)
 	if schema.Type != "object" {
 		t.Errorf("Expected type 'object', got %s", schema.Type)
 	}

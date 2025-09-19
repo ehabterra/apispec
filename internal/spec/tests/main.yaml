@@ -5,37 +5,37 @@ string_pool:
   - int
   - x
   - main
-  - r1/T/main/src/main/test.go:9:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:9:2
   - unexported
   - '"hello"'
   - string
   - "y"
-  - r1/T/main/src/main/test.go:10:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:10:2
   - '"%d"'
-  - r1/T/main/src/main/test.go:11:25
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:25
   - fmt
-  - r1/T/main/src/main/test.go:11:7
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:7
   - Sprintf
   - func(format string, a ...any) string
-  - r1/T/main/src/main/test.go:11:11
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:11
   - selector
   - call
   - z
-  - r1/T/main/src/main/test.go:11:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:2
   - func_type
   - func_results
-  - r1/T/main/src/main/test.go:8:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:8:1
   - strings
-  - r1/T/main/src/main/test.go:12:14
-  - r1/T/main/src/main/test.go:12:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:14
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:2
   - Println
-  - r1/T/main/src/main/test.go:13:18
-  - r1/T/main/src/main/test.go:13:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:18
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:2
   - ToUpper
 packages:
   main:
     files:
-      r1/T/main/src/main/test.go:
+      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:
         functions:
           main:
             name: 5

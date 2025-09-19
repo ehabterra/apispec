@@ -3,8 +3,6 @@ name: Coverage Badge
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -13,10 +11,14 @@ permissions:
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
       
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -31,9 +33,22 @@ jobs:
 
     - name: Commit and push changes
       run: |
+        # Configure git
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        
+        # Add changes
         git add README.md
         git restore internal/spec/tests/
-        git diff --quiet && git diff --staged --quiet || git commit -m "Update coverage badge"
-        git push
+        
+        # Check if there are changes to commit
+        if git diff --quiet && git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          echo "Committing changes..."
+          git commit -m "Update coverage badge"
+          
+          # Push changes to main branch
+          echo "Pushing to main branch"
+          git push origin main
+        fi
