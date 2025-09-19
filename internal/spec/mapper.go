@@ -1541,6 +1541,10 @@ func canAddRefSchemaForType(key string) bool {
 	if isPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.HasPrefix(key, "map[") {
 		return false
 	}
+	// Exclude _nested types from reference schema generation
+	if strings.HasSuffix(key, "_nested") {
+		return false
+	}
 	return true
 }
 
