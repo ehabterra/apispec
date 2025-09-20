@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"io"
 	"os"
@@ -129,13 +130,23 @@ go 1.21`
 	}
 
 	// Generate OpenAPI spec
-	data, genEngine, err := runGeneration(config)
+	openAPISpec, genEngine, err := runGeneration(config)
 	if err != nil {
 		t.Fatalf("OpenAPI generation failed: %v", err)
 	}
 
 	if genEngine == nil {
 		t.Fatal("Engine should not be nil")
+	}
+
+	if openAPISpec == nil {
+		t.Fatal("Generated OpenAPI spec should not be nil")
+	}
+
+	// Convert to JSON for validation
+	data, err := json.Marshal(openAPISpec)
+	if err != nil {
+		t.Fatalf("Failed to marshal OpenAPI spec: %v", err)
 	}
 
 	if len(data) == 0 {
@@ -228,13 +239,23 @@ defaults:
 	}
 
 	// Generate OpenAPI spec
-	data, genEngine, err := runGeneration(config)
+	openAPISpec, genEngine, err := runGeneration(config)
 	if err != nil {
 		t.Fatalf("OpenAPI generation with config failed: %v", err)
 	}
 
 	if genEngine == nil {
 		t.Fatal("Engine should not be nil")
+	}
+
+	if openAPISpec == nil {
+		t.Fatal("Generated OpenAPI spec should not be nil")
+	}
+
+	// Convert to JSON for validation
+	data, err := json.Marshal(openAPISpec)
+	if err != nil {
+		t.Fatalf("Failed to marshal OpenAPI spec: %v", err)
 	}
 
 	// Validate the output contains expected content
@@ -436,10 +457,10 @@ func TestParseFlags(t *testing.T) {
 				ContactURL:         "https://ehabterra.github.io/",
 				ContactEmail:       "ehabterra@hotmail.com",
 				OpenAPIVersion:     "3.1.1",
-				MaxNodesPerTree:    10000,
-				MaxChildrenPerNode: 150,
-				MaxArgsPerFunction: 30,
-				MaxNestedArgsDepth: 50,
+				MaxNodesPerTree:    50000,
+				MaxChildrenPerNode: 500,
+				MaxArgsPerFunction: 100,
+				MaxNestedArgsDepth: 100,
 			},
 		},
 		{

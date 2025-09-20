@@ -587,6 +587,8 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 		argID := arg.ID()
 
 		if argCount >= limits.MaxArgsPerFunction {
+			fmt.Printf("Warning: MaxArgsPerFunction limit (%d) reached for function %s.%s, truncating arguments\n",
+				limits.MaxArgsPerFunction, getString(meta, edge.Caller.Name), getString(meta, edge.Callee.Name))
 			break
 		}
 
@@ -939,6 +941,7 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 	// Limit recursion depth to prevent infinite loops
 	if len(visited) > limits.MaxNodesPerTree {
+		fmt.Printf("Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
 		// Return a simple node without children to prevent explosion
 		node := &TrackerNode{
 			CallGraphEdge: parentEdge,
@@ -1016,6 +1019,8 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 		for i := range edges {
 			if childCount >= limits.MaxChildrenPerNode {
+				fmt.Printf("Warning: MaxChildrenPerNode limit (%d) reached for node %s, truncating children\n",
+					limits.MaxChildrenPerNode, id)
 				break
 			}
 

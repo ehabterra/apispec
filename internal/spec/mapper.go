@@ -609,8 +609,11 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		}
 
 		// Check if fieldType is an alias/enum and resolve to underlying type
-		if resolvedType := resolveUnderlyingType(fieldType, meta); resolvedType != "" {
-			fieldType = resolvedType
+		// But don't resolve array or map types as we need the original type for enum detection
+		if !strings.HasPrefix(fieldType, "[]") && !strings.HasPrefix(fieldType, "map[") {
+			if resolvedType := resolveUnderlyingType(fieldType, meta); resolvedType != "" {
+				fieldType = resolvedType
+			}
 		}
 
 		// Extract JSON tag if present
@@ -692,7 +695,17 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			// Only detect enums for custom types, not built-in types like string, int, etc.
 			if !isPrimitiveType(originalFieldType) {
 				if enumValues := detectEnumFromConstants(originalFieldType, pkgName, meta); len(enumValues) > 0 {
-					fieldSchema.Enum = enumValues
+					switch fieldSchema.Type {
+					case "array":
+						fieldSchema.Items.Enum = enumValues
+					case "object":
+						if fieldSchema.AdditionalProperties != nil {
+							fieldSchema.AdditionalProperties.Enum = enumValues
+						}
+					default:
+						fieldSchema.Enum = enumValues
+					}
+
 				}
 			}
 		}
@@ -716,7 +729,28 @@ func generateInterfaceSchema() *Schema {
 func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
 
-	return mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
+	// Get the original type name for enum detection
+	originalTypeName := getStringFromPool(meta, typ.Name)
+
+	// Generate the base schema from underlying type
+	schema, schemas := mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
+
+	// If the underlying type is a primitive (like string), try to detect enum values
+	if schema != nil && isPrimitiveType(underlyingType) {
+		// Extract package name for enum detection
+		pkgName := ""
+		if typeParts := TypeParts(originalTypeName); typeParts.PkgName != "" {
+			pkgName = typeParts.PkgName
+		}
+
+		// Detect enum values for this alias type
+		if enumValues := detectEnumFromConstants(originalTypeName, pkgName, meta); len(enumValues) > 0 {
+			// Apply enum values to the schema
+			schema.Enum = enumValues
+		}
+	}
+
+	return schema, schemas
 }
 
 // resolveUnderlyingType resolves the underlying type for alias/enum types
@@ -1164,7 +1198,16 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 
 	// Apply enum constraint
 	if len(constraints.Enum) > 0 {
-		schema.Enum = constraints.Enum
+		switch schema.Type {
+		case "array":
+			schema.Items.Enum = constraints.Enum
+		case "object":
+			if schema.AdditionalProperties != nil {
+				schema.AdditionalProperties.Enum = constraints.Enum
+			}
+		default:
+			schema.Enum = constraints.Enum
+		}
 	}
 }
 
@@ -1428,14 +1471,47 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	}
 
 	// Handle map types
-	if strings.HasPrefix(goType, "map[") {
+	if strings.Contains(goType, "map[") {
+		startIdx := strings.Index(goType, "map[")
 		endIdx := strings.Index(goType, "]")
-		if endIdx > 4 {
-			keyType := goType[4:endIdx]
+		if endIdx > startIdx+4 {
+			keyType := goType[startIdx+4 : endIdx]
 			valueType := strings.TrimSpace(goType[endIdx+1:])
+
+			// add package name to value type
+			if startIdx > 0 {
+				valueType = goType[:startIdx] + "." + valueType
+			}
+
 			if keyType == "string" {
-				additionalProperties, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, valueType, meta, cfg, visitedTypes)
+				var resolvedType string
+				if resolvedType = resolveUnderlyingType(valueType, meta); resolvedType == "" {
+					resolvedType = valueType
+				}
+
+				additionalProperties, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 				maps.Copy(schemas, newSchemas)
+
+				// Apply enum detection for map values if the value type is not primitive
+				if !isPrimitiveType(valueType) && additionalProperties != nil && len(additionalProperties.Enum) == 0 {
+					// Extract package name for enum detection
+					pkgName := ""
+					if typeParts := TypeParts(valueType); typeParts.PkgName != "" {
+						pkgName = typeParts.PkgName
+					}
+
+					// Detect enum values for this value type
+					if enumValues := detectEnumFromConstants(valueType, pkgName, meta); len(enumValues) > 0 {
+						additionalProperties.Enum = enumValues
+					}
+				}
+
+				// Use reference for complex value types in maps
+				if !isPrimitiveType(resolvedType) && canAddRefSchemaForType(resolvedType) {
+					schemas[resolvedType] = additionalProperties
+					additionalProperties = addRefSchemaForType(resolvedType)
+				}
+
 				schema = &Schema{
 					Type:                 "object",
 					AdditionalProperties: additionalProperties,
@@ -1454,27 +1530,54 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	if strings.HasPrefix(goType, "[]") {
 		elementType := strings.TrimSpace(goType[2:])
 
+		var resolvedType string
+		if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
+			resolvedType = elementType
+		}
+		isPrimitiveElement := isPrimitiveType(resolvedType)
+
 		// Check if the element type already exists in usedTypes
-		if bodySchema, ok := usedTypes[elementType]; !isPrimitive && ok {
+		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveElement && ok {
 			if bodySchema == nil {
 				var newBodySchemas map[string]*Schema
 
-				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg, visitedTypes)
+				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 				maps.Copy(schemas, newBodySchemas)
 			}
-			markUsedType(usedTypes, elementType, bodySchema)
+			markUsedType(usedTypes, resolvedType, bodySchema)
 
 			// Create a reference to the existing schema
 			schema = &Schema{
 				Type:  "array",
-				Items: addRefSchemaForType(elementType),
+				Items: addRefSchemaForType(resolvedType),
 			}
 
 			return schema, schemas
 		}
 
-		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, elementType, meta, cfg, visitedTypes)
+		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 		maps.Copy(schemas, newSchemas)
+
+		// Apply enum detection for array elements if the element type is not primitive
+		if !isPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
+			// Extract package name for enum detection
+			pkgName := ""
+			if typeParts := TypeParts(elementType); typeParts.PkgName != "" {
+				pkgName = typeParts.PkgName
+			}
+
+			// Detect enum values for this element type
+			if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
+				items.Enum = enumValues
+			}
+		}
+
+		// Use reference for complex element types in arrays
+		if !isPrimitiveElement && canAddRefSchemaForType(resolvedType) && items != nil {
+			schemas[resolvedType] = items
+			items = addRefSchemaForType(resolvedType)
+		}
+
 		schema = &Schema{
 			Type:  "array",
 			Items: items,
@@ -1538,9 +1641,10 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 }
 
 func canAddRefSchemaForType(key string) bool {
-	if isPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.HasPrefix(key, "map[") {
+	if isPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.Contains(key, "map[") {
 		return false
 	}
+
 	// Exclude _nested types from reference schema generation
 	if strings.HasSuffix(key, "_nested") {
 		return false

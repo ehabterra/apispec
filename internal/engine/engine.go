@@ -30,10 +30,10 @@ const (
 	DefaultContactURL         = "https://ehabterra.github.io/"
 	DefaultContactEmail       = "ehabterra@hotmail.com"
 	DefaultOpenAPIVersion     = "3.1.1"
-	DefaultMaxNodesPerTree    = 10000
-	DefaultMaxChildrenPerNode = 150
-	DefaultMaxArgsPerFunction = 30
-	DefaultMaxNestedArgsDepth = 50
+	DefaultMaxNodesPerTree    = 50000 // Increased for large codebases
+	DefaultMaxChildrenPerNode = 500   // Increased for complex call graphs
+	DefaultMaxArgsPerFunction = 100   // Increased for functions with many parameters
+	DefaultMaxNestedArgsDepth = 100   // Increased for deeply nested structures
 	DefaultMetadataFile       = "metadata.yaml"
 	CopyrightNotice           = "apispec - Copyright 2025 Ehab Terra"
 	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."

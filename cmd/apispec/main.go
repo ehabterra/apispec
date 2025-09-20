@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ehabterra/apispec/internal/engine"
+	"github.com/ehabterra/apispec/spec"
 	"gopkg.in/yaml.v3"
 )
 
@@ -276,8 +277,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	return config, nil
 }
 
-// runGeneration generates the OpenAPI specification based on the configuration
-func runGeneration(config *CLIConfig) ([]byte, *engine.Engine, error) {
+// runGeneration generates the OpenAPI specification and returns the spec object directly (like metadata)
+func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error) {
 	// Create engine configuration
 	engineConfig := &engine.EngineConfig{
 		InputDir:           config.InputDir,
@@ -319,31 +320,64 @@ func runGeneration(config *CLIConfig) ([]byte, *engine.Engine, error) {
 		return nil, nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
 	}
 
-	var data []byte
-	ext := strings.ToLower(filepath.Ext(config.OutputFile))
-	if ext == ".yaml" || ext == ".yml" {
-		data, err = yaml.Marshal(openAPISpec)
-	} else {
-		data, err = json.MarshalIndent(openAPISpec, "", "  ")
-	}
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal OpenAPI spec: %w", err)
-	}
-
-	return data, genEngine, nil
+	return openAPISpec, genEngine, nil
 }
 
-// writeOutput writes the generated data to the appropriate output destination
-func writeOutput(data []byte, config *CLIConfig, genEngine *engine.Engine) error {
+// writeOutput writes OpenAPI spec directly to file using streaming encoder (like metadata)
+func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.Engine) error {
 	// If output is the default (openapi.json) and no explicit output flag was set, output to stdout
 	if config.OutputFile == engine.DefaultOutputFile && !config.OutputFlagSet {
-		fmt.Print(string(data))
+		ext := strings.ToLower(filepath.Ext("openapi.json"))
+		if ext == ".yaml" || ext == ".yml" {
+			encoder := yaml.NewEncoder(os.Stdout)
+			encoder.SetIndent(2)
+			if err := encoder.Encode(openAPISpec); err != nil {
+				encoder.Close()
+				return fmt.Errorf("failed to encode OpenAPI spec to YAML: %w", err)
+			}
+			return encoder.Close()
+		} else {
+			data, err := json.MarshalIndent(openAPISpec, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal OpenAPI spec to JSON: %w", err)
+			}
+			fmt.Print(string(data))
+			return nil
+		}
 	} else {
 		outputPath := filepath.Join(genEngine.ModuleRoot(), config.OutputFile)
 
-		if err := os.WriteFile(outputPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write output file: %w", err)
+		// Create file
+		file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %w", err)
 		}
+		defer file.Close()
+
+		ext := strings.ToLower(filepath.Ext(config.OutputFile))
+		if ext == ".yaml" || ext == ".yml" {
+			// Use direct file writing like metadata (no memory buffering)
+			encoder := yaml.NewEncoder(file)
+			encoder.SetIndent(2)
+
+			if err := encoder.Encode(openAPISpec); err != nil {
+				encoder.Close()
+				return fmt.Errorf("failed to encode OpenAPI spec to YAML: %w", err)
+			}
+
+			if err := encoder.Close(); err != nil {
+				return fmt.Errorf("failed to close YAML encoder: %w", err)
+			}
+		} else {
+			data, err := json.MarshalIndent(openAPISpec, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal OpenAPI spec to JSON: %w", err)
+			}
+			if _, err := file.Write(data); err != nil {
+				return fmt.Errorf("failed to write JSON data: %w", err)
+			}
+		}
+
 		fmt.Println("Successfully generated:", outputPath)
 	}
 	return nil
@@ -370,13 +404,13 @@ func main() {
 	}
 
 	// Generate OpenAPI specification
-	data, genEngine, err := runGeneration(config)
+	openAPISpec, genEngine, err := runGeneration(config)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	// Write output
-	if err := writeOutput(data, config, genEngine); err != nil {
+	// Write output directly (like metadata) to avoid memory buffering
+	if err := writeOutput(openAPISpec, config, genEngine); err != nil {
 		log.Fatalf("%v", err)
 	}
 
