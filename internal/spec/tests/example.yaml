@@ -979,53 +979,6 @@ call_graph:
         position: 76
         resolved_type: -1
         generic_type_name: -1
-    assignments:
-      example.User.Age:
-        - variable_name: 22
-          pkg: 2
-          concrete_type: 20
-          position: 18
-          scope: 8
-          value:
-            kind: 0
-            name: 23
-            value: -1
-            raw: -1
-            pkg: 2
-            type: 20
-            position: 24
-            resolved_type: -1
-            generic_type_name: -1
-          lhs:
-            kind: 8
-            name: -1
-            value: -1
-            x:
-              kind: 0
-              name: 1
-              value: -1
-              raw: -1
-              pkg: 2
-              type: 3
-              position: 18
-              resolved_type: -1
-              generic_type_name: -1
-            sel:
-              kind: 0
-              name: 19
-              value: -1
-              raw: -1
-              pkg: 2
-              type: 20
-              position: 21
-              resolved_type: -1
-              generic_type_name: -1
-            raw: -1
-            pkg: 2
-            type: 20
-            position: 18
-            resolved_type: -1
-            generic_type_name: -1
     param_arg_map:
       age:
         kind: 0

@@ -105,8 +105,8 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 				if schema.Items == nil {
 					t.Error("expected items for array, got nil")
 				}
-				if schema.Items.Type != "object" {
-					t.Errorf("expected object items for []*User, got %s", schema.Items.Type)
+				if schema.Items.Ref != "#/components/schemas/User" {
+					t.Errorf("expected ref items for []*User, got %s", schema.Items.Ref)
 				}
 			}
 		})
