@@ -332,7 +332,10 @@ func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.E
 			encoder := yaml.NewEncoder(os.Stdout)
 			encoder.SetIndent(2)
 			if err := encoder.Encode(openAPISpec); err != nil {
-				encoder.Close()
+				err = encoder.Close()
+				if err != nil {
+					return fmt.Errorf("failed to close YAML encoder: %w", err)
+				}
 				return fmt.Errorf("failed to encode OpenAPI spec to YAML: %w", err)
 			}
 			return encoder.Close()
@@ -352,7 +355,12 @@ func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.E
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer file.Close()
+		defer func() {
+			err = file.Close()
+			if err != nil {
+				log.Printf("Failed to close file: %v", err)
+			}
+		}()
 
 		ext := strings.ToLower(filepath.Ext(config.OutputFile))
 		if ext == ".yaml" || ext == ".yml" {
@@ -361,7 +369,10 @@ func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.E
 			encoder.SetIndent(2)
 
 			if err := encoder.Encode(openAPISpec); err != nil {
-				encoder.Close()
+				err = encoder.Close()
+				if err != nil {
+					return fmt.Errorf("failed to close YAML encoder: %w", err)
+				}
 				return fmt.Errorf("failed to encode OpenAPI spec to YAML: %w", err)
 			}
 
