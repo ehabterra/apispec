@@ -3,7 +3,7 @@ module github.com/ehabterra/apispec
 go 1.24.3
 
 require (
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/tools v0.37.0
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated
 	gopkg.in/yaml.v3 v3.0.1
