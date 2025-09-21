@@ -45,3 +45,6 @@ coverage.html
 # Test temporary directories
 testdata/temp/
 cmd/apispec/testdata/temp/
+
+# Profiling output
+profiles*/

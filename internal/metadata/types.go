@@ -135,7 +135,19 @@ type Metadata struct {
 	genericResolver         *GenericTypeResolver              `yaml:"-"`
 
 	// NEW: Enhanced metadata structures for tracker tree simplification
+
+	// Performance optimization caches
+	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
+	methodLookupCache    map[string]*Method                              `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
+}
+
+// TraceVariableResult caches the result of traceVariableOriginHelper
+type TraceVariableResult struct {
+	OriginVar      string
+	OriginPkg      string
+	OriginType     *CallArgument
+	CallerFuncName string
 }
 
 // BuildCallGraphMaps builds the various lookup maps
@@ -811,6 +823,10 @@ type Call struct {
 	// Separate fields for different ID components
 	identifier *CallIdentifier `yaml:"-"`
 
+	// Performance optimization: cache for frequently accessed IDs
+	instanceIDCache string `yaml:"-"`
+	baseIDCache     string `yaml:"-"`
+
 	// Keep existing fields for serialization
 	Name     int `yaml:"name,omitempty"`
 	Pkg      int `yaml:"pkg,omitempty"`
@@ -825,10 +841,17 @@ func (c *Call) ID() string {
 
 // BaseID returns the base identifier without position or generics
 func (c *Call) BaseID() string {
+	// Check cache first for performance optimization
+	if c.baseIDCache != "" {
+		return c.baseIDCache
+	}
+
 	if c.identifier == nil {
 		c.buildIdentifier()
 	}
-	return c.identifier.ID(BaseID)
+
+	c.baseIDCache = c.identifier.ID(BaseID)
+	return c.baseIDCache
 }
 
 // GenericID returns the identifier with generic type parameters but no position
@@ -841,10 +864,17 @@ func (c *Call) GenericID() string {
 
 // InstanceID returns the full instance identifier with position and generics
 func (c *Call) InstanceID() string {
+	// Check cache first for performance optimization
+	if c.instanceIDCache != "" {
+		return c.instanceIDCache
+	}
+
 	if c.identifier == nil {
 		c.buildIdentifier()
 	}
-	return c.identifier.ID(InstanceID)
+
+	c.instanceIDCache = c.identifier.ID(InstanceID)
+	return c.instanceIDCache
 }
 
 func (c *Call) buildIdentifier() {
@@ -1028,6 +1058,7 @@ type TrackerLimits struct {
 	MaxChildrenPerNode int
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
+	MaxRecursionDepth  int
 }
 
 // ProcessFunctionReturnTypes processes all functions and methods in the metadata

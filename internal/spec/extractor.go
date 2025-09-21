@@ -5,9 +5,42 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
+
+// Regex cache for performance optimization
+var (
+	regexCache = make(map[string]*regexp.Regexp)
+	regexMutex sync.RWMutex
+)
+
+// getCachedRegex returns a cached compiled regex or compiles and caches a new one
+func getCachedRegex(pattern string) (*regexp.Regexp, error) {
+	regexMutex.RLock()
+	if re, exists := regexCache[pattern]; exists {
+		regexMutex.RUnlock()
+		return re, nil
+	}
+	regexMutex.RUnlock()
+
+	regexMutex.Lock()
+	defer regexMutex.Unlock()
+
+	// Double-check after acquiring write lock
+	if re, exists := regexCache[pattern]; exists {
+		return re, nil
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	regexCache[pattern] = re
+	return re, nil
+}
 
 const (
 	TypeSep    = "-->"
@@ -147,21 +180,24 @@ func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, moun
 		return
 	}
 
+	// Prevent infinite recursion
+	nodeKey := node.GetKey()
+	if visited[nodeKey] {
+		return
+	}
+	visited[nodeKey] = true
+
 	// Check for mount patterns first
 	if mountInfo, isMount := e.executeMountPattern(node); isMount {
 		e.handleMountNode(node, mountInfo, mountPath, mountTags, routes, visited)
-		return
-	}
-
-	// Check for route patterns
-	if routeInfo, isRoute := e.executeRoutePattern(node); isRoute {
+	} else if routeInfo, isRoute := e.executeRoutePattern(node); isRoute {
+		// Check for route patterns
 		e.handleRouteNode(node, routeInfo, mountPath, mountTags, routes)
-		return
-	}
-
-	// Continue traversing children
-	for _, child := range node.GetChildren() {
-		e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
+	} else {
+		// Continue traversing children
+		for _, child := range node.GetChildren() {
+			e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
+		}
 	}
 }
 
@@ -468,8 +504,8 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if r.pattern.RecvTypeRegex != "" {
-		matched, err := regexp.MatchString(r.pattern.RecvTypeRegex, fqRecvType)
-		if err != nil || !matched {
+		re, err := getCachedRegex(r.pattern.RecvTypeRegex)
+		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
 	} else if r.pattern.RecvType != "" && r.pattern.RecvType != fqRecvType {
@@ -630,8 +666,8 @@ func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if p.pattern.RecvTypeRegex != "" {
-		matched, err := regexp.MatchString(p.pattern.RecvTypeRegex, fqRecvType)
-		if err != nil || !matched {
+		re, err := getCachedRegex(p.pattern.RecvTypeRegex)
+		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
 	} else if p.pattern.RecvType != "" && p.pattern.RecvType != fqRecvType {

@@ -362,12 +362,44 @@ func traceVariableOriginHelper(
 		return varName, pkgName, nil, funcName
 	}
 
-	key := pkgName + "." + funcName + ":" + varName
+	// Optimize key generation using string builder
+	var keyBuilder strings.Builder
+	keyBuilder.Grow(len(pkgName) + len(funcName) + len(varName) + 3)
+	keyBuilder.WriteString(pkgName)
+	keyBuilder.WriteByte('.')
+	keyBuilder.WriteString(funcName)
+	keyBuilder.WriteByte(':')
+	keyBuilder.WriteString(varName)
+	key := keyBuilder.String()
+
 	if _, ok := visited[key]; ok {
 		return varName, pkgName, nil, funcName // Prevent infinite recursion, return current funcName as caller
 	}
 	visited[key] = struct{}{}
 
+	// Check cache first for performance optimization
+	if metadata.traceVariableCache != nil {
+		if cached, exists := metadata.traceVariableCache[key]; exists {
+			return cached.OriginVar, cached.OriginPkg, cached.OriginType, cached.CallerFuncName
+		}
+	}
+
+	// Helper function to cache and return results
+	cacheAndReturn := func(originVar, originPkg, callerFuncName string, originType *CallArgument) (string, string, *CallArgument, string) {
+		result := TraceVariableResult{
+			OriginVar:      originVar,
+			OriginPkg:      originPkg,
+			OriginType:     originType,
+			CallerFuncName: callerFuncName,
+		}
+		// Only cache results if packages are populated (to avoid caching incomplete results during metadata generation)
+		if metadata.traceVariableCache != nil && len(metadata.Packages) > 0 {
+			metadata.traceVariableCache[key] = result
+		}
+		return originVar, originPkg, originType, callerFuncName
+	}
+
+	// Cache string pool lookups
 	funcNameIndex := metadata.StringPool.Get(funcName)
 	pkgNameIndex := metadata.StringPool.Get(pkgName)
 
@@ -382,7 +414,7 @@ func traceVariableOriginHelper(
 				arg := NewCallArgument(metadata)
 				arg.SetKind(KindIdent)
 				arg.SetType(concrete)
-				return varName, pkgName, arg, callerName
+				return cacheAndReturn(varName, pkgName, callerName, arg)
 			}
 
 			// See if this parameter is mapped
@@ -413,7 +445,7 @@ func traceVariableOriginHelper(
 				arg := NewCallArgument(metadata)
 				arg.SetKind(KindIdent)
 				arg.Type = v.Type
-				return varName, pkgName, arg, funcName
+				return cacheAndReturn(varName, pkgName, funcName, arg)
 			}
 
 			if fn, ok := file.Functions[funcName]; ok {
@@ -454,14 +486,31 @@ func traceVariableOriginHelper(
 									}
 								}
 
-								// Looking for methods
+								// Looking for methods with caching
+								methodKey := assign.CalleePkg + "." + assign.CalleeFunc
 								var calleeMethod *Method
-								for _, t := range calleeFile.Types {
-									for _, method := range t.Methods {
-										if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
-											calleeMethod = &method
+								var exists bool
+								if metadata.methodLookupCache != nil {
+									calleeMethod, exists = metadata.methodLookupCache[methodKey]
+								}
+								if !exists {
+									for _, t := range calleeFile.Types {
+										for _, method := range t.Methods {
+											if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
+												calleeMethod = &method
+												if metadata.methodLookupCache != nil {
+													metadata.methodLookupCache[methodKey] = calleeMethod
+												}
+												break
+											}
+										}
+										if calleeMethod != nil {
 											break
 										}
+									}
+									// Cache nil result to avoid repeated lookups
+									if calleeMethod == nil && metadata.methodLookupCache != nil {
+										metadata.methodLookupCache[methodKey] = nil
 									}
 								}
 								if calleeMethod != nil {
@@ -490,12 +539,22 @@ func traceVariableOriginHelper(
 							}
 						}
 					}
-					return varName, pkgName, &assign.Value, funcName
+					return cacheAndReturn(varName, pkgName, funcName, &assign.Value)
 				}
 			}
 		}
 	}
 
 	// Fallback: return as is
+	result := TraceVariableResult{
+		OriginVar:      varName,
+		OriginPkg:      pkgName,
+		OriginType:     nil,
+		CallerFuncName: funcName,
+	}
+	// Only cache results if packages are populated (to avoid caching incomplete results during metadata generation)
+	if metadata.traceVariableCache != nil && len(metadata.Packages) > 0 {
+		metadata.traceVariableCache[key] = result
+	}
 	return varName, pkgName, nil, funcName
 }

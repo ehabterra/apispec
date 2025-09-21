@@ -4,9 +4,27 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
+
+// Object pools for frequently created objects
+var (
+	trackerNodePool = sync.Pool{
+		New: func() interface{} {
+			return &TrackerNode{}
+		},
+	}
+)
+
+// getTrackerNode returns a TrackerNode from the pool
+func getTrackerNode() *TrackerNode {
+	node := trackerNodePool.Get().(*TrackerNode)
+	// Reset the node to clean state
+	*node = TrackerNode{}
+	return node
+}
 
 // ArgumentType represents the classification of an argument
 type ArgumentType int
@@ -230,6 +248,10 @@ type TrackerTree struct {
 
 	// Interface resolution cache
 	interfaceResolutionMap map[interfaceKey]string
+
+	// Performance optimizations
+	nodeMap map[string]*TrackerNode // O(1) node lookup by edge ID
+	idCache map[string]string       // Cache for ID generation
 }
 
 type paramKey struct {
@@ -272,7 +294,17 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 		limits:                 limits,
 		chainParentMap:         make(map[string]*metadata.CallGraphEdge),
 		interfaceResolutionMap: make(map[interfaceKey]string),
+
+		// Initialize performance optimization caches
+		nodeMap: make(map[string]*TrackerNode),
+		idCache: make(map[string]string),
 	}
+
+	// Pre-allocate roots slice with estimated capacity
+	estimatedRoots := max(
+		// Rough estimate
+		len(meta.CallGraph)*2, 10)
+	t.roots = make([]*TrackerNode, 0, estimatedRoots)
 
 	assignmentIndex := assigmentIndexMap{}
 
@@ -421,13 +453,22 @@ func (t *TrackerTree) processChainRelationships() {
 
 // findNodeByEdgeID finds a node by its edge ID in the existing tree structure
 func (t *TrackerTree) findNodeByEdgeID(edgeID string) *TrackerNode {
-	// Search in roots
+	// First try the hash map for O(1) lookup
+	if node, exists := t.nodeMap[edgeID]; exists {
+		return node
+	}
+
+	// Fallback to recursive search (should rarely happen if tree is built correctly)
 	for _, root := range t.roots {
 		if root.CallGraphEdge != nil && root.Callee.ID() == edgeID {
+			// Cache the result for future lookups
+			t.nodeMap[edgeID] = root
 			return root
 		}
 		// Search in children recursively
 		if found := t.findNodeInSubtree(root, edgeID); found != nil {
+			// Cache the result for future lookups
+			t.nodeMap[edgeID] = found
 			return found
 		}
 	}
@@ -436,11 +477,42 @@ func (t *TrackerTree) findNodeByEdgeID(edgeID string) *TrackerNode {
 
 // findNodeInSubtree recursively searches for a node with the given edge ID
 func (t *TrackerTree) findNodeInSubtree(node *TrackerNode, edgeID string) *TrackerNode {
+	// Perform search with cycle detection
+	return t.findNodeInSubtreeWithVisited(node, edgeID, make(map[*TrackerNode]bool))
+}
+
+// findNodeInSubtreeWithVisited recursively searches for a node with cycle detection
+func (t *TrackerTree) findNodeInSubtreeWithVisited(node *TrackerNode, edgeID string, visited map[*TrackerNode]bool) *TrackerNode {
+	if node == nil {
+		return nil
+	}
+
+	// Prevent infinite recursion
+	if visited[node] {
+		return nil
+	}
+	visited[node] = true
+
+	// Early termination: limit search depth to prevent excessive recursion
+	if len(visited) > 50 { // Limit search depth
+		return nil
+	}
+
 	if node.CallGraphEdge != nil && node.Callee.ID() == edgeID {
+		// Cache the result for future lookups
+		t.nodeMap[edgeID] = node
 		return node
 	}
-	for _, child := range node.Children {
-		if found := t.findNodeInSubtree(child, edgeID); found != nil {
+
+	// Limit children search to prevent excessive traversal
+	maxChildrenToSearch := 20
+	for i, child := range node.Children {
+		if i >= maxChildrenToSearch {
+			break
+		}
+		if found := t.findNodeInSubtreeWithVisited(child, edgeID, visited); found != nil {
+			// Cache the result for future lookups
+			t.nodeMap[edgeID] = found
 			return found
 		}
 	}
@@ -578,7 +650,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 	if edge == nil {
 		return nil
 	}
-	var children []*TrackerNode
+
+	// Pre-allocate slice with known capacity to reduce allocations
+	expectedArgs := min(len(edge.Args), limits.MaxArgsPerFunction)
+	children := make([]*TrackerNode, 0, expectedArgs)
 	argCount := 0
 
 	for i, arg := range edge.Args {
@@ -599,16 +674,15 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 		argType := classifyArgument(arg)
 
-		// var argNode *TrackerNode
-		argNode := &TrackerNode{
-			Parent:        parentNode,
-			CallArgument:  &arg,
-			CallGraphEdge: edge, // Include the edge to preserve type parameters
-			ArgType:       argType,
-			IsArgument:    true,
-			ArgIndex:      i,
-			ArgContext:    fmt.Sprintf("%s.%s", getString(meta, edge.Caller.Name), getString(meta, edge.Callee.Name)),
-		}
+		// Use object pool for argNode
+		argNode := getTrackerNode()
+		argNode.Parent = parentNode
+		argNode.CallArgument = &arg
+		argNode.CallGraphEdge = edge // Include the edge to preserve type parameters
+		argNode.ArgType = argType
+		argNode.IsArgument = true
+		argNode.ArgIndex = i
+		argNode.ArgContext = fmt.Sprintf("%s.%s", getString(meta, edge.Caller.Name), getString(meta, edge.Callee.Name))
 
 		switch argType {
 		case ArgTypeFunctionCall:
@@ -933,36 +1007,47 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		return nil
 	}
 
-	// Recursion
+	// Direct recursion prevention
 	if id == parentID {
 		return nil
 	}
-	nodeKey := id
 
-	// Limit recursion depth to prevent infinite loops
+	// OPTIMIZED: Simple recursion depth tracking with minimal overhead
+	// Use a simple counter approach instead of complex map operations
+	recursionDepthKey := id
+	currentDepth := visited[recursionDepthKey]
+
+	// Use configurable recursion depth limit to prevent infinite recursion
+	if currentDepth >= limits.MaxRecursionDepth {
+		fmt.Printf("Warning: MaxRecursionDepth limit (%d) reached for node %s\n", limits.MaxRecursionDepth, id)
+		return nil
+	}
+
+	// Limit total nodes to prevent memory explosion
 	if len(visited) > limits.MaxNodesPerTree {
 		fmt.Printf("Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
-		// Return a simple node without children to prevent explosion
-		node := &TrackerNode{
-			CallGraphEdge: parentEdge,
-			CallArgument:  callArg}
+		node := getTrackerNode()
+		node.CallGraphEdge = parentEdge
+		node.CallArgument = callArg
 		if parentEdge == nil && callArg == nil {
 			node.key = id
 		}
 		return node
 	}
 
-	if visited[nodeKey] > limits.MaxNodesPerTree {
-		return nil
-	}
+	// Increment recursion depth (single map operation)
+	visited[recursionDepthKey]++
 
-	// Create new node
-	node := &TrackerNode{
-		CallGraphEdge: parentEdge, CallArgument: callArg, RootAssignmentMap: make(map[string][]metadata.Assignment)}
+	// Create new node using object pool
+	node := getTrackerNode()
+	node.CallGraphEdge = parentEdge
+	node.CallArgument = callArg
+	node.RootAssignmentMap = make(map[string][]metadata.Assignment)
+	// Pre-allocate children slice with reasonable capacity
+	node.Children = make([]*TrackerNode, 0, 10)
 	if parentEdge == nil && callArg == nil {
 		node.key = id
 	}
-	visited[nodeKey]++
 
 	// Process children (callees)
 	callerID := stripToBase(id)
@@ -1115,6 +1200,18 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 				childCount++
 			}
 		}
+	}
+
+	// Add node to hash map for O(1) lookup optimization
+	nodeID := node.Key()
+	if nodeID != "" {
+		tree.nodeMap[nodeID] = node
+	}
+
+	// Clean up recursion depth (single map operation)
+	visited[recursionDepthKey]--
+	if visited[recursionDepthKey] == 0 {
+		delete(visited, recursionDepthKey)
 	}
 
 	return node

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
@@ -107,7 +108,8 @@ func TestTrackerWarnings(t *testing.T) {
 
 		// Create a tracker with very low limits
 		limits := metadata.TrackerLimits{
-			MaxNodesPerTree: 1,
+			MaxNodesPerTree:   1,
+			MaxRecursionDepth: 10, // Set higher to avoid hitting this first
 		}
 
 		// Create a visited map that exceeds the limit
@@ -142,11 +144,13 @@ func TestTrackerWarnings(t *testing.T) {
 		// Create a tracker with very low limits
 		limits := metadata.TrackerLimits{
 			MaxChildrenPerNode: 1,
+			MaxRecursionDepth:  10,
 		}
 
 		// Create a mock tree to test the warning
 		tree := &TrackerTree{
-			limits: limits,
+			limits:  limits,
+			nodeMap: make(map[string]*TrackerNode),
 		}
 
 		// Create multiple edges in metadata to exceed the limit
@@ -221,6 +225,7 @@ func TestTrackerWithoutWarnings(t *testing.T) {
 		MaxArgsPerFunction: 100,
 		MaxNodesPerTree:    1000,
 		MaxChildrenPerNode: 100,
+		MaxRecursionDepth:  10,
 	}
 
 	// Create a mock edge with few arguments
@@ -247,11 +252,17 @@ func TestTrackerWithoutWarnings(t *testing.T) {
 	visited := make(map[string]int)
 	visited["node1"] = 1
 
-	// This should not trigger any warnings
-	NewTrackerNode(nil, meta, "parent", "test", nil, nil, visited, nil, limits)
+	// Create a mock tree
+	tree := &TrackerTree{
+		limits:  limits,
+		nodeMap: make(map[string]*TrackerNode),
+	}
 
 	// This should not trigger any warnings
-	NewTrackerNode(nil, meta, "parent", "test", nil, nil, visited, nil, limits)
+	NewTrackerNode(tree, meta, "parent", "test", nil, nil, visited, nil, limits)
+
+	// This should not trigger any warnings
+	NewTrackerNode(tree, meta, "parent", "test", nil, nil, visited, nil, limits)
 
 	// Read the output
 	_ = w.Close()
@@ -302,6 +313,7 @@ func TestTrackerLimitsIntegration(t *testing.T) {
 		MaxArgsPerFunction: 1,
 		MaxNodesPerTree:    2,
 		MaxChildrenPerNode: 1,
+		MaxRecursionDepth:  10,
 	}
 
 	// Test all three warning conditions
@@ -334,7 +346,8 @@ func TestTrackerLimitsIntegration(t *testing.T) {
 
 	// Trigger MaxChildrenPerNode warning
 	tree := &TrackerTree{
-		limits: limits,
+		limits:  limits,
+		nodeMap: make(map[string]*TrackerNode),
 	}
 	// Set up metadata to have multiple children for the same caller
 	meta.Callers = make(map[string][]*metadata.CallGraphEdge)
@@ -369,5 +382,175 @@ func TestTrackerLimitsIntegration(t *testing.T) {
 		if !strings.Contains(output, expectedWarning) {
 			t.Errorf("Expected warning message containing '%s', got: %s", expectedWarning, output)
 		}
+	}
+}
+
+func TestFindNodeInSubtree_CycleDetection(t *testing.T) {
+	// Create a tree with circular references to test cycle detection
+	meta := &metadata.Metadata{}
+	limits := metadata.TrackerLimits{
+		MaxNodesPerTree:    1000,
+		MaxChildrenPerNode: 100,
+		MaxArgsPerFunction: 100,
+		MaxNestedArgsDepth: 10,
+	}
+	tree := NewTrackerTree(meta, limits)
+
+	// Create simple nodes for testing
+	node1 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node2 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node3 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	// Create a cycle: node1 -> node2 -> node3 -> node1
+	node1.Children = append(node1.Children, node2)
+	node2.Children = append(node2.Children, node3)
+	node3.Children = append(node3.Children, node1)
+
+	// Test that cycle detection prevents infinite recursion
+	start := time.Now()
+	result := tree.findNodeInSubtree(node1, "test-edge-id")
+	duration := time.Since(start)
+
+	// Should complete quickly (cycle detection should work)
+	if duration > 100*time.Millisecond {
+		t.Errorf("findNodeInSubtree took too long (%v), cycle detection may not be working", duration)
+	}
+
+	// Should return nil since we're looking for a non-existent edge ID
+	if result != nil {
+		t.Error("Expected to not find non-existent edge, but got result")
+	}
+}
+
+func TestFindNodeInSubtreeWithVisited_CycleDetection(t *testing.T) {
+	// Create a tree with circular references
+	meta := &metadata.Metadata{}
+	limits := metadata.TrackerLimits{
+		MaxNodesPerTree:    1000,
+		MaxChildrenPerNode: 100,
+		MaxArgsPerFunction: 100,
+		MaxNestedArgsDepth: 10,
+	}
+	tree := NewTrackerTree(meta, limits)
+
+	node1 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node2 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node3 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	// Create a cycle: node1 -> node2 -> node3 -> node1
+	node1.Children = append(node1.Children, node2)
+	node2.Children = append(node2.Children, node3)
+	node3.Children = append(node3.Children, node1)
+
+	// Test with visited map
+	visited := make(map[*TrackerNode]bool)
+	start := time.Now()
+	result := tree.findNodeInSubtreeWithVisited(node1, "test-edge-id", visited)
+	duration := time.Since(start)
+
+	// Should complete quickly (cycle detection should work)
+	if duration > 100*time.Millisecond {
+		t.Errorf("findNodeInSubtreeWithVisited took too long (%v), cycle detection may not be working", duration)
+	}
+
+	// Should return nil since we're looking for a non-existent edge ID
+	if result != nil {
+		t.Error("Expected to not find non-existent edge, but got result")
+	}
+
+	// Check that visited map was populated
+	if len(visited) == 0 {
+		t.Error("Expected visited map to be populated")
+	}
+}
+
+func TestFindNodeInSubtree_NoCycle(t *testing.T) {
+	// Test normal tree without cycles
+	meta := &metadata.Metadata{}
+	limits := metadata.TrackerLimits{
+		MaxNodesPerTree:    1000,
+		MaxChildrenPerNode: 100,
+		MaxArgsPerFunction: 100,
+		MaxNestedArgsDepth: 10,
+	}
+	tree := NewTrackerTree(meta, limits)
+
+	node1 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node2 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	node3 := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	// Create a normal tree: node1 -> node2 -> node3
+	node1.Children = append(node1.Children, node2)
+	node2.Children = append(node2.Children, node3)
+
+	// Test finding non-existing node (should return nil)
+	result := tree.findNodeInSubtree(node1, "nonexistent")
+	if result != nil {
+		t.Error("Expected to not find nonexistent node, but got result")
+	}
+}
+
+func TestFindNodeInSubtree_Performance(t *testing.T) {
+	// Test performance with deep tree
+	meta := &metadata.Metadata{}
+	limits := metadata.TrackerLimits{
+		MaxNodesPerTree:    1000,
+		MaxChildrenPerNode: 100,
+		MaxArgsPerFunction: 100,
+		MaxNestedArgsDepth: 10,
+	}
+	tree := NewTrackerTree(meta, limits)
+
+	// Create a deep tree (100 levels)
+	root := &TrackerNode{
+		Children: make([]*TrackerNode, 0),
+	}
+
+	current := root
+	for i := 0; i < 100; i++ {
+		child := &TrackerNode{
+			Children: make([]*TrackerNode, 0),
+		}
+		current.Children = append(current.Children, child)
+		current = child
+	}
+
+	// Test finding a non-existent node (should complete quickly)
+	start := time.Now()
+	result := tree.findNodeInSubtree(root, "nonexistent")
+	duration := time.Since(start)
+
+	// Should complete quickly
+	if duration > 1*time.Second {
+		t.Errorf("findNodeInSubtree took too long (%v) for deep tree", duration)
+	}
+
+	// Should return nil for non-existent node
+	if result != nil {
+		t.Error("Expected to not find nonexistent node, but got result")
 	}
 }

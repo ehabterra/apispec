@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -31,6 +32,9 @@ type CallIdentifier struct {
 	recvType string
 	position string
 	generics map[string]string
+
+	// Performance optimization: cache for different ID types
+	idCache map[CallIdentifierType]string
 }
 
 func NewCallIdentifier(pkg, name, recvType, position string, generics map[string]string) *CallIdentifier {
@@ -40,11 +44,17 @@ func NewCallIdentifier(pkg, name, recvType, position string, generics map[string
 		recvType: recvType,
 		position: position,
 		generics: generics,
+		idCache:  make(map[CallIdentifierType]string),
 	}
 }
 
 // ID returns the identifier based on the specified type
 func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
+	// Check cache first for performance optimization
+	if cached, exists := ci.idCache[idType]; exists {
+		return cached
+	}
+
 	var base string
 
 	// Build base identifier
@@ -59,9 +69,10 @@ func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
 	}
 	base = strings.TrimPrefix(base, "*")
 
+	var result string
 	switch idType {
 	case BaseID:
-		return base
+		result = base
 	case GenericID:
 		// Include generics but no position
 		if len(ci.generics) > 0 {
@@ -69,10 +80,11 @@ func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
 			for param, concrete := range ci.generics {
 				genericParts = append(genericParts, fmt.Sprintf("%s=%s", param, concrete))
 			}
-			sort.Slice(genericParts, func(i, j int) bool { return genericParts[i] < genericParts[j] })
-			return fmt.Sprintf("%s[%s]", base, strings.Join(genericParts, ","))
+			slices.Sort(genericParts)
+			result = fmt.Sprintf("%s[%s]", base, strings.Join(genericParts, ","))
+		} else {
+			result = base
 		}
-		return base
 	case InstanceID:
 		// Include generics and position for instance identification
 		var parts []string
@@ -91,13 +103,15 @@ func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
 			parts = append(parts, fmt.Sprintf("@%s", ci.position))
 		}
 
-		id := strings.Join(parts, "")
-		id = strings.TrimPrefix(id, "*")
-
-		return id
+		result = strings.Join(parts, "")
+		result = strings.TrimPrefix(result, "*")
 	default:
-		return base
+		result = base
 	}
+
+	// Cache the result for future lookups
+	ci.idCache[idType] = result
+	return result
 }
 
 // Helper function to strip ID to base format
@@ -129,6 +143,10 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 		CallGraph:  make([]CallGraphEdge, 0),
 
 		ParentFunctions: make(map[string][]*CallGraphEdge),
+
+		// Initialize performance optimization caches
+		traceVariableCache: make(map[string]TraceVariableResult),
+		methodLookupCache:  make(map[string]*Method),
 	}
 
 	for pkgName, files := range pkgs {

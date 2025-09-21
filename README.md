@@ -9,6 +9,7 @@
 
 **TL;DR**: Point APISpec at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
 
+
 ## 🎬 Demo Video
 
 [![APISpec Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/lkKO-a0-ZTU)
@@ -27,6 +28,9 @@
 - **Validator Tag Support**: Comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags with automatic OpenAPI constraint mapping. <strong style="color:green;">✨NEW</strong>
 - **Function Literal Analysis**: Full support for anonymous functions in route handlers. <strong style="color:green;">✨NEW</strong>
 - **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs. <strong style="color:green;">✨NEW</strong>
+- **Performance Profiling**: Built-in CPU, memory, block, mutex, and trace profiling for performance analysis. <strong style="color:green;">✨NEW</strong>
+- **Configurable Limits**: Fine-tune analysis limits for large codebases with detailed warning messages. <strong style="color:green;">✨NEW</strong>
+- **CGO Support**: Skip CGO packages during analysis to avoid build errors. <strong style="color:green;">✨NEW</strong>
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
@@ -363,6 +367,15 @@ go build -o apispec ./cmd/apispec
 
 # Generate metadata for debugging
 ./apispec --output openapi.yaml --write-metadata
+
+# Performance profiling for large codebases
+./apispec --output openapi.yaml --cpu-profile --mem-profile
+
+# Skip CGO packages to avoid build errors
+./apispec --output openapi.yaml --skip-cgo
+
+# Fine-tune analysis limits for large projects
+./apispec --output openapi.yaml --max-nodes 100000 --max-children 1000 --max-recursion-depth 15
 ```
 
 ### Programmatic usage
@@ -406,10 +419,27 @@ func main() {
 | `--write-metadata`    | `-w`         | Write metadata.yaml to disk                         | `false`                        |
 | `--split-metadata`    | `-s`         | Split metadata into separate files                  | `false`                        |
 | `--diagram`           | `-g`         | Save call graph as HTML                             | `""`                           |
-| `--max-nodes`         | `-mn`        | Max nodes in call graph tree                        | `10000`                        |
-| `--max-children`      | `-mc`        | Max children per node                               | `150`                          |
-| `--max-args`          | `-ma`        | Max arguments per function                          | `30`                           |
-| `--max-depth`         | `-md`        | Max depth for nested arguments                      | `50`                           |
+| `--max-nodes`         | `-mn`        | Max nodes in call graph tree                        | `50000`                        |
+| `--max-children`      | `-mc`        | Max children per node                               | `500`                          |
+| `--max-args`          | `-ma`        | Max arguments per function                          | `100`                          |
+| `--max-depth`         | `-md`        | Max depth for nested arguments                      | `100`                          |
+| `--max-recursion-depth` | `-mrd`      | Max recursion depth to prevent infinite loops       | `10`                           |
+| `--skip-cgo`          |              | Skip CGO packages during analysis                   | `true`                         |
+| `--include-file`      |              | Include files matching pattern (multiple)           | `""`                           |
+| `--include-package`   |              | Include packages matching pattern (multiple)        | `""`                           |
+| `--include-function`  |              | Include functions matching pattern (multiple)       | `""`                           |
+| `--include-type`      |              | Include types matching pattern (multiple)           | `""`                           |
+| `--exclude-file`      |              | Exclude files matching pattern (multiple)           | `""`                           |
+| `--exclude-package`   |              | Exclude packages matching pattern (multiple)        | `""`                           |
+| `--exclude-function`  |              | Exclude functions matching pattern (multiple)       | `""`                           |
+| `--exclude-type`      |              | Exclude types matching pattern (multiple)           | `""`                           |
+| `--cpu-profile`       |              | Enable CPU profiling                                 | `false`                        |
+| `--mem-profile`       |              | Enable memory profiling                              | `false`                        |
+| `--block-profile`     |              | Enable block profiling                               | `false`                        |
+| `--mutex-profile`     |              | Enable mutex profiling                               | `false`                        |
+| `--trace-profile`     |              | Enable trace profiling                               | `false`                        |
+| `--custom-metrics`    |              | Enable custom metrics collection                     | `false`                        |
+| `--profile-dir`       |              | Directory for profiling output files                | `profiles`                     |
 
 
 ### Example Output
@@ -813,16 +843,65 @@ go test ./... -cover
 - Follow Go coding standards
 - Add documentation for new features
 
+## Performance Profiling
+
+APISpec includes built-in profiling capabilities to help you analyze and optimize performance:
+
+### Profiling Types
+
+- **CPU Profiling**: Analyze function execution time and call frequency
+- **Memory Profiling**: Track memory allocation patterns and identify leaks
+- **Block Profiling**: Detect goroutine blocking issues
+- **Mutex Profiling**: Identify mutex contention problems
+- **Trace Profiling**: Detailed execution trace analysis
+- **Custom Metrics**: Application-specific performance metrics
+
+### Usage Examples
+
+```bash
+# Basic CPU profiling
+./apispec -d ./my-project --cpu-profile
+
+# Comprehensive profiling
+./apispec -d ./my-project --cpu-profile --mem-profile --custom-metrics
+
+# Custom profiling directory
+./apispec -d ./my-project --cpu-profile --profile-dir ./analysis
+
+# Analyze with Go tools
+go tool pprof profiles/cpu.prof
+go tool pprof profiles/mem.prof
+go tool trace profiles/trace.out
+```
+
+### Performance Analysis
+
+The custom metrics collector automatically tracks:
+- Memory usage patterns
+- Goroutine counts
+- Function execution times
+- System resource utilization
+
+Generated metrics are saved as JSON and can be analyzed for performance insights.
+
 ## Performance Considerations
 
 APISpec implements several safeguards to prevent excessive resource usage:
 
 | Parameter | Default Value | Description |
 |-----------|---------------|-------------|
-| MaxNodesPerTree | 10,000 | Maximum nodes in call graph |
-| MaxChildrenPerNode | 150 | Children per node |
-| MaxArgsPerFunction | 30 | Arguments per function |
-| MaxNestedArgsDepth | 50 | Argument nesting depth |
+| MaxNodesPerTree | 50,000 | Maximum nodes in call graph |
+| MaxChildrenPerNode | 500 | Children per node |
+| MaxArgsPerFunction | 100 | Arguments per function |
+| MaxNestedArgsDepth | 100 | Argument nesting depth |
+| MaxRecursionDepth | 10 | Maximum recursion depth to prevent infinite loops |
+
+**Warning Messages**: APISpec now provides clear warnings when limits are reached:
+```
+Warning: MaxNodesPerTree limit (50000) reached, truncating tree at node example.com/pkg.Function
+Warning: MaxChildrenPerNode limit (500) reached for node example.com/pkg.Function, truncating children
+Warning: MaxRecursionDepth limit (10) reached for node example.com/pkg.Function
+```
 
 Adjust these with CLI flags if needed for large codebases.
 
