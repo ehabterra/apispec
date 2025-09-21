@@ -17,6 +17,7 @@ package profiler
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -173,7 +174,12 @@ func (mc *MetricsCollector) WriteToFile(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		err = file.Close()
+		if err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")

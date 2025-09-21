@@ -370,9 +370,8 @@ func runGenerationWithProfiling(config *CLIConfig, prof *profiler.Profiler) (*sp
 	// Profile the entire generation process
 	var openAPISpec *spec.OpenAPISpec
 	var genEngine *engine.Engine
-	var err error
 
-	err = profiler.ProfileFunc(mc, "openapi_generation", func() error {
+	err := profiler.ProfileFunc(mc, "openapi_generation", func() error {
 		var genErr error
 		openAPISpec, genEngine, genErr = runGeneration(config)
 		return genErr

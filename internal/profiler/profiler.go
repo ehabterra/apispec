@@ -17,6 +17,7 @@ package profiler
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -242,7 +243,10 @@ func (p *Profiler) startCPUProfile() error {
 	p.cpuFile = file
 
 	if err := pprof.StartCPUProfile(file); err != nil {
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
 		return err
 	}
 
@@ -356,12 +360,18 @@ func (p *Profiler) startTraceProfile() error {
 	p.traceFile = file
 
 	if _, err := p.traceFile.Write([]byte("go 1.21\n")); err != nil {
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
 		return err
 	}
 
 	if err := trace.Start(file); err != nil {
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
 		return err
 	}
 
