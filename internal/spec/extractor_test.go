@@ -2,6 +2,7 @@ package spec
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
@@ -348,4 +349,138 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTraverseForRoutesWithVisited_CycleDetection(t *testing.T) {
+	// Create a mock extractor
+	extractor := &Extractor{}
+
+	// Create nodes that form a cycle
+	node1 := &MockTrackerNode{
+		key:      "node1",
+		children: []TrackerNodeInterface{},
+	}
+
+	node2 := &MockTrackerNode{
+		key:      "node2",
+		children: []TrackerNodeInterface{},
+	}
+
+	node3 := &MockTrackerNode{
+		key:      "node3",
+		children: []TrackerNodeInterface{},
+	}
+
+	// Create a cycle: node1 -> node2 -> node3 -> node1
+	node1.children = append(node1.children, node2)
+	node2.children = append(node2.children, node3)
+	node3.children = append(node3.children, node1)
+
+	// Test that cycle detection prevents infinite recursion
+	routes := []RouteInfo{}
+	visited := make(map[string]bool)
+
+	start := time.Now()
+	extractor.traverseForRoutesWithVisited(node1, "", []string{}, &routes, visited)
+	duration := time.Since(start)
+
+	// Should complete quickly (cycle detection should work)
+	if duration > 100*time.Millisecond {
+		t.Errorf("traverseForRoutesWithVisited took too long (%v), cycle detection may not be working", duration)
+	}
+
+	// Check that visited map was populated
+	if len(visited) == 0 {
+		t.Error("Expected visited map to be populated")
+	}
+}
+
+func TestTraverseForRoutesWithVisited_NoCycle(t *testing.T) {
+	// Create a mock extractor
+	extractor := &Extractor{}
+
+	// Create a normal tree without cycles
+	node1 := &MockTrackerNode{
+		key:      "node1",
+		children: []TrackerNodeInterface{},
+	}
+
+	node2 := &MockTrackerNode{
+		key:      "node2",
+		children: []TrackerNodeInterface{},
+	}
+
+	node3 := &MockTrackerNode{
+		key:      "node3",
+		children: []TrackerNodeInterface{},
+	}
+
+	// Create a normal tree: node1 -> node2 -> node3
+	node1.children = append(node1.children, node2)
+	node2.children = append(node2.children, node3)
+
+	// Test traversal
+	routes := []RouteInfo{}
+	visited := make(map[string]bool)
+
+	extractor.traverseForRoutesWithVisited(node1, "", []string{}, &routes, visited)
+
+	// Check that visited map was populated
+	if len(visited) == 0 {
+		t.Error("Expected visited map to be populated")
+	}
+}
+
+// MockTrackerNode for testing
+type MockTrackerNode struct {
+	key      string
+	children []TrackerNodeInterface
+}
+
+func (m *MockTrackerNode) GetKey() string {
+	return m.key
+}
+
+func (m *MockTrackerNode) GetChildren() []TrackerNodeInterface {
+	return m.children
+}
+
+func (m *MockTrackerNode) GetCallGraphEdge() *metadata.CallGraphEdge {
+	return nil
+}
+
+func (m *MockTrackerNode) GetCallArgument() *metadata.CallArgument {
+	return nil
+}
+
+func (m *MockTrackerNode) GetArgContext() string {
+	return ""
+}
+
+func (m *MockTrackerNode) GetArgIndex() int {
+	return 0
+}
+
+func (m *MockTrackerNode) GetArgType() metadata.ArgumentType {
+	return metadata.ArgTypeDirectCallee
+}
+
+func (m *MockTrackerNode) GetArgument() *metadata.CallArgument {
+	return nil
+}
+
+func (m *MockTrackerNode) GetEdge() *metadata.CallGraphEdge {
+	return nil
+}
+
+func (m *MockTrackerNode) GetParent() TrackerNodeInterface {
+	return nil
+}
+
+func (m *MockTrackerNode) GetTypeParamMap() map[string]string {
+	return nil
+}
+
+func (m *MockTrackerNode) GetRootAssignmentMap() map[string][]metadata.Assignment {
+	return nil
 }

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ehabterra/apispec/internal/engine"
+	"github.com/ehabterra/apispec/internal/profiler"
 	"github.com/ehabterra/apispec/spec"
 	"gopkg.in/yaml.v3"
 )
@@ -149,6 +150,7 @@ type CLIConfig struct {
 	MaxChildrenPerNode int
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
+	MaxRecursionDepth  int
 	ShowVersion        bool
 	OutputFlagSet      bool
 	IncludeFiles       []string
@@ -160,6 +162,20 @@ type CLIConfig struct {
 	ExcludeFunctions   []string
 	ExcludeTypes       []string
 	SkipCGOPackages    bool
+	// Profiling options
+	CPUProfile         bool
+	MemProfile         bool
+	BlockProfile       bool
+	MutexProfile       bool
+	TraceProfile       bool
+	CustomMetrics      bool
+	ProfileOutputDir   string
+	ProfileCPUPath     string
+	ProfileMemPath     string
+	ProfileBlockPath   string
+	ProfileMutexPath   string
+	ProfileTracePath   string
+	ProfileMetricsPath string
 }
 
 // parseFlags parses command line arguments and returns a CLIConfig
@@ -245,6 +261,9 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.MaxNestedArgsDepth, "max-nested-args", engine.DefaultMaxNestedArgsDepth, "Maximum nested arguments depth")
 	fs.IntVar(&config.MaxNestedArgsDepth, "md", engine.DefaultMaxNestedArgsDepth, "Shorthand for --max-nested-args")
 
+	fs.IntVar(&config.MaxRecursionDepth, "max-recursion-depth", engine.DefaultMaxRecursionDepth, "Maximum recursion depth to prevent infinite loops")
+	fs.IntVar(&config.MaxRecursionDepth, "mrd", engine.DefaultMaxRecursionDepth, "Shorthand for --max-recursion-depth")
+
 	// Include/exclude flags
 	fs.Var((*stringSliceFlag)(&config.IncludeFiles), "include-file", "Include files matching pattern (can be specified multiple times)")
 	fs.Var((*stringSliceFlag)(&config.IncludePackages), "include-package", "Include packages matching pattern (can be specified multiple times)")
@@ -257,6 +276,22 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.Var((*stringSliceFlag)(&config.ExcludeTypes), "exclude-type", "Exclude types matching pattern (can be specified multiple times)")
 
 	fs.BoolVar(&config.SkipCGOPackages, "skip-cgo", true, "Skip packages with CGO dependencies that may cause build errors")
+
+	// Profiling flags
+	fs.BoolVar(&config.CPUProfile, "cpu-profile", false, "Enable CPU profiling")
+	fs.BoolVar(&config.MemProfile, "mem-profile", false, "Enable memory profiling")
+	fs.BoolVar(&config.BlockProfile, "block-profile", false, "Enable block profiling")
+	fs.BoolVar(&config.MutexProfile, "mutex-profile", false, "Enable mutex profiling")
+	fs.BoolVar(&config.TraceProfile, "trace-profile", false, "Enable trace profiling")
+	fs.BoolVar(&config.CustomMetrics, "custom-metrics", false, "Enable custom metrics collection")
+
+	fs.StringVar(&config.ProfileOutputDir, "profile-dir", "profiles", "Directory for profiling output files")
+	fs.StringVar(&config.ProfileCPUPath, "cpu-profile-path", "cpu.prof", "CPU profile output file")
+	fs.StringVar(&config.ProfileMemPath, "mem-profile-path", "mem.prof", "Memory profile output file")
+	fs.StringVar(&config.ProfileBlockPath, "block-profile-path", "block.prof", "Block profile output file")
+	fs.StringVar(&config.ProfileMutexPath, "mutex-profile-path", "mutex.prof", "Mutex profile output file")
+	fs.StringVar(&config.ProfileTracePath, "trace-profile-path", "trace.out", "Trace profile output file")
+	fs.StringVar(&config.ProfileMetricsPath, "metrics-path", "metrics.json", "Custom metrics output file")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -302,6 +337,7 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		MaxChildrenPerNode: config.MaxChildrenPerNode,
 		MaxArgsPerFunction: config.MaxArgsPerFunction,
 		MaxNestedArgsDepth: config.MaxNestedArgsDepth,
+		MaxRecursionDepth:  config.MaxRecursionDepth,
 		IncludeFiles:       config.IncludeFiles,
 		IncludePackages:    config.IncludePackages,
 		IncludeFunctions:   config.IncludeFunctions,
@@ -321,6 +357,61 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 	}
 
 	return openAPISpec, genEngine, nil
+}
+
+// runGenerationWithProfiling generates the OpenAPI specification with profiling support
+func runGenerationWithProfiling(config *CLIConfig, prof *profiler.Profiler) (*spec.OpenAPISpec, *engine.Engine, error) {
+	if prof == nil || prof.GetMetrics() == nil {
+		return runGeneration(config)
+	}
+
+	mc := prof.GetMetrics()
+
+	// Profile the entire generation process
+	var openAPISpec *spec.OpenAPISpec
+	var genEngine *engine.Engine
+
+	err := profiler.ProfileFunc(mc, "openapi_generation", func() error {
+		var genErr error
+		openAPISpec, genEngine, genErr = runGeneration(config)
+		return genErr
+	}, map[string]string{"operation": "generation"})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Record additional metrics
+	mc.SetGauge("generation.success", 1, "count", map[string]string{"operation": "generation"})
+
+	return openAPISpec, genEngine, nil
+}
+
+// generatePerformanceAnalysis generates a performance analysis report
+func generatePerformanceAnalysis(prof *profiler.Profiler, config *CLIConfig) error {
+	mc := prof.GetMetrics()
+	if mc == nil {
+		return nil
+	}
+
+	// Write metrics to file
+	metricsPath := filepath.Join(config.ProfileOutputDir, config.ProfileMetricsPath)
+	if err := mc.WriteToFile(metricsPath); err != nil {
+		return fmt.Errorf("failed to write metrics: %w", err)
+	}
+
+	// Analyze metrics
+	analyzer := profiler.NewPerformanceAnalyzer()
+	metrics := mc.GetMetrics()
+	report := analyzer.AnalyzeMetrics(metrics)
+
+	// Log basic report info
+	fmt.Printf("Performance Analysis: %d issues found\n", report.TotalIssues)
+	if report.TotalIssues > 0 {
+		fmt.Printf("Issues by severity: %+v\n", report.Summary)
+	}
+
+	return nil
 }
 
 // writeOutput writes OpenAPI spec directly to file using streaming encoder (like metadata)
@@ -414,8 +505,39 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Generate OpenAPI specification
-	openAPISpec, genEngine, err := runGeneration(config)
+	// Initialize profiling if enabled
+	var prof *profiler.Profiler
+	if config.CPUProfile || config.MemProfile || config.BlockProfile ||
+		config.MutexProfile || config.TraceProfile || config.CustomMetrics {
+		profConfig := &profiler.ProfilerConfig{
+			CPUProfile:       config.CPUProfile,
+			CPUProfilePath:   config.ProfileCPUPath,
+			MemProfile:       config.MemProfile,
+			MemProfilePath:   config.ProfileMemPath,
+			BlockProfile:     config.BlockProfile,
+			BlockProfilePath: config.ProfileBlockPath,
+			MutexProfile:     config.MutexProfile,
+			MutexProfilePath: config.ProfileMutexPath,
+			TraceProfile:     config.TraceProfile,
+			TraceProfilePath: config.ProfileTracePath,
+			CustomMetrics:    config.CustomMetrics,
+			MetricsPath:      config.ProfileMetricsPath,
+			OutputDir:        config.ProfileOutputDir,
+		}
+
+		prof = profiler.NewProfiler(profConfig)
+		if err := prof.Start(); err != nil {
+			log.Fatalf("Failed to start profiling: %v", err)
+		}
+		defer func() {
+			if err := prof.Stop(); err != nil {
+				log.Printf("Failed to stop profiling: %v", err)
+			}
+		}()
+	}
+
+	// Generate OpenAPI specification with profiling
+	openAPISpec, genEngine, err := runGenerationWithProfiling(config, prof)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -423,6 +545,13 @@ func main() {
 	// Write output directly (like metadata) to avoid memory buffering
 	if err := writeOutput(openAPISpec, config, genEngine); err != nil {
 		log.Fatalf("%v", err)
+	}
+
+	// Generate performance analysis if custom metrics are enabled
+	if prof != nil && prof.GetMetrics() != nil {
+		if err := generatePerformanceAnalysis(prof, config); err != nil {
+			log.Printf("Failed to generate performance analysis: %v", err)
+		}
 	}
 
 	fmt.Printf("Time elapsed: %s\n", time.Since(start))

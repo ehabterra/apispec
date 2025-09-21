@@ -30,10 +30,11 @@ const (
 	DefaultContactURL         = "https://ehabterra.github.io/"
 	DefaultContactEmail       = "ehabterra@hotmail.com"
 	DefaultOpenAPIVersion     = "3.1.1"
-	DefaultMaxNodesPerTree    = 50000 // Increased for large codebases
-	DefaultMaxChildrenPerNode = 500   // Increased for complex call graphs
-	DefaultMaxArgsPerFunction = 100   // Increased for functions with many parameters
-	DefaultMaxNestedArgsDepth = 100   // Increased for deeply nested structures
+	DefaultMaxNodesPerTree    = 50000
+	DefaultMaxChildrenPerNode = 500
+	DefaultMaxArgsPerFunction = 100
+	DefaultMaxNestedArgsDepth = 100
+	DefaultMaxRecursionDepth  = 10
 	DefaultMetadataFile       = "metadata.yaml"
 	CopyrightNotice           = "apispec - Copyright 2025 Ehab Terra"
 	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
@@ -64,6 +65,7 @@ type EngineConfig struct {
 	MaxChildrenPerNode int
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
+	MaxRecursionDepth  int
 
 	// Include/exclude filters
 	IncludeFiles     []string
@@ -103,6 +105,7 @@ func DefaultEngineConfig() *EngineConfig {
 		MaxChildrenPerNode: DefaultMaxChildrenPerNode,
 		MaxArgsPerFunction: DefaultMaxArgsPerFunction,
 		MaxNestedArgsDepth: DefaultMaxNestedArgsDepth,
+		MaxRecursionDepth:  DefaultMaxRecursionDepth,
 	}
 }
 
@@ -334,6 +337,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxChildrenPerNode: e.config.MaxChildrenPerNode,
 		MaxArgsPerFunction: e.config.MaxArgsPerFunction,
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
+		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
 	tree := intspec.NewTrackerTree(meta, limits)
 
