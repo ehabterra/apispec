@@ -148,8 +148,6 @@ func TestGenerateSchemaFromType_Comprehensive(t *testing.T) {
 			if schema.Type == "" && schema.Ref == "" {
 				t.Errorf("Schema should have either Type or Ref set for type %s", tt.typeName)
 			}
-
-			t.Logf("Successfully generated schema for %s: %+v", tt.typeName, schema)
 		})
 	}
 }
@@ -430,8 +428,6 @@ func TestSchemaGeneration_ComplexTypes(t *testing.T) {
 		if schema.Properties == nil {
 			t.Error("Expected properties to be set")
 		}
-
-		t.Logf("Successfully generated complex schema: %+v", schema)
 	})
 
 	t.Run("nested struct resolution", func(t *testing.T) {
@@ -455,8 +451,6 @@ func TestSchemaGeneration_ComplexTypes(t *testing.T) {
 		if schema.Type != "object" {
 			t.Errorf("Expected object type, got %s", schema.Type)
 		}
-
-		t.Logf("Successfully generated Profile schema: %+v", schema)
 	})
 }
 
@@ -521,8 +515,6 @@ func TestSchemaGeneration_TypeMapping(t *testing.T) {
 		if schema.Properties == nil {
 			t.Error("Expected properties to be set")
 		}
-
-		t.Logf("Successfully generated custom type schema: %+v", schema)
 	})
 
 	t.Run("custom slice type mapping", func(t *testing.T) {
@@ -539,8 +531,6 @@ func TestSchemaGeneration_TypeMapping(t *testing.T) {
 		if schema.Items == nil {
 			t.Error("Expected items to be set")
 		}
-
-		t.Logf("Successfully generated custom slice type schema: %+v", schema)
 	})
 }
 
@@ -621,8 +611,6 @@ func TestSchemaGeneration_ExternalTypes(t *testing.T) {
 			if schema.Type != tt.expected.Type {
 				t.Errorf("Expected type %s for %s, got %s", tt.expected.Type, tt.typeName, schema.Type)
 			}
-
-			t.Logf("Successfully generated external type schema for %s: %+v", tt.typeName, schema)
 		})
 	}
 }

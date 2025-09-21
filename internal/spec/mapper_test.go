@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -105,8 +106,8 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 				if schema.Items == nil {
 					t.Error("expected items for array, got nil")
 				}
-				if schema.Items.Type != "object" {
-					t.Errorf("expected object items for []*User, got %s", schema.Items.Type)
+				if schema.Items.Ref != "#/components/schemas/User" {
+					t.Errorf("expected ref items for []*User, got %s", schema.Items.Ref)
 				}
 			}
 		})
@@ -898,13 +899,13 @@ func TestTypeByName(t *testing.T) {
 	}
 
 	// Test finding type by name
-	typ := typeByName(Parts{PkgName: "main", TypeName: "User"}, meta, "User")
+	typ := typeByName(Parts{PkgName: "main", TypeName: "User"}, meta)
 	if typ == nil {
 		t.Error("Should find type by name")
 	}
 
 	// Test finding non-existent type
-	typ = typeByName(Parts{PkgName: "main", TypeName: "NonExistentType"}, meta, "NonExistentType")
+	typ = typeByName(Parts{PkgName: "main", TypeName: "NonExistentType"}, meta)
 	if typ != nil {
 		t.Error("Should not find non-existent type")
 	}
@@ -1651,11 +1652,671 @@ func TestResolveUnderlyingType_ComplexCircularReference(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// This should not panic or cause stack overflow
 			usedTypes := make(map[string]*Schema)
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+			visitedTypes := make(map[string]bool)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, visitedTypes)
 
 			// Verify we got a valid schema
 			if schema == nil {
 				t.Errorf("Expected non-nil schema for type %s", tc.goType)
+			}
+		})
+	}
+}
+
+// TestDetectEnumFromConstantsDirect tests the detectEnumFromConstants function directly
+func TestDetectEnumFromConstantsDirect(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"Status": {
+								Name: stringPool.Get("Status"),
+								Kind: stringPool.Get("string"),
+							},
+						},
+						Variables: map[string]*metadata.Variable{
+							"StatusActive": {
+								Name:          stringPool.Get("StatusActive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("active"),
+								ComputedValue: "active",
+								GroupIndex:    0,
+							},
+							"StatusInactive": {
+								Name:          stringPool.Get("StatusInactive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("inactive"),
+								ComputedValue: "inactive",
+								GroupIndex:    0,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test direct enum detection
+	enumValues := detectEnumFromConstants("Status", "main", meta)
+
+	if len(enumValues) != 2 {
+		t.Errorf("Expected 2 enum values, got %d", len(enumValues))
+	}
+
+	expectedValues := []string{"active", "inactive"}
+	for i, expected := range expectedValues {
+		if i < len(enumValues) && enumValues[i] != expected {
+			t.Errorf("Expected enum[%d] = %s, got %s", i, expected, enumValues[i])
+		}
+	}
+}
+
+// TestEnumDetectionForArraysSimple tests enum detection for arrays with a simpler approach
+func TestEnumDetectionForArraysSimple(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"Status": {
+								Name: stringPool.Get("Status"),
+								Kind: stringPool.Get("string"),
+							},
+						},
+						Variables: map[string]*metadata.Variable{
+							"StatusActive": {
+								Name:          stringPool.Get("StatusActive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("active"),
+								ComputedValue: "active",
+								GroupIndex:    0,
+							},
+							"StatusInactive": {
+								Name:          stringPool.Get("StatusInactive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("inactive"),
+								ComputedValue: "inactive",
+								GroupIndex:    0,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Test direct enum detection
+	enumValues := detectEnumFromConstants("main.Status", "main", meta)
+	if len(enumValues) != 2 {
+		t.Errorf("Expected 2 enum values, got %d", len(enumValues))
+	}
+
+	expectedValues := []string{"active", "inactive"}
+	for i, expected := range expectedValues {
+		if i < len(enumValues) && enumValues[i] != expected {
+			t.Errorf("Expected enum[%d] = %s, got %s", i, expected, enumValues[i])
+		}
+	}
+}
+
+// TestEnumDetectionForArrays tests the new enum detection for array elements
+func TestEnumDetectionForArrays(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"Status": {
+								Name: stringPool.Get("Status"),
+								Kind: stringPool.Get("string"),
+							},
+						},
+						Variables: map[string]*metadata.Variable{
+							"StatusActive": {
+								Name:          stringPool.Get("StatusActive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("active"),
+								ComputedValue: "active",
+								GroupIndex:    0,
+							},
+							"StatusInactive": {
+								Name:          stringPool.Get("StatusInactive"),
+								Type:          stringPool.Get("main.Status"),
+								ResolvedType:  stringPool.Get("main.Status"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("inactive"),
+								ComputedValue: "inactive",
+								GroupIndex:    0,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	tests := []struct {
+		name         string
+		goType       string
+		expectedEnum []string
+		expectedType string
+	}{
+		{
+			name:         "array of enum type",
+			goType:       "[]main.Status",
+			expectedEnum: []string{"active", "inactive"},
+			expectedType: "array",
+		},
+		{
+			name:         "array of primitive type",
+			goType:       "[]string",
+			expectedEnum: nil,
+			expectedType: "array",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usedTypes := make(map[string]*Schema)
+
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			if schema == nil {
+				t.Fatal("Expected non-nil schema")
+			}
+
+			if schema.Type != tc.expectedType {
+				t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
+			}
+
+			if schema.Items == nil {
+				t.Fatal("Expected non-nil Items for array type")
+			}
+
+			if tc.expectedEnum != nil {
+				// Check if Items is a reference schema
+				if schema.Items.Ref != "" {
+					// Extract the referenced type name from the ref
+					refType := strings.TrimPrefix(schema.Items.Ref, "#/components/schemas/")
+					// Check the referenced schema in usedTypes
+					if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+						if len(refSchema.Enum) != len(tc.expectedEnum) {
+							t.Errorf("Expected %d enum values in referenced schema, got %d", len(tc.expectedEnum), len(refSchema.Enum))
+						} else {
+							for i, expected := range tc.expectedEnum {
+								if i < len(refSchema.Enum) && refSchema.Enum[i] != expected {
+									t.Errorf("Expected enum[%d] = %s, got %s", i, expected, refSchema.Enum[i])
+								}
+							}
+						}
+					} else {
+						t.Errorf("Referenced schema %s not found in usedTypes", refType)
+					}
+				} else {
+					// Direct enum values in Items
+					if len(schema.Items.Enum) != len(tc.expectedEnum) {
+						t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.Items.Enum))
+					} else {
+						for i, expected := range tc.expectedEnum {
+							if i < len(schema.Items.Enum) && schema.Items.Enum[i] != expected {
+								t.Errorf("Expected enum[%d] = %s, got %s", i, expected, schema.Items.Enum[i])
+							}
+						}
+					}
+				}
+			} else {
+				if len(schema.Items.Enum) > 0 {
+					t.Errorf("Expected no enum values, got %v", schema.Items.Enum)
+				}
+			}
+		})
+	}
+}
+
+// TestEnumDetectionForMaps tests the new enum detection for map values
+func TestEnumDetectionForMaps(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"Priority": {
+								Name: stringPool.Get("Priority"),
+								Kind: stringPool.Get("string"),
+							},
+						},
+						Variables: map[string]*metadata.Variable{
+							"PriorityHigh": {
+								Name:          stringPool.Get("PriorityHigh"),
+								Type:          stringPool.Get("main.Priority"),
+								ResolvedType:  stringPool.Get("main.Priority"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("high"),
+								ComputedValue: "high",
+								GroupIndex:    0,
+							},
+							"PriorityLow": {
+								Name:          stringPool.Get("PriorityLow"),
+								Type:          stringPool.Get("main.Priority"),
+								ResolvedType:  stringPool.Get("main.Priority"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("low"),
+								ComputedValue: "low",
+								GroupIndex:    0,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	tests := []struct {
+		name         string
+		goType       string
+		expectedEnum []string
+		expectedType string
+	}{
+		{
+			name:         "map with enum value type",
+			goType:       "map[string]main.Priority",
+			expectedEnum: []string{"high", "low"},
+			expectedType: "object",
+		},
+		{
+			name:         "map with primitive value type",
+			goType:       "map[string]string",
+			expectedEnum: nil,
+			expectedType: "object",
+		},
+		{
+			name:         "map with package prefix",
+			goType:       "map[string]main.Priority",
+			expectedEnum: []string{"high", "low"},
+			expectedType: "object",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			if schema == nil {
+				t.Fatal("Expected non-nil schema")
+			}
+
+			if schema.Type != tc.expectedType {
+				t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
+			}
+
+			if schema.AdditionalProperties == nil {
+				t.Fatal("Expected non-nil AdditionalProperties for map type")
+			}
+
+			if tc.expectedEnum != nil {
+				// Check if AdditionalProperties is a reference schema
+				if schema.AdditionalProperties.Ref != "" {
+					// Extract the referenced type name from the ref
+					refType := strings.TrimPrefix(schema.AdditionalProperties.Ref, "#/components/schemas/")
+					// Check the referenced schema in usedTypes
+					if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+						if len(refSchema.Enum) != len(tc.expectedEnum) {
+							t.Errorf("Expected %d enum values in referenced schema, got %d", len(tc.expectedEnum), len(refSchema.Enum))
+						} else {
+							for i, expected := range tc.expectedEnum {
+								if i < len(refSchema.Enum) && refSchema.Enum[i] != expected {
+									t.Errorf("Expected enum[%d] = %s, got %s", i, expected, refSchema.Enum[i])
+								}
+							}
+						}
+					} else {
+						t.Errorf("Referenced schema %s not found in usedTypes", refType)
+					}
+				} else {
+					// Direct enum values in AdditionalProperties
+					if len(schema.AdditionalProperties.Enum) != len(tc.expectedEnum) {
+						t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.AdditionalProperties.Enum))
+					} else {
+						for i, expected := range tc.expectedEnum {
+							if i < len(schema.AdditionalProperties.Enum) && schema.AdditionalProperties.Enum[i] != expected {
+								t.Errorf("Expected enum[%d] = %s, got %s", i, expected, schema.AdditionalProperties.Enum[i])
+							}
+						}
+					}
+				}
+			} else {
+				if len(schema.AdditionalProperties.Enum) > 0 {
+					t.Errorf("Expected no enum values, got %v", schema.AdditionalProperties.Enum)
+				}
+			}
+		})
+	}
+}
+
+// TestEnumDetectionForAliasTypes tests the new enum detection for alias types
+func TestEnumDetectionForAliasTypes(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"main": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"UserRole": {
+								Name:   stringPool.Get("main.UserRole"),
+								Kind:   stringPool.Get("alias"),
+								Target: stringPool.Get("string"),
+							},
+						},
+						Variables: map[string]*metadata.Variable{
+							"RoleAdmin": {
+								Name:          stringPool.Get("RoleAdmin"),
+								Type:          stringPool.Get("main.UserRole"),
+								ResolvedType:  stringPool.Get("main.UserRole"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("admin"),
+								ComputedValue: "admin",
+								GroupIndex:    0,
+							},
+							"RoleUser": {
+								Name:          stringPool.Get("RoleUser"),
+								Type:          stringPool.Get("main.UserRole"),
+								ResolvedType:  stringPool.Get("main.UserRole"),
+								Tok:           stringPool.Get("const"),
+								Value:         stringPool.Get("user"),
+								ComputedValue: "user",
+								GroupIndex:    0,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	tests := []struct {
+		name         string
+		goType       string
+		expectedEnum []string
+		expectedType string
+	}{
+		{
+			name:         "alias type with enum",
+			goType:       "main.UserRole",
+			expectedEnum: []string{"admin", "user"},
+			expectedType: "string",
+		},
+		{
+			name:         "primitive type without enum",
+			goType:       "string",
+			expectedEnum: nil,
+			expectedType: "string",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			if schema == nil {
+				t.Fatal("Expected non-nil schema")
+			}
+
+			if schema.Type != tc.expectedType {
+				t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
+			}
+
+			if tc.expectedEnum != nil {
+				if len(schema.Enum) != len(tc.expectedEnum) {
+					t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.Enum))
+				} else {
+					for i, expected := range tc.expectedEnum {
+						if i < len(schema.Enum) && schema.Enum[i] != expected {
+							t.Errorf("Expected enum[%d] = %s, got %s", i, expected, schema.Enum[i])
+						}
+					}
+				}
+			} else {
+				if len(schema.Enum) > 0 {
+					t.Errorf("Expected no enum values, got %v", schema.Enum)
+				}
+			}
+		})
+	}
+}
+
+// TestValidationConstraintsWithEnums tests the new enum constraint application
+func TestValidationConstraintsWithEnums(t *testing.T) {
+	tests := []struct {
+		name          string
+		schemaType    string
+		constraints   *ValidationConstraints
+		expectedEnum  []string
+		expectedItems bool
+		expectedProps bool
+	}{
+		{
+			name:       "string type with enum constraint",
+			schemaType: "string",
+			constraints: &ValidationConstraints{
+				Enum: []interface{}{"value1", "value2"},
+			},
+			expectedEnum:  []string{"value1", "value2"},
+			expectedItems: false,
+			expectedProps: false,
+		},
+		{
+			name:       "array type with enum constraint",
+			schemaType: "array",
+			constraints: &ValidationConstraints{
+				Enum: []interface{}{"item1", "item2"},
+			},
+			expectedEnum:  []string{"item1", "item2"},
+			expectedItems: true,
+			expectedProps: false,
+		},
+		{
+			name:       "object type with enum constraint",
+			schemaType: "object",
+			constraints: &ValidationConstraints{
+				Enum: []interface{}{"prop1", "prop2"},
+			},
+			expectedEnum:  []string{"prop1", "prop2"},
+			expectedItems: false,
+			expectedProps: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			schema := &Schema{
+				Type: tc.schemaType,
+			}
+
+			if tc.expectedItems {
+				schema.Items = &Schema{}
+			}
+
+			if tc.expectedProps {
+				schema.AdditionalProperties = &Schema{}
+			}
+
+			applyValidationConstraints(schema, tc.constraints)
+
+			if tc.expectedItems {
+				if schema.Items == nil {
+					t.Fatal("Expected non-nil Items")
+				}
+				if len(schema.Items.Enum) != len(tc.expectedEnum) {
+					t.Errorf("Expected %d enum values in Items, got %d", len(tc.expectedEnum), len(schema.Items.Enum))
+				}
+			}
+
+			if tc.expectedProps {
+				if schema.AdditionalProperties == nil {
+					t.Fatal("Expected non-nil AdditionalProperties")
+				}
+				if len(schema.AdditionalProperties.Enum) != len(tc.expectedEnum) {
+					t.Errorf("Expected %d enum values in AdditionalProperties, got %d", len(tc.expectedEnum), len(schema.AdditionalProperties.Enum))
+				}
+			}
+
+			if !tc.expectedItems && !tc.expectedProps {
+				if len(schema.Enum) != len(tc.expectedEnum) {
+					t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.Enum))
+				}
+			}
+		})
+	}
+}
+
+// TestMapTypeWithPackagePrefix tests the new map type handling with package prefixes
+func TestMapTypeWithPackagePrefix(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{
+		StringPool: stringPool,
+		Packages: map[string]*metadata.Package{
+			"pkg": {
+				Files: map[string]*metadata.File{
+					"types.go": {
+						Types: map[string]*metadata.Type{
+							"CustomType": {
+								Name: stringPool.Get("CustomType"),
+								Kind: stringPool.Get("struct"),
+								Fields: []metadata.Field{
+									{
+										Name: stringPool.Get("Value"),
+										Type: stringPool.Get("string"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	tests := []struct {
+		name         string
+		goType       string
+		expectedType string
+	}{
+		{
+			name:         "map with package prefix",
+			goType:       "pkg.map[string]CustomType",
+			expectedType: "object",
+		},
+		{
+			name:         "map without package prefix",
+			goType:       "map[string]CustomType",
+			expectedType: "object",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+
+			if schema == nil {
+				t.Fatal("Expected non-nil schema")
+			}
+
+			if schema.Type != tc.expectedType {
+				t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
+			}
+
+			if schema.AdditionalProperties == nil {
+				t.Fatal("Expected non-nil AdditionalProperties for map type")
+			}
+		})
+	}
+}
+
+// TestCanAddRefSchemaForTypeWithMap tests the updated canAddRefSchemaForType function
+func TestCanAddRefSchemaForTypeWithMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		expected bool
+	}{
+		{
+			name:     "primitive type",
+			key:      "string",
+			expected: false,
+		},
+		{
+			name:     "array type",
+			key:      "[]string",
+			expected: false,
+		},
+		{
+			name:     "map type with prefix",
+			key:      "map[string]int",
+			expected: false,
+		},
+		{
+			name:     "map type with package prefix",
+			key:      "pkg.map[string]int",
+			expected: false,
+		},
+		{
+			name:     "nested type",
+			key:      "SomeType_nested",
+			expected: false,
+		},
+		{
+			name:     "custom type",
+			key:      "CustomType",
+			expected: true,
+		},
+		{
+			name:     "package qualified type",
+			key:      "pkg.CustomType",
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := canAddRefSchemaForType(tc.key)
+			if result != tc.expected {
+				t.Errorf("Expected %v for key %s, got %v", tc.expected, tc.key, result)
 			}
 		})
 	}

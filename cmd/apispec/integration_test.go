@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"io"
 	"os"
@@ -129,13 +130,23 @@ go 1.21`
 	}
 
 	// Generate OpenAPI spec
-	data, genEngine, err := runGeneration(config)
+	openAPISpec, genEngine, err := runGeneration(config)
 	if err != nil {
 		t.Fatalf("OpenAPI generation failed: %v", err)
 	}
 
 	if genEngine == nil {
 		t.Fatal("Engine should not be nil")
+	}
+
+	if openAPISpec == nil {
+		t.Fatal("Generated OpenAPI spec should not be nil")
+	}
+
+	// Convert to JSON for validation
+	data, err := json.Marshal(openAPISpec)
+	if err != nil {
+		t.Fatalf("Failed to marshal OpenAPI spec: %v", err)
 	}
 
 	if len(data) == 0 {
@@ -228,13 +239,23 @@ defaults:
 	}
 
 	// Generate OpenAPI spec
-	data, genEngine, err := runGeneration(config)
+	openAPISpec, genEngine, err := runGeneration(config)
 	if err != nil {
 		t.Fatalf("OpenAPI generation with config failed: %v", err)
 	}
 
 	if genEngine == nil {
 		t.Fatal("Engine should not be nil")
+	}
+
+	if openAPISpec == nil {
+		t.Fatal("Generated OpenAPI spec should not be nil")
+	}
+
+	// Convert to JSON for validation
+	data, err := json.Marshal(openAPISpec)
+	if err != nil {
+		t.Fatalf("Failed to marshal OpenAPI spec: %v", err)
 	}
 
 	// Validate the output contains expected content
@@ -436,10 +457,10 @@ func TestParseFlags(t *testing.T) {
 				ContactURL:         "https://ehabterra.github.io/",
 				ContactEmail:       "ehabterra@hotmail.com",
 				OpenAPIVersion:     "3.1.1",
-				MaxNodesPerTree:    10000,
-				MaxChildrenPerNode: 150,
-				MaxArgsPerFunction: 30,
-				MaxNestedArgsDepth: 50,
+				MaxNodesPerTree:    50000,
+				MaxChildrenPerNode: 500,
+				MaxArgsPerFunction: 100,
+				MaxNestedArgsDepth: 100,
 			},
 		},
 		{
@@ -526,5 +547,152 @@ func TestPrintVersion(t *testing.T) {
 	}
 	if !strings.Contains(outputStr, "Build date") {
 		t.Error("Version output should contain 'Build date'")
+	}
+}
+
+// TestRunGeneration tests the new runGeneration function that returns OpenAPISpec directly
+func TestRunGeneration(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Create a simple Go file for testing
+	goFile := filepath.Join(tempDir, "main.go")
+	err := os.WriteFile(goFile, []byte(`
+package main
+
+import "net/http"
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+`), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Create go.mod file
+	goModFile := filepath.Join(tempDir, "go.mod")
+	err = os.WriteFile(goModFile, []byte(`
+module test
+
+go 1.21
+`), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create go.mod: %v", err)
+	}
+
+	// Test configuration
+	config := &CLIConfig{
+		InputDir:   tempDir,
+		OutputFile: "test-output.yaml",
+		Title:      "Test API",
+		APIVersion: "1.0.0",
+	}
+
+	// Test runGeneration function
+	spec, engine, err := runGeneration(config)
+	if err != nil {
+		t.Fatalf("runGeneration failed: %v", err)
+	}
+
+	if spec == nil {
+		t.Fatal("Expected non-nil OpenAPI spec")
+	}
+
+	if engine == nil {
+		t.Fatal("Expected non-nil engine")
+	}
+
+	// Verify the spec has the expected structure
+	if spec.OpenAPI == "" {
+		t.Error("Expected OpenAPI version to be set")
+	}
+
+	// Info is a struct, not a pointer, so we check if it's not zero-valued
+	if spec.Info.Title == "" {
+		t.Error("Expected Info.Title to be set")
+	}
+
+	if spec.Info.Title != "Test API" {
+		t.Errorf("Expected title to be \"Test API\", got \"%s\"", spec.Info.Title)
+	}
+
+	if spec.Info.Version != "1.0.0" {
+		t.Errorf("Expected version to be \"1.0.0\", got \"%s\"", spec.Info.Version)
+	}
+}
+
+// TestWriteOutputYAML tests the new streaming YAML output functionality
+func TestWriteOutputYAML(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Create a simple Go file for testing
+	goFile := filepath.Join(tempDir, "main.go")
+	err := os.WriteFile(goFile, []byte(`
+package main
+
+import "net/http"
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+`), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Create go.mod file
+	goModFile := filepath.Join(tempDir, "go.mod")
+	err = os.WriteFile(goModFile, []byte(`
+module test
+
+go 1.21
+`), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create go.mod: %v", err)
+	}
+
+	// Test configuration
+	config := &CLIConfig{
+		InputDir:   tempDir,
+		OutputFile: "test-output.yaml",
+		Title:      "Test API",
+		APIVersion: "1.0.0",
+	}
+
+	// Generate the spec
+	spec, engine, err := runGeneration(config)
+	if err != nil {
+		t.Fatalf("runGeneration failed: %v", err)
+	}
+
+	// Test YAML output
+	outputFile := filepath.Join(tempDir, "test-output.yaml")
+	config.OutputFile = "test-output.yaml" // Use relative path
+
+	err = writeOutput(spec, config, engine)
+	if err != nil {
+		t.Fatalf("writeOutput failed: %v", err)
+	}
+
+	// Verify the file was created
+	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+		t.Fatal("Expected output file to be created")
+	}
+
+	// Read and verify the content
+	content, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("Failed to read output file: %v", err)
+	}
+
+	// Check that it is valid YAML content
+	if !strings.Contains(string(content), "openapi:") {
+		t.Error("Expected YAML content to contain \"openapi:\"")
+	}
+
+	if !strings.Contains(string(content), "Test API") {
+		t.Error("Expected YAML content to contain \"Test API\"")
 	}
 }

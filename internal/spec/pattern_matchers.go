@@ -678,10 +678,6 @@ func traceGenericOrigin(node TrackerNodeInterface, typeParts Parts) string {
 	return ""
 }
 
-func (b *BasePatternMatcher) extractMethodFromFunctionName(funcName string) string {
-	return b.extractMethodFromFunctionNameWithConfig(funcName, nil)
-}
-
 func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName string, config *MethodExtractionConfig) string {
 	if funcName == "" {
 		return ""
@@ -752,14 +748,4 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 // isLetter checks if a rune is a letter
 func (b *BasePatternMatcher) isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
-
-func (b *BasePatternMatcher) mapGoTypeToOpenAPISchema(goType string) *Schema {
-	// Use TypeResolver for schema mapping if available
-	if b.typeResolver != nil {
-		return b.typeResolver.MapToOpenAPISchema(goType)
-	}
-
-	// Fallback to schema mapper
-	return b.schemaMapper.MapGoTypeToOpenAPISchema(goType)
 }
