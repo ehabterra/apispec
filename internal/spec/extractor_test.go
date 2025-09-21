@@ -98,11 +98,6 @@ func TestRefactoredExtractor(t *testing.T) {
 	// Verify results
 	if len(routes) == 0 {
 		t.Log("No routes extracted, which is expected for this simple test")
-	} else {
-		t.Logf("Extracted %d routes", len(routes))
-		for i, route := range routes {
-			t.Logf("Route %d: %s %s", i, route.Method, route.Path)
-		}
 	}
 }
 

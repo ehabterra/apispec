@@ -364,6 +364,106 @@ func main() {
 	}
 }
 
+// TestDefaultLimits tests the new increased default limits for large codebases
+func TestDefaultLimits(t *testing.T) {
+	config := DefaultEngineConfig()
+
+	// Test the new increased limits
+	expectedLimits := map[string]int{
+		"MaxNodesPerTree":    DefaultMaxNodesPerTree,
+		"MaxChildrenPerNode": DefaultMaxChildrenPerNode,
+		"MaxArgsPerFunction": DefaultMaxArgsPerFunction,
+		"MaxNestedArgsDepth": DefaultMaxNestedArgsDepth,
+	}
+
+	actualLimits := map[string]int{
+		"MaxNodesPerTree":    config.MaxNodesPerTree,
+		"MaxChildrenPerNode": config.MaxChildrenPerNode,
+		"MaxArgsPerFunction": config.MaxArgsPerFunction,
+		"MaxNestedArgsDepth": config.MaxNestedArgsDepth,
+	}
+
+	for limitName, expectedValue := range expectedLimits {
+		if actualValue, exists := actualLimits[limitName]; !exists {
+			t.Errorf("Expected %s to be set", limitName)
+		} else if actualValue != expectedValue {
+			t.Errorf("Expected %s to be %d, got %d", limitName, expectedValue, actualValue)
+		}
+	}
+
+	// Verify the limits are actually increased from the old values
+	if config.MaxNodesPerTree <= 10000 {
+		t.Errorf("Expected MaxNodesPerTree to be > 10000 (old default), got %d", config.MaxNodesPerTree)
+	}
+
+	if config.MaxChildrenPerNode <= 150 {
+		t.Errorf("Expected MaxChildrenPerNode to be > 150 (old default), got %d", config.MaxChildrenPerNode)
+	}
+
+	if config.MaxArgsPerFunction <= 30 {
+		t.Errorf("Expected MaxArgsPerFunction to be > 30 (old default), got %d", config.MaxArgsPerFunction)
+	}
+
+	if config.MaxNestedArgsDepth <= 50 {
+		t.Errorf("Expected MaxNestedArgsDepth to be > 50 (old default), got %d", config.MaxNestedArgsDepth)
+	}
+}
+
+// TestEngineWithCustomLimits tests engine behavior with custom limits
+func TestEngineWithCustomLimits(t *testing.T) {
+	// Test with very low limits to trigger warnings
+	config := &EngineConfig{
+		InputDir:           ".",
+		OutputFile:         "test-output.yaml",
+		MaxNodesPerTree:    5,
+		MaxChildrenPerNode: 2,
+		MaxArgsPerFunction: 1,
+		MaxNestedArgsDepth: 2,
+	}
+
+	engine := NewEngine(config)
+	if engine == nil {
+		t.Fatal("Expected engine to be created")
+	}
+
+	// Verify the custom limits are set
+	if engine.config.MaxNodesPerTree != 5 {
+		t.Errorf("Expected MaxNodesPerTree to be 5, got %d", engine.config.MaxNodesPerTree)
+	}
+
+	if engine.config.MaxChildrenPerNode != 2 {
+		t.Errorf("Expected MaxChildrenPerNode to be 2, got %d", engine.config.MaxChildrenPerNode)
+	}
+
+	if engine.config.MaxArgsPerFunction != 1 {
+		t.Errorf("Expected MaxArgsPerFunction to be 1, got %d", engine.config.MaxArgsPerFunction)
+	}
+
+	if engine.config.MaxNestedArgsDepth != 2 {
+		t.Errorf("Expected MaxNestedArgsDepth to be 2, got %d", engine.config.MaxNestedArgsDepth)
+	}
+}
+
+// TestDefaultLimitsConstants tests that the constants match the expected values
+func TestDefaultLimitsConstants(t *testing.T) {
+	// Test that the constants are set to the new increased values
+	if DefaultMaxNodesPerTree != 50000 {
+		t.Errorf("Expected DefaultMaxNodesPerTree to be 50000, got %d", DefaultMaxNodesPerTree)
+	}
+
+	if DefaultMaxChildrenPerNode != 500 {
+		t.Errorf("Expected DefaultMaxChildrenPerNode to be 500, got %d", DefaultMaxChildrenPerNode)
+	}
+
+	if DefaultMaxArgsPerFunction != 100 {
+		t.Errorf("Expected DefaultMaxArgsPerFunction to be 100, got %d", DefaultMaxArgsPerFunction)
+	}
+
+	if DefaultMaxNestedArgsDepth != 100 {
+		t.Errorf("Expected DefaultMaxNestedArgsDepth to be 100, got %d", DefaultMaxNestedArgsDepth)
+	}
+}
+
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||

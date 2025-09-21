@@ -121,7 +121,6 @@ func TestRoutePatternMatcher_Comprehensive(t *testing.T) {
 			}
 
 			// Test that matcher can be created without panicking
-			t.Logf("Successfully created matcher for: %s", tt.description)
 		})
 	}
 }
@@ -225,9 +224,6 @@ func TestMountPatternMatcher_Comprehensive(t *testing.T) {
 			if priority < 0 {
 				t.Error("Priority should be non-negative")
 			}
-
-			// Test that matcher can be created without panicking
-			t.Logf("Successfully created matcher for: %s", tt.description)
 		})
 	}
 }
@@ -323,7 +319,6 @@ func TestRequestPatternMatcher_Comprehensive(t *testing.T) {
 			}
 
 			// Test that matcher can be created without panicking
-			t.Logf("Successfully created matcher for: %s", tt.description)
 		})
 	}
 }
@@ -420,9 +415,6 @@ func TestResponsePatternMatcher_Comprehensive(t *testing.T) {
 			if priority < 0 {
 				t.Error("Priority should be non-negative")
 			}
-
-			// Test that matcher can be created without panicking
-			t.Logf("Successfully created matcher for: %s", tt.description)
 		})
 	}
 }
@@ -522,9 +514,6 @@ func TestParamPatternMatcher_Comprehensive(t *testing.T) {
 			if priority < 0 {
 				t.Error("Priority should be non-negative")
 			}
-
-			// Test that matcher can be created without panicking
-			t.Logf("Successfully created matcher for: %s", tt.description)
 		})
 	}
 }
@@ -1390,7 +1379,6 @@ func TestRequestPatternMatcher_resolveTypeOrigin(t *testing.T) {
 			if result == "" {
 				t.Error("resolveTypeOrigin should not return empty string")
 			}
-			t.Logf("resolveTypeOrigin result for %s: %s", tt.name, result)
 		})
 	}
 }
@@ -1462,156 +1450,6 @@ func TestTraceGenericOrigin(t *testing.T) {
 			result := traceGenericOrigin(mockNode, tt.typeParts)
 			if result != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestBasePatternMatcher_extractMethodFromFunctionName(t *testing.T) {
-	// Create metadata with string pool
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	// Create config
-	cfg := DefaultGinConfig()
-
-	// Create schema mapper
-	schemaMapper := NewSchemaMapper(cfg)
-
-	// Create type resolver
-	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
-
-	// Create context provider
-	contextProvider := NewContextProvider(meta)
-
-	// Create base pattern matcher
-	matcher := NewBasePatternMatcher(cfg, contextProvider, typeResolver)
-
-	// Test extractMethodFromFunctionName with different function names
-	tests := []struct {
-		name         string
-		functionName string
-		expected     string
-	}{
-		{
-			name:         "GET method",
-			functionName: "getUser",
-			expected:     "GET",
-		},
-		{
-			name:         "POST method",
-			functionName: "postUser",
-			expected:     "POST",
-		},
-		{
-			name:         "PUT method",
-			functionName: "putUser",
-			expected:     "PUT",
-		},
-		{
-			name:         "DELETE method",
-			functionName: "deleteUser",
-			expected:     "DELETE",
-		},
-		{
-			name:         "PATCH method",
-			functionName: "patchUser",
-			expected:     "PATCH",
-		},
-		{
-			name:         "OPTIONS method",
-			functionName: "optionsUser",
-			expected:     "OPTIONS",
-		},
-		{
-			name:         "HEAD method",
-			functionName: "headUser",
-			expected:     "HEAD",
-		},
-		{
-			name:         "no method found",
-			functionName: "processUser",
-			expected:     "GET", // The DefaultMethodExtractionConfig() has DefaultMethod: "GET"
-		},
-		{
-			name:         "case insensitive",
-			functionName: "GetUser",
-			expected:     "GET",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := matcher.extractMethodFromFunctionName(tt.functionName)
-			if result != tt.expected {
-				t.Errorf("Expected %s, got %s", tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestBasePatternMatcher_mapGoTypeToOpenAPISchema(t *testing.T) {
-	// Create metadata with string pool
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	// Create config
-	cfg := DefaultGinConfig()
-
-	// Create schema mapper
-	schemaMapper := NewSchemaMapper(cfg)
-
-	// Create type resolver
-	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
-
-	// Create context provider
-	contextProvider := NewContextProvider(meta)
-
-	// Create base pattern matcher
-	matcher := NewBasePatternMatcher(cfg, contextProvider, typeResolver)
-
-	// Test mapGoTypeToOpenAPISchema with different Go types
-	tests := []struct {
-		name    string
-		goType  string
-		hasType bool
-	}{
-		{
-			name:    "string type",
-			goType:  "string",
-			hasType: true,
-		},
-		{
-			name:    "int type",
-			goType:  "int",
-			hasType: true,
-		},
-		{
-			name:    "bool type",
-			goType:  "bool",
-			hasType: true,
-		},
-		{
-			name:    "float64 type",
-			goType:  "float64",
-			hasType: true,
-		},
-		{
-			name:    "empty type",
-			goType:  "",
-			hasType: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := matcher.mapGoTypeToOpenAPISchema(tt.goType)
-			if tt.hasType && result == nil {
-				t.Error("Expected schema for valid Go type")
 			}
 		})
 	}

@@ -585,6 +585,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 		argEdge := arg.Edge
 
 		argID := arg.ID()
+		argCount++
 
 		if argCount >= limits.MaxArgsPerFunction {
 			fmt.Printf("Warning: MaxArgsPerFunction limit (%d) reached for function %s.%s, truncating arguments\n",
@@ -707,7 +708,6 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 				if arg.Fun != nil && arg.Fun.Position != -1 {
 					tree.positions[arg.Fun.GetPosition()] = true
 				}
-				argCount++
 			}
 
 		case ArgTypeVariable:
