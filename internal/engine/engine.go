@@ -15,6 +15,7 @@ import (
 	"github.com/ehabterra/apispec/internal/core"
 	"github.com/ehabterra/apispec/internal/metadata"
 	intspec "github.com/ehabterra/apispec/internal/spec"
+	"github.com/ehabterra/apispec/pkg/patterns"
 	"github.com/ehabterra/apispec/spec"
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
@@ -460,6 +461,11 @@ func (e *Engine) findModuleRoot(startPath string) (string, error) {
 	return "", fmt.Errorf("no go.mod found in %s or any parent directory", startPath)
 }
 
+// matchesPattern checks if a path matches a gitignore-style pattern
+func matchesPattern(pattern, path string) bool {
+	return patterns.Match(pattern, path)
+}
+
 // shouldIncludePackage checks if a package should be included based on include/exclude patterns
 func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 	// Auto-exclude known problematic CGO dependencies if enabled
@@ -475,7 +481,7 @@ func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 		}
 
 		for _, pattern := range cgoProblematicPatterns {
-			if matched, _ := filepath.Match(pattern, pkgPath); matched {
+			if matchesPattern(pattern, pkgPath) {
 				return false
 			}
 			// Also check with wildcards for nested paths
@@ -493,14 +499,14 @@ func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 
 	// Check exclude patterns first (exclude takes precedence)
 	for _, pattern := range e.config.ExcludePackages {
-		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+		if matchesPattern(pattern, pkgPath) {
 			return false
 		}
 		// Also check if the pattern matches the last part of the package path
 		parts := strings.Split(pkgPath, "/")
 		if len(parts) > 0 {
 			lastPart := parts[len(parts)-1]
-			if matched, _ := filepath.Match(pattern, lastPart); matched {
+			if matchesPattern(pattern, lastPart) {
 				return false
 			}
 		}
@@ -509,14 +515,14 @@ func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 	// Check include patterns
 	if len(e.config.IncludePackages) > 0 {
 		for _, pattern := range e.config.IncludePackages {
-			if matched, _ := filepath.Match(pattern, pkgPath); matched {
+			if matchesPattern(pattern, pkgPath) {
 				return true
 			}
 			// Also check if the pattern matches the last part of the package path
 			parts := strings.Split(pkgPath, "/")
 			if len(parts) > 0 {
 				lastPart := parts[len(parts)-1]
-				if matched, _ := filepath.Match(pattern, lastPart); matched {
+				if matchesPattern(pattern, lastPart) {
 					return true
 				}
 			}
@@ -536,7 +542,7 @@ func (e *Engine) shouldIncludeFile(fileName string) bool {
 
 	// Check exclude patterns first (exclude takes precedence)
 	for _, pattern := range e.config.ExcludeFiles {
-		if matched, _ := filepath.Match(pattern, fileName); matched {
+		if matchesPattern(pattern, fileName) {
 			return false
 		}
 	}
@@ -544,7 +550,7 @@ func (e *Engine) shouldIncludeFile(fileName string) bool {
 	// Check include patterns
 	if len(e.config.IncludeFiles) > 0 {
 		for _, pattern := range e.config.IncludeFiles {
-			if matched, _ := filepath.Match(pattern, fileName); matched {
+			if matchesPattern(pattern, fileName) {
 				return true
 			}
 		}

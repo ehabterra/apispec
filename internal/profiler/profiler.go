@@ -83,15 +83,6 @@ type Profiler struct {
 	// CPU profiling
 	cpuFile *os.File
 
-	// Memory profiling
-	memFile *os.File
-
-	// Block profiling
-	blockFile *os.File
-
-	// Mutex profiling
-	mutexFile *os.File
-
 	// Trace profiling
 	traceFile *os.File
 
@@ -186,21 +177,21 @@ func (p *Profiler) Stop() error {
 	}
 
 	// Stop memory profiling
-	if p.memFile != nil {
+	if p.config.MemProfilePath != "" {
 		if err := p.stopMemProfile(); err != nil {
 			errors = append(errors, fmt.Errorf("failed to stop memory profiling: %w", err))
 		}
 	}
 
 	// Stop block profiling
-	if p.blockFile != nil {
+	if p.config.BlockProfilePath != "" {
 		if err := p.stopBlockProfile(); err != nil {
 			errors = append(errors, fmt.Errorf("failed to stop block profiling: %w", err))
 		}
 	}
 
 	// Stop mutex profiling
-	if p.mutexFile != nil {
+	if p.config.MutexProfilePath != "" {
 		if err := p.stopMutexProfile(); err != nil {
 			errors = append(errors, fmt.Errorf("failed to stop mutex profiling: %w", err))
 		}
@@ -263,26 +254,23 @@ func (p *Profiler) startMemProfile() error {
 
 // stopMemProfile stops memory profiling and writes to file
 func (p *Profiler) stopMemProfile() error {
-	if p.memFile == nil {
-		filePath := filepath.Join(p.config.OutputDir, p.config.MemProfilePath)
-		file, err := os.Create(filePath)
-		if err != nil {
-			return err
-		}
-		p.memFile = file
+	filePath := filepath.Join(p.config.OutputDir, p.config.MemProfilePath)
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
 	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Failed to close memory profile file: %v", closeErr)
+		}
+	}()
 
 	runtime.GC() // Force garbage collection before profiling
-	if err := pprof.WriteHeapProfile(p.memFile); err != nil {
+	if err := pprof.WriteHeapProfile(file); err != nil {
 		return err
 	}
 
-	if err := p.memFile.Close(); err != nil {
-		return err
-	}
-	p.memFile = nil
-
-	fmt.Printf("Memory profile written: %s\n", filepath.Join(p.config.OutputDir, p.config.MemProfilePath))
+	fmt.Printf("Memory profile written: %s\n", filePath)
 	return nil
 }
 
@@ -295,26 +283,23 @@ func (p *Profiler) startBlockProfile() error {
 
 // stopBlockProfile stops block profiling and writes to file
 func (p *Profiler) stopBlockProfile() error {
-	if p.blockFile == nil {
-		filePath := filepath.Join(p.config.OutputDir, p.config.BlockProfilePath)
-		file, err := os.Create(filePath)
-		if err != nil {
-			return err
+	filePath := filepath.Join(p.config.OutputDir, p.config.BlockProfilePath)
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Failed to close block profile file: %v", closeErr)
 		}
-		p.blockFile = file
-	}
+	}()
 
-	if err := pprof.Lookup("block").WriteTo(p.blockFile, 0); err != nil {
+	if err := pprof.Lookup("block").WriteTo(file, 0); err != nil {
 		return err
 	}
-
-	if err := p.blockFile.Close(); err != nil {
-		return err
-	}
-	p.blockFile = nil
 
 	runtime.SetBlockProfileRate(0) // Disable block profiling
-	fmt.Printf("Block profile written: %s\n", filepath.Join(p.config.OutputDir, p.config.BlockProfilePath))
+	fmt.Printf("Block profile written: %s\n", filePath)
 	return nil
 }
 
@@ -327,26 +312,23 @@ func (p *Profiler) startMutexProfile() error {
 
 // stopMutexProfile stops mutex profiling and writes to file
 func (p *Profiler) stopMutexProfile() error {
-	if p.mutexFile == nil {
-		filePath := filepath.Join(p.config.OutputDir, p.config.MutexProfilePath)
-		file, err := os.Create(filePath)
-		if err != nil {
-			return err
+	filePath := filepath.Join(p.config.OutputDir, p.config.MutexProfilePath)
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Failed to close mutex profile file: %v", closeErr)
 		}
-		p.mutexFile = file
-	}
+	}()
 
-	if err := pprof.Lookup("mutex").WriteTo(p.mutexFile, 0); err != nil {
+	if err := pprof.Lookup("mutex").WriteTo(file, 0); err != nil {
 		return err
 	}
-
-	if err := p.mutexFile.Close(); err != nil {
-		return err
-	}
-	p.mutexFile = nil
 
 	runtime.SetMutexProfileFraction(0) // Disable mutex profiling
-	fmt.Printf("Mutex profile written: %s\n", filepath.Join(p.config.OutputDir, p.config.MutexProfilePath))
+	fmt.Printf("Mutex profile written: %s\n", filePath)
 	return nil
 }
 
@@ -359,18 +341,10 @@ func (p *Profiler) startTraceProfile() error {
 	}
 	p.traceFile = file
 
-	if _, err := p.traceFile.Write([]byte("go 1.21\n")); err != nil {
-		err = file.Close()
-		if err != nil {
-			log.Printf("Failed to close file: %v", err)
-		}
-		return err
-	}
-
+	// trace.Start() writes its own header, so we don't need to write one manually
 	if err := trace.Start(file); err != nil {
-		err = file.Close()
-		if err != nil {
-			log.Printf("Failed to close file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Failed to close trace profile file: %v", closeErr)
 		}
 		return err
 	}
@@ -388,8 +362,8 @@ func (p *Profiler) GetMetrics() *MetricsCollector {
 func (p *Profiler) IsProfiling() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.cpuFile != nil || p.memFile != nil || p.blockFile != nil ||
-		p.mutexFile != nil || p.traceFile != nil || p.metrics != nil
+	return p.cpuFile != nil || p.traceFile != nil || p.metrics != nil ||
+		p.config.MemProfilePath != "" || p.config.BlockProfilePath != "" || p.config.MutexProfilePath != ""
 }
 
 // ProfileFunc profiles a function execution

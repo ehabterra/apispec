@@ -2,8 +2,9 @@ package spec
 
 import (
 	"net/http"
-	"path/filepath"
 	"regexp"
+
+	"github.com/ehabterra/apispec/pkg/patterns"
 )
 
 const (
@@ -205,6 +206,11 @@ type IncludeExclude struct {
 	Types     []string `yaml:"types"`
 }
 
+// matchesPattern checks if a path matches a gitignore-style pattern
+func matchesPattern(pattern, path string) bool {
+	return patterns.Match(pattern, path)
+}
+
 // ShouldIncludeFile checks if a file should be included based on include/exclude patterns
 func (ie *IncludeExclude) ShouldIncludeFile(filePath string) bool {
 	// If no patterns specified, include everything
@@ -214,7 +220,7 @@ func (ie *IncludeExclude) ShouldIncludeFile(filePath string) bool {
 
 	// Check if file matches any include pattern
 	for _, pattern := range ie.Files {
-		if matched, _ := filepath.Match(pattern, filePath); matched {
+		if matchesPattern(pattern, filePath) {
 			return true
 		}
 	}
@@ -230,7 +236,7 @@ func (ie *IncludeExclude) ShouldIncludePackage(pkgPath string) bool {
 
 	// Check if package matches any include pattern
 	for _, pattern := range ie.Packages {
-		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+		if matchesPattern(pattern, pkgPath) {
 			return true
 		}
 	}
@@ -246,7 +252,7 @@ func (ie *IncludeExclude) ShouldIncludeFunction(funcName string) bool {
 
 	// Check if function matches any include pattern
 	for _, pattern := range ie.Functions {
-		if matched, _ := filepath.Match(pattern, funcName); matched {
+		if matchesPattern(pattern, funcName) {
 			return true
 		}
 	}
@@ -262,7 +268,7 @@ func (ie *IncludeExclude) ShouldIncludeType(typeName string) bool {
 
 	// Check if type matches any include pattern
 	for _, pattern := range ie.Types {
-		if matched, _ := filepath.Match(pattern, typeName); matched {
+		if matchesPattern(pattern, typeName) {
 			return true
 		}
 	}
@@ -278,7 +284,7 @@ func (ie *IncludeExclude) ShouldExcludeFile(filePath string) bool {
 
 	// Check if file matches any exclude pattern
 	for _, pattern := range ie.Files {
-		if matched, _ := filepath.Match(pattern, filePath); matched {
+		if matchesPattern(pattern, filePath) {
 			return true
 		}
 	}
@@ -294,7 +300,7 @@ func (ie *IncludeExclude) ShouldExcludePackage(pkgPath string) bool {
 
 	// Check if package matches any exclude pattern
 	for _, pattern := range ie.Packages {
-		if matched, _ := filepath.Match(pattern, pkgPath); matched {
+		if matchesPattern(pattern, pkgPath) {
 			return true
 		}
 	}
@@ -310,7 +316,7 @@ func (ie *IncludeExclude) ShouldExcludeFunction(funcName string) bool {
 
 	// Check if function matches any exclude pattern
 	for _, pattern := range ie.Functions {
-		if matched, _ := filepath.Match(pattern, funcName); matched {
+		if matchesPattern(pattern, funcName) {
 			return true
 		}
 	}
@@ -326,7 +332,7 @@ func (ie *IncludeExclude) ShouldExcludeType(typeName string) bool {
 
 	// Check if type matches any exclude pattern
 	for _, pattern := range ie.Types {
-		if matched, _ := filepath.Match(pattern, typeName); matched {
+		if matchesPattern(pattern, typeName) {
 			return true
 		}
 	}
