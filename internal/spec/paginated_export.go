@@ -80,35 +80,65 @@ func (s *PaginatedCallGraphServer) ServeHTTP(w http.ResponseWriter, r *http.Requ
 
 // getPaginatedData returns a subset of the call graph data
 func (s *PaginatedCallGraphServer) getPaginatedData(start, end, depth int, packageFilter string) *PaginatedCytoscapeData {
-	// For now, return a simple slice of the data
-	// In a real implementation, you'd want to implement proper pagination logic
+	// Apply package filtering first
+	var filteredNodes []CytoscapeNode
+	var filteredEdges []CytoscapeEdge
 
-	var nodes []CytoscapeNode
-	var edges []CytoscapeEdge
-
-	// Simple pagination - in practice, you'd want smarter pagination
-	if start < len(s.allData.Nodes) {
-		if end > len(s.allData.Nodes) {
-			end = len(s.allData.Nodes)
+	if packageFilter != "" {
+		// Filter nodes by package
+		for _, node := range s.allData.Nodes {
+			if strings.Contains(node.Data.Package, packageFilter) {
+				filteredNodes = append(filteredNodes, node)
+			}
 		}
-		nodes = s.allData.Nodes[start:end]
+
+		// Filter edges to only include those between filtered nodes
+		nodeIDs := make(map[string]bool)
+		for _, node := range filteredNodes {
+			nodeIDs[node.Data.ID] = true
+		}
+
+		for _, edge := range s.allData.Edges {
+			if nodeIDs[edge.Data.Source] && nodeIDs[edge.Data.Target] {
+				filteredEdges = append(filteredEdges, edge)
+			}
+		}
+	} else {
+		filteredNodes = s.allData.Nodes
+		filteredEdges = s.allData.Edges
 	}
 
-	if start < len(s.allData.Edges) {
-		if end > len(s.allData.Edges) {
-			end = len(s.allData.Edges)
+	// Apply pagination with proper edge handling
+	var paginatedNodes []CytoscapeNode
+	if start < len(filteredNodes) {
+		if end > len(filteredNodes) {
+			end = len(filteredNodes)
 		}
-		edges = s.allData.Edges[start:end]
+		paginatedNodes = filteredNodes[start:end]
+	}
+
+	// Create a map of paginated node IDs for quick lookup
+	paginatedNodeIDs := make(map[string]bool)
+	for _, node := range paginatedNodes {
+		paginatedNodeIDs[node.Data.ID] = true
+	}
+
+	// Only include edges that connect paginated nodes
+	var paginatedEdges []CytoscapeEdge
+	for _, edge := range filteredEdges {
+		if paginatedNodeIDs[edge.Data.Source] && paginatedNodeIDs[edge.Data.Target] {
+			paginatedEdges = append(paginatedEdges, edge)
+		}
 	}
 
 	return &PaginatedCytoscapeData{
-		Nodes:      nodes,
-		Edges:      edges,
-		TotalNodes: len(s.allData.Nodes),
-		TotalEdges: len(s.allData.Edges),
+		Nodes:      paginatedNodes,
+		Edges:      paginatedEdges,
+		TotalNodes: len(filteredNodes),
+		TotalEdges: len(filteredEdges),
 		Page:       (start / s.pageSize) + 1,
 		PageSize:   s.pageSize,
-		HasMore:    end < len(s.allData.Nodes),
+		HasMore:    end < len(filteredNodes),
 	}
 }
 

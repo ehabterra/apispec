@@ -36,15 +36,17 @@ var serverUITemplate embed.FS
 
 // ServerConfig holds configuration for the diagram server
 type ServerConfig struct {
-	Port         int
-	Host         string
-	InputDir     string
-	PageSize     int
-	MaxDepth     int
-	EnableCORS   bool
-	CacheTimeout time.Duration
-	StaticDir    string
-	Verbose      bool
+	Port             int
+	Host             string
+	InputDir         string
+	PageSize         int
+	MaxDepth         int
+	EnableCORS       bool
+	CacheTimeout     time.Duration
+	StaticDir        string
+	Verbose          bool
+	AutoExcludeTests bool
+	AutoExcludeMocks bool
 }
 
 // DiagramServer handles HTTP requests for paginated diagram data
@@ -111,6 +113,10 @@ func parseFlags() *ServerConfig {
 	flag.DurationVar(&config.CacheTimeout, "cache-timeout", 5*time.Minute, "Cache timeout for metadata")
 	flag.StringVar(&config.StaticDir, "static", "", "Directory to serve static files from")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose logging")
+	flag.BoolVar(&config.AutoExcludeTests, "auto-exclude-tests", true, "Auto-exclude test files")
+	flag.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", true, "Auto-exclude mock files")
+	flag.BoolVar(&config.AutoExcludeTests, "aet", true, "Shorthand for --auto-exclude-tests")
+	flag.BoolVar(&config.AutoExcludeMocks, "aem", true, "Shorthand for --auto-exclude-mocks")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "APISpec Diagram Server - Serves paginated call graph diagrams\n\n")
@@ -164,6 +170,8 @@ func (s *DiagramServer) LoadMetadata() error {
 		SkipCGOPackages:              true,
 		AnalyzeFrameworkDependencies: true,
 		AutoIncludeFrameworkPackages: true,
+		AutoExcludeTests:             s.config.AutoExcludeTests, // Enable auto-exclude for test files
+		AutoExcludeMocks:             s.config.AutoExcludeMocks, // Enable auto-exclude for mock files
 	}
 
 	// Create engine and generate metadata only (no OpenAPI spec needed)
@@ -269,8 +277,8 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 	if pageSize < 1 {
 		pageSize = s.config.PageSize
 	}
-	if pageSize > 1000 {
-		pageSize = 1000
+	if pageSize > 2000 {
+		pageSize = 2000
 	}
 
 	depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
@@ -278,11 +286,22 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 		depth = s.config.MaxDepth
 	}
 
+	// Advanced search parameters
 	packageFilter := r.URL.Query().Get("package")
 	functionFilter := r.URL.Query().Get("function")
+	fileFilter := r.URL.Query().Get("file")
+	receiverFilter := r.URL.Query().Get("receiver")
+	signatureFilter := r.URL.Query().Get("signature")
+	genericFilter := r.URL.Query().Get("generic")
+
+	// Support multiple packages (comma-separated)
+	packages := strings.Split(packageFilter, ",")
+	if len(packages) == 1 && packages[0] == "" {
+		packages = []string{}
+	}
 
 	// Generate paginated data
-	data := s.generatePaginatedData(page, pageSize, depth, packageFilter, functionFilter)
+	data := s.generatePaginatedData(page, pageSize, depth, packages, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter)
 
 	loadTime := time.Since(start)
 
@@ -362,33 +381,138 @@ func (s *DiagramServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, health)
 }
 
-// generatePaginatedData generates paginated diagram data
-func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packageFilter, functionFilter string) *spec.PaginatedCytoscapeData {
+// generatePaginatedData generates paginated diagram data with depth filtering and advanced search
+func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packages []string, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter string) *spec.PaginatedCytoscapeData {
 	// Check cache first
-	cacheKey := fmt.Sprintf("%d-%d-%d-%s-%s", page, pageSize, depth, packageFilter, functionFilter)
-	if cached, exists := s.cache[cacheKey]; exists {
-		return cached
-	}
+	cacheKey := fmt.Sprintf("%d-%d-%d-%v-%s-%s-%s-%s-%s", page, pageSize, depth, packages, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter)
+	// if cached, exists := s.cache[cacheKey]; exists {
+	// return cached
+	// }
 
 	// Generate all data first
 	allData := spec.DrawCallGraphCytoscape(s.metadata)
 
-	// Apply filters
+	// Apply depth filtering first
+	var depthFilteredNodes []spec.CytoscapeNode
+	var depthFilteredEdges []spec.CytoscapeEdge
+
+	if depth > 0 && depth < 10 { // Only apply depth filtering if depth is reasonable
+		// Get root functions (functions with no incoming edges)
+		rootNodes := make(map[string]bool)
+		hasIncoming := make(map[string]bool)
+
+		for _, edge := range allData.Edges {
+			hasIncoming[edge.Data.Target] = true
+		}
+
+		for _, node := range allData.Nodes {
+			if !hasIncoming[node.Data.ID] {
+				rootNodes[node.Data.ID] = true
+			}
+		}
+
+		// BFS to find nodes within depth limit
+		visited := make(map[string]bool)
+		queue := make([]string, 0)
+		nodeDepths := make(map[string]int)
+
+		// Start with root nodes
+		for rootID := range rootNodes {
+			queue = append(queue, rootID)
+			nodeDepths[rootID] = 0
+			visited[rootID] = true
+		}
+
+		// BFS traversal
+		for len(queue) > 0 {
+			currentID := queue[0]
+			queue = queue[1:]
+			currentDepth := nodeDepths[currentID]
+
+			if currentDepth >= depth {
+				continue
+			}
+
+			// Find the node and add it
+			for _, node := range allData.Nodes {
+				if node.Data.ID == currentID {
+					depthFilteredNodes = append(depthFilteredNodes, node)
+					break
+				}
+			}
+
+			// Add connected nodes
+			for _, edge := range allData.Edges {
+				if edge.Data.Source == currentID && !visited[edge.Data.Target] {
+					visited[edge.Data.Target] = true
+					nodeDepths[edge.Data.Target] = currentDepth + 1
+					queue = append(queue, edge.Data.Target)
+
+					// Add the edge
+					depthFilteredEdges = append(depthFilteredEdges, edge)
+				}
+			}
+		}
+	} else {
+		// No depth filtering, use all data
+		depthFilteredNodes = allData.Nodes
+		depthFilteredEdges = allData.Edges
+	}
+
+	// Apply package and function filters
 	var filteredNodes []spec.CytoscapeNode
 	var filteredEdges []spec.CytoscapeEdge
 
-	// Apply package and function filters
-	for _, node := range allData.Nodes {
+	// Apply advanced filters
+	for _, node := range depthFilteredNodes {
 		includeNode := true
 
-		// Package filter
-		if packageFilter != "" && !strings.Contains(node.Data.Package, packageFilter) {
-			includeNode = false
+		// Multiple package filter (OR logic - matches any of the packages)
+		if len(packages) > 0 {
+			packageMatch := false
+			for _, pkg := range packages {
+				if strings.Contains(node.Data.Package, strings.TrimSpace(pkg)) {
+					packageMatch = true
+					break
+				}
+			}
+			if !packageMatch {
+				includeNode = false
+			}
 		}
 
 		// Function filter
-		if functionFilter != "" && !strings.Contains(node.Data.Label, functionFilter) {
+		if functionFilter != "" && !strings.Contains(strings.ToLower(node.Data.Label), strings.ToLower(functionFilter)) {
 			includeNode = false
+		}
+
+		// File filter (check position field)
+		if fileFilter != "" && node.Data.Position != "" && !strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(fileFilter)) {
+			includeNode = false
+		}
+
+		// Receiver filter
+		if receiverFilter != "" && node.Data.ReceiverType != "" && !strings.Contains(strings.ToLower(node.Data.ReceiverType), strings.ToLower(receiverFilter)) {
+			includeNode = false
+		}
+
+		// Signature filter
+		if signatureFilter != "" && node.Data.SignatureStr != "" && !strings.Contains(strings.ToLower(node.Data.SignatureStr), strings.ToLower(signatureFilter)) {
+			includeNode = false
+		}
+
+		// Generic filter (check generics field)
+		if genericFilter != "" && node.Data.Generics != nil {
+			genericMatch := false
+			for _, generic := range node.Data.Generics {
+				if strings.Contains(strings.ToLower(generic), strings.ToLower(genericFilter)) {
+					genericMatch = true
+					break
+				}
+			}
+			if !genericMatch {
+				includeNode = false
+			}
 		}
 
 		if includeNode {
@@ -397,18 +521,18 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 	}
 
 	// Filter edges to only include those between filtered nodes
-	nodeIDs := make(map[string]bool)
+	nodeIDs := make(map[string]*spec.CytoscapeNode)
 	for _, node := range filteredNodes {
-		nodeIDs[node.Data.ID] = true
+		nodeIDs[node.Data.ID] = &node
 	}
 
-	for _, edge := range allData.Edges {
-		if nodeIDs[edge.Data.Source] && nodeIDs[edge.Data.Target] {
+	for _, edge := range depthFilteredEdges {
+		if nodeIDs[edge.Data.Source] != nil && nodeIDs[edge.Data.Target] != nil {
 			filteredEdges = append(filteredEdges, edge)
 		}
 	}
 
-	// Apply pagination
+	// Apply pagination with better edge handling
 	start := (page - 1) * pageSize
 	end := start + pageSize
 
@@ -420,16 +544,54 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 		paginatedNodes = filteredNodes[start:end]
 	}
 
-	// Only include edges between paginated nodes
-	paginatedNodeIDs := make(map[string]bool)
+	// Create a map of paginated node IDs for quick lookup
+	paginatedNodeIDs := make(map[string]*spec.CytoscapeNode)
 	for _, node := range paginatedNodes {
-		paginatedNodeIDs[node.Data.ID] = true
+		paginatedNodeIDs[node.Data.ID] = &node
 	}
 
+	// Include edges that connect paginated nodes, but also include edges
+	// that connect to nodes from previous pages (to maintain graph connectivity)
 	var paginatedEdges []spec.CytoscapeEdge
+
+	// First pass: collect all edges between paginated nodes
 	for _, edge := range filteredEdges {
-		if paginatedNodeIDs[edge.Data.Source] && paginatedNodeIDs[edge.Data.Target] {
+		if paginatedNodeIDs[edge.Data.Source] != nil && paginatedNodeIDs[edge.Data.Target] != nil {
 			paginatedEdges = append(paginatedEdges, edge)
+		}
+	}
+
+	// Second pass: include edges that connect paginated nodes to other filtered nodes
+	// This helps maintain graph connectivity across pages
+	for _, edge := range filteredEdges {
+		sourceInPage := paginatedNodeIDs[edge.Data.Source]
+		targetInPage := paginatedNodeIDs[edge.Data.Target]
+
+		// Include edge if at least one node is in current page
+		if sourceInPage != nil || targetInPage != nil {
+			// Check if we already have this edge
+			edgeExists := false
+			for _, existingEdge := range paginatedEdges {
+				if existingEdge.Data.Source == edge.Data.Source && existingEdge.Data.Target == edge.Data.Target {
+					edgeExists = true
+					break
+				}
+			}
+			if !edgeExists {
+				paginatedEdges = append(paginatedEdges, edge)
+
+				// Track connected nodes that aren't in current page
+				if sourceInPage == nil {
+					node := nodeIDs[edge.Data.Source]
+					paginatedNodeIDs[edge.Data.Source] = node
+					paginatedNodes = append(paginatedNodes, *node)
+				}
+				if targetInPage == nil {
+					node := nodeIDs[edge.Data.Target]
+					paginatedNodeIDs[edge.Data.Target] = node
+					paginatedNodes = append(paginatedNodes, *node)
+				}
+			}
 		}
 	}
 

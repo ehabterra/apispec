@@ -82,6 +82,12 @@ type EngineConfig struct {
 	SkipCGOPackages              bool
 	AnalyzeFrameworkDependencies bool
 	AutoIncludeFrameworkPackages bool
+	// SkipHTTPFramework excludes net/http from framework dependency analysis
+	SkipHTTPFramework bool
+	// Auto-exclude common test files and folders (e.g., *_test.go, tests/)
+	AutoExcludeTests bool
+	// Auto-exclude common mock files and folders (e.g., *_mock.go, mocks/)
+	AutoExcludeMocks bool
 
 	moduleRoot string
 }
@@ -115,6 +121,9 @@ func DefaultEngineConfig() *EngineConfig {
 		MaxRecursionDepth:            DefaultMaxRecursionDepth,
 		AnalyzeFrameworkDependencies: false, // Default to false for performance
 		AutoIncludeFrameworkPackages: false, // Default to false for explicit control
+		SkipHTTPFramework:            false,
+		AutoExcludeTests:             true,
+		AutoExcludeMocks:             true,
 	}
 }
 
@@ -254,8 +263,16 @@ func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 		for i, f := range pkg.Syntax {
 			fileName := pkg.GoFiles[i]
 
+			// Use module-relative paths for file filtering
+			relFile := fileName
+			if e.config.moduleRoot != "" {
+				if r, err := filepath.Rel(e.config.moduleRoot, fileName); err == nil {
+					relFile = r
+				}
+			}
+
 			// Check if file should be included/excluded
-			if !e.shouldIncludeFile(fileName) {
+			if !e.shouldIncludeFile(relFile) {
 				continue
 			}
 
@@ -569,6 +586,21 @@ func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 		}
 	}
 
+	// Auto-exclude test/mock packages if enabled (case-insensitive)
+	lowerPkg := strings.ToLower(pkgPath)
+	if e.config.AutoExcludeTests {
+		if strings.HasSuffix(lowerPkg, "_test") || strings.HasSuffix(lowerPkg, "_tests") {
+			return false
+		}
+	}
+	if e.config.AutoExcludeMocks {
+		if strings.HasSuffix(lowerPkg, "mock") || strings.HasSuffix(lowerPkg, "mocks") ||
+			strings.HasSuffix(lowerPkg, "fake") || strings.HasSuffix(lowerPkg, "fakes") ||
+			strings.HasSuffix(lowerPkg, "stub") || strings.HasSuffix(lowerPkg, "stubs") {
+			return false
+		}
+	}
+
 	// If no include/exclude patterns specified, include everything (except CGO problematic)
 	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 &&
 		len(e.config.IncludePackages) == 0 && len(e.config.ExcludePackages) == 0 {
@@ -614,6 +646,23 @@ func (e *Engine) shouldIncludePackage(pkgPath string) bool {
 // shouldIncludeFile checks if a file should be included based on include/exclude patterns
 func (e *Engine) shouldIncludeFile(fileName string) bool {
 	// If no include/exclude patterns specified, include everything
+	// But first apply auto excludes when enabled
+	lower := strings.ToLower(fileName)
+	if e.config.AutoExcludeTests {
+		// Common test patterns
+		if strings.HasSuffix(lower, "test.go") || strings.Contains(lower, "/test/") || strings.Contains(lower, "/tests/") {
+			return false
+		}
+	}
+	if e.config.AutoExcludeMocks {
+		// Common mock/fake/stub patterns - more comprehensive
+		if strings.HasSuffix(lower, "mock.go") || strings.HasSuffix(lower, "fake.go") || strings.HasSuffix(lower, "stub.go") ||
+			strings.HasSuffix(lower, "mocks.go") || strings.HasSuffix(lower, "fakes.go") || strings.HasSuffix(lower, "stubs.go") {
+			return false
+		}
+	}
+
+	// If no explicit patterns specified, return true (auto-excludes already applied above)
 	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 {
 		return true
 	}
@@ -646,11 +695,8 @@ func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package
 		return nil, err
 	}
 
-	// If no filtering is specified, return all packages
-	if len(e.config.IncludeFiles) == 0 && len(e.config.ExcludeFiles) == 0 &&
-		len(e.config.IncludePackages) == 0 && len(e.config.ExcludePackages) == 0 {
-		return pkgs, nil
-	}
+	// Always apply auto-exclude logic, even if no explicit patterns are specified
+	// This ensures mock/test files are excluded by default
 
 	// Filter packages based on include/exclude patterns
 	var filteredPkgs []*packages.Package
@@ -661,8 +707,14 @@ func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package
 			var filteredSyntax []*ast.File
 
 			for i, file := range pkg.GoFiles {
-				fileName := filepath.Base(file)
-				if e.shouldIncludeFile(fileName) {
+				// Use module-relative paths for file filtering to enable directory-aware patterns
+				relFile := file
+				if e.config.moduleRoot != "" {
+					if r, err := filepath.Rel(e.config.moduleRoot, file); err == nil {
+						relFile = r
+					}
+				}
+				if e.shouldIncludeFile(relFile) {
 					filteredFiles = append(filteredFiles, file)
 					if i < len(pkg.Syntax) {
 						filteredSyntax = append(filteredSyntax, pkg.Syntax[i])
@@ -705,6 +757,9 @@ func (e *Engine) analyzeFrameworkDependencies(
 	detector := metadata.NewFrameworkDetector()
 	// Configure detector for more precise analysis
 	detector.Configure(false, 2) // Don't include external packages, max 2 levels deep
+	if e.config.SkipHTTPFramework {
+		detector.DisableFramework("http")
+	}
 	return detector.AnalyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
 }
 

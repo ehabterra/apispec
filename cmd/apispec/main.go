@@ -166,6 +166,8 @@ type CLIConfig struct {
 	SkipCGOPackages              bool
 	AnalyzeFrameworkDependencies bool
 	AutoIncludeFrameworkPackages bool
+	AutoExcludeTests             bool
+	AutoExcludeMocks             bool
 	// Profiling options
 	CPUProfile         bool
 	MemProfile         bool
@@ -261,8 +263,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.StringVar(&config.DiagramPath, "diagram", "", "Generate call graph diagram")
 	fs.StringVar(&config.DiagramPath, "g", "", "Shorthand for --diagram")
 
-	fs.BoolVar(&config.PaginatedDiagram, "paginated-diagram", true, "Use paginated diagram for better performance with large call graphs")
-	fs.BoolVar(&config.PaginatedDiagram, "pd", true, "Shorthand for --paginated-diagram")
+	fs.BoolVar(&config.PaginatedDiagram, "paginated-diagram", false, "Use paginated diagram for better performance with large call graphs")
+	fs.BoolVar(&config.PaginatedDiagram, "pd", false, "Shorthand for --paginated-diagram")
 
 	fs.IntVar(&config.DiagramPageSize, "diagram-page-size", 100, "Number of nodes per page in paginated diagram (50-500)")
 	fs.IntVar(&config.DiagramPageSize, "dps", 100, "Shorthand for --diagram-page-size")
@@ -316,6 +318,12 @@ func parseFlags(args []string) (*CLIConfig, error) {
 
 	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "auto-include-framework-packages", false, "Auto-include framework packages")
 	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "aifp", false, "Shorthand for --auto-include-framework-packages")
+
+	fs.BoolVar(&config.AutoExcludeTests, "auto-exclude-tests", true, "Auto-exclude test files")
+	fs.BoolVar(&config.AutoExcludeTests, "aet", true, "Shorthand for --auto-exclude-tests")
+
+	fs.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", true, "Auto-exclude mock files")
+	fs.BoolVar(&config.AutoExcludeMocks, "aem", true, "Shorthand for --auto-exclude-mocks")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -382,6 +390,8 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		SkipCGOPackages:              config.SkipCGOPackages,
 		AnalyzeFrameworkDependencies: config.AnalyzeFrameworkDependencies,
 		AutoIncludeFrameworkPackages: config.AutoIncludeFrameworkPackages,
+		AutoExcludeTests:             config.AutoExcludeTests,
+		AutoExcludeMocks:             config.AutoExcludeMocks,
 	}
 
 	// Create engine and generate OpenAPI spec

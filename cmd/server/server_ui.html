@@ -527,25 +527,21 @@
             transform: rotate(90deg);
         }
         
+ 
         .popup .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 1px;
+            text-align: right;
             background: none;
             border: none;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
             color: #7f8c8d;
-            padding: 4px;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 3px;
-            transition: all 0.2s ease;
         }
         
         .popup .close-btn:hover {
             color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
         }
         
     </style>
@@ -615,6 +611,8 @@
                         <option value="100" selected>100 nodes</option>
                         <option value="200">200 nodes</option>
                         <option value="500">500 nodes</option>
+                        <option value="1000">1000 nodes</option>
+                        <option value="2000">2000 nodes</option>
                     </select>
                 </div>
                 
@@ -626,17 +624,42 @@
                         <option value="3">3 levels</option>
                         <option value="4">4 levels</option>
                         <option value="5">5 levels</option>
+                        <option value="6">6 levels</option>
+                        <option value="7">7 levels</option>
+                        <option value="8">8 levels</option>
+                        <option value="9">9 levels</option>
+                        <option value="10">10 levels</option>
                     </select>
                 </div>
                 
                 <div class="control-group">
                     <label>Package Filter</label>
-                    <input type="text" id="packageFilter" placeholder="package name" onchange="resetAndLoad()">
+                    <input type="text" id="packageFilter" placeholder="package1,package2,..." onchange="resetAndLoad()" title="Enter multiple packages separated by commas">
                 </div>
                 
                 <div class="control-group">
                     <label>Function Filter</label>
                     <input type="text" id="functionFilter" placeholder="function name" onchange="resetAndLoad()">
+                </div>
+                
+                <div class="control-group">
+                    <label>File Filter</label>
+                    <input type="text" id="fileFilter" placeholder="file pattern" onchange="resetAndLoad()" title="Filter by file name or path">
+                </div>
+                
+                <div class="control-group">
+                    <label>Receiver Filter</label>
+                    <input type="text" id="receiverFilter" placeholder="receiver type" onchange="resetAndLoad()" title="Filter by method receiver type">
+                </div>
+                
+                <div class="control-group">
+                    <label>Signature Filter</label>
+                    <input type="text" id="signatureFilter" placeholder="signature pattern" onchange="resetAndLoad()" title="Filter by function signature">
+                </div>
+                
+                <div class="control-group">
+                    <label>Generic Filter</label>
+                    <input type="text" id="genericFilter" placeholder="generic type" onchange="resetAndLoad()" title="Filter by generic type">
                 </div>
                 
                 <div class="pagination">
@@ -849,13 +872,22 @@
             const depth = parseInt(document.getElementById('depth').value);
             const packageFilter = document.getElementById('packageFilter').value;
             const functionFilter = document.getElementById('functionFilter').value;
+            const fileFilter = document.getElementById('fileFilter').value;
+            const receiverFilter = document.getElementById('receiverFilter').value;
+            const signatureFilter = document.getElementById('signatureFilter').value;
+            const genericFilter = document.getElementById('genericFilter').value;
+            
+            // Clear previous data
+            cy.elements().remove();
+            allNodes.clear();
+            allEdges.clear();
             
             showLoading(true);
-            loadPage(currentPage, depth, packageFilter, functionFilter);
+            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
         }
         
         // Load a specific page from server
-        async function loadPage(page, depth, packageFilter, functionFilter) {
+        async function loadPage(page, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter) {
             if (isLoading) return;
             isLoading = true;
             
@@ -874,12 +906,48 @@
                     params.append('function', functionFilter);
                 }
                 
+                if (fileFilter) {
+                    params.append('file', fileFilter);
+                }
+                
+                if (receiverFilter) {
+                    params.append('receiver', receiverFilter);
+                }
+                
+                if (signatureFilter) {
+                    params.append('signature', signatureFilter);
+                }
+                
+                if (genericFilter) {
+                    params.append('generic', genericFilter);
+                }
+                
                 const response = await fetch(`${SERVER_URL}/api/diagram/page?${params}`);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 const data = await response.json();
+                
+                // Debug logging
+                console.log('Server response:', data);
+                console.log('Nodes:', data.nodes);
+                console.log('Edges:', data.edges);
+                
+                // Validate response structure
+                if (!data) {
+                    throw new Error('Empty response from server');
+                }
+                
+                if (!data.nodes) {
+                    console.warn('No nodes in response, initializing empty array');
+                    data.nodes = [];
+                }
+                
+                if (!data.edges) {
+                    console.warn('No edges in response, initializing empty array');
+                    data.edges = [];
+                }
                 addDataToGraph(data);
                 
             } catch (error) {
@@ -893,22 +961,38 @@
         
         // Add data to the graph
         function addDataToGraph(data) {
+            let addedNodes = 0;
+            let addedEdges = 0;
+            
             // Add new nodes
-            data.nodes.forEach(node => {
-                if (!allNodes.has(node.data.id)) {
-                    allNodes.set(node.data.id, node);
-                    cy.add(node);
-                }
-            });
+            if (data.nodes && Array.isArray(data.nodes)) {
+                data.nodes.forEach(node => {
+                    if (node && node.data && node.data.id && !allNodes.has(node.data.id)) {
+                        allNodes.set(node.data.id, node);
+                        cy.add(node);
+                        addedNodes++;
+                    }
+                });
+            }
             
             // Add new edges
-            data.edges.forEach(edge => {
-                const edgeKey = edge.data.source + '->' + edge.data.target;
-                if (!allEdges.has(edgeKey)) {
-                    allEdges.set(edgeKey, edge);
-                    cy.add(edge);
-                }
-            });
+            if (data.edges && Array.isArray(data.edges)) {
+                data.edges.forEach(edge => {
+                    if (edge && edge.data && edge.data.source && edge.data.target) {
+                        const edgeKey = edge.data.source + '->' + edge.data.target;
+                        if (!allEdges.has(edgeKey)) {
+                            allEdges.set(edgeKey, edge);
+                            cy.add(edge);
+                            addedEdges++;
+                        }
+                    }
+                });
+            }
+            
+            console.log(`Added ${addedNodes} new nodes and ${addedEdges} new edges`);
+            
+            // Validate graph connectivity
+            validateGraphConnectivity();
             
             // Update stats
             totalNodes = data.total_nodes;
@@ -939,8 +1023,14 @@
             const depth = parseInt(document.getElementById('depth').value);
             const packageFilter = document.getElementById('packageFilter').value;
             const functionFilter = document.getElementById('functionFilter').value;
+            const fileFilter = document.getElementById('fileFilter').value;
+            const receiverFilter = document.getElementById('receiverFilter').value;
+            const signatureFilter = document.getElementById('signatureFilter').value;
+            const genericFilter = document.getElementById('genericFilter').value;
+            
+            console.log(`Loading page ${currentPage} with ${allNodes.size} existing nodes and ${allEdges.size} existing edges`);
             showLoading(true);
-            loadPage(currentPage, depth, packageFilter, functionFilter);
+            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
         }
         
         // Reset and load initial data
@@ -999,6 +1089,42 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+        
+        // Validate graph connectivity
+        function validateGraphConnectivity() {
+            const cyNodes = cy.nodes();
+            const cyEdges = cy.edges();
+            
+            console.log(`Graph validation: ${cyNodes.length} nodes, ${cyEdges.length} edges`);
+            
+            // Check for orphaned nodes (nodes with no edges)
+            let orphanedNodes = 0;
+            cyNodes.forEach(node => {
+                if (node.degree() === 0) {
+                    orphanedNodes++;
+                }
+            });
+            
+            if (orphanedNodes > 0) {
+                console.warn(`Found ${orphanedNodes} orphaned nodes (nodes with no edges)`);
+            }
+            
+            // Check for broken edges (edges pointing to non-existent nodes)
+            let brokenEdges = 0;
+            cyEdges.forEach(edge => {
+                const source = cy.getElementById(edge.data('source'));
+                const target = cy.getElementById(edge.data('target'));
+                if (source.empty() || target.empty()) {
+                    brokenEdges++;
+                }
+            });
+            
+            if (brokenEdges > 0) {
+                console.warn(`Found ${brokenEdges} broken edges (edges pointing to non-existent nodes)`);
+            }
+            
+            console.log(`Graph connectivity: ${orphanedNodes} orphaned nodes, ${brokenEdges} broken edges`);
         }
         
         // Update statistics
@@ -1069,8 +1195,12 @@
                 const depth = parseInt(document.getElementById('depth').value);
                 const packageFilter = document.getElementById('packageFilter').value;
                 const functionFilter = document.getElementById('functionFilter').value;
+                const fileFilter = document.getElementById('fileFilter').value;
+                const receiverFilter = document.getElementById('receiverFilter').value;
+                const signatureFilter = document.getElementById('signatureFilter').value;
+                const genericFilter = document.getElementById('genericFilter').value;
                 showLoading(true);
-                loadPage(currentPage, depth, packageFilter, functionFilter);
+                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
             }
         }
         
@@ -1080,8 +1210,12 @@
                 const depth = parseInt(document.getElementById('depth').value);
                 const packageFilter = document.getElementById('packageFilter').value;
                 const functionFilter = document.getElementById('functionFilter').value;
+                const fileFilter = document.getElementById('fileFilter').value;
+                const receiverFilter = document.getElementById('receiverFilter').value;
+                const signatureFilter = document.getElementById('signatureFilter').value;
+                const genericFilter = document.getElementById('genericFilter').value;
                 showLoading(true);
-                loadPage(currentPage, depth, packageFilter, functionFilter);
+                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
             }
         }
         
@@ -1089,6 +1223,18 @@
         function clearFilters() {
             document.getElementById('packageFilter').value = '';
             document.getElementById('functionFilter').value = '';
+            document.getElementById('fileFilter').value = '';
+            document.getElementById('receiverFilter').value = '';
+            document.getElementById('signatureFilter').value = '';
+            document.getElementById('genericFilter').value = '';
+            resetAndLoad();
+        }
+        
+        function clearAdvancedFilters() {
+            document.getElementById('fileFilter').value = '';
+            document.getElementById('receiverFilter').value = '';
+            document.getElementById('signatureFilter').value = '';
+            document.getElementById('genericFilter').value = '';
             resetAndLoad();
         }
         
@@ -1211,8 +1357,13 @@
             // Update server URL display
             document.getElementById('serverStatus').textContent = `Connected to ${SERVER_URL}`;
             
-            // Load initial data
-            loadInitial();
+            // Load initial data with error handling
+            try {
+                loadInitial();
+            } catch (error) {
+                console.error('Failed to load initial data:', error);
+                alert(`Failed to load initial data: ${error.message}`);
+            }
         });
         
         // Handle fullscreen change

@@ -44,6 +44,8 @@ type FrameworkDetector struct {
 	// Configuration
 	IncludeExternalPackages bool // Whether to include external packages in imports
 	MaxImportDepth          int  // Maximum depth for recursive import analysis
+	// Disabled frameworks to skip during detection (e.g., "http")
+	DisabledFrameworks map[string]bool
 }
 
 // NewFrameworkDetector creates a new framework detector
@@ -81,6 +83,7 @@ func NewFrameworkDetector() *FrameworkDetector {
 		reverseDependencyGraph:  make(map[string][]string),
 		IncludeExternalPackages: false, // Default to false for more precise analysis
 		MaxImportDepth:          3,     // Default to 3 levels deep
+		DisabledFrameworks:      make(map[string]bool),
 	}
 }
 
@@ -88,6 +91,14 @@ func NewFrameworkDetector() *FrameworkDetector {
 func (fd *FrameworkDetector) Configure(includeExternal bool, maxDepth int) {
 	fd.IncludeExternalPackages = includeExternal
 	fd.MaxImportDepth = maxDepth
+}
+
+// DisableFramework disables detection for a given framework type key (e.g., "http")
+func (fd *FrameworkDetector) DisableFramework(frameworkType string) {
+	if fd.DisabledFrameworks == nil {
+		fd.DisabledFrameworks = make(map[string]bool)
+	}
+	fd.DisabledFrameworks[frameworkType] = true
 }
 
 // AnalyzeFrameworkDependencies analyzes all framework dependencies
@@ -105,7 +116,7 @@ func (fd *FrameworkDetector) AnalyzeFrameworkDependencies(
 		fd.packages[pkg.PkgPath] = pkg
 	}
 
-	// Build dependency graph
+	// Build dependency graph from filtered syntax (file-level aware)
 	fd.buildDependencyGraph(pkgs)
 
 	// Find all framework-related packages (direct + deep dependencies)
@@ -143,11 +154,18 @@ func (fd *FrameworkDetector) buildDependencyGraph(pkgs []*packages.Package) {
 		fd.dependencyGraph[pkgPath] = make([]string, 0)
 		fd.reverseDependencyGraph[pkgPath] = make([]string, 0)
 
-		// Add direct dependencies
-		for _, imp := range pkg.Imports {
-			depPath := imp.PkgPath
-			fd.dependencyGraph[pkgPath] = append(fd.dependencyGraph[pkgPath], depPath)
-			fd.reverseDependencyGraph[depPath] = append(fd.reverseDependencyGraph[depPath], pkgPath)
+		// Add direct dependencies based on filtered file syntax imports
+		for _, file := range pkg.Syntax {
+			for _, imp := range file.Imports {
+				if imp.Path != nil {
+					depPath := strings.Trim(imp.Path.Value, "\"")
+					if depPath == "" {
+						continue
+					}
+					fd.dependencyGraph[pkgPath] = append(fd.dependencyGraph[pkgPath], depPath)
+					fd.reverseDependencyGraph[depPath] = append(fd.reverseDependencyGraph[depPath], pkgPath)
+				}
+			}
 		}
 	}
 }
@@ -167,6 +185,19 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 
 	for _, pkg := range pkgs {
 		pkgPath := pkg.PkgPath
+
+		// Skip mock/test packages
+		lowerPath := strings.ToLower(pkgPath)
+		if strings.Contains(lowerPath, "/mock/") || strings.Contains(lowerPath, "/mocks/") ||
+			strings.Contains(lowerPath, "/test/") || strings.Contains(lowerPath, "/tests/") ||
+			strings.Contains(lowerPath, "/fake/") || strings.Contains(lowerPath, "/fakes/") ||
+			strings.Contains(lowerPath, "/stub/") || strings.Contains(lowerPath, "/stubs/") ||
+			strings.HasSuffix(lowerPath, "_mock") || strings.HasSuffix(lowerPath, "_mocks") ||
+			strings.HasSuffix(lowerPath, "_test") || strings.HasSuffix(lowerPath, "_tests") ||
+			strings.HasSuffix(lowerPath, "_fake") || strings.HasSuffix(lowerPath, "_fakes") ||
+			strings.HasSuffix(lowerPath, "_stub") || strings.HasSuffix(lowerPath, "_stubs") {
+			continue
+		}
 
 		// Check if this package directly imports any framework
 		frameworkType := fd.detectFrameworkType(pkg)
@@ -196,6 +227,15 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 
 		if processed[pkgPath] {
 			continue // Already processed as direct framework package
+		}
+
+		// Skip mock/test packages
+		lowerPath := strings.ToLower(pkgPath)
+		if strings.Contains(lowerPath, "/mock") || strings.Contains(lowerPath, "/mocks") ||
+			strings.Contains(lowerPath, "/test") || strings.Contains(lowerPath, "/tests") ||
+			strings.Contains(lowerPath, "/fake") || strings.Contains(lowerPath, "/fakes") ||
+			strings.Contains(lowerPath, "/stub") || strings.Contains(lowerPath, "/stubs") {
+			continue
 		}
 
 		// Check if this package depends on any framework package
@@ -231,10 +271,19 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 // detectFrameworkType detects which framework this package uses
 func (fd *FrameworkDetector) detectFrameworkType(pkg *packages.Package) string {
 	for frameworkType, patterns := range fd.FrameworkPatterns {
+		if fd.DisabledFrameworks[frameworkType] {
+			continue
+		}
 		for _, pattern := range patterns {
-			for _, imp := range pkg.Imports {
-				if strings.HasPrefix(imp.PkgPath, pattern) {
-					return frameworkType
+			// Check imports at file level to respect filtered files
+			for _, file := range pkg.Syntax {
+				for _, imp := range file.Imports {
+					if imp.Path != nil {
+						importPath := strings.Trim(imp.Path.Value, "\"")
+						if strings.HasPrefix(importPath, pattern) {
+							return frameworkType
+						}
+					}
 				}
 			}
 		}
@@ -394,6 +443,17 @@ func (fd *FrameworkDetector) findImportsRecursivelyWithDepth(
 
 // isProjectRelatedPackage checks if a package is related to the current project
 func (fd *FrameworkDetector) isProjectRelatedPackage(importPath string) bool {
+	// Skip mock/test packages - more comprehensive
+	lowerPath := strings.ToLower(importPath)
+	if strings.Contains(lowerPath, "/mock") || strings.Contains(lowerPath, "/mocks") ||
+		strings.Contains(lowerPath, "/test") || strings.Contains(lowerPath, "/tests") ||
+		strings.Contains(lowerPath, "/fake") || strings.Contains(lowerPath, "/fakes") ||
+		strings.Contains(lowerPath, "/stub") || strings.Contains(lowerPath, "/stubs") ||
+		strings.Contains(lowerPath, "mock") || strings.Contains(lowerPath, "fake") ||
+		strings.Contains(lowerPath, "stub") || strings.Contains(lowerPath, "mocked") {
+		return false
+	}
+
 	// Skip external packages that are clearly not part of the project
 	externalPrefixes := []string{
 		"github.com/gin-gonic/gin",
