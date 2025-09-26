@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/ehabterra/apispec/internal/metadata"
 )
 
 //go:embed cytoscape_template.html
@@ -57,4 +59,50 @@ func ExportCytoscapeJSON(nodes []TrackerNodeInterface, outputPath string) error 
 		return fmt.Errorf(errorWriteJSONFile, err)
 	}
 	return nil
+}
+
+// GenerateCallGraphCytoscapeHTML generates an HTML file with Cytoscape.js visualization using call graph data.
+func GenerateCallGraphCytoscapeHTML(meta *metadata.Metadata, outputPath string) error {
+	cytoscapeData := DrawCallGraphCytoscape(meta)
+	jsonData, err := json.MarshalIndent(cytoscapeData, jsonIndentPrefix, jsonIndent)
+	if err != nil {
+		return fmt.Errorf(errorMarshalCytoscape, err)
+	}
+
+	templateBytes, err := cytoscapeTemplate.ReadFile(cytoscapeTemplateFile)
+	if err != nil {
+		return fmt.Errorf(errorReadHTMLTemplate, err)
+	}
+	htmlTemplate := string(templateBytes)
+	htmlContent := strings.Replace(htmlTemplate, htmlDataPlaceholder, string(jsonData), 1)
+	err = os.WriteFile(outputPath, []byte(htmlContent), htmlFilePerm)
+	if err != nil {
+		return fmt.Errorf(errorWriteHTMLFile, err)
+	}
+	return nil
+}
+
+// ExportCallGraphCytoscapeJSON exports call graph Cytoscape data as JSON file.
+func ExportCallGraphCytoscapeJSON(meta *metadata.Metadata, outputPath string) error {
+	cytoscapeData := DrawCallGraphCytoscape(meta)
+	jsonData, err := json.MarshalIndent(cytoscapeData, jsonIndentPrefix, jsonIndent)
+	if err != nil {
+		return fmt.Errorf(errorMarshalCytoscape, err)
+	}
+	err = os.WriteFile(outputPath, jsonData, htmlFilePerm)
+	if err != nil {
+		return fmt.Errorf(errorWriteJSONFile, err)
+	}
+	return nil
+}
+
+// GenerateOptimizedCallGraphHTML generates an optimized HTML file for large call graphs
+func GenerateOptimizedCallGraphHTML(meta *metadata.Metadata, outputPath string, optimizationType string) error {
+	switch optimizationType {
+	case "paginated":
+		return GeneratePaginatedCytoscapeHTML(meta, outputPath, 100)
+	default:
+		// Fallback to original implementation
+		return GenerateCallGraphCytoscapeHTML(meta, outputPath)
+	}
 }

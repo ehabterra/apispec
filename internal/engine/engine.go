@@ -62,6 +62,8 @@ type EngineConfig struct {
 	WriteMetadata      bool
 	SplitMetadata      bool
 	DiagramPath        string
+	PaginatedDiagram   bool
+	DiagramPageSize    int
 	MaxNodesPerTree    int
 	MaxChildrenPerNode int
 	MaxArgsPerFunction int
@@ -69,15 +71,17 @@ type EngineConfig struct {
 	MaxRecursionDepth  int
 
 	// Include/exclude filters
-	IncludeFiles     []string
-	IncludePackages  []string
-	IncludeFunctions []string
-	IncludeTypes     []string
-	ExcludeFiles     []string
-	ExcludePackages  []string
-	ExcludeFunctions []string
-	ExcludeTypes     []string
-	SkipCGOPackages  bool
+	IncludeFiles                 []string
+	IncludePackages              []string
+	IncludeFunctions             []string
+	IncludeTypes                 []string
+	ExcludeFiles                 []string
+	ExcludePackages              []string
+	ExcludeFunctions             []string
+	ExcludeTypes                 []string
+	SkipCGOPackages              bool
+	AnalyzeFrameworkDependencies bool
+	AutoIncludeFrameworkPackages bool
 
 	moduleRoot string
 }
@@ -85,34 +89,39 @@ type EngineConfig struct {
 // DefaultEngineConfig returns a new EngineConfig with default values
 func DefaultEngineConfig() *EngineConfig {
 	return &EngineConfig{
-		InputDir:           DefaultInputDir,
-		OutputFile:         DefaultOutputFile,
-		Title:              DefaultTitle,
-		APIVersion:         DefaultAPIVersion,
-		Description:        "",
-		TermsOfService:     "",
-		ContactName:        DefaultContactName,
-		ContactURL:         DefaultContactURL,
-		ContactEmail:       DefaultContactEmail,
-		LicenseName:        "",
-		LicenseURL:         "",
-		OpenAPIVersion:     DefaultOpenAPIVersion,
-		ConfigFile:         "",
-		OutputConfig:       "",
-		WriteMetadata:      false,
-		SplitMetadata:      false,
-		DiagramPath:        "",
-		MaxNodesPerTree:    DefaultMaxNodesPerTree,
-		MaxChildrenPerNode: DefaultMaxChildrenPerNode,
-		MaxArgsPerFunction: DefaultMaxArgsPerFunction,
-		MaxNestedArgsDepth: DefaultMaxNestedArgsDepth,
-		MaxRecursionDepth:  DefaultMaxRecursionDepth,
+		InputDir:                     DefaultInputDir,
+		OutputFile:                   DefaultOutputFile,
+		Title:                        DefaultTitle,
+		APIVersion:                   DefaultAPIVersion,
+		Description:                  "",
+		TermsOfService:               "",
+		ContactName:                  DefaultContactName,
+		ContactURL:                   DefaultContactURL,
+		ContactEmail:                 DefaultContactEmail,
+		LicenseName:                  "",
+		LicenseURL:                   "",
+		OpenAPIVersion:               DefaultOpenAPIVersion,
+		ConfigFile:                   "",
+		OutputConfig:                 "",
+		WriteMetadata:                false,
+		SplitMetadata:                false,
+		DiagramPath:                  "",
+		PaginatedDiagram:             true,
+		DiagramPageSize:              100,
+		MaxNodesPerTree:              DefaultMaxNodesPerTree,
+		MaxChildrenPerNode:           DefaultMaxChildrenPerNode,
+		MaxArgsPerFunction:           DefaultMaxArgsPerFunction,
+		MaxNestedArgsDepth:           DefaultMaxNestedArgsDepth,
+		MaxRecursionDepth:            DefaultMaxRecursionDepth,
+		AnalyzeFrameworkDependencies: false, // Default to false for performance
+		AutoIncludeFrameworkPackages: false, // Default to false for explicit control
 	}
 }
 
 // Engine represents the OpenAPI generation engine
 type Engine struct {
-	config *EngineConfig
+	config   *EngineConfig
+	metadata *metadata.Metadata
 }
 
 // NewEngine creates a new Engine with the given configuration
@@ -165,7 +174,9 @@ func NewEngine(config *EngineConfig) *Engine {
 }
 
 // GenerateOpenAPI generates an OpenAPI specification from the configured input directory
-func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
+// GenerateMetadataOnly generates only metadata and call graph without OpenAPI spec
+// This is useful for diagram servers and other tools that only need the call graph
+func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 	// Validate input directory
 	targetPath, err := filepath.Abs(e.config.InputDir)
 	if err != nil {
@@ -198,6 +209,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
 	}
+
 	// Filter out packages with errors and continue with valid packages
 	var validPkgs []*packages.Package
 	var errorCount int
@@ -253,8 +265,88 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		}
 	}
 
-	// Generate metadata
+	// Analyze framework dependencies BEFORE metadata generation
+	if e.config.AnalyzeFrameworkDependencies {
+		fmt.Println("Analyzing framework dependencies...")
+		dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
+		if err != nil {
+			fmt.Printf("Warning: Failed to analyze framework dependencies: %v\n", err)
+		} else {
+			fmt.Printf("Framework dependency analysis completed: %d packages found\n", dependencyTree.TotalPackages)
+
+			// Auto-include framework packages in IncludePackages if requested
+			if e.config.AutoIncludeFrameworkPackages {
+				e.autoIncludeFrameworkPackages(dependencyTree)
+
+				// Re-filter packages to only include framework packages
+				fmt.Println("Re-filtering packages to include only framework packages...")
+				pkgsMetadata, fileToInfo, importPaths = e.filterToFrameworkPackages(
+					pkgsMetadata, fileToInfo, importPaths, dependencyTree)
+				fmt.Printf("Filtered to %d framework packages for metadata generation\n", len(pkgsMetadata))
+			}
+		}
+	}
+
+	// Generate metadata (now only on framework packages if auto-include is enabled)
 	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
+
+	// Store metadata in engine
+	e.metadata = meta
+
+	// Store framework dependency list in metadata
+	if e.config.AnalyzeFrameworkDependencies {
+		// Re-analyze if we filtered packages, or use existing analysis
+		if e.config.AutoIncludeFrameworkPackages {
+			// Re-analyze with filtered packages for accurate results
+			dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
+			if err == nil {
+				meta.FrameworkDependencyList = dependencyTree
+			}
+		} else {
+			// Use the original analysis
+			dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
+			if err == nil {
+				meta.FrameworkDependencyList = dependencyTree
+			}
+		}
+	}
+
+	return meta, nil
+}
+
+func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
+	// Generate metadata using the shared method
+	meta, err := e.GenerateMetadataOnly()
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate diagram if requested
+	if e.config.DiagramPath != "" {
+		// Use absolute path for diagram file
+		diagramPath := e.config.DiagramPath
+		if !filepath.IsAbs(diagramPath) {
+			diagramPath = filepath.Join(e.config.moduleRoot, diagramPath)
+		}
+
+		// Choose between paginated and regular diagram based on configuration
+		if e.config.PaginatedDiagram {
+			// Use paginated visualization for better performance with large call graphs
+			// This solves the 3997-edge performance problem by loading data progressively
+			err := intspec.GeneratePaginatedCytoscapeHTML(meta, diagramPath, e.config.DiagramPageSize)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate paginated diagram: %w", err)
+			}
+		} else {
+			// Use regular call graph visualization for smaller graphs
+			err := intspec.GenerateCallGraphCytoscapeHTML(meta, diagramPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate diagram: %w", err)
+			}
+		}
+	}
+
+	// Framework dependency analysis is now handled in GenerateMetadataOnly()
 
 	// Detect framework and load configuration
 	detector := core.NewFrameworkDetector()
@@ -341,20 +433,6 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
 	tree := intspec.NewTrackerTree(meta, limits)
-
-	// Generate diagram if requested
-	if e.config.DiagramPath != "" {
-		// Use absolute path for diagram file
-		diagramPath := e.config.DiagramPath
-		if !filepath.IsAbs(diagramPath) {
-			diagramPath = filepath.Join(e.config.moduleRoot, diagramPath)
-		}
-
-		err := intspec.GenerateCytoscapeHTML(tree.GetRoots(), diagramPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate diagram: %w", err)
-		}
-	}
 
 	// Generate OpenAPI spec
 	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, apispecConfig, generatorConfig)
@@ -604,4 +682,127 @@ func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package
 	}
 
 	return filteredPkgs, nil
+}
+
+// GetMetadata returns the current metadata
+func (e *Engine) GetMetadata() *metadata.Metadata {
+	return e.metadata
+}
+
+// GetConfig returns the current engine configuration
+func (e *Engine) GetConfig() *EngineConfig {
+	return e.config
+}
+
+// analyzeFrameworkDependencies analyzes framework dependencies
+func (e *Engine) analyzeFrameworkDependencies(
+	validPkgs []*packages.Package,
+	pkgsMetadata map[string]map[string]*ast.File,
+	fileToInfo map[*ast.File]*types.Info,
+	fset *token.FileSet,
+) (*metadata.FrameworkDependencyList, error) {
+
+	detector := metadata.NewFrameworkDetector()
+	// Configure detector for more precise analysis
+	detector.Configure(false, 2) // Don't include external packages, max 2 levels deep
+	return detector.AnalyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
+}
+
+// autoIncludeFrameworkPackages automatically adds framework packages to IncludePackages
+func (e *Engine) autoIncludeFrameworkPackages(frameworkList *metadata.FrameworkDependencyList) {
+	if frameworkList == nil || len(frameworkList.AllPackages) == 0 {
+		return
+	}
+
+	fmt.Println("Auto-including framework packages in IncludePackages...")
+
+	// Create a map of existing include packages for quick lookup
+	existingIncludes := make(map[string]bool)
+	for _, pkg := range e.config.IncludePackages {
+		existingIncludes[pkg] = true
+	}
+
+	// Add framework packages to IncludePackages
+	addedCount := 0
+	for _, dep := range frameworkList.AllPackages {
+		if !existingIncludes[dep.PackagePath] {
+			e.config.IncludePackages = append(e.config.IncludePackages, dep.PackagePath)
+			existingIncludes[dep.PackagePath] = true
+			addedCount++
+		}
+	}
+
+	fmt.Printf("Added %d framework packages to IncludePackages\n", addedCount)
+	fmt.Printf("Total IncludePackages: %d\n", len(e.config.IncludePackages))
+
+	// Print the added packages
+	if addedCount > 0 {
+		fmt.Println("Added framework packages:")
+		for _, dep := range frameworkList.AllPackages {
+			if existingIncludes[dep.PackagePath] {
+				frameworkType := dep.FrameworkType
+				if dep.IsDirect {
+					frameworkType += " (direct)"
+				} else {
+					frameworkType += " (indirect)"
+				}
+				fmt.Printf("  - %s (%s)\n", dep.PackagePath, frameworkType)
+			}
+		}
+	}
+}
+
+// filterToFrameworkPackages filters packages to only include framework-related packages
+func (e *Engine) filterToFrameworkPackages(
+	pkgsMetadata map[string]map[string]*ast.File,
+	fileToInfo map[*ast.File]*types.Info,
+	importPaths map[string]string,
+	frameworkList *metadata.FrameworkDependencyList,
+) (map[string]map[string]*ast.File, map[*ast.File]*types.Info, map[string]string) {
+
+	// Create a set of framework package paths for quick lookup
+	frameworkPackages := make(map[string]bool)
+	for _, dep := range frameworkList.AllPackages {
+		frameworkPackages[dep.PackagePath] = true
+	}
+
+	// Filter packages metadata
+	filteredPkgsMetadata := make(map[string]map[string]*ast.File)
+	for pkgPath, files := range pkgsMetadata {
+		if frameworkPackages[pkgPath] {
+			filteredPkgsMetadata[pkgPath] = files
+		}
+	}
+
+	// Filter file to info mapping
+	filteredFileToInfo := make(map[*ast.File]*types.Info)
+	for file, info := range fileToInfo {
+		// Check if this file belongs to a framework package
+		fileBelongsToFramework := false
+		for _, files := range filteredPkgsMetadata {
+			for _, pkgFile := range files {
+				if pkgFile == file {
+					fileBelongsToFramework = true
+					break
+				}
+			}
+			if fileBelongsToFramework {
+				break
+			}
+		}
+
+		if fileBelongsToFramework {
+			filteredFileToInfo[file] = info
+		}
+	}
+
+	// Filter import paths
+	filteredImportPaths := make(map[string]string)
+	for fileName, pkgPath := range importPaths {
+		if frameworkPackages[pkgPath] {
+			filteredImportPaths[fileName] = pkgPath
+		}
+	}
+
+	return filteredPkgsMetadata, filteredFileToInfo, filteredImportPaths
 }

@@ -47,7 +47,7 @@
 
 ### Other Frameworks
 - [x] **Gin**: Full support for route registration, and parameter handling
-- [x] **Chi**: Full support for route mounting, grouping, and parameter extraction
+- [x] **Chi**: Full support for route mounting, grouping, parameter extraction, and render package integration
 - [x] **Echo**: Full support for route registration, grouping, and parameter handling
 - [x] **Fiber**: Full support for route registration, grouping, and parameter handling
 - [x] **Standard net/http**: Basic support for `HandleFunc` and `Handle` calls

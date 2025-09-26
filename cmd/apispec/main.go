@@ -129,39 +129,43 @@ func printVersion() {
 
 // CLIConfig holds the configuration parsed from command line arguments
 type CLIConfig struct {
-	InputDir           string
-	OutputFile         string
-	Title              string
-	APIVersion         string
-	Description        string
-	TermsOfService     string
-	ContactName        string
-	ContactURL         string
-	ContactEmail       string
-	LicenseName        string
-	LicenseURL         string
-	OpenAPIVersion     string
-	ConfigFile         string
-	OutputConfig       string
-	WriteMetadata      bool
-	SplitMetadata      bool
-	DiagramPath        string
-	MaxNodesPerTree    int
-	MaxChildrenPerNode int
-	MaxArgsPerFunction int
-	MaxNestedArgsDepth int
-	MaxRecursionDepth  int
-	ShowVersion        bool
-	OutputFlagSet      bool
-	IncludeFiles       []string
-	IncludePackages    []string
-	IncludeFunctions   []string
-	IncludeTypes       []string
-	ExcludeFiles       []string
-	ExcludePackages    []string
-	ExcludeFunctions   []string
-	ExcludeTypes       []string
-	SkipCGOPackages    bool
+	InputDir                     string
+	OutputFile                   string
+	Title                        string
+	APIVersion                   string
+	Description                  string
+	TermsOfService               string
+	ContactName                  string
+	ContactURL                   string
+	ContactEmail                 string
+	LicenseName                  string
+	LicenseURL                   string
+	OpenAPIVersion               string
+	ConfigFile                   string
+	OutputConfig                 string
+	WriteMetadata                bool
+	SplitMetadata                bool
+	DiagramPath                  string
+	PaginatedDiagram             bool
+	DiagramPageSize              int
+	MaxNodesPerTree              int
+	MaxChildrenPerNode           int
+	MaxArgsPerFunction           int
+	MaxNestedArgsDepth           int
+	MaxRecursionDepth            int
+	ShowVersion                  bool
+	OutputFlagSet                bool
+	IncludeFiles                 []string
+	IncludePackages              []string
+	IncludeFunctions             []string
+	IncludeTypes                 []string
+	ExcludeFiles                 []string
+	ExcludePackages              []string
+	ExcludeFunctions             []string
+	ExcludeTypes                 []string
+	SkipCGOPackages              bool
+	AnalyzeFrameworkDependencies bool
+	AutoIncludeFrameworkPackages bool
 	// Profiling options
 	CPUProfile         bool
 	MemProfile         bool
@@ -194,7 +198,15 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		fmt.Fprintf(os.Stderr, "%s\n%s\n\nUsage: %s [flags]\n\nFlags:\n",
 			engine.CopyrightNotice, engine.LicenseNotice, os.Args[0])
 		fs.PrintDefaults()
-		fmt.Printf("\nExamples:\n  %s -o spec.yaml -d ./api\n", os.Args[0])
+		fmt.Printf("\nExamples:\n")
+		fmt.Printf("  %s -o spec.yaml -d ./api\n", os.Args[0])
+		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html\n", os.Args[0])
+		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html --diagram-page-size 50\n", os.Args[0])
+		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html --no-paginated-diagram\n", os.Args[0])
+		fmt.Printf("\nPerformance Tips:\n")
+		fmt.Printf("  • Use --paginated-diagram (default) for large call graphs (1000+ edges)\n")
+		fmt.Printf("  • Use --diagram-page-size 50 for very large graphs (3000+ edges)\n")
+		fmt.Printf("  • Use --no-paginated-diagram for small graphs (< 500 edges)\n")
 	}
 
 	// Parse flags
@@ -249,6 +261,12 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.StringVar(&config.DiagramPath, "diagram", "", "Generate call graph diagram")
 	fs.StringVar(&config.DiagramPath, "g", "", "Shorthand for --diagram")
 
+	fs.BoolVar(&config.PaginatedDiagram, "paginated-diagram", true, "Use paginated diagram for better performance with large call graphs")
+	fs.BoolVar(&config.PaginatedDiagram, "pd", true, "Shorthand for --paginated-diagram")
+
+	fs.IntVar(&config.DiagramPageSize, "diagram-page-size", 100, "Number of nodes per page in paginated diagram (50-500)")
+	fs.IntVar(&config.DiagramPageSize, "dps", 100, "Shorthand for --diagram-page-size")
+
 	fs.IntVar(&config.MaxNodesPerTree, "max-nodes", engine.DefaultMaxNodesPerTree, "Maximum nodes per tracker tree")
 	fs.IntVar(&config.MaxNodesPerTree, "mn", engine.DefaultMaxNodesPerTree, "Shorthand for --max-nodes")
 
@@ -293,6 +311,12 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.StringVar(&config.ProfileTracePath, "trace-profile-path", "trace.out", "Trace profile output file")
 	fs.StringVar(&config.ProfileMetricsPath, "metrics-path", "metrics.json", "Custom metrics output file")
 
+	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "analyze-framework-dependencies", false, "Analyze framework dependencies")
+	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "afd", false, "Shorthand for --analyze-framework-dependencies")
+
+	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "auto-include-framework-packages", false, "Auto-include framework packages")
+	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "aifp", false, "Shorthand for --auto-include-framework-packages")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -309,6 +333,13 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		}
 	})
 
+	// Validate diagram page size
+	if config.DiagramPageSize < 50 {
+		config.DiagramPageSize = 50
+	} else if config.DiagramPageSize > 500 {
+		config.DiagramPageSize = 500
+	}
+
 	return config, nil
 }
 
@@ -316,37 +347,41 @@ func parseFlags(args []string) (*CLIConfig, error) {
 func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error) {
 	// Create engine configuration
 	engineConfig := &engine.EngineConfig{
-		InputDir:           config.InputDir,
-		OutputFile:         config.OutputFile,
-		Title:              config.Title,
-		APIVersion:         config.APIVersion,
-		Description:        config.Description,
-		TermsOfService:     config.TermsOfService,
-		ContactName:        config.ContactName,
-		ContactURL:         config.ContactURL,
-		ContactEmail:       config.ContactEmail,
-		LicenseName:        config.LicenseName,
-		LicenseURL:         config.LicenseURL,
-		OpenAPIVersion:     config.OpenAPIVersion,
-		ConfigFile:         config.ConfigFile,
-		OutputConfig:       config.OutputConfig,
-		WriteMetadata:      config.WriteMetadata,
-		SplitMetadata:      config.SplitMetadata,
-		DiagramPath:        config.DiagramPath,
-		MaxNodesPerTree:    config.MaxNodesPerTree,
-		MaxChildrenPerNode: config.MaxChildrenPerNode,
-		MaxArgsPerFunction: config.MaxArgsPerFunction,
-		MaxNestedArgsDepth: config.MaxNestedArgsDepth,
-		MaxRecursionDepth:  config.MaxRecursionDepth,
-		IncludeFiles:       config.IncludeFiles,
-		IncludePackages:    config.IncludePackages,
-		IncludeFunctions:   config.IncludeFunctions,
-		IncludeTypes:       config.IncludeTypes,
-		ExcludeFiles:       config.ExcludeFiles,
-		ExcludePackages:    config.ExcludePackages,
-		ExcludeFunctions:   config.ExcludeFunctions,
-		ExcludeTypes:       config.ExcludeTypes,
-		SkipCGOPackages:    config.SkipCGOPackages,
+		InputDir:                     config.InputDir,
+		OutputFile:                   config.OutputFile,
+		Title:                        config.Title,
+		APIVersion:                   config.APIVersion,
+		Description:                  config.Description,
+		TermsOfService:               config.TermsOfService,
+		ContactName:                  config.ContactName,
+		ContactURL:                   config.ContactURL,
+		ContactEmail:                 config.ContactEmail,
+		LicenseName:                  config.LicenseName,
+		LicenseURL:                   config.LicenseURL,
+		OpenAPIVersion:               config.OpenAPIVersion,
+		ConfigFile:                   config.ConfigFile,
+		OutputConfig:                 config.OutputConfig,
+		WriteMetadata:                config.WriteMetadata,
+		SplitMetadata:                config.SplitMetadata,
+		DiagramPath:                  config.DiagramPath,
+		PaginatedDiagram:             config.PaginatedDiagram,
+		DiagramPageSize:              config.DiagramPageSize,
+		MaxNodesPerTree:              config.MaxNodesPerTree,
+		MaxChildrenPerNode:           config.MaxChildrenPerNode,
+		MaxArgsPerFunction:           config.MaxArgsPerFunction,
+		MaxNestedArgsDepth:           config.MaxNestedArgsDepth,
+		MaxRecursionDepth:            config.MaxRecursionDepth,
+		IncludeFiles:                 config.IncludeFiles,
+		IncludePackages:              config.IncludePackages,
+		IncludeFunctions:             config.IncludeFunctions,
+		IncludeTypes:                 config.IncludeTypes,
+		ExcludeFiles:                 config.ExcludeFiles,
+		ExcludePackages:              config.ExcludePackages,
+		ExcludeFunctions:             config.ExcludeFunctions,
+		ExcludeTypes:                 config.ExcludeTypes,
+		SkipCGOPackages:              config.SkipCGOPackages,
+		AnalyzeFrameworkDependencies: config.AnalyzeFrameworkDependencies,
+		AutoIncludeFrameworkPackages: config.AutoIncludeFrameworkPackages,
 	}
 
 	// Create engine and generate OpenAPI spec

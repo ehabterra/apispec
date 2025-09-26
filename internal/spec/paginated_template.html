@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APISpec Call Graph - Paginated View</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        .container { 
+            width: 100vw; 
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            display: none; /* Hide header for full screen */
+        }
+        .controls { 
+            background: rgba(40, 40, 40, 0.95);
+            padding: 10px 15px; 
+            border-radius: 0; 
+            margin: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border: none;
+            border-bottom: 1px solid #404040;
+            flex-shrink: 0;
+        }
+        .stats { 
+            display: flex; 
+            gap: 15px; 
+            margin-bottom: 10px; 
+            flex-wrap: wrap;
+        }
+        .stat { 
+            background: rgba(59, 130, 246, 0.1);
+            padding: 8px 12px; 
+            border-radius: 4px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            min-width: 100px;
+        }
+        .stat.total { 
+            background: rgba(255, 152, 0, 0.1);
+            border-color: rgba(255, 152, 0, 0.3);
+        }
+        .stat.loaded { 
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #b0b0b0;
+            margin-bottom: 4px;
+        }
+        .stat-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group label {
+            font-size: 12px;
+            color: #b0b0b0;
+            font-weight: 500;
+        }
+        .control-group input, .control-group select {
+            padding: 6px 10px;
+            border: 1px solid #404040;
+            border-radius: 4px;
+            background: rgba(30, 30, 30, 0.8);
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        #cy { 
+            width: 100%; 
+            height: 100%;
+            border: none;
+            border-radius: 0; 
+            background: rgba(20, 20, 20, 0.8);
+            flex: 1;
+        }
+        button { 
+            padding: 8px 12px; 
+            margin: 2px; 
+            border: none; 
+            border-radius: 4px; 
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white; 
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        button:hover { 
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        button:disabled { 
+            background: #6b7280; 
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .loading { 
+            text-align: center; 
+            padding: 20px; 
+            color: #b0b0b0;
+            font-size: 16px;
+        }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #404040;
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .progress-bar {
+            width: 100%;
+            height: 3px;
+            background: rgba(40, 40, 40, 0.8);
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="stats">
+                <div class="stat total">
+                    <div class="stat-label">Total Nodes</div>
+                    <div class="stat-value" id="totalNodes">-</div>
+                </div>
+                <div class="stat total">
+                    <div class="stat-label">Total Edges</div>
+                    <div class="stat-value" id="totalEdges">-</div>
+                </div>
+                <div class="stat loaded">
+                    <div class="stat-label">Loaded Nodes</div>
+                    <div class="stat-value" id="loadedNodes">0</div>
+                </div>
+                <div class="stat loaded">
+                    <div class="stat-label">Loaded Edges</div>
+                    <div class="stat-value" id="loadedEdges">0</div>
+                </div>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+            
+            <div class="controls-row">
+                <div class="control-group">
+                    <label>Page Size</label>
+                    <select id="pageSize" onchange="changePageSize()">
+                        <option value="50">50 nodes</option>
+                        <option value="100" selected>100 nodes</option>
+                        <option value="200">200 nodes</option>
+                        <option value="500">500 nodes</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Depth</label>
+                    <select id="depth" onchange="loadInitial()">
+                        <option value="1">1 level</option>
+                        <option value="2" selected>2 levels</option>
+                        <option value="3">3 levels</option>
+                        <option value="4">4 levels</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Package Filter</label>
+                    <input type="text" id="packageFilter" placeholder="package name" onchange="loadInitial()">
+                </div>
+                <div class="control-group">
+                    <button onclick="loadMore()" id="loadMoreBtn">Load More</button>
+                    <button onclick="resetView()">Reset View</button>
+                    <button onclick="fitView()">Fit View</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="cy"></div>
+        <div id="loading" class="loading" style="display: none;">Loading more data...</div>
+    </div>
+
+    <script>
+        // Paginated data from Go
+        const paginatedData = %s;
+        
+        let cy;
+        let currentPage = 1;
+        let pageSize = 100;
+        let totalNodes = 0;
+        let totalEdges = 0;
+        let allNodes = new Map();
+        let allEdges = new Map();
+        
+        // Initialize Cytoscape
+        cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: [],
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': '#3b82f6',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': '#ffffff',
+                        'text-outline-color': '#0f172a',
+                        'text-outline-width': 1,
+                        'font-size': '12px',
+                        'font-weight': '600',
+                        'width': 'label',
+                        'height': 'label',
+                        'border-width': 2,
+                        'border-color': '#1e40af',
+                        'border-radius': '15px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': 100,
+                        'shape': 'round-rectangle',
+                        'padding': '8px'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#666',
+                        'target-arrow-color': '#666',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                },
+                {
+                    selector: '.highlighted',
+                    style: {
+                        'background-color': '#ff6b6b',
+                        'line-color': '#ff6b6b',
+                        'target-arrow-color': '#ff6b6b'
+                    }
+                }
+            ],
+            layout: {
+                name: 'dagre',
+                rankDir: 'TB',
+                spacingFactor: 1.5
+            }
+        });
+        
+        // Load initial data
+        function loadInitial() {
+            currentPage = 1;
+            pageSize = parseInt(document.getElementById('pageSize').value);
+            const depth = parseInt(document.getElementById('depth').value);
+            const packageFilter = document.getElementById('packageFilter').value;
+            
+            showLoading(true);
+            loadPage(currentPage, depth, packageFilter);
+        }
+        
+        // Load a specific page
+        function loadPage(page, depth, packageFilter) {
+            // Simulate API call delay
+            setTimeout(() => {
+                // In a real implementation, this would make an HTTP request
+                // For now, we'll use the embedded data
+                const start = (page - 1) * pageSize;
+                const end = start + pageSize;
+                
+                // Filter and add data
+                const filteredData = filterData(paginatedData, start, end, packageFilter);
+                addDataToGraph(filteredData);
+                
+                showLoading(false);
+            }, 300);
+        }
+        
+        // Filter data based on package filter
+        function filterData(data, start, end, packageFilter) {
+            let filteredNodes = data.nodes || [];
+            let filteredEdges = data.edges || [];
+            
+            // Apply package filter
+            if (packageFilter) {
+                filteredNodes = filteredNodes.filter(node => 
+                    node.data.package && node.data.package.includes(packageFilter)
+                );
+            }
+            
+            // Apply pagination
+            const paginatedNodes = filteredNodes.slice(start, end);
+            const nodeIds = new Set(paginatedNodes.map(n => n.data.id));
+            
+            // Only include edges between loaded nodes
+            const paginatedEdges = filteredEdges.filter(edge => 
+                nodeIds.has(edge.data.source) && nodeIds.has(edge.data.target)
+            );
+            
+            return {
+                nodes: paginatedNodes,
+                edges: paginatedEdges,
+                total_nodes: filteredNodes.length,
+                total_edges: filteredEdges.length,
+                has_more: end < filteredNodes.length
+            };
+        }
+        
+        // Add data to the graph
+        function addDataToGraph(data) {
+            // Add new nodes
+            data.nodes.forEach(node => {
+                if (!allNodes.has(node.data.id)) {
+                    allNodes.set(node.data.id, node);
+                    cy.add(node);
+                }
+            });
+            
+            // Add new edges
+            data.edges.forEach(edge => {
+                const edgeKey = edge.data.source + '->' + edge.data.target;
+                if (!allEdges.has(edgeKey)) {
+                    allEdges.set(edgeKey, edge);
+                    cy.add(edge);
+                }
+            });
+            
+            // Update stats
+            totalNodes = data.total_nodes;
+            totalEdges = data.total_edges;
+            updateStats();
+            
+            // Update load more button
+            document.getElementById('loadMoreBtn').disabled = !data.has_more;
+            
+            // Fit view
+            cy.fit();
+        }
+        
+        // Load more data
+        function loadMore() {
+            currentPage++;
+            const depth = parseInt(document.getElementById('depth').value);
+            const packageFilter = document.getElementById('packageFilter').value;
+            showLoading(true);
+            loadPage(currentPage, depth, packageFilter);
+        }
+        
+        // Change page size
+        function changePageSize() {
+            loadInitial();
+        }
+        
+        // Update statistics
+        function updateStats() {
+            document.getElementById('totalNodes').textContent = totalNodes;
+            document.getElementById('totalEdges').textContent = totalEdges;
+            document.getElementById('loadedNodes').textContent = allNodes.size;
+            document.getElementById('loadedEdges').textContent = allEdges.size;
+            
+            // Update progress bar
+            const progress = totalNodes > 0 ? (allNodes.size / totalNodes) * 100 : 0;
+            document.getElementById('progressBar').style.width = progress + '%';
+        }
+        
+        // Show/hide loading indicator
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        // Reset view
+        function resetView() {
+            cy.elements().remove();
+            allNodes.clear();
+            allEdges.clear();
+            currentPage = 1;
+            updateStats();
+            loadInitial();
+        }
+        
+        // Fit view
+        function fitView() {
+            cy.fit();
+        }
+        
+        // Event handlers
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            cy.elements().removeClass('highlighted');
+            node.addClass('highlighted');
+            node.neighborhood().addClass('highlighted');
+        });
+        
+        cy.on('tap', function(evt) {
+            if (evt.target === cy) {
+                cy.elements().removeClass('highlighted');
+            }
+        });
+        
+        // Load initial data on page load
+        document.addEventListener('DOMContentLoaded', loadInitial);
+    </script>
+</body>
+</html>

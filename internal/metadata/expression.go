@@ -469,6 +469,16 @@ func handleFuncType(e *ast.FuncType, info *types.Info, pkgName string, fset *tok
 		}
 	}
 
+	var typeParams []CallArgument
+	if e.TypeParams != nil {
+		typeParams = make([]CallArgument, len(e.TypeParams.List))
+		for i, field := range e.TypeParams.List {
+			fieldType := ExprToCallArgument(field.Type, info, pkgName, fset, meta)
+			fieldType.SetName(field.Names[0].Name)
+			typeParams[i] = *fieldType
+		}
+	}
+
 	var results []CallArgument
 	if e.Results != nil {
 		results = make([]CallArgument, len(e.Results.List))
@@ -481,6 +491,7 @@ func handleFuncType(e *ast.FuncType, info *types.Info, pkgName string, fset *tok
 	funcType := NewCallArgument(meta)
 	funcType.SetKind(KindFuncType)
 	funcType.Args = params
+	funcType.TParams = typeParams
 
 	resultsArg := NewCallArgument(meta)
 	resultsArg.SetKind(KindFuncResults)
@@ -604,7 +615,12 @@ func callArgToString(arg CallArgument, parent *CallArgument) string {
 		return "..."
 	case KindFuncType:
 		if arg.Fun != nil {
-			return fmt.Sprintf("func(%s) %s", strings.Join(callArgToStringArgs(arg.Args, &arg), ", "), callArgToString(*arg.Fun, &arg))
+			typeParams := ""
+			if len(arg.TParams) > 0 {
+				typeParams = fmt.Sprintf("[%s]", strings.Join(tparamCallArgToStringArgs(arg.TParams), ", "))
+			}
+
+			return fmt.Sprintf("func%s(%s) %s", typeParams, strings.Join(callArgToStringArgs(arg.Args, &arg), ", "), callArgToString(*arg.Fun, &arg))
 		}
 		return "func()"
 	case KindFuncResults:
@@ -612,6 +628,15 @@ func callArgToString(arg CallArgument, parent *CallArgument) string {
 	default:
 		return arg.GetRaw()
 	}
+}
+
+// callArgToStringArgs converts a slice of CallArguments to string representations
+func tparamCallArgToStringArgs(args []CallArgument) []string {
+	result := make([]string, len(args))
+	for i := range args {
+		result[i] = args[i].GetName() + " " + args[i].GetType()
+	}
+	return result
 }
 
 // callArgToStringArgs converts a slice of CallArguments to string representations

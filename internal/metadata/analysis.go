@@ -24,13 +24,17 @@ func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
 
 // getEnclosingFunctionName finds the function that contains a given position
 // It can return either a declared function (*ast.FuncDecl) or a function literal (*ast.FuncLit)
-func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, fset *token.FileSet) (string, string) {
+func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, fset *token.FileSet, meta *Metadata) (string, string, string) {
 	// First, check for function literals (they can be nested inside declared functions)
 	funcLit := findEnclosingFunctionLiteral(file, pos)
 	if funcLit != nil {
 		// Return the function literal identifier (e.g., "FuncLitmain.go:42:15")
 		position := getPosition(funcLit.Pos(), fset)
-		return fmt.Sprintf("FuncLit:%s", position), ""
+		var signatureStr string
+		if fnType := info.TypeOf(funcLit.Type); fnType != nil {
+			signatureStr = fnType.String()
+		}
+		return fmt.Sprintf("FuncLit:%s", position), "", signatureStr
 	}
 
 	// Fallback to declared functions
@@ -49,10 +53,14 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 				parts = append(parts, recvType)
 			}
 
-			return fn.Name.Name, strings.Join(parts, ".")
+			var signatureStr string
+			signature := ExprToCallArgument(fn.Type, info, "", fset, meta)
+			signatureStr = CallArgToString(*signature)
+
+			return fn.Name.Name, strings.Join(parts, "."), signatureStr
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
 
 // findEnclosingFunctionLiteral recursively searches for the innermost function literal containing the position
@@ -80,11 +88,11 @@ func findEnclosingFunctionLiteral(file *ast.File, pos token.Pos) *ast.FuncLit {
 }
 
 // findParentFunction finds the parent function that contains a function literal
-func findParentFunction(file *ast.File, pos token.Pos, info *types.Info) (string, string) {
+func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *token.FileSet, meta *Metadata) (string, string, string) {
 	// Find the function literal first
 	funcLit := findEnclosingFunctionLiteral(file, pos)
 	if funcLit == nil {
-		return "", ""
+		return "", "", ""
 	}
 
 	// Now find the function that contains this function literal
@@ -104,10 +112,16 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info) (string
 				parts = append(parts, recvType)
 			}
 
-			return fn.Name.Name, strings.Join(parts, ".")
+			var signatureStr string
+			signature := ExprToCallArgument(fn.Type, info, "", fset, meta)
+			if signature != nil {
+				signatureStr = CallArgToString(*signature)
+			}
+
+			return fn.Name.Name, strings.Join(parts, "."), signatureStr
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
 
 // DefaultImportName returns the default import name for an import path (last non-version segment)

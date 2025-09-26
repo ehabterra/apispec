@@ -1036,6 +1036,8 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			ReturnVars:    returnVars,
 			AssignmentMap: assignmentsInFunc,
 		}
+
+		f.Functions[fn.Name.Name].SignatureStr = metadata.StringPool.Get(CallArgToString(f.Functions[fn.Name.Name].Signature))
 	}
 }
 
@@ -1173,7 +1175,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 		}
 
 		// Find the enclosing function name for this assignment
-		funcName, _ := getEnclosingFunctionName(file, assign.Pos(), info, fset)
+		funcName, _, _ := getEnclosingFunctionName(file, assign.Pos(), info, fset, metadata)
 
 		// Handle identifier assignments (var = ...)
 		switch expr := lhsExpr.(type) {
@@ -1315,8 +1317,19 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		return
 	}
 
-	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info, fset)
+	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
+	var calleeSignatureStr string
+	signature := ExprToCallArgument(call.Fun, info, pkgName, fset, metadata)
+	if signature != nil {
+		calleeSignatureStr = CallArgToString(*signature)
+	}
+	if !strings.HasPrefix(calleeSignatureStr, "func") {
+		calleeType := info.TypeOf(call.Fun)
+		if calleeType != nil {
+			calleeSignatureStr = calleeType.String()
+		}
+	}
 
 	if callerFunc != "" && calleeFunc != "" {
 		// Determine if the caller is a function literal
@@ -1324,14 +1337,15 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		if strings.HasPrefix(callerFunc, "FuncLit:") {
 			// For function literals, we need to find the parent function
 			// that contains this function literal
-			parentFunc, parentParts := findParentFunction(file, call.Pos(), info)
+			parentFunc, parentParts, signatureStr := findParentFunction(file, call.Pos(), info, fset, metadata)
 			if parentFunc != "" {
 				parentFunction = &Call{
-					Meta:     metadata,
-					Name:     metadata.StringPool.Get(parentFunc),
-					Pkg:      metadata.StringPool.Get(pkgName),
-					Position: -1, // No position for parent function
-					RecvType: metadata.StringPool.Get(parentParts),
+					Meta:         metadata,
+					Name:         metadata.StringPool.Get(parentFunc),
+					Pkg:          metadata.StringPool.Get(pkgName),
+					Position:     -1, // No position for parent function
+					RecvType:     metadata.StringPool.Get(parentParts),
+					SignatureStr: metadata.StringPool.Get(signatureStr),
 				}
 			}
 		}
@@ -1369,6 +1383,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			-1, // No position for caller
 			metadata.StringPool.Get(callerParts),
 		)
+		cgEdge.Caller.SignatureStr = metadata.StringPool.Get(callerSignatureStr)
 
 		cgEdge.Callee = *cgEdge.NewCall(
 			metadata.StringPool.Get(calleeFunc),
@@ -1376,6 +1391,8 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
 			metadata.StringPool.Get(calleeParts),
 		)
+		cgEdge.Callee.SignatureStr = metadata.StringPool.Get(calleeSignatureStr)
+
 		// Use instance ID for calleeMap indexing to avoid conflicts
 		calleeInstance := cgEdge.Callee.InstanceID()
 		if _, ok := calleeMap[calleeInstance]; ok {

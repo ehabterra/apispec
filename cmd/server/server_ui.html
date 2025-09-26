@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APISpec Diagram Server - Interactive UI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        
+        .container { 
+            width: 100vw; 
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header */
+        .header {
+            background: rgba(30, 30, 30, 0.95);
+            padding: 8px 15px;
+            border-bottom: 1px solid #404040;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 300;
+            margin: 0;
+        }
+        
+        .server-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Controls Panel */
+        .controls { 
+            background: rgba(40, 40, 40, 0.95);
+            padding: 8px 15px; 
+            border-bottom: 1px solid #404040;
+            flex-shrink: 0;
+        }
+        
+        .controls-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        
+        .controls-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        
+        .control-group label {
+            font-size: 11px;
+            color: #b0b0b0;
+            font-weight: 500;
+        }
+        
+        .control-group input, .control-group select {
+            padding: 4px 8px;
+            border: 1px solid #404040;
+            border-radius: 3px;
+            background: rgba(30, 30, 30, 0.8);
+            color: #e0e0e0;
+            font-size: 12px;
+            min-width: 80px;
+        }
+        
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+        }
+        
+        .control-group input[type="text"] {
+            min-width: 120px;
+        }
+        
+        button { 
+            padding: 6px 10px; 
+            margin: 2px; 
+            border: none; 
+            border-radius: 3px; 
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white; 
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+        
+        button:hover { 
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        button:disabled { 
+            background: #6b7280; 
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        button.primary {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+        
+        button.primary:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+        }
+        
+        button.danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+        
+        button.danger:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+        }
+        
+        /* Stats Panel */
+        .stats { 
+            display: flex; 
+            gap: 12px; 
+            flex-wrap: wrap;
+        }
+        
+        .stat { 
+            background: rgba(59, 130, 246, 0.1);
+            padding: 6px 10px; 
+            border-radius: 3px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            min-width: 80px;
+        }
+        
+        .stat.total { 
+            background: rgba(255, 152, 0, 0.1);
+            border-color: rgba(255, 152, 0, 0.3);
+        }
+        
+        .stat.loaded { 
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }
+        
+        .stat-label {
+            font-size: 10px;
+            color: #b0b0b0;
+            margin-bottom: 2px;
+        }
+        
+        .stat-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffffff;
+        }
+        
+        /* Progress Bar */
+        .progress-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 5px 0;
+        }
+        
+        .progress-bar {
+            flex: 1;
+            height: 4px;
+            background: rgba(40, 40, 40, 0.8);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .progress-text {
+            font-size: 11px;
+            color: #b0b0b0;
+            min-width: 60px;
+        }
+        
+        /* Cytoscape Container */
+        #cy { 
+            width: 100%; 
+            height: 100%;
+            border: none;
+            background: rgba(20, 20, 20, 0.8);
+            flex: 1;
+        }
+        
+        /* Loading Indicator */
+        .loading { 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center; 
+            color: #b0b0b0;
+            font-size: 14px;
+            z-index: 1000;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #404040;
+        }
+        
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #404040;
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Pagination Controls */
+        .pagination {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .pagination button {
+            min-width: 30px;
+            padding: 4px 8px;
+        }
+        
+        .pagination .page-info {
+            font-size: 11px;
+            color: #b0b0b0;
+            min-width: 80px;
+            text-align: center;
+        }
+        
+        /* Filter Panel */
+        .filter-panel {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-tag {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .filter-tag .remove {
+            margin-left: 4px;
+            cursor: pointer;
+            color: #ef4444;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .controls-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            
+            .control-group {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+            }
+            
+            .stats {
+                justify-content: center;
+            }
+        }
+        
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 1000;
+        }
+        
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        /* Popup styles */
+        .popup {
+            position: absolute;
+            background: #1e293b;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            max-width: 400px;
+            max-height: 500px;
+            z-index: 1000;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            color: #e2e8f0;
+            font-size: 12px;
+            display: none;
+            overflow: hidden;
+        }
+        
+        .popup-header {
+            background: #1e293b;
+            border-bottom: 1px solid #3b82f6;
+            padding: 12px 15px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .popup h3 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+        }
+        
+        .popup-content {
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .popup .section {
+            margin-bottom: 12px;
+        }
+        
+        .popup .section-title {
+            font-weight: bold;
+            color: #3b82f6;
+            margin-bottom: 5px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .popup .section-content {
+            color: #e2e8f0;
+            font-size: 12px;
+        }
+        
+        .popup .list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .popup .list li {
+            padding: 2px 0;
+            border-bottom: 1px solid #374151;
+        }
+        
+        .popup .list li:last-child {
+            border-bottom: none;
+        }
+        
+        .popup .generic-item {
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin: 1px 0;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            display: inline-block;
+            font-size: 10px;
+        }
+        
+        .popup .position-info {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px 6px;
+            border-radius: 3px;
+            border: 1px solid #374151;
+        }
+        
+        /* Call path item styles */
+        .call-path-item {
+            margin-bottom: 10px;
+            background: #334155;
+            border-radius: 4px;
+            border-left: 3px solid #3b82f6;
+            overflow: hidden;
+        }
+        
+        .call-path-header {
+            padding: 8px;
+            cursor: pointer;
+            background: #475569;
+            border-bottom: 1px solid #64748b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .call-path-header:hover {
+            background: #64748b;
+        }
+        
+        .call-path-content {
+            padding: 8px;
+            display: none;
+        }
+        
+        .call-path-content.expanded {
+            display: block;
+        }
+        
+        .caller-info, .position-info, .param-values, .generic-values, .func-lit-info {
+            margin: 3px 0;
+            font-size: 12px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+        
+        .func-lit-info-box {
+            margin-top: 8px;
+            padding: 8px;
+            background-color: rgba(59, 130, 246, 0.1);
+            border-radius: 4px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-size: 11px;
+        }
+        
+        .caller-info strong, .position-info strong, .param-values strong, .generic-values strong {
+            color: #3b82f6;
+        }
+        
+        .collapse-icon {
+            font-size: 14px;
+            color: #6c757d;
+            transition: transform 0.2s ease;
+        }
+        
+        .collapse-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .popup .close-btn {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #7f8c8d;
+            padding: 4px;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+        }
+        
+        .popup .close-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <h1>APISpec Diagram Server</h1>
+                <div class="server-status">
+                    <div class="status-indicator"></div>
+                    <span id="serverStatus">Connected</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button onclick="refreshData()" class="primary">Refresh</button>
+                <button onclick="exportData()">Export</button>
+            </div>
+        </div>
+        
+        <!-- Controls Panel -->
+        <div class="controls">
+            <!-- Stats Row -->
+            <div class="controls-row">
+                <div class="stats">
+                    <div class="stat total">
+                        <div class="stat-label">Total Nodes</div>
+                        <div class="stat-value" id="totalNodes">-</div>
+                    </div>
+                    <div class="stat total">
+                        <div class="stat-label">Total Edges</div>
+                        <div class="stat-value" id="totalEdges">-</div>
+                    </div>
+                    <div class="stat loaded">
+                        <div class="stat-label">Loaded Nodes</div>
+                        <div class="stat-value" id="loadedNodes">0</div>
+                    </div>
+                    <div class="stat loaded">
+                        <div class="stat-label">Loaded Edges</div>
+                        <div class="stat-value" id="loadedEdges">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Load Time</div>
+                        <div class="stat-value" id="loadTime">-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress Row -->
+            <div class="controls-row">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+            </div>
+            
+            <!-- Main Controls Row -->
+            <div class="controls-row">
+                <div class="control-group">
+                    <label>Page Size</label>
+                    <select id="pageSize" onchange="resetAndLoad()">
+                        <option value="25">25 nodes</option>
+                        <option value="50">50 nodes</option>
+                        <option value="100" selected>100 nodes</option>
+                        <option value="200">200 nodes</option>
+                        <option value="500">500 nodes</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>Depth</label>
+                    <select id="depth" onchange="resetAndLoad()">
+                        <option value="1">1 level</option>
+                        <option value="2" selected>2 levels</option>
+                        <option value="3">3 levels</option>
+                        <option value="4">4 levels</option>
+                        <option value="5">5 levels</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>Package Filter</label>
+                    <input type="text" id="packageFilter" placeholder="package name" onchange="resetAndLoad()">
+                </div>
+                
+                <div class="control-group">
+                    <label>Function Filter</label>
+                    <input type="text" id="functionFilter" placeholder="function name" onchange="resetAndLoad()">
+                </div>
+                
+                <div class="pagination">
+                    <button onclick="goToFirstPage()" id="firstPageBtn" disabled>«</button>
+                    <button onclick="goToPrevPage()" id="prevPageBtn" disabled>‹</button>
+                    <div class="page-info" id="pageInfo">Page 1 of 1</div>
+                    <button onclick="goToNextPage()" id="nextPageBtn" disabled>›</button>
+                    <button onclick="goToLastPage()" id="lastPageBtn" disabled>»</button>
+                </div>
+            </div>
+            
+            <!-- Action Buttons Row -->
+            <div class="controls-row">
+                <button onclick="loadMore()" id="loadMoreBtn" class="primary">Load More</button>
+                <button onclick="resetAndLoad()">Reset View</button>
+                <button onclick="fitView()">Fit View</button>
+                <button onclick="clearFilters()">Clear Filters</button>
+                <select id="layoutSelect" onchange="changeLayout()">
+                    <option value="dagre">Left-Right Tree (Recommended)</option>
+                    <option value="breadthfirst">Mind Map</option>
+                    <option value="cose">Compound Layout</option>
+                    <option value="grid">Grid Layout</option>
+                    <option value="circle">Circle Layout</option>
+                    <option value="concentric">Concentric Layout</option>
+                </select>
+                <button onclick="toggleFullscreen()" id="fullscreenBtn">Fullscreen</button>
+            </div>
+            
+            <!-- Filter Tags Row -->
+            <div class="controls-row">
+                <div class="filter-panel" id="filterTags">
+                    <!-- Active filters will be displayed here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cytoscape Container -->
+        <div id="cy"></div>
+        
+        <!-- Popup for detailed information -->
+        <div id="nodePopup" class="popup">
+            <div class="popup-header">
+                <h3 id="popupTitle">Function Details</h3>
+                <button class="close-btn" onclick="hidePopup()">&times;</button>
+            </div>
+            <div class="popup-content">
+                <div class="section">
+                    <div class="section-title">Package</div>
+                    <div class="section-content" id="popupPackage">-</div>
+                </div>
+            <div class="section">
+                <div class="section-title">Receiver Type</div>
+                <div class="section-content" id="popupReceiverType">-</div>
+            </div>
+            <div class="section">
+                <div class="section-title">Call Paths</div>
+                <div class="section-content">
+                    <ul class="list" id="popupCallPaths"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Parameter Types</div>
+                <div class="section-content">
+                    <ul class="list" id="popupParamTypes"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Parameter Values</div>
+                <div class="section-content">
+                    <ul class="list" id="popupPassedParams"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Generics</div>
+                <div class="section-content" id="popupGenerics"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Generic Values</div>
+                <div class="section-content" id="popupPassedGenerics"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Position</div>
+                <div class="section-content position-info" id="popupPosition"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Signature</div>
+                <div class="section-content" id="popupSignature"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Type Parameters</div>
+                <div class="section-content">
+                    <ul class="list" id="popupTypeParams"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Return Variables</div>
+                <div class="section-content">
+                    <ul class="list" id="popupReturnVars"></ul>
+                </div>
+            </div>
+            </div>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading" style="display: none;">Loading data from server...</div>
+    </div>
+
+    <script>
+        // Server configuration
+        const SERVER_URL = '%s';
+        let cy;
+        let currentPage = 1;
+        let totalPages = 1;
+        let pageSize = 100;
+        let totalNodes = 0;
+        let totalEdges = 0;
+        let allNodes = new Map();
+        let allEdges = new Map();
+        let isLoading = false;
+        let currentLayout = 'dagre';
+        let isFullscreen = false;
+        
+        // Initialize Cytoscape
+        cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: [],
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': '#3b82f6',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': '#ffffff',
+                        'text-outline-color': '#0f172a',
+                        'text-outline-width': 1,
+                        'font-size': '12px',
+                        'font-weight': '600',
+                        'width': 'label',
+                        'height': 'label',
+                        'border-width': 2,
+                        'border-color': '#1e40af',
+                        'border-radius': '15px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': 100,
+                        'text-margin-y': '0px',
+                        'shape': 'round-rectangle',
+                        'padding': '8px'
+                    }
+                },
+                {
+                    selector: 'node[is_parent_function = "true"]',
+                    style: {
+                        'background-color': '#3b82f6',
+                        'width': 'label',
+                        'height': 'label',
+                        'font-size': '14px',
+                        'font-weight': '700',
+                        'border-color': '#1e40af',
+                        'border-width': 3,
+                        'border-style': 'solid',
+                        'z-index': 0,
+                        'shape': 'round-rectangle',
+                        'padding': '10px'
+                    }
+                },
+                {
+                    selector: 'node[type = "function"]',
+                    style: {
+                        'background-color': '#2ecc71',
+                        'border-color': '#27ae60',
+                        'border-width': 2
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#666',
+                        'target-arrow-color': '#666',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                },
+                {
+                    selector: '.highlighted',
+                    style: {
+                        'background-color': '#ff6b6b',
+                        'line-color': '#ff6b6b',
+                        'target-arrow-color': '#ff6b6b'
+                    }
+                }
+            ],
+            layout: {
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeDimensionsIncludeLabels: true,
+                fit: true,
+                padding: 50,
+                spacingFactor: 1.2,
+                animate: false
+            }
+        });
+        
+        // Load initial data
+        function loadInitial() {
+            currentPage = 1;
+            pageSize = parseInt(document.getElementById('pageSize').value);
+            const depth = parseInt(document.getElementById('depth').value);
+            const packageFilter = document.getElementById('packageFilter').value;
+            const functionFilter = document.getElementById('functionFilter').value;
+            
+            showLoading(true);
+            loadPage(currentPage, depth, packageFilter, functionFilter);
+        }
+        
+        // Load a specific page from server
+        async function loadPage(page, depth, packageFilter, functionFilter) {
+            if (isLoading) return;
+            isLoading = true;
+            
+            try {
+                const params = new URLSearchParams({
+                    page: page.toString(),
+                    size: pageSize.toString(),
+                    depth: depth.toString()
+                });
+                
+                if (packageFilter) {
+                    params.append('package', packageFilter);
+                }
+                
+                if (functionFilter) {
+                    params.append('function', functionFilter);
+                }
+                
+                const response = await fetch(`${SERVER_URL}/api/diagram/page?${params}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addDataToGraph(data);
+                
+            } catch (error) {
+                console.error('Failed to load page:', error);
+                alert(`Failed to load data: ${error.message}`);
+            } finally {
+                isLoading = false;
+                showLoading(false);
+            }
+        }
+        
+        // Add data to the graph
+        function addDataToGraph(data) {
+            // Add new nodes
+            data.nodes.forEach(node => {
+                if (!allNodes.has(node.data.id)) {
+                    allNodes.set(node.data.id, node);
+                    cy.add(node);
+                }
+            });
+            
+            // Add new edges
+            data.edges.forEach(edge => {
+                const edgeKey = edge.data.source + '->' + edge.data.target;
+                if (!allEdges.has(edgeKey)) {
+                    allEdges.set(edgeKey, edge);
+                    cy.add(edge);
+                }
+            });
+            
+            // Update stats
+            totalNodes = data.total_nodes;
+            totalEdges = data.total_edges;
+            totalPages = Math.ceil(totalNodes / pageSize);
+            updateStats(data.load_time_ms);
+            updatePagination();
+            updateFilters();
+            
+            // Apply layout and fit view
+            const layout = cy.layout({
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeDimensionsIncludeLabels: true,
+                fit: true,
+                padding: 50,
+                spacingFactor: 1.2,
+                animate: false
+            });
+            layout.run();
+        }
+        
+        // Load more data
+        function loadMore() {
+            if (isLoading) return;
+            
+            currentPage++;
+            const depth = parseInt(document.getElementById('depth').value);
+            const packageFilter = document.getElementById('packageFilter').value;
+            const functionFilter = document.getElementById('functionFilter').value;
+            showLoading(true);
+            loadPage(currentPage, depth, packageFilter, functionFilter);
+        }
+        
+        // Reset and load initial data
+        function resetAndLoad() {
+            cy.elements().remove();
+            allNodes.clear();
+            allEdges.clear();
+            currentPage = 1;
+            updateStats(0);
+            updatePagination();
+            loadInitial();
+        }
+        
+        // Refresh data from server
+        async function refreshData() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/api/diagram/refresh`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Data refreshed:', result.message);
+                
+                // Reset and reload
+                resetAndLoad();
+                
+            } catch (error) {
+                console.error('Failed to refresh data:', error);
+                alert(`Failed to refresh data: ${error.message}`);
+                showLoading(false);
+            }
+        }
+        
+        // Export data
+        function exportData() {
+            const data = {
+                nodes: Array.from(allNodes.values()),
+                edges: Array.from(allEdges.values()),
+                totalNodes: totalNodes,
+                totalEdges: totalEdges,
+                timestamp: new Date().toISOString()
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `apispec-diagram-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Update statistics
+        function updateStats(loadTime) {
+            document.getElementById('totalNodes').textContent = totalNodes;
+            document.getElementById('totalEdges').textContent = totalEdges;
+            document.getElementById('loadedNodes').textContent = allNodes.size;
+            document.getElementById('loadedEdges').textContent = allEdges.size;
+            document.getElementById('loadTime').textContent = loadTime ? `${loadTime}ms` : '-';
+            
+            // Update progress bar
+            const progress = totalNodes > 0 ? (allNodes.size / totalNodes) * 100 : 0;
+            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('progressText').textContent = Math.round(progress) + '%';
+        }
+        
+        // Update pagination controls
+        function updatePagination() {
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('firstPageBtn').disabled = currentPage <= 1;
+            document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+            document.getElementById('lastPageBtn').disabled = currentPage >= totalPages;
+            document.getElementById('loadMoreBtn').disabled = currentPage >= totalPages;
+        }
+        
+        // Update filter tags
+        function updateFilters() {
+            const filterTags = document.getElementById('filterTags');
+            filterTags.innerHTML = '';
+            
+            const packageFilter = document.getElementById('packageFilter').value;
+            const functionFilter = document.getElementById('functionFilter').value;
+            
+            if (packageFilter) {
+                const tag = document.createElement('div');
+                tag.className = 'filter-tag';
+                tag.innerHTML = `Package: ${packageFilter} <span class="remove" onclick="clearPackageFilter()">×</span>`;
+                filterTags.appendChild(tag);
+            }
+            
+            if (functionFilter) {
+                const tag = document.createElement('div');
+                tag.className = 'filter-tag';
+                tag.innerHTML = `Function: ${functionFilter} <span class="remove" onclick="clearFunctionFilter()">×</span>`;
+                filterTags.appendChild(tag);
+            }
+        }
+        
+        // Pagination functions
+        function goToFirstPage() {
+            if (currentPage > 1) {
+                currentPage = 1;
+                resetAndLoad();
+            }
+        }
+        
+        function goToPrevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                resetAndLoad();
+            }
+        }
+        
+        function goToNextPage() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                const depth = parseInt(document.getElementById('depth').value);
+                const packageFilter = document.getElementById('packageFilter').value;
+                const functionFilter = document.getElementById('functionFilter').value;
+                showLoading(true);
+                loadPage(currentPage, depth, packageFilter, functionFilter);
+            }
+        }
+        
+        function goToLastPage() {
+            if (currentPage < totalPages) {
+                currentPage = totalPages;
+                const depth = parseInt(document.getElementById('depth').value);
+                const packageFilter = document.getElementById('packageFilter').value;
+                const functionFilter = document.getElementById('functionFilter').value;
+                showLoading(true);
+                loadPage(currentPage, depth, packageFilter, functionFilter);
+            }
+        }
+        
+        // Filter functions
+        function clearFilters() {
+            document.getElementById('packageFilter').value = '';
+            document.getElementById('functionFilter').value = '';
+            resetAndLoad();
+        }
+        
+        function clearPackageFilter() {
+            document.getElementById('packageFilter').value = '';
+            resetAndLoad();
+        }
+        
+        function clearFunctionFilter() {
+            document.getElementById('functionFilter').value = '';
+            resetAndLoad();
+        }
+        
+        // Show/hide loading indicator
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        // Fit view
+        function fitView() {
+            cy.fit();
+        }
+        
+        // Change layout
+        function changeLayout() {
+            const layoutName = document.getElementById('layoutSelect').value;
+            let layoutOptions = {
+                name: layoutName,
+                animate: 'end',
+                animationDuration: 1000,
+                fit: true,
+                padding: 50
+            };
+            
+            if (layoutName === 'cose') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    nodeRepulsion: 400000,
+                    nodeOverlap: 10,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 0.45,
+                    nestingFactor: 0.1,
+                    gravity: 0.25,
+                    numIter: 2500,
+                    initialTemp: 200,
+                    coolingFactor: 0.95,
+                    minTemp: 1.0
+                };
+            } else if (layoutName === 'dagre') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    rankDir: 'LR',
+                    ranker: 'network-simplex',
+                    nodeSep: 80,
+                    edgeSep: 30,
+                    rankSep: 100,
+                    acyclicer: 'greedy',
+                    compound: true
+                };
+            } else if (layoutName === 'breadthfirst') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    directed: true,
+                    circle: false,
+                    grid: false,
+                    spacingFactor: 1.75,
+                    animationDuration: 1000
+                };
+            }
+            
+            const layout = cy.layout(layoutOptions);
+            layout.run();
+        }
+        
+        // Toggle fullscreen
+        function toggleFullscreen() {
+            if (!isFullscreen) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+                isFullscreen = true;
+                document.getElementById('fullscreenBtn').textContent = 'Exit Fullscreen';
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+                isFullscreen = false;
+                document.getElementById('fullscreenBtn').textContent = 'Fullscreen';
+            }
+        }
+        
+        // Event handlers
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            const nodeData = node.data();
+            
+            // Remove previous highlights
+            cy.elements().removeClass('highlighted');
+            
+            // Highlight clicked node and its neighborhood
+            node.addClass('highlighted');
+            const connectedEdges = node.connectedEdges();
+            const connectedNodes = node.neighborhood();
+            connectedEdges.addClass('highlighted');
+            connectedNodes.addClass('highlighted');
+            
+            // Show popup with detailed information
+            showNodePopup(nodeData, evt.originalEvent);
+        });
+        
+        cy.on('tap', function(evt) {
+            if (evt.target === cy) {
+                cy.elements().removeClass('highlighted');
+                hidePopup();
+            }
+        });
+        
+        // Load initial data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update server URL display
+            document.getElementById('serverStatus').textContent = `Connected to ${SERVER_URL}`;
+            
+            // Load initial data
+            loadInitial();
+        });
+        
+        // Handle fullscreen change
+        document.addEventListener('fullscreenchange', function() {
+            isFullscreen = !!document.fullscreenElement;
+            document.getElementById('fullscreenBtn').textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+        });
+        
+        // Popup functions
+        function showNodePopup(nodeData, event) {
+            const popup = document.getElementById('nodePopup');
+            
+            // Set title
+            document.getElementById('popupTitle').textContent = nodeData.label || 'Function Details';
+            
+            // Set package
+            document.getElementById('popupPackage').textContent = nodeData.package || '-';
+            
+            // Set receiver type (hide section if empty)
+            const receiverTypeSection = document.getElementById('popupReceiverType').closest('.section');
+            const receiverTypeContent = document.getElementById('popupReceiverType');
+            if (nodeData.receiver_type && nodeData.receiver_type.trim() !== '') {
+                receiverTypeContent.textContent = nodeData.receiver_type;
+                receiverTypeSection.style.display = 'block';
+            } else {
+                receiverTypeSection.style.display = 'none';
+            }
+            
+            // Set position (hide section if empty)
+            const positionSection = document.getElementById('popupPosition').closest('.section');
+            const positionContent = document.getElementById('popupPosition');
+            if (nodeData.position && nodeData.position.trim() !== '') {
+                positionContent.textContent = nodeData.position;
+                positionSection.style.display = 'block';
+            } else {
+                positionSection.style.display = 'none';
+            }
+            
+            // Set call paths with detailed information
+            const callPathsList = document.getElementById('popupCallPaths');
+            callPathsList.innerHTML = '';
+            if (nodeData.call_paths && nodeData.call_paths.length > 0) {
+                nodeData.call_paths.forEach((callPath, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'call-path-item';
+                    
+                    // Create header with caller info and collapse icon
+                    const header = document.createElement('div');
+                    header.className = 'call-path-header';
+                    
+                    const callerInfo = document.createElement('div');
+                    callerInfo.innerHTML = `<strong>Caller:</strong> ${callPath.caller_pkg}.${callPath.caller_name}`;
+                    
+                    const collapseIcon = document.createElement('span');
+                    collapseIcon.className = 'collapse-icon';
+                    collapseIcon.textContent = '▶';
+                    
+                    header.appendChild(callerInfo);
+                    header.appendChild(collapseIcon);
+                    
+                    // Create content area
+                    const content = document.createElement('div');
+                    content.className = 'call-path-content';
+                    
+                    // Create position info
+                    if (callPath.position) {
+                        const positionInfo = document.createElement('div');
+                        positionInfo.className = 'position-info';
+                        positionInfo.innerHTML = `<strong>Position:</strong> ${callPath.position}`;
+                        content.appendChild(positionInfo);
+                    }
+                    
+                    // Create parameter values (only if not empty)
+                    if (callPath.param_values && callPath.param_values.length > 0) {
+                        const paramValuesDiv = document.createElement('div');
+                        paramValuesDiv.className = 'param-values';
+                        paramValuesDiv.innerHTML = `<strong>Parameter Values:</strong> ${callPath.param_values.join(', ')}`;
+                        content.appendChild(paramValuesDiv);
+                    }
+                    
+                    // Create generic values (only if not empty)
+                    if (callPath.generic_values && Object.keys(callPath.generic_values).length > 0) {
+                        const genericValuesDiv = document.createElement('div');
+                        genericValuesDiv.className = 'generic-values';
+                        const genericEntries = Object.entries(callPath.generic_values).map(([key, value]) => `${key} = ${value}`);
+                        genericValuesDiv.innerHTML = `<strong>Generic Values:</strong> ${genericEntries.join(', ')}`;
+                        content.appendChild(genericValuesDiv);
+                    }
+                    
+                    // Create FuncLit information if available
+                    if (callPath.func_lit_info) {
+                        const funcLitDiv = document.createElement('div');
+                        funcLitDiv.className = 'func-lit-info func-lit-info-box';
+                        
+                        let funcLitContent = '<strong>FuncLit Details:</strong><br>';
+                        if (callPath.func_lit_info.position) {
+                            funcLitContent += `<strong>Position:</strong> ${callPath.func_lit_info.position}<br>`;
+                        }
+                        if (callPath.func_lit_info.package) {
+                            funcLitContent += `<strong>Package:</strong> ${callPath.func_lit_info.package}<br>`;
+                        }
+
+                        if (false && callPath.func_lit_info.signature) {
+                            funcLitContent += `<strong>Signature:</strong> ${callPath.func_lit_info.signature}`;
+                        }
+                        
+                        funcLitDiv.innerHTML = funcLitContent;
+                        content.appendChild(funcLitDiv);
+                    }
+                    
+                    // Add click handler for collapse/expand
+                    header.addEventListener('click', function() {
+                        const isExpanded = content.classList.contains('expanded');
+                        if (isExpanded) {
+                            content.classList.remove('expanded');
+                            collapseIcon.classList.remove('expanded');
+                        } else {
+                            content.classList.add('expanded');
+                            collapseIcon.classList.add('expanded');
+                        }
+                    });
+                    
+                    li.appendChild(header);
+                    li.appendChild(content);
+                    callPathsList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = 'No call paths available';
+                callPathsList.appendChild(li);
+            }
+            
+            // Set parameter types (hide section if empty)
+            const paramTypesSection = document.getElementById('popupParamTypes').closest('.section');
+            const paramTypesList = document.getElementById('popupParamTypes');
+            paramTypesList.innerHTML = '';
+            if (nodeData.param_types && nodeData.param_types.length > 0) {
+                nodeData.param_types.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    paramTypesList.appendChild(li);
+                });
+                paramTypesSection.style.display = 'block';
+            } else {
+                paramTypesSection.style.display = 'none';
+            }
+            
+            // Set passed parameters (hide section if empty)
+            const passedParamsSection = document.getElementById('popupPassedParams').closest('.section');
+            const passedParamsList = document.getElementById('popupPassedParams');
+            passedParamsList.innerHTML = '';
+            if (nodeData.param_values && nodeData.param_values.length > 0) {
+                nodeData.param_values.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    passedParamsList.appendChild(li);
+                });
+                passedParamsSection.style.display = 'block';
+            } else {
+                passedParamsSection.style.display = 'none';
+            }
+            
+            // Set generics (hide section if empty)
+            const genericsSection = document.getElementById('popupGenerics').closest('.section');
+            const genericsDiv = document.getElementById('popupGenerics');
+            genericsDiv.innerHTML = '';
+            if (nodeData.generics && Object.keys(nodeData.generics).length > 0) {
+                Object.entries(nodeData.generics).forEach(([key, value]) => {
+                    const span = document.createElement('span');
+                    span.className = 'generic-item';
+                    span.textContent = `${key} = ${value}`;
+                    genericsDiv.appendChild(span);
+                });
+                genericsSection.style.display = 'block';
+            } else {
+                genericsSection.style.display = 'none';
+            }
+            
+            // Set passed generic types (hide section if empty)
+            const passedGenericsSection = document.getElementById('popupPassedGenerics').closest('.section');
+            const passedGenericsDiv = document.getElementById('popupPassedGenerics');
+            passedGenericsDiv.innerHTML = '';
+            if (nodeData.generic_values && Object.keys(nodeData.generic_values).length > 0) {
+                Object.entries(nodeData.generic_values).forEach(([key, value]) => {
+                    const span = document.createElement('span');
+                    span.className = 'generic-item';
+                    span.textContent = `${key} = ${value}`;
+                    passedGenericsDiv.appendChild(span);
+                });
+                passedGenericsSection.style.display = 'block';
+            } else {
+                passedGenericsSection.style.display = 'none';
+            }
+            
+            // Set signature string (hide section if empty)
+            const signatureSection = document.getElementById('popupSignature').closest('.section');
+            const signatureContent = document.getElementById('popupSignature');
+            if (nodeData.signature_str && nodeData.signature_str.trim() !== '') {
+                signatureContent.textContent = nodeData.signature_str;
+                signatureSection.style.display = 'block';
+            } else {
+                signatureSection.style.display = 'none';
+            }
+            
+            // Set type parameters (hide section if empty)
+            const typeParamsSection = document.getElementById('popupTypeParams').closest('.section');
+            const typeParamsList = document.getElementById('popupTypeParams');
+            typeParamsList.innerHTML = '';
+            if (nodeData.type_params && nodeData.type_params.length > 0) {
+                nodeData.type_params.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    typeParamsList.appendChild(li);
+                });
+                typeParamsSection.style.display = 'block';
+            } else {
+                typeParamsSection.style.display = 'none';
+            }
+            
+            // Set return variables (hide section if empty)
+            const returnVarsSection = document.getElementById('popupReturnVars').closest('.section');
+            const returnVarsList = document.getElementById('popupReturnVars');
+            returnVarsList.innerHTML = '';
+            if (nodeData.return_vars && nodeData.return_vars.length > 0) {
+                nodeData.return_vars.forEach(returnVar => {
+                    const li = document.createElement('li');
+                    li.textContent = returnVar;
+                    returnVarsList.appendChild(li);
+                });
+                returnVarsSection.style.display = 'block';
+            } else {
+                returnVarsSection.style.display = 'none';
+            }
+            
+            // Position popup near mouse cursor
+            const rect = document.getElementById('cy').getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            popup.style.left = (x + 20) + 'px';
+            popup.style.top = (y - 20) + 'px';
+            popup.style.display = 'block';
+        }
+        
+        function hidePopup() {
+            const popup = document.getElementById('nodePopup');
+            popup.style.display = 'none';
+        }
+        
+        // Hide popup when clicking outside
+        document.addEventListener('click', function(event) {
+            const popup = document.getElementById('nodePopup');
+            const cyContainer = document.getElementById('cy');
+            
+            if (!popup.contains(event.target) && !cyContainer.contains(event.target)) {
+                hidePopup();
+            }
+        });
+    </script>
+</body>
+</html>

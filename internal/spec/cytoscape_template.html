@@ -13,8 +13,9 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
             min-height: 100vh;
+            color: #e0e0e0;
         }
         .container {
             height: 100vh;
@@ -22,33 +23,34 @@
             flex-direction: column;
         }
         .header {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 30, 30, 0.95);
             padding: 15px 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             z-index: 1000;
+            border-bottom: 1px solid #404040;
         }
         .header h1 {
             margin: 0;
-            color: #2c3e50;
+            color: #ffffff;
             font-size: 24px;
             font-weight: 300;
         }
         .header p {
             margin: 5px 0 0 0;
-            color: #7f8c8d;
+            color: #b0b0b0;
             font-size: 14px;
         }
         .controls {
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(40, 40, 40, 0.9);
             padding: 10px 20px;
-            border-bottom: 1px solid #ecf0f1;
+            border-bottom: 1px solid #404040;
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
         }
         .controls button {
-            background: #3498db;
+            background: #3b82f6;
             color: white;
             border: none;
             padding: 8px 16px;
@@ -59,32 +61,33 @@
             transition: all 0.2s ease;
         }
         .controls button:hover {
-            background: #2980b9;
+            background: #2563eb;
             transform: translateY(-1px);
         }
         .controls select {
             padding: 8px 12px;
             border-radius: 6px;
-            border: 1px solid #bdc3c7;
+            border: 1px solid #555;
             font-size: 13px;
-            background: white;
+            background: #2a2a2a;
+            color: #e0e0e0;
         }
         .stats {
-            background: rgba(255, 255, 255, 0.8);
+            background: rgba(50, 50, 50, 0.8);
             padding: 8px 20px;
             font-size: 12px;
-            color: #2c3e50;
-            border-bottom: 1px solid #ecf0f1;
+            color: #e0e0e0;
+            border-bottom: 1px solid #404040;
         }
         #cy {
             flex: 1;
-            background: #f8f9fa;
+            background: #1a1a1a;
             border: none;
         }
         .legend {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 30, 30, 0.95);
             padding: 10px 20px;
-            border-top: 1px solid #ecf0f1;
+            border-top: 1px solid #404040;
             display: flex;
             justify-content: center;
             gap: 30px;
@@ -93,7 +96,7 @@
             display: flex;
             align-items: center;
             font-size: 12px;
-            color: #2c3e50;
+            color: #e0e0e0;
         }
         .legend-color {
             width: 12px;
@@ -101,6 +104,148 @@
             border-radius: 3px;
             margin-right: 8px;
             border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        /* Popup styles */
+        .popup {
+            position: absolute;
+            background: #1e293b;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            z-index: 1000;
+            max-width: 400px;
+            font-size: 13px;
+            line-height: 1.4;
+            display: none;
+            color: #e2e8f0;
+        }
+        
+        .popup h3 {
+            margin: 0 0 10px 0;
+            color: #ffffff;
+            font-size: 16px;
+            border-bottom: 1px solid #404040;
+            padding-bottom: 5px;
+        }
+        
+        .popup .section {
+            margin-bottom: 12px;
+        }
+        
+        .popup .section-title {
+            font-weight: bold;
+            color: #3b82f6;
+            margin-bottom: 5px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .popup .section-content {
+            color: #e2e8f0;
+            font-size: 12px;
+        }
+        
+        .popup .list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .popup .list li {
+            padding: 2px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        
+        .popup .list li:last-child {
+            border-bottom: none;
+        }
+        
+        .popup .generic-item {
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin: 1px 0;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        /* Call path item styles */
+        .call-path-item {
+            margin-bottom: 10px;
+            background: #334155;
+            border-radius: 4px;
+            border-left: 3px solid #3b82f6;
+            overflow: hidden;
+        }
+        
+        .call-path-header {
+            padding: 8px;
+            cursor: pointer;
+            background: #475569;
+            border-bottom: 1px solid #64748b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .call-path-header:hover {
+            background: #64748b;
+        }
+        
+        .call-path-content {
+            padding: 8px;
+            display: none;
+        }
+        
+        .call-path-content.expanded {
+            display: block;
+        }
+        
+        .caller-info, .position-info, .param-values, .generic-values, .func-lit-info {
+            margin: 3px 0;
+            font-size: 12px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+        
+        .func-lit-info-box {
+            margin-top: 8px;
+            padding: 6px;
+            background-color: #334155;
+            border-radius: 4px;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .caller-info strong, .position-info strong, .param-values strong, .generic-values strong {
+            color: #3b82f6;
+        }
+        
+        .collapse-icon {
+            font-size: 14px;
+            color: #6c757d;
+            transition: transform 0.2s ease;
+        }
+        
+        .collapse-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .popup .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 8px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+        
+        .popup .close-btn:hover {
+            color: #ef4444;
         }
     </style>
 </head>
@@ -123,13 +268,75 @@
             <button onclick="collapseTree()">Collapse Tree</button>
             <select id="layoutSelect" onchange="changeLayout()">
                 <option value="dagre">Left-Right Tree (Recommended)</option>
-                <option value="breadthfirst">Breadth-First Tree</option>
+                <option value="breadthfirst">Mind Map</option>
+                <option value="cose">Compound Layout</option>
                 <option value="grid">Grid Layout</option>
             </select>
             <button onclick="exportPNG()">Export PNG</button>
             <button onclick="exportSVG()">Export SVG</button>
         </div>
         <div id="cy"></div>
+        
+        <!-- Popup for detailed information -->
+        <div id="nodePopup" class="popup">
+            <button class="close-btn" onclick="hidePopup()">&times;</button>
+            <h3 id="popupTitle">Function Details</h3>
+            <div class="section">
+                <div class="section-title">Package</div>
+                <div class="section-content" id="popupPackage">-</div>
+            </div>
+            <div class="section">
+                <div class="section-title">Receiver Type</div>
+                <div class="section-content" id="popupReceiverType">-</div>
+            </div>
+            <div class="section">
+                <div class="section-title">Call Paths</div>
+                <div class="section-content">
+                    <ul class="list" id="popupCallPaths"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Parameter Types</div>
+                <div class="section-content">
+                    <ul class="list" id="popupParamTypes"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Parameter Values</div>
+                <div class="section-content">
+                    <ul class="list" id="popupPassedParams"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Generics</div>
+                <div class="section-content" id="popupGenerics"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Generic Values</div>
+                <div class="section-content" id="popupPassedGenerics"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Position</div>
+                <div class="section-content position-info" id="popupPosition"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Signature</div>
+                <div class="section-content" id="popupSignature"></div>
+            </div>
+            <div class="section">
+                <div class="section-title">Type Parameters</div>
+                <div class="section-content">
+                    <ul class="list" id="popupTypeParams"></ul>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Return Variables</div>
+                <div class="section-content">
+                    <ul class="list" id="popupReturnVars"></ul>
+                </div>
+            </div>
+        </div>
+        
         <div class="legend">
             <div class="legend-item">
                 <span class="legend-color" style="background: #3498db;"></span>
@@ -156,32 +363,77 @@
                 {
                     selector: 'node',
                     style: {
-                        'background-color': '#3498db',
+                        'background-color': '#3b82f6',
                         'label': 'data(label)',
                         'text-valign': 'center',
                         'text-halign': 'center',
-                        'color': 'white',
-                        'text-outline-color': '#2c3e50',
+                        'color': '#ffffff',
+                        'text-outline-color': '#0f172a',
                         'text-outline-width': 1,
+                        'font-size': '14px',
+                        'font-weight': '600',
+                        'width': 'label',
+                        'height': 'label',
+                        'border-width': 2,
+                        'border-color': '#1e40af',
+                        'border-radius': '20px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': 120,
+                        'text-margin-y': '0px',
+                        'shape': 'round-rectangle',
+                        'padding': '10px'
+                    }
+                },
+                {
+                    selector: 'node[is_parent_function = "true"]',
+                    style: {
+                        'background-color': '#3b82f6',
+                        'width': 'label',
+                        'height': 'label',
+                        'font-size': '16px',
+                        'font-weight': '700',
+                        'border-color': '#1e40af',
+                        'border-width': 3,
+                        'border-style': 'solid',
+                        'z-index': 0,
+                        'shape': 'round-rectangle',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'padding': '15px',
+                        'text-outline-color': '#0f172a',
+                        'text-outline-width': 2,
+                        'border-radius': '20px',
+                        'text-max-width': 150,
+                        'color': '#ffffff'
+                    }
+                },
+                {
+                    selector: 'node[label = "FuncLit"]',
+                    style: {
+                        'background-color': '#8b5cf6',
+                        'background-opacity': 1,
+                        'width': 'label',
+                        'height': 'label',
                         'font-size': '12px',
                         'font-weight': '500',
-                        'width': 400,
-                        'height': 50,
+                        'border-color': '#7c3aed',
                         'border-width': 2,
-                        'border-color': '#2980b9',
-                        'border-radius': '6px',
-                        'text-wrap': 'wrap',
-                        'text-max-width': 200,
-                        'text-margin-y': '0px',
-                        'shape': 'rectangle'
+                        'z-index': 10,
+                        'text-max-width': 100,
+                        'shape': 'diamond',
+                        'text-outline-color': '#0f172a',
+                        'text-outline-width': 1,
+                        'padding': '8px',
+                        'color': '#ffffff'
                     }
                 },
                 {
                     selector: 'node[type = "compound"]',
                     style: {
                         'background-color': '#e74c3c',
-                        'width': 400,
-                        'height': 50,
+                        'width': '500px',
+                        'height': '40px',
+                       
                         'font-size': '14px',
                         'font-weight': 'bold'
                     }
@@ -189,57 +441,62 @@
                 {
                     selector: 'edge',
                     style: {
-                        'width': 3,
-                        'line-color': '#2ecc71',
-                        'target-arrow-color': '#2ecc71',
+                        'width': 2,
+                        'line-color': '#64748b',
+                        'target-arrow-color': '#64748b',
                         'target-arrow-shape': 'triangle',
-                        'target-arrow-width': 8,
-                        'target-arrow-height': 8,
+                        'target-arrow-width': 6,
+                        'target-arrow-height': 6,
                         'curve-style': 'bezier',
                         'font-size': '10px',
                         'text-rotation': 'autorotate',
                         'text-margin-y': '-10px',
-                        'text-outline-color': 'white',
+                        'text-outline-color': '#0f172a',
                         'text-outline-width': 2,
-                        'text-background-color': 'white',
-                        'text-background-opacity': 0.8,
-                        'text-background-padding': '3px'
+                        'text-background-color': '#1e293b',
+                        'text-background-opacity': 0.9,
+                        'text-background-padding': '3px',
+                        'opacity': 0.8
                     }
                 },
                 {
                     selector: 'node:selected',
                     style: {
-                        'background-color': '#f39c12',
-                        'border-color': '#e67e22',
+                        'background-color': '#ffffff',
+                        'border-color': '#d97706',
                         'border-width': 3,
                         'shadow-blur': 10,
-                        'shadow-color': '#f39c12',
-                        'shadow-opacity': 0.5
+                        'shadow-color': '#f59e0b',
+                        'shadow-opacity': 0.5,
+                        'color': '#ffffff'
                     }
                 },
                 {
                     selector: 'edge:selected',
                     style: {
-                        'line-color': '#f39c12',
-                        'target-arrow-color': '#f39c12',
-                        'width': 5,
+                        'line-color': '#f59e0b',
+                        'target-arrow-color': '#f59e0b',
+                        'width': 4,
                         'shadow-blur': 5,
-                        'shadow-color': '#f39c12'
+                        'shadow-color': '#f59e0b',
+                        'opacity': 1
                     }
                 },
                 {
                     selector: '.highlighted',
                     style: {
-                        'background-color': '#f39c12',
-                        'line-color': '#f39c12',
-                        'target-arrow-color': '#f39c12',
+                        'background-color': '#f59e0b',
+                        'line-color': '#f59e0b',
+                        'target-arrow-color': '#f59e0b',
+                        'color': '#ffffff'
                     }
                 },
                 {
-                    selector: '.root-node',
+                    selector: 'node[label = "main"]',
                     style: {
-                        'background-color': '#e74c3c',
-                        'border-color': '#c0392b'
+                        'background-color': '#ef4444',
+                        'border-color': '#dc2626',
+                        'color': '#ffffff'
                     }
                 }
             ],
@@ -257,11 +514,9 @@
                 rankSep: 120,
                 align: 'DL',
                 acyclicer: 'greedy',
-                ranker: 'network-simplex',
-                nestingRoot: undefined,
-                animate: 'end',
-                animationDuration: 1000,
-                animationEasing: 'ease-out-quint'
+                roots: undefined,
+                animationEasing: 'ease-out-quint',
+                compound: true
             }
         });
         // Disable node dragging
@@ -277,7 +532,9 @@
         // Event handlers
         cy.on('tap', 'node', function(evt) {
             const node = evt.target;
-            console.log('Clicked node:', node.data());
+            const nodeData = node.data();
+            console.log('Clicked node:', nodeData);
+            
             // Highlight connected edges and nodes
             const connectedEdges = node.connectedEdges();
             const connectedNodes = node.neighborhood();
@@ -285,6 +542,9 @@
             node.addClass('highlighted');
             connectedEdges.addClass('highlighted');
             connectedNodes.addClass('highlighted');
+            
+            // Show popup with detailed information
+            showNodePopup(nodeData, evt.originalEvent);
         });
         cy.on('tap', function(evt) {
             if (evt.target === cy) {
@@ -331,7 +591,21 @@
                 fit: true,
                 padding: 50
             };
-            if (layoutName === 'dagre') {
+            if (layoutName === 'cose') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    nodeRepulsion: 400000,
+                    nodeOverlap: 10,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 100,
+                    nestingFactor: 5,
+                    gravity: 80,
+                    numIter: 1000,
+                    initialTemp: 200,
+                    coolingFactor: 0.95,
+                    minTemp: 1.0
+                };
+            } else if (layoutName === 'dagre') {
                 layoutOptions = {
                     ...layoutOptions,
                     rankDir: 'LR',
@@ -340,7 +614,8 @@
                     edgeSep: 30,
                     rankSep: 120,
                     align: 'DL',
-                    acyclicer: 'greedy'
+                    acyclicer: 'greedy',
+                    compound: true
                 };
             } else if (layoutName === 'breadthfirst') {
                 layoutOptions = {
@@ -403,11 +678,262 @@
                     break;
             }
         });
+        // Popup functions
+        function showNodePopup(nodeData, event) {
+            const popup = document.getElementById('nodePopup');
+            
+            // Set title
+            document.getElementById('popupTitle').textContent = nodeData.label || 'Function Details';
+            
+            // Set package
+            document.getElementById('popupPackage').textContent = nodeData.package || '-';
+            
+            // Set receiver type (hide section if empty)
+            const receiverTypeSection = document.getElementById('popupReceiverType').closest('.section');
+            const receiverTypeContent = document.getElementById('popupReceiverType');
+            if (nodeData.receiver_type && nodeData.receiver_type.trim() !== '') {
+                receiverTypeContent.textContent = nodeData.receiver_type;
+                receiverTypeSection.style.display = 'block';
+            } else {
+                receiverTypeSection.style.display = 'none';
+            }
+            
+            // Set position (hide section if empty)
+            const positionSection = document.getElementById('popupPosition').closest('.section');
+            const positionContent = document.getElementById('popupPosition');
+            if (nodeData.position && nodeData.position.trim() !== '') {
+                positionContent.textContent = nodeData.position;
+                positionSection.style.display = 'block';
+            } else {
+                positionSection.style.display = 'none';
+            }
+            
+            // Set call paths with detailed information
+            const callPathsList = document.getElementById('popupCallPaths');
+            callPathsList.innerHTML = '';
+            if (nodeData.call_paths && nodeData.call_paths.length > 0) {
+                nodeData.call_paths.forEach((callPath, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'call-path-item';
+                    
+                    // Create header with caller info and collapse icon
+                    const header = document.createElement('div');
+                    header.className = 'call-path-header';
+                    
+                    const callerInfo = document.createElement('div');
+                    callerInfo.innerHTML = `<strong>Caller:</strong> ${callPath.caller_pkg}.${callPath.caller_name}`;
+                    
+                    const collapseIcon = document.createElement('span');
+                    collapseIcon.className = 'collapse-icon';
+                    collapseIcon.textContent = '▶';
+                    
+                    header.appendChild(callerInfo);
+                    header.appendChild(collapseIcon);
+                    
+                    // Create content area
+                    const content = document.createElement('div');
+                    content.className = 'call-path-content';
+                    
+                    // Create position info
+                    if (callPath.position) {
+                        const positionInfo = document.createElement('div');
+                        positionInfo.className = 'position-info';
+                        positionInfo.innerHTML = `<strong>Position:</strong> ${callPath.position}`;
+                        content.appendChild(positionInfo);
+                    }
+                    
+                    // Create parameter values (only if not empty)
+                    if (callPath.param_values && callPath.param_values.length > 0) {
+                        const paramValuesDiv = document.createElement('div');
+                        paramValuesDiv.className = 'param-values';
+                        paramValuesDiv.innerHTML = `<strong>Parameter Values:</strong> ${callPath.param_values.join(', ')}`;
+                        content.appendChild(paramValuesDiv);
+                    }
+                    
+                    // Create generic values (only if not empty)
+                    if (callPath.generic_values && Object.keys(callPath.generic_values).length > 0) {
+                        const genericValuesDiv = document.createElement('div');
+                        genericValuesDiv.className = 'generic-values';
+                        const genericEntries = Object.entries(callPath.generic_values).map(([key, value]) => `${key} = ${value}`);
+                        genericValuesDiv.innerHTML = `<strong>Generic Values:</strong> ${genericEntries.join(', ')}`;
+                        content.appendChild(genericValuesDiv);
+                    }
+                    
+                    // Create FuncLit information if available
+                    if (callPath.func_lit_info) {
+                        const funcLitDiv = document.createElement('div');
+                        funcLitDiv.className = 'func-lit-info func-lit-info-box';
+                        
+                        let funcLitContent = '<strong>FuncLit Details:</strong><br>';
+                        if (callPath.func_lit_info.position) {
+                            funcLitContent += `<strong>Position:</strong> ${callPath.func_lit_info.position}<br>`;
+                        }
+                        if (callPath.func_lit_info.package) {
+                            funcLitContent += `<strong>Package:</strong> ${callPath.func_lit_info.package}<br>`;
+                        }
+
+                        if (false && callPath.func_lit_info.signature) {
+                            funcLitContent += `<strong>Signature:</strong> ${callPath.func_lit_info.signature}`;
+                        }
+                        
+                        funcLitDiv.innerHTML = funcLitContent;
+                        content.appendChild(funcLitDiv);
+                    }
+                    
+                    // Add click handler for collapse/expand
+                    header.addEventListener('click', function() {
+                        const isExpanded = content.classList.contains('expanded');
+                        if (isExpanded) {
+                            content.classList.remove('expanded');
+                            collapseIcon.classList.remove('expanded');
+                        } else {
+                            content.classList.add('expanded');
+                            collapseIcon.classList.add('expanded');
+                        }
+                    });
+                    
+                    li.appendChild(header);
+                    li.appendChild(content);
+                    callPathsList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = 'No call paths available';
+                callPathsList.appendChild(li);
+            }
+            
+            // Set parameter types (hide section if empty)
+            const paramTypesSection = document.getElementById('popupParamTypes').closest('.section');
+            const paramTypesList = document.getElementById('popupParamTypes');
+            paramTypesList.innerHTML = '';
+            if (nodeData.param_types && nodeData.param_types.length > 0) {
+                nodeData.param_types.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    paramTypesList.appendChild(li);
+                });
+                paramTypesSection.style.display = 'block';
+            } else {
+                paramTypesSection.style.display = 'none';
+            }
+            
+            // Set passed parameters (hide section if empty)
+            const passedParamsSection = document.getElementById('popupPassedParams').closest('.section');
+            const passedParamsList = document.getElementById('popupPassedParams');
+            passedParamsList.innerHTML = '';
+            if (nodeData.param_values && nodeData.param_values.length > 0) {
+                nodeData.param_values.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    passedParamsList.appendChild(li);
+                });
+                passedParamsSection.style.display = 'block';
+            } else {
+                passedParamsSection.style.display = 'none';
+            }
+            
+            // Set generics (hide section if empty)
+            const genericsSection = document.getElementById('popupGenerics').closest('.section');
+            const genericsDiv = document.getElementById('popupGenerics');
+            genericsDiv.innerHTML = '';
+            if (nodeData.generics && Object.keys(nodeData.generics).length > 0) {
+                Object.entries(nodeData.generics).forEach(([key, value]) => {
+                    const span = document.createElement('span');
+                    span.className = 'generic-item';
+                    span.textContent = `${key} = ${value}`;
+                    genericsDiv.appendChild(span);
+                });
+                genericsSection.style.display = 'block';
+            } else {
+                genericsSection.style.display = 'none';
+            }
+            
+            // Set passed generic types (hide section if empty)
+            const passedGenericsSection = document.getElementById('popupPassedGenerics').closest('.section');
+            const passedGenericsDiv = document.getElementById('popupPassedGenerics');
+            passedGenericsDiv.innerHTML = '';
+            if (nodeData.generic_values && Object.keys(nodeData.generic_values).length > 0) {
+                Object.entries(nodeData.generic_values).forEach(([key, value]) => {
+                    const span = document.createElement('span');
+                    span.className = 'generic-item';
+                    span.textContent = `${key} = ${value}`;
+                    passedGenericsDiv.appendChild(span);
+                });
+                passedGenericsSection.style.display = 'block';
+            } else {
+                passedGenericsSection.style.display = 'none';
+            }
+            
+            // Set signature string (hide section if empty)
+            const signatureSection = document.getElementById('popupSignature').closest('.section');
+            const signatureContent = document.getElementById('popupSignature');
+            if (nodeData.signature_str && nodeData.signature_str.trim() !== '') {
+                signatureContent.textContent = nodeData.signature_str;
+                signatureSection.style.display = 'block';
+            } else {
+                signatureSection.style.display = 'none';
+            }
+            
+            // Set type parameters (hide section if empty)
+            const typeParamsSection = document.getElementById('popupTypeParams').closest('.section');
+            const typeParamsList = document.getElementById('popupTypeParams');
+            typeParamsList.innerHTML = '';
+            if (nodeData.type_params && nodeData.type_params.length > 0) {
+                nodeData.type_params.forEach(param => {
+                    const li = document.createElement('li');
+                    li.textContent = param;
+                    typeParamsList.appendChild(li);
+                });
+                typeParamsSection.style.display = 'block';
+            } else {
+                typeParamsSection.style.display = 'none';
+            }
+            
+            // Set return variables (hide section if empty)
+            const returnVarsSection = document.getElementById('popupReturnVars').closest('.section');
+            const returnVarsList = document.getElementById('popupReturnVars');
+            returnVarsList.innerHTML = '';
+            if (nodeData.return_vars && nodeData.return_vars.length > 0) {
+                nodeData.return_vars.forEach(returnVar => {
+                    const li = document.createElement('li');
+                    li.textContent = returnVar;
+                    returnVarsList.appendChild(li);
+                });
+                returnVarsSection.style.display = 'block';
+            } else {
+                returnVarsSection.style.display = 'none';
+            }
+            
+            // Position popup near mouse cursor
+            const rect = document.getElementById('cy').getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            popup.style.left = (x + 20) + 'px';
+            popup.style.top = (y - 20) + 'px';
+            popup.style.display = 'block';
+        }
+        
+        function hidePopup() {
+            document.getElementById('nodePopup').style.display = 'none';
+        }
+        
+        // Hide popup when clicking outside
+        document.addEventListener('click', function(event) {
+            const popup = document.getElementById('nodePopup');
+            const cyContainer = document.getElementById('cy');
+            
+            if (!popup.contains(event.target) && !cyContainer.contains(event.target)) {
+                hidePopup();
+            }
+        });
+        
         // Mark root nodes
         cy.ready(function() {
             // Mark root nodes (nodes with no incoming edges)
             const rootNodes = cy.nodes().roots();
             rootNodes.addClass('root-node');
+            
             cy.fit();
             updateStats();
         });
