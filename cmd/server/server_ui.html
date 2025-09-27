@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APISpec Diagram Server - Interactive UI</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.33.0/cytoscape.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <style>
@@ -559,7 +559,15 @@
             </div>
             <div class="header-right">
                 <button onclick="refreshData()" class="primary">Refresh</button>
-                <button onclick="exportData()">Export</button>
+                <button onclick="exportData()">Export JSON</button>
+                <select id="exportFormat" onchange="exportInFormat()">
+                    <option value="">Export Format</option>
+                    <option value="svg">SVG</option>
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPG</option>
+                    <option value="pdf">PDF</option>
+                    <option value="json">JSON</option>
+                </select>
             </div>
         </div>
         
@@ -639,27 +647,36 @@
                 
                 <div class="control-group">
                     <label>Function Filter</label>
-                    <input type="text" id="functionFilter" placeholder="function name" onchange="resetAndLoad()">
+                    <input type="text" id="functionFilter" placeholder="func1,func2,..." onchange="resetAndLoad()" title="Filter by function name (comma-separated for multiple values)">
                 </div>
                 
                 <div class="control-group">
                     <label>File Filter</label>
-                    <input type="text" id="fileFilter" placeholder="file pattern" onchange="resetAndLoad()" title="Filter by file name or path">
+                    <input type="text" id="fileFilter" placeholder="file1,file2,..." onchange="resetAndLoad()" title="Filter by file name or path (comma-separated for multiple values)">
                 </div>
                 
                 <div class="control-group">
                     <label>Receiver Filter</label>
-                    <input type="text" id="receiverFilter" placeholder="receiver type" onchange="resetAndLoad()" title="Filter by method receiver type">
+                    <input type="text" id="receiverFilter" placeholder="type1,type2,..." onchange="resetAndLoad()" title="Filter by method receiver type (comma-separated for multiple values)">
                 </div>
                 
                 <div class="control-group">
                     <label>Signature Filter</label>
-                    <input type="text" id="signatureFilter" placeholder="signature pattern" onchange="resetAndLoad()" title="Filter by function signature">
+                    <input type="text" id="signatureFilter" placeholder="sig1,sig2,..." onchange="resetAndLoad()" title="Filter by function signature (comma-separated for multiple values)">
                 </div>
                 
                 <div class="control-group">
                     <label>Generic Filter</label>
-                    <input type="text" id="genericFilter" placeholder="generic type" onchange="resetAndLoad()" title="Filter by generic type">
+                    <input type="text" id="genericFilter" placeholder="generic1,generic2,..." onchange="resetAndLoad()" title="Filter by generic type (comma-separated for multiple values)">
+                </div>
+                
+                <div class="control-group">
+                    <label>Scope Filter</label>
+                    <select id="scopeFilter" onchange="resetAndLoad()" title="Filter by function scope">
+                        <option value="all" selected>All</option>
+                        <option value="exported">Exported Only</option>
+                        <option value="unexported">Unexported Only</option>
+                    </select>
                 </div>
                 
                 <div class="pagination">
@@ -799,11 +816,8 @@
                         'text-outline-width': 1,
                         'font-size': '12px',
                         'font-weight': '600',
-                        'width': 'label',
-                        'height': 'label',
                         'border-width': 2,
                         'border-color': '#1e40af',
-                        'border-radius': '15px',
                         'text-wrap': 'wrap',
                         'text-max-width': 100,
                         'text-margin-y': '0px',
@@ -815,16 +829,34 @@
                     selector: 'node[is_parent_function = "true"]',
                     style: {
                         'background-color': '#3b82f6',
-                        'width': 'label',
-                        'height': 'label',
                         'font-size': '14px',
-                        'font-weight': '700',
+                        'font-weight': 'bold',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
                         'border-color': '#1e40af',
                         'border-width': 3,
                         'border-style': 'solid',
                         'z-index': 0,
                         'shape': 'round-rectangle',
                         'padding': '10px'
+                    }
+                },
+                {
+                    selector: 'node[label = "FuncLit"]',
+                    style: {
+                        'background-color': '#8b5cf6',
+                        'background-opacity': 1,
+                        'font-size': '12px',
+                        'font-weight': '500',
+                        'border-color': '#7c3aed',
+                        'border-width': 2,
+                        'z-index': 10,
+                        'text-max-width': 100,
+                        'shape': 'diamond',
+                        'text-outline-color': '#0f172a',
+                        'text-outline-width': 1,
+                        'padding': '8px',
+                        'color': '#ffffff'
                     }
                 },
                 {
@@ -861,7 +893,8 @@
                 fit: true,
                 padding: 50,
                 spacingFactor: 1.2,
-                animate: false
+                animate: false,
+                compound: true
             }
         });
         
@@ -876,6 +909,7 @@
             const receiverFilter = document.getElementById('receiverFilter').value;
             const signatureFilter = document.getElementById('signatureFilter').value;
             const genericFilter = document.getElementById('genericFilter').value;
+            const scopeFilter = document.getElementById('scopeFilter').value;
             
             // Clear previous data
             cy.elements().remove();
@@ -883,11 +917,11 @@
             allEdges.clear();
             
             showLoading(true);
-            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
+            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
         }
         
         // Load a specific page from server
-        async function loadPage(page, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter) {
+        async function loadPage(page, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter) {
             if (isLoading) return;
             isLoading = true;
             
@@ -920,6 +954,10 @@
                 
                 if (genericFilter) {
                     params.append('generic', genericFilter);
+                }
+                
+                if (scopeFilter) {
+                    params.append('scope', scopeFilter);
                 }
                 
                 const response = await fetch(`${SERVER_URL}/api/diagram/page?${params}`);
@@ -964,29 +1002,37 @@
             let addedNodes = 0;
             let addedEdges = 0;
             
-            // Add new nodes
+            // Collect new nodes to add
+            const nodesToAdd = [];
             if (data.nodes && Array.isArray(data.nodes)) {
                 data.nodes.forEach(node => {
                     if (node && node.data && node.data.id && !allNodes.has(node.data.id)) {
                         allNodes.set(node.data.id, node);
-                        cy.add(node);
+                        nodesToAdd.push(node);
                         addedNodes++;
                     }
                 });
             }
             
-            // Add new edges
+            // Collect new edges to add
+            const edgesToAdd = [];
             if (data.edges && Array.isArray(data.edges)) {
                 data.edges.forEach(edge => {
                     if (edge && edge.data && edge.data.source && edge.data.target) {
                         const edgeKey = edge.data.source + '->' + edge.data.target;
                         if (!allEdges.has(edgeKey)) {
                             allEdges.set(edgeKey, edge);
-                            cy.add(edge);
+                            edgesToAdd.push(edge);
                             addedEdges++;
                         }
                     }
                 });
+            }
+            
+            // Add all new elements at once
+            const elementsToAdd = [...nodesToAdd, ...edgesToAdd];
+            if (elementsToAdd.length > 0) {
+                cy.add(elementsToAdd);
             }
             
             console.log(`Added ${addedNodes} new nodes and ${addedEdges} new edges`);
@@ -1010,7 +1056,8 @@
                 fit: true,
                 padding: 50,
                 spacingFactor: 1.2,
-                animate: false
+                animate: false,
+                compound: true
             });
             layout.run();
         }
@@ -1027,14 +1074,16 @@
             const receiverFilter = document.getElementById('receiverFilter').value;
             const signatureFilter = document.getElementById('signatureFilter').value;
             const genericFilter = document.getElementById('genericFilter').value;
+            const scopeFilter = document.getElementById('scopeFilter').value;
             
             console.log(`Loading page ${currentPage} with ${allNodes.size} existing nodes and ${allEdges.size} existing edges`);
             showLoading(true);
-            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
+            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
         }
         
         // Reset and load initial data
         function resetAndLoad() {
+            // Remove all elements at once
             cy.elements().remove();
             allNodes.clear();
             allEdges.clear();
@@ -1089,6 +1138,50 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+        
+        // Export in specific format
+        function exportInFormat() {
+            const format = document.getElementById('exportFormat').value;
+            if (!format) return;
+            
+            // Get current filter values
+            const depth = parseInt(document.getElementById('depth').value);
+            const packageFilter = document.getElementById('packageFilter').value;
+            const functionFilter = document.getElementById('functionFilter').value;
+            const fileFilter = document.getElementById('fileFilter').value;
+            const receiverFilter = document.getElementById('receiverFilter').value;
+            const signatureFilter = document.getElementById('signatureFilter').value;
+            const genericFilter = document.getElementById('genericFilter').value;
+            const scopeFilter = document.getElementById('scopeFilter').value;
+            
+            // Build export URL
+            const params = new URLSearchParams({
+                format: format,
+                page: '1',
+                size: '2000', // Export all data
+                depth: depth.toString()
+            });
+            
+            if (packageFilter) params.append('package', packageFilter);
+            if (functionFilter) params.append('function', functionFilter);
+            if (fileFilter) params.append('file', fileFilter);
+            if (receiverFilter) params.append('receiver', receiverFilter);
+            if (signatureFilter) params.append('signature', signatureFilter);
+            if (genericFilter) params.append('generic', genericFilter);
+            if (scopeFilter) params.append('scope', scopeFilter);
+            
+            // Create download link
+            const url = `${SERVER_URL}/api/diagram/export?${params}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `apispec-diagram-${new Date().toISOString().split('T')[0]}.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Reset select
+            document.getElementById('exportFormat').value = '';
         }
         
         // Validate graph connectivity
@@ -1200,7 +1293,7 @@
                 const signatureFilter = document.getElementById('signatureFilter').value;
                 const genericFilter = document.getElementById('genericFilter').value;
                 showLoading(true);
-                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
+                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
             }
         }
         
@@ -1215,7 +1308,7 @@
                 const signatureFilter = document.getElementById('signatureFilter').value;
                 const genericFilter = document.getElementById('genericFilter').value;
                 showLoading(true);
-                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter);
+                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
             }
         }
         
@@ -1227,6 +1320,7 @@
             document.getElementById('receiverFilter').value = '';
             document.getElementById('signatureFilter').value = '';
             document.getElementById('genericFilter').value = '';
+            document.getElementById('scopeFilter').value = 'all';
             resetAndLoad();
         }
         
@@ -1266,7 +1360,8 @@
                 animate: 'end',
                 animationDuration: 1000,
                 fit: true,
-                padding: 50
+                padding: 50,
+                compound: true
             };
             
             if (layoutName === 'cose') {

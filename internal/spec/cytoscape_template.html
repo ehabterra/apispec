@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>APISpec Call Tree Diagram</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.33.0/cytoscape.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.min.js"></script>
@@ -368,11 +368,8 @@
                         'text-outline-width': 1,
                         'font-size': '14px',
                         'font-weight': '600',
-                        'width': 'label',
-                        'height': 'label',
                         'border-width': 2,
                         'border-color': '#1e40af',
-                        'border-radius': '20px',
                         'text-wrap': 'wrap',
                         'text-max-width': 120,
                         'text-margin-y': '0px',
@@ -384,10 +381,8 @@
                     selector: 'node[is_parent_function = "true"]',
                     style: {
                         'background-color': '#3b82f6',
-                        'width': 'label',
-                        'height': 'label',
                         'font-size': '16px',
-                        'font-weight': '700',
+                        'font-weight': 'bold',
                         'border-color': '#1e40af',
                         'border-width': 3,
                         'border-style': 'solid',
@@ -398,7 +393,6 @@
                         'padding': '15px',
                         'text-outline-color': '#0f172a',
                         'text-outline-width': 2,
-                        'border-radius': '20px',
                         'text-max-width': 150,
                         'color': '#ffffff'
                     }
@@ -408,8 +402,6 @@
                     style: {
                         'background-color': '#8b5cf6',
                         'background-opacity': 1,
-                        'width': 'label',
-                        'height': 'label',
                         'font-size': '12px',
                         'font-weight': '500',
                         'border-color': '#7c3aed',
@@ -429,7 +421,6 @@
                         'background-color': '#e74c3c',
                         'width': '500px',
                         'height': '40px',
-                       
                         'font-size': '14px',
                         'font-weight': 'bold'
                     }

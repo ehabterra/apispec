@@ -1378,12 +1378,14 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			// that contains this function literal
 			parentFunc, parentParts, signatureStr := findParentFunction(file, call.Pos(), info, fset, metadata)
 			if parentFunc != "" {
+				parentScope := getScope(parentFunc)
 				parentFunction = &Call{
 					Meta:         metadata,
 					Name:         metadata.StringPool.Get(parentFunc),
 					Pkg:          metadata.StringPool.Get(pkgName),
 					Position:     -1, // No position for parent function
 					RecvType:     metadata.StringPool.Get(parentParts),
+					Scope:        metadata.StringPool.Get(parentScope),
 					SignatureStr: metadata.StringPool.Get(signatureStr),
 				}
 			}
@@ -1416,19 +1418,27 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			metadata.ParentFunctions[parentFunction.ID()] = append(metadata.ParentFunctions[parentFunction.ID()], cgEdge)
 		}
 
+		// Determine scope for caller
+		callerScope := getScope(callerFunc)
+
 		cgEdge.Caller = *cgEdge.NewCall(
 			metadata.StringPool.Get(callerFunc),
 			metadata.StringPool.Get(pkgName),
 			-1, // No position for caller
 			metadata.StringPool.Get(callerParts),
+			metadata.StringPool.Get(callerScope),
 		)
 		cgEdge.Caller.SignatureStr = metadata.StringPool.Get(callerSignatureStr)
+
+		// Determine scope for callee
+		calleeScope := getScope(calleeFunc)
 
 		cgEdge.Callee = *cgEdge.NewCall(
 			metadata.StringPool.Get(calleeFunc),
 			metadata.StringPool.Get(calleePkg),
 			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
 			metadata.StringPool.Get(calleeParts),
+			metadata.StringPool.Get(calleeScope),
 		)
 		cgEdge.Callee.SignatureStr = metadata.StringPool.Get(calleeSignatureStr)
 

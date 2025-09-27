@@ -566,6 +566,14 @@ func (a *CallArgument) GetPosition() string {
 	return ""
 }
 
+// GetScope returns the scope string from StringPool
+func (c *Call) GetScope() string {
+	if c.Scope >= 0 && c.Meta.StringPool != nil {
+		return c.Meta.StringPool.GetString(c.Scope)
+	}
+	return ""
+}
+
 func (a *CallArgument) GetResolvedType() string {
 	if a.ResolvedType >= 0 && a.Meta.StringPool != nil {
 		return a.Meta.StringPool.GetString(a.ResolvedType)
@@ -657,6 +665,13 @@ func (a *CallArgument) SetResolvedType(resolvedType string) {
 func (a *CallArgument) SetGenericTypeName(genericTypeName string) {
 	if a.Meta.StringPool != nil {
 		a.GenericTypeName = a.Meta.StringPool.Get(genericTypeName)
+	}
+}
+
+// SetScope sets the scope string using StringPool
+func (c *Call) SetScope(scope string) {
+	if c.Meta.StringPool != nil {
+		c.Scope = c.Meta.StringPool.Get(scope)
 	}
 }
 
@@ -837,6 +852,7 @@ type Call struct {
 	Pkg      int `yaml:"pkg,omitempty"`
 	Position int `yaml:"position,omitempty"`
 	RecvType int `yaml:"recv_type,omitempty"`
+	Scope    int `yaml:"scope,omitempty"`
 
 	// New field for function signature
 	SignatureStr int `yaml:"signature_str,omitempty"`
@@ -929,7 +945,7 @@ type CallGraphEdge struct {
 	meta *Metadata
 }
 
-func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
+func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType, scope int) *Call {
 	return &Call{
 		Edge:     edge,
 		Meta:     edge.meta,
@@ -937,6 +953,7 @@ func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
 		Pkg:      pkg,
 		Position: position,
 		RecvType: recvType,
+		Scope:    scope,
 	}
 }
 

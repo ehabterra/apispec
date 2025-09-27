@@ -200,6 +200,7 @@ func (s *DiagramServer) SetupRoutes() {
 	http.HandleFunc("/api/diagram/page", s.handlePaginatedDiagram)
 	http.HandleFunc("/api/diagram/stats", s.handleStats)
 	http.HandleFunc("/api/diagram/refresh", s.handleRefresh)
+	http.HandleFunc("/api/diagram/export", s.handleExport)
 
 	// Health check
 	http.HandleFunc("/health", s.handleHealth)
@@ -293,6 +294,7 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 	receiverFilter := r.URL.Query().Get("receiver")
 	signatureFilter := r.URL.Query().Get("signature")
 	genericFilter := r.URL.Query().Get("generic")
+	scopeFilter := r.URL.Query().Get("scope")
 
 	// Support multiple packages (comma-separated)
 	packages := strings.Split(packageFilter, ",")
@@ -300,8 +302,34 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 		packages = []string{}
 	}
 
+	// Support multiple values for other filters (comma-separated)
+	functions := strings.Split(functionFilter, ",")
+	if len(functions) == 1 && functions[0] == "" {
+		functions = []string{}
+	}
+
+	files := strings.Split(fileFilter, ",")
+	if len(files) == 1 && files[0] == "" {
+		files = []string{}
+	}
+
+	receivers := strings.Split(receiverFilter, ",")
+	if len(receivers) == 1 && receivers[0] == "" {
+		receivers = []string{}
+	}
+
+	signatures := strings.Split(signatureFilter, ",")
+	if len(signatures) == 1 && signatures[0] == "" {
+		signatures = []string{}
+	}
+
+	generics := strings.Split(genericFilter, ",")
+	if len(generics) == 1 && generics[0] == "" {
+		generics = []string{}
+	}
+
 	// Generate paginated data
-	data := s.generatePaginatedData(page, pageSize, depth, packages, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter)
+	data := s.generatePaginatedData(page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
 
 	loadTime := time.Since(start)
 
@@ -365,6 +393,119 @@ func (s *DiagramServer) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, response)
 }
 
+// handleExport serves diagram export in various formats
+func (s *DiagramServer) handleExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse query parameters
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "svg"
+	}
+
+	// Validate format
+	validFormats := map[string]string{
+		"svg":  "image/svg+xml",
+		"png":  "image/png",
+		"jpg":  "image/jpeg",
+		"pdf":  "application/pdf",
+		"json": "application/json",
+	}
+
+	contentType, exists := validFormats[format]
+	if !exists {
+		s.writeError(w, "Invalid format. Supported formats: svg, png, jpg, pdf, json", http.StatusBadRequest)
+		return
+	}
+
+	// Get the same parameters as paginated diagram
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("size"))
+	if pageSize < 1 {
+		pageSize = s.config.PageSize
+	}
+	if pageSize > 2000 {
+		pageSize = 2000
+	}
+
+	depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
+	if depth < 1 {
+		depth = s.config.MaxDepth
+	}
+
+	// Advanced search parameters
+	packageFilter := r.URL.Query().Get("package")
+	functionFilter := r.URL.Query().Get("function")
+	fileFilter := r.URL.Query().Get("file")
+	receiverFilter := r.URL.Query().Get("receiver")
+	signatureFilter := r.URL.Query().Get("signature")
+	genericFilter := r.URL.Query().Get("generic")
+	scopeFilter := r.URL.Query().Get("scope")
+
+	// Support multiple packages (comma-separated)
+	packages := strings.Split(packageFilter, ",")
+	if len(packages) == 1 && packages[0] == "" {
+		packages = []string{}
+	}
+
+	// Support multiple values for other filters (comma-separated)
+	functions := strings.Split(functionFilter, ",")
+	if len(functions) == 1 && functions[0] == "" {
+		functions = []string{}
+	}
+
+	files := strings.Split(fileFilter, ",")
+	if len(files) == 1 && files[0] == "" {
+		files = []string{}
+	}
+
+	receivers := strings.Split(receiverFilter, ",")
+	if len(receivers) == 1 && receivers[0] == "" {
+		receivers = []string{}
+	}
+
+	signatures := strings.Split(signatureFilter, ",")
+	if len(signatures) == 1 && signatures[0] == "" {
+		signatures = []string{}
+	}
+
+	generics := strings.Split(genericFilter, ",")
+	if len(generics) == 1 && generics[0] == "" {
+		generics = []string{}
+	}
+
+	// Generate data
+	data := s.generatePaginatedData(page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
+
+	// Set appropriate headers
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"diagram.%s\"", format))
+
+	if s.config.EnableCORS {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	}
+
+	// For now, return JSON data for all formats
+	// In a real implementation, you would convert to the requested format
+	// This would require additional libraries for image/PDF generation
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		s.writeError(w, "Failed to generate export data", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonData)
+}
+
 // handleHealth serves health check
 func (s *DiagramServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -382,11 +523,11 @@ func (s *DiagramServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // generatePaginatedData generates paginated diagram data with depth filtering and advanced search
-func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packages []string, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter string) *spec.PaginatedCytoscapeData {
+func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packages, functions, files, receivers, signatures, generics []string, scopeFilter string) *spec.PaginatedCytoscapeData {
 	// Check cache first
-	cacheKey := fmt.Sprintf("%d-%d-%d-%v-%s-%s-%s-%s-%s", page, pageSize, depth, packages, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter)
+	cacheKey := fmt.Sprintf("%d-%d-%d-%v-%v-%v-%v-%v-%v-%s", page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
 	// if cached, exists := s.cache[cacheKey]; exists {
-	// return cached
+	// 	return cached
 	// }
 
 	// Generate all data first
@@ -395,6 +536,12 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 	// Apply depth filtering first
 	var depthFilteredNodes []spec.CytoscapeNode
 	var depthFilteredEdges []spec.CytoscapeEdge
+
+	allNodes := make(map[string]*spec.CytoscapeNode)
+
+	for _, node := range allData.Nodes {
+		allNodes[node.Data.ID] = &node
+	}
 
 	if depth > 0 && depth < 10 { // Only apply depth filtering if depth is reasonable
 		// Get root functions (functions with no incoming edges)
@@ -434,11 +581,8 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 			}
 
 			// Find the node and add it
-			for _, node := range allData.Nodes {
-				if node.Data.ID == currentID {
-					depthFilteredNodes = append(depthFilteredNodes, node)
-					break
-				}
+			if node, ok := allNodes[currentID]; ok {
+				depthFilteredNodes = append(depthFilteredNodes, *node)
 			}
 
 			// Add connected nodes
@@ -481,36 +625,88 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 			}
 		}
 
-		// Function filter
-		if functionFilter != "" && !strings.Contains(strings.ToLower(node.Data.Label), strings.ToLower(functionFilter)) {
-			includeNode = false
+		// Function filter (multi-value)
+		if len(functions) > 0 {
+			functionMatch := false
+			for _, function := range functions {
+				if strings.Contains(strings.ToLower(node.Data.Label), strings.ToLower(strings.TrimSpace(function))) {
+					functionMatch = true
+					break
+				}
+			}
+			if !functionMatch {
+				includeNode = false
+			}
 		}
 
-		// File filter (check position field)
-		if fileFilter != "" && node.Data.Position != "" && !strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(fileFilter)) {
-			includeNode = false
+		// File filter (multi-value, check position field)
+		if len(files) > 0 && node.Data.Position != "" {
+			fileMatch := false
+			for _, file := range files {
+				if strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(strings.TrimSpace(file))) {
+					fileMatch = true
+					break
+				}
+			}
+			if !fileMatch {
+				includeNode = false
+			}
 		}
 
-		// Receiver filter
-		if receiverFilter != "" && node.Data.ReceiverType != "" && !strings.Contains(strings.ToLower(node.Data.ReceiverType), strings.ToLower(receiverFilter)) {
-			includeNode = false
+		// Receiver filter (multi-value)
+		if len(receivers) > 0 && node.Data.ReceiverType != "" {
+			receiverMatch := false
+			for _, receiver := range receivers {
+				if strings.Contains(strings.ToLower(node.Data.ReceiverType), strings.ToLower(strings.TrimSpace(receiver))) {
+					receiverMatch = true
+					break
+				}
+			}
+			if !receiverMatch {
+				includeNode = false
+			}
 		}
 
-		// Signature filter
-		if signatureFilter != "" && node.Data.SignatureStr != "" && !strings.Contains(strings.ToLower(node.Data.SignatureStr), strings.ToLower(signatureFilter)) {
-			includeNode = false
+		// Signature filter (multi-value)
+		if len(signatures) > 0 && node.Data.SignatureStr != "" {
+			signatureMatch := false
+			for _, signature := range signatures {
+				if strings.Contains(strings.ToLower(node.Data.SignatureStr), strings.ToLower(strings.TrimSpace(signature))) {
+					signatureMatch = true
+					break
+				}
+			}
+			if !signatureMatch {
+				includeNode = false
+			}
 		}
 
-		// Generic filter (check generics field)
-		if genericFilter != "" && node.Data.Generics != nil {
+		// Generic filter (multi-value, check generics field)
+		if len(generics) > 0 && node.Data.Generics != nil {
 			genericMatch := false
-			for _, generic := range node.Data.Generics {
-				if strings.Contains(strings.ToLower(generic), strings.ToLower(genericFilter)) {
-					genericMatch = true
+			for _, genericFilter := range generics {
+				for _, generic := range node.Data.Generics {
+					if strings.Contains(strings.ToLower(generic), strings.ToLower(strings.TrimSpace(genericFilter))) {
+						genericMatch = true
+						break
+					}
+				}
+				if genericMatch {
 					break
 				}
 			}
 			if !genericMatch {
+				includeNode = false
+			}
+		}
+
+		// Scope filter (exported, unexported, all)
+		if scopeFilter != "" && scopeFilter != "all" {
+			nodeScope := node.Data.Scope
+
+			if scopeFilter == "exported" && nodeScope != "exported" {
+				includeNode = false
+			} else if scopeFilter == "unexported" && nodeScope != "unexported" {
 				includeNode = false
 			}
 		}
@@ -591,6 +787,19 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 					paginatedNodeIDs[edge.Data.Target] = node
 					paginatedNodes = append(paginatedNodes, *node)
 				}
+			}
+		}
+	}
+
+	for _, node := range paginatedNodes {
+		if node.Data.Parent != "" && paginatedNodeIDs[node.Data.Parent] == nil {
+			parentNode := allNodes[node.Data.Parent]
+			if parentNode != nil {
+				parentNode.Data.IsParentFunction = "true"
+				paginatedNodeIDs[node.Data.Parent] = parentNode
+				paginatedNodes = append(paginatedNodes, *parentNode)
+			} else {
+				fmt.Printf("Parent node not found: %s\n", node.Data.Parent)
 			}
 		}
 	}

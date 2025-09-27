@@ -76,6 +76,7 @@ type CytoscapeNodeData struct {
 	FunctionName     string            `json:"function_name,omitempty"`
 	ReceiverType     string            `json:"receiver_type,omitempty"`
 	IsParentFunction string            `json:"is_parent_function,omitempty"`
+	Scope            string            `json:"scope,omitempty"`
 
 	// Additional function metadata
 	SignatureStr string `json:"signature_str,omitempty"`
@@ -232,6 +233,8 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			}
 		}
 
+		callerScope := edge.Caller.GetScope()
+
 		data.Nodes = append(data.Nodes, CytoscapeNode{
 			Data: CytoscapeNodeData{
 				ID:           callerNodeID,
@@ -245,6 +248,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 				ReceiverType: receiverType,
 				Position:     positionInfo,
 				SignatureStr: signatureStr,
+				Scope:        callerScope,
 			},
 		})
 
@@ -288,6 +292,27 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			label = receiverType + "." + label
 		}
 
+		// Determine parent for FuncLit caller using ParentFunction
+		var parentID string
+		if strings.HasPrefix(calleeName, "FuncLit:") && edge.ParentFunction != nil {
+			// For FuncLit caller, use the parent function as the parent
+			parentFuncName := meta.StringPool.GetString(edge.ParentFunction.Name)
+			parentFuncPkg := meta.StringPool.GetString(edge.ParentFunction.Pkg)
+
+			// Find the parent function node ID
+			for _, node := range data.Nodes {
+				if node.Data.FunctionName == parentFuncName && node.Data.Package == parentFuncPkg {
+					parentID = node.Data.ID
+					break
+				}
+			}
+
+			// If parent node doesn't exist yet, create it
+			if parentID == "" {
+				parentID = ensureParentFunctionNode(meta, edge.ParentFunction, data, visitedNodes, nodeCounter)
+			}
+		}
+
 		// Create position info from call paths
 		var positionInfo string
 		if len(callPathInfos) > 0 {
@@ -303,10 +328,13 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			positionInfo = "entry point"
 		}
 
+		calleeScope := edge.Callee.GetScope()
+
 		data.Nodes = append(data.Nodes, CytoscapeNode{
 			Data: CytoscapeNodeData{
 				ID:           calleeNodeID,
 				Label:        label,
+				Parent:       parentID,
 				Type:         "function",
 				Package:      calleePkg,
 				CallPaths:    callPathInfos,
@@ -314,6 +342,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 				FunctionName: calleeName,
 				ReceiverType: receiverType,
 				SignatureStr: signatureStr,
+				Scope:        calleeScope,
 			},
 		})
 	}
@@ -642,6 +671,8 @@ func ensureParentFunctionNode(meta *metadata.Metadata, parentFunc *metadata.Call
 		}
 	}
 
+	parentScope := parentFunc.GetScope()
+
 	// Create the parent function node
 	data.Nodes = append(data.Nodes, CytoscapeNode{
 		Data: CytoscapeNodeData{
@@ -655,6 +686,7 @@ func ensureParentFunctionNode(meta *metadata.Metadata, parentFunc *metadata.Call
 			ReceiverType:     receiverType,
 			IsParentFunction: "true",
 			SignatureStr:     signatureStr,
+			Scope:            parentScope,
 		},
 	})
 
