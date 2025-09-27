@@ -494,16 +494,24 @@ func (s *DiagramServer) handleExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	}
 
-	// For now, return JSON data for all formats
-	// In a real implementation, you would convert to the requested format
-	// This would require additional libraries for image/PDF generation
-	jsonData, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		s.writeError(w, "Failed to generate export data", http.StatusInternalServerError)
+	// Generate the appropriate format
+	// Note: Most formats (SVG, PNG, JPG, PDF) are now handled client-side using Cytoscape.js extensions
+	// Only JSON export is handled server-side for programmatic access
+	switch format {
+	case "json":
+		jsonData, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			s.writeError(w, "Failed to generate JSON export", http.StatusInternalServerError)
+			return
+		}
+		w.Write(jsonData)
+
+	default:
+		// For other formats, return a message directing users to use the client-side export
+		message := fmt.Sprintf("Format '%s' is now handled client-side using Cytoscape.js extensions. Please use the export dropdown in the UI.", format)
+		s.writeError(w, message, http.StatusBadRequest)
 		return
 	}
-
-	w.Write(jsonData)
 }
 
 // handleHealth serves health check

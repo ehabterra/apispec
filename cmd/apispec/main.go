@@ -313,11 +313,11 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.StringVar(&config.ProfileTracePath, "trace-profile-path", "trace.out", "Trace profile output file")
 	fs.StringVar(&config.ProfileMetricsPath, "metrics-path", "metrics.json", "Custom metrics output file")
 
-	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "analyze-framework-dependencies", false, "Analyze framework dependencies")
-	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "afd", false, "Shorthand for --analyze-framework-dependencies")
+	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "analyze-framework-dependencies", true, "Analyze framework dependencies")
+	fs.BoolVar(&config.AnalyzeFrameworkDependencies, "afd", true, "Shorthand for --analyze-framework-dependencies")
 
-	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "auto-include-framework-packages", false, "Auto-include framework packages")
-	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "aifp", false, "Shorthand for --auto-include-framework-packages")
+	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "auto-include-framework-packages", true, "Auto-include framework packages")
+	fs.BoolVar(&config.AutoIncludeFrameworkPackages, "aifp", true, "Shorthand for --auto-include-framework-packages")
 
 	fs.BoolVar(&config.AutoExcludeTests, "auto-exclude-tests", true, "Auto-exclude test files")
 	fs.BoolVar(&config.AutoExcludeTests, "aet", true, "Shorthand for --auto-exclude-tests")

@@ -7,6 +7,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.33.0/cytoscape.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-pdf-export@0.0.3/dist/cytoscape-pdf-export.js"></script>
     <style>
         * {
             margin: 0;
@@ -898,6 +900,42 @@
             }
         });
         
+        // Register PDF export extension
+        if (typeof cytoscape !== 'undefined' && cytoscape.use) {
+            try {
+                // Debug: Log available global variables that might be the extension
+                console.log('Available globals:', Object.keys(window).filter(key => 
+                    key.toLowerCase().includes('pdf') || 
+                    key.toLowerCase().includes('cytoscape')
+                ));
+                
+                // Check for the extension in various possible locations
+                let pdfExport = null;
+                
+                // Check common global variable names
+                if (window.cytoscapePdfExport) {
+                    pdfExport = window.cytoscapePdfExport;
+                } else if (window.pdfExport) {
+                    pdfExport = window.pdfExport;
+                } else if (window.cytoscape && window.cytoscape.pdfExport) {
+                    pdfExport = window.cytoscape.pdfExport;
+                } else if (typeof cytoscapePdfExport !== 'undefined') {
+                    pdfExport = cytoscapePdfExport;
+                }
+                
+                if (pdfExport) {
+                    cytoscape.use(pdfExport);
+                    console.log('PDF export extension registered successfully');
+                } else {
+                    console.log('PDF export extension not found - will use fallback method');
+                }
+            } catch (error) {
+                console.warn('Failed to register PDF export extension:', error);
+            }
+        } else {
+            console.warn('Cytoscape not available');
+        }
+        
         // Load initial data
         function loadInitial() {
             currentPage = 1;
@@ -1140,12 +1178,105 @@
             URL.revokeObjectURL(url);
         }
         
-        // Export in specific format
+        // Export in specific format using Cytoscape.js extensions
         function exportInFormat() {
             const format = document.getElementById('exportFormat').value;
             if (!format) return;
             
-            // Get current filter values
+            const timestamp = new Date().toISOString().split('T')[0];
+            let filename = `apispec-diagram-${timestamp}`;
+            
+            try {
+                switch (format) {
+                    case 'svg':
+                        const svgStr = cy.svg({
+                            scale: 1,
+                            full: true,
+                            bg: '#1a1a1a'
+                        });
+                        const svgBlob = new Blob([svgStr], { type: 'image/svg+xml' });
+                        downloadBlob(svgBlob, `${filename}.svg`);
+                        break;
+                        
+                    case 'png':
+                        const png = cy.png({
+                            scale: 2,
+                            quality: 1,
+                            output: 'blob',
+                            bg: '#1a1a1a'
+                        });
+                        downloadBlob(png, `${filename}.png`);
+                        break;
+                        
+                    case 'jpg':
+                        const jpg = cy.jpg({
+                            scale: 2,
+                            quality: 0.9,
+                            output: 'blob',
+                            bg: '#1a1a1a'
+                        });
+                        downloadBlob(jpg, `${filename}.jpg`);
+                        break;
+                        
+                    case 'pdf':
+                        // Try cytoscape-pdf-export extension first
+                        if (cy.pdf) {
+                            try {
+                                cy.pdf({
+                                    full: true,
+                                    bg: '#1a1a1a',
+                                    paperSize: 'A4',
+                                    orientation: 'LANDSCAPE',
+                                    margin: 52
+                                }).then(blob => {
+                                    downloadBlob(blob, `${filename}.pdf`);
+                                }).catch(error => {
+                                    console.warn('PDF export extension failed, trying fallback:', error);
+                                    exportPDFFallback(filename);
+                                });
+                            } catch (error) {
+                                console.warn('PDF export extension failed, trying fallback:', error);
+                                exportPDFFallback(filename);
+                            }
+                        } else {
+                            console.warn('PDF export extension not loaded, using fallback method');
+                            exportPDFFallback(filename);
+                        }
+                        break;
+                        
+                    case 'json':
+                        // Fallback to server export for JSON
+                        exportFromServer(format);
+                        break;
+                        
+                    default:
+                        console.error('Unsupported export format:', format);
+                        alert('Unsupported export format: ' + format);
+                        return;
+                }
+            } catch (error) {
+                console.error('Export failed:', error);
+                alert('Export failed: ' + error.message);
+            }
+            
+            // Reset select
+            document.getElementById('exportFormat').value = '';
+        }
+        
+        // Helper function to download blob
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Fallback function for server-side export
+        function exportFromServer(format) {
             const depth = parseInt(document.getElementById('depth').value);
             const packageFilter = document.getElementById('packageFilter').value;
             const functionFilter = document.getElementById('functionFilter').value;
@@ -1155,11 +1286,10 @@
             const genericFilter = document.getElementById('genericFilter').value;
             const scopeFilter = document.getElementById('scopeFilter').value;
             
-            // Build export URL
             const params = new URLSearchParams({
                 format: format,
                 page: '1',
-                size: '2000', // Export all data
+                size: '2000',
                 depth: depth.toString()
             });
             
@@ -1171,7 +1301,6 @@
             if (genericFilter) params.append('generic', genericFilter);
             if (scopeFilter) params.append('scope', scopeFilter);
             
-            // Create download link
             const url = `${SERVER_URL}/api/diagram/export?${params}`;
             const a = document.createElement('a');
             a.href = url;
@@ -1179,9 +1308,49 @@
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            
-            // Reset select
-            document.getElementById('exportFormat').value = '';
+        }
+        
+        // PDF export fallback function
+        function exportPDFFallback(filename) {
+            try {
+                // Convert to PNG first (more reliable than SVG for PDF conversion)
+                const png = cy.png({
+                    full: true,
+                    scale: 1.5,
+                    bg: '#1a1a1a'
+                });
+                
+                // Create a new window with the PNG content
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                    printWindow.document.write('<!DOCTYPE html>');
+                    printWindow.document.write('<html>');
+                    printWindow.document.write('<head>');
+                    printWindow.document.write('<title>' + filename + '</title>');
+                    printWindow.document.write('<style>');
+                    printWindow.document.write('body { margin: 0; padding: 20px; background: #1a1a1a; text-align: center; }');
+                    printWindow.document.write('img { max-width: 100%; height: auto; }');
+                    printWindow.document.write('</style>');
+                    printWindow.document.write('</head>');
+                    printWindow.document.write('<body>');
+                    printWindow.document.write('<img src="' + png + '" alt="Diagram">');
+                    printWindow.document.write('<script>');
+                    printWindow.document.write('window.onload = function() {');
+                    printWindow.document.write('window.print();');
+                    printWindow.document.write('setTimeout(function() { window.close(); }, 1000);');
+                    printWindow.document.write('}');
+                    printWindow.document.write('</body>');
+                    printWindow.document.write('</html>');
+                    printWindow.document.close();
+                }
+                
+                // Show user instruction
+                alert('PDF export fallback: A print dialog will open. Please select "Save as PDF" or "Print to PDF" to save the diagram as PDF.');
+                
+            } catch (error) {
+                console.error('PDF fallback failed:', error);
+                alert('PDF export failed. Please try exporting as SVG or PNG instead.');
+            }
         }
         
         // Validate graph connectivity

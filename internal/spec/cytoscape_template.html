@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-pdf-export@0.0.3/dist/cytoscape-pdf-export-cjs.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -274,6 +275,7 @@
             </select>
             <button onclick="exportPNG()">Export PNG</button>
             <button onclick="exportSVG()">Export SVG</button>
+            <button onclick="exportPDF()">Export PDF</button>
         </div>
         <div id="cy"></div>
         
@@ -620,9 +622,10 @@
         }
         function exportPNG() {
             const png = cy.png({
-                scale: 7,
+                scale: 2,
                 quality: 1,
-                output: 'blob'
+                output: 'blob',
+                bg: '#1a1a1a'
             });
             const link = document.createElement('a');
             link.download = 'call-tree-diagram.png';
@@ -632,13 +635,26 @@
         function exportSVG() {
             const svgStr = cy.svg({
                 scale: 1,
-                full: true
+                full: true,
+                bg: '#1a1a1a'
             });
             const blob = new Blob([svgStr], { type: 'image/svg+xml' });
             const link = document.createElement('a');
             link.download = 'call-tree-diagram.svg';
             link.href = URL.createObjectURL(blob);
             link.click();
+        }
+        function exportPDF() {
+            if (cy.pdfExport) {
+                cy.pdfExport({
+                    filename: 'call-tree-diagram',
+                    bg: '#1a1a1a',
+                    scale: 1.5
+                });
+            } else {
+                console.error('PDF export extension not loaded');
+                alert('PDF export extension not available');
+            }
         }
         // Add keyboard shortcuts
         document.addEventListener('keydown', function(e) {
