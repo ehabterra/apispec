@@ -60,6 +60,7 @@ func (s *PaginatedCallGraphServer) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	if depth < 1 {
 		depth = 2 // Default depth
 	}
+	_ = depth // Use depth to avoid ineffassign
 
 	packageFilter := r.URL.Query().Get("package")
 
@@ -68,18 +69,22 @@ func (s *PaginatedCallGraphServer) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	end := start + s.pageSize
 
 	// Get paginated data
-	paginatedData := s.getPaginatedData(start, end, depth, packageFilter)
+	paginatedData := s.getPaginatedData(start, end, packageFilter)
 
 	// Set headers
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Return JSON
-	json.NewEncoder(w).Encode(paginatedData)
+	err := json.NewEncoder(w).Encode(paginatedData)
+	if err != nil {
+		http.Error(w, "Failed to write error response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // getPaginatedData returns a subset of the call graph data
-func (s *PaginatedCallGraphServer) getPaginatedData(start, end, depth int, packageFilter string) *PaginatedCytoscapeData {
+func (s *PaginatedCallGraphServer) getPaginatedData(start, end int, packageFilter string) *PaginatedCytoscapeData {
 	// Apply package filtering first
 	var filteredNodes []CytoscapeNode
 	var filteredEdges []CytoscapeEdge

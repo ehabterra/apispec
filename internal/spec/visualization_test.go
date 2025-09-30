@@ -161,7 +161,7 @@ func TestExtractParameterInfo(t *testing.T) {
 	meta.StringPool.Get("string")
 	meta.StringPool.Get("arg1")
 
-	paramTypes, passedParams := extractParameterInfo(meta, edge)
+	paramTypes, passedParams := extractParameterInfo(edge)
 
 	// Check parameter types
 	if len(paramTypes) != 1 {

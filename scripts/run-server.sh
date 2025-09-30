@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# APISpec Diagram Server Runner
-# This script builds and runs the diagram server for real-time pagination
+# APISpec API Diagram Server Runner (apidiag)
+# This script builds and runs the API diagram server for real-time pagination
 
 set -e
 
@@ -39,7 +39,7 @@ print_error() {
 
 # Function to show usage
 show_usage() {
-    echo "APISpec Diagram Server Runner"
+    echo "APISpec API Diagram Server Runner (apidiag)"
     echo ""
     echo "Usage: $0 [options]"
     echo ""
@@ -123,7 +123,7 @@ if ! [[ "$MAX_DEPTH" =~ ^[0-9]+$ ]] || [ "$MAX_DEPTH" -lt 1 ] || [ "$MAX_DEPTH" 
     exit 1
 fi
 
-print_info "APISpec Diagram Server Setup"
+print_info "APISpec API Diagram Server Setup"
 echo "================================"
 print_info "Project directory: $PROJECT_DIR"
 print_info "Server address: $HOST:$PORT"
@@ -141,8 +141,8 @@ fi
 print_success "Go is installed: $(go version)"
 
 # Build the server
-print_info "Building diagram server..."
-if go build -o apispec-server ./cmd/server; then
+print_info "Building API diagram server..."
+if go build -o apidiag ./cmd/apidiag; then
     print_success "Server built successfully"
 else
     print_error "Failed to build server"
@@ -158,7 +158,7 @@ else
 fi
 
 # Start the server
-print_info "Starting diagram server..."
+print_info "Starting API diagram server..."
 echo ""
 print_success "🚀 Server starting on http://$HOST:$PORT"
 print_info "📊 Analyzing project: $PROJECT_DIR"
@@ -187,4 +187,4 @@ if [ "$VERBOSE" = true ]; then
 fi
 
 # Run the server
-./apispec-server "${SERVER_ARGS[@]}"
+./apidiag "${SERVER_ARGS[@]}"

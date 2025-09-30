@@ -527,8 +527,8 @@ func (fd *FrameworkDetector) analyzePackageContents(
 			dep.Files = append(dep.Files, fileName)
 
 			// Analyze file contents
-			if info, ok := fileToInfo[file]; ok {
-				fd.analyzeFileContents(file, info, dep)
+			if _, ok := fileToInfo[file]; ok {
+				fd.analyzeFileContents(file, dep)
 			}
 		}
 	}
@@ -542,7 +542,6 @@ func (fd *FrameworkDetector) analyzePackageContents(
 // analyzeFileContents analyzes the contents of a file
 func (fd *FrameworkDetector) analyzeFileContents(
 	file *ast.File,
-	info *types.Info,
 	dep *FrameworkDependency,
 ) {
 	// Find functions

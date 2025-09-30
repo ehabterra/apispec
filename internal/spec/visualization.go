@@ -341,6 +341,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 				Generics:     generics,
 				FunctionName: calleeName,
 				ReceiverType: receiverType,
+				Position:     positionInfo,
 				SignatureStr: signatureStr,
 				Scope:        calleeScope,
 			},
@@ -473,7 +474,7 @@ func buildCallPathInfos(meta *metadata.Metadata, functionID string) []CallPathIn
 			}
 
 			// Extract parameter values for this specific call
-			_, paramValues := extractParameterInfo(meta, edge)
+			_, paramValues := extractParameterInfo(edge)
 
 			// Extract generic values for this specific call
 			genericValues := make(map[string]string)
@@ -501,7 +502,7 @@ func buildCallPathInfos(meta *metadata.Metadata, functionID string) []CallPathIn
 }
 
 // extractParameterInfo extracts parameter types and passed parameters from a call graph edge
-func extractParameterInfo(meta *metadata.Metadata, edge *metadata.CallGraphEdge) ([]string, []string) {
+func extractParameterInfo(edge *metadata.CallGraphEdge) ([]string, []string) {
 	var paramTypes []string
 	var passedParams []string
 
@@ -685,6 +686,7 @@ func ensureParentFunctionNode(meta *metadata.Metadata, parentFunc *metadata.Call
 			FunctionName:     parentFuncName,
 			ReceiverType:     receiverType,
 			IsParentFunction: "true",
+			Position:         positionInfo,
 			SignatureStr:     signatureStr,
 			Scope:            parentScope,
 		},
