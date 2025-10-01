@@ -902,6 +902,18 @@ func (c *Call) InstanceID() string {
 }
 
 func (c *Call) buildIdentifier() {
+	// Handle case where Meta is nil (e.g., in tests)
+	if c.Meta == nil {
+		c.identifier = NewCallIdentifier(
+			"",  // pkg
+			"",  // name
+			"",  // recvType
+			"",  // position
+			nil, // generics
+		)
+		return
+	}
+
 	var generics map[string]string
 	if c.Edge != nil && c.Edge.TypeParamMap != nil {
 		generics = make(map[string]string)

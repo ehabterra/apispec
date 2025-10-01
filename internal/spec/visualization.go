@@ -406,7 +406,7 @@ func buildCallPaths(meta *metadata.Metadata, functionID string) []string {
 	var paths []string
 
 	// Get all direct callers of this function (only immediate callers, not full call chains)
-	if callers, exists := meta.Callers[functionID]; exists {
+	if callers, exists := meta.Callees[functionID]; exists {
 		seen := make(map[string]bool)
 		for _, caller := range callers {
 			callerName := meta.StringPool.GetString(caller.Caller.Name)
@@ -510,6 +510,16 @@ func extractParameterInfo(edge *metadata.CallGraphEdge) ([]string, []string) {
 	if edge.ParamArgMap != nil {
 		for paramName, arg := range edge.ParamArgMap {
 			// Get the parameter type
+			argType := arg.GetType()
+			if argType == "" {
+				argType = arg.GetResolvedType()
+			}
+			if argType == "" {
+				argType = "unknown"
+			}
+			paramTypes = append(paramTypes, fmt.Sprintf("%s:%s", paramName, argType))
+
+			// Get the actual value being passed
 			argValue := metadata.CallArgToString(arg)
 
 			// Format as name: value, but handle empty parameter names

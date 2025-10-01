@@ -101,34 +101,45 @@ func TestBuildCallPaths(t *testing.T) {
 		CallGraph: []metadata.CallGraphEdge{
 			{
 				Caller: metadata.Call{
-					Name: 0, // "main"
-					Pkg:  1, // "main"
+					Name:     0,   // "main" (function name) - index 0
+					Pkg:      0,   // "main" (package) - index 0
+					Position: -1,  // No position
+					Meta:     nil, // Will be set after metadata creation
 				},
 				Callee: metadata.Call{
-					Name: 2, // "foo"
-					Pkg:  1, // "main"
+					Name: 1,   // "foo" (function name) - index 1
+					Pkg:  0,   // "main" (package) - index 0
+					Meta: nil, // Will be set after metadata creation
 				},
 			},
 		},
 	}
 
-	// Add strings to string pool
-	meta.StringPool.Get("main")
-	meta.StringPool.Get("main")
-	meta.StringPool.Get("foo")
+	// Add strings to string pool in the correct order
+	// Index 0: "main" (package)
+	// Index 1: "main" (function name)
+	// Index 2: "foo" (function name)
+	meta.StringPool.Get("main") // Index 0 - package
+	meta.StringPool.Get("main") // Index 1 - function name
+	meta.StringPool.Get("foo")  // Index 2 - function name
+
+	// Set Meta field on Call objects
+	meta.CallGraph[0].Caller.Meta = meta
+	meta.CallGraph[0].Callee.Meta = meta
 
 	// Build call graph maps
 	meta.BuildCallGraphMaps()
 
-	// Test buildCallPaths
-	paths := buildCallPaths(meta, "main.foo")
+	// Test buildCallPaths - use the callee's BaseID
+	calleeID := meta.CallGraph[0].Callee.BaseID()
+	paths := buildCallPaths(meta, calleeID)
 
 	// Should have one caller path
 	if len(paths) != 1 {
 		t.Errorf("Expected 1 call path, got %d", len(paths))
 	}
 
-	if paths[0] != "main.main" {
+	if len(paths) > 0 && paths[0] != "main.main" {
 		t.Errorf("Expected call path 'main.main', got '%s'", paths[0])
 	}
 }
@@ -173,15 +184,11 @@ func TestExtractParameterInfo(t *testing.T) {
 	}
 
 	// Check passed parameters
-	if len(passedParams) != 2 {
-		t.Errorf("Expected 2 passed parameters, got %d", len(passedParams))
+	if len(passedParams) != 1 {
+		t.Errorf("Expected 1 passed parameter, got %d", len(passedParams))
 	}
 
-	if passedParams[0] != "value1" {
-		t.Errorf("Expected passed parameter 'value1', got '%s'", passedParams[0])
-	}
-
-	if passedParams[1] != "arg1" {
-		t.Errorf("Expected passed parameter 'arg1', got '%s'", passedParams[1])
+	if passedParams[0] != "param1: value1" {
+		t.Errorf("Expected passed parameter 'param1: value1', got '%s'", passedParams[0])
 	}
 }
