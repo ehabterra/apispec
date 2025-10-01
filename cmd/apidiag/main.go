@@ -108,18 +108,20 @@ func printVersion() {
 
 // ServerConfig holds configuration for the API diagram server
 type ServerConfig struct {
-	Port             int
-	Host             string
-	InputDir         string
-	PageSize         int
-	MaxDepth         int
-	EnableCORS       bool
-	CacheTimeout     time.Duration
-	StaticDir        string
-	Verbose          bool
-	AutoExcludeTests bool
-	AutoExcludeMocks bool
-	ShowVersion      bool
+	Port                         int
+	Host                         string
+	InputDir                     string
+	PageSize                     int
+	MaxDepth                     int
+	EnableCORS                   bool
+	CacheTimeout                 time.Duration
+	StaticDir                    string
+	Verbose                      bool
+	AnalyzeFrameworkDependencies bool
+	AutoIncludeFrameworkPackages bool
+	AutoExcludeTests             bool
+	AutoExcludeMocks             bool
+	ShowVersion                  bool
 }
 
 // DiagramServer handles HTTP requests for paginated diagram data
@@ -197,10 +199,18 @@ func parseFlags() *ServerConfig {
 	flag.StringVar(&config.StaticDir, "static", "", "Directory to serve static files from")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose logging")
 	flag.BoolVar(&config.Verbose, "v", false, "Shorthand for --verbose")
-	flag.BoolVar(&config.AutoExcludeTests, "auto-exclude-tests", true, "Auto-exclude test files")
-	flag.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", true, "Auto-exclude mock files")
-	flag.BoolVar(&config.AutoExcludeTests, "aet", true, "Shorthand for --auto-exclude-tests")
-	flag.BoolVar(&config.AutoExcludeMocks, "aem", true, "Shorthand for --auto-exclude-mocks")
+
+	flag.BoolVar(&config.AnalyzeFrameworkDependencies, "analyze-framework-dependencies", false, "Analyze framework dependencies")
+	flag.BoolVar(&config.AnalyzeFrameworkDependencies, "afd", false, "Shorthand for --analyze-framework-dependencies")
+
+	flag.BoolVar(&config.AutoIncludeFrameworkPackages, "auto-include-framework-packages", false, "Auto-include framework packages")
+	flag.BoolVar(&config.AutoIncludeFrameworkPackages, "aifp", false, "Shorthand for --auto-include-framework-packages")
+
+	flag.BoolVar(&config.AutoExcludeTests, "auto-exclude-tests", false, "Auto-exclude test files")
+	flag.BoolVar(&config.AutoExcludeTests, "aet", false, "Shorthand for --auto-exclude-tests")
+
+	flag.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", false, "Auto-exclude mock files")
+	flag.BoolVar(&config.AutoExcludeMocks, "aem", false, "Shorthand for --auto-exclude-mocks")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "APISpec API Diagram Server - Serves paginated call graph diagrams\n\n")
@@ -252,8 +262,8 @@ func (s *DiagramServer) LoadMetadata() error {
 		MaxNestedArgsDepth:           100,
 		MaxRecursionDepth:            s.config.MaxDepth,
 		SkipCGOPackages:              true,
-		AnalyzeFrameworkDependencies: true,
-		AutoIncludeFrameworkPackages: true,
+		AnalyzeFrameworkDependencies: s.config.AnalyzeFrameworkDependencies,
+		AutoIncludeFrameworkPackages: s.config.AutoIncludeFrameworkPackages,
 		AutoExcludeTests:             s.config.AutoExcludeTests, // Enable auto-exclude for test files
 		AutoExcludeMocks:             s.config.AutoExcludeMocks, // Enable auto-exclude for mock files
 	}

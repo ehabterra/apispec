@@ -1343,6 +1343,48 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 	}
 }
 
+func getTypeWithGenerics(expr ast.Expr, info *types.Info) (types.Type, map[string]string) {
+	var (
+		instance   types.Instance
+		found      bool
+		typeParams = make(map[string]string)
+	)
+
+	// First try to get instance information for generics
+	switch fun := expr.(type) {
+	case *ast.Ident:
+		instance, found = info.Instances[fun]
+	case *ast.SelectorExpr:
+		instance, found = info.Instances[fun.Sel]
+	case *ast.ParenExpr:
+		if ident, ok := fun.X.(*ast.Ident); ok {
+			instance, found = info.Instances[ident]
+		}
+	}
+	if found {
+		// This is a generic instantiation
+		// Get the type parameter names from the function signature
+		if sig, ok := instance.Type.(*types.Signature); ok {
+			if sig.TypeParams() != nil {
+				// Map each type parameter name to its concrete type argument
+				for i := 0; i < sig.TypeParams().Len() && i < instance.TypeArgs.Len(); i++ {
+					paramName := sig.TypeParams().At(i).Obj().Name()
+					typeArg := instance.TypeArgs.At(i)
+					typeParams[paramName] = typeArg.String()
+				}
+			}
+		}
+		return instance.Type, typeParams
+	}
+
+	// Fallback to TypeOf for non-generic types
+	if typ := info.TypeOf(expr); typ != nil {
+		return typ, typeParams
+	}
+
+	return nil, typeParams
+}
+
 // processCallExpression processes a function call expression
 func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, parentAssign *ast.AssignStmt, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
 	// Skip type conversions as they are not function calls
@@ -1363,10 +1405,24 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	if signature != nil {
 		calleeSignatureStr = CallArgToString(*signature)
 	}
+
 	if !strings.HasPrefix(calleeSignatureStr, "func") {
-		calleeType := info.TypeOf(call.Fun)
+		calleeType, typeParams := getTypeWithGenerics(call.Fun, info)
+
 		if calleeType != nil {
 			calleeSignatureStr = calleeType.String()
+			typeParamsStr := ""
+			if len(typeParams) > 0 {
+				var keyValuePairs []string
+				for key, value := range typeParams {
+					keyValuePairs = append(keyValuePairs, fmt.Sprintf("%s %v", key, value))
+				}
+
+				slices.Sort(keyValuePairs)
+				typeParamsStr = strings.Join(keyValuePairs, ",")
+				typeParamsStr = fmt.Sprintf("[%s]", typeParamsStr)
+			}
+			calleeSignatureStr = fmt.Sprintf("func%s%s", typeParamsStr, calleeSignatureStr[len("func"):])
 		}
 	}
 

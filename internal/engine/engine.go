@@ -119,8 +119,8 @@ func DefaultEngineConfig() *EngineConfig {
 		MaxArgsPerFunction:           DefaultMaxArgsPerFunction,
 		MaxNestedArgsDepth:           DefaultMaxNestedArgsDepth,
 		MaxRecursionDepth:            DefaultMaxRecursionDepth,
-		AnalyzeFrameworkDependencies: false, // Default to false for performance
-		AutoIncludeFrameworkPackages: false, // Default to false for explicit control
+		AnalyzeFrameworkDependencies: true,
+		AutoIncludeFrameworkPackages: true,
 		SkipHTTPFramework:            false,
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
