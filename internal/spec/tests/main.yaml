@@ -28,16 +28,14 @@ string_pool:
   - 'func() '
   - strings
   - exported
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:14
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:2
   - Println
   - func(a ...any) (n int, err error)
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:6
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:14
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:18
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:2
   - ToUpper
   - func(s string) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:10
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:18
 packages:
   main:
     files:
@@ -350,13 +348,13 @@ call_graph:
       scope: 9
       signature_str: 26
     callee:
-      name: 30
+      name: 31
       pkg: 16
-      position: 29
+      position: 30
       recv_type: -1
       scope: 28
-      signature_str: 31
-    position: 29
+      signature_str: 32
+    position: 30
     args:
       - kind: 4
         name: 23
@@ -364,7 +362,7 @@ call_graph:
         raw: -1
         pkg: 7
         type: 11
-        position: 33
+        position: 29
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
@@ -375,7 +373,7 @@ call_graph:
         raw: -1
         pkg: 7
         type: 11
-        position: 33
+        position: 29
         resolved_type: -1
         generic_type_name: -1
   - caller:
@@ -400,7 +398,7 @@ call_graph:
         raw: -1
         pkg: 7
         type: 11
-        position: 38
+        position: 33
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
@@ -411,6 +409,6 @@ call_graph:
         raw: -1
         pkg: 7
         type: 11
-        position: 38
+        position: 33
         resolved_type: -1
         generic_type_name: -1

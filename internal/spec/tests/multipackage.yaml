@@ -173,11 +173,10 @@ string_pool:
   - uppercase
   - multipackage/models.UserInterface
   - multipackage/models.User
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/multipackage/src/multipackage/main.go:14:14
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/multipackage/src/multipackage/main.go:14:2
   - Println
   - func(a ...any) (n int, err error)
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/multipackage/src/multipackage/main.go:14:6
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/multipackage/src/multipackage/main.go:14:14
 packages:
   multipackage:
     files:
@@ -2834,13 +2833,13 @@ call_graph:
       scope: 79
       signature_str: 128
     callee:
-      name: 175
+      name: 176
       pkg: 64
-      position: 174
+      position: 175
       recv_type: -1
       scope: 15
-      signature_str: 176
-    position: 174
+      signature_str: 177
+    position: 175
     args:
       - kind: 0
         name: 125
@@ -2848,7 +2847,7 @@ call_graph:
         raw: -1
         pkg: 112
         type: 6
-        position: 178
+        position: 174
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
@@ -2859,7 +2858,7 @@ call_graph:
         raw: -1
         pkg: 112
         type: 6
-        position: 178
+        position: 174
         resolved_type: -1
         generic_type_name: -1
   - caller:
