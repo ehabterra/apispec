@@ -2,6 +2,16 @@
 
 APISpec API Diagram Server (apidiag) is a web-based tool that provides an interactive, paginated visualization of Go project call graphs. It analyzes your Go codebase and serves an interactive diagram through a web interface, allowing you to explore function relationships, dependencies, and code structure in real-time.
 
+## Demo Video
+
+[![APISpec API Diagram Server Demo](https://img.youtube.com/vi/UshBJ5-ayzA/maxresdefault.jpg)](https://youtu.be/UshBJ5-ayzA)
+
+Click *the image above to watch the full demo on YouTube*
+
+- Complete walkthrough of the diagram server
+- Advanced filtering examples
+- Export functionality demonstration
+
 ## Features
 
 - **Interactive Web Interface**: Browse call graphs through a modern web UI
@@ -227,27 +237,6 @@ Check if the server is running properly:
 ```bash
 curl http://localhost:8080/health
 ```
-
-## Screenshots and Videos
-
-*[Placeholder for screenshots and demo videos]*
-
-### Screenshots
-
-- Interactive diagram interface
-- Filtering controls
-- Export options
-- API documentation
-
-### Demo Video
-
-[![APISpec API Diagram Server Demo](https://img.youtube.com/vi/UshBJ5-ayzA/maxresdefault.jpg)](https://youtu.be/UshBJ5-ayzA)
-
-*Click the image above to watch the full demo on YouTube*
-
-- Complete walkthrough of the diagram server
-- Advanced filtering examples
-- Export functionality demonstration
 
 ## Contributing
 
