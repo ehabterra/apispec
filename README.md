@@ -9,12 +9,11 @@
 
 **TL;DR**: Point APISpec at your module. Get an OpenAPI spec and, optionally, an interactive call-graph diagram.
 
-
 ## 🎬 Demo Video
 
 [![APISpec Demo - Generate OpenAPI for Go E-commerce App](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/lkKO-a0-ZTU)
 
-*Click the image above to watch the full demo on YouTube*
+Click *the image above to watch the full demo on YouTube*
 
 ## Features
 
@@ -24,19 +23,20 @@
 - **Configurable**: YAML config plus CLI flags; flags always win.
 - **Visualize**: Optional HTML call-graph diagram for debugging.
 - **Extensible**: Pattern-based framework config; add new frameworks without changing core logic.
-- **Smart Type Resolution**: Automatically resolves underlying primitive types for aliases and enums. <strong style="color:green;">✨NEW</strong>
-- **Validator Tag Support**: Comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags with automatic OpenAPI constraint mapping. <strong style="color:green;">✨NEW</strong>
-- **Function Literal Analysis**: Full support for anonymous functions in route handlers. <strong style="color:green;">✨NEW</strong>
-- **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs. <strong style="color:green;">✨NEW</strong>
-- **Performance Profiling**: Built-in CPU, memory, block, mutex, and trace profiling for performance analysis. <strong style="color:green;">✨NEW</strong>
-- **Configurable Limits**: Fine-tune analysis limits for large codebases with detailed warning messages. <strong style="color:green;">✨NEW</strong>
-- **CGO Support**: Skip CGO packages during analysis to avoid build errors. <strong style="color:green;">✨NEW</strong>
+- **Smart Type Resolution**: Automatically resolves underlying primitive types for aliases and enums.
+- **Validator Tag Support**: Comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags with automatic OpenAPI constraint mapping.
+- **Function Literal Analysis**: Full support for anonymous functions in route handlers.
+- **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs.
+- **Performance Profiling**: Built-in CPU, memory, block, mutex, and trace profiling for performance analysis.
+- **Configurable Limits**: Fine-tune analysis limits for large codebases with detailed warning messages.
+- **CGO Support**: Skip CGO packages during analysis to avoid build errors.
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
 ## Framework Support
 
 ### Gorilla Mux
+
 - [x] **Route registration**: Detects `HandleFunc` and `Handle` calls with path and handler arguments
 - [x] **Handler function detection**: Identifies handler functions passed as arguments to route registration
 - [x] **HTTP method extraction**: Automatically extracts HTTP methods from handler function names or explicit method calls
@@ -46,18 +46,20 @@
 - [ ] **Conditional routing**: Dynamic route registration based on runtime conditions is not supported
 
 ### Other Frameworks
+
 - [x] **Gin**: Full support for route registration, and parameter handling
-- [x] **Chi**: Full support for route mounting, grouping, and parameter extraction
+- [x] **Chi**: Full support for route mounting, grouping, parameter extraction, and render package integration
 - [x] **Echo**: Full support for route registration, grouping, and parameter handling
 - [x] **Fiber**: Full support for route registration, grouping, and parameter handling
 - [x] **Standard net/http**: Basic support for `HandleFunc` and `Handle` calls
 
 ## Golang Feature Support
+
 APISpec focuses on practical coverage for real-world services. Current coverage includes:
 
 - [x] **Alias imports**: supports import aliases in analysis.
-- [x] **Alias types**: type aliases are detected and resolved to underlying primitive types. <strong style="color:green;">✨NEW</strong>
-- [x] **Enum resolution**: automatically resolves enum types to their underlying primitive types (string, int, etc.) from constants, enum tags, or oneof validator tags. <strong style="color:green;">✨NEW</strong>
+- [x] **Alias types**: type aliases are detected and resolved to underlying primitive types.
+- [x] **Enum resolution**: automatically resolves enum types to their underlying primitive types (string, int, etc.) from constants, enum tags, or oneof validator tags.
 - [x] **Assignment and alias tracking**: short `:=`, `=`, multi-assign, tuple returns, latest-wins resolution, alias chains, and shadowing.
 - [ ] **Conditional methods**: detecting HTTP methods set via switch/if around net/http `Handle`/`HandleFunc` is not supported.
 - [x] **Composite literals / maps / slices / arrays**: recognizes literal and container types for schema mapping.
@@ -68,7 +70,7 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 - [ ] **Generics (types)**: generic struct and type instantiation are partially supported.
 - [ ] **Inferred status codes**: status codes assigned via variables are not inferred.
 - [x] **Interfaces**: captures interface types and methods; unresolved dynamic values are represented generically.
-- [x] **Chain calls**: efficiently processes method chaining and establishes parent-child relationships in the call graph. <strong style="color:green;">✨NEW</strong>
+- [x] **Chain calls**: efficiently processes method chaining and establishes parent-child relationships in the call graph.
 - [x] **Nested calls**: handles chained/method calls and nested expressions.
 - [x] **Parameter tracing across calls**: follows arguments across the call graph; maps function parameters to call arguments.
 - [ ] **Interface param resolution**: interface type parameters in functions are not yet fully resolved to concrete types.
@@ -76,11 +78,11 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 - [x] **Pointers and dereference**: detects `*T` and automatically dereferences when configured.
 - [x] **Selectors and field access**: resolves `pkg.Type.Field` and nested selectors where possible.
 - [x] **Struct fields**: reads field types, embedded fields, and struct tags (`json`, `xml`, `form`, etc.).
-- [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation. <strong style="color:green;">✨NEW</strong>
-- [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers. <strong style="color:green;">✨NEW</strong>
-- [x] **CGO support**: includes a flag to skip CGO packages during analysis, useful for projects with complex C dependencies. <strong style="color:green;">✨NEW</strong>
-- [x] **Function literals**: supports anonymous functions (func literals) in route handlers and call analysis. <strong style="color:green;">✨NEW</strong>
-- [x] **Validator tag support**: comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags including validation rules, constraints, and enum definitions. <strong style="color:green;">✨NEW</strong>
+- [x] **Nested struct types**: supports anonymous nested structs within struct fields, preserving complete type information for accurate schema generation.
+- [x] **Function and method return types**: automatically resolves and captures return types from function signatures, enabling accurate type resolution in pattern matchers.
+- [x] **CGO support**: includes a flag to skip CGO packages during analysis, useful for projects with complex C dependencies.
+- [x] **Function literals**: supports anonymous functions (func literals) in route handlers and call analysis.
+- [x] **Validator tag support**: comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags including validation rules, constraints, and enum definitions.
 
 ### Type Resolution Examples
 
@@ -134,25 +136,26 @@ type Status string
 
 // Status constants
 const (
-	StatusActive   Status = "active"
-	StatusInactive Status = "inactive"
-	StatusPending  Status = "pending"
+ StatusActive   Status = "active"
+ StatusInactive Status = "inactive"
+ StatusPending  Status = "pending"
 )
 
 type User struct {
-	ID            int    `json:"id" validate:"required,min=1"`
-	Name          string `json:"name" validate:"required,min=2,max=50"`
-	Email         string `json:"email" validate:"required,email"`
-	Age           int    `json:"age" validate:"min=18,max=120"`
-	Status        Status `json:"status"`
-	MaritalStatus string `json:"marital_status" validate:"required,oneof=single married divorced"`
-	Bio           string `json:"bio" min:"10" max:"500"`
-	Website       string `json:"website" pattern:"^https?://.*"`
-	Country       string `json:"country" enum:"US,CA,UK,DE,FR"`
+ ID            int    `json:"id" validate:"required,min=1"`
+ Name          string `json:"name" validate:"required,min=2,max=50"`
+ Email         string `json:"email" validate:"required,email"`
+ Age           int    `json:"age" validate:"min=18,max=120"`
+ Status        Status `json:"status"`
+ MaritalStatus string `json:"marital_status" validate:"required,oneof=single married divorced"`
+ Bio           string `json:"bio" min:"10" max:"500"`
+ Website       string `json:"website" pattern:"^https?://.*"`
+ Country       string `json:"country" enum:"US,CA,UK,DE,FR"`
 }
 ```
 
-**Generated OpenAPI schema:**
+### Generated OpenAPI schema
+
 ```yaml
 User:
     type: object
@@ -296,7 +299,7 @@ APISpec executes a multi-stage process to analyze your code and generate the Ope
 
  5. **Configuration Loading**: The tool loads a framework-specific default configuration. If a custom `--config` file is provided, it loads that instead. CLI flags always override settings from any configuration file.
 
- 6. **Metadata Generation**: It traverses the Abstract Syntax Trees (AST) of the parsed packages to generate a detailed `metadata` object. This object contains information about packages, function calls, and string constants. 
+ 6. **Metadata Generation**: It traverses the Abstract Syntax Trees (AST) of the parsed packages to generate a detailed `metadata` object. This object contains information about packages, function calls, and string constants.
 
  7. **Call Graph Construction**: Using the generated metadata, APISpec constructs a call graph tree. This tree traces the flow of execution from router definitions to the final handler functions, respecting limits set by flags like `--max-nodes` to prevent infinite recursion.
 
@@ -313,11 +316,13 @@ APISpec executes a multi-stage process to analyze your code and generate the Ope
 📖 **For detailed installation instructions, see [INSTALLATION.md](docs/INSTALLATION.md)**
 
 #### Option 1: Go Install (Recommended)
+
 ```bash
 go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 #### Option 2: From Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/ehabterra/apispec.git
@@ -330,17 +335,20 @@ make install          # Install to /usr/local/bin (requires sudo)
 ```
 
 #### Option 3: Using Installation Script
+
 ```bash
 # Download and run the installation script
 curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/install.sh | bash -s go-install
 ```
 
 **Note**: Make sure your Go bin directory is in your PATH. Add this to your shell profile:
+
 ```bash
 export PATH=$HOME/go/bin:$PATH
 ```
 
 #### Building from Source (Development)
+
 ```bash
 # Clone the repository
 git clone https://github.com/ehabterra/apispec.git
@@ -351,6 +359,9 @@ make build
 
 # Or build directly with Go
 go build -o apispec ./cmd/apispec
+
+# Build the API diagram server
+go build -o apidiag ./cmd/apidiag
 ```
 
 ### Basic Usage
@@ -377,6 +388,49 @@ go build -o apispec ./cmd/apispec
 # Fine-tune analysis limits for large projects
 ./apispec --output openapi.yaml --max-nodes 100000 --max-children 1000 --max-recursion-depth 15
 ```
+
+## Interactive API Diagram Server (apidiag)
+
+APISpec includes a web-based API diagram server (apidiag) that provides an interactive interface for exploring call graphs. This is particularly useful for large codebases where static diagrams become unwieldy.
+
+### Quick Start with API Diagram Server
+
+```bash
+# Start the API diagram server
+./apidiag
+
+# Or if installed globally
+apidiag
+
+# Open your browser to http://localhost:8080
+```
+
+### Key Features
+
+- **Interactive Web Interface**: Browse call graphs through a modern web UI
+- **Paginated Visualization**: Handle large codebases with efficient pagination
+- **Advanced Filtering**: Filter by packages, functions, files, receivers, signatures, and more
+- **Real-time Analysis**: Live analysis of your Go project structure
+- **Export Capabilities**: Export diagrams in multiple formats (SVG, PNG, PDF, JSON)
+- **RESTful API**: Programmatic access to diagram data
+
+### Example Usage
+
+```bash
+# Start server on custom port
+./apidiag --port 9090
+
+# Analyze specific directory
+./apidiag --dir ./my-go-project
+
+# Custom page size and depth
+./apidiag --page-size 50 --max-depth 2
+
+# Show version information
+./apidiag --version
+```
+
+📖 **For detailed documentation, see [cmd/apidiag/README.md](cmd/apidiag/README.md)**
 
 ### Programmatic usage
 
@@ -440,7 +494,6 @@ func main() {
 | `--trace-profile`     |              | Enable trace profiling                               | `false`                        |
 | `--custom-metrics`    |              | Enable custom metrics collection                     | `false`                        |
 | `--profile-dir`       |              | Directory for profiling output files                | `profiles`                     |
-
 
 ### Example Output
 
@@ -754,12 +807,14 @@ externalTypes:
 ## Development Guide
 
 ### Prerequisites
+
 - Go 1.24+ (Didn't test it on version before 1.24)
 - Understanding of AST (Abstract Syntax Tree)
 - Familiarity with OpenAPI 3.1 specification
 
 ### Project Structure
-```
+
+```tree
 apispec/
 ├── cmd/
 │   └── apispec/           # CLI entry point
@@ -780,6 +835,7 @@ apispec/
 ```
 
 ### Building and Testing
+
 ```bash
 # Run all tests
 make test
@@ -800,12 +856,14 @@ make update-badge
 ### Testing
 
 APISpec includes comprehensive test suites covering:
+
 - **Unit tests** for all packages
 - **Integration tests** for framework detection and OpenAPI generation
 - **Comprehensive mapper tests** for edge cases and type resolution
 - **Framework-specific tests** for Gin, Echo, Chi, and Fiber
 
 Run specific test categories:
+
 ```bash
 # Test mapper functionality
 go test ./internal/spec -v
@@ -831,6 +889,7 @@ go test ./... -cover
 8. **Open** a Pull Request
 
 ### Adding Framework Support
+
 1. Update the framework detection logic in `internal/core/detector.go`
 2. Add default configuration in `internal/spec/config.go`
 3. Update the framework detection logic in `cmd/apispec/main.go`
@@ -877,6 +936,7 @@ go tool trace profiles/trace.out
 ### Performance Analysis
 
 The custom metrics collector automatically tracks:
+
 - Memory usage patterns
 - Goroutine counts
 - Function execution times
@@ -897,7 +957,8 @@ APISpec implements several safeguards to prevent excessive resource usage:
 | MaxRecursionDepth | 10 | Maximum recursion depth to prevent infinite loops |
 
 **Warning Messages**: APISpec now provides clear warnings when limits are reached:
-```
+
+```sh
 Warning: MaxNodesPerTree limit (50000) reached, truncating tree at node example.com/pkg.Function
 Warning: MaxChildrenPerNode limit (500) reached for node example.com/pkg.Function, truncating children
 Warning: MaxRecursionDepth limit (10) reached for node example.com/pkg.Function
@@ -911,13 +972,11 @@ Adjust these with CLI flags if needed for large codebases.
 - **[docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md)**: Automated release process with GitHub Actions
 - **[docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md)**: Guide to using TrackerTree for call graph analysis
 - **[docs/CYTOGRAPHE_README.md](docs/CYTOGRAPHE_README.md)**: Documentation for the call graph visualization feature
+- **[cmd/apispec/README.md](cmd/apispec/README.md)**: Main CLI tool documentation
+- **[cmd/apidiag/README.md](cmd/apidiag/README.md)**: Interactive API diagram server documentation
 - **[internal/metadata/README.md](internal/metadata/README.md)**: Metadata package documentation
 - **[internal/spec/README.md](internal/spec/README.md)**: Spec generation package documentation
 
 ## License
 
 Apache License 2.0 - See [LICENSE](LICENSE) for details.
-
----
-
-> **Note**: [This diagram](README.md#architecture-overview) should visualize the complete workflow from source code analysis to OpenAPI generation. The project includes example configurations for different frameworks in the `testdata` directory. For complex projects, consider using the `--split-metadata` flag to analyze intermediate results.

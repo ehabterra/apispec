@@ -17,15 +17,15 @@ string_pool:
   - exported
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go
   - func() string
+  - int
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:24:27
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:2
   - Age
-  - int
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:4
   - example.User.Age
   - age
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:10
   - SetAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:24:27
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:24:1
   - 'func(int) '
   - User
@@ -42,6 +42,11 @@ string_pool:
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:17:16
   - 'func(string) '
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:36:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:19
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:31
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:37
+  - star
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:36
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:29:8
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:30:3
   - name
@@ -56,12 +61,8 @@ string_pool:
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:29:2
   - unexported
   - NewUser
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:19
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:31
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:37
-  - star
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:36
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:1
+  - func(string, int) *User
   - literal
   - '"User Name"'
   - "40"
@@ -72,15 +73,21 @@ string_pool:
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:40:2
   - main
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:39:1
+  - 'func() '
   - example.Namer
   - example.User
   - example.Ager
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:11
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:15
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:14
+  - func(age int)
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:4
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:11
+  - fmt
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:2
   - Println
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:6
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:15
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:14
+  - fmt.Println
 packages:
   example:
     files:
@@ -91,10 +98,10 @@ packages:
             pkg: 2
             kind: 33
             implemented_by:
-              - 74
+              - 76
             scope: 15
             methods:
-              - name: 25
+              - name: 26
                 signature:
                   kind: 12
                   name: -1
@@ -111,11 +118,11 @@ packages:
                     generic_type_name: -1
                   args:
                     - kind: 0
-                      name: 20
+                      name: 18
                       value: -1
                       raw: -1
                       pkg: 2
-                      type: 20
+                      type: 18
                       position: 37
                       resolved_type: -1
                       generic_type_name: -1
@@ -134,7 +141,7 @@ packages:
             pkg: 2
             kind: 33
             implemented_by:
-              - 74
+              - 76
             scope: 15
             methods:
               - name: 9
@@ -218,16 +225,16 @@ packages:
             pkg: 2
             kind: 30
             implements:
-              - 73
               - 75
+              - 77
             fields:
               - name: 5
                 type: 6
                 tag: 31
                 scope: 15
                 comments: -1
-              - name: 19
-                type: 20
+              - name: 21
+                type: 18
                 tag: 32
                 scope: 15
                 comments: -1
@@ -299,7 +306,7 @@ packages:
                     position: 4
                     resolved_type: -1
                     generic_type_name: -1
-              - name: 25
+              - name: 26
                 receiver: 10
                 signature:
                   kind: 12
@@ -317,12 +324,12 @@ packages:
                     generic_type_name: -1
                   args:
                     - kind: 0
-                      name: 20
+                      name: 18
                       value: -1
                       raw: -1
                       pkg: 2
-                      type: 20
-                      position: 26
+                      type: 18
+                      position: 19
                       resolved_type: -1
                       generic_type_name: -1
                   raw: -1
@@ -337,19 +344,19 @@ packages:
                 filename: 16
                 assignments:
                   example.User.Age:
-                    - variable_name: 22
+                    - variable_name: 23
                       pkg: 2
-                      concrete_type: 20
-                      position: 18
+                      concrete_type: 18
+                      position: 20
                       scope: 8
                       value:
                         kind: 0
-                        name: 23
+                        name: 24
                         value: -1
                         raw: -1
                         pkg: 2
-                        type: 20
-                        position: 24
+                        type: 18
+                        position: 25
                         resolved_type: -1
                         generic_type_name: -1
                       lhs:
@@ -363,29 +370,29 @@ packages:
                           raw: -1
                           pkg: 2
                           type: 3
-                          position: 18
+                          position: 20
                           resolved_type: -1
                           generic_type_name: -1
                         sel:
                           kind: 0
-                          name: 19
+                          name: 21
                           value: -1
                           raw: -1
                           pkg: 2
-                          type: 20
-                          position: 21
+                          type: 18
+                          position: 22
                           resolved_type: -1
                           generic_type_name: -1
                         raw: -1
                         pkg: 2
-                        type: 20
-                        position: 18
+                        type: 18
+                        position: 20
                         resolved_type: -1
                         generic_type_name: -1
             comments: -1
         functions:
           NewUser:
-            name: 56
+            name: 61
             pkg: 2
             signature:
               kind: 12
@@ -396,7 +403,7 @@ packages:
                 name: -1
                 value: -1
                 args:
-                  - kind: 60
+                  - kind: 46
                     name: -1
                     value: -1
                     x:
@@ -406,13 +413,13 @@ packages:
                       raw: -1
                       pkg: 2
                       type: 29
-                      position: 59
+                      position: 45
                       resolved_type: -1
                       generic_type_name: -1
                     raw: -1
                     pkg: -1
                     type: -1
-                    position: 61
+                    position: 47
                     resolved_type: -1
                     generic_type_name: -1
                 raw: -1
@@ -428,16 +435,16 @@ packages:
                   raw: -1
                   pkg: 2
                   type: 6
-                  position: 57
+                  position: 43
                   resolved_type: -1
                   generic_type_name: -1
                 - kind: 0
-                  name: 20
+                  name: 18
                   value: -1
                   raw: -1
                   pkg: 2
-                  type: 20
-                  position: 58
+                  type: 18
+                  position: 44
                   resolved_type: -1
                   generic_type_name: -1
               raw: -1
@@ -446,6 +453,7 @@ packages:
               position: -1
               resolved_type: 10
               generic_type_name: -1
+            signature_str: 63
             position: 62
             scope: 15
             comments: -1
@@ -464,14 +472,14 @@ packages:
                 - variable_name: 1
                   pkg: 2
                   concrete_type: 3
-                  position: 54
-                  scope: 55
+                  position: 59
+                  scope: 60
                   value:
-                    kind: 51
+                    kind: 56
                     name: -1
-                    value: 52
+                    value: 57
                     x:
-                      kind: 50
+                      kind: 55
                       name: -1
                       value: -1
                       x:
@@ -481,11 +489,11 @@ packages:
                         raw: -1
                         pkg: 2
                         type: 29
-                        position: 43
+                        position: 48
                         resolved_type: -1
                         generic_type_name: -1
                       args:
-                        - kind: 47
+                        - kind: 52
                           name: -1
                           value: -1
                           x:
@@ -495,64 +503,64 @@ packages:
                             raw: -1
                             pkg: 2
                             type: 6
-                            position: 44
+                            position: 49
                             resolved_type: -1
                             generic_type_name: -1
                           fun:
                             kind: 0
-                            name: 45
+                            name: 50
                             value: -1
                             raw: -1
                             pkg: 2
                             type: 6
-                            position: 46
+                            position: 51
                             resolved_type: -1
                             generic_type_name: -1
                           raw: -1
                           pkg: -1
                           type: -1
-                          position: 44
+                          position: 49
                           resolved_type: -1
                           generic_type_name: -1
-                        - kind: 47
+                        - kind: 52
                           name: -1
                           value: -1
                           x:
                             kind: 0
-                            name: 19
+                            name: 21
                             value: -1
                             raw: -1
                             pkg: 2
-                            type: 20
-                            position: 48
+                            type: 18
+                            position: 53
                             resolved_type: -1
                             generic_type_name: -1
                           fun:
                             kind: 0
-                            name: 23
+                            name: 24
                             value: -1
                             raw: -1
                             pkg: 2
-                            type: 20
-                            position: 49
+                            type: 18
+                            position: 54
                             resolved_type: -1
                             generic_type_name: -1
                           raw: -1
                           pkg: -1
                           type: -1
-                          position: 48
+                          position: 53
                           resolved_type: -1
                           generic_type_name: -1
                       raw: -1
                       pkg: -1
                       type: -1
-                      position: 43
+                      position: 48
                       resolved_type: -1
                       generic_type_name: -1
                     raw: -1
                     pkg: -1
                     type: -1
-                    position: 53
+                    position: 58
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
@@ -562,12 +570,12 @@ packages:
                     raw: -1
                     pkg: 2
                     type: 3
-                    position: 54
+                    position: 59
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 56
+                  func: 61
           main:
-            name: 71
+            name: 72
             pkg: 2
             signature:
               kind: 12
@@ -589,43 +597,44 @@ packages:
               position: -1
               resolved_type: -1
               generic_type_name: -1
-            position: 72
-            scope: 55
+            signature_str: 74
+            position: 73
+            scope: 60
             comments: -1
             assignments:
               user:
-                - variable_name: 69
+                - variable_name: 70
                   pkg: 2
                   concrete_type: 3
-                  position: 70
-                  scope: 55
+                  position: 71
+                  scope: 60
                   value:
-                    kind: 68
+                    kind: 69
                     name: -1
                     value: -1
                     fun:
                       kind: 0
-                      name: 56
+                      name: 61
                       value: -1
                       raw: -1
                       pkg: 2
-                      type: 66
-                      position: 67
+                      type: 67
+                      position: 68
                       resolved_type: -1
                       generic_type_name: -1
                     args:
-                      - kind: 63
+                      - kind: 64
                         name: -1
-                        value: 64
+                        value: 65
                         raw: -1
                         pkg: -1
                         type: -1
                         position: -1
                         resolved_type: -1
                         generic_type_name: -1
-                      - kind: 63
+                      - kind: 64
                         name: -1
-                        value: 65
+                        value: 66
                         raw: -1
                         pkg: -1
                         type: -1
@@ -635,29 +644,29 @@ packages:
                     raw: -1
                     pkg: -1
                     type: -1
-                    position: 67
+                    position: 68
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
                     kind: 0
-                    name: 69
+                    name: 70
                     value: -1
                     raw: -1
                     pkg: 2
                     type: 3
-                    position: 70
+                    position: 71
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 71
+                  func: 72
                   callee_func: NewUser
                   callee_pkg: example
         struct_instances:
           - type: 29
             pkg: 2
-            position: 43
+            position: 48
             fields:
-              5: 45
-              19: 23
+              5: 50
+              21: 24
         imports: {}
     types:
       Ager:
@@ -665,10 +674,10 @@ packages:
         pkg: 2
         kind: 33
         implemented_by:
-          - 74
+          - 76
         scope: 15
         methods:
-          - name: 25
+          - name: 26
             signature:
               kind: 12
               name: -1
@@ -685,11 +694,11 @@ packages:
                 generic_type_name: -1
               args:
                 - kind: 0
-                  name: 20
+                  name: 18
                   value: -1
                   raw: -1
                   pkg: 2
-                  type: 20
+                  type: 18
                   position: 37
                   resolved_type: -1
                   generic_type_name: -1
@@ -708,7 +717,7 @@ packages:
         pkg: 2
         kind: 33
         implemented_by:
-          - 74
+          - 76
         scope: 15
         methods:
           - name: 9
@@ -792,16 +801,16 @@ packages:
         pkg: 2
         kind: 30
         implements:
-          - 73
           - 75
+          - 77
         fields:
           - name: 5
             type: 6
             tag: 31
             scope: 15
             comments: -1
-          - name: 19
-            type: 20
+          - name: 21
+            type: 18
             tag: 32
             scope: 15
             comments: -1
@@ -873,7 +882,7 @@ packages:
                 position: 4
                 resolved_type: -1
                 generic_type_name: -1
-          - name: 25
+          - name: 26
             receiver: 10
             signature:
               kind: 12
@@ -891,12 +900,12 @@ packages:
                 generic_type_name: -1
               args:
                 - kind: 0
-                  name: 20
+                  name: 18
                   value: -1
                   raw: -1
                   pkg: 2
-                  type: 20
-                  position: 26
+                  type: 18
+                  position: 19
                   resolved_type: -1
                   generic_type_name: -1
               raw: -1
@@ -911,19 +920,19 @@ packages:
             filename: 16
             assignments:
               example.User.Age:
-                - variable_name: 22
+                - variable_name: 23
                   pkg: 2
-                  concrete_type: 20
-                  position: 18
+                  concrete_type: 18
+                  position: 20
                   scope: 8
                   value:
                     kind: 0
-                    name: 23
+                    name: 24
                     value: -1
                     raw: -1
                     pkg: 2
-                    type: 20
-                    position: 24
+                    type: 18
+                    position: 25
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
@@ -937,86 +946,94 @@ packages:
                       raw: -1
                       pkg: 2
                       type: 3
-                      position: 18
+                      position: 20
                       resolved_type: -1
                       generic_type_name: -1
                     sel:
                       kind: 0
-                      name: 19
+                      name: 21
                       value: -1
                       raw: -1
                       pkg: 2
-                      type: 20
-                      position: 21
+                      type: 18
+                      position: 22
                       resolved_type: -1
                       generic_type_name: -1
                     raw: -1
                     pkg: 2
-                    type: 20
-                    position: 18
+                    type: 18
+                    position: 20
                     resolved_type: -1
                     generic_type_name: -1
         comments: -1
 call_graph:
   - caller:
-      name: 56
+      name: 61
       pkg: 2
       position: -1
       recv_type: -1
+      scope: 15
+      signature_str: 63
     callee:
-      name: 25
+      name: 26
       pkg: 2
-      position: 77
+      position: 78
       recv_type: 10
-    position: 77
+      scope: 15
+      signature_str: 79
+    position: 78
     args:
       - kind: 0
-        name: 23
+        name: 24
         value: -1
         raw: -1
         pkg: 2
-        type: 20
-        position: 76
+        type: 18
+        position: 81
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
       age:
         kind: 0
-        name: 23
+        name: 24
         value: -1
         raw: -1
         pkg: 2
-        type: 20
-        position: 76
+        type: 18
+        position: 81
         resolved_type: -1
         generic_type_name: -1
     callee_var_name: u
     callee_recv_var_name: u
     chain_root: u
   - caller:
-      name: 71
+      name: 72
       pkg: 2
       position: -1
       recv_type: -1
+      scope: 60
+      signature_str: 74
     callee:
-      name: 56
+      name: 61
       pkg: 2
-      position: 67
+      position: 68
       recv_type: -1
-    position: 67
+      scope: 15
+      signature_str: 67
+    position: 68
     args:
-      - kind: 63
+      - kind: 64
         name: -1
-        value: 64
+        value: 65
         raw: -1
         pkg: -1
         type: -1
         position: -1
         resolved_type: -1
         generic_type_name: -1
-      - kind: 63
+      - kind: 64
         name: -1
-        value: 65
+        value: 66
         raw: -1
         pkg: -1
         type: -1
@@ -1028,14 +1045,14 @@ call_graph:
         - variable_name: 1
           pkg: 2
           concrete_type: 3
-          position: 54
-          scope: 55
+          position: 59
+          scope: 60
           value:
-            kind: 51
+            kind: 56
             name: -1
-            value: 52
+            value: 57
             x:
-              kind: 50
+              kind: 55
               name: -1
               value: -1
               x:
@@ -1045,11 +1062,11 @@ call_graph:
                 raw: -1
                 pkg: 2
                 type: 29
-                position: 43
+                position: 48
                 resolved_type: -1
                 generic_type_name: -1
               args:
-                - kind: 47
+                - kind: 52
                   name: -1
                   value: -1
                   x:
@@ -1059,64 +1076,64 @@ call_graph:
                     raw: -1
                     pkg: 2
                     type: 6
-                    position: 44
+                    position: 49
                     resolved_type: -1
                     generic_type_name: -1
                   fun:
                     kind: 0
-                    name: 45
+                    name: 50
                     value: -1
                     raw: -1
                     pkg: 2
                     type: 6
-                    position: 46
+                    position: 51
                     resolved_type: -1
                     generic_type_name: -1
                   raw: -1
                   pkg: -1
                   type: -1
-                  position: 44
+                  position: 49
                   resolved_type: -1
                   generic_type_name: -1
-                - kind: 47
+                - kind: 52
                   name: -1
                   value: -1
                   x:
                     kind: 0
-                    name: 19
+                    name: 21
                     value: -1
                     raw: -1
                     pkg: 2
-                    type: 20
-                    position: 48
+                    type: 18
+                    position: 53
                     resolved_type: -1
                     generic_type_name: -1
                   fun:
                     kind: 0
-                    name: 23
+                    name: 24
                     value: -1
                     raw: -1
                     pkg: 2
-                    type: 20
-                    position: 49
+                    type: 18
+                    position: 54
                     resolved_type: -1
                     generic_type_name: -1
                   raw: -1
                   pkg: -1
                   type: -1
-                  position: 48
+                  position: 53
                   resolved_type: -1
                   generic_type_name: -1
               raw: -1
               pkg: -1
               type: -1
-              position: 43
+              position: 48
               resolved_type: -1
               generic_type_name: -1
             raw: -1
             pkg: -1
             type: -1
-            position: 53
+            position: 58
             resolved_type: -1
             generic_type_name: -1
           lhs:
@@ -1126,43 +1143,43 @@ call_graph:
             raw: -1
             pkg: 2
             type: 3
-            position: 54
+            position: 59
             resolved_type: -1
             generic_type_name: -1
-          func: 56
+          func: 61
       user:
-        - variable_name: 69
+        - variable_name: 70
           pkg: 2
           concrete_type: 3
-          position: 70
-          scope: 55
+          position: 71
+          scope: 60
           value:
-            kind: 68
+            kind: 69
             name: -1
             value: -1
             fun:
               kind: 0
-              name: 56
+              name: 61
               value: -1
               raw: -1
               pkg: 2
-              type: 66
-              position: 67
+              type: 67
+              position: 68
               resolved_type: -1
               generic_type_name: -1
             args:
-              - kind: 63
+              - kind: 64
                 name: -1
-                value: 64
+                value: 65
                 raw: -1
                 pkg: -1
                 type: -1
                 position: -1
                 resolved_type: -1
                 generic_type_name: -1
-              - kind: 63
+              - kind: 64
                 name: -1
-                value: 65
+                value: 66
                 raw: -1
                 pkg: -1
                 type: -1
@@ -1172,25 +1189,35 @@ call_graph:
             raw: -1
             pkg: -1
             type: -1
-            position: 67
+            position: 68
             resolved_type: -1
             generic_type_name: -1
           lhs:
             kind: 0
-            name: 69
+            name: 70
             value: -1
             raw: -1
             pkg: 2
             type: 3
-            position: 70
+            position: 71
             resolved_type: -1
             generic_type_name: -1
-          func: 71
+          func: 72
           callee_func: NewUser
           callee_pkg: example
     param_arg_map:
       age:
-        kind: 63
+        kind: 64
+        name: -1
+        value: 66
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      name:
+        kind: 64
         name: -1
         value: 65
         raw: -1
@@ -1199,45 +1226,39 @@ call_graph:
         position: -1
         resolved_type: -1
         generic_type_name: -1
-      name:
-        kind: 63
-        name: -1
-        value: 64
-        raw: -1
-        pkg: -1
-        type: -1
-        position: -1
-        resolved_type: -1
-        generic_type_name: -1
     callee_recv_var_name: user
   - caller:
-      name: 71
+      name: 72
       pkg: 2
       position: -1
       recv_type: -1
+      scope: 60
+      signature_str: 74
     callee:
-      name: 81
+      name: 84
       pkg: 2
-      position: 80
+      position: 83
       recv_type: -1
-    position: 80
+      scope: 15
+      signature_str: 88
+    position: 83
     args:
-      - kind: 60
+      - kind: 46
         name: -1
         value: -1
         x:
           kind: 0
-          name: 69
+          name: 70
           value: -1
           raw: -1
           pkg: 2
           type: 3
-          position: 78
+          position: 86
           resolved_type: -1
           generic_type_name: -1
         raw: -1
         pkg: -1
         type: -1
-        position: 79
+        position: 87
         resolved_type: -1
         generic_type_name: -1

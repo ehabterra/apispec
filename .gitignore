@@ -41,6 +41,7 @@ coverage.txt
 coverage.html
 
 /apispec
+/apidiag
 
 # Test temporary directories
 testdata/temp/

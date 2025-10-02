@@ -461,6 +461,13 @@ func DefaultChiConfig() *APISpecConfig {
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
+					CallRegex:     `^DecodeJSON$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: "^github\\.com/go-chi/render$",
+				},
+				{
 					CallRegex:     `^Decode$`,
 					TypeArgIndex:  0,
 					TypeFromArg:   true,
@@ -476,6 +483,20 @@ func DefaultChiConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:     `^JSON$`,
+					TypeArgIndex:  2,
+					TypeFromArg:   true,
+					StatusFromArg: false,
+					Deref:         true,
+					RecvTypeRegex: "^github\\.com/go-chi/render$",
+				},
+				{
+					CallRegex:      `^Status$`,
+					StatusArgIndex: 1,
+					StatusFromArg:  true,
+					RecvTypeRegex:  "^github\\.com/go-chi/render$",
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,

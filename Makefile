@@ -15,6 +15,7 @@ LDFLAGS = -X 'main.Version=$(VERSION)' \
 help:
 	@echo "Available targets:"
 	@echo "  build         - Build the apispec binary"
+	@echo "  build-apidiag - Build the apidiag binary"
 	@echo "  install       - Install apispec to /usr/local/bin (requires sudo)"
 	@echo "  install-local - Install apispec to ~/go/bin (no sudo required)"
 	@echo "  uninstall     - Remove apispec from /usr/local/bin"
@@ -48,6 +49,11 @@ help:
 build:
 	@echo "Building $(APP_NAME) version $(VERSION)..."
 	go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) ./cmd/apispec
+
+# Build the apidiag binary
+build-apidiag:
+	@echo "Building apidiag version $(VERSION)..."
+	go build -ldflags "$(LDFLAGS)" -o apidiag ./cmd/apidiag
 
 # Run all tests
 test:
@@ -90,7 +96,7 @@ update-badge:
 
 # Clean build artifacts
 clean:
-	rm -f $(APP_NAME) coverage.out coverage.html
+	rm -f $(APP_NAME) apidiag coverage.out coverage.html
 	go clean -cache
 
 # Install apispec to system (requires sudo)

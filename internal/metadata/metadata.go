@@ -168,6 +168,11 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 				}
 				recvType := getTypeName(fn.Recv.List[0].Type, info)
 
+				// Skip mock/fake/stub methods
+				if isMockName(recvType) || isMockName(fn.Name.Name) {
+					continue
+				}
+
 				// Extract type parameter names for generics
 				typeParams := []string{}
 				if fn.Type != nil && fn.Type.TypeParams != nil {
@@ -288,24 +293,34 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	for _, edge := range roots {
 		metadata.TraverseCallerChildren(edge, func(parent, child *CallGraphEdge) {
 			if len(parent.TypeParamMap) > 0 && len(child.TypeParamMap) > 0 {
-				newChild := *child
-				newChild.TypeParamMap = map[string]string{}
+				missing := false
+				for k := range parent.TypeParamMap {
+					if _, ok := child.TypeParamMap[k]; !ok {
+						missing = true
+						break
+					}
+				}
 
-				maps.Copy(newChild.TypeParamMap, child.TypeParamMap)
-				// Add parent types
-				maps.Copy(newChild.TypeParamMap, parent.TypeParamMap)
+				if missing {
+					newChild := *child
+					newChild.TypeParamMap = map[string]string{}
 
-				// Reset id
-				newChild.Caller.identifier = nil
-				newChild.Caller.Edge = &newChild
-				newChild.Caller.buildIdentifier()
+					maps.Copy(newChild.TypeParamMap, child.TypeParamMap)
+					// Add parent types
+					maps.Copy(newChild.TypeParamMap, parent.TypeParamMap)
 
-				newChild.Callee.identifier = nil
-				newChild.Callee.Edge = &newChild
-				newChild.Callee.buildIdentifier()
+					// Reset id
+					newChild.Caller.identifier = nil
+					newChild.Caller.Edge = &newChild
+					newChild.Caller.buildIdentifier()
 
-				metadata.CallGraph = append(metadata.CallGraph, newChild)
-				metadata.Callers[newChild.Caller.identifier.ID(BaseID)] = append(metadata.Callers[newChild.Caller.identifier.ID(BaseID)], &newChild)
+					newChild.Callee.identifier = nil
+					newChild.Callee.Edge = &newChild
+					newChild.Callee.buildIdentifier()
+
+					metadata.CallGraph = append(metadata.CallGraph, newChild)
+					metadata.Callers[newChild.Caller.identifier.ID(BaseID)] = append(metadata.Callers[newChild.Caller.identifier.ID(BaseID)], &newChild)
+				}
 			}
 		})
 	}
@@ -846,6 +861,14 @@ func collectConstants(file *ast.File, info *types.Info, pkgName string, fset *to
 	return constMap
 }
 
+// isMockName checks if a name contains mock-related patterns
+func isMockName(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "mock") || strings.Contains(lower, "fake") ||
+		strings.Contains(lower, "stub") || strings.HasPrefix(lower, "mock") ||
+		strings.HasSuffix(lower, "mock") || strings.Contains(lower, "mocked")
+}
+
 // processTypes processes all type declarations in a file
 func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, f *File, allTypeMethods map[string][]Method, allTypes map[string]*Type, metadata *Metadata) {
 	for _, decl := range file.Decls {
@@ -857,6 +880,11 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 		for _, spec := range genDecl.Specs {
 			tspec, ok := spec.(*ast.TypeSpec)
 			if !ok {
+				continue
+			}
+
+			// Skip mock/fake/stub types
+			if isMockName(tspec.Name.Name) {
 				continue
 			}
 
@@ -974,6 +1002,11 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			continue
 		}
 
+		// Skip mock/fake/stub functions
+		if isMockName(fn.Name.Name) {
+			continue
+		}
+
 		comments := getComments(fn)
 
 		// Extract type parameter names for generics
@@ -1036,6 +1069,8 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			ReturnVars:    returnVars,
 			AssignmentMap: assignmentsInFunc,
 		}
+
+		f.Functions[fn.Name.Name].SignatureStr = metadata.StringPool.Get(CallArgToString(f.Functions[fn.Name.Name].Signature))
 	}
 }
 
@@ -1173,7 +1208,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 		}
 
 		// Find the enclosing function name for this assignment
-		funcName, _ := getEnclosingFunctionName(file, assign.Pos(), info, fset)
+		funcName, _, _ := getEnclosingFunctionName(file, assign.Pos(), info, fset, metadata)
 
 		// Handle identifier assignments (var = ...)
 		switch expr := lhsExpr.(type) {
@@ -1308,6 +1343,42 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 	}
 }
 
+func getTypeWithGenerics(expr ast.Expr, info *types.Info) types.Type {
+	var (
+		instance types.Object
+		found    bool
+	)
+
+	if indexExpr, ok := expr.(*ast.IndexExpr); ok {
+		return getTypeWithGenerics(indexExpr.X, info)
+	}
+
+	// First try to get instance information for generics
+	switch fun := expr.(type) {
+	case *ast.Ident:
+		instance, found = info.Uses[fun]
+	case *ast.SelectorExpr:
+		instance, found = info.Uses[fun.Sel]
+	case *ast.ParenExpr:
+		if ident, ok := fun.X.(*ast.Ident); ok {
+			instance, found = info.Uses[ident]
+		}
+	}
+	if found {
+		typ := instance.Type()
+		if basicTyp, ok := typ.(*types.Basic); !ok || basicTyp.Kind() != types.Invalid {
+			return typ
+		}
+	}
+
+	// Fallback to TypeOf for non-generic types
+	if typ := info.TypeOf(expr); typ != nil {
+		return typ
+	}
+
+	return nil
+}
+
 // processCallExpression processes a function call expression
 func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]map[string]*ast.File, pkgName string, parentAssign *ast.AssignStmt, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, metadata *Metadata, info *types.Info, calleeMap map[string]*CallGraphEdge, argMap map[string]*CallArgument) {
 	// Skip type conversions as they are not function calls
@@ -1315,8 +1386,19 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		return
 	}
 
-	callerFunc, callerParts := getEnclosingFunctionName(file, call.Pos(), info, fset)
+	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
+
+	// Skip mock calls
+	if isMockName(calleeFunc) || isMockName(calleePkg) || isMockName(callerFunc) {
+		return
+	}
+
+	var calleeSignatureStr string
+	calleeType := getTypeWithGenerics(call.Fun, info)
+	if calleeType != nil {
+		calleeSignatureStr = calleeType.String()
+	}
 
 	if callerFunc != "" && calleeFunc != "" {
 		// Determine if the caller is a function literal
@@ -1324,14 +1406,17 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		if strings.HasPrefix(callerFunc, "FuncLit:") {
 			// For function literals, we need to find the parent function
 			// that contains this function literal
-			parentFunc, parentParts := findParentFunction(file, call.Pos(), info)
+			parentFunc, parentParts, signatureStr := findParentFunction(file, call.Pos(), info, fset, metadata)
 			if parentFunc != "" {
+				parentScope := getScope(parentFunc)
 				parentFunction = &Call{
-					Meta:     metadata,
-					Name:     metadata.StringPool.Get(parentFunc),
-					Pkg:      metadata.StringPool.Get(pkgName),
-					Position: -1, // No position for parent function
-					RecvType: metadata.StringPool.Get(parentParts),
+					Meta:         metadata,
+					Name:         metadata.StringPool.Get(parentFunc),
+					Pkg:          metadata.StringPool.Get(pkgName),
+					Position:     -1, // No position for parent function
+					RecvType:     metadata.StringPool.Get(parentParts),
+					Scope:        metadata.StringPool.Get(parentScope),
+					SignatureStr: metadata.StringPool.Get(signatureStr),
 				}
 			}
 		}
@@ -1363,19 +1448,30 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			metadata.ParentFunctions[parentFunction.ID()] = append(metadata.ParentFunctions[parentFunction.ID()], cgEdge)
 		}
 
+		// Determine scope for caller
+		callerScope := getScope(callerFunc)
+
 		cgEdge.Caller = *cgEdge.NewCall(
 			metadata.StringPool.Get(callerFunc),
 			metadata.StringPool.Get(pkgName),
 			-1, // No position for caller
 			metadata.StringPool.Get(callerParts),
+			metadata.StringPool.Get(callerScope),
 		)
+		cgEdge.Caller.SignatureStr = metadata.StringPool.Get(callerSignatureStr)
+
+		// Determine scope for callee
+		calleeScope := getScope(calleeFunc)
 
 		cgEdge.Callee = *cgEdge.NewCall(
 			metadata.StringPool.Get(calleeFunc),
 			metadata.StringPool.Get(calleePkg),
 			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
 			metadata.StringPool.Get(calleeParts),
+			metadata.StringPool.Get(calleeScope),
 		)
+		cgEdge.Callee.SignatureStr = metadata.StringPool.Get(calleeSignatureStr)
+
 		// Use instance ID for calleeMap indexing to avoid conflicts
 		calleeInstance := cgEdge.Callee.InstanceID()
 		if _, ok := calleeMap[calleeInstance]; ok {

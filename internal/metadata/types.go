@@ -140,6 +140,9 @@ type Metadata struct {
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
 	methodLookupCache    map[string]*Method                              `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
+
+	// Framework dependency analysis
+	FrameworkDependencyList *FrameworkDependencyList `yaml:"framework_dependency_list,omitempty"`
 }
 
 // TraceVariableResult caches the result of traceVariableOriginHelper
@@ -413,13 +416,14 @@ type Method struct {
 
 // Function represents a function
 type Function struct {
-	Name      int          `yaml:"name,omitempty"`
-	Pkg       int          `yaml:"pkg,omitempty"`
-	Signature CallArgument `yaml:"signature,omitempty"`
-	Position  int          `yaml:"position,omitempty"`
-	Scope     int          `yaml:"scope,omitempty"`
-	Comments  int          `yaml:"comments,omitempty"`
-	Tags      []int        `yaml:"tags,omitempty"`
+	Name         int          `yaml:"name,omitempty"`
+	Pkg          int          `yaml:"pkg,omitempty"`
+	Signature    CallArgument `yaml:"signature,omitempty"`
+	SignatureStr int          `yaml:"signature_str,omitempty"`
+	Position     int          `yaml:"position,omitempty"`
+	Scope        int          `yaml:"scope,omitempty"`
+	Comments     int          `yaml:"comments,omitempty"`
+	Tags         []int        `yaml:"tags,omitempty"`
 
 	// Type parameter names for generics
 	TypeParams []string `yaml:"type_params,omitempty"`
@@ -480,17 +484,18 @@ type Assignment struct {
 // CallArgument represents a function call argument or expression
 type CallArgument struct {
 	idstr    string
-	Kind     int                    `yaml:"kind"`            // ident, literal, selector, call, raw
-	Name     int                    `yaml:"name,omitempty"`  // for ident
-	Value    int                    `yaml:"value,omitempty"` // for literal
-	X        *CallArgument          `yaml:"x,omitempty"`     // for selector/call
-	Sel      *CallArgument          `yaml:"sel,omitempty"`   // for selector
-	Fun      *CallArgument          `yaml:"fun,omitempty"`   // for call
-	Args     []CallArgument         `yaml:"args,omitempty"`  // for call
-	Raw      int                    `yaml:"raw,omitempty"`   // fallback
-	Extra    map[string]interface{} `yaml:"extra,omitempty"` // extensibility
-	Pkg      int                    `yaml:"pkg,omitempty"`   // for ident
-	Type     int                    `yaml:"type,omitempty"`  // for ident
+	Kind     int                    `yaml:"kind"`              // ident, literal, selector, call, raw
+	Name     int                    `yaml:"name,omitempty"`    // for ident
+	Value    int                    `yaml:"value,omitempty"`   // for literal
+	X        *CallArgument          `yaml:"x,omitempty"`       // for selector/call
+	Sel      *CallArgument          `yaml:"sel,omitempty"`     // for selector
+	Fun      *CallArgument          `yaml:"fun,omitempty"`     // for call
+	Args     []CallArgument         `yaml:"args,omitempty"`    // for call
+	TParams  []CallArgument         `yaml:"tparams,omitempty"` // for generic types
+	Raw      int                    `yaml:"raw,omitempty"`     // fallback
+	Extra    map[string]interface{} `yaml:"extra,omitempty"`   // extensibility
+	Pkg      int                    `yaml:"pkg,omitempty"`     // for ident
+	Type     int                    `yaml:"type,omitempty"`    // for ident
 	Position int                    `yaml:"position,omitempty"`
 
 	// Callee edge for the same call if it's kind is call
@@ -557,6 +562,14 @@ func (a *CallArgument) GetType() string {
 func (a *CallArgument) GetPosition() string {
 	if a.Position >= 0 && a.Meta.StringPool != nil {
 		return a.Meta.StringPool.GetString(a.Position)
+	}
+	return ""
+}
+
+// GetScope returns the scope string from StringPool
+func (c *Call) GetScope() string {
+	if c.Scope >= 0 && c.Meta.StringPool != nil {
+		return c.Meta.StringPool.GetString(c.Scope)
 	}
 	return ""
 }
@@ -652,6 +665,13 @@ func (a *CallArgument) SetResolvedType(resolvedType string) {
 func (a *CallArgument) SetGenericTypeName(genericTypeName string) {
 	if a.Meta.StringPool != nil {
 		a.GenericTypeName = a.Meta.StringPool.Get(genericTypeName)
+	}
+}
+
+// SetScope sets the scope string using StringPool
+func (c *Call) SetScope(scope string) {
+	if c.Meta.StringPool != nil {
+		c.Scope = c.Meta.StringPool.Get(scope)
 	}
 }
 
@@ -832,6 +852,10 @@ type Call struct {
 	Pkg      int `yaml:"pkg,omitempty"`
 	Position int `yaml:"position,omitempty"`
 	RecvType int `yaml:"recv_type,omitempty"`
+	Scope    int `yaml:"scope,omitempty"`
+
+	// New field for function signature
+	SignatureStr int `yaml:"signature_str,omitempty"`
 }
 
 // ID returns different types of identifiers based on context
@@ -878,6 +902,18 @@ func (c *Call) InstanceID() string {
 }
 
 func (c *Call) buildIdentifier() {
+	// Handle case where Meta is nil (e.g., in tests)
+	if c.Meta == nil {
+		c.identifier = NewCallIdentifier(
+			"",  // pkg
+			"",  // name
+			"",  // recvType
+			"",  // position
+			nil, // generics
+		)
+		return
+	}
+
 	var generics map[string]string
 	if c.Edge != nil && c.Edge.TypeParamMap != nil {
 		generics = make(map[string]string)
@@ -921,7 +957,7 @@ type CallGraphEdge struct {
 	meta *Metadata
 }
 
-func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
+func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType, scope int) *Call {
 	return &Call{
 		Edge:     edge,
 		Meta:     edge.meta,
@@ -929,6 +965,7 @@ func (edge *CallGraphEdge) NewCall(name, pkg, position, recvType int) *Call {
 		Pkg:      pkg,
 		Position: position,
 		RecvType: recvType,
+		Scope:    scope,
 	}
 }
 
