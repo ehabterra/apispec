@@ -161,6 +161,11 @@ func ComparePatterns(patterns []string, path string, iterations int) {
 	fmt.Printf("%-30s | %-12s | %-10s | %s\n", "Pattern", "Avg Time", "Allocs", "Relative")
 	fmt.Println(strings.Repeat("-", 80))
 
+	if len(results) == 0 {
+		fmt.Println("No patterns to compare")
+		return
+	}
+
 	baseline := results[0].AvgTime
 	for _, result := range results {
 		relative := float64(result.AvgTime) / float64(baseline)
