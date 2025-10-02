@@ -633,9 +633,9 @@ func (s *DiagramServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packages, functions, files, receivers, signatures, generics []string, scopeFilter string) *spec.PaginatedCytoscapeData {
 	// Check cache first
 	cacheKey := fmt.Sprintf("%d-%d-%d-%v-%v-%v-%v-%v-%v-%s", page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
-	// if cached, exists := s.cache[cacheKey]; exists {
-	// 	return cached
-	// }
+	if cached, exists := s.cache[cacheKey]; exists {
+		return cached
+	}
 
 	// Generate all data first
 	allData := spec.DrawCallGraphCytoscape(s.metadata)
@@ -753,6 +753,22 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 				if strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(strings.TrimSpace(file))) {
 					fileMatch = true
 					break
+				}
+			}
+			if !fileMatch {
+				includeNode = false
+			}
+		}
+
+		// File filter (multi-value, check call paths field)
+		if len(files) > 0 && len(node.Data.CallPaths) > 0 {
+			fileMatch := false
+			for _, file := range files {
+				for _, callPath := range node.Data.CallPaths {
+					if strings.Contains(strings.ToLower(callPath.Position), strings.ToLower(strings.TrimSpace(file))) {
+						fileMatch = true
+						break
+					}
 				}
 			}
 			if !fileMatch {
@@ -918,7 +934,7 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 		TotalEdges: len(filteredEdges),
 		Page:       page,
 		PageSize:   pageSize,
-		HasMore:    end < len(filteredNodes),
+		HasMore:    len(paginatedNodes) < len(filteredNodes),
 	}
 
 	// Cache result

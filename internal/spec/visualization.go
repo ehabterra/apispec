@@ -167,18 +167,11 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			callerPosition = callerName[len("FuncLit:"):]
 		}
 
-		// For caller nodes, we don't need call paths since they are the ones making calls
-		// Call paths will be built for callee nodes
-		var callPathInfos []CallPathInfo
-
 		// Extract function-level parameter types and generics (from any call to this function)
 		var generics map[string]string
-		if len(callPathInfos) > 0 {
-			// Use the first call path to get function-level parameter types
-			generics = make(map[string]string)
-			if edge.TypeParamMap != nil {
-				generics = edge.TypeParamMap
-			}
+
+		if len(edge.TypeParamMap) > 0 {
+			generics = edge.TypeParamMap
 		}
 
 		signatureStr := meta.StringPool.GetString(edge.Caller.SignatureStr)
@@ -195,15 +188,6 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 
 		// Create position info from call paths
 		positionInfo := callerPosition
-		if len(callPathInfos) > 0 {
-			var positions []string
-			for _, pathInfo := range callPathInfos {
-				if pathInfo.Position != "" {
-					positions = append(positions, pathInfo.Position)
-				}
-			}
-			positionInfo = strings.Join(positions, "; ")
-		}
 		if positionInfo == "" {
 			if callerName == "main" {
 				positionInfo = "root function"
@@ -242,7 +226,6 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 				Parent:       parentID,
 				Type:         "function",
 				Package:      callerPkg,
-				CallPaths:    callPathInfos,
 				Generics:     generics,
 				FunctionName: callerName,
 				ReceiverType: receiverType,
@@ -313,21 +296,6 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			}
 		}
 
-		// Create position info from call paths
-		var positionInfo string
-		if len(callPathInfos) > 0 {
-			var positions []string
-			for _, pathInfo := range callPathInfos {
-				if pathInfo.Position != "" {
-					positions = append(positions, pathInfo.Position)
-				}
-			}
-			positionInfo = strings.Join(positions, "; ")
-		}
-		if positionInfo == "" {
-			positionInfo = "entry point"
-		}
-
 		calleeScope := edge.Callee.GetScope()
 
 		data.Nodes = append(data.Nodes, CytoscapeNode{
@@ -341,7 +309,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 				Generics:     generics,
 				FunctionName: calleeName,
 				ReceiverType: receiverType,
-				Position:     positionInfo,
+				Position:     "", // Don't show position for callee nodes
 				SignatureStr: signatureStr,
 				Scope:        calleeScope,
 			},
@@ -665,21 +633,9 @@ func ensureParentFunctionNode(meta *metadata.Metadata, parentFunc *metadata.Call
 
 	// Create position info
 	var positionInfo string
-	if len(callPathInfos) > 0 {
-		var positions []string
-		for _, pathInfo := range callPathInfos {
-			if pathInfo.Position != "" {
-				positions = append(positions, pathInfo.Position)
-			}
-		}
-		positionInfo = strings.Join(positions, "; ")
-	}
-	if positionInfo == "" {
-		if parentFuncName == "main" {
-			positionInfo = "root function"
-		} else {
-			positionInfo = "entry point"
-		}
+
+	if positionInfo == "" && parentFuncName == "main" {
+		positionInfo = "root function"
 	}
 
 	parentScope := parentFunc.GetScope()

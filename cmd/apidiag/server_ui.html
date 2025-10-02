@@ -1081,7 +1081,7 @@
             // Update stats
             totalNodes = data.total_nodes;
             totalEdges = data.total_edges;
-            totalPages = Math.ceil(totalNodes / pageSize);
+            totalPages = Math.ceil((totalNodes - allNodes.size) / pageSize+1);
             updateStats(data.load_time_ms);
             updatePagination();
             updateFilters();
