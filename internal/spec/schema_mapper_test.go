@@ -11,6 +11,7 @@ func TestNewSchemaMapper(t *testing.T) {
 
 	if mapper == nil {
 		t.Fatal("NewSchemaMapper returned nil")
+		return
 	}
 
 	if mapper.cfg != cfg {

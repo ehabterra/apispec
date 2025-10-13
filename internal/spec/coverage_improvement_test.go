@@ -22,10 +22,12 @@ func TestDefaultMuxConfig(t *testing.T) {
 	config := DefaultMuxConfig()
 	if config == nil {
 		t.Fatal("Expected non-nil config")
+		return
 	}
 
 	if config.Framework.RoutePatterns == nil {
 		t.Fatal("Expected non-nil RoutePatterns")
+		return
 	}
 
 	if len(config.Framework.RoutePatterns) == 0 {

@@ -62,9 +62,11 @@ func TestNewPerformanceAnalyzer(t *testing.T) {
 	analyzer := NewPerformanceAnalyzer()
 	if analyzer == nil {
 		t.Fatal("Expected non-nil analyzer")
+		return
 	}
 	if analyzer.thresholds == nil {
 		t.Fatal("Expected non-nil thresholds")
+		return
 	}
 
 	// Check that default thresholds are set
@@ -85,9 +87,11 @@ func TestNewPerformanceAnalyzerWithThresholds(t *testing.T) {
 	analyzer := NewPerformanceAnalyzerWithThresholds(customThresholds)
 	if analyzer == nil {
 		t.Fatal("Expected non-nil analyzer")
+		return
 	}
 	if analyzer.thresholds == nil {
 		t.Fatal("Expected non-nil thresholds")
+		return
 	}
 
 	// Check that custom thresholds are set
@@ -111,6 +115,7 @@ func TestAnalyzeMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics([]Metric{})
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 	if report.TotalIssues != 0 {
 		t.Errorf("Expected 0 issues, got %d", report.TotalIssues)
@@ -154,6 +159,7 @@ func TestAnalyzeMetricsWithTimerMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -204,6 +210,7 @@ func TestAnalyzeMetricsWithGaugeMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -243,6 +250,7 @@ func TestAnalyzeMetricsWithGoroutineMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -275,6 +283,7 @@ func TestAnalyzeMetricsWithCounterMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Counter metrics don't generate issues currently
@@ -300,6 +309,7 @@ func TestAnalyzeMetricsWithHistogramMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Histogram metrics don't generate issues currently

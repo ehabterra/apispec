@@ -24,6 +24,7 @@ func TestDefaultProfilerConfig(t *testing.T) {
 	config := DefaultProfilerConfig()
 	if config == nil {
 		t.Fatal("Expected non-nil config")
+		return
 	}
 
 	// Check default values
@@ -86,6 +87,7 @@ func TestNewProfiler(t *testing.T) {
 
 	if profiler == nil {
 		t.Fatal("Expected non-nil profiler")
+		return
 	}
 	if profiler.config != config {
 		t.Fatal("Expected config to be set")

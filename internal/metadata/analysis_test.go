@@ -189,6 +189,7 @@ func TestTraceVariableOrigin_MethodHandling(t *testing.T) {
 
 	if calleeMethod == nil {
 		t.Fatal("Expected to find method GetName")
+		return
 	}
 
 	// Test return value tracing

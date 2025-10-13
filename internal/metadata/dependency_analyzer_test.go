@@ -196,18 +196,22 @@ func TestNewFrameworkDetector(t *testing.T) {
 
 	if fd == nil {
 		t.Error("Expected non-nil FrameworkDetector")
+		return
 	}
 
 	if fd.packages == nil {
 		t.Error("Expected packages map to be initialized")
+		return
 	}
 
 	if fd.dependencyGraph == nil {
 		t.Error("Expected dependencyGraph map to be initialized")
+		return
 	}
 
 	if fd.reverseDependencyGraph == nil {
 		t.Error("Expected reverseDependencyGraph map to be initialized")
+		return
 	}
 }
 
@@ -221,6 +225,7 @@ func TestNewFrameworkDetectorWithConfig(t *testing.T) {
 
 	if fd == nil {
 		t.Error("Expected non-nil FrameworkDetector")
+		return
 	}
 
 	if fd.config.IncludeExternalPackages != true {

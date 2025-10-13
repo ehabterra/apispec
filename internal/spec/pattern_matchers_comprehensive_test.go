@@ -107,6 +107,7 @@ func TestRoutePatternMatcher_Comprehensive(t *testing.T) {
 			matcher := NewRoutePatternMatcher(tt.pattern, cfg, contextProvider, typeResolver)
 			if matcher == nil {
 				t.Fatal("Route pattern matcher should not be nil")
+				return
 			}
 
 			// Test pattern validation
@@ -212,6 +213,7 @@ func TestMountPatternMatcher_Comprehensive(t *testing.T) {
 			matcher := NewMountPatternMatcher(tt.pattern, cfg, contextProvider, typeResolver)
 			if matcher == nil {
 				t.Fatal("Mount pattern matcher should not be nil")
+				return
 			}
 
 			// Test pattern validation
@@ -305,6 +307,7 @@ func TestRequestPatternMatcher_Comprehensive(t *testing.T) {
 			matcher := NewRequestPatternMatcher(tt.pattern, cfg, contextProvider, typeResolver)
 			if matcher == nil {
 				t.Fatal("Request pattern matcher should not be nil")
+				return
 			}
 
 			// Test pattern validation
@@ -403,6 +406,7 @@ func TestResponsePatternMatcher_Comprehensive(t *testing.T) {
 			matcher := NewResponsePatternMatcher(tt.pattern, cfg, contextProvider, typeResolver)
 			if matcher == nil {
 				t.Fatal("Response pattern matcher should not be nil")
+				return
 			}
 
 			// Test pattern validation
@@ -502,6 +506,7 @@ func TestParamPatternMatcher_Comprehensive(t *testing.T) {
 			matcher := NewParamPatternMatcher(tt.pattern, cfg, contextProvider, typeResolver)
 			if matcher == nil {
 				t.Fatal("Param pattern matcher should not be nil")
+				return
 			}
 
 			// Test pattern validation
@@ -549,6 +554,7 @@ func TestPatternMatcher_EdgeCases(t *testing.T) {
 		routeMatcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider, typeResolver)
 		if routeMatcher == nil {
 			t.Fatal("Should handle empty regex pattern")
+			return
 		}
 
 		// Test mount pattern with empty regex
@@ -561,6 +567,7 @@ func TestPatternMatcher_EdgeCases(t *testing.T) {
 		mountMatcher := NewMountPatternMatcher(mountPattern, cfg, contextProvider, typeResolver)
 		if mountMatcher == nil {
 			t.Fatal("Should handle empty regex pattern")
+			return
 		}
 	})
 

@@ -15,10 +15,12 @@ func TestNewGenerator(t *testing.T) {
 
 	if gen == nil {
 		t.Fatal("NewGenerator returned nil")
+		return
 	}
 
 	if gen.config == nil {
 		t.Error("Generator config is nil")
+		return
 	}
 }
 
@@ -73,6 +75,7 @@ go 1.21`
 
 	if spec == nil {
 		t.Fatal("Generated spec is nil")
+		return
 	}
 
 	// Basic validation of the generated spec
@@ -246,6 +249,7 @@ func main() {
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	// Verify that the custom config was used

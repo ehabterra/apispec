@@ -331,6 +331,7 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 			// Verify that literal values are handled correctly
 			if result == nil {
 				t.Fatal("Expected non-nil result")
+				return
 			}
 
 			// For literal values, we expect the appropriate type based on the value

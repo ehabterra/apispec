@@ -25,6 +25,7 @@ func TestNewMetricsCollector(t *testing.T) {
 	collector := NewMetricsCollector()
 	if collector == nil {
 		t.Fatal("Expected non-nil collector")
+		return
 	}
 	if collector.metrics == nil {
 		t.Fatal("Expected non-nil metrics slice")
@@ -193,6 +194,7 @@ func TestStartTimer(t *testing.T) {
 	timer := collector.StartTimer("test_timer", map[string]string{"function": "test"})
 	if timer == nil {
 		t.Fatal("Expected non-nil timer")
+		return
 	}
 	if timer.name != "test_timer" {
 		t.Errorf("Expected name 'test_timer', got %s", timer.name)

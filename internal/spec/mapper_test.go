@@ -408,6 +408,7 @@ func TestMapMetadataToOpenAPI_WithValidConfig(t *testing.T) {
 
 	if spec == nil {
 		t.Fatal("OpenAPI spec should not be nil")
+		return
 	}
 
 	// Test basic structure
@@ -507,6 +508,7 @@ func TestMapMetadataToOpenAPI_WithConfigInfo(t *testing.T) {
 
 	if spec == nil {
 		t.Fatal("OpenAPI spec should not be nil")
+		return
 	}
 
 	// Test that config info takes precedence
@@ -615,6 +617,7 @@ func TestMapMetadataToOpenAPI_WithSecuritySchemes(t *testing.T) {
 
 	if spec == nil {
 		t.Fatal("OpenAPI spec should not be nil")
+		return
 	}
 
 	// Test security schemes
@@ -1845,6 +1848,7 @@ func TestEnumDetectionForArrays(t *testing.T) {
 
 			if schema == nil {
 				t.Fatal("Expected non-nil schema")
+				return
 			}
 
 			if schema.Type != tc.expectedType {
@@ -1971,6 +1975,7 @@ func TestEnumDetectionForMaps(t *testing.T) {
 
 			if schema == nil {
 				t.Fatal("Expected non-nil schema")
+				return
 			}
 
 			if schema.Type != tc.expectedType {
@@ -2092,6 +2097,7 @@ func TestEnumDetectionForAliasTypes(t *testing.T) {
 
 			if schema == nil {
 				t.Fatal("Expected non-nil schema")
+				return
 			}
 
 			if schema.Type != tc.expectedType {
@@ -2255,6 +2261,7 @@ func TestMapTypeWithPackagePrefix(t *testing.T) {
 
 			if schema == nil {
 				t.Fatal("Expected non-nil schema")
+				return
 			}
 
 			if schema.Type != tc.expectedType {

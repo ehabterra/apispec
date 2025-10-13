@@ -53,7 +53,7 @@ type StringPool struct {
 func NewStringPool() *StringPool {
 	return &StringPool{
 		strings: make(map[string]int, 1000), // Pre-allocate with estimated capacity
-		values:  make([]string, 0, 1000),   // Pre-allocate slice capacity
+		values:  make([]string, 0, 1000),    // Pre-allocate slice capacity
 	}
 }
 

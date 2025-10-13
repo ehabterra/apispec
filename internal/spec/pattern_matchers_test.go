@@ -150,15 +150,18 @@ func TestExtractor_IsValid(t *testing.T) {
 	// Test IsValid method
 	if extractor == nil {
 		t.Fatal("Extractor should not be nil")
+		return
 	}
 
 	// Test that extractor was created with valid configuration
 	if extractor.cfg == nil {
 		t.Error("Extractor config should not be nil")
+		return
 	}
 
 	if extractor.tree == nil {
 		t.Error("Extractor tree should not be nil")
+		return
 	}
 }
 

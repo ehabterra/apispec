@@ -110,6 +110,7 @@ func TestNewDiagramServer(t *testing.T) {
 	server := NewDiagramServer(config)
 	if server == nil {
 		t.Fatal("Expected non-nil server")
+		return
 	}
 	if server.config != config {
 		t.Fatal("Expected config to be set")
