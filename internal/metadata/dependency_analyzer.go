@@ -83,9 +83,9 @@ func NewFrameworkDetector() *FrameworkDetector {
 func NewFrameworkDetectorWithConfig(config FrameworkDetectorConfig) *FrameworkDetector {
 	return &FrameworkDetector{
 		config:                 config,
-		packages:               make(map[string]*packages.Package),
-		dependencyGraph:        make(map[string][]string),
-		reverseDependencyGraph: make(map[string][]string),
+		packages:               make(map[string]*packages.Package, 100), // Pre-allocate with estimated capacity
+		dependencyGraph:        make(map[string][]string, 50),
+		reverseDependencyGraph: make(map[string][]string, 50),
 	}
 }
 

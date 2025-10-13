@@ -404,6 +404,7 @@ func MeasureMemoryUsage(mc *MetricsCollector, name string, fn func() error, tags
 
 	err := fn()
 
+	// Force GC after measurement for accurate memory tracking
 	runtime.GC()
 	runtime.ReadMemStats(&after)
 

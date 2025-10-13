@@ -378,7 +378,8 @@ func traceVariableOriginHelper(
 
 	// Optimize key generation using string builder
 	var keyBuilder strings.Builder
-	keyBuilder.Grow(len(pkgName) + len(funcName) + len(varName) + 3)
+	estimatedLen := len(pkgName) + len(funcName) + len(varName) + 3
+	keyBuilder.Grow(estimatedLen)
 	keyBuilder.WriteString(pkgName)
 	keyBuilder.WriteByte('.')
 	keyBuilder.WriteString(funcName)

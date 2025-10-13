@@ -288,16 +288,16 @@ func (k interfaceKey) String() string {
 func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *TrackerTree {
 	t := &TrackerTree{
 		meta:          meta,
-		positions:     make(map[string]bool),
-		variableNodes: make(map[paramKey]*TrackerNode),
+		positions:     make(map[string]bool, 100), // Pre-allocate with estimated capacity
+		variableNodes: make(map[paramKey]*TrackerNode, 50),
 
 		limits:                 limits,
-		chainParentMap:         make(map[string]*metadata.CallGraphEdge),
-		interfaceResolutionMap: make(map[interfaceKey]string),
+		chainParentMap:         make(map[string]*metadata.CallGraphEdge, 100),
+		interfaceResolutionMap: make(map[interfaceKey]string, 50),
 
-		// Initialize performance optimization caches
-		nodeMap: make(map[string]*TrackerNode),
-		idCache: make(map[string]string),
+		// Initialize performance optimization caches with pre-allocated capacity
+		nodeMap: make(map[string]*TrackerNode, 200),
+		idCache: make(map[string]string, 100),
 	}
 
 	// Pre-allocate roots slice with estimated capacity
@@ -308,7 +308,7 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 
 	assignmentIndex := assigmentIndexMap{}
 
-	visited := make(map[string]int)
+	visited := make(map[string]int, 200) // Pre-allocate with estimated capacity
 
 	// Get pre-built relationships from metadata
 	assignmentRelationships := meta.GetAssignmentRelationships()
@@ -1058,9 +1058,9 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	node := getTrackerNode()
 	node.CallGraphEdge = parentEdge
 	node.CallArgument = callArg
-	node.RootAssignmentMap = make(map[string][]metadata.Assignment)
+	node.RootAssignmentMap = make(map[string][]metadata.Assignment, 5) // Pre-allocate with smaller capacity
 	// Pre-allocate children slice with reasonable capacity
-	node.Children = make([]*TrackerNode, 0, 10)
+	node.Children = make([]*TrackerNode, 0, 6) // Further reduced to 6 for better memory usage
 	if parentEdge == nil && callArg == nil {
 		node.key = id
 	}
