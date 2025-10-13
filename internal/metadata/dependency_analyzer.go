@@ -31,26 +31,67 @@ type FrameworkDependencyList struct {
 	IndirectPackages int                    `yaml:"indirect_packages"`
 }
 
-// FrameworkDetector detects framework dependencies
-type FrameworkDetector struct {
-	// Framework patterns to detect
+// FrameworkDetectorConfig holds configuration for framework detection.
+// This configuration allows for flexible and customizable framework detection
+// without hardcoded values, making the system adaptable to different project structures.
+type FrameworkDetectorConfig struct {
+	// FrameworkPatterns maps framework types to their import patterns.
+	// Example: "gin" -> ["github.com/gin-gonic/gin", "github.com/gin-contrib/"]
 	FrameworkPatterns map[string][]string
-	// Package analysis results
-	packages map[string]*packages.Package
-	// Dependency graph
-	dependencyGraph map[string][]string
-	// Reverse dependency graph
-	reverseDependencyGraph map[string][]string
-	// Configuration
-	IncludeExternalPackages bool // Whether to include external packages in imports
-	MaxImportDepth          int  // Maximum depth for recursive import analysis
-	// Disabled frameworks to skip during detection (e.g., "http")
+
+	// ExternalPrefixes are package prefixes that should be excluded as external dependencies.
+	// Example: ["github.com/gin-gonic/gin", "golang.org/x/"]
+	ExternalPrefixes []string
+
+	// ProjectPatterns are patterns used for fallback project package detection.
+	// Example: ["/models/", "/handlers/", "/services/"]
+	ProjectPatterns []string
+
+	// TestMockPatterns are patterns used to identify and exclude test/mock packages.
+	// Example: ["/mock/", "/test/", "_mock", "_test"]
+	TestMockPatterns []string
+
+	// IncludeExternalPackages determines whether to include external packages in analysis.
+	IncludeExternalPackages bool
+
+	// MaxImportDepth controls the maximum depth for recursive import analysis.
+	MaxImportDepth int
+
+	// DisabledFrameworks contains framework types that should be skipped during detection.
 	DisabledFrameworks map[string]bool
 }
 
-// NewFrameworkDetector creates a new framework detector
+// FrameworkDetector detects framework dependencies using configurable patterns.
+// It analyzes Go packages to identify framework usage and related dependencies,
+// providing intelligent project package detection without hardcoded values.
+type FrameworkDetector struct {
+	config FrameworkDetectorConfig
+	// Package analysis results from go/packages
+	packages map[string]*packages.Package
+	// Dependency graph: package -> its dependencies
+	dependencyGraph map[string][]string
+	// Reverse dependency graph: package -> packages that depend on it
+	reverseDependencyGraph map[string][]string
+}
+
+// NewFrameworkDetector creates a new framework detector with default configuration
 func NewFrameworkDetector() *FrameworkDetector {
+	return NewFrameworkDetectorWithConfig(DefaultFrameworkDetectorConfig())
+}
+
+// NewFrameworkDetectorWithConfig creates a new framework detector with custom configuration
+func NewFrameworkDetectorWithConfig(config FrameworkDetectorConfig) *FrameworkDetector {
 	return &FrameworkDetector{
+		config:                 config,
+		packages:               make(map[string]*packages.Package),
+		dependencyGraph:        make(map[string][]string),
+		reverseDependencyGraph: make(map[string][]string),
+	}
+}
+
+// DefaultFrameworkDetectorConfig returns the default configuration for framework detection
+func DefaultFrameworkDetectorConfig() FrameworkDetectorConfig {
+	return FrameworkDetectorConfig{
 		FrameworkPatterns: map[string][]string{
 			"gin": {
 				"github.com/gin-gonic/gin",
@@ -78,27 +119,101 @@ func NewFrameworkDetector() *FrameworkDetector {
 				"github.com/valyala/fasthttp",
 			},
 		},
-		packages:                make(map[string]*packages.Package),
-		dependencyGraph:         make(map[string][]string),
-		reverseDependencyGraph:  make(map[string][]string),
-		IncludeExternalPackages: false, // Default to false for more precise analysis
-		MaxImportDepth:          3,     // Default to 3 levels deep
+		ExternalPrefixes: []string{
+			"github.com/gin-gonic/gin",
+			"github.com/labstack/echo",
+			"github.com/gofiber/fiber",
+			"github.com/go-chi/chi",
+			"github.com/gorilla/mux",
+			"github.com/valyala/fasthttp",
+			"golang.org/x/",
+			"google.golang.org/",
+			"go.uber.org/",
+			"github.com/sirupsen/logrus",
+			"github.com/spf13/",
+			"github.com/stretchr/",
+			"gorm.io/",
+			"gopkg.in/",
+			"k8s.io/",
+			"sigs.k8s.io/",
+			"github.com/google/uuid",
+		},
+		ProjectPatterns: []string{
+			"/modules/",
+			"/pkg/",
+			"/internal/",
+			"/api/",
+			"/handlers/",
+			"/models/",
+			"/services/",
+			"/repositories/",
+			"/usecase/",
+			"/domain/",
+			"/dtos/",
+			"/middleware/",
+			"/config/",
+			"/utils/",
+			"/common/",
+			"/constants/",
+			"/web/",
+			"/dto/",
+			"/auth/",
+			"/user/",
+			"/handler/",
+		},
+		TestMockPatterns: []string{
+			"/mock/", "/mocks/", "/test/", "/tests/",
+			"/fake/", "/fakes/", "/stub/", "/stubs/",
+			"mock", "fake", "stub", "mocked",
+			"_mock", "_mocks", "_test", "_tests",
+			"_fake", "_fakes", "_stub", "_stubs",
+		},
+		IncludeExternalPackages: false,
+		MaxImportDepth:          3,
 		DisabledFrameworks:      make(map[string]bool),
 	}
 }
 
 // Configure sets configuration options for the framework detector
 func (fd *FrameworkDetector) Configure(includeExternal bool, maxDepth int) {
-	fd.IncludeExternalPackages = includeExternal
-	fd.MaxImportDepth = maxDepth
+	fd.config.IncludeExternalPackages = includeExternal
+	fd.config.MaxImportDepth = maxDepth
 }
 
 // DisableFramework disables detection for a given framework type key (e.g., "http")
 func (fd *FrameworkDetector) DisableFramework(frameworkType string) {
-	if fd.DisabledFrameworks == nil {
-		fd.DisabledFrameworks = make(map[string]bool)
+	if fd.config.DisabledFrameworks == nil {
+		fd.config.DisabledFrameworks = make(map[string]bool)
 	}
-	fd.DisabledFrameworks[frameworkType] = true
+	fd.config.DisabledFrameworks[frameworkType] = true
+}
+
+// AddFrameworkPattern adds a new framework pattern for detection
+func (fd *FrameworkDetector) AddFrameworkPattern(frameworkType string, patterns []string) {
+	if fd.config.FrameworkPatterns == nil {
+		fd.config.FrameworkPatterns = make(map[string][]string)
+	}
+	fd.config.FrameworkPatterns[frameworkType] = patterns
+}
+
+// AddExternalPrefix adds a new external package prefix to exclude
+func (fd *FrameworkDetector) AddExternalPrefix(prefix string) {
+	fd.config.ExternalPrefixes = append(fd.config.ExternalPrefixes, prefix)
+}
+
+// AddProjectPattern adds a new project pattern for fallback detection
+func (fd *FrameworkDetector) AddProjectPattern(pattern string) {
+	fd.config.ProjectPatterns = append(fd.config.ProjectPatterns, pattern)
+}
+
+// AddTestMockPattern adds a new test/mock pattern to exclude
+func (fd *FrameworkDetector) AddTestMockPattern(pattern string) {
+	fd.config.TestMockPatterns = append(fd.config.TestMockPatterns, pattern)
+}
+
+// GetConfig returns a copy of the current configuration
+func (fd *FrameworkDetector) GetConfig() FrameworkDetectorConfig {
+	return fd.config
 }
 
 // AnalyzeFrameworkDependencies analyzes all framework dependencies
@@ -108,9 +223,6 @@ func (fd *FrameworkDetector) AnalyzeFrameworkDependencies(
 	fileToInfo map[*ast.File]*types.Info,
 	fset *token.FileSet,
 ) (*FrameworkDependencyList, error) {
-
-	fmt.Println("Analyzing framework dependencies...")
-
 	// Build package map
 	for _, pkg := range pkgs {
 		fd.packages[pkg.PkgPath] = pkg
@@ -187,15 +299,7 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 		pkgPath := pkg.PkgPath
 
 		// Skip mock/test packages
-		lowerPath := strings.ToLower(pkgPath)
-		if strings.Contains(lowerPath, "/mock/") || strings.Contains(lowerPath, "/mocks/") ||
-			strings.Contains(lowerPath, "/test/") || strings.Contains(lowerPath, "/tests/") ||
-			strings.Contains(lowerPath, "/fake/") || strings.Contains(lowerPath, "/fakes/") ||
-			strings.Contains(lowerPath, "/stub/") || strings.Contains(lowerPath, "/stubs/") ||
-			strings.HasSuffix(lowerPath, "_mock") || strings.HasSuffix(lowerPath, "_mocks") ||
-			strings.HasSuffix(lowerPath, "_test") || strings.HasSuffix(lowerPath, "_tests") ||
-			strings.HasSuffix(lowerPath, "_fake") || strings.HasSuffix(lowerPath, "_fakes") ||
-			strings.HasSuffix(lowerPath, "_stub") || strings.HasSuffix(lowerPath, "_stubs") {
+		if fd.isTestMockPackage(pkgPath) {
 			continue
 		}
 
@@ -230,11 +334,7 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 		}
 
 		// Skip mock/test packages
-		lowerPath := strings.ToLower(pkgPath)
-		if strings.Contains(lowerPath, "/mock") || strings.Contains(lowerPath, "/mocks") ||
-			strings.Contains(lowerPath, "/test") || strings.Contains(lowerPath, "/tests") ||
-			strings.Contains(lowerPath, "/fake") || strings.Contains(lowerPath, "/fakes") ||
-			strings.Contains(lowerPath, "/stub") || strings.Contains(lowerPath, "/stubs") {
+		if fd.isTestMockPackage(pkgPath) {
 			continue
 		}
 
@@ -270,8 +370,8 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 
 // detectFrameworkType detects which framework this package uses
 func (fd *FrameworkDetector) detectFrameworkType(pkg *packages.Package) string {
-	for frameworkType, patterns := range fd.FrameworkPatterns {
-		if fd.DisabledFrameworks[frameworkType] {
+	for frameworkType, patterns := range fd.config.FrameworkPatterns {
+		if fd.config.DisabledFrameworks[frameworkType] {
 			continue
 		}
 		for _, pattern := range patterns {
@@ -386,7 +486,7 @@ func (fd *FrameworkDetector) findImportsRecursivelyWithDepth(
 	depth int,
 ) {
 	// Check depth limit
-	if depth >= fd.MaxImportDepth {
+	if depth >= fd.config.MaxImportDepth {
 		return
 	}
 	// Extract imports from all files in this package
@@ -400,39 +500,49 @@ func (fd *FrameworkDetector) findImportsRecursivelyWithDepth(
 					continue
 				}
 
-				// Skip standard library packages
-				if !strings.Contains(importPath, ".") {
+				// Skip standard library packages (packages without domain/namespace)
+				// Standard library packages are typically single words like "fmt", "net", "os", etc.
+				// Project packages typically have slashes like "complex-chi-router/models"
+				if !strings.Contains(importPath, "/") && !strings.Contains(importPath, ".") {
 					continue
 				}
 
-				// Check if this imported package exists in our available packages
-				if importedPkg, exists := availablePackages[importPath]; exists {
-					// Check if this import should be included based on configuration
-					shouldInclude := false
-					if fd.IncludeExternalPackages {
-						shouldInclude = true // Include all packages if external packages are allowed
-					} else {
-						shouldInclude = fd.isProjectRelatedPackage(importPath) // Only project-related packages
+				// Check if this import should be included based on configuration
+				shouldInclude := false
+				if fd.config.IncludeExternalPackages {
+					shouldInclude = true // Include all packages if external packages are allowed
+				} else {
+					shouldInclude = fd.isProjectRelatedPackage(importPath) // Only project-related packages
+				}
+
+				if shouldInclude {
+					dep := &FrameworkDependency{
+						PackagePath:   importPath,
+						FrameworkType: "imported",
+						IsDirect:      false,
+						Files:         make([]string, 0),
+						Functions:     make([]string, 0),
+						Types:         make([]string, 0),
+						Metadata:      make(map[string]interface{}),
 					}
 
-					if shouldInclude {
-						dep := &FrameworkDependency{
-							PackagePath:   importPath,
-							FrameworkType: "imported",
-							IsDirect:      false,
-							Files:         make([]string, 0),
-							Functions:     make([]string, 0),
-							Types:         make([]string, 0),
-							Metadata:      make(map[string]interface{}),
-						}
-
-						// Analyze package contents
+					// Check if this imported package exists in our available packages
+					if importedPkg, exists := availablePackages[importPath]; exists {
+						// Analyze package contents with full metadata
 						fd.analyzePackageContents(importedPkg, dep, nil, nil)
+					} else {
+						// Package not in available packages, but still include it
+						// This handles cases where project packages are imported but not in the original analysis
+						dep.Metadata["note"] = "package not in original analysis"
+						dep.Metadata["imported_by"] = pkg.PkgPath
+					}
 
-						*importedPackages = append(*importedPackages, dep)
-						importedPackagePaths[importPath] = true
+					*importedPackages = append(*importedPackages, dep)
+					importedPackagePaths[importPath] = true
 
-						// Recursively find imports of this package with increased depth
+					// Recursively find imports of this package with increased depth
+					// Only if the package exists in available packages
+					if importedPkg, exists := availablePackages[importPath]; exists {
 						fd.findImportsRecursivelyWithDepth(importedPkg, availablePackages, importedPackagePaths, processed, importedPackages, depth+1)
 					}
 				}
@@ -441,70 +551,157 @@ func (fd *FrameworkDetector) findImportsRecursivelyWithDepth(
 	}
 }
 
+// isTestMockPackage checks if a package is a test or mock package
+func (fd *FrameworkDetector) isTestMockPackage(pkgPath string) bool {
+	lowerPath := strings.ToLower(pkgPath)
+	for _, pattern := range fd.config.TestMockPatterns {
+		if strings.Contains(lowerPath, pattern) || strings.HasSuffix(lowerPath, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // isProjectRelatedPackage checks if a package is related to the current project
 func (fd *FrameworkDetector) isProjectRelatedPackage(importPath string) bool {
-	// Skip mock/test packages - more comprehensive
-	lowerPath := strings.ToLower(importPath)
-	if strings.Contains(lowerPath, "/mock") || strings.Contains(lowerPath, "/mocks") ||
-		strings.Contains(lowerPath, "/test") || strings.Contains(lowerPath, "/tests") ||
-		strings.Contains(lowerPath, "/fake") || strings.Contains(lowerPath, "/fakes") ||
-		strings.Contains(lowerPath, "/stub") || strings.Contains(lowerPath, "/stubs") ||
-		strings.Contains(lowerPath, "mock") || strings.Contains(lowerPath, "fake") ||
-		strings.Contains(lowerPath, "stub") || strings.Contains(lowerPath, "mocked") {
+	// Skip mock/test packages
+	if fd.isTestMockPackage(importPath) {
 		return false
 	}
 
 	// Skip external packages that are clearly not part of the project
-	externalPrefixes := []string{
-		"github.com/gin-gonic/gin",
-		"github.com/labstack/echo",
-		"github.com/gofiber/fiber",
-		"github.com/go-chi/chi",
-		"github.com/gorilla/mux",
-		"github.com/valyala/fasthttp",
-		"golang.org/x/",
-		"google.golang.org/",
-		"go.uber.org/",
-		"github.com/sirupsen/logrus",
-		"github.com/spf13/",
-		"github.com/stretchr/",
-		"gorm.io/",
-		"gopkg.in/",
-		"k8s.io/",
-		"sigs.k8s.io/",
-	}
-
-	for _, prefix := range externalPrefixes {
+	for _, prefix := range fd.config.ExternalPrefixes {
 		if strings.HasPrefix(importPath, prefix) {
 			return false
 		}
 	}
 
-	// Include packages that look like they belong to the project
-	// (contain common project patterns)
-	projectPatterns := []string{
-		"/modules/",
-		"/pkg/",
-		"/internal/",
-		"/api/",
-		"/handlers/",
-		"/models/",
-		"/services/",
-		"/repositories/",
-		"/usecase/",
-		"/domain/",
-		"/dtos/",
-		"/middleware/",
-		"/config/",
-		"/utils/",
-		"/common/",
-		"/constants/",
-		"/web/",
-		"/dto/",
+	// Use intelligent project package detection
+	return fd.isIntelligentProjectPackage(importPath)
+}
+
+// isIntelligentProjectPackage uses context-aware analysis to determine if a package belongs to the project
+func (fd *FrameworkDetector) isIntelligentProjectPackage(importPath string) bool {
+	// Get the project root from the analyzed packages
+	projectRoot := fd.detectProjectRoot()
+	if projectRoot == "" {
+		// Fallback to simple heuristics if we can't detect project root
+		return fd.fallbackProjectPackageDetection(importPath)
 	}
 
-	for _, pattern := range projectPatterns {
+	// Check if this package is under the detected project root
+	if strings.HasPrefix(importPath, projectRoot) {
+		return true
+	}
+
+	// Check if this package is imported by any of our analyzed packages
+	// This catches packages that are part of the project but not under the main root
+	return fd.isPackageImportedByProject(importPath)
+}
+
+// detectProjectRoot analyzes the package paths to determine the common project root
+func (fd *FrameworkDetector) detectProjectRoot() string {
+	if len(fd.packages) == 0 {
+		return ""
+	}
+
+	// Collect all package paths
+	var packagePaths []string
+	for pkgPath := range fd.packages {
+		packagePaths = append(packagePaths, pkgPath)
+	}
+
+	if len(packagePaths) == 0 {
+		return ""
+	}
+
+	// Find the longest common prefix among all package paths
+	// This should give us the project root
+	commonPrefix := packagePaths[0]
+
+	for _, path := range packagePaths[1:] {
+		commonPrefix = fd.findCommonPrefix(commonPrefix, path)
+		if commonPrefix == "" {
+			break
+		}
+	}
+
+	// If the common prefix is too short or looks like a domain, try a different approach
+	if len(commonPrefix) < 3 || strings.Contains(commonPrefix, ".") {
+		// Look for packages that don't start with a domain (github.com, etc.)
+		for _, path := range packagePaths {
+			parts := strings.Split(path, "/")
+			if len(parts) >= 2 && !strings.Contains(parts[0], ".") {
+				// This looks like a project package (e.g., "myproject/models")
+				return parts[0]
+			}
+		}
+		return ""
+	}
+
+	return commonPrefix
+}
+
+// findCommonPrefix finds the longest common prefix between two strings
+func (fd *FrameworkDetector) findCommonPrefix(a, b string) string {
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if a[i] != b[i] {
+			return a[:i]
+		}
+	}
+
+	return a[:minLen]
+}
+
+// isPackageImportedByProject checks if a package is imported by any of the analyzed project packages
+func (fd *FrameworkDetector) isPackageImportedByProject(importPath string) bool {
+	// Check if this package is imported by any of our analyzed packages
+	for _, pkg := range fd.packages {
+		// Check direct imports
+		for _, file := range pkg.Syntax {
+			for _, imp := range file.Imports {
+				if imp.Path != nil {
+					impPath := strings.Trim(imp.Path.Value, "\"")
+					if impPath == importPath {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// fallbackProjectPackageDetection provides a fallback when intelligent detection fails
+func (fd *FrameworkDetector) fallbackProjectPackageDetection(importPath string) bool {
+	// Include packages that look like they belong to the project
+	// (contain common project patterns)
+	for _, pattern := range fd.config.ProjectPatterns {
 		if strings.Contains(importPath, pattern) {
+			return true
+		}
+	}
+
+	// Check if this looks like a project package by analyzing the structure
+	// Project packages typically have patterns like: project-name/package-name
+	parts := strings.Split(importPath, "/")
+	if len(parts) >= 2 {
+		// Check if it looks like a project package (not a standard library or external)
+		// Examples: complex-chi-router/models, myproject/auth, etc.
+		firstPart := parts[0]
+
+		// If it contains hyphens or underscores, it's likely a project package
+		if strings.Contains(firstPart, "-") || strings.Contains(firstPart, "_") {
+			return true
+		}
+
+		// If it's a simple two-part package that doesn't look like a domain
+		if len(parts) == 2 && !strings.Contains(firstPart, ".") {
 			return true
 		}
 	}

@@ -462,7 +462,7 @@ func DefaultChiConfig() *APISpecConfig {
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^DecodeJSON$`,
-					TypeArgIndex:  0,
+					TypeArgIndex:  1,
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: "^github\\.com/go-chi/render$",

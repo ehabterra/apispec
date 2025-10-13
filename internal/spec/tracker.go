@@ -443,6 +443,11 @@ func (t *TrackerTree) processChainRelationships() {
 				childNode := t.findNodeByEdgeID(childKey)
 
 				if childNode != nil && parentNode != childNode {
+					// check if child is an argument, keep parent node as grandparent
+					if childNode.CallArgument != nil {
+						childNode.Parent.AddChild(parentNode)
+					}
+
 					// Establish parent-child relationship
 					parentNode.AddChild(childNode)
 				}
@@ -727,6 +732,11 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					funcNameIndex := selectorArg.Sel.Name
 					recvType := strings.ReplaceAll(originVar, selectorArg.Sel.GetPkg()+".", "")
 
+					// First check if ReceiverType is available (for function return values)
+					if selectorArg.ReceiverType != nil && originVar == varName {
+						recvType = selectorArg.ReceiverType.GetName()
+					}
+
 					var FuncType string
 
 					if selectorArg.X.GetKind() == metadata.KindSelector && selectorArg.X.X.Type != -1 {
@@ -881,6 +891,11 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						recvType = strings.ReplaceAll(recvType, arg.Sel.GetPkg()+".", "")
 					}
 
+					// First check if ReceiverType is available (for function return values)
+					if arg.ReceiverType != nil && originVar == varName {
+						recvType = arg.ReceiverType.GetName()
+					}
+
 					var FuncType string
 
 					if arg.X.GetKind() == metadata.KindSelector && arg.X.X.Type != -1 {
@@ -900,13 +915,14 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					}
 
 					recvTypeIndex := meta.StringPool.Get(recvType)
+					starRecvTypeIndex := meta.StringPool.Get("*" + recvType)
 					pkgNameIndex := arg.Sel.Pkg
 
 					var funcEdge *metadata.CallGraphEdge
 
 					// Look for a call graph edge where this function is the caller
 					for _, ArgEdge := range meta.CallGraph {
-						if ArgEdge.Caller.Name == funcNameIndex && ArgEdge.Caller.Pkg == pkgNameIndex && ArgEdge.Caller.RecvType == recvTypeIndex {
+						if ArgEdge.Caller.Name == funcNameIndex && ArgEdge.Caller.Pkg == pkgNameIndex && (ArgEdge.Caller.RecvType == recvTypeIndex || ArgEdge.Caller.RecvType == starRecvTypeIndex) {
 							funcEdge = &ArgEdge
 							id := funcEdge.Callee.ID()
 							if childNode := NewTrackerNode(tree, meta, argNode.Key(), id, funcEdge, &arg, visited, assignmentIndex, limits); childNode != nil {

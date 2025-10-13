@@ -1,3 +1,3 @@
-module schema_test
+module schema
 
 go 1.21

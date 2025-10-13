@@ -753,7 +753,6 @@ func (e *Engine) analyzeFrameworkDependencies(
 	fileToInfo map[*ast.File]*types.Info,
 	fset *token.FileSet,
 ) (*metadata.FrameworkDependencyList, error) {
-
 	detector := metadata.NewFrameworkDetector()
 	// Configure detector for more precise analysis
 	detector.Configure(false, 2) // Don't include external packages, max 2 levels deep

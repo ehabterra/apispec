@@ -168,6 +168,8 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 
 		if arg.GetType() == "" && strings.HasSuffix(DefaultPackageName(arg.GetPkg()), arg.GetName()) {
 			argName = DefaultPackageName(arg.GetPkg())
+		} else if arg.GetType() != "" {
+			argName = DefaultPackageName(arg.GetPkg()) + "." + arg.GetName()
 		} else {
 			argName = DefaultPackageName(arg.GetPkg()) + "/" + arg.GetName()
 		}

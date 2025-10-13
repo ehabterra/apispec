@@ -130,6 +130,8 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 
 // handleSelector processes selector expressions with StringPool integration
 func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) *CallArgument {
+	var receiverArg *CallArgument
+
 	x := ExprToCallArgument(e.X, info, pkgName, fset, meta)
 	sel := ExprToCallArgument(e.Sel, info, pkgName, fset, meta)
 	pkg := pkgName
@@ -145,6 +147,26 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 			} else {
 				if obj.Pkg() != nil {
 					pkg = obj.Pkg().Path()
+
+					// For method calls, get the receiver type from the method signature
+					if method, ok := obj.(*types.Func); ok && method.Type() != nil {
+						if sig, ok := method.Type().(*types.Signature); ok && sig.Recv() != nil {
+							recv := sig.Recv()
+							receiverType := recv.Type().String()
+							// Remove pointer prefix if present
+							receiverType = strings.TrimPrefix(receiverType, "*")
+							// Remove package prefix to get just the type name
+							receiverType = strings.TrimPrefix(receiverType, obj.Pkg().Path()+".")
+
+							// Create a CallArgument for the receiver type
+							receiverArg = NewCallArgument(meta)
+							receiverArg.SetKind(KindIdent)
+							receiverArg.SetName(receiverType)
+							receiverArg.SetPkg(obj.Pkg().Path())
+							receiverArg.SetType(receiverType)
+						}
+					}
+
 				}
 				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
 			}
@@ -158,6 +180,8 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 	arg.SetPkg(pkg)
 	arg.SetType(typeStr)
 	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.ReceiverType = receiverArg
+
 	return arg
 }
 
