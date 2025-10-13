@@ -149,6 +149,7 @@ func main() {
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	if spec.OpenAPI != DefaultOpenAPIVersion {
@@ -233,6 +234,7 @@ defaults:
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	if spec.Info.Title != "Custom API" {
@@ -295,6 +297,7 @@ func main() {
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	// Check if metadata file was created
@@ -356,6 +359,7 @@ func main() {
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	// Check if diagram file was created
@@ -424,6 +428,7 @@ func TestEngineWithCustomLimits(t *testing.T) {
 	engine := NewEngine(config)
 	if engine == nil {
 		t.Fatal("Expected engine to be created")
+		return
 	}
 
 	// Verify the custom limits are set

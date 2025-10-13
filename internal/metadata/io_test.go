@@ -136,6 +136,7 @@ func TestLoadMetadata(t *testing.T) {
 
 	if loadedMeta == nil {
 		t.Fatal("Loaded metadata is nil")
+		return
 	}
 
 	// Verify basic structure
@@ -209,6 +210,7 @@ func TestLoadSplitMetadata(t *testing.T) {
 
 	if loadedMeta == nil {
 		t.Fatal("Loaded metadata is nil")
+		return
 	}
 
 	// Verify basic structure

@@ -142,6 +142,7 @@ func TestGenerateSchemaFromType_Comprehensive(t *testing.T) {
 			schema, _ := generateSchemaFromType(usedTypes, tt.typeName, typ, meta, cfg, nil)
 			if schema == nil {
 				t.Fatalf("Failed to generate schema for type %s", tt.typeName)
+				return
 			}
 
 			// Basic validation
@@ -417,6 +418,7 @@ func TestSchemaGeneration_ComplexTypes(t *testing.T) {
 		schema, _ := generateSchemaFromType(usedTypes, "ComplexStruct", typ, meta, cfg, nil)
 		if schema == nil {
 			t.Fatal("Failed to generate schema for ComplexStruct")
+			return
 		}
 
 		// Should be an object type
@@ -445,6 +447,7 @@ func TestSchemaGeneration_ComplexTypes(t *testing.T) {
 		schema, _ := generateSchemaFromType(usedTypes, "Profile", typ, meta, cfg, nil)
 		if schema == nil {
 			t.Fatal("Failed to generate schema for Profile")
+			return
 		}
 
 		// Should be an object type
@@ -506,6 +509,7 @@ func TestSchemaGeneration_TypeMapping(t *testing.T) {
 		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "CustomType", meta, cfg, nil)
 		if schema == nil {
 			t.Fatal("Failed to generate schema for CustomType")
+			return
 		}
 
 		if schema.Type != "object" {
@@ -522,6 +526,7 @@ func TestSchemaGeneration_TypeMapping(t *testing.T) {
 		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "[]CustomType", meta, cfg, nil)
 		if schema == nil {
 			t.Fatal("Failed to generate schema for []CustomType")
+			return
 		}
 
 		if schema.Type != "array" {
@@ -606,6 +611,7 @@ func TestSchemaGeneration_ExternalTypes(t *testing.T) {
 			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.typeName, meta, cfg, nil)
 			if schema == nil {
 				t.Fatalf("Failed to generate schema for %s", tt.typeName)
+				return
 			}
 
 			if schema.Type != tt.expected.Type {

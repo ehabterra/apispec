@@ -92,6 +92,7 @@ func TestStrPtr(t *testing.T) {
 	result := strPtr(testStr)
 	if result == nil {
 		t.Fatal("strPtr returned nil")
+		return
 	}
 	if *result != testStr {
 		t.Errorf("Expected '%s', got '%s'", testStr, *result)
@@ -319,6 +320,7 @@ func TestStrPtr_WithVariousInputs(t *testing.T) {
 			result := strPtr(tt.input)
 			if result == nil {
 				t.Fatal("Expected non-nil pointer")
+				return
 			}
 			if *result != tt.expected {
 				t.Errorf("strPtr(%q) = %q, expected %q", tt.input, *result, tt.expected)

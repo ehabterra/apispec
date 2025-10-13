@@ -75,6 +75,7 @@ func testMapMetadataToOpenAPI_EmptyRoutes(t *testing.T) {
 
 	if spec == nil {
 		t.Fatal("Expected non-nil spec")
+		return
 	}
 
 	if len(spec.Paths) != 0 {

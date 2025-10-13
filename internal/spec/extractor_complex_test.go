@@ -618,6 +618,7 @@ func TestExtractor_ComplexTypeHandling(t *testing.T) {
 	// Test that extractor can handle complex types
 	if extractor == nil {
 		t.Fatal("Extractor should not be nil")
+		return
 	}
 
 	// Test extraction with complex types

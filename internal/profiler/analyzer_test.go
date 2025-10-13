@@ -36,8 +36,8 @@ func TestDefaultThresholds(t *testing.T) {
 
 	// Check execution_time thresholds
 	execTime := thresholds["execution_time"]
-	if execTime.Warning != 5*float64(time.Second) {
-		t.Errorf("Expected warning threshold 5s, got %f", execTime.Warning)
+	if execTime.Warning != 10*float64(time.Second) {
+		t.Errorf("Expected warning threshold 10s, got %f", execTime.Warning)
 	}
 	if execTime.Critical != 30*float64(time.Second) {
 		t.Errorf("Expected critical threshold 30s, got %f", execTime.Critical)
@@ -48,7 +48,7 @@ func TestDefaultThresholds(t *testing.T) {
 
 	// Check memory_usage thresholds
 	memUsage := thresholds["memory_usage"]
-	expectedWarning := 100 * 1024 * 1024  // 100 MB
+	expectedWarning := 200 * 1024 * 1024  // 200 MB
 	expectedCritical := 500 * 1024 * 1024 // 500 MB
 	if memUsage.Warning != float64(expectedWarning) {
 		t.Errorf("Expected warning threshold %d, got %f", expectedWarning, memUsage.Warning)
@@ -62,9 +62,11 @@ func TestNewPerformanceAnalyzer(t *testing.T) {
 	analyzer := NewPerformanceAnalyzer()
 	if analyzer == nil {
 		t.Fatal("Expected non-nil analyzer")
+		return
 	}
 	if analyzer.thresholds == nil {
 		t.Fatal("Expected non-nil thresholds")
+		return
 	}
 
 	// Check that default thresholds are set
@@ -85,9 +87,11 @@ func TestNewPerformanceAnalyzerWithThresholds(t *testing.T) {
 	analyzer := NewPerformanceAnalyzerWithThresholds(customThresholds)
 	if analyzer == nil {
 		t.Fatal("Expected non-nil analyzer")
+		return
 	}
 	if analyzer.thresholds == nil {
 		t.Fatal("Expected non-nil thresholds")
+		return
 	}
 
 	// Check that custom thresholds are set
@@ -111,6 +115,7 @@ func TestAnalyzeMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics([]Metric{})
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 	if report.TotalIssues != 0 {
 		t.Errorf("Expected 0 issues, got %d", report.TotalIssues)
@@ -138,7 +143,7 @@ func TestAnalyzeMetricsWithTimerMetrics(t *testing.T) {
 		{
 			Name:      "moderate_function",
 			Type:      MetricTypeTimer,
-			Value:     6 * float64(time.Second), // Exceeds warning threshold
+			Value:     12 * float64(time.Second), // Exceeds warning threshold (now 10s)
 			Unit:      "ns",
 			Timestamp: time.Now(),
 		},
@@ -154,6 +159,7 @@ func TestAnalyzeMetricsWithTimerMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -195,7 +201,7 @@ func TestAnalyzeMetricsWithGaugeMetrics(t *testing.T) {
 		{
 			Name:      "memory.heap",
 			Type:      MetricTypeGauge,
-			Value:     150 * 1024 * 1024, // 150 MB - exceeds warning threshold
+			Value:     250 * 1024 * 1024, // 250 MB - exceeds warning threshold (now 200MB)
 			Unit:      "bytes",
 			Timestamp: time.Now(),
 		},
@@ -204,6 +210,7 @@ func TestAnalyzeMetricsWithGaugeMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -243,6 +250,7 @@ func TestAnalyzeMetricsWithGoroutineMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Should have 2 issues (1 critical, 1 warning)
@@ -275,6 +283,7 @@ func TestAnalyzeMetricsWithCounterMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Counter metrics don't generate issues currently
@@ -300,6 +309,7 @@ func TestAnalyzeMetricsWithHistogramMetrics(t *testing.T) {
 	report := analyzer.AnalyzeMetrics(metrics)
 	if report == nil {
 		t.Fatal("Expected non-nil report")
+		return
 	}
 
 	// Histogram metrics don't generate issues currently

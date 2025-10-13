@@ -189,6 +189,7 @@ func TestTraceVariableOrigin_MethodHandling(t *testing.T) {
 
 	if calleeMethod == nil {
 		t.Fatal("Expected to find method GetName")
+		return
 	}
 
 	// Test return value tracing
@@ -375,5 +376,184 @@ func TestTraceVariableOrigin_MethodReturnValueKinds(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestDefaultImportName(t *testing.T) {
+	tests := []struct {
+		name       string
+		importPath string
+		expected   string
+	}{
+		{
+			name:       "simple package name",
+			importPath: "github.com/example/package",
+			expected:   "package",
+		},
+		{
+			name:       "package with version",
+			importPath: "github.com/example/package/v2",
+			expected:   "package",
+		},
+		{
+			name:       "package with version v1",
+			importPath: "github.com/example/package/v1",
+			expected:   "package",
+		},
+		{
+			name:       "package with version v10",
+			importPath: "github.com/example/package/v10",
+			expected:   "package",
+		},
+		{
+			name:       "package with non-version v",
+			importPath: "github.com/example/package/validator",
+			expected:   "validator",
+		},
+		{
+			name:       "empty import path",
+			importPath: "",
+			expected:   "",
+		},
+		{
+			name:       "single segment",
+			importPath: "package",
+			expected:   "package",
+		},
+		{
+			name:       "version only",
+			importPath: "v2",
+			expected:   "v2",
+		},
+		{
+			name:       "package with version v0",
+			importPath: "github.com/example/package/v0",
+			expected:   "package",
+		},
+		{
+			name:       "package with version v9",
+			importPath: "github.com/example/package/v9",
+			expected:   "package",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DefaultImportName(tt.importPath)
+			if result != tt.expected {
+				t.Errorf("DefaultImportName(%q) = %q, want %q", tt.importPath, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFindParentFunction(t *testing.T) {
+	// Create a simple AST with a function containing a function literal
+	fset := token.NewFileSet()
+	file := &ast.File{
+		Name: &ast.Ident{Name: "test"},
+		Decls: []ast.Decl{
+			&ast.FuncDecl{
+				Name: &ast.Ident{Name: "parentFunc"},
+				Type: &ast.FuncType{
+					Params: &ast.FieldList{},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{&ast.Ident{Name: "f"}},
+							Rhs: []ast.Expr{
+								&ast.FuncLit{
+									Type: &ast.FuncType{
+										Params: &ast.FieldList{},
+									},
+									Body: &ast.BlockStmt{},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	info := &types.Info{}
+	meta := &Metadata{}
+
+	// Test with a position that should be inside the function literal
+	funcLit := file.Decls[0].(*ast.FuncDecl).Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.FuncLit)
+	pos := funcLit.Pos()
+
+	funcName, pkgName, _ := findParentFunction(file, pos, info, fset, meta)
+
+	if funcName != "parentFunc" {
+		t.Errorf("Expected function name 'parentFunc', got %q", funcName)
+	}
+	// Package name might be empty in this test setup, which is acceptable
+	_ = pkgName
+}
+
+func TestFindParentFunction_NoFunctionLiteral(t *testing.T) {
+	fset := token.NewFileSet()
+	file := &ast.File{
+		Name: &ast.Ident{Name: "test"},
+		Decls: []ast.Decl{
+			&ast.FuncDecl{
+				Name: &ast.Ident{Name: "parentFunc"},
+				Type: &ast.FuncType{
+					Params: &ast.FieldList{},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{&ast.Ident{Name: "x"}},
+							Rhs: []ast.Expr{&ast.Ident{Name: "y"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	info := &types.Info{}
+	meta := &Metadata{}
+
+	// Test with a position that's not in a function literal
+	assignStmt := file.Decls[0].(*ast.FuncDecl).Body.List[0].(*ast.AssignStmt)
+	pos := assignStmt.Pos()
+
+	funcName, pkgName, scope := findParentFunction(file, pos, info, fset, meta)
+
+	if funcName != "" {
+		t.Errorf("Expected empty function name, got %q", funcName)
+	}
+	if pkgName != "" {
+		t.Errorf("Expected empty package name, got %q", pkgName)
+	}
+	if scope != "" {
+		t.Errorf("Expected empty scope, got %q", scope)
+	}
+}
+
+func TestFindParentFunction_EmptyFile(t *testing.T) {
+	fset := token.NewFileSet()
+	file := &ast.File{
+		Name:  &ast.Ident{Name: "test"},
+		Decls: []ast.Decl{},
+	}
+
+	info := &types.Info{}
+	meta := &Metadata{}
+
+	funcName, pkgName, scope := findParentFunction(file, token.NoPos, info, fset, meta)
+
+	if funcName != "" {
+		t.Errorf("Expected empty function name, got %q", funcName)
+	}
+	if pkgName != "" {
+		t.Errorf("Expected empty package name, got %q", pkgName)
+	}
+	if scope != "" {
+		t.Errorf("Expected empty scope, got %q", scope)
 	}
 }

@@ -597,10 +597,12 @@ go 1.21
 
 	if spec == nil {
 		t.Fatal("Expected non-nil OpenAPI spec")
+		return
 	}
 
 	if engine == nil {
 		t.Fatal("Expected non-nil engine")
+		return
 	}
 
 	// Verify the spec has the expected structure

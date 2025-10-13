@@ -58,18 +58,18 @@ type ThresholdConfig struct {
 func DefaultThresholds() map[string]ThresholdConfig {
 	return map[string]ThresholdConfig{
 		"execution_time": {
-			Warning:  5 * float64(time.Second),  // 5 seconds in nanoseconds
+			Warning:  10 * float64(time.Second), // 10 seconds in nanoseconds (adjusted for large projects)
 			Critical: 30 * float64(time.Second), // 30 seconds in nanoseconds
 			Unit:     "ns",
 		},
 		"memory_usage": {
-			Warning:  100 * 1024 * 1024, // 100 MB
+			Warning:  200 * 1024 * 1024, // 200 MB (adjusted for large projects)
 			Critical: 500 * 1024 * 1024, // 500 MB
 			Unit:     "bytes",
 		},
 		"memory_growth": {
-			Warning:  50 * 1024 * 1024,  // 50 MB
-			Critical: 200 * 1024 * 1024, // 200 MB
+			Warning:  100 * 1024 * 1024, // 100 MB (adjusted for large projects)
+			Critical: 500 * 1024 * 1024, // 500 MB (adjusted for large projects)
 			Unit:     "bytes",
 		},
 		"goroutine_count": {
@@ -83,8 +83,8 @@ func DefaultThresholds() map[string]ThresholdConfig {
 			Unit:     "per_second",
 		},
 		"gc_pause": {
-			Warning:  1 * 1000 * 1000,  // 1ms
-			Critical: 10 * 1000 * 1000, // 10ms
+			Warning:  5 * 1000 * 1000,  // 5ms (adjusted for large projects)
+			Critical: 20 * 1000 * 1000, // 20ms (adjusted for large projects)
 			Unit:     "ns",
 		},
 	}

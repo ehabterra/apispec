@@ -21,6 +21,7 @@ func TestDefaultConfigs(t *testing.T) {
 			config := tt.fn()
 			if config == nil {
 				t.Fatal("Config should not be nil")
+				return
 			}
 
 			// Test basic structure
