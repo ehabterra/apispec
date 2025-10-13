@@ -49,3 +49,6 @@ cmd/apispec/testdata/temp/
 
 # Profiling output
 profiles*/
+
+# Playground optimized
+playground*.go

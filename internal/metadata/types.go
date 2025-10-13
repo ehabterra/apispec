@@ -510,6 +510,8 @@ type CallArgument struct {
 	IsGenericType   bool `yaml:"is_generic_type,omitempty"`   // Whether this argument represents a generic type
 	GenericTypeName int  `yaml:"generic_type_name,omitempty"` // The generic type parameter name (e.g., "TRequest", "TData")
 
+	ReceiverType *CallArgument `yaml:"receiver_type,omitempty"` // The type of the receiver
+
 	// Reference to metadata for StringPool access
 	Meta *Metadata `yaml:"-"`
 }
@@ -751,6 +753,15 @@ func (a *CallArgument) id(sep string) (string, string) {
 			if xID == "" {
 				xID = a.Sel.GetPkg()
 			}
+			// If ReceiverType is available, use it to construct the ID
+			if a.ReceiverType != nil {
+				receiverType := a.ReceiverType.GetName()
+				receiverPkg := a.ReceiverType.GetPkg()
+				if receiverPkg != "" && receiverType != "" {
+					xID = receiverPkg + sep + receiverType
+				}
+			}
+
 			id := xID + sep + a.Sel.GetName()
 
 			if xTypeParam != "" {
