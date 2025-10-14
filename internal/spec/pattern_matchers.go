@@ -183,7 +183,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteI
 
 			var originTypeStr string
 			if originType != nil {
-				originTypeStr = r.contextProvider.GetArgumentInfo(*originType)
+				originTypeStr = r.contextProvider.GetArgumentInfo(originType)
 			}
 			if originTypeStr != "" {
 				routeInfo.Summary = originTypeStr
@@ -429,7 +429,7 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 
 	// Extract router argument if available
 	if m.pattern.RouterArgIndex >= 0 && len(edge.Args) > m.pattern.RouterArgIndex {
-		mountInfo.RouterArg = &edge.Args[m.pattern.RouterArgIndex]
+		mountInfo.RouterArg = edge.Args[m.pattern.RouterArgIndex]
 
 		// Trace router origin
 		m.traceRouterOrigin(mountInfo.RouterArg, node)
@@ -655,7 +655,7 @@ func (b *BasePatternMatcher) findAssignmentFunction(arg *metadata.CallArgument) 
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
-func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
+func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
 	if resolvedType := arg.GetResolvedType(); resolvedType != "" {
 		return resolvedType

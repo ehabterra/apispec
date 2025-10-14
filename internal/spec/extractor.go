@@ -586,7 +586,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
-func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
+func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
 	if resolvedType := arg.GetResolvedType(); resolvedType != "" {
 		return resolvedType
@@ -744,7 +744,7 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
-func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
+func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
 	if resolvedType := arg.GetResolvedType(); resolvedType != "" {
 		return resolvedType

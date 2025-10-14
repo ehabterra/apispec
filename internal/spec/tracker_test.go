@@ -67,7 +67,7 @@ func TestTrackerWarnings(t *testing.T) {
 				Name: stringPool.Get("AnotherFunction"),
 				Pkg:  stringPool.Get("main"),
 			},
-			Args: []metadata.CallArgument{
+			Args: []*metadata.CallArgument{
 				{Meta: meta, Edge: &metadata.CallGraphEdge{
 					Caller: metadata.Call{Meta: meta, Name: stringPool.Get("arg1"), Pkg: stringPool.Get("main")},
 					Callee: metadata.Call{Meta: meta, Name: stringPool.Get("target1"), Pkg: stringPool.Get("main")},
@@ -240,7 +240,7 @@ func TestTrackerWithoutWarnings(t *testing.T) {
 			Name: stringPool.Get("AnotherFunction"),
 			Pkg:  stringPool.Get("main"),
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{Meta: meta, Edge: &metadata.CallGraphEdge{}},
 		},
 	}
@@ -328,7 +328,7 @@ func TestTrackerLimitsIntegration(t *testing.T) {
 			Name: stringPool.Get("AnotherFunction"),
 			Pkg:  stringPool.Get("main"),
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{Meta: meta, Edge: &metadata.CallGraphEdge{}},
 			{Meta: meta, Edge: &metadata.CallGraphEdge{}},
 		},

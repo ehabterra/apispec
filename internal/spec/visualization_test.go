@@ -159,7 +159,7 @@ func TestExtractParameterInfo(t *testing.T) {
 				Meta: meta,
 			},
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{
 				Name: 2, // "arg1"
 				Meta: meta,

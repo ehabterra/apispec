@@ -488,7 +488,7 @@ func extractParameterInfo(edge *metadata.CallGraphEdge) ([]string, []string) {
 			paramTypes = append(paramTypes, fmt.Sprintf("%s:%s", paramName, argType))
 
 			// Get the actual value being passed
-			argValue := metadata.CallArgToString(arg)
+			argValue := metadata.CallArgToString(&arg)
 
 			// Format as name: value, but handle empty parameter names
 			if paramName != "" {

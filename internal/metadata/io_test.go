@@ -288,7 +288,7 @@ func TestSetupMetadataReferences(t *testing.T) {
 			{
 				Caller: Call{Name: stringPool.Get("main")},
 				Callee: Call{Name: stringPool.Get("handler")},
-				Args: []CallArgument{
+				Args: []*CallArgument{
 					{
 						Kind: stringPool.Get("ident"),
 						Name: stringPool.Get("arg1"),
@@ -506,7 +506,7 @@ func TestSetCallArgumentMeta(t *testing.T) {
 			Kind: stringPool.Get("ident"),
 			Name: stringPool.Get("fun"),
 		},
-		Args: []CallArgument{
+		Args: []*CallArgument{
 			{
 				Kind: stringPool.Get("ident"),
 				Name: stringPool.Get("arg1"),

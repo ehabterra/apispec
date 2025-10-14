@@ -788,7 +788,7 @@ func TestMountPatternMatcher_ExtractMount(t *testing.T) {
 			Name: stringPool.Get("Mount"),
 			Pkg:  stringPool.Get("gin"),
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{
 				Kind:  stringPool.Get(metadata.KindLiteral),
 				Value: stringPool.Get("/api"),
@@ -872,7 +872,7 @@ func TestRequestPatternMatcher_MatchNode(t *testing.T) {
 			Pkg:      stringPool.Get("gin"),
 			RecvType: stringPool.Get("*gin.Context"),
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("user"),
@@ -974,7 +974,7 @@ func TestRequestPatternMatcher_ExtractRequest(t *testing.T) {
 			Name: stringPool.Get("BindJSON"),
 			Pkg:  stringPool.Get("gin"),
 		},
-		Args: []metadata.CallArgument{
+		Args: []*metadata.CallArgument{
 			{
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("user"),
@@ -1203,7 +1203,7 @@ func TestBasePatternMatcher_findAssignmentFunction(t *testing.T) {
 	}
 
 	// Create the edge args
-	edgeArgs := []metadata.CallArgument{
+	edgeArgs := []*metadata.CallArgument{
 		{
 			Kind: stringPool.Get(metadata.KindCall),
 			Fun:  routerCallArg,
@@ -1335,13 +1335,13 @@ func TestRequestPatternMatcher_resolveTypeOrigin(t *testing.T) {
 	// Test resolveTypeOrigin with different argument types
 	tests := []struct {
 		name         string
-		arg          metadata.CallArgument
+		arg          *metadata.CallArgument
 		originalType string
 		expected     string
 	}{
 		{
 			name: "with resolved type",
-			arg: metadata.CallArgument{
+			arg: &metadata.CallArgument{
 				Kind:          stringPool.Get(metadata.KindIdent),
 				Name:          stringPool.Get("user"),
 				Pkg:           stringPool.Get("main"),
@@ -1354,7 +1354,7 @@ func TestRequestPatternMatcher_resolveTypeOrigin(t *testing.T) {
 		},
 		{
 			name: "with generic type",
-			arg: metadata.CallArgument{
+			arg: &metadata.CallArgument{
 				Kind:            stringPool.Get(metadata.KindIdent),
 				Name:            stringPool.Get("user"),
 				Pkg:             stringPool.Get("main"),
@@ -1367,7 +1367,7 @@ func TestRequestPatternMatcher_resolveTypeOrigin(t *testing.T) {
 		},
 		{
 			name: "with assignment",
-			arg: metadata.CallArgument{
+			arg: &metadata.CallArgument{
 				Kind: stringPool.Get(metadata.KindIdent),
 				Name: stringPool.Get("user"),
 				Pkg:  stringPool.Get("main"),
