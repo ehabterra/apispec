@@ -129,6 +129,7 @@ func printVersion() {
 
 // CLIConfig holds the configuration parsed from command line arguments
 type CLIConfig struct {
+	Verbose                      bool
 	InputDir                     string
 	OutputFile                   string
 	Title                        string
@@ -325,6 +326,10 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", true, "Auto-exclude mock files")
 	fs.BoolVar(&config.AutoExcludeMocks, "aem", true, "Shorthand for --auto-exclude-mocks")
 
+	// Verbose output control
+	fs.BoolVar(&config.Verbose, "verbose", false, "Enable verbose output")
+	fs.BoolVar(&config.Verbose, "vb", false, "Shorthand for --verbose")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -392,6 +397,7 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		AutoIncludeFrameworkPackages: config.AutoIncludeFrameworkPackages,
 		AutoExcludeTests:             config.AutoExcludeTests,
 		AutoExcludeMocks:             config.AutoExcludeMocks,
+		Verbose:                      config.Verbose,
 	}
 
 	// Create engine and generate OpenAPI spec
@@ -451,9 +457,11 @@ func generatePerformanceAnalysis(prof *profiler.Profiler, config *CLIConfig) err
 	report := analyzer.AnalyzeMetrics(metrics)
 
 	// Log basic report info
-	fmt.Printf("Performance Analysis: %d issues found\n", report.TotalIssues)
-	if report.TotalIssues > 0 {
-		fmt.Printf("Issues by severity: %+v\n", report.Summary)
+	if config.Verbose {
+		fmt.Printf("Performance Analysis: %d issues found\n", report.TotalIssues)
+		if report.TotalIssues > 0 {
+			fmt.Printf("Issues by severity: %+v\n", report.Summary)
+		}
 	}
 
 	return nil

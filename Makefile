@@ -9,7 +9,7 @@ LDFLAGS = -X 'main.Version=$(VERSION)' \
           -X 'main.BuildDate=$(BUILD_DATE)' \
           -X 'main.GoVersion=$(GO_VERSION)'
 
-.PHONY: help build test clean coverage lint fmt update-badge
+.PHONY: help build test clean coverage lint fmt update-badge metrics-view metrics-generate
 
 # Default target
 help:
@@ -30,6 +30,10 @@ help:
 	@echo "  update-badge  - Update coverage badge in README.md"
 	@echo "  clean         - Clean build artifacts"
 	@echo "  help          - Show this help message"
+	@echo ""
+	@echo "Metrics Visualization:"
+	@echo "  metrics-view     - Interactive metrics viewer (opens menu)"
+	@echo "  metrics-generate - Generate metrics with profiling (selectable directory)"
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  VERSION       - Override version (default: auto-detected)"
@@ -158,3 +162,23 @@ tags:
 deps:
 	go mod download
 	go mod tidy
+
+# Metrics visualization commands
+metrics-view:
+	@echo "Opening interactive metrics viewer..."
+	@./scripts/view_metrics.sh
+
+metrics-generate:
+	@echo "Generating metrics with profiling enabled..."
+	@echo "Available directories in testdata/:"
+	@ls -1d */ 2>/dev/null | sed 's|/||' | head -10 || echo "  (no subdirectories found)"
+	@echo ""
+	@read -p "Enter directory path (or press Enter for testdata/chi): " dir; \
+	if [ -z "$$dir" ]; then dir="testdata/chi"; fi; \
+	if [ ! -d "$$dir" ]; then \
+		echo "Error: Directory '$$dir' not found"; \
+		exit 1; \
+	fi; \
+	echo "Generating metrics for directory: $$dir"; \
+	./apispec --dir "$$dir" --output "$$(basename "$$dir")-output.json" --custom-metrics --verbose --metrics-path "$$(basename "$$dir")-metrics.json"; \
+	echo "Metrics generated in profiles/$$(basename "$$dir")-metrics.json"

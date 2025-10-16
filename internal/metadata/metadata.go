@@ -130,10 +130,25 @@ var processAssignmentCount int
 
 // GenerateMetadata extracts all metadata and call graph info
 func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet) *Metadata {
+	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil)
+}
+
+// VerboseLogger interface for conditional logging
+type VerboseLogger interface {
+	Printf(format string, args ...interface{})
+	Println(args ...interface{})
+	Print(args ...interface{})
+}
+
+func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger) *Metadata {
 	funcMap := BuildFuncMap(pkgs)
 
-	fmt.Println("funcMap Count:", len(funcMap))
-	fmt.Printf("Processing %d packages...\n", len(pkgs))
+	if logger != nil {
+		logger.Println("funcMap Count:", len(funcMap))
+	}
+	if logger != nil {
+		logger.Printf("Processing %d packages...\n", len(pkgs))
+	}
 
 	metadata := &Metadata{
 		StringPool: NewStringPool(),
@@ -281,12 +296,16 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	// Analyze interface implementations
 	analyzeInterfaceImplementations(metadata.Packages, metadata.StringPool)
 
-	fmt.Println("Building call graph...")
+	if logger != nil {
+		logger.Println("Building call graph...")
+	}
 	for pkgName, files := range pkgs {
 		// Build call graph
 		buildCallGraph(files, pkgs, pkgName, fileToInfo, fset, funcMap, metadata)
 	}
-	fmt.Printf("Call graph built with %d edges\n", len(metadata.CallGraph))
+	if logger != nil {
+		logger.Printf("Call graph built with %d edges\n", len(metadata.CallGraph))
+	}
 
 	metadata.BuildCallGraphMaps()
 
@@ -332,8 +351,12 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	// Finalize string pool
 	metadata.StringPool.Finalize()
 
-	fmt.Println("process assignment Count:", processAssignmentCount)
-	fmt.Println("assignment Count:", assignmentCount)
+	if logger != nil {
+		logger.Println("process assignment Count:", processAssignmentCount)
+	}
+	if logger != nil {
+		logger.Println("assignment Count:", assignmentCount)
+	}
 
 	return metadata
 }

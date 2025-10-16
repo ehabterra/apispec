@@ -126,27 +126,26 @@ func DrawCallGraphCytoscape(meta *metadata.Metadata) *CytoscapeData {
 		meta.BuildCallGraphMaps()
 	}
 
-	// Get root functions
-	roots := meta.CallGraphRoots()
-
 	// Track visited nodes to avoid duplicates
 	visitedNodes := make(map[string]bool)
-	visitedEdges := make(map[string]bool)
 	nodePairEdges := make(map[string]bool) // Track edges between node pairs to ensure only one arrow per pair
+	edgeIDNodeMap := make(map[string]string)
 
 	nodeCounter := 0
 	edgeCounter := 0
 
-	// Process each root and its call graph
-	for _, root := range roots {
-		processCallGraphEdge(meta, root, data, visitedNodes, visitedEdges, nodePairEdges, &nodeCounter, &edgeCounter)
+	// Process all call graph edges to ensure all nodes are included
+	// This includes functions that appear as arguments but aren't reachable from roots
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		processCallGraphEdge(meta, edge, data, visitedNodes, nodePairEdges, edgeIDNodeMap, &nodeCounter, &edgeCounter)
 	}
 
 	return data
 }
 
 // processCallGraphEdge processes a call graph edge and adds nodes/edges to the Cytoscape data
-func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge, data *CytoscapeData, visitedNodes, visitedEdges, nodePairEdges map[string]bool, nodeCounter, edgeCounter *int) {
+func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge, data *CytoscapeData, visitedNodes, nodePairEdges map[string]bool, edgeIDNodeMap map[string]string, nodeCounter, edgeCounter *int) {
 	if edge == nil {
 		return
 	}
@@ -157,6 +156,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 		*nodeCounter++
 		callerNodeID := fmt.Sprintf("node_%d", *nodeCounter)
 		visitedNodes[callerID] = true
+		edgeIDNodeMap[callerID] = callerNodeID
 
 		callerName := meta.StringPool.GetString(edge.Caller.Name)
 		callerPkg := meta.StringPool.GetString(edge.Caller.Pkg)
@@ -245,6 +245,7 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 		*nodeCounter++
 		calleeNodeID := fmt.Sprintf("node_%d", *nodeCounter)
 		visitedNodes[calleeID] = true
+		edgeIDNodeMap[calleeID] = calleeNodeID
 
 		calleeName := meta.StringPool.GetString(edge.Callee.Name)
 		calleePkg := meta.StringPool.GetString(edge.Callee.Pkg)
@@ -318,20 +319,8 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 
 	// Find the node IDs for caller and callee
 	var callerNodeID, calleeNodeID string
-	for _, node := range data.Nodes {
-		if node.Data.FunctionName == meta.StringPool.GetString(edge.Caller.Name) &&
-			node.Data.Package == meta.StringPool.GetString(edge.Caller.Pkg) {
-			callerNodeID = node.Data.ID
-			break
-		}
-	}
-	for _, node := range data.Nodes {
-		if node.Data.FunctionName == meta.StringPool.GetString(edge.Callee.Name) &&
-			node.Data.Package == meta.StringPool.GetString(edge.Callee.Pkg) {
-			calleeNodeID = node.Data.ID
-			break
-		}
-	}
+	callerNodeID = edgeIDNodeMap[callerID]
+	calleeNodeID = edgeIDNodeMap[calleeID]
 
 	// Create edge between caller and callee only if we haven't already created one between these nodes
 	if callerNodeID != "" && calleeNodeID != "" {
@@ -354,17 +343,6 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 
 			// Mark this node pair as having an edge
 			nodePairEdges[nodePairKey] = true
-		}
-	}
-
-	// Recursively process callees
-	if callees, exists := meta.Callers[calleeID]; exists {
-		for _, callee := range callees {
-			calleeEdgeID := callee.Caller.BaseID() + "->" + callee.Callee.BaseID()
-			if !visitedEdges[calleeEdgeID] {
-				visitedEdges[calleeEdgeID] = true
-				processCallGraphEdge(meta, callee, data, visitedNodes, visitedEdges, nodePairEdges, nodeCounter, edgeCounter)
-			}
 		}
 	}
 }

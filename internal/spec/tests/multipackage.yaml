@@ -2289,155 +2289,6 @@ packages:
           134: 134
 call_graph:
   - caller:
-      name: 80
-      pkg: 57
-      position: -1
-      recv_type: 84
-      scope: 15
-      signature_str: 87
-    callee:
-      name: 9
-      pkg: 2
-      position: 76
-      recv_type: 10
-      scope: 15
-      signature_str: 17
-    position: 76
-    callee_var_name: user
-    callee_recv_var_name: name
-    chain_root: user
-  - caller:
-      name: 80
-      pkg: 57
-      position: -1
-      recv_type: 84
-      scope: 15
-      signature_str: 87
-    callee:
-      name: 22
-      pkg: 2
-      position: 81
-      recv_type: 10
-      scope: 15
-      signature_str: 25
-    position: 81
-    callee_var_name: user
-    callee_recv_var_name: age
-    chain_root: user
-  - caller:
-      name: 80
-      pkg: 57
-      position: -1
-      recv_type: 84
-      scope: 15
-      signature_str: 87
-    callee:
-      name: 66
-      pkg: 64
-      position: 65
-      recv_type: -1
-      scope: 15
-      signature_str: 67
-    position: 65
-    args:
-      - kind: 54
-        name: -1
-        value: 55
-        raw: -1
-        pkg: -1
-        type: -1
-        position: -1
-        resolved_type: -1
-        generic_type_name: -1
-      - kind: 8
-        name: -1
-        value: -1
-        x:
-          kind: 0
-          name: 56
-          value: -1
-          raw: -1
-          pkg: 57
-          type: 58
-          position: 59
-          resolved_type: -1
-          generic_type_name: -1
-        sel:
-          kind: 0
-          name: 60
-          value: -1
-          raw: -1
-          pkg: 57
-          type: 6
-          position: 61
-          resolved_type: -1
-          generic_type_name: -1
-        raw: -1
-        pkg: 57
-        type: 6
-        position: 59
-        resolved_type: -1
-        generic_type_name: -1
-      - kind: 0
-        name: 36
-        value: -1
-        raw: -1
-        pkg: 57
-        type: 6
-        position: 62
-        resolved_type: -1
-        generic_type_name: -1
-      - kind: 0
-        name: 40
-        value: -1
-        raw: -1
-        pkg: 57
-        type: 20
-        position: 63
-        resolved_type: -1
-        generic_type_name: -1
-    param_arg_map:
-      a:
-        kind: 8
-        name: -1
-        value: -1
-        x:
-          kind: 0
-          name: 56
-          value: -1
-          raw: -1
-          pkg: 57
-          type: 58
-          position: 59
-          resolved_type: -1
-          generic_type_name: -1
-        sel:
-          kind: 0
-          name: 60
-          value: -1
-          raw: -1
-          pkg: 57
-          type: 6
-          position: 61
-          resolved_type: -1
-          generic_type_name: -1
-        raw: -1
-        pkg: 57
-        type: 6
-        position: 59
-        resolved_type: -1
-        generic_type_name: -1
-      format:
-        kind: 54
-        name: -1
-        value: 55
-        raw: -1
-        pkg: -1
-        type: -1
-        position: -1
-        resolved_type: -1
-        generic_type_name: -1
-  - caller:
       name: 114
       pkg: 112
       position: -1
@@ -3091,5 +2942,154 @@ call_graph:
         pkg: 132
         type: 6
         position: 133
+        resolved_type: -1
+        generic_type_name: -1
+  - caller:
+      name: 80
+      pkg: 57
+      position: -1
+      recv_type: 84
+      scope: 15
+      signature_str: 87
+    callee:
+      name: 9
+      pkg: 2
+      position: 76
+      recv_type: 10
+      scope: 15
+      signature_str: 17
+    position: 76
+    callee_var_name: user
+    callee_recv_var_name: name
+    chain_root: user
+  - caller:
+      name: 80
+      pkg: 57
+      position: -1
+      recv_type: 84
+      scope: 15
+      signature_str: 87
+    callee:
+      name: 22
+      pkg: 2
+      position: 81
+      recv_type: 10
+      scope: 15
+      signature_str: 25
+    position: 81
+    callee_var_name: user
+    callee_recv_var_name: age
+    chain_root: user
+  - caller:
+      name: 80
+      pkg: 57
+      position: -1
+      recv_type: 84
+      scope: 15
+      signature_str: 87
+    callee:
+      name: 66
+      pkg: 64
+      position: 65
+      recv_type: -1
+      scope: 15
+      signature_str: 67
+    position: 65
+    args:
+      - kind: 54
+        name: -1
+        value: 55
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 8
+        name: -1
+        value: -1
+        x:
+          kind: 0
+          name: 56
+          value: -1
+          raw: -1
+          pkg: 57
+          type: 58
+          position: 59
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 0
+          name: 60
+          value: -1
+          raw: -1
+          pkg: 57
+          type: 6
+          position: 61
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 57
+        type: 6
+        position: 59
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 0
+        name: 36
+        value: -1
+        raw: -1
+        pkg: 57
+        type: 6
+        position: 62
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 0
+        name: 40
+        value: -1
+        raw: -1
+        pkg: 57
+        type: 20
+        position: 63
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      a:
+        kind: 8
+        name: -1
+        value: -1
+        x:
+          kind: 0
+          name: 56
+          value: -1
+          raw: -1
+          pkg: 57
+          type: 58
+          position: 59
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 0
+          name: 60
+          value: -1
+          raw: -1
+          pkg: 57
+          type: 6
+          position: 61
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 57
+        type: 6
+        position: 59
+        resolved_type: -1
+        generic_type_name: -1
+      format:
+        kind: 54
+        name: -1
+        value: 55
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
         resolved_type: -1
         generic_type_name: -1
