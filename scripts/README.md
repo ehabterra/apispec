@@ -96,7 +96,7 @@ The HTML viewer supports loading specific metrics files directly via URL paramet
 
 ### URL Parameter Format
 
-```
+```url
 http://localhost:8000/scripts/metrics_viewer.html?file=path/to/metrics.json
 ```
 
@@ -185,20 +185,11 @@ Shows concurrent goroutine usage. Look for:
 4. **Memory profiling**: Use `--mem-profile` to identify allocation hotspots
 5. **CPU profiling**: Use `--cpu-profile` to find performance bottlenecks
 
-## Examples
-
-### Small Project (testdata/chi)
+## Generate and Display Metrics
 
 ```bash
 ./apispec --dir testdata/chi --output chi-spec.yaml --custom-metrics
-./scripts/view_metrics.sh
-```
-
-### Large Project (gitea)
-
-```bash
-./apispec --dir ../gitea --output gitea-spec.yaml --custom-metrics --verbose
-./scripts/view_metrics.sh
+make metrics-view
 ```
 
 ### Performance Comparison
