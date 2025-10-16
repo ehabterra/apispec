@@ -607,7 +607,11 @@
                 absolutePath = '/' + filePath;
             }
             
-            fetch(absolutePath)
+            // Add cache-busting parameter to ensure fresh data
+            const cacheBuster = '?t=' + new Date().getTime();
+            const urlWithCacheBuster = absolutePath + cacheBuster;
+            
+            fetch(urlWithCacheBuster)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -642,8 +646,9 @@
                 // Load the specified file
                 loadMetricsFromUrl(metricsFile);
             } else {
-                // Try to load the default metrics file
-                fetch('profiles/metrics.json')
+                // Try to load the default metrics file with cache-busting
+                const cacheBuster = '?t=' + new Date().getTime();
+                fetch('profiles/metrics.json' + cacheBuster)
                     .then(response => response.json())
                     .then(data => {
                         metricsData = data;

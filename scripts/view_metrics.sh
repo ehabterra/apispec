@@ -77,6 +77,21 @@ case $choice in
                 echo "Please open $VIEWER_URL in your browser"
             fi
             echo "Press Ctrl+C to stop the server"
+            
+            # Set up signal handling to clean up the server
+            cleanup() {
+                echo ""
+                echo "Stopping server..."
+                kill $SERVER_PID 2>/dev/null
+                wait $SERVER_PID 2>/dev/null
+                echo "Server stopped."
+                exit 0
+            }
+            
+            # Trap termination signals
+            trap cleanup SIGINT SIGTERM
+            
+            # Wait for the server process
             wait $SERVER_PID
         else
             echo "Python3 not found. Please open $SCRIPT_DIR/metrics_viewer.html in your browser"
