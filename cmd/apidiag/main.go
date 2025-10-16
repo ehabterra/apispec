@@ -174,8 +174,10 @@ func main() {
 	// Start server
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	log.Printf("🚀 API Diagram server starting on http://%s", addr)
-	log.Printf("📊 Serving paginated diagrams for: %s", config.InputDir)
-	log.Printf("⚙️  Page size: %d, Max depth: %d", config.PageSize, config.MaxDepth)
+	if config.Verbose {
+		log.Printf("📊 Serving paginated diagrams for: %s", config.InputDir)
+		log.Printf("⚙️  Page size: %d, Max depth: %d", config.PageSize, config.MaxDepth)
+	}
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
@@ -255,6 +257,7 @@ func (s *DiagramServer) LoadMetadata() error {
 
 	// Create engine configuration
 	engineConfig := &engine.EngineConfig{
+		Verbose:                      s.config.Verbose,
 		InputDir:                     s.config.InputDir,
 		MaxNodesPerTree:              50000,
 		MaxChildrenPerNode:           500,
@@ -281,8 +284,10 @@ func (s *DiagramServer) LoadMetadata() error {
 	s.lastLoad = time.Now()
 
 	log.Printf("✅ Metadata loaded successfully")
-	log.Printf("📊 Total packages: %d", len(s.metadata.Packages))
-	log.Printf("📊 Total call graph edges: %d", len(s.metadata.CallGraph))
+	if s.config.Verbose {
+		log.Printf("📊 Total packages: %d", len(s.metadata.Packages))
+		log.Printf("📊 Total call graph edges: %d", len(s.metadata.CallGraph))
+	}
 
 	return nil
 }

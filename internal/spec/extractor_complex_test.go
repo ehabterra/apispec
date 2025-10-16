@@ -84,7 +84,7 @@ func TestExtractor_ComplexRouteExtraction(t *testing.T) {
 	_ = metadata.CallGraphEdge{
 		Caller: caller,
 		Callee: callee,
-		Args:   []metadata.CallArgument{*pathArg, *handlerArg},
+		Args:   []*metadata.CallArgument{pathArg, handlerArg},
 	}
 
 	// Create tracker with limits

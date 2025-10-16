@@ -31,8 +31,8 @@ func TestRefactoredExtractor(t *testing.T) {
 				Name: 2,
 				Pkg:  3,
 			},
-			Args: []metadata.CallArgument{
-				*arg,
+			Args: []*metadata.CallArgument{
+				arg,
 			},
 		},
 	}
@@ -262,7 +262,7 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 
 			// Create call graph edge with the literal argument
 			edge := &metadata.CallGraphEdge{
-				Args: []metadata.CallArgument{*arg},
+				Args: []*metadata.CallArgument{arg},
 			}
 
 			// Create a tracker node

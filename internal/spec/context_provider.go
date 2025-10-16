@@ -38,12 +38,12 @@ func (c *ContextProviderImpl) GetCalleeInfo(node TrackerNodeInterface) (name, pk
 }
 
 // GetArgumentInfo gets argument information as a string
-func (c *ContextProviderImpl) GetArgumentInfo(arg metadata.CallArgument) string {
+func (c *ContextProviderImpl) GetArgumentInfo(arg *metadata.CallArgument) string {
 	return c.callArgToString(arg, nil)
 }
 
 // callArgToString converts a call argument to a string representation
-func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *string) string {
+func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *string) string {
 	// Use provided separator or default
 	separator := "."
 	if sep != nil && *sep != "" {
@@ -60,31 +60,31 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 
 	case metadata.KindMapType:
 		if arg.X != nil && arg.Fun != nil {
-			return fmt.Sprintf("map[%s]%s", c.callArgToString(*arg.X, nil), c.callArgToString(*arg.Fun, nil))
+			return fmt.Sprintf("map[%s]%s", c.callArgToString(arg.X, nil), c.callArgToString(arg.Fun, nil))
 		}
 		return "map"
 
 	case metadata.KindUnary:
 		// Handle unary expressions (e.g., *X)
 		if arg.X != nil {
-			return "*" + c.callArgToString(*arg.X, nil)
+			return "*" + c.callArgToString(arg.X, nil)
 		}
 		return "*"
 	case metadata.KindArrayType:
 		// Handle index expressions (e.g., arr[i])
 		if arg.X != nil {
-			return "[]" + c.callArgToString(*arg.X, nil)
+			return "[]" + c.callArgToString(arg.X, nil)
 		}
 		return "[]"
 	case metadata.KindIndex:
 		// Handle index expressions (e.g., arr[i])
 		if arg.X != nil {
-			return "*" + c.callArgToString(*arg.X, nil)
+			return "*" + c.callArgToString(arg.X, nil)
 		}
 		return "*"
 	case metadata.KindCompositeLit:
 		if arg.X != nil {
-			return c.callArgToString(*arg.X, nil)
+			return c.callArgToString(arg.X, nil)
 		}
 		return ""
 
@@ -202,7 +202,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 					}
 				}
 			}
-			xResult := c.callArgToString(*arg.X, strPtr("/"))
+			xResult := c.callArgToString(arg.X, strPtr("/"))
 			if xResult != "" {
 				return xResult + "." + arg.Sel.GetName()
 			}
@@ -212,7 +212,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 	case metadata.KindCall:
 		// Handle function call expressions
 		if arg.Fun != nil {
-			argName := c.callArgToString(*arg.Fun, nil)
+			argName := c.callArgToString(arg.Fun, nil)
 			if arg.GetPkg() != "" {
 				argName = arg.GetPkg() + separator + arg.GetName()
 			}
@@ -239,7 +239,7 @@ func (c *ContextProviderImpl) callArgToString(arg metadata.CallArgument, sep *st
 		// Handle type conversions like []byte("value")
 		if arg.Fun != nil {
 			// For type conversions, we want to get the target type
-			targetType := c.callArgToString(*arg.Fun, nil)
+			targetType := c.callArgToString(arg.Fun, nil)
 
 			return targetType
 		}

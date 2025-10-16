@@ -121,7 +121,7 @@ type ContextProvider interface {
 	GetCalleeInfo(node TrackerNodeInterface) (name, pkg, recvType string)
 
 	// GetArgumentInfo gets argument information
-	GetArgumentInfo(arg metadata.CallArgument) string
+	GetArgumentInfo(arg *metadata.CallArgument) string
 }
 
 // SchemaMapper defines the interface for schema mapping operations

@@ -392,7 +392,7 @@ func TestProcessFunctionReturnTypes_CallGraph(t *testing.T) {
 	edge := CallGraphEdge{
 		Caller: caller,
 		Callee: callee,
-		Args:   []CallArgument{newUserCall},
+		Args:   []*CallArgument{&newUserCall},
 		meta:   metadata,
 	}
 

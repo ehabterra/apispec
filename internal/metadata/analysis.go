@@ -55,7 +55,7 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 
 			var signatureStr string
 			signature := ExprToCallArgument(fn.Type, info, "", fset, meta)
-			signatureStr = CallArgToString(*signature)
+			signatureStr = CallArgToString(signature)
 
 			return fn.Name.Name, strings.Join(parts, "."), signatureStr
 		}
@@ -115,7 +115,7 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 			var signatureStr string
 			signature := ExprToCallArgument(fn.Type, info, "", fset, meta)
 			if signature != nil {
-				signatureStr = CallArgToString(*signature)
+				signatureStr = CallArgToString(signature)
 			}
 
 			return fn.Name.Name, strings.Join(parts, "."), signatureStr
@@ -434,7 +434,7 @@ func traceVariableOriginHelper(
 
 			// See if this parameter is mapped
 			if arg, ok := edge.ParamArgMap[varName]; ok {
-				paramName := CallArgToString(arg)
+				paramName := CallArgToString(&arg)
 
 				spaceIndex := strings.LastIndex(paramName, " ")
 				if spaceIndex > -1 {

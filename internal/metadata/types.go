@@ -171,7 +171,7 @@ func (m *Metadata) BuildCallGraphMaps() {
 
 		// Index arguments by their base IDs
 		for _, arg := range edge.Args {
-			argBase := stripToBase(arg.ID())
+			argBase := StripToBase(arg.ID())
 			m.Args[argBase] = append(m.Args[argBase], edge)
 		}
 	}
@@ -490,7 +490,7 @@ type CallArgument struct {
 	X        *CallArgument          `yaml:"x,omitempty"`       // for selector/call
 	Sel      *CallArgument          `yaml:"sel,omitempty"`     // for selector
 	Fun      *CallArgument          `yaml:"fun,omitempty"`     // for call
-	Args     []CallArgument         `yaml:"args,omitempty"`    // for call
+	Args     []*CallArgument        `yaml:"args,omitempty"`    // for call
 	TParams  []CallArgument         `yaml:"tparams,omitempty"` // for generic types
 	Raw      int                    `yaml:"raw,omitempty"`     // fallback
 	Extra    map[string]interface{} `yaml:"extra,omitempty"`   // extensibility
@@ -947,7 +947,7 @@ type CallGraphEdge struct {
 	Caller        Call                    `yaml:"caller,omitempty"`
 	Callee        Call                    `yaml:"callee,omitempty"`
 	Position      int                     `yaml:"position,omitempty"`
-	Args          []CallArgument          `yaml:"args,omitempty"`
+	Args          []*CallArgument         `yaml:"args,omitempty"`
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
 
 	// New fields for argument-to-parameter and type parameter mapping
@@ -1180,18 +1180,18 @@ func (m *Metadata) extractReturnTypeFromSignature(signature CallArgument) string
 		// For function calls, try to extract return type
 		if signature.Fun != nil {
 			signature.Fun.Meta = m
-			return m.extractTypeFromCallArgument(*signature.Fun)
+			return m.extractTypeFromCallArgument(signature.Fun)
 		}
 	default:
 		// For other types, try to extract type directly
-		return m.extractTypeFromCallArgument(signature)
+		return m.extractTypeFromCallArgument(&signature)
 	}
 
 	return ""
 }
 
 // extractTypeFromCallArgument extracts the type from a CallArgument
-func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
+func (m *Metadata) extractTypeFromCallArgument(arg *CallArgument) string {
 	// Set the Meta reference
 	arg.Meta = m
 
@@ -1221,7 +1221,7 @@ func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
 		// For array types, extract the element type
 		if arg.X != nil {
 			arg.X.Meta = m
-			elementType := m.extractTypeFromCallArgument(*arg.X)
+			elementType := m.extractTypeFromCallArgument(arg.X)
 			if arg.GetValue() != "" {
 				return "[" + arg.GetValue() + "]" + elementType
 			}
@@ -1232,7 +1232,7 @@ func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
 		// For slice types, extract the element type
 		if arg.X != nil {
 			arg.X.Meta = m
-			elementType := m.extractTypeFromCallArgument(*arg.X)
+			elementType := m.extractTypeFromCallArgument(arg.X)
 			return "[]" + elementType
 		}
 		return "[]" + arg.GetType()
@@ -1241,8 +1241,8 @@ func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
 		if arg.X != nil && arg.Fun != nil {
 			arg.X.Meta = m
 			arg.Fun.Meta = m
-			keyType := m.extractTypeFromCallArgument(*arg.X)
-			valueType := m.extractTypeFromCallArgument(*arg.Fun)
+			keyType := m.extractTypeFromCallArgument(arg.X)
+			valueType := m.extractTypeFromCallArgument(arg.Fun)
 			if keyType != "" && valueType != "" {
 				return "map[" + keyType + "]" + valueType
 			}
@@ -1256,7 +1256,7 @@ func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
 		// For pointer types, add asterisk
 		if arg.X != nil {
 			arg.X.Meta = m
-			baseType := m.extractTypeFromCallArgument(*arg.X)
+			baseType := m.extractTypeFromCallArgument(arg.X)
 			return "*" + baseType
 		}
 		return "*" + arg.GetType()
@@ -1267,7 +1267,7 @@ func (m *Metadata) extractTypeFromCallArgument(arg CallArgument) string {
 }
 
 // determineResolvedTypeFromReturnVar determines the resolved type from a return variable
-func (m *Metadata) determineResolvedTypeFromReturnVar(returnVar CallArgument, pkgName, contextName string) string {
+func (m *Metadata) determineResolvedTypeFromReturnVar(returnVar *CallArgument, pkgName, contextName string) string {
 	// Set the Meta reference
 	returnVar.Meta = m
 
@@ -1297,7 +1297,7 @@ func (m *Metadata) determineResolvedTypeFromReturnVar(returnVar CallArgument, pk
 }
 
 // resolveIdentReturnType resolves the type of an identifier return value
-func (m *Metadata) resolveIdentReturnType(returnVar CallArgument, pkgName, contextName string) string {
+func (m *Metadata) resolveIdentReturnType(returnVar *CallArgument, pkgName, contextName string) string {
 	varName := returnVar.GetName()
 
 	// First, check if it's a variable in the current package
@@ -1318,7 +1318,7 @@ func (m *Metadata) resolveIdentReturnType(returnVar CallArgument, pkgName, conte
 					}
 					// Try to resolve from the assignment value
 					assign.Value.Meta = m
-					return m.determineResolvedTypeFromReturnVar(assign.Value, pkgName, contextName)
+					return m.determineResolvedTypeFromReturnVar(&assign.Value, pkgName, contextName)
 				}
 			}
 		}
@@ -1329,7 +1329,7 @@ func (m *Metadata) resolveIdentReturnType(returnVar CallArgument, pkgName, conte
 }
 
 // resolveSelectorReturnType resolves the type of a selector return value
-func (m *Metadata) resolveSelectorReturnType(returnVar CallArgument, pkgName string) string {
+func (m *Metadata) resolveSelectorReturnType(returnVar *CallArgument, pkgName string) string {
 	if returnVar.X == nil || returnVar.Sel == nil {
 		return returnVar.GetType()
 	}
@@ -1338,7 +1338,7 @@ func (m *Metadata) resolveSelectorReturnType(returnVar CallArgument, pkgName str
 	returnVar.X.Meta = m
 	returnVar.Sel.Meta = m
 
-	baseType := m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+	baseType := m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 	fieldName := returnVar.Sel.GetName()
 
 	// Try to find the field type in metadata
@@ -1364,7 +1364,7 @@ func (m *Metadata) resolveSelectorReturnType(returnVar CallArgument, pkgName str
 }
 
 // resolveCallReturnType resolves the type of a function call return value
-func (m *Metadata) resolveCallReturnType(returnVar CallArgument, pkgName string) string {
+func (m *Metadata) resolveCallReturnType(returnVar *CallArgument, pkgName string) string {
 	if returnVar.Fun == nil {
 		return "func()"
 	}
@@ -1373,7 +1373,7 @@ func (m *Metadata) resolveCallReturnType(returnVar CallArgument, pkgName string)
 	returnVar.Fun.Meta = m
 
 	// Try to determine return type from function signature
-	funcType := m.determineResolvedTypeFromReturnVar(*returnVar.Fun, pkgName, "")
+	funcType := m.determineResolvedTypeFromReturnVar(returnVar.Fun, pkgName, "")
 
 	// If it's a function type, extract return type
 	if strings.HasPrefix(funcType, "func(") {
@@ -1393,7 +1393,7 @@ func (m *Metadata) resolveCallReturnType(returnVar CallArgument, pkgName string)
 }
 
 // resolveCompositeReturnType resolves the type of a composite literal return value
-func (m *Metadata) resolveCompositeReturnType(returnVar CallArgument, pkgName string) string {
+func (m *Metadata) resolveCompositeReturnType(returnVar *CallArgument, pkgName string) string {
 	if returnVar.X == nil {
 		return returnVar.GetType()
 	}
@@ -1402,11 +1402,11 @@ func (m *Metadata) resolveCompositeReturnType(returnVar CallArgument, pkgName st
 	returnVar.X.Meta = m
 
 	// For composite literals, the type is usually in the X field
-	return m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+	return m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 }
 
 // resolveUnaryReturnType resolves the type of a unary expression return value
-func (m *Metadata) resolveUnaryReturnType(returnVar CallArgument, pkgName string) string {
+func (m *Metadata) resolveUnaryReturnType(returnVar *CallArgument, pkgName string) string {
 	if returnVar.X == nil {
 		return returnVar.GetType()
 	}
@@ -1414,7 +1414,7 @@ func (m *Metadata) resolveUnaryReturnType(returnVar CallArgument, pkgName string
 	// Set Meta reference
 	returnVar.X.Meta = m
 
-	baseType := m.determineResolvedTypeFromReturnVar(*returnVar.X, pkgName, "")
+	baseType := m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 
 	// Handle pointer dereferencing
 	if strings.HasPrefix(returnVar.GetType(), "*") {
@@ -1440,7 +1440,7 @@ func (m *Metadata) processCallGraphReturnTypes() {
 
 		// Process all arguments in the call
 		for j := range edge.Args {
-			arg := &edge.Args[j]
+			arg := edge.Args[j]
 			arg.Meta = m
 
 			// If this is a function call, try to resolve its return type

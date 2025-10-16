@@ -197,11 +197,22 @@ func (mc *MetricsCollector) collectSystemMetrics() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	var lastGoroutineCount int
+	leakThreshold := 100 // Alert if goroutines increase by more than 100
+
 	for {
 		select {
 		case <-ticker.C:
 			mc.collectMemoryMetrics()
 			mc.collectGoroutineMetrics()
+
+			// Simple goroutine leak detection
+			currentGoroutines := runtime.NumGoroutine()
+			if lastGoroutineCount > 0 && currentGoroutines > lastGoroutineCount+leakThreshold {
+				mc.SetGauge("goroutines.leak_detected", float64(currentGoroutines-lastGoroutineCount), "count", map[string]string{"type": "leak_detection"})
+			}
+			lastGoroutineCount = currentGoroutines
+
 		case <-mc.stopCh:
 			return
 		}

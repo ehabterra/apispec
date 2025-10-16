@@ -806,7 +806,7 @@
             container: document.getElementById('cy'),
             elements: [],
             style: [
-                {
+               {
                     selector: 'node',
                     style: {
                         'background-color': '#3b82f6',
@@ -826,9 +826,9 @@
                         'shape': 'round-rectangle',
                         'padding': '8px'
                     }
-                },
+                }, 
                 {
-                    selector: 'node[is_parent_function = "true"]',
+                    selector: 'node[parent != ""]:parent',
                     style: {
                         'background-color': '#3b82f6',
                         'font-size': '14px',
@@ -840,7 +840,7 @@
                         'border-style': 'solid',
                         'z-index': 0,
                         'shape': 'round-rectangle',
-                        'padding': '10px'
+                        'padding': '20px'
                     }
                 },
                 {
@@ -861,7 +861,7 @@
                         'color': '#ffffff'
                     }
                 },
-                {
+               {
                     selector: 'node[type = "function"]',
                     style: {
                         'background-color': '#2ecc71',

@@ -102,7 +102,7 @@ func setCallArgumentMeta(arg *CallArgument, meta *Metadata) {
 
 	// Set Meta for all arguments in Args slice
 	for i := range arg.Args {
-		setCallArgumentMeta(&arg.Args[i], meta)
+		setCallArgumentMeta(arg.Args[i], meta)
 	}
 }
 
@@ -117,7 +117,7 @@ func setupMetadataReferences(metadata *Metadata) {
 
 		// Set Meta for all arguments
 		for j := range edge.Args {
-			setCallArgumentMeta(&edge.Args[j], metadata)
+			setCallArgumentMeta(edge.Args[j], metadata)
 		}
 
 		// Set Meta for all parameter arguments

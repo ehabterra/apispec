@@ -21,6 +21,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// VerboseLogger provides conditional logging based on verbose setting
+type VerboseLogger struct {
+	verbose bool
+}
+
+// NewVerboseLogger creates a new verbose logger
+func NewVerboseLogger(verbose bool) *VerboseLogger {
+	return &VerboseLogger{verbose: verbose}
+}
+
+// Printf prints formatted output only if verbose is enabled
+func (vl *VerboseLogger) Printf(format string, args ...interface{}) {
+	if vl.verbose {
+		fmt.Printf(format, args...)
+	}
+}
+
+// Println prints output only if verbose is enabled
+func (vl *VerboseLogger) Println(args ...interface{}) {
+	if vl.verbose {
+		fmt.Println(args...)
+	}
+}
+
+// Print prints output only if verbose is enabled
+func (vl *VerboseLogger) Print(args ...interface{}) {
+	if vl.verbose {
+		fmt.Print(args...)
+	}
+}
+
 const (
 	// Default values for OpenAPI generation
 	DefaultOutputFile         = "openapi.json"
@@ -88,6 +119,9 @@ type EngineConfig struct {
 	AutoExcludeTests bool
 	// Auto-exclude common mock files and folders (e.g., *_mock.go, mocks/)
 	AutoExcludeMocks bool
+
+	// Verbose output control
+	Verbose bool
 
 	moduleRoot string
 }
@@ -186,6 +220,11 @@ func NewEngine(config *EngineConfig) *Engine {
 // GenerateMetadataOnly generates only metadata and call graph without OpenAPI spec
 // This is useful for diagram servers and other tools that only need the call graph
 func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
+	return e.GenerateMetadataOnlyWithLogger(NewVerboseLogger(e.config.Verbose))
+}
+
+// GenerateMetadataOnlyWithLogger generates only metadata and call graph without OpenAPI spec with a custom logger
+func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadata.Metadata, error) {
 	// Validate input directory
 	targetPath, err := filepath.Abs(e.config.InputDir)
 	if err != nil {
@@ -227,9 +266,9 @@ func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 		if len(pkg.Errors) > 0 {
 			errorCount++
 			// Log errors but continue processing other packages
-			fmt.Printf("Warning: Skipping package %s due to errors:\n", pkg.PkgPath)
+			logger.Printf("Warning: Skipping package %s due to errors:\n", pkg.PkgPath)
 			for _, err := range pkg.Errors {
-				fmt.Printf("  - %s\n", err.Msg)
+				logger.Printf("  - %s\n", err.Msg)
 			}
 			continue
 		}
@@ -242,7 +281,7 @@ func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 	}
 
 	if errorCount > 0 {
-		fmt.Printf("Info: Continuing analysis with %d valid packages (%d packages skipped due to errors)\n",
+		logger.Printf("Info: Continuing analysis with %d valid packages (%d packages skipped due to errors)\n",
 			len(validPkgs), errorCount)
 	}
 
@@ -283,49 +322,38 @@ func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 	}
 
 	// Analyze framework dependencies BEFORE metadata generation
+	var dependencyTree *metadata.FrameworkDependencyList
 	if e.config.AnalyzeFrameworkDependencies {
-		fmt.Println("Analyzing framework dependencies...")
-		dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
+		logger.Println("Analyzing framework dependencies...")
+		var err error
+		dependencyTree, err = e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
 		if err != nil {
-			fmt.Printf("Warning: Failed to analyze framework dependencies: %v\n", err)
+			logger.Printf("Warning: Failed to analyze framework dependencies: %v\n", err)
 		} else {
-			fmt.Printf("Framework dependency analysis completed: %d packages found\n", dependencyTree.TotalPackages)
+			logger.Printf("Framework dependency analysis completed: %d packages found\n", dependencyTree.TotalPackages)
 
 			// Auto-include framework packages in IncludePackages if requested
 			if e.config.AutoIncludeFrameworkPackages {
-				e.autoIncludeFrameworkPackages(dependencyTree)
+				e.autoIncludeFrameworkPackages(dependencyTree, logger)
 
 				// Re-filter packages to only include framework packages
-				fmt.Println("Re-filtering packages to include only framework packages...")
+				logger.Println("Re-filtering packages to include only framework packages...")
 				pkgsMetadata, fileToInfo, importPaths = e.filterToFrameworkPackages(
 					pkgsMetadata, fileToInfo, importPaths, dependencyTree)
-				fmt.Printf("Filtered to %d framework packages for metadata generation\n", len(pkgsMetadata))
+				logger.Printf("Filtered to %d framework packages for metadata generation\n", len(pkgsMetadata))
 			}
 		}
 	}
 
 	// Generate metadata (now only on framework packages if auto-include is enabled)
-	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
+	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger)
 
 	// Store metadata in engine
 	e.metadata = meta
 
-	// Store framework dependency list in metadata
-	if e.config.AnalyzeFrameworkDependencies {
-		// Re-analyze if we filtered packages, or use existing analysis
-		if e.config.AutoIncludeFrameworkPackages {
-			// Re-analyze with filtered packages for accurate results
-			dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
-			if err == nil {
-				meta.FrameworkDependencyList = dependencyTree
-			}
-		} else {
-			// Use the original analysis
-			dependencyTree, err := e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
-			if err == nil {
-				meta.FrameworkDependencyList = dependencyTree
-			}
-		}
+	// Store framework dependency list in metadata (already analyzed above)
+	if e.config.AnalyzeFrameworkDependencies && dependencyTree != nil {
+		meta.FrameworkDependencyList = dependencyTree
 	}
 
 	return meta, nil
@@ -763,12 +791,12 @@ func (e *Engine) analyzeFrameworkDependencies(
 }
 
 // autoIncludeFrameworkPackages automatically adds framework packages to IncludePackages
-func (e *Engine) autoIncludeFrameworkPackages(frameworkList *metadata.FrameworkDependencyList) {
+func (e *Engine) autoIncludeFrameworkPackages(frameworkList *metadata.FrameworkDependencyList, logger *VerboseLogger) {
 	if frameworkList == nil || len(frameworkList.AllPackages) == 0 {
 		return
 	}
 
-	fmt.Println("Auto-including framework packages in IncludePackages...")
+	logger.Println("Auto-including framework packages in IncludePackages...")
 
 	// Create a map of existing include packages for quick lookup
 	existingIncludes := make(map[string]bool)
@@ -786,12 +814,12 @@ func (e *Engine) autoIncludeFrameworkPackages(frameworkList *metadata.FrameworkD
 		}
 	}
 
-	fmt.Printf("Added %d framework packages to IncludePackages\n", addedCount)
-	fmt.Printf("Total IncludePackages: %d\n", len(e.config.IncludePackages))
+	logger.Printf("Added %d framework packages to IncludePackages\n", addedCount)
+	logger.Printf("Total IncludePackages: %d\n", len(e.config.IncludePackages))
 
 	// Print the added packages
 	if addedCount > 0 {
-		fmt.Println("Added framework packages:")
+		logger.Println("Added framework packages:")
 		for _, dep := range frameworkList.AllPackages {
 			if existingIncludes[dep.PackagePath] {
 				frameworkType := dep.FrameworkType
@@ -800,7 +828,7 @@ func (e *Engine) autoIncludeFrameworkPackages(frameworkList *metadata.FrameworkD
 				} else {
 					frameworkType += " (indirect)"
 				}
-				fmt.Printf("  - %s (%s)\n", dep.PackagePath, frameworkType)
+				logger.Printf("  - %s (%s)\n", dep.PackagePath, frameworkType)
 			}
 		}
 	}

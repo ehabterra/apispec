@@ -48,7 +48,7 @@ func TestContextProvider_GetArgumentInfo(t *testing.T) {
 
 	// Test with empty argument
 	arg := metadata.NewCallArgument(meta)
-	result := provider.GetArgumentInfo(*arg)
+	result := provider.GetArgumentInfo(arg)
 	if result != "" {
 		t.Errorf("Expected empty string for empty argument, got '%s'", result)
 	}
@@ -60,7 +60,7 @@ func TestContextProvider_callArgToString(t *testing.T) {
 
 	// Test with empty argument
 	arg := metadata.NewCallArgument(meta)
-	result := provider.callArgToString(*arg, nil)
+	result := provider.callArgToString(arg, nil)
 	if result != "" {
 		t.Errorf("Expected empty string for empty argument, got '%s'", result)
 	}
@@ -157,7 +157,7 @@ func TestContextProvider_GetArgumentInfo_WithValidArgument(t *testing.T) {
 	arg.SetPkg("main")
 
 	provider := NewContextProvider(meta)
-	result := provider.GetArgumentInfo(*arg)
+	result := provider.GetArgumentInfo(arg)
 
 	// Should return a string representation
 	if result == "" {
@@ -176,26 +176,26 @@ func TestContextProvider_callArgToString_WithVariousKinds(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		arg      metadata.CallArgument
+		arg      *metadata.CallArgument
 		expected string
 	}{
 		{
 			name: "ident kind",
-			arg: func() metadata.CallArgument {
+			arg: func() *metadata.CallArgument {
 				arg := metadata.NewCallArgument(meta)
 				arg.SetKind(metadata.KindIdent)
 				arg.SetName("user")
-				return *arg
+				return arg
 			}(),
 			expected: "user",
 		},
 		{
 			name: "literal kind",
-			arg: func() metadata.CallArgument {
+			arg: func() *metadata.CallArgument {
 				arg := metadata.NewCallArgument(meta)
 				arg.SetKind(metadata.KindLiteral)
 				arg.SetValue(`"hello"`)
-				return *arg
+				return arg
 			}(),
 			expected: `"hello"`,
 		},
@@ -223,7 +223,7 @@ func TestContextProvider_callArgToString_WithNilMetadata(t *testing.T) {
 	arg.SetName("test")
 
 	// Should not panic
-	result := provider.callArgToString(*arg, nil)
+	result := provider.callArgToString(arg, nil)
 	if result != "" {
 		t.Errorf("Expected empty string for nil metadata, got '%s'", result)
 	}
@@ -243,7 +243,7 @@ func TestContextProvider_callArgToString_WithNilStringPool(t *testing.T) {
 	arg.SetName("test")
 
 	// Should not panic
-	result := provider.callArgToString(*arg, nil)
+	result := provider.callArgToString(arg, nil)
 	if result != "" {
 		t.Errorf("Expected empty string for nil string pool, got '%s'", result)
 	}
