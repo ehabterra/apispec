@@ -374,7 +374,7 @@ go build -o apidiag ./cmd/apidiag
 ./apispec --config my-config.yaml --output openapi.yaml
 
 # Generate with call graph diagram
-./apispec --output openapi.yaml --diagram
+./apispec --output openapi.yaml --diagram diagram.html
 
 # Generate metadata for debugging
 ./apispec --output openapi.yaml --write-metadata
