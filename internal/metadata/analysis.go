@@ -73,7 +73,7 @@ func findEnclosingFunctionLiteral(file *ast.File, pos token.Pos) *ast.FuncLit {
 		}
 
 		// Check if this node contains our position
-		if n.Pos() <= pos && pos <= n.End() {
+		if n.Pos()+1 <= pos && pos <= n.End()-1 {
 			if funcLit, ok := n.(*ast.FuncLit); ok {
 				// This is a function literal that contains our position
 				// Keep the innermost one (most recent)
@@ -252,6 +252,9 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		// Handle generic function or type instantiations like Func[T1, T2]
 		// Recursively analyze the X field to find function calls
 		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
+	case *ast.FuncLit:
+		return fmt.Sprintf("FuncLit:%s", getPosition(x.Pos(), fset)), pkgName, ""
+
 	}
 	return "", "", ""
 }

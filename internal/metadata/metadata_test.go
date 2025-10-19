@@ -1442,3 +1442,97 @@ func isRandomSuffix(s string) bool {
 		return r < 'a' || r > 'z' && (r < '0' || r > '9')
 	}) == -1
 }
+
+func TestIsPrimitiveType(t *testing.T) {
+	tests := []struct {
+		name     string
+		typeName string
+		expected bool
+	}{
+		// Basic primitive types
+		{"string", "string", true},
+		{"int", "int", true},
+		{"int8", "int8", true},
+		{"int16", "int16", true},
+		{"int32", "int32", true},
+		{"int64", "int64", true},
+		{"uint", "uint", true},
+		{"uint8", "uint8", true},
+		{"uint16", "uint16", true},
+		{"uint32", "uint32", true},
+		{"uint64", "uint64", true},
+		{"float32", "float32", true},
+		{"float64", "float64", true},
+		{"bool", "bool", true},
+		{"byte", "byte", true},
+		{"rune", "rune", true},
+		{"error", "error", true},
+		{"interface{}", "interface{}", true},
+		{"struct{}", "struct{}", true},
+		{"any", "any", true},
+		{"complex64", "complex64", true},
+		{"complex128", "complex128", true},
+		{"time.Time", "time.Time", true},
+		{"nil", "nil", true},
+
+		// Pointer types
+		{"*string", "*string", true},
+		{"*int", "*int", true},
+		{"**string", "**string", false}, // Only single pointer dereferencing is supported
+
+		// Slice types
+		{"[]string", "[]string", true},
+		{"[]int", "[]int", true},
+		{"[]bool", "[]bool", true},
+		{"[]byte", "[]byte", true},
+		{"[]time.Time", "[]time.Time", true},
+
+		// Array types
+		{"[5]int", "[5]int", true},
+		{"[10]string", "[10]string", true},
+		{"[16]byte", "[16]byte", true},
+		{"[32]byte", "[32]byte", true},
+		{"[1]bool", "[1]bool", true},
+		{"[100]float64", "[100]float64", true},
+		{"[...]int", "[...]int", true},
+		{"[...]string", "[...]string", true},
+
+		// Map types with primitive key/value
+		{"map[string]string", "map[string]string", true},
+		{"map[string]int", "map[string]int", true},
+		{"map[int]string", "map[int]string", true},
+		{"map[int]int", "map[int]int", true},
+		{"map[bool]bool", "map[bool]bool", true},
+		{"map[byte]byte", "map[byte]byte", true},
+
+		// Non-primitive types
+		{"MyStruct", "MyStruct", false},
+		{"*MyStruct", "*MyStruct", false},
+		{"[]MyStruct", "[]MyStruct", false},
+		{"[5]MyStruct", "[5]MyStruct", false},
+		{"map[string]MyStruct", "map[string]MyStruct", false},
+		{"map[MyStruct]string", "map[MyStruct]string", false},
+		{"MyInterface", "MyInterface", false},
+		{"func()", "func()", false},
+		{"chan int", "chan int", false},
+		{"chan<- int", "chan<- int", false},
+		{"<-chan int", "<-chan int", false},
+
+		// Edge cases
+		{"", "", false},
+		{"[]", "[]", false},
+		{"[", "[", false},
+		{"]", "]", false},
+		{"[5]", "[5]", false},
+		{"map[", "map[", false},
+		{"map[string]", "map[string]", false},
+		{"map[string] ", "map[string] ", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := metadata.IsPrimitiveType(tt.typeName)
+			assert.Equal(t, tt.expected, result, "IsPrimitiveType(%q) = %v, want %v", tt.typeName, result, tt.expected)
+		})
+	}
+}

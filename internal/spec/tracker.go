@@ -761,17 +761,16 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 					var funcEdge *metadata.CallGraphEdge
 
-					// Look for a call graph edge where this function is the callee
+					// Look for a call graph edge where this function is the caller
 					for _, ArgEdge := range meta.CallGraph {
 						if ArgEdge.Caller.Name == funcNameIndex && ArgEdge.Caller.Pkg == pkgNameIndex && (ArgEdge.Caller.RecvType == recvTypeIndex || ArgEdge.Caller.RecvType == starRecvTypeIndex) {
 							funcEdge = &ArgEdge
 							id := funcEdge.Callee.ID()
-							if childNode := NewTrackerNode(tree, meta, argNode.Key(), id, funcEdge, selectorArg, visited, assignmentIndex, limits); childNode != nil {
+							if childNode := NewTrackerNode(tree, meta, argNode.Key(), id, funcEdge, nil, visited, assignmentIndex, limits); childNode != nil {
 								argNode.AddChild(childNode)
 							}
 						}
 					}
-
 				}
 			}
 
@@ -1084,8 +1083,8 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		functionID = originPkg + "." + recvType + "." + getString(meta, parentEdge.Callee.Name)
 	}
 
-	// Look for parent function edges in the ParentFunctions map
-	if parentEdges, exists := meta.ParentFunctions[functionID]; exists && len(parentEdges) > 0 {
+	// Look for parent function edges in the ParentFunctions map that is exists in the Callers map
+	if parentEdges, exists := meta.ParentFunctions[functionID]; meta.Callers[callerID] == nil && exists && len(parentEdges) > 0 {
 		var visitedParentFunctionID = make(map[string]bool)
 
 		for _, parentFunctionEdge := range parentEdges {

@@ -448,33 +448,20 @@ func TestDefaultImportName(t *testing.T) {
 }
 
 func TestFindParentFunction(t *testing.T) {
-	// Create a simple AST with a function containing a function literal
+	// Create a simple Go source code string
+	src := `package main
+
+func parentFunc() {
+	f := func() {
+		// This is inside the function literal
+	}
+}`
+
+	// Parse the source code
 	fset := token.NewFileSet()
-	file := &ast.File{
-		Name: &ast.Ident{Name: "test"},
-		Decls: []ast.Decl{
-			&ast.FuncDecl{
-				Name: &ast.Ident{Name: "parentFunc"},
-				Type: &ast.FuncType{
-					Params: &ast.FieldList{},
-				},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{
-						&ast.AssignStmt{
-							Lhs: []ast.Expr{&ast.Ident{Name: "f"}},
-							Rhs: []ast.Expr{
-								&ast.FuncLit{
-									Type: &ast.FuncType{
-										Params: &ast.FieldList{},
-									},
-									Body: &ast.BlockStmt{},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+	file, err := parser.ParseFile(fset, "test.go", src, 0)
+	if err != nil {
+		t.Fatalf("Failed to parse source: %v", err)
 	}
 
 	info := &types.Info{}
@@ -482,7 +469,8 @@ func TestFindParentFunction(t *testing.T) {
 
 	// Test with a position that should be inside the function literal
 	funcLit := file.Decls[0].(*ast.FuncDecl).Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.FuncLit)
-	pos := funcLit.Pos()
+	// Use a position inside the function literal's body
+	pos := funcLit.Body.Pos() + 1
 
 	funcName, pkgName, _ := findParentFunction(file, pos, info, fset, meta)
 

@@ -74,9 +74,9 @@ string_pool:
   - main
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:39:1
   - 'func() '
-  - example.Namer
-  - example.User
   - example.Ager
+  - example.User
+  - example.Namer
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:11
   - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:2
   - func(age int)
