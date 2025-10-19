@@ -1,6 +1,6 @@
 # APISpec: Generate OpenAPI from Go code
 
-![Coverage](https://img.shields.io/badge/coverage-54.4%25-red.svg)
+![Coverage](https://img.shields.io/badge/coverage-55.7%25-red.svg)
 
 > **Disclaimer:**  
 > APISpec is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
