@@ -150,6 +150,56 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		logger.Printf("Processing %d packages...\n", len(pkgs))
 	}
 
+	// Determine the current module path from import paths
+	var currentModulePath string
+	var packagePaths []string
+
+	// Collect all unique package paths
+	pathSet := make(map[string]bool)
+	for _, importPath := range importPaths {
+		if !pathSet[importPath] {
+			pathSet[importPath] = true
+			packagePaths = append(packagePaths, importPath)
+		}
+	}
+
+	// Find the longest common prefix among all package paths
+	if len(packagePaths) > 0 {
+		currentModulePath = packagePaths[0]
+		for _, path := range packagePaths[1:] {
+			// Find common prefix
+			commonPrefix := ""
+			minLen := min(len(path), len(currentModulePath))
+
+			for i := range minLen {
+				if currentModulePath[i] != path[i] {
+					break
+				}
+				commonPrefix += string(currentModulePath[i])
+			}
+			// If we found a common prefix, use it
+			if commonPrefix != "" && strings.Contains(commonPrefix, "/") {
+				currentModulePath = commonPrefix
+			} else {
+				// If no common prefix, try to find a reasonable module path
+				// Look for the shortest path that contains a domain
+				if strings.Contains(path, ".") && (currentModulePath == "" || len(path) < len(currentModulePath)) {
+					// Extract the module part (everything before the first internal/ or pkg/ or cmd/)
+					parts := strings.Split(path, "/")
+					for i, part := range parts {
+						if part == "internal" || part == "pkg" || part == "cmd" {
+							currentModulePath = strings.Join(parts[:i], "/")
+							break
+						}
+					}
+					if currentModulePath == "" {
+						currentModulePath = path
+					}
+				}
+			}
+		}
+	}
+
 	metadata := &Metadata{
 		StringPool: NewStringPool(),
 		Packages:   make(map[string]*Package),
@@ -160,6 +210,9 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		// Initialize performance optimization caches
 		traceVariableCache: make(map[string]TraceVariableResult),
 		methodLookupCache:  make(map[string]*Method),
+
+		// Set the current module path
+		CurrentModulePath: currentModulePath,
 	}
 
 	for pkgName, files := range pkgs {
@@ -960,12 +1013,140 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 	}
 }
 
+// IsPrimitiveType checks if a type is a Go primitive type
+func IsPrimitiveType(typeName string) bool {
+	// Remove pointer prefix for checking
+	baseType := strings.TrimPrefix(typeName, "*")
+
+	primitiveTypes := []string{
+		"string", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64", "bool", "byte", "rune",
+		"error", "interface{}", "struct{}", "any",
+		"complex64", "complex128", "time.Time", "nil",
+	}
+
+	if slices.Contains(primitiveTypes, baseType) {
+		return true
+	}
+
+	// Check for slice of primitives
+	if after, ok := strings.CutPrefix(baseType, "[]"); ok {
+		elementType := after
+		if slices.Contains(primitiveTypes, elementType) {
+			return true
+		}
+	}
+
+	// Check for array of primitives (e.g., [5]int, [N]string, [...]bool)
+	if strings.HasPrefix(baseType, "[") {
+		// Find the closing bracket
+		endIdx := strings.Index(baseType, "]")
+		if endIdx > 1 {
+			elementType := baseType[endIdx+1:]
+			if slices.Contains(primitiveTypes, elementType) {
+				return true
+			}
+		}
+	}
+
+	// Check for map with primitive key/value
+	if strings.HasPrefix(baseType, "map[") {
+		endIdx := strings.Index(baseType, "]")
+		if endIdx > 4 {
+			keyType := baseType[4:endIdx]
+			valueType := strings.TrimSpace(baseType[endIdx+1:])
+
+			// If both key and value are primitives, consider it primitive
+			keyIsPrimitive := false
+			valueIsPrimitive := false
+
+			for _, primitive := range primitiveTypes {
+				if keyType == primitive {
+					keyIsPrimitive = true
+				}
+				if valueType == primitive {
+					valueIsPrimitive = true
+				}
+			}
+
+			if keyIsPrimitive && valueIsPrimitive {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isExternalType checks if a type is from an external package (not part of the current project)
+func isExternalType(typeInfo types.Type, currentModulePath string) bool {
+	switch t := typeInfo.(type) {
+	case *types.Named:
+		// For named types, check if the package is external
+		if t.Obj() != nil && t.Obj().Pkg() != nil {
+			pkgPath := t.Obj().Pkg().Path()
+			return isExternalPackage(pkgPath, currentModulePath)
+		}
+		return false
+	case *types.Pointer:
+		// For pointer types, check the underlying type
+		return isExternalType(t.Elem(), currentModulePath)
+	case *types.Slice:
+		// For slice types, check the element type
+		return isExternalType(t.Elem(), currentModulePath)
+	case *types.Array:
+		// For array types, check the element type
+		return isExternalType(t.Elem(), currentModulePath)
+	case *types.Map:
+		// For map types, check both key and element types
+		return isExternalType(t.Key(), currentModulePath) || isExternalType(t.Elem(), currentModulePath)
+	case *types.Chan:
+		// For channel types, check the element type
+		return isExternalType(t.Elem(), currentModulePath)
+	default:
+		// For primitive types and other types, they're not external
+		return false
+	}
+}
+
+// isExternalPackage checks if a package path represents an external package
+func isExternalPackage(pkgPath, currentModulePath string) bool {
+	// Standard library packages are not external for our purposes
+	// (they don't need to be resolved since they're already primitive)
+	if !strings.Contains(pkgPath, "/") && !strings.Contains(pkgPath, ".") {
+		return false
+	}
+
+	// If the package path starts with the current module path, it's internal
+	if strings.HasPrefix(pkgPath, currentModulePath) {
+		return false
+	}
+
+	// Otherwise, assume it's external to the project
+	return true
+}
+
 // processStructFields processes fields of a struct type
 func processStructFields(structType *ast.StructType, pkgName string, metadata *Metadata, t *Type, info *types.Info) {
 	for _, field := range structType.Fields.List {
 		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
 		comments := getComments(field)
+
+		if !IsPrimitiveType(fieldType) && info != nil {
+			fieldTypeInfo := info.TypeOf(field.Type)
+			if fieldTypeInfo != nil {
+				// Only resolve external types to their underlying primitives
+				// Internal project types should remain as-is since they'll be resolved from the project
+				if isExternalType(fieldTypeInfo, metadata.CurrentModulePath) {
+					underlyingFieldType := fieldTypeInfo.Underlying().String()
+					if IsPrimitiveType(underlyingFieldType) {
+						fieldType = underlyingFieldType
+					}
+				}
+			}
+		}
 
 		if len(field.Names) == 0 {
 			// Embedded (anonymous) field
@@ -1427,23 +1608,29 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	if callerFunc != "" && calleeFunc != "" {
 		// Determine if the caller is a function literal
 		var parentFunction *Call
+
 		if strings.HasPrefix(callerFunc, "FuncLit:") {
-			// For function literals, we need to find the parent function
-			// that contains this function literal
-			parentFunc, parentParts, signatureStr := findParentFunction(file, call.Pos(), info, fset, metadata)
-			if parentFunc != "" {
-				parentScope := getScope(parentFunc)
-				parentFunction = &Call{
-					Meta:         metadata,
-					Name:         metadata.StringPool.Get(parentFunc),
-					Pkg:          metadata.StringPool.Get(pkgName),
-					Position:     -1, // No position for parent function
-					RecvType:     metadata.StringPool.Get(parentParts),
-					Scope:        metadata.StringPool.Get(parentScope),
-					SignatureStr: metadata.StringPool.Get(signatureStr),
+			callerInstance := pkgName + "." + callerFunc + "@" + callerFunc[strings.Index(callerFunc, ":")+1:]
+
+			if _, ok := calleeMap[callerInstance]; !ok {
+				// For function literals, we need to find the parent function
+				// that contains this function literal
+				parentFunc, parentParts, signatureStr := findParentFunction(file, call.Pos(), info, fset, metadata)
+				if parentFunc != "" {
+					parentScope := getScope(parentFunc)
+					parentFunction = &Call{
+						Meta:         metadata,
+						Name:         metadata.StringPool.Get(parentFunc),
+						Pkg:          metadata.StringPool.Get(pkgName),
+						Position:     -1, // No position for parent function
+						RecvType:     metadata.StringPool.Get(parentParts),
+						Scope:        metadata.StringPool.Get(parentScope),
+						SignatureStr: metadata.StringPool.Get(signatureStr),
+					}
 				}
 			}
 		}
+
 		// Collect arguments
 		args := make([]*CallArgument, len(call.Args))
 		for i, arg := range call.Args {

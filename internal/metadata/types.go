@@ -143,6 +143,9 @@ type Metadata struct {
 
 	// Framework dependency analysis
 	FrameworkDependencyList *FrameworkDependencyList `yaml:"framework_dependency_list,omitempty"`
+
+	// Current module path for external type detection
+	CurrentModulePath string `yaml:"-"`
 }
 
 // TraceVariableResult caches the result of traceVariableOriginHelper

@@ -24,6 +24,8 @@ Click *the image above to watch the full demo on YouTube*
 - **Visualize**: Optional HTML call-graph diagram for debugging.
 - **Extensible**: Pattern-based framework config; add new frameworks without changing core logic.
 - **Smart Type Resolution**: Automatically resolves underlying primitive types for aliases and enums.
+- **Array Type Support**: Comprehensive handling of Go arrays including fixed-size arrays (`[16]byte`) and variable-length arrays (`[...]int`).
+- **External Type Resolution**: Automatically resolves external package types to their underlying primitives while preserving internal project types.
 - **Validator Tag Support**: Comprehensive support for [go-playground/validator](https://github.com/go-playground/validator) tags with automatic OpenAPI constraint mapping.
 - **Function Literal Analysis**: Full support for anonymous functions in route handlers.
 - **Comprehensive Error Handling**: Robust handling of edge cases and invalid inputs.
@@ -63,9 +65,10 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 - [x] **Assignment and alias tracking**: short `:=`, `=`, multi-assign, tuple returns, latest-wins resolution, alias chains, and shadowing.
 - [ ] **Conditional methods**: detecting HTTP methods set via switch/if around net/http `Handle`/`HandleFunc` is not supported.
 - [x] **Composite literals / maps / slices / arrays**: recognizes literal and container types for schema mapping.
+- [x] **Array type support**: comprehensive handling of fixed-size arrays (`[16]byte`, `[5]int`) and variable-length arrays (`[...]int`).
 - [x] **Dependency injection**: supports route grouping mounted via dependency injection.
 - [ ] **Duplicate status codes**: paths with the same status code and different schemas are not yet supported.
-- [ ] **External type introspection**: types from external packages (e.g., `gin.H`) are not introspected automatically; provide schemas via `externalTypes` in config.
+- [x] **External type introspection**: types from external packages are automatically resolved to their underlying primitives; complex external types can be defined via `externalTypes` in config.
 - [x] **Generics (functions)**: detects type parameters and maps concrete types at call sites.
 - [ ] **Generics (types)**: generic struct and type instantiation are partially supported.
 - [ ] **Inferred status codes**: status codes assigned via variables are not inferred.
@@ -124,6 +127,100 @@ type User struct {
 // ID:
 //   type: integer
 //   format: int64
+```
+
+### Array Type Support
+
+APISpec provides comprehensive support for Go arrays, including fixed-size arrays and variable-length arrays:
+
+```go
+// Fixed-size byte arrays are converted to string with maxLength
+type User struct {
+    ID       [16]byte  // Converts to string with format: "byte", maxLength: 16
+    Token    [32]byte  // Converts to string with format: "byte", maxLength: 32
+    Scores   [5]int    // Converts to array with maxItems: 5, minItems: 5
+    Tags     [10]string // Converts to array with maxItems: 10, minItems: 10
+}
+
+// Variable-length arrays
+type Config struct {
+    Values [...]int    // Converts to array without size constraints
+}
+```
+
+#### Generated OpenAPI Schema for Arrays
+
+```yaml
+User:
+  type: object
+  properties:
+    ID:
+      type: string
+      format: byte
+      maxLength: 16
+    Token:
+      type: string
+      format: byte
+      maxLength: 32
+    Scores:
+      type: array
+      items:
+        type: integer
+      maxItems: 5
+      minItems: 5
+    Tags:
+      type: array
+      items:
+        type: string
+      maxItems: 10
+      minItems: 10
+Config:
+  type: object
+  properties:
+    Values:
+      type: array
+      items:
+        type: integer
+```
+
+### External Type Resolution
+
+APISpec intelligently handles external package types by resolving them to their underlying primitives while preserving internal project types:
+
+```go
+// External types (from other packages) are resolved to primitives
+import (
+    "github.com/google/uuid"
+    "github.com/your-org/shared"
+)
+
+type User struct {
+    ID       uuid.UUID           // Resolves to string with format: "uuid"
+    External shared.ExternalType // Resolves to underlying primitive
+    Internal models.User         // Kept as-is (internal project type)
+}
+```
+
+#### How External Type Resolution Works
+
+- **External Types**: Types from packages like `github.com/google/uuid.UUID` are automatically resolved to their underlying primitive types (e.g., `string` with `format: "byte"`)
+- **Internal Types**: Types from your own project (even in different packages) are preserved as-is for proper schema generation
+- **Standard Library**: Types like `time.Time` are handled appropriately based on configuration
+
+#### Generated OpenAPI Schema for External Types
+
+```yaml
+User:
+  type: object
+  properties:
+    ID:
+      type: string
+      format: byte
+      maxLength: 16
+    External:
+      type: string  # Resolved from external package
+    Internal:
+      $ref: '#/components/schemas/User'  # Internal type preserved
 ```
 
 ### Validator Tag Support
@@ -704,6 +801,8 @@ typeMapping:
 # Example: validate:"required,email" -> required: true, format: email
 
 # External types that can't be introspected automatically
+# Note: APISpec automatically resolves external package types to their underlying primitives
+# Only define complex external types that need custom schemas here
 externalTypes:
   - name: github.com/gin-gonic/gin.H
     openapiType:

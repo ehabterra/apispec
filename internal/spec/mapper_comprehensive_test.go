@@ -870,6 +870,7 @@ func TestMapGoTypeToOpenAPISchema_Comprehensive(t *testing.T) {
 		{"primitive_types", "Should handle all primitive types", testMapGoTypeToOpenAPISchema_PrimitiveTypes},
 		{"pointer_types", "Should handle pointer types", testMapGoTypeToOpenAPISchema_PointerTypes},
 		{"slice_types", "Should handle slice types", testMapGoTypeToOpenAPISchema_SliceTypes},
+		{"array_types", "Should handle array types", testMapGoTypeToOpenAPISchema_ArrayTypes},
 		{"map_types", "Should handle map types", testMapGoTypeToOpenAPISchema_MapTypes},
 		{"custom_types", "Should handle custom types", testMapGoTypeToOpenAPISchema_CustomTypes},
 		{"external_types", "Should handle external types", testMapGoTypeToOpenAPISchema_ExternalTypes},
@@ -976,6 +977,92 @@ func testMapGoTypeToOpenAPISchema_SliceTypes(t *testing.T) {
 				t.Errorf("Expected items schema for %s", tt.goType)
 			} else if schema.Items.Type != tt.expectedItemsType {
 				t.Errorf("Expected items type %s for %s, got %s", tt.expectedItemsType, tt.goType, schema.Items.Type)
+			}
+		})
+	}
+}
+
+func testMapGoTypeToOpenAPISchema_ArrayTypes(t *testing.T) {
+	cfg := DefaultAPISpecConfig()
+	usedTypes := make(map[string]*Schema)
+
+	arrayTests := []struct {
+		goType            string
+		expectedType      string
+		expectedFormat    string
+		expectedMaxLength *int
+		expectedMaxItems  *int
+		expectedMinItems  *int
+		description       string
+	}{
+		{
+			goType:            "[16]byte",
+			expectedType:      "string",
+			expectedFormat:    "byte",
+			expectedMaxLength: func() *int { size := 16; return &size }(),
+			description:       "Fixed-size byte array should be converted to string with maxLength",
+		},
+		{
+			goType:            "[32]byte",
+			expectedType:      "string",
+			expectedFormat:    "byte",
+			expectedMaxLength: func() *int { size := 32; return &size }(),
+			description:       "32-byte array should be converted to string with maxLength 32",
+		},
+		{
+			goType:           "[5]int",
+			expectedType:     "array",
+			expectedMaxItems: func() *int { size := 5; return &size }(),
+			expectedMinItems: func() *int { size := 5; return &size }(),
+			description:      "Fixed-size int array should be array with maxItems and minItems",
+		},
+		{
+			goType:           "[10]string",
+			expectedType:     "array",
+			expectedMaxItems: func() *int { size := 10; return &size }(),
+			expectedMinItems: func() *int { size := 10; return &size }(),
+			description:      "Fixed-size string array should be array with maxItems and minItems",
+		},
+		{
+			goType:       "[...]int",
+			expectedType: "array",
+			description:  "Variable-length array should be array without size constraints",
+		},
+	}
+
+	for _, tt := range arrayTests {
+		t.Run(tt.goType, func(t *testing.T) {
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tt.goType, nil, cfg, make(map[string]bool))
+
+			if schema == nil {
+				t.Fatalf("Expected schema for %s, got nil", tt.goType)
+				return
+			}
+
+			if schema.Type != tt.expectedType {
+				t.Errorf("Expected type %s, got %s for %s", tt.expectedType, schema.Type, tt.goType)
+			}
+
+			if tt.expectedFormat != "" && schema.Format != tt.expectedFormat {
+				t.Errorf("Expected format %s, got %s for %s", tt.expectedFormat, schema.Format, tt.goType)
+			}
+
+			if tt.expectedMaxLength != nil {
+				if schema.MaxLength != *tt.expectedMaxLength {
+					t.Errorf("Expected maxLength %d, got %d for %s", *tt.expectedMaxLength, schema.MaxLength, tt.goType)
+				}
+			}
+
+			if tt.expectedMaxItems != nil {
+				if schema.MaxItems != *tt.expectedMaxItems {
+					t.Errorf("Expected maxItems %d, got %d for %s", *tt.expectedMaxItems, schema.MaxItems, tt.goType)
+				}
+			}
+
+			if tt.expectedMinItems != nil {
+				if schema.MinItems != *tt.expectedMinItems {
+					t.Errorf("Expected minItems %d, got %d for %s", *tt.expectedMinItems, schema.MinItems, tt.goType)
+				}
 			}
 		})
 	}
@@ -1577,7 +1664,7 @@ func testIsPrimitiveType_BasicPrimitives(t *testing.T) {
 	}
 
 	for _, primitive := range primitives {
-		if !isPrimitiveType(primitive) {
+		if !metadata.IsPrimitiveType(primitive) {
 			t.Errorf("Expected %s to be primitive", primitive)
 		}
 	}
@@ -1589,7 +1676,7 @@ func testIsPrimitiveType_PointerPrimitives(t *testing.T) {
 	}
 
 	for _, primitive := range pointerPrimitives {
-		if !isPrimitiveType(primitive) {
+		if !metadata.IsPrimitiveType(primitive) {
 			t.Errorf("Expected %s to be primitive", primitive)
 		}
 	}
@@ -1601,7 +1688,7 @@ func testIsPrimitiveType_SlicePrimitives(t *testing.T) {
 	}
 
 	for _, primitive := range slicePrimitives {
-		if !isPrimitiveType(primitive) {
+		if !metadata.IsPrimitiveType(primitive) {
 			t.Errorf("Expected %s to be primitive", primitive)
 		}
 	}
@@ -1613,7 +1700,7 @@ func testIsPrimitiveType_MapPrimitives(t *testing.T) {
 	}
 
 	for _, primitive := range mapPrimitives {
-		if !isPrimitiveType(primitive) {
+		if !metadata.IsPrimitiveType(primitive) {
 			t.Errorf("Expected %s to be primitive", primitive)
 		}
 	}
@@ -1625,7 +1712,7 @@ func testIsPrimitiveType_CustomTypes(t *testing.T) {
 	}
 
 	for _, customType := range customTypes {
-		if isPrimitiveType(customType) {
+		if metadata.IsPrimitiveType(customType) {
 			t.Errorf("Expected %s to not be primitive", customType)
 		}
 	}

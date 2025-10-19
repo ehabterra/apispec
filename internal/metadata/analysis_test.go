@@ -482,7 +482,8 @@ func TestFindParentFunction(t *testing.T) {
 
 	// Test with a position that should be inside the function literal
 	funcLit := file.Decls[0].(*ast.FuncDecl).Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.FuncLit)
-	pos := funcLit.Pos()
+	// Use a position inside the function literal's body, not at its start
+	pos := funcLit.Body.Pos() + 1
 
 	funcName, pkgName, _ := findParentFunction(file, pos, info, fset, meta)
 

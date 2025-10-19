@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -397,7 +396,7 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	metaTypes := map[string]*metadata.Type{}
 
 	// Skip primitive types - they don't need to be looked up in metadata
-	if isPrimitiveType(typeName) {
+	if metadata.IsPrimitiveType(typeName) {
 		return nil
 	}
 
@@ -409,7 +408,7 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	typeParts := TypeParts(typeName)
 	var pkgName string
 
-	if !isPrimitiveType(typeParts.PkgName) && typeParts.PkgName != "" {
+	if !metadata.IsPrimitiveType(typeParts.PkgName) && typeParts.PkgName != "" {
 		pkgName = typeParts.PkgName + "."
 	}
 
@@ -417,7 +416,7 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	if len(typeParts.GenericTypes) > 0 {
 		for _, part := range typeParts.GenericTypes {
 			genericType := strings.Split(part, " ")
-			if isPrimitiveType(genericType[1]) {
+			if metadata.IsPrimitiveType(genericType[1]) {
 				metaTypes[pkgName+genericType[0]+"-"+genericType[1]] = nil
 			} else {
 				genericTypeParts := TypeParts(genericType[0])
@@ -499,60 +498,6 @@ func TypeParts(typeName string) Parts {
 	parts.PkgName = strings.TrimPrefix(parts.PkgName, "[]")
 
 	return parts
-}
-
-// isPrimitiveType checks if a type is a Go primitive type
-func isPrimitiveType(typeName string) bool {
-	// Remove pointer prefix for checking
-	baseType := strings.TrimPrefix(typeName, "*")
-
-	primitiveTypes := []string{
-		"string", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "bool", "byte", "rune",
-		"error", "interface{}", "struct{}", "any",
-		"complex64", "complex128", "time.Time", "nil",
-	}
-
-	if slices.Contains(primitiveTypes, baseType) {
-		return true
-	}
-
-	// Check for slice/array of primitives
-	if after, ok := strings.CutPrefix(baseType, "[]"); ok {
-		elementType := after
-		if slices.Contains(primitiveTypes, elementType) {
-			return true
-		}
-	}
-
-	// Check for map with primitive key/value
-	if strings.HasPrefix(baseType, "map[") {
-		endIdx := strings.Index(baseType, "]")
-		if endIdx > 4 {
-			keyType := baseType[4:endIdx]
-			valueType := strings.TrimSpace(baseType[endIdx+1:])
-
-			// If both key and value are primitives, consider it primitive
-			keyIsPrimitive := false
-			valueIsPrimitive := false
-
-			for _, primitive := range primitiveTypes {
-				if keyType == primitive {
-					keyIsPrimitive = true
-				}
-				if valueType == primitive {
-					valueIsPrimitive = true
-				}
-			}
-
-			if keyIsPrimitive && valueIsPrimitive {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 const generateSchemaFromTypeKey = "generateSchemaFromType"
@@ -672,7 +617,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 
 			maps.Copy(schemas, newSchemas)
 		} else {
-			isPrimitive := isPrimitiveType(fieldType)
+			isPrimitive := metadata.IsPrimitiveType(fieldType)
 
 			if !isPrimitive && !strings.Contains(fieldType, ".") {
 				re := getCachedMapperRegex(`((\[\])?\*?)(.+)$`)
@@ -725,7 +670,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			originalFieldType := getStringFromPool(meta, field.Type)
 
 			// Only detect enums for custom types, not built-in types like string, int, etc.
-			if !isPrimitiveType(originalFieldType) {
+			if !metadata.IsPrimitiveType(originalFieldType) {
 				if enumValues := detectEnumFromConstants(originalFieldType, pkgName, meta); len(enumValues) > 0 {
 					switch fieldSchema.Type {
 					case "array":
@@ -768,7 +713,7 @@ func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta 
 	schema, schemas := mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
 
 	// If the underlying type is a primitive (like string), try to detect enum values
-	if schema != nil && isPrimitiveType(underlyingType) {
+	if schema != nil && metadata.IsPrimitiveType(underlyingType) {
 		// Extract package name for enum detection
 		pkgName := ""
 		if typeParts := TypeParts(originalTypeName); typeParts.PkgName != "" {
@@ -1467,7 +1412,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		visitedTypes = map[string]bool{}
 	}
 
-	isPrimitive := isPrimitiveType(goType)
+	isPrimitive := metadata.IsPrimitiveType(goType)
 
 	derivedGoType := strings.TrimPrefix(goType, "*")
 
@@ -1511,6 +1456,109 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return schema, schemas
 	}
 
+	// Handle array types (e.g., [16]byte, [N]string)
+	if strings.HasPrefix(goType, "[") {
+		// Find the closing bracket
+		endIdx := strings.Index(goType, "]")
+		if endIdx > 1 {
+			elementType := strings.TrimSpace(goType[endIdx+1:])
+			arraySize := strings.TrimSpace(goType[1:endIdx])
+
+			var resolvedType string
+			if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
+				resolvedType = elementType
+			}
+			isPrimitiveElement := metadata.IsPrimitiveType(resolvedType)
+
+			// Special handling for byte arrays - convert to string with maxLength
+			if elementType == "byte" || resolvedType == "byte" {
+				schema = &Schema{
+					Type:   "string",
+					Format: "byte",
+				}
+				if size := parseArraySize(arraySize); size != nil {
+					schema.MaxLength = *size
+				}
+				return schema, schemas
+			}
+
+			// For other primitive types, create array schema
+			if isPrimitiveElement {
+				items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
+				maps.Copy(schemas, newSchemas)
+
+				schema = &Schema{
+					Type:  "array",
+					Items: items,
+				}
+				if size := parseArraySize(arraySize); size != nil {
+					schema.MaxItems = *size
+					schema.MinItems = *size // Fixed size array
+				}
+				return schema, schemas
+			}
+
+			// For complex types, check if already exists in usedTypes
+			if bodySchema, ok := usedTypes[elementType]; ok {
+				if bodySchema == nil {
+					var newBodySchemas map[string]*Schema
+					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
+					maps.Copy(schemas, newBodySchemas)
+				}
+				markUsedType(usedTypes, resolvedType, bodySchema)
+
+				// Create a reference to the existing schema
+				schema = &Schema{
+					Type:  "array",
+					Items: addRefSchemaForType(resolvedType),
+				}
+				if size := parseArraySize(arraySize); size != nil {
+					schema.MaxItems = *size
+					schema.MinItems = *size // Fixed size array
+				}
+				return schema, schemas
+			}
+
+			items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
+			maps.Copy(schemas, newSchemas)
+
+			// Use reference for complex element types in arrays
+			if canAddRefSchemaForType(resolvedType) && items != nil {
+				schemas[resolvedType] = items
+				items = addRefSchemaForType(resolvedType)
+			}
+
+			// Apply enum detection for array elements if the element type is not primitive
+			if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
+				// Extract package name for enum detection
+				pkgName := ""
+				if typeParts := TypeParts(elementType); typeParts.PkgName != "" {
+					pkgName = typeParts.PkgName
+				}
+
+				// Detect enum values for this element type
+				if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
+					// Apply enum values to the stored schema if it exists
+					if storedSchema, exists := schemas[resolvedType]; exists {
+						storedSchema.Enum = enumValues
+					} else {
+						items.Enum = enumValues
+					}
+				}
+			}
+
+			schema = &Schema{
+				Type:  "array",
+				Items: items,
+			}
+			if size := parseArraySize(arraySize); size != nil {
+				schema.MaxItems = *size
+				schema.MinItems = *size // Fixed size array
+			}
+			return schema, schemas
+		}
+	}
+
 	// Handle map types
 	if strings.Contains(goType, "map[") {
 		startIdx := strings.Index(goType, "map[")
@@ -1534,13 +1582,13 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 				maps.Copy(schemas, newSchemas)
 
 				// Use reference for complex value types in maps
-				if !isPrimitiveType(resolvedType) && canAddRefSchemaForType(resolvedType) {
+				if !metadata.IsPrimitiveType(resolvedType) && canAddRefSchemaForType(resolvedType) {
 					schemas[resolvedType] = additionalProperties
 					additionalProperties = addRefSchemaForType(resolvedType)
 				}
 
 				// Apply enum detection for map values if the value type is not primitive
-				if !isPrimitiveType(valueType) && additionalProperties != nil && len(additionalProperties.Enum) == 0 {
+				if !metadata.IsPrimitiveType(valueType) && additionalProperties != nil && len(additionalProperties.Enum) == 0 {
 					// Extract package name for enum detection
 					pkgName := ""
 					if typeParts := TypeParts(valueType); typeParts.PkgName != "" {
@@ -1580,7 +1628,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
 			resolvedType = elementType
 		}
-		isPrimitiveElement := isPrimitiveType(resolvedType)
+		isPrimitiveElement := metadata.IsPrimitiveType(resolvedType)
 
 		// Check if the element type already exists in usedTypes
 		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveElement && ok {
@@ -1611,7 +1659,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		}
 
 		// Apply enum detection for array elements if the element type is not primitive
-		if !isPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
+		if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
 			// Extract package name for enum detection
 			pkgName := ""
 			if typeParts := TypeParts(elementType); typeParts.PkgName != "" {
@@ -1692,7 +1740,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 }
 
 func canAddRefSchemaForType(key string) bool {
-	if isPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.Contains(key, "map[") {
+	if metadata.IsPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.Contains(key, "map[") {
 		return false
 	}
 
@@ -1723,4 +1771,25 @@ func isInSameGroupAsTypedConstant(groupIndex int, targetType string, variables m
 		}
 	}
 	return false
+}
+
+// parseArraySize parses the array size from Go array syntax
+// Returns the size as an integer, or nil if parsing fails or no size constraint
+func parseArraySize(sizeStr string) *int {
+	if sizeStr == "" {
+		return nil
+	}
+
+	// Handle "..." (variable length array)
+	if sizeStr == "..." {
+		return nil
+	}
+
+	// Try to parse as integer
+	if size, err := strconv.Atoi(sizeStr); err == nil {
+		return &size
+	}
+
+	// If it's not a number, return nil (no size constraint)
+	return nil
 }
