@@ -2,8 +2,11 @@
 
 ![Coverage](https://img.shields.io/badge/coverage-55.7%25-red.svg)
 
-> **Disclaimer:**  
-> APISpec is under active development and **not yet production-ready**. Feedback, bug reports, and contributions are welcome.
+<!-- markdownlint-disable MD033 -->
+<div align="center">
+  <img src="logo.png" alt="APISpec Logo" width="200">
+</div>
+<!-- markdownlint-enable MD033 -->
 
 **APISpec** analyzes your Go code and automatically generates an OpenAPI 3.1 spec (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, net/http), follows call graphs to the final handlers, and infers request/response types from real code (struct tags, literals, generics, and more).
 
