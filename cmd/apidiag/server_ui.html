@@ -243,6 +243,170 @@
             min-width: 60px;
         }
         
+        /* Main content area with sidebar */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Package Navigation Sidebar */
+        .package-sidebar {
+            width: 280px;
+            background: rgba(30, 30, 30, 0.95);
+            border-right: 1px solid #404040;
+            overflow-y: auto;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding: 12px 15px;
+            border-bottom: 1px solid #404040;
+            background: rgba(40, 40, 40, 0.95);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sidebar-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0;
+        }
+        
+        .sidebar-toggle {
+            background: none;
+            border: none;
+            color: #b0b0b0;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            min-width: auto;
+            width: 24px;
+            height: 24px;
+        }
+        
+        .sidebar-toggle:hover {
+            color: #3b82f6;
+        }
+        
+        .package-tree {
+            padding: 10px;
+            flex: 1;
+        }
+        
+        .package-item {
+            margin: 2px 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .package-item-header {
+            padding: 6px 8px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.2s;
+        }
+        
+        .package-item-header:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+        
+        .package-item-header.selected {
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+        
+        .package-expand-icon {
+            width: 12px;
+            text-align: center;
+            color: #666;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        
+        .package-expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .package-item.has-children .package-expand-icon {
+            color: #b0b0b0;
+        }
+        
+        .package-name {
+            flex: 1;
+            font-size: 12px;
+            color: #e0e0e0;
+        }
+        
+        .package-name.selected {
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        .package-count {
+            font-size: 10px;
+            color: #888;
+            background: rgba(59, 130, 246, 0.2);
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+        
+        .package-children {
+            margin-left: 20px;
+            margin-top: 2px;
+            display: none;
+        }
+        
+        .package-children.expanded {
+            display: block;
+        }
+        
+        .sidebar-search {
+            padding: 10px;
+            border-bottom: 1px solid #404040;
+        }
+        
+        .sidebar-search input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #404040;
+            border-radius: 3px;
+            background: rgba(20, 20, 20, 0.8);
+            color: #e0e0e0;
+            font-size: 12px;
+        }
+        
+        .sidebar-search input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        .package-sidebar.collapsed {
+            width: 40px;
+            min-width: 40px;
+        }
+        
+        .package-sidebar.collapsed .sidebar-header h2,
+        .package-sidebar.collapsed .sidebar-search,
+        .package-sidebar.collapsed .package-tree {
+            display: none;
+        }
+        
+        .package-sidebar.collapsed .sidebar-header {
+            padding: 8px;
+            justify-content: center;
+        }
+        
+        .package-sidebar.collapsed .sidebar-toggle {
+            margin: 0 auto;
+        }
+        
         /* Cytoscape Container */
         #cy { 
             width: 100%; 
@@ -546,6 +710,56 @@
             color: #ef4444;
         }
         
+        /* Argument info styling */
+        .arg-info {
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .arg-info div {
+            margin: 4px 0;
+            padding: 2px 0;
+        }
+        
+        .arg-info strong {
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        .arg-info span {
+            color: #e2e8f0;
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 4px;
+            border-radius: 2px;
+            border: 1px solid #374151;
+        }
+        
+        /* Word wrap for all popup text */
+        .popup .section-content {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }
+        
+        .popup .list li {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .popup .generic-item {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .popup .position-info {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
     </style>
 </head>
 <body>
@@ -557,6 +771,9 @@
                 <div class="server-status">
                     <div class="status-indicator"></div>
                     <span id="serverStatus">Connected</span>
+                </div>
+                <div class="server-info" style="font-size: 10px; color: #b0b0b0; margin-left: 10px;">
+                    <span id="diagramInfo">Tracker Tree includes function calls + arguments + variables (detailed view)</span>
                 </div>
             </div>
             <div class="header-right">
@@ -626,9 +843,9 @@
                     </select>
                 </div>
                 
-                <div class="control-group">
+                <div class="control-group" id="depthControlGroup">
                     <label>Depth</label>
-                    <select id="depth" onchange="resetAndLoad()">
+                    <select id="depth" onchange="resetAndLoad()" disabled>
                         <option value="1">1 level</option>
                         <option value="2" selected>2 levels</option>
                         <option value="3">3 levels</option>
@@ -640,6 +857,7 @@
                         <option value="9">9 levels</option>
                         <option value="10">10 levels</option>
                     </select>
+                    <span id="depthDisabledNote" style="display: none; font-size: 11px; color: #94a3b8; margin-left: 5px;">(Full depth for tracker-tree)</span>
                 </div>
                 
                 <div class="control-group">
@@ -681,7 +899,15 @@
                     </select>
                 </div>
                 
-                <div class="pagination">
+                <div class="control-group" style="display: flex; align-items: center; gap: 8px;">
+                    <label style="margin: 0;">View Mode:</label>
+                    <select id="viewMode" onchange="changeViewMode()">
+                        <option value="packages" selected>Package Navigation</option>
+                        <option value="pagination">Pagination (Legacy)</option>
+                    </select>
+                </div>
+                
+                <div class="pagination" id="paginationControls" style="display: none;">
                     <button onclick="goToFirstPage()" id="firstPageBtn" disabled>«</button>
                     <button onclick="goToPrevPage()" id="prevPageBtn" disabled>‹</button>
                     <div class="page-info" id="pageInfo">Page 1 of 1</div>
@@ -692,18 +918,27 @@
             
             <!-- Action Buttons Row -->
             <div class="controls-row">
-                <button onclick="loadMore()" id="loadMoreBtn" class="primary">Load More</button>
+                <button onclick="loadMore()" id="loadMoreBtn" class="primary" style="display: none;">Load More</button>
                 <button onclick="resetAndLoad()">Reset View</button>
                 <button onclick="fitView()">Fit View</button>
                 <button onclick="clearFilters()">Clear Filters</button>
                 <select id="layoutSelect" onchange="changeLayout()">
                     <option value="dagre">Left-Right Tree (Recommended)</option>
                     <option value="breadthfirst">Mind Map</option>
+                    <option value="tree">Tree Layout</option>
                     <option value="cose">Compound Layout</option>
                     <option value="grid">Grid Layout</option>
                     <option value="circle">Circle Layout</option>
                     <option value="concentric">Concentric Layout</option>
                 </select>
+                <div class="control-group">
+                    <label>Show Arguments</label>
+                    <input type="checkbox" id="showArguments" onchange="toggleArguments()" checked title="Show/hide argument nodes in tracker tree">
+                </div>
+                <div class="control-group">
+                    <label>Isolate Packages</label>
+                    <input type="checkbox" id="isolatePackages" onchange="loadPackageBasedData()" title="Show only selected packages without external relations">
+                </div>
                 <button onclick="toggleFullscreen()" id="fullscreenBtn">Fullscreen</button>
             </div>
             
@@ -715,8 +950,25 @@
             </div>
         </div>
         
-        <!-- Cytoscape Container -->
-        <div id="cy"></div>
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Package Navigation Sidebar -->
+            <div class="package-sidebar" id="packageSidebar">
+                <div class="sidebar-header">
+                    <h2>Package Navigation</h2>
+                    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">✕</button>
+                </div>
+                <div class="sidebar-search">
+                    <input type="text" id="packageSearch" placeholder="Search packages..." oninput="filterPackages()">
+                </div>
+                <div class="package-tree" id="packageTree">
+                    <div style="padding: 10px; color: #888; text-align: center;">Loading packages...</div>
+                </div>
+            </div>
+            
+            <!-- Cytoscape Container -->
+            <div id="cy"></div>
+        </div>
         
         <!-- Popup for detailed information -->
         <div id="nodePopup" class="popup">
@@ -725,10 +977,14 @@
                 <button class="close-btn" onclick="hidePopup()">&times;</button>
             </div>
             <div class="popup-content">
-                <div class="section">
-                    <div class="section-title">Package</div>
-                    <div class="section-content" id="popupPackage">-</div>
-                </div>
+            <div class="section">
+                <div class="section-title">Package</div>
+                <div class="section-content" id="popupPackage">-</div>
+            </div>
+            <div class="section" id="depthSection" style="display: none;">
+                <div class="section-title">Depth Level</div>
+                <div class="section-content" id="popupDepth">-</div>
+            </div>
             <div class="section">
                 <div class="section-title">Receiver Type</div>
                 <div class="section-content" id="popupReceiverType">-</div>
@@ -779,6 +1035,28 @@
                     <ul class="list" id="popupReturnVars"></ul>
                 </div>
             </div>
+            
+            <!-- Tracker Tree Specific Sections -->
+            <div class="section" id="argInfoSection" style="display: none;">
+                <div class="section-title">Argument Information</div>
+                <div class="section-content">
+                    <div class="arg-info">
+                        <div><strong>Argument Type:</strong> <span id="popupArgType">-</span></div>
+                        <div><strong>Argument Index:</strong> <span id="popupArgIndex">-</span></div>
+                        <div><strong>Argument Context:</strong> <span id="popupArgContext">-</span></div>
+                        <div><strong>Argument Value:</strong> <span id="popupArgValue">-</span></div>
+                        <div><strong>Argument Name:</strong> <span id="popupArgName">-</span></div>
+                        <div><strong>Resolved Type:</strong> <span id="popupArgResolvedType">-</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section" id="rootAssignmentsSection" style="display: none;">
+                <div class="section-title">Root Assignments</div>
+                <div class="section-content">
+                    <ul class="list" id="popupRootAssignments"></ul>
+                </div>
+            </div>
             </div>
         </div>
         
@@ -800,6 +1078,10 @@
         let isLoading = false;
         let currentLayout = 'dagre';
         let isFullscreen = false;
+        let viewMode = 'packages'; // 'packages' or 'pagination'
+        let packageHierarchy = null;
+        let selectedPackages = new Set();
+        let sidebarCollapsed = false;
         
         // Initialize Cytoscape
         cy = cytoscape({
@@ -861,12 +1143,39 @@
                         'color': '#ffffff'
                     }
                 },
-               {
+                {
                     selector: 'node[type = "function"]',
                     style: {
                         'background-color': '#2ecc71',
                         'border-color': '#27ae60',
                         'border-width': 2
+                    }
+                },
+                {
+                    selector: 'node[type = "argument"]',
+                    style: {
+                        'background-color': '#f39c12',
+                        'border-color': '#e67e22',
+                        'border-width': 2,
+                        'shape': 'diamond'
+                    }
+                },
+                {
+                    selector: 'node[type = "call_argument"]',
+                    style: {
+                        'background-color': '#9b59b6',
+                        'border-color': '#8e44ad',
+                        'border-width': 2,
+                        'shape': 'hexagon'
+                    }
+                },
+                {
+                    selector: 'node[type = "generic"]',
+                    style: {
+                        'background-color': '#95a5a6',
+                        'border-color': '#7f8c8d',
+                        'border-width': 1,
+                        'shape': 'ellipse'
                     }
                 },
                 {
@@ -880,11 +1189,51 @@
                     }
                 },
                 {
+                    selector: 'edge[type = "calls"]',
+                    style: {
+                        'line-color': '#2ecc71',
+                        'target-arrow-color': '#2ecc71',
+                        'width': 3
+                    }
+                },
+                {
+                    selector: 'edge[type = "argument"]',
+                    style: {
+                        'line-color': '#f39c12',
+                        'target-arrow-color': '#f39c12',
+                        'width': 2,
+                        'line-style': 'dashed'
+                    }
+                },
+                {
                     selector: '.highlighted',
                     style: {
                         'background-color': '#ff6b6b',
                         'line-color': '#ff6b6b',
                         'target-arrow-color': '#ff6b6b'
+                    }
+                },
+                {
+                    selector: '.tree-root',
+                    style: {
+                        'background-color': '#e74c3c',
+                        'border-color': '#c0392b',
+                        'border-width': 3,
+                        'font-size': '14px',
+                        'font-weight': 'bold',
+                        'shape': 'round-rectangle',
+                        'padding': '12px'
+                    }
+                },
+                {
+                    selector: '.tree-leaf',
+                    style: {
+                        'background-color': '#95a5a6',
+                        'border-color': '#7f8c8d',
+                        'border-width': 1,
+                        'font-size': '11px',
+                        'shape': 'ellipse',
+                        'padding': '6px'
                     }
                 }
             ],
@@ -936,26 +1285,356 @@
             console.warn('Cytoscape not available');
         }
         
+        // Update diagram info text based on diagram type
+        function updateDiagramInfo(diagramType) {
+            const diagramInfo = document.getElementById('diagramInfo');
+            if (diagramInfo) {
+                if (diagramType === 'tracker-tree') {
+                    diagramInfo.textContent = 'Tracker Tree includes function calls + arguments + variables (detailed view)';
+                } else {
+                    diagramInfo.textContent = 'Call Graph shows function call relationships';
+                }
+            }
+        }
+        
+        // Check if we're in tracker-tree mode and disable depth control
+        function checkAndDisableDepth(diagramType) {
+            // If diagramType is provided, use it directly; otherwise check the DOM
+            let isTrackerTree = false;
+            if (diagramType) {
+                isTrackerTree = diagramType === 'tracker-tree';
+            } else {
+                const diagramInfo = document.getElementById('diagramInfo');
+                isTrackerTree = diagramInfo && diagramInfo.textContent.includes('Tracker Tree');
+            }
+            
+            const depthSelect = document.getElementById('depth');
+            const depthControlGroup = document.getElementById('depthControlGroup');
+            const depthDisabledNote = document.getElementById('depthDisabledNote');
+            
+            if (isTrackerTree) {
+                if (depthSelect) {
+                    depthSelect.disabled = true;
+                    depthSelect.style.opacity = '0.5';
+                    depthSelect.style.cursor = 'not-allowed';
+                }
+                if (depthDisabledNote) {
+                    depthDisabledNote.style.display = 'inline';
+                }
+                if (depthControlGroup) {
+                    depthControlGroup.style.opacity = '0.7';
+                }
+            } else {
+                if (depthSelect) {
+                    depthSelect.disabled = false;
+                    depthSelect.style.opacity = '1';
+                    depthSelect.style.cursor = 'pointer';
+                }
+                if (depthDisabledNote) {
+                    depthDisabledNote.style.display = 'none';
+                }
+                if (depthControlGroup) {
+                    depthControlGroup.style.opacity = '1';
+                }
+            }
+        }
+        
+        // Package Navigation Functions
+        async function loadPackageHierarchy() {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/diagram/packages`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                packageHierarchy = data;
+                
+                // Update diagram info and depth control based on diagram type
+                if (data.diagram_type) {
+                    updateDiagramInfo(data.diagram_type);
+                    checkAndDisableDepth(data.diagram_type);
+                }
+                
+                renderPackageTree(data.root_packages);
+            } catch (error) {
+                console.error('Failed to load package hierarchy:', error);
+                document.getElementById('packageTree').innerHTML = 
+                    `<div style="padding: 10px; color: #ef4444;">Failed to load packages: ${error.message}</div>`;
+            }
+        }
+        
+        function renderPackageTree(packages, parentElement = null) {
+            const treeContainer = parentElement || document.getElementById('packageTree');
+            if (!parentElement) {
+                treeContainer.innerHTML = '';
+            }
+            
+            packages.forEach(pkg => {
+                const item = document.createElement('div');
+                item.className = 'package-item';
+                if (pkg.children && pkg.children.length > 0) {
+                    item.classList.add('has-children');
+                }
+                
+                const header = document.createElement('div');
+                header.className = 'package-item-header';
+                if (selectedPackages.has(pkg.full_path)) {
+                    header.classList.add('selected');
+                }
+                
+                const expandIcon = document.createElement('span');
+                expandIcon.className = 'package-expand-icon';
+                expandIcon.textContent = '▶';
+                if (pkg.children && pkg.children.length > 0) {
+                    expandIcon.textContent = '▶';
+                } else {
+                    expandIcon.style.visibility = 'hidden';
+                }
+                
+                const name = document.createElement('span');
+                name.className = 'package-name';
+                if (selectedPackages.has(pkg.full_path)) {
+                    name.classList.add('selected');
+                }
+                name.textContent = pkg.name;
+                
+                const count = document.createElement('span');
+                count.className = 'package-count';
+                count.textContent = pkg.count;
+                
+                header.appendChild(expandIcon);
+                header.appendChild(name);
+                header.appendChild(count);
+                
+                item.appendChild(header);
+                
+                const children = document.createElement('div');
+                children.className = 'package-children';
+                if (pkg.children && pkg.children.length > 0) {
+                    renderPackageTree(pkg.children, children);
+                    item.appendChild(children);
+                    // Auto-expand if any child is selected
+                    if (hasSelectedChild(pkg)) {
+                        children.classList.add('expanded');
+                        expandIcon.classList.add('expanded');
+                    }
+                } else {
+                    expandIcon.style.visibility = 'hidden';
+                }
+                
+                // Click handler for selection
+                header.addEventListener('click', (e) => {
+                    if (e.target === expandIcon || expandIcon === e.target) {
+                        e.stopPropagation();
+                        if (pkg.children && pkg.children.length > 0) {
+                            togglePackageExpand(expandIcon, children);
+                        }
+                        return;
+                    }
+                    togglePackageSelection(pkg.full_path);
+                });
+                
+                treeContainer.appendChild(item);
+            });
+        }
+        
+        function hasSelectedChild(pkg) {
+            if (selectedPackages.has(pkg.full_path)) return true;
+            if (pkg.children) {
+                for (const child of pkg.children) {
+                    if (hasSelectedChild(child)) return true;
+                }
+            }
+            return false;
+        }
+        
+        function togglePackageExpand(icon, children) {
+            const isExpanded = children.classList.contains('expanded');
+            if (isExpanded) {
+                children.classList.remove('expanded');
+                icon.classList.remove('expanded');
+            } else {
+                children.classList.add('expanded');
+                icon.classList.add('expanded');
+            }
+        }
+        
+        function togglePackageSelection(packagePath) {
+            if (selectedPackages.has(packagePath)) {
+                selectedPackages.delete(packagePath);
+            } else {
+                selectedPackages.add(packagePath);
+            }
+            loadPackageBasedData();
+            // Re-render tree to update selection state
+            if (packageHierarchy) {
+                renderPackageTree(packageHierarchy.root_packages);
+            }
+        }
+        
+        async function loadPackageBasedData() {
+            if (selectedPackages.size === 0) {
+                // Clear graph if no packages selected
+                cy.elements().remove();
+                allNodes.clear();
+                allEdges.clear();
+                updateStats(0);
+                return;
+            }
+            
+            if (isLoading) return;
+            isLoading = true;
+            
+            try {
+                const depth = parseInt(document.getElementById('depth').value);
+                const functionFilter = document.getElementById('functionFilter').value;
+                const fileFilter = document.getElementById('fileFilter').value;
+                const receiverFilter = document.getElementById('receiverFilter').value;
+                const signatureFilter = document.getElementById('signatureFilter').value;
+                const genericFilter = document.getElementById('genericFilter').value;
+                const scopeFilter = document.getElementById('scopeFilter').value;
+                const isolatePackages = document.getElementById('isolatePackages').checked;
+                
+                const params = new URLSearchParams({
+                    packages: Array.from(selectedPackages).join(','),
+                    depth: depth.toString()
+                });
+                
+                if (functionFilter) params.append('function', functionFilter);
+                if (fileFilter) params.append('file', fileFilter);
+                if (receiverFilter) params.append('receiver', receiverFilter);
+                if (signatureFilter) params.append('signature', signatureFilter);
+                if (genericFilter) params.append('generic', genericFilter);
+                if (scopeFilter) params.append('scope', scopeFilter);
+                if (isolatePackages) params.append('isolate', 'true');
+                
+                showLoading(true);
+                const response = await fetch(`${SERVER_URL}/api/diagram/by-packages?${params}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Update diagram info and depth control based on diagram type
+                if (data.diagram_type) {
+                    updateDiagramInfo(data.diagram_type);
+                    checkAndDisableDepth(data.diagram_type);
+                }
+                
+                // Clear previous data
+                cy.elements().remove();
+                allNodes.clear();
+                allEdges.clear();
+                
+                addDataToGraph(data);
+                
+            } catch (error) {
+                console.error('Failed to load package-based data:', error);
+                alert(`Failed to load data: ${error.message}`);
+            } finally {
+                isLoading = false;
+                showLoading(false);
+            }
+        }
+        
+        function filterPackages() {
+            const searchTerm = document.getElementById('packageSearch').value.toLowerCase();
+            const items = document.querySelectorAll('.package-item');
+            
+            items.forEach(item => {
+                const name = item.querySelector('.package-name').textContent.toLowerCase();
+                const fullPath = item.querySelector('.package-item-header').getAttribute('data-full-path') || '';
+                
+                if (name.includes(searchTerm) || fullPath.toLowerCase().includes(searchTerm)) {
+                    item.style.display = '';
+                    // Show parent if match found in child
+                    let parent = item.parentElement;
+                    while (parent && !parent.classList.contains('package-tree')) {
+                        if (parent.classList.contains('package-children')) {
+                            parent.classList.add('expanded');
+                            const expandIcon = parent.previousElementSibling?.querySelector('.package-expand-icon');
+                            if (expandIcon) expandIcon.classList.add('expanded');
+                        }
+                        parent = parent.parentElement;
+                    }
+                } else {
+                    // Hide if no match, but show if children match
+                    const hasMatchingChild = Array.from(item.querySelectorAll('.package-item')).some(child => {
+                        const childName = child.querySelector('.package-name')?.textContent.toLowerCase() || '';
+                        return childName.includes(searchTerm);
+                    });
+                    item.style.display = hasMatchingChild ? '' : 'none';
+                }
+            });
+        }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('packageSidebar');
+            const toggleBtn = document.querySelector('.sidebar-toggle');
+            sidebarCollapsed = !sidebarCollapsed;
+            if (sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                if (toggleBtn) {
+                    toggleBtn.textContent = '☰';
+                    toggleBtn.title = 'Show sidebar';
+                }
+            } else {
+                sidebar.classList.remove('collapsed');
+                if (toggleBtn) {
+                    toggleBtn.textContent = '✕';
+                    toggleBtn.title = 'Hide sidebar';
+                }
+            }
+        }
+        
+        function changeViewMode() {
+            const mode = document.getElementById('viewMode').value;
+            viewMode = mode;
+            
+            if (mode === 'packages') {
+                document.getElementById('paginationControls').style.display = 'none';
+                document.getElementById('loadMoreBtn').style.display = 'none';
+                document.getElementById('packageSidebar').style.display = '';
+                if (packageHierarchy === null) {
+                    loadPackageHierarchy();
+                }
+            } else {
+                document.getElementById('paginationControls').style.display = 'flex';
+                document.getElementById('loadMoreBtn').style.display = '';
+                document.getElementById('packageSidebar').style.display = 'none';
+            }
+        }
+        
         // Load initial data
         function loadInitial() {
-            currentPage = 1;
-            pageSize = parseInt(document.getElementById('pageSize').value);
-            const depth = parseInt(document.getElementById('depth').value);
-            const packageFilter = document.getElementById('packageFilter').value;
-            const functionFilter = document.getElementById('functionFilter').value;
-            const fileFilter = document.getElementById('fileFilter').value;
-            const receiverFilter = document.getElementById('receiverFilter').value;
-            const signatureFilter = document.getElementById('signatureFilter').value;
-            const genericFilter = document.getElementById('genericFilter').value;
-            const scopeFilter = document.getElementById('scopeFilter').value;
-            
-            // Clear previous data
-            cy.elements().remove();
-            allNodes.clear();
-            allEdges.clear();
-            
-            showLoading(true);
-            loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
+            if (viewMode === 'packages') {
+                // Load package hierarchy if not loaded
+                if (packageHierarchy === null) {
+                    loadPackageHierarchy();
+                }
+                // Load selected packages or show empty
+                loadPackageBasedData();
+            } else {
+                currentPage = 1;
+                pageSize = parseInt(document.getElementById('pageSize').value);
+                const depth = parseInt(document.getElementById('depth').value);
+                const packageFilter = document.getElementById('packageFilter').value;
+                const functionFilter = document.getElementById('functionFilter').value;
+                const fileFilter = document.getElementById('fileFilter').value;
+                const receiverFilter = document.getElementById('receiverFilter').value;
+                const signatureFilter = document.getElementById('signatureFilter').value;
+                const genericFilter = document.getElementById('genericFilter').value;
+                const scopeFilter = document.getElementById('scopeFilter').value;
+                
+                // Clear previous data
+                cy.elements().remove();
+                allNodes.clear();
+                allEdges.clear();
+                
+                showLoading(true);
+                loadPage(currentPage, depth, packageFilter, functionFilter, fileFilter, receiverFilter, signatureFilter, genericFilter, scopeFilter);
+            }
         }
         
         // Load a specific page from server
@@ -1009,6 +1688,12 @@
                 console.log('Server response:', data);
                 console.log('Nodes:', data.nodes);
                 console.log('Edges:', data.edges);
+                
+                // Update diagram info and depth control based on diagram type
+                if (data.diagram_type) {
+                    updateDiagramInfo(data.diagram_type);
+                    checkAndDisableDepth(data.diagram_type);
+                }
                 
                 // Validate response structure
                 if (!data) {
@@ -1081,7 +1766,8 @@
             // Update stats
             totalNodes = data.total_nodes;
             totalEdges = data.total_edges;
-            totalPages = Math.ceil((totalNodes - allNodes.size) / pageSize+1);
+            // Calculate total pages based on total nodes (not remaining nodes)
+            totalPages = Math.ceil(totalNodes / pageSize);
             updateStats(data.load_time_ms);
             updatePagination();
             updateFilters();
@@ -1524,6 +2210,12 @@
         // Change layout
         function changeLayout() {
             const layoutName = document.getElementById('layoutSelect').value;
+            
+            // Reset any tree-specific styling when switching away from tree layout
+            if (layoutName !== 'tree') {
+                cy.elements().removeClass('tree-root tree-leaf');
+            }
+            
             let layoutOptions = {
                 name: layoutName,
                 animate: 'end',
@@ -1567,10 +2259,68 @@
                     spacingFactor: 1.75,
                     animationDuration: 1000
                 };
+            } else if (layoutName === 'tree') {
+                layoutOptions = {
+                    ...layoutOptions,
+                    name: 'dagre',
+                    rankDir: 'TB', // Top to Bottom for tree structure
+                    ranker: 'tight-tree',
+                    nodeSep: 50,
+                    edgeSep: 20,
+                    rankSep: 80,
+                    acyclicer: 'greedy',
+                    compound: true,
+                    avoidOverlap: true,
+                    nodeDimensionsIncludeLabels: true,
+                    spacingFactor: 1.5
+                };
+                
+                // Apply tree-specific styling
+                applyTreeStyling();
             }
             
             const layout = cy.layout(layoutOptions);
             layout.run();
+        }
+        
+        // Apply tree-specific styling
+        function applyTreeStyling() {
+            // Remove existing tree classes
+            cy.elements().removeClass('tree-root tree-leaf');
+            
+            // Find root nodes (nodes with no incoming edges)
+            const rootNodes = cy.nodes().filter(node => node.incomers().empty());
+            
+            // Find leaf nodes (nodes with no outgoing edges)
+            const leafNodes = cy.nodes().filter(node => node.outgoers().empty());
+            
+            // Apply root styling
+            rootNodes.addClass('tree-root');
+            
+            // Apply leaf styling
+            leafNodes.addClass('tree-leaf');
+            
+            console.log(`Applied tree styling: ${rootNodes.length} roots, ${leafNodes.length} leaves`);
+        }
+        
+        // Toggle argument nodes visibility
+        function toggleArguments() {
+            const showArguments = document.getElementById('showArguments').checked;
+            
+            if (showArguments) {
+                // Show all argument nodes
+                cy.nodes('[type = "argument"], [type = "call_argument"], [type = "generic"]').style('display', 'element');
+            } else {
+                // Hide argument nodes
+                cy.nodes('[type = "argument"], [type = "call_argument"], [type = "generic"]').style('display', 'none');
+            }
+            
+            // Re-apply layout
+            cy.layout({
+                name: currentLayout || 'dagre',
+                fit: true,
+                padding: 50
+            }).run();
         }
         
         // Toggle fullscreen
@@ -1618,8 +2368,15 @@
         
         // Load initial data on page load
         document.addEventListener('DOMContentLoaded', function() {
+            // Check and disable depth on page load
+            checkAndDisableDepth();
             // Update server URL display
             document.getElementById('serverStatus').textContent = `Connected to ${SERVER_URL}`;
+            
+            // Load package hierarchy for package navigation mode
+            if (viewMode === 'packages') {
+                loadPackageHierarchy();
+            }
             
             // Load initial data with error handling
             try {
@@ -1645,6 +2402,16 @@
             
             // Set package
             document.getElementById('popupPackage').textContent = nodeData.package || '-';
+            
+            // Set depth (hide section if not available)
+            const depthSection = document.getElementById('depthSection');
+            const depthContent = document.getElementById('popupDepth');
+            if (nodeData.depth !== undefined && nodeData.depth !== null) {
+                depthContent.textContent = `Level ${nodeData.depth} (${nodeData.depth === 0 ? 'Root' : nodeData.depth === 1 ? '1 level deep' : nodeData.depth + ' levels deep'})`;
+                depthSection.style.display = 'block';
+            } else {
+                depthSection.style.display = 'none';
+            }
             
             // Set receiver type (hide section if empty)
             const receiverTypeSection = document.getElementById('popupReceiverType').closest('.section');
@@ -1860,6 +2627,38 @@
                 returnVarsSection.style.display = 'block';
             } else {
                 returnVarsSection.style.display = 'none';
+            }
+            
+            // Set argument information (tracker tree specific)
+            const argInfoSection = document.getElementById('argInfoSection');
+            if (nodeData.arg_type || nodeData.arg_index !== undefined || nodeData.arg_context || 
+                nodeData.arg_value || nodeData.arg_name || nodeData.arg_resolved_type) {
+                
+                document.getElementById('popupArgType').textContent = nodeData.arg_type || '-';
+                document.getElementById('popupArgIndex').textContent = nodeData.arg_index !== undefined ? nodeData.arg_index.toString() : '-';
+                document.getElementById('popupArgContext').textContent = nodeData.arg_context || '-';
+                document.getElementById('popupArgValue').textContent = nodeData.arg_value || '-';
+                document.getElementById('popupArgName').textContent = nodeData.arg_name || '-';
+                document.getElementById('popupArgResolvedType').textContent = nodeData.arg_resolved_type || '-';
+                
+                argInfoSection.style.display = 'block';
+            } else {
+                argInfoSection.style.display = 'none';
+            }
+            
+            // Set root assignments (tracker tree specific)
+            const rootAssignmentsSection = document.getElementById('rootAssignmentsSection');
+            const rootAssignmentsList = document.getElementById('popupRootAssignments');
+            rootAssignmentsList.innerHTML = '';
+            if (nodeData.root_assignments && Object.keys(nodeData.root_assignments).length > 0) {
+                Object.entries(nodeData.root_assignments).forEach(([key, count]) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<strong>${key}:</strong> ${count} assignments`;
+                    rootAssignmentsList.appendChild(li);
+                });
+                rootAssignmentsSection.style.display = 'block';
+            } else {
+                rootAssignmentsSection.style.display = 'none';
             }
             
             // Position popup near mouse cursor

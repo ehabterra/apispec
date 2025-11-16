@@ -397,7 +397,10 @@ func traceVariableOriginHelper(
 
 	// Check cache first for performance optimization
 	if metadata.traceVariableCache != nil {
-		if cached, exists := metadata.traceVariableCache[key]; exists {
+		metadata.cacheMutex.RLock()
+		cached, exists := metadata.traceVariableCache[key]
+		metadata.cacheMutex.RUnlock()
+		if exists {
 			return cached.OriginVar, cached.OriginPkg, cached.OriginType, cached.CallerFuncName
 		}
 	}
@@ -412,7 +415,9 @@ func traceVariableOriginHelper(
 		}
 		// Only cache results if packages are populated (to avoid caching incomplete results during metadata generation)
 		if metadata.traceVariableCache != nil && len(metadata.Packages) > 0 {
+			metadata.cacheMutex.Lock()
 			metadata.traceVariableCache[key] = result
+			metadata.cacheMutex.Unlock()
 		}
 		return originVar, originPkg, originType, callerFuncName
 	}
@@ -572,7 +577,9 @@ func traceVariableOriginHelper(
 	}
 	// Only cache results if packages are populated (to avoid caching incomplete results during metadata generation)
 	if metadata.traceVariableCache != nil && len(metadata.Packages) > 0 {
+		metadata.cacheMutex.Lock()
 		metadata.traceVariableCache[key] = result
+		metadata.cacheMutex.Unlock()
 	}
 	return varName, pkgName, nil, funcName
 }
