@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const (
@@ -140,6 +141,9 @@ type Metadata struct {
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
 	methodLookupCache    map[string]*Method                              `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
+
+	// Mutex for thread-safe cache access
+	cacheMutex sync.RWMutex `yaml:"-"`
 
 	// Framework dependency analysis
 	FrameworkDependencyList *FrameworkDependencyList `yaml:"framework_dependency_list,omitempty"`

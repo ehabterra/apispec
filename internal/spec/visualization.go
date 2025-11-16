@@ -68,6 +68,7 @@ type CytoscapeNodeData struct {
 	Group    string `json:"group,omitempty"`
 	Position string `json:"position,omitempty"`
 	Type     string `json:"type,omitempty"`
+	Depth    int    `json:"depth,omitempty"` // Depth level in the tree (0 = root)
 
 	// Enhanced data for popup display
 	Package          string            `json:"package,omitempty"`
@@ -80,6 +81,15 @@ type CytoscapeNodeData struct {
 
 	// Additional function metadata
 	SignatureStr string `json:"signature_str,omitempty"`
+
+	// Tracker tree specific data
+	ArgType         string         `json:"arg_type,omitempty"`
+	ArgIndex        int            `json:"arg_index,omitempty"`
+	ArgContext      string         `json:"arg_context,omitempty"`
+	ArgName         string         `json:"arg_name,omitempty"`
+	ArgValue        string         `json:"arg_value,omitempty"`
+	ArgResolvedType string         `json:"arg_resolved_type,omitempty"`
+	RootAssignments map[string]int `json:"root_assignments,omitempty"`
 }
 
 type CytoscapeEdge struct {
@@ -96,17 +106,252 @@ type CytoscapeEdgeData struct {
 
 // DrawTrackerTreeCytoscape generates Cytoscape.js JSON data for the tracker tree.
 func DrawTrackerTreeCytoscape(nodes []TrackerNodeInterface) *CytoscapeData {
+	return DrawTrackerTreeCytoscapeWithMetadata(nodes, nil)
+}
+
+// DrawTrackerTreeCytoscapeWithMetadata generates Cytoscape.js JSON data for the tracker tree with metadata.
+func DrawTrackerTreeCytoscapeWithMetadata(nodes []TrackerNodeInterface, meta *metadata.Metadata) *CytoscapeData {
 	data := &CytoscapeData{
 		Nodes: make([]CytoscapeNode, 0),
 		Edges: make([]CytoscapeEdge, 0),
 	}
-	nodeMap := make(map[string]string)
+	// Use base keys for node mapping to merge occurrences
+	nodeMap := make(map[string]string)         // baseKey -> nodeID
+	baseKeyToNodeIndex := make(map[string]int) // baseKey -> index in data.Nodes
 	edgeCounter := 0
 	nodeCounter := 0
+	depth := 0 // Start at depth 0 for root nodes
+
+	// Track edges by base keys to avoid duplicates
+	edgeSet := make(map[string]bool) // "sourceBaseKey->targetBaseKey" -> bool
+
+	// Track which base keys have had their children processed to prevent infinite loops
+	childrenProcessed := make(map[string]bool) // baseKey -> bool
+
 	for _, node := range nodes {
-		drawNodeCytoscape(node, data, nodeMap, &edgeCounter, &nodeCounter)
+		_ = drawNodeCytoscapeWithDepth(node, data, nodeMap, baseKeyToNodeIndex, edgeSet, childrenProcessed, &edgeCounter, &nodeCounter, meta, depth)
 	}
 	return data
+}
+
+// OrderTrackerTreeNodesDepthFirst orders Cytoscape nodes from a tracker tree in depth-first order
+// starting from root nodes (main function) down to leaves, across all branches
+func OrderTrackerTreeNodesDepthFirst(data *CytoscapeData) []CytoscapeNode {
+	if len(data.Nodes) == 0 {
+		return data.Nodes
+	}
+
+	// Build maps for quick lookup
+	nodeMap := make(map[string]*CytoscapeNode)
+	for i := range data.Nodes {
+		nodeMap[data.Nodes[i].Data.ID] = &data.Nodes[i]
+	}
+
+	// Build edge adjacency map (parent -> children)
+	edgesBySource := make(map[string][]string)
+	for _, edge := range data.Edges {
+		edgesBySource[edge.Data.Source] = append(edgesBySource[edge.Data.Source], edge.Data.Target)
+	}
+
+	// Find root nodes (nodes with depth 0 or no incoming edges)
+	hasIncoming := make(map[string]bool)
+	for _, edge := range data.Edges {
+		hasIncoming[edge.Data.Target] = true
+	}
+
+	var roots []*CytoscapeNode
+	var mainRoot *CytoscapeNode
+	var otherRoots []*CytoscapeNode
+	minDepth := 999999
+
+	for i := range data.Nodes {
+		node := &data.Nodes[i]
+		// Track minimum depth
+		if node.Data.Depth < minDepth {
+			minDepth = node.Data.Depth
+		}
+
+		// Check if this is the main root node
+		isMain := node.Data.ID == "node_0" || node.Data.Label == "main"
+		isRoot := !hasIncoming[node.Data.ID] || node.Data.Depth == 0
+
+		// Root if no incoming edges or depth is minimum (likely 0)
+		if isRoot {
+			if isMain {
+				mainRoot = node
+			} else {
+				otherRoots = append(otherRoots, node)
+			}
+		}
+	}
+
+	// Prioritize main root first
+	if mainRoot != nil {
+		roots = append(roots, mainRoot)
+		roots = append(roots, otherRoots...)
+	} else if len(otherRoots) > 0 {
+		roots = otherRoots
+	} else {
+		// If no roots found by depth 0, use minimum depth nodes
+		for i := range data.Nodes {
+			node := &data.Nodes[i]
+			if node.Data.Depth == minDepth {
+				if node.Data.ID == "node_0" || node.Data.Label == "main" {
+					roots = append([]*CytoscapeNode{node}, roots...)
+				} else {
+					roots = append(roots, node)
+				}
+			}
+		}
+	}
+
+	var orderedNodes []CytoscapeNode
+	visited := make(map[string]bool)
+
+	// Depth-first traversal function
+	var dfs func(nodeID string)
+	dfs = func(nodeID string) {
+		if visited[nodeID] {
+			return
+		}
+		visited[nodeID] = true
+
+		if node, exists := nodeMap[nodeID]; exists {
+			orderedNodes = append(orderedNodes, *node)
+		}
+
+		// Process children in order (depth-first)
+		if children, exists := edgesBySource[nodeID]; exists {
+			for _, childID := range children {
+				dfs(childID)
+			}
+		}
+	}
+
+	// Start DFS from all root nodes
+	for _, root := range roots {
+		dfs(root.Data.ID)
+	}
+
+	// Add any remaining unvisited nodes (orphaned nodes, should be rare)
+	for i := range data.Nodes {
+		node := &data.Nodes[i]
+		if !visited[node.Data.ID] {
+			orderedNodes = append(orderedNodes, *node)
+		}
+	}
+
+	return orderedNodes
+}
+
+// TraverseTrackerTreeBranchOrder returns nodes in branch-first order:
+// Complete one branch (with all sub-branches) depth-first before moving to next branch.
+// Each node appears exactly once in the order.
+func TraverseTrackerTreeBranchOrder(data *CytoscapeData) []CytoscapeNode {
+	if len(data.Nodes) == 0 {
+		return nil
+	}
+
+	// Build fast lookups
+	nodeMap := make(map[string]*CytoscapeNode)
+	for i := range data.Nodes {
+		nodeMap[data.Nodes[i].Data.ID] = &data.Nodes[i]
+	}
+
+	// Consider only function call edges to avoid cycles from argument edges
+	children := make(map[string][]string)
+	hasIncoming := make(map[string]bool)
+	for _, e := range data.Edges {
+		if e.Data.Type != "calls" {
+			continue
+		}
+		children[e.Data.Source] = append(children[e.Data.Source], e.Data.Target)
+		hasIncoming[e.Data.Target] = true
+	}
+
+	// Find roots, prioritizing "main" node (node_0 or label "main")
+	var roots []string
+	var mainRoot string
+	var otherRoots []string
+	minDepth := 1 << 30
+
+	for i := range data.Nodes {
+		n := &data.Nodes[i]
+		if n.Data.Depth < minDepth {
+			minDepth = n.Data.Depth
+		}
+
+		// Check if this is the main root node
+		isMain := n.Data.ID == "node_0" || n.Data.Label == "main"
+		isRoot := !hasIncoming[n.Data.ID] || n.Data.Depth == 0
+
+		if isRoot {
+			if isMain {
+				mainRoot = n.Data.ID
+			} else {
+				otherRoots = append(otherRoots, n.Data.ID)
+			}
+		}
+	}
+
+	// Prioritize main root, fallback to minimum depth if no roots found
+	if mainRoot != "" {
+		roots = append(roots, mainRoot)
+		roots = append(roots, otherRoots...)
+	} else if len(otherRoots) > 0 {
+		roots = otherRoots
+	} else {
+		// Fallback: use minimum depth nodes
+		for i := range data.Nodes {
+			n := &data.Nodes[i]
+			if n.Data.Depth == minDepth {
+				// Still prioritize main if found
+				if n.Data.ID == "node_0" || n.Data.Label == "main" {
+					roots = append([]string{n.Data.ID}, roots...)
+				} else {
+					roots = append(roots, n.Data.ID)
+				}
+			}
+		}
+	}
+
+	var result []CytoscapeNode
+	visited := make(map[string]bool)
+
+	// DFS that visits each node exactly once, completing one branch before moving to next
+	var dfs func(id string)
+	dfs = func(id string) {
+		if visited[id] {
+			return // Already visited
+		}
+		visited[id] = true
+
+		if node, ok := nodeMap[id]; ok {
+			result = append(result, *node)
+		}
+
+		// Process all children depth-first
+		if childIDs, exists := children[id]; exists {
+			for _, childID := range childIDs {
+				dfs(childID)
+			}
+		}
+	}
+
+	// Process each root branch completely before moving to next
+	for _, r := range roots {
+		dfs(r)
+	}
+
+	// Add any orphaned nodes
+	for i := range data.Nodes {
+		n := &data.Nodes[i]
+		if !visited[n.Data.ID] {
+			result = append(result, *n)
+		}
+	}
+
+	return result
 }
 
 // DrawCallGraphCytoscape generates Cytoscape.js JSON data directly from call graph metadata.
@@ -505,43 +750,294 @@ func extractParameterInfo(edge *metadata.CallGraphEdge) ([]string, []string) {
 	return paramTypes, passedParams
 }
 
-func drawNodeCytoscape(node TrackerNodeInterface, data *CytoscapeData, nodeMap map[string]string, edgeCounter, nodeCounter *int) {
-	if node == nil {
-		return
+// splitNodeLabel splits a node key by @ sign and returns label and position
+func splitNodeLabel(nodeKey string) (string, string) {
+	parts := strings.Split(nodeKey, "@")
+	if len(parts) >= 2 {
+		// Return first part as label, second part as position
+		return parts[0], parts[1]
 	}
-	nodeID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
-	data.Nodes = append(data.Nodes, CytoscapeNode{
-		Data: CytoscapeNodeData{
-			ID:    nodeID,
-			Label: node.GetKey(),
-			Type:  "function",
-		},
-	})
-	for _, child := range node.GetChildren() {
-		if child != nil {
-			*nodeCounter++
-			childID := fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
-			nodeMap[child.GetKey()] = childID
-			data.Nodes = append(data.Nodes, CytoscapeNode{
-				Data: CytoscapeNodeData{
-					ID:    nodeMap[child.GetKey()],
-					Label: child.GetKey(),
-					Type:  "function",
-				},
-			})
-			edgeID := fmt.Sprintf("%s%d", edgePrefix, *edgeCounter)
-			*edgeCounter++
-			data.Edges = append(data.Edges, CytoscapeEdge{
-				Data: CytoscapeEdgeData{
-					ID:     edgeID,
-					Source: nodeID,
-					Target: childID,
-					Type:   "calls",
-				},
-			})
-			drawNodeCytoscape(child, data, nodeMap, edgeCounter, nodeCounter)
+	// If no @ sign, return the whole key as label with empty position
+	return nodeKey, ""
+}
+
+func callArgument(callArgument *metadata.CallArgument) *metadata.CallArgument {
+	if callArgument == nil {
+		return nil
+	}
+
+	if callArgument.GetName() != "" || callArgument.GetValue() != "" {
+		return callArgument
+	}
+
+	switch {
+	case callArgument.Fun != nil:
+		return callArgument.Fun
+	case callArgument.Sel != nil:
+		return callArgument.Sel
+	case callArgument.X != nil:
+		return callArgument.X
+	}
+
+	return callArgument
+}
+
+func drawNodeCytoscapeWithDepth(node TrackerNodeInterface, data *CytoscapeData, nodeMap map[string]string, baseKeyToNodeIndex map[string]int, edgeSet map[string]bool, childrenProcessed map[string]bool, edgeCounter, nodeCounter *int, meta *metadata.Metadata, depth int) string {
+	if node == nil {
+		return ""
+	}
+
+	// Get base key (without position) to merge all occurrences
+	nodeKey := node.GetKey()
+	baseKey := metadata.StripToBase(nodeKey)
+
+	// Extract position from nodeKey (after @ character)
+	_, positionFromLabel := splitNodeLabel(nodeKey)
+
+	// Check if a node with this base key already exists
+	var nodeID string
+	var nodeIndex int
+	var nodeData *CytoscapeNodeData
+	isNewNode := false
+
+	if existingID, exists := nodeMap[baseKey]; exists {
+		// Node with same base key exists, merge into it
+		nodeID = existingID
+		nodeIndex = baseKeyToNodeIndex[baseKey]
+		nodeData = &data.Nodes[nodeIndex].Data
+	} else {
+		// Create new node for this base key
+		nodeID = fmt.Sprintf("%s%d", nodePrefix, *nodeCounter)
+		*nodeCounter++
+		nodeMap[baseKey] = nodeID
+
+		label, _ := splitNodeLabel(baseKey)
+		nodeData = &CytoscapeNodeData{
+			ID:        nodeID,
+			Label:     label,
+			Type:      "function",
+			Depth:     depth,                   // Set the depth level
+			CallPaths: make([]CallPathInfo, 0), // Initialize CallPaths array
+		}
+
+		nodeIndex = len(data.Nodes)
+		baseKeyToNodeIndex[baseKey] = nodeIndex
+		isNewNode = true
+	}
+
+	// Add position from this occurrence if present
+	if positionFromLabel != "" {
+		if nodeData.Position == "" {
+			nodeData.Position = positionFromLabel
+		} else if !strings.Contains(nodeData.Position, positionFromLabel) {
+			// Append position if not already present
+			nodeData.Position += ", " + positionFromLabel
 		}
 	}
+
+	// Add tracker tree specific data if available
+	if trackerNode, ok := node.(*TrackerNode); ok {
+		// Determine node type and set appropriate data
+		if trackerNode.IsArgument {
+			// This is an argument node
+			if isNewNode {
+				nodeData.Type = "argument"
+				nodeData.ArgType = trackerNode.ArgType.String()
+				nodeData.ArgIndex = trackerNode.ArgIndex
+				nodeData.ArgContext = trackerNode.ArgContext
+
+				// Add argument information if available
+				if trackerNode.CallArgument != nil {
+					callArgument := callArgument(trackerNode.CallArgument)
+					nodeData.ArgName = callArgument.GetName()
+					nodeData.Package = callArgument.GetPkg()
+					nodeData.ArgValue = callArgument.GetValue()
+					nodeData.ArgType = callArgument.GetType()
+					nodeData.ArgResolvedType = callArgument.GetResolvedType()
+				}
+			}
+		} else if trackerNode.CallGraphEdge != nil {
+			// This is a function node with an edge
+			if isNewNode {
+				nodeData.Type = "function"
+				// Get actual strings from metadata if available
+				// Note: CallGraphEdge is checked for nil above, so we can access Callee directly
+				callee := trackerNode.Callee
+				if meta != nil && meta.StringPool != nil {
+					nodeData.FunctionName = meta.StringPool.GetString(callee.Name)
+					nodeData.Package = meta.StringPool.GetString(callee.Pkg)
+					nodeData.ReceiverType = meta.StringPool.GetString(callee.RecvType)
+					nodeData.SignatureStr = meta.StringPool.GetString(callee.SignatureStr)
+				} else {
+					// Fallback to indices if metadata not available
+					nodeData.FunctionName = fmt.Sprintf("func_%d", callee.Name)
+					nodeData.Package = fmt.Sprintf("pkg_%d", callee.Pkg)
+					nodeData.ReceiverType = fmt.Sprintf("recv_%d", callee.RecvType)
+					nodeData.SignatureStr = fmt.Sprintf("sig_%d", callee.SignatureStr)
+				}
+				nodeData.Scope = callee.GetScope()
+			}
+
+			// Merge CallPathInfo from this occurrence if metadata is available
+			if meta != nil && meta.StringPool != nil {
+				calleeBaseID := trackerNode.Callee.BaseID()
+				callPathInfos := buildCallPathInfos(meta, calleeBaseID)
+
+				// Merge call paths, avoiding duplicates
+				if nodeData.CallPaths == nil {
+					nodeData.CallPaths = make([]CallPathInfo, 0)
+				}
+
+				// Create a map to track unique call paths
+				callPathMap := make(map[string]bool)
+				for _, existingPath := range nodeData.CallPaths {
+					pathKey := fmt.Sprintf("%s.%s:%s", existingPath.CallerPkg, existingPath.CallerName, existingPath.Position)
+					callPathMap[pathKey] = true
+				}
+
+				// Add new call paths that aren't duplicates
+				for _, newPath := range callPathInfos {
+					pathKey := fmt.Sprintf("%s.%s:%s", newPath.CallerPkg, newPath.CallerName, newPath.Position)
+					if !callPathMap[pathKey] {
+						nodeData.CallPaths = append(nodeData.CallPaths, newPath)
+						callPathMap[pathKey] = true
+					}
+				}
+
+				// Set position from edge if not already set from label split
+				edgePosition := meta.StringPool.GetString(trackerNode.Callee.Position)
+				if edgePosition != "" {
+					if nodeData.Position == "" {
+						nodeData.Position = edgePosition
+					} else if !strings.Contains(nodeData.Position, edgePosition) {
+						nodeData.Position += ", " + edgePosition
+					}
+				}
+			}
+		} else if trackerNode.CallArgument != nil {
+			// This is a call argument node (not a function)
+			if isNewNode {
+				nodeData.Type = "call_argument"
+				callArgument := callArgument(trackerNode.CallArgument)
+				nodeData.ArgName = callArgument.GetName()
+				nodeData.Package = callArgument.GetPkg()
+				nodeData.ArgValue = callArgument.GetValue()
+				nodeData.ArgType = callArgument.GetType()
+				nodeData.ArgResolvedType = callArgument.GetResolvedType()
+			}
+		} else {
+			// This is a generic node (variable, literal, etc.)
+			if isNewNode {
+				nodeData.Type = "generic"
+			}
+		}
+
+		// Merge root assignments if available (for any node type)
+		if len(trackerNode.RootAssignmentMap) > 0 {
+			if nodeData.RootAssignments == nil {
+				nodeData.RootAssignments = make(map[string]int)
+			}
+			for key, assignments := range trackerNode.RootAssignmentMap {
+				// Merge assignments count
+				if existingCount, exists := nodeData.RootAssignments[key]; exists {
+					nodeData.RootAssignments[key] = existingCount + len(assignments)
+				} else {
+					nodeData.RootAssignments[key] = len(assignments)
+				}
+			}
+		}
+
+		// Merge type parameters (for any node type)
+		if trackerNode.TypeParams() != nil {
+			if nodeData.Generics == nil {
+				nodeData.Generics = make(map[string]string)
+			}
+			// Merge generics - use the first occurrence or merge if different
+			for key, value := range trackerNode.TypeParams() {
+				if existingValue, exists := nodeData.Generics[key]; !exists || existingValue == "" {
+					nodeData.Generics[key] = value
+				} else if existingValue != value {
+					// If different values, keep both separated by comma
+					nodeData.Generics[key] = existingValue + ", " + value
+				}
+			}
+		}
+	}
+
+	// Remove package prefix from label (do this for both new and merged nodes)
+	if nodeData.Package != "" {
+		nodeData.Label = strings.TrimPrefix(nodeData.Label, nodeData.Package+".")
+		nodeData.Label = strings.TrimPrefix(nodeData.Label, nodeData.Package+"/")
+	}
+
+	if strings.HasSuffix(nodeData.Label, ".main") {
+		nodeData.Label = "main"
+	}
+
+	// Only append new node if this is the first occurrence
+	if isNewNode {
+		data.Nodes = append(data.Nodes, CytoscapeNode{
+			Data: *nodeData,
+		})
+	}
+
+	// Process children from all occurrences to merge all children
+	// Use edgeSet to track which parent->child relationships we've already created
+	// This prevents duplicates while allowing us to collect children from all occurrences
+
+	// Track if we've visited this specific node occurrence to prevent infinite recursion
+	// Use a composite key: baseKey + nodeKey to identify this specific occurrence
+	occurrenceKey := baseKey + ":" + nodeKey
+	if childrenProcessed[occurrenceKey] {
+		// Already processed this specific occurrence, return to avoid infinite loop
+		return nodeID
+	}
+	childrenProcessed[occurrenceKey] = true
+
+	// Process children from this occurrence
+	children := node.GetChildren()
+	for _, child := range children {
+		if child != nil {
+			// Recursively process child node (it will add itself or return existing ID)
+			childID := drawNodeCytoscapeWithDepth(child, data, nodeMap, baseKeyToNodeIndex, edgeSet, childrenProcessed, edgeCounter, nodeCounter, meta, depth+1)
+
+			if childID != "" {
+				// Get base keys for edge tracking
+				childKey := child.GetKey()
+				childBaseKey := metadata.StripToBase(childKey)
+
+				// Create edge key using base keys to avoid duplicates across occurrences
+				edgeKey := baseKey + "->" + childBaseKey
+
+				// Only create edge if we haven't already created one between these base nodes
+				if !edgeSet[edgeKey] && nodeKey != childKey {
+					// Determine edge type based on node types
+					edgeType := "calls" // Default for function calls
+					if trackerNode, ok := node.(*TrackerNode); ok {
+						if trackerNode.IsArgument || (trackerNode.CallArgument != nil && trackerNode.CallGraphEdge == nil) {
+							edgeType = "argument" // Edge represents argument relationship
+						}
+					}
+
+					edgeID := fmt.Sprintf("%s%d", edgePrefix, *edgeCounter)
+					*edgeCounter++
+					data.Edges = append(data.Edges, CytoscapeEdge{
+						Data: CytoscapeEdgeData{
+							ID:     edgeID,
+							Source: nodeID,
+							Target: childID,
+							Type:   edgeType,
+						},
+					})
+
+					// Mark this edge as created
+					edgeSet[edgeKey] = true
+				}
+			}
+		}
+	}
+
+	return nodeID
 }
 
 // extractFuncLitSignature extracts the signature information for a FuncLit

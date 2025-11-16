@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,14 @@ func printVersion() {
 	fmt.Printf("Go version: %s\n", GoVersion)
 }
 
+// matchesFunctionName performs case-insensitive substring matching for function names
+func matchesFunctionName(functionName, searchTerm string) bool {
+	if searchTerm == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(functionName), strings.ToLower(strings.TrimSpace(searchTerm)))
+}
+
 // ServerConfig holds configuration for the API diagram server
 type ServerConfig struct {
 	Port                         int
@@ -122,26 +131,31 @@ type ServerConfig struct {
 	AutoExcludeTests             bool
 	AutoExcludeMocks             bool
 	ShowVersion                  bool
+	DiagramType                  string
 }
 
 // DiagramServer handles HTTP requests for paginated diagram data
 type DiagramServer struct {
 	config   *ServerConfig
 	metadata *metadata.Metadata
+	// cache for paginated Cytoscape datasets to avoid re-generating in multiple places
 	cache    map[string]*spec.PaginatedCytoscapeData
 	lastLoad time.Time
+	// cache for full Cytoscape datasets to avoid re-generating in multiple places
+	dataCache map[string]*spec.CytoscapeData
 }
 
 // PaginatedResponse represents a paginated response
 type PaginatedResponse struct {
-	Nodes      []spec.CytoscapeNode `json:"nodes"`
-	Edges      []spec.CytoscapeEdge `json:"edges"`
-	TotalNodes int                  `json:"total_nodes"`
-	TotalEdges int                  `json:"total_edges"`
-	Page       int                  `json:"page"`
-	PageSize   int                  `json:"page_size"`
-	HasMore    bool                 `json:"has_more"`
-	LoadTime   time.Duration        `json:"load_time_ms"`
+	Nodes       []spec.CytoscapeNode `json:"nodes"`
+	Edges       []spec.CytoscapeEdge `json:"edges"`
+	TotalNodes  int                  `json:"total_nodes"`
+	TotalEdges  int                  `json:"total_edges"`
+	Page        int                  `json:"page"`
+	PageSize    int                  `json:"page_size"`
+	HasMore     bool                 `json:"has_more"`
+	LoadTime    time.Duration        `json:"load_time_ms"`
+	DiagramType string               `json:"diagram_type"` // "call-graph" or "tracker-tree"
 }
 
 // ErrorResponse represents an error response
@@ -175,7 +189,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	log.Printf("🚀 API Diagram server starting on http://%s", addr)
 	if config.Verbose {
-		log.Printf("📊 Serving paginated diagrams for: %s", config.InputDir)
+		log.Printf("📊 Serving %s diagrams for: %s", config.DiagramType, config.InputDir)
 		log.Printf("⚙️  Page size: %d, Max depth: %d", config.PageSize, config.MaxDepth)
 	}
 
@@ -214,6 +228,9 @@ func parseFlags() *ServerConfig {
 	flag.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", false, "Auto-exclude mock files")
 	flag.BoolVar(&config.AutoExcludeMocks, "aem", false, "Shorthand for --auto-exclude-mocks")
 
+	flag.StringVar(&config.DiagramType, "diagram-type", "call-graph", "Diagram type: 'call-graph' or 'tracker-tree'")
+	flag.StringVar(&config.DiagramType, "dt", "call-graph", "Shorthand for --diagram-type")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "APISpec API Diagram Server - Serves paginated call graph diagrams\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", os.Args[0])
@@ -221,6 +238,7 @@ func parseFlags() *ServerConfig {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s --dir ./myproject --port 8080\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s --dir ./myproject --page-size 50 --max-depth 2\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s --dir ./myproject --diagram-type tracker-tree\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s --dir ./myproject --static ./public --cors\n", os.Args[0])
 	}
 
@@ -240,14 +258,20 @@ func parseFlags() *ServerConfig {
 		config.MaxDepth = 10
 	}
 
+	// Validate diagram type
+	if config.DiagramType != "call-graph" && config.DiagramType != "tracker-tree" {
+		config.DiagramType = "call-graph" // Default to call-graph if invalid
+	}
+
 	return config
 }
 
 // NewDiagramServer creates a new diagram server
 func NewDiagramServer(config *ServerConfig) *DiagramServer {
 	return &DiagramServer{
-		config: config,
-		cache:  make(map[string]*spec.PaginatedCytoscapeData),
+		config:    config,
+		cache:     make(map[string]*spec.PaginatedCytoscapeData),
+		dataCache: make(map[string]*spec.CytoscapeData),
 	}
 }
 
@@ -297,6 +321,8 @@ func (s *DiagramServer) SetupRoutes() {
 	// API routes
 	http.HandleFunc("/api/diagram", s.handleDiagram)
 	http.HandleFunc("/api/diagram/page", s.handlePaginatedDiagram)
+	http.HandleFunc("/api/diagram/packages", s.handlePackageHierarchy)
+	http.HandleFunc("/api/diagram/by-packages", s.handlePackageBasedDiagram)
 	http.HandleFunc("/api/diagram/stats", s.handleStats)
 	http.HandleFunc("/api/diagram/refresh", s.handleRefresh)
 	http.HandleFunc("/api/diagram/export", s.handleExport)
@@ -339,23 +365,65 @@ func (s *DiagramServer) handleDiagram(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	// Generate complete diagram data
-	data := spec.DrawCallGraphCytoscape(s.metadata)
+	// Generate diagram data based on configured type (cached)
+	data := s.getAllData(s.config.DiagramType, false)
 
 	loadTime := time.Since(start)
 
 	response := PaginatedResponse{
-		Nodes:      data.Nodes,
-		Edges:      data.Edges,
-		TotalNodes: len(data.Nodes),
-		TotalEdges: len(data.Edges),
-		Page:       1,
-		PageSize:   len(data.Nodes),
-		HasMore:    false,
-		LoadTime:   loadTime,
+		Nodes:       data.Nodes,
+		Edges:       data.Edges,
+		TotalNodes:  len(data.Nodes),
+		TotalEdges:  len(data.Edges),
+		Page:        1,
+		PageSize:    len(data.Nodes),
+		HasMore:     false,
+		LoadTime:    loadTime,
+		DiagramType: s.config.DiagramType,
 	}
 
 	s.writeJSON(w, response)
+}
+
+// getAllData returns the full Cytoscape dataset for the given diagram type, using an in-memory cache.
+// If includeFullDepth is true for tracker-tree, it will compute with a very high recursion depth.
+func (s *DiagramServer) getAllData(diagramType string, includeFullDepth bool) *spec.CytoscapeData {
+	// Build cache key
+	depthKey := "normal"
+	if includeFullDepth {
+		depthKey = "full"
+	}
+	cacheKey := fmt.Sprintf("%s:%s", diagramType, depthKey)
+
+	if s.dataCache == nil {
+		s.dataCache = make(map[string]*spec.CytoscapeData)
+	}
+	if cached, ok := s.dataCache[cacheKey]; ok && cached != nil {
+		return cached
+	}
+
+	// Compute data
+	var data *spec.CytoscapeData
+	if diagramType == "tracker-tree" {
+		// Choose depth
+		maxDepth := s.config.MaxDepth
+		if includeFullDepth {
+			maxDepth = 1000
+		}
+		trackerTree := spec.NewTrackerTree(s.metadata, metadata.TrackerLimits{
+			MaxNodesPerTree:    50000,
+			MaxChildrenPerNode: 500,
+			MaxArgsPerFunction: 100,
+			MaxNestedArgsDepth: 100,
+			MaxRecursionDepth:  maxDepth,
+		})
+		data = spec.DrawTrackerTreeCytoscapeWithMetadata(trackerTree.GetRoots(), s.metadata)
+	} else {
+		data = spec.DrawCallGraphCytoscape(s.metadata)
+	}
+
+	s.dataCache[cacheKey] = data
+	return data
 }
 
 // handlePaginatedDiagram serves paginated diagram data
@@ -381,9 +449,15 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 		pageSize = 2000
 	}
 
-	depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
-	if depth < 1 {
-		depth = s.config.MaxDepth
+	depthStr := r.URL.Query().Get("depth")
+	var depth int
+	if depthStr == "" {
+		depth = s.config.MaxDepth // Use default if not specified
+	} else {
+		depth, _ = strconv.Atoi(depthStr)
+		if depth < 0 {
+			depth = 0 // Minimum depth is 0
+		}
 	}
 
 	// Advanced search parameters
@@ -433,17 +507,548 @@ func (s *DiagramServer) handlePaginatedDiagram(w http.ResponseWriter, r *http.Re
 	loadTime := time.Since(start)
 
 	response := PaginatedResponse{
-		Nodes:      data.Nodes,
-		Edges:      data.Edges,
-		TotalNodes: data.TotalNodes,
-		TotalEdges: data.TotalEdges,
-		Page:       page,
-		PageSize:   pageSize,
-		HasMore:    data.HasMore,
-		LoadTime:   loadTime,
+		Nodes:       data.Nodes,
+		Edges:       data.Edges,
+		TotalNodes:  data.TotalNodes,
+		TotalEdges:  data.TotalEdges,
+		Page:        page,
+		PageSize:    pageSize,
+		HasMore:     data.HasMore,
+		LoadTime:    loadTime,
+		DiagramType: s.config.DiagramType,
 	}
 
 	s.writeJSON(w, response)
+}
+
+// PackageNode represents a package in the hierarchy
+type PackageNode struct {
+	Name     string        `json:"name"`
+	FullPath string        `json:"full_path"`
+	Count    int           `json:"count"`
+	Children []PackageNode `json:"children,omitempty"`
+}
+
+// PackageHierarchyResponse represents package hierarchy
+type PackageHierarchyResponse struct {
+	RootPackages []PackageNode `json:"root_packages"`
+	TotalCount   int           `json:"total_count"`
+	DiagramType  string        `json:"diagram_type"` // "call-graph" or "tracker-tree"
+}
+
+// handlePackageHierarchy serves the package hierarchy
+func (s *DiagramServer) handlePackageHierarchy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Use metadata.Packages directly to get ALL packages (not just ones with nodes in diagram)
+	packageSet := make(map[string]bool)
+	packageCounts := make(map[string]int)
+
+	// Get all packages from metadata
+	for pkgName := range s.metadata.Packages {
+		packageSet[pkgName] = true
+		packageCounts[pkgName] = 0 // Initialize count
+	}
+
+	// Also count nodes per package from actual diagram data for accurate counts
+	allData := s.getAllData(s.config.DiagramType, true)
+
+	// Count nodes per package
+	for _, node := range allData.Nodes {
+		pkg := node.Data.Package
+		if pkg != "" {
+			packageSet[pkg] = true
+			packageCounts[pkg]++
+		}
+	}
+
+	// Build parent-child relationships
+	packageMap := make(map[string]map[string]bool) // parent -> children
+	for pkg := range packageSet {
+		parts := strings.Split(pkg, "/")
+		for i := 1; i < len(parts); i++ {
+			parent := strings.Join(parts[:i], "/")
+			child := strings.Join(parts[:i+1], "/")
+			if packageMap[parent] == nil {
+				packageMap[parent] = make(map[string]bool)
+			}
+			packageMap[parent][child] = true
+		}
+	}
+
+	// Find root packages (packages that are not children of any other package in our set)
+	rootPackages := make(map[string]bool)
+	for pkg := range packageSet {
+		isRoot := true
+		parts := strings.Split(pkg, "/")
+		// Check if this package could be a child of any other package
+		for i := 1; i < len(parts); i++ {
+			potentialParent := strings.Join(parts[:i], "/")
+			if packageSet[potentialParent] {
+				isRoot = false
+				break
+			}
+		}
+		if isRoot {
+			rootPackages[pkg] = true
+		}
+	}
+
+	// Build tree structure
+	var buildTree func(path string, depth int) PackageNode
+	buildTree = func(path string, depth int) PackageNode {
+		parts := strings.Split(path, "/")
+		name := parts[len(parts)-1]
+		if name == "" {
+			name = path
+		}
+
+		node := PackageNode{
+			Name:     name,
+			FullPath: path,
+			Count:    packageCounts[path],
+		}
+
+		if depth == 0 {
+			node.Name = path
+		}
+
+		// Add children (direct sub-packages only)
+		if children, exists := packageMap[path]; exists && depth < 20 {
+			childPaths := make([]string, 0, len(children))
+			for childPath := range children {
+				// Verify this is a direct child (one level deeper)
+				childParts := strings.Split(childPath, "/")
+				if len(childParts) == len(parts)+1 {
+					childPaths = append(childPaths, childPath)
+				}
+			}
+
+			// Sort child paths
+			sort.Slice(childPaths, func(i, j int) bool {
+				return childPaths[i] < childPaths[j]
+			})
+
+			// Build children recursively
+			node.Children = make([]PackageNode, 0, len(childPaths))
+			for _, childPath := range childPaths {
+				childNode := buildTree(childPath, depth+1)
+				node.Count += childNode.Count // Aggregate counts
+				node.Children = append(node.Children, childNode)
+			}
+		}
+
+		return node
+	}
+
+	// Convert root packages map to sorted slice
+	rootPaths := make([]string, 0, len(rootPackages))
+	for pkg := range rootPackages {
+		rootPaths = append(rootPaths, pkg)
+	}
+	sort.Slice(rootPaths, func(i, j int) bool {
+		return rootPaths[i] < rootPaths[j]
+	})
+
+	// Build root nodes
+	rootNodes := make([]PackageNode, 0, len(rootPaths))
+	for _, rootPath := range rootPaths {
+		rootNode := buildTree(rootPath, 0)
+		// Include package even if it has no nodes, as long as it or its children exist
+		if rootNode.Count > 0 || len(rootNode.Children) > 0 || packageSet[rootPath] {
+			rootNodes = append(rootNodes, rootNode)
+		}
+	}
+
+	totalCount := 0
+	for _, count := range packageCounts {
+		totalCount += count
+	}
+
+	response := PackageHierarchyResponse{
+		RootPackages: rootNodes,
+		TotalCount:   totalCount,
+		DiagramType:  s.config.DiagramType,
+	}
+
+	s.writeJSON(w, response)
+}
+
+// handlePackageBasedDiagram serves diagram data filtered by selected packages
+func (s *DiagramServer) handlePackageBasedDiagram(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	start := time.Now()
+
+	// Parse query parameters
+	selectedPackages := r.URL.Query().Get("packages")
+	if selectedPackages == "" {
+		s.writeError(w, "packages parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	packages := strings.Split(selectedPackages, ",")
+	for i := range packages {
+		packages[i] = strings.TrimSpace(packages[i])
+	}
+
+	// Include child packages (packages that start with selected package paths)
+	expandedPackages := make(map[string]bool)
+	for _, pkg := range packages {
+		expandedPackages[pkg] = true
+		// Also include packages that start with this package path
+		for pkgName := range s.metadata.Packages {
+			// Check if this package is a child of the selected package
+			if strings.HasPrefix(pkgName, pkg+"/") || pkgName == pkg {
+				expandedPackages[pkgName] = true
+			}
+		}
+	}
+
+	// Convert to slice
+	finalPackages := make([]string, 0, len(expandedPackages))
+	for pkg := range expandedPackages {
+		finalPackages = append(finalPackages, pkg)
+	}
+
+	// Get depth and other filters
+	depthStr := r.URL.Query().Get("depth")
+	var depth int
+	if depthStr == "" {
+		depth = s.config.MaxDepth // Use default if not specified
+	} else {
+		depth, _ = strconv.Atoi(depthStr)
+		if depth < 0 {
+			depth = 0 // Minimum depth is 0
+		}
+	}
+
+	functionFilter := r.URL.Query().Get("function")
+	fileFilter := r.URL.Query().Get("file")
+	receiverFilter := r.URL.Query().Get("receiver")
+	signatureFilter := r.URL.Query().Get("signature")
+	genericFilter := r.URL.Query().Get("generic")
+	scopeFilter := r.URL.Query().Get("scope")
+
+	// Support multiple values for filters
+	functions := []string{}
+	if functionFilter != "" {
+		functions = strings.Split(functionFilter, ",")
+		for i := range functions {
+			functions[i] = strings.TrimSpace(functions[i])
+		}
+	}
+
+	files := []string{}
+	if fileFilter != "" {
+		files = strings.Split(fileFilter, ",")
+		for i := range files {
+			files[i] = strings.TrimSpace(files[i])
+		}
+	}
+
+	receivers := []string{}
+	if receiverFilter != "" {
+		receivers = strings.Split(receiverFilter, ",")
+		for i := range receivers {
+			receivers[i] = strings.TrimSpace(receivers[i])
+		}
+	}
+
+	signatures := []string{}
+	if signatureFilter != "" {
+		signatures = strings.Split(signatureFilter, ",")
+		for i := range signatures {
+			signatures[i] = strings.TrimSpace(signatures[i])
+		}
+	}
+
+	generics := []string{}
+	if genericFilter != "" {
+		generics = strings.Split(genericFilter, ",")
+		for i := range generics {
+			generics[i] = strings.TrimSpace(generics[i])
+		}
+	}
+
+	// Check if isolate mode is enabled (only show selected packages, no relations)
+	isolate := r.URL.Query().Get("isolate") == "true"
+
+	// Generate data for selected packages
+	data := s.generatePackageBasedData(finalPackages, depth, functions, files, receivers, signatures, generics, scopeFilter, isolate)
+
+	loadTime := time.Since(start)
+
+	response := PaginatedResponse{
+		Nodes:       data.Nodes,
+		Edges:       data.Edges,
+		TotalNodes:  data.TotalNodes,
+		TotalEdges:  data.TotalEdges,
+		Page:        1,
+		PageSize:    len(data.Nodes),
+		HasMore:     false,
+		LoadTime:    loadTime,
+		DiagramType: s.config.DiagramType,
+	}
+
+	s.writeJSON(w, response)
+}
+
+// generatePackageBasedData generates diagram data filtered by selected packages
+// If isolate is true, only includes nodes and edges within the selected packages (no external relations)
+func (s *DiagramServer) generatePackageBasedData(selectedPackages []string, depth int, functions, files, receivers, signatures, generics []string, scopeFilter string, isolate bool) *spec.PaginatedCytoscapeData {
+	// Generate all data first based on diagram type (cached)
+	allData := s.getAllData(s.config.DiagramType, true)
+	if s.config.DiagramType == "tracker-tree" {
+		// Order nodes in depth-first order from root (main) to leaves for tracker-tree
+		allData.Nodes = spec.OrderTrackerTreeNodesDepthFirst(allData)
+	}
+
+	// Note: For tracker-tree, we show full depth and order nodes depth-first
+	// Depth parameter is ignored for tracker-tree mode
+
+	// Apply depth filtering for call-graph mode (tracker-tree ignores depth and shows full tree)
+	var depthFilteredNodes []spec.CytoscapeNode
+	var depthFilteredEdges []spec.CytoscapeEdge
+
+	if s.config.DiagramType == "call-graph" && depth >= 0 {
+		// Calculate depth for call-graph nodes using BFS from root nodes
+		nodeDepths := s.calculateCallGraphDepth(allData)
+
+		// Filter nodes by depth
+		nodeIDSet := make(map[string]bool)
+		for _, node := range allData.Nodes {
+			nodeDepth, hasDepth := nodeDepths[node.Data.ID]
+			// Include nodes at or below the specified depth
+			if hasDepth && nodeDepth <= depth {
+				depthFilteredNodes = append(depthFilteredNodes, node)
+				nodeIDSet[node.Data.ID] = true
+			}
+		}
+
+		// Filter edges to only include those connecting filtered nodes
+		for _, edge := range allData.Edges {
+			if nodeIDSet[edge.Data.Source] && nodeIDSet[edge.Data.Target] {
+				depthFilteredEdges = append(depthFilteredEdges, edge)
+			}
+		}
+	} else {
+		// For tracker-tree (which ignores depth), use all nodes
+		depthFilteredNodes = allData.Nodes
+		depthFilteredEdges = allData.Edges
+	}
+
+	// Filter nodes by selected packages (on depth-filtered nodes)
+	var filteredNodes []spec.CytoscapeNode
+	for _, node := range depthFilteredNodes {
+		pkg := node.Data.Package
+		matchPackage := false
+
+		// Check if node's package matches any selected package or is a child
+		for _, selectedPkg := range selectedPackages {
+			if pkg == selectedPkg || strings.HasPrefix(pkg, selectedPkg+"/") {
+				matchPackage = true
+				break
+			}
+		}
+
+		if !matchPackage {
+			continue
+		}
+
+		// Apply other filters (same logic as generatePaginatedDataInternal)
+		includeNode := true
+
+		// Function filter (multi-value, word boundary matching)
+		if len(functions) > 0 {
+			functionMatch := false
+			for _, function := range functions {
+				if matchesFunctionName(node.Data.Label, function) {
+					functionMatch = true
+					break
+				}
+			}
+			if !functionMatch {
+				includeNode = false
+			}
+		}
+
+		// File filter (multi-value, check both position field and call paths)
+		// Node matches if ANY file filter matches EITHER Position OR any CallPath
+		if len(files) > 0 {
+			fileMatch := false
+			// Check Position field
+			if node.Data.Position != "" {
+				for _, file := range files {
+					if strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(strings.TrimSpace(file))) {
+						fileMatch = true
+						break
+					}
+				}
+			}
+			// Check CallPaths if Position didn't match
+			if !fileMatch && len(node.Data.CallPaths) > 0 {
+				for _, file := range files {
+					for _, callPath := range node.Data.CallPaths {
+						if strings.Contains(strings.ToLower(callPath.Position), strings.ToLower(strings.TrimSpace(file))) {
+							fileMatch = true
+							break
+						}
+					}
+					if fileMatch {
+						break
+					}
+				}
+			}
+			// Exclude node only if file filter is specified but no match found
+			// (if node has no Position and no CallPaths, it's excluded when filter is specified)
+			if !fileMatch {
+				includeNode = false
+			}
+		}
+
+		// Receiver filter
+		if len(receivers) > 0 && node.Data.ReceiverType != "" {
+			receiverMatch := false
+			for _, receiver := range receivers {
+				if strings.Contains(strings.ToLower(node.Data.ReceiverType), strings.ToLower(strings.TrimSpace(receiver))) {
+					receiverMatch = true
+					break
+				}
+			}
+			if !receiverMatch {
+				includeNode = false
+			}
+		}
+
+		// Signature filter
+		if len(signatures) > 0 && node.Data.SignatureStr != "" {
+			signatureMatch := false
+			for _, signature := range signatures {
+				if strings.Contains(strings.ToLower(node.Data.SignatureStr), strings.ToLower(strings.TrimSpace(signature))) {
+					signatureMatch = true
+					break
+				}
+			}
+			if !signatureMatch {
+				includeNode = false
+			}
+		}
+
+		// Generic filter
+		if len(generics) > 0 && node.Data.Generics != nil {
+			genericMatch := false
+			for _, genericFilter := range generics {
+				for _, generic := range node.Data.Generics {
+					if strings.Contains(strings.ToLower(generic), strings.ToLower(strings.TrimSpace(genericFilter))) {
+						genericMatch = true
+						break
+					}
+				}
+				if genericMatch {
+					break
+				}
+			}
+			if !genericMatch {
+				includeNode = false
+			}
+		}
+
+		// Scope filter (exported, unexported, all)
+		if scopeFilter != "" && scopeFilter != "all" {
+			nodeScope := strings.ToLower(strings.TrimSpace(node.Data.Scope))
+			scopeFilterLower := strings.ToLower(strings.TrimSpace(scopeFilter))
+
+			switch scopeFilterLower {
+			case "exported":
+				// Only include if scope is exactly "exported"
+				if nodeScope != "exported" {
+					includeNode = false
+				}
+			case "unexported":
+				// Only include if scope is exactly "unexported"
+				if nodeScope != "unexported" {
+					includeNode = false
+				}
+			}
+		}
+
+		if includeNode {
+			filteredNodes = append(filteredNodes, node)
+		}
+	}
+
+	// Filter edges to only include those between filtered nodes
+	nodeIDs := make(map[string]bool)
+	for _, node := range filteredNodes {
+		nodeIDs[node.Data.ID] = true
+	}
+
+	var filteredEdges []spec.CytoscapeEdge
+
+	if isolate {
+		// Isolate mode: only include edges between nodes in the selected packages
+		// Use depthFilteredEdges instead of allData.Edges to respect depth filtering
+		for _, edge := range depthFilteredEdges {
+			sourceInSet := nodeIDs[edge.Data.Source]
+			targetInSet := nodeIDs[edge.Data.Target]
+
+			// Only include edge if both nodes are in filtered set
+			if sourceInSet && targetInSet {
+				filteredEdges = append(filteredEdges, edge)
+			}
+		}
+	} else {
+		// Normal mode: include nodes connected to filtered nodes (to show inter-package relationships)
+		connectedNodeIDs := make(map[string]bool)
+
+		// Use depthFilteredEdges instead of allData.Edges to respect depth filtering
+		for _, edge := range depthFilteredEdges {
+			sourceInSet := nodeIDs[edge.Data.Source]
+			targetInSet := nodeIDs[edge.Data.Target]
+
+			// Include edge if both nodes are in filtered set
+			if sourceInSet && targetInSet {
+				filteredEdges = append(filteredEdges, edge)
+			} else if sourceInSet || targetInSet {
+				// Include connected node to show relationships
+				connectedID := edge.Data.Source
+				if sourceInSet {
+					connectedID = edge.Data.Target
+				}
+
+				// Find the connected node
+				for _, node := range allData.Nodes {
+					if node.Data.ID == connectedID {
+						// Add connected node and edge if not already added
+						if !nodeIDs[node.Data.ID] && !connectedNodeIDs[node.Data.ID] {
+							connectedNodeIDs[node.Data.ID] = true
+							filteredNodes = append(filteredNodes, node)
+							nodeIDs[node.Data.ID] = true
+						}
+						filteredEdges = append(filteredEdges, edge)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return &spec.PaginatedCytoscapeData{
+		Nodes:      filteredNodes,
+		Edges:      filteredEdges,
+		TotalNodes: len(filteredNodes),
+		TotalEdges: len(filteredEdges),
+		Page:       1,
+		PageSize:   len(filteredNodes),
+		HasMore:    false,
+	}
 }
 
 // handleStats serves diagram statistics
@@ -483,6 +1088,7 @@ func (s *DiagramServer) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Clear cache
 	s.cache = make(map[string]*spec.PaginatedCytoscapeData)
+	s.dataCache = make(map[string]*spec.CytoscapeData)
 
 	response := map[string]interface{}{
 		"message":   "Metadata refreshed successfully",
@@ -534,9 +1140,15 @@ func (s *DiagramServer) handleExport(w http.ResponseWriter, r *http.Request) {
 		pageSize = 2000
 	}
 
-	depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
-	if depth < 1 {
-		depth = s.config.MaxDepth
+	depthStr := r.URL.Query().Get("depth")
+	var depth int
+	if depthStr == "" {
+		depth = s.config.MaxDepth // Use default if not specified
+	} else {
+		depth, _ = strconv.Atoi(depthStr)
+		if depth < 0 {
+			depth = 0 // Minimum depth is 0
+		}
 	}
 
 	// Advanced search parameters
@@ -634,83 +1246,185 @@ func (s *DiagramServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, health)
 }
 
+// calculateCallGraphDepth performs BFS from root nodes to calculate depth for each node
+func (s *DiagramServer) calculateCallGraphDepth(data *spec.CytoscapeData) map[string]int {
+	depths := make(map[string]int)
+
+	// Build adjacency list from edges
+	adjacency := make(map[string][]string)
+	inDegree := make(map[string]int)
+
+	// Initialize all nodes
+	for _, node := range data.Nodes {
+		inDegree[node.Data.ID] = 0
+		adjacency[node.Data.ID] = []string{}
+	}
+
+	// Build the graph
+	for _, edge := range data.Edges {
+		adjacency[edge.Data.Source] = append(adjacency[edge.Data.Source], edge.Data.Target)
+		inDegree[edge.Data.Target]++
+	}
+
+	// Find root nodes (nodes with no incoming edges, or nodes labeled "main")
+	var roots []string
+	for _, node := range data.Nodes {
+		if inDegree[node.Data.ID] == 0 || node.Data.Label == "main" || node.Data.FunctionName == "main" {
+			roots = append(roots, node.Data.ID)
+		}
+	}
+
+	// If no roots found, use all nodes with zero in-degree
+	if len(roots) == 0 {
+		for nodeID, degree := range inDegree {
+			if degree == 0 {
+				roots = append(roots, nodeID)
+			}
+		}
+	}
+
+	// BFS from all root nodes to assign depths
+	queue := make([]struct {
+		nodeID string
+		depth  int
+	}, 0)
+
+	for _, root := range roots {
+		queue = append(queue, struct {
+			nodeID string
+			depth  int
+		}{root, 0})
+		depths[root] = 0
+	}
+
+	visited := make(map[string]bool)
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if visited[current.nodeID] {
+			continue
+		}
+		visited[current.nodeID] = true
+
+		// Visit all neighbors
+		for _, neighbor := range adjacency[current.nodeID] {
+			newDepth := current.depth + 1
+
+			// Update depth if this is the first time visiting or if we found a shorter path
+			if existingDepth, exists := depths[neighbor]; !exists || newDepth < existingDepth {
+				depths[neighbor] = newDepth
+				queue = append(queue, struct {
+					nodeID string
+					depth  int
+				}{neighbor, newDepth})
+			}
+		}
+	}
+
+	return depths
+}
+
 // generatePaginatedData generates paginated diagram data with depth filtering and advanced search
 func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, packages, functions, files, receivers, signatures, generics []string, scopeFilter string) *spec.PaginatedCytoscapeData {
+	// Add timeout for large depth requests
+	timeout := time.After(30 * time.Second)
+	done := make(chan *spec.PaginatedCytoscapeData, 1)
+
+	go func() {
+		result := s.generatePaginatedDataInternal(page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
+		done <- result
+	}()
+
+	select {
+	case result := <-done:
+		return result
+	case <-timeout:
+		// Return a limited result if timeout occurs
+		return &spec.PaginatedCytoscapeData{
+			Nodes:      []spec.CytoscapeNode{},
+			Edges:      []spec.CytoscapeEdge{},
+			TotalNodes: 0,
+			TotalEdges: 0,
+			Page:       page,
+			PageSize:   pageSize,
+			HasMore:    false,
+		}
+	}
+}
+
+// generatePaginatedDataInternal is the internal implementation without timeout
+func (s *DiagramServer) generatePaginatedDataInternal(page, pageSize, depth int, packages, functions, files, receivers, signatures, generics []string, scopeFilter string) *spec.PaginatedCytoscapeData {
 	// Check cache first
-	cacheKey := fmt.Sprintf("%d-%d-%d-%v-%v-%v-%v-%v-%v-%s", page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
+	cacheKey := fmt.Sprintf("%s-%d-%d-%d-%v-%v-%v-%v-%v-%v-%s", s.config.DiagramType, page, pageSize, depth, packages, functions, files, receivers, signatures, generics, scopeFilter)
 	if cached, exists := s.cache[cacheKey]; exists {
 		return cached
 	}
 
-	// Generate all data first
-	allData := spec.DrawCallGraphCytoscape(s.metadata)
+	// Generate all data first based on diagram type (cached)
+	allData := s.getAllData(s.config.DiagramType, true)
+	if s.config.DiagramType == "tracker-tree" {
+		// Order nodes in depth-first order from root (main) to leaves for tracker-tree
+		allData.Nodes = spec.OrderTrackerTreeNodesDepthFirst(allData)
+	}
 
-	// Apply depth filtering first
-	var depthFilteredNodes []spec.CytoscapeNode
-	var depthFilteredEdges []spec.CytoscapeEdge
+	// Note: For tracker-tree, we show full depth and order nodes depth-first for pagination
+	// Depth parameter is ignored for tracker-tree mode
 
 	allNodes := make(map[string]*spec.CytoscapeNode)
-
 	for _, node := range allData.Nodes {
 		allNodes[node.Data.ID] = &node
 	}
 
-	if depth > 0 && depth < 10 { // Only apply depth filtering if depth is reasonable
-		// Get root functions (functions with no incoming edges)
-		rootNodes := make(map[string]bool)
-		hasIncoming := make(map[string]bool)
+	// Apply depth filtering for call-graph mode (tracker-tree ignores depth and shows full tree)
+	var depthFilteredNodes []spec.CytoscapeNode
+	var depthFilteredEdges []spec.CytoscapeEdge
 
-		for _, edge := range allData.Edges {
-			hasIncoming[edge.Data.Target] = true
-		}
+	if s.config.DiagramType == "call-graph" && depth >= 0 {
+		// Calculate depth for call-graph nodes using BFS from root nodes
+		nodeDepths := s.calculateCallGraphDepth(allData)
 
-		for _, node := range allData.Nodes {
-			if !hasIncoming[node.Data.ID] {
-				rootNodes[node.Data.ID] = true
-			}
-		}
-
-		// BFS to find nodes within depth limit
-		visited := make(map[string]bool)
-		queue := make([]string, 0)
-		nodeDepths := make(map[string]int)
-
-		// Start with root nodes
-		for rootID := range rootNodes {
-			queue = append(queue, rootID)
-			nodeDepths[rootID] = 0
-			visited[rootID] = true
-		}
-
-		// BFS traversal
-		for len(queue) > 0 {
-			currentID := queue[0]
-			queue = queue[1:]
-			currentDepth := nodeDepths[currentID]
-
-			if currentDepth >= depth {
-				continue
-			}
-
-			// Find the node and add it
-			if node, ok := allNodes[currentID]; ok {
-				depthFilteredNodes = append(depthFilteredNodes, *node)
-			}
-
-			// Add connected nodes
-			for _, edge := range allData.Edges {
-				if edge.Data.Source == currentID && !visited[edge.Data.Target] {
-					visited[edge.Data.Target] = true
-					nodeDepths[edge.Data.Target] = currentDepth + 1
-					queue = append(queue, edge.Data.Target)
-
-					// Add the edge
-					depthFilteredEdges = append(depthFilteredEdges, edge)
+		// Debug: log calculated depths
+		if s.config.Verbose {
+			log.Printf("Calculated depths for %d nodes, filtering to depth %d", len(nodeDepths), depth)
+			for nodeID, d := range nodeDepths {
+				for _, node := range allData.Nodes {
+					if node.Data.ID == nodeID {
+						log.Printf("  Node %s (%s) -> depth %d", nodeID, node.Data.Label, d)
+						break
+					}
 				}
 			}
 		}
+
+		// Filter nodes by depth
+		nodeIDSet := make(map[string]bool)
+		includedCount := 0
+		excludedCount := 0
+		for _, node := range allData.Nodes {
+			nodeDepth, hasDepth := nodeDepths[node.Data.ID]
+			// Include nodes at or below the specified depth
+			if hasDepth && nodeDepth <= depth {
+				depthFilteredNodes = append(depthFilteredNodes, node)
+				nodeIDSet[node.Data.ID] = true
+				includedCount++
+			} else {
+				excludedCount++
+			}
+		}
+
+		if s.config.Verbose {
+			log.Printf("Depth filtering: included %d nodes, excluded %d nodes (depth limit: %d)", includedCount, excludedCount, depth)
+		}
+
+		// Filter edges to only include those connecting filtered nodes
+		for _, edge := range allData.Edges {
+			if nodeIDSet[edge.Data.Source] && nodeIDSet[edge.Data.Target] {
+				depthFilteredEdges = append(depthFilteredEdges, edge)
+			}
+		}
 	} else {
-		// No depth filtering, use all data
+		// For tracker-tree (which ignores depth), use all nodes
 		depthFilteredNodes = allData.Nodes
 		depthFilteredEdges = allData.Edges
 	}
@@ -737,11 +1451,11 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 			}
 		}
 
-		// Function filter (multi-value)
+		// Function filter (multi-value, word boundary matching)
 		if len(functions) > 0 {
 			functionMatch := false
 			for _, function := range functions {
-				if strings.Contains(strings.ToLower(node.Data.Label), strings.ToLower(strings.TrimSpace(function))) {
+				if matchesFunctionName(node.Data.Label, function) {
 					functionMatch = true
 					break
 				}
@@ -751,31 +1465,35 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 			}
 		}
 
-		// File filter (multi-value, check position field)
-		if len(files) > 0 && node.Data.Position != "" {
+		// File filter (multi-value, check both position field and call paths)
+		// Node matches if ANY file filter matches EITHER Position OR any CallPath
+		if len(files) > 0 {
 			fileMatch := false
-			for _, file := range files {
-				if strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(strings.TrimSpace(file))) {
-					fileMatch = true
-					break
-				}
-			}
-			if !fileMatch {
-				includeNode = false
-			}
-		}
-
-		// File filter (multi-value, check call paths field)
-		if len(files) > 0 && len(node.Data.CallPaths) > 0 {
-			fileMatch := false
-			for _, file := range files {
-				for _, callPath := range node.Data.CallPaths {
-					if strings.Contains(strings.ToLower(callPath.Position), strings.ToLower(strings.TrimSpace(file))) {
+			// Check Position field
+			if node.Data.Position != "" {
+				for _, file := range files {
+					if strings.Contains(strings.ToLower(node.Data.Position), strings.ToLower(strings.TrimSpace(file))) {
 						fileMatch = true
 						break
 					}
 				}
 			}
+			// Check CallPaths if Position didn't match
+			if !fileMatch && len(node.Data.CallPaths) > 0 {
+				for _, file := range files {
+					for _, callPath := range node.Data.CallPaths {
+						if strings.Contains(strings.ToLower(callPath.Position), strings.ToLower(strings.TrimSpace(file))) {
+							fileMatch = true
+							break
+						}
+					}
+					if fileMatch {
+						break
+					}
+				}
+			}
+			// Exclude node only if file filter is specified but no match found
+			// (if node has no Position and no CallPaths, it's excluded when filter is specified)
 			if !fileMatch {
 				includeNode = false
 			}
@@ -830,12 +1548,20 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 
 		// Scope filter (exported, unexported, all)
 		if scopeFilter != "" && scopeFilter != "all" {
-			nodeScope := node.Data.Scope
+			nodeScope := strings.ToLower(strings.TrimSpace(node.Data.Scope))
+			scopeFilterLower := strings.ToLower(strings.TrimSpace(scopeFilter))
 
-			if scopeFilter == "exported" && nodeScope != "exported" {
-				includeNode = false
-			} else if scopeFilter == "unexported" && nodeScope != "unexported" {
-				includeNode = false
+			switch scopeFilterLower {
+			case "exported":
+				// Only include if scope is exactly "exported"
+				if nodeScope != "exported" {
+					includeNode = false
+				}
+			case "unexported":
+				// Only include if scope is exactly "unexported"
+				if nodeScope != "unexported" {
+					includeNode = false
+				}
 			}
 		}
 
@@ -856,16 +1582,37 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 		}
 	}
 
-	// Apply pagination with better edge handling
-	start := (page - 1) * pageSize
-	end := start + pageSize
-
+	// Apply pagination. For tracker-tree, order nodes branch-by-branch depth-first, then paginate.
 	var paginatedNodes []spec.CytoscapeNode
-	if start < len(filteredNodes) {
-		if end > len(filteredNodes) {
-			end = len(filteredNodes)
+	var start, end int
+	var orderedNodes []spec.CytoscapeNode // Used for tracker-tree ordering
+	if s.config.DiagramType == "tracker-tree" {
+		// Build filtered data for branch-ordered traversal
+		filteredData := &spec.CytoscapeData{Nodes: filteredNodes, Edges: filteredEdges}
+
+		// Get nodes in branch-first order (complete one branch before moving to next)
+		orderedNodes = spec.TraverseTrackerTreeBranchOrder(filteredData)
+
+		// Paginate the ordered nodes
+		start = (page - 1) * pageSize
+		end = start + pageSize
+		if start < len(orderedNodes) {
+			if end > len(orderedNodes) {
+				end = len(orderedNodes)
+			}
+			paginatedNodes = orderedNodes[start:end]
 		}
-		paginatedNodes = filteredNodes[start:end]
+	} else {
+		// Default (call-graph) pagination by slice
+		orderedNodes = filteredNodes // For consistency in later code
+		start = (page - 1) * pageSize
+		end = start + pageSize
+		if start < len(filteredNodes) {
+			if end > len(filteredNodes) {
+				end = len(filteredNodes)
+			}
+			paginatedNodes = filteredNodes[start:end]
+		}
 	}
 
 	// Create a map of paginated node IDs for quick lookup
@@ -882,40 +1629,6 @@ func (s *DiagramServer) generatePaginatedData(page, pageSize, depth int, package
 	for _, edge := range filteredEdges {
 		if paginatedNodeIDs[edge.Data.Source] != nil && paginatedNodeIDs[edge.Data.Target] != nil {
 			paginatedEdges = append(paginatedEdges, edge)
-		}
-	}
-
-	// Second pass: include edges that connect paginated nodes to other filtered nodes
-	// This helps maintain graph connectivity across pages
-	for _, edge := range filteredEdges {
-		sourceInPage := paginatedNodeIDs[edge.Data.Source]
-		targetInPage := paginatedNodeIDs[edge.Data.Target]
-
-		// Include edge if at least one node is in current page
-		if sourceInPage != nil || targetInPage != nil {
-			// Check if we already have this edge
-			edgeExists := false
-			for _, existingEdge := range paginatedEdges {
-				if existingEdge.Data.Source == edge.Data.Source && existingEdge.Data.Target == edge.Data.Target {
-					edgeExists = true
-					break
-				}
-			}
-			if !edgeExists {
-				paginatedEdges = append(paginatedEdges, edge)
-
-				// Track connected nodes that aren't in current page
-				if sourceInPage == nil {
-					node := nodeIDs[edge.Data.Source]
-					paginatedNodeIDs[edge.Data.Source] = node
-					paginatedNodes = append(paginatedNodes, *node)
-				}
-				if targetInPage == nil {
-					node := nodeIDs[edge.Data.Target]
-					paginatedNodeIDs[edge.Data.Target] = node
-					paginatedNodes = append(paginatedNodes, *node)
-				}
-			}
 		}
 	}
 

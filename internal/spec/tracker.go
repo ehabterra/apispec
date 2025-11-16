@@ -43,6 +43,36 @@ const (
 	ArgTypeTypeAssert                       // Type assertion (val.(type))
 )
 
+// String returns the string representation of ArgumentType
+func (at ArgumentType) String() string {
+	switch at {
+	case ArgTypeDirectCallee:
+		return "DirectCallee"
+	case ArgTypeFunctionCall:
+		return "FunctionCall"
+	case ArgTypeVariable:
+		return "Variable"
+	case ArgTypeLiteral:
+		return "Literal"
+	case ArgTypeSelector:
+		return "Selector"
+	case ArgTypeComplex:
+		return "Complex"
+	case ArgTypeUnary:
+		return "Unary"
+	case ArgTypeBinary:
+		return "Binary"
+	case ArgTypeIndex:
+		return "Index"
+	case ArgTypeComposite:
+		return "Composite"
+	case ArgTypeTypeAssert:
+		return "TypeAssert"
+	default:
+		return "Unknown"
+	}
+}
+
 // TrackerNode represents a node in the call graph tree.
 type TrackerNode struct {
 	key      string
@@ -834,21 +864,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 			// Handling a function inside the selector
 			// Process field/method access
 			if arg.X != nil {
-				if arg.X.GetKind() == metadata.KindSelector {
-					if arg.X.Sel.GetKind() == metadata.KindIdent {
-						varName := metadata.CallArgToString(arg.X.X)
-						// Enhanced variable tracing and assignment linking
-						originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
-							varName,
-							getString(meta, edge.Caller.Name),
-							getString(meta, edge.Caller.Pkg),
-							meta,
-						)
-
-						_, _ = originVar, originPkg
-					}
-				}
-				if arg.Sel.GetKind() == metadata.KindIdent && strings.HasPrefix(arg.Sel.GetType(), "func(") || strings.HasPrefix(arg.Sel.GetType(), "func[") {
+				if arg.Sel.GetKind() == metadata.KindIdent && (strings.HasPrefix(arg.Sel.GetType(), "func(") || strings.HasPrefix(arg.Sel.GetType(), "func[")) {
 					varName := metadata.CallArgToString(arg.X)
 					// Enhanced variable tracing and assignment linking
 					originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
@@ -870,6 +886,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						parent.Children = append(parent.Children, argNode)
 					}
 
+					// Link	param
 					pkey := paramKey{
 						Name:      originVar,
 						Pkg:       originPkg,
@@ -924,7 +941,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						if ArgEdge.Caller.Name == funcNameIndex && ArgEdge.Caller.Pkg == pkgNameIndex && (ArgEdge.Caller.RecvType == recvTypeIndex || ArgEdge.Caller.RecvType == starRecvTypeIndex) {
 							funcEdge = &ArgEdge
 							id := funcEdge.Callee.ID()
-							if childNode := NewTrackerNode(tree, meta, argNode.Key(), id, funcEdge, arg, visited, assignmentIndex, limits); childNode != nil {
+							if childNode := NewTrackerNode(tree, meta, argNode.Key(), id, funcEdge, nil, visited, assignmentIndex, limits); childNode != nil {
 								argNode.AddChild(childNode)
 							}
 						}
@@ -940,7 +957,15 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					meta,
 				)
 
-				var parentType = arg.X.Type
+				var parentType = arg.X.GetType()
+				// Handle nested selectors: if arg.X is a selector, extract base from arg.X.X
+
+				// For nested selectors, use the base variable's type
+				if arg.X != nil && arg.X.GetKind() == metadata.KindSelector && arg.X.X != nil && arg.X.Sel != nil && arg.X.Sel.GetKind() == metadata.KindIdent {
+					// Nested selector case: extract base from arg.X.X
+					// arg.X is a selector (e.g., obj.field), arg.X.X is the base (e.g., obj)
+					parentType = arg.X.X.GetType()
+				}
 
 				// Link to assignment if exists
 				akey := assignmentKey{
@@ -950,12 +975,29 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					Container: getString(meta, edge.Caller.Name),
 				}
 
-				if parentType != -1 {
-					akey.Container = getString(meta, parentType)
+				if parentType != "" {
+					akey.Container = parentType
 				}
 
 				if assignmentNode, ok := (*assignmentIndex)[akey]; ok {
+					// TODO: This is a workaround for parameter tracing issue.
+					// Proper solution needed to trace parameters passed through functional options
+					// (e.g., router parameters: WithOrderRouter(orderRouter) -> r.orderRouter = orderRouter -> router.Mount("/orders", r.orderRouter))
+					// See testdata/router_mount_options/ for example case.
+					// Current workaround: Set assignmentNode's parent to argNode (reverse link: assignment <- usage)
+					// This allows tracking where assignments are used but is confusing and may not handle all cases correctly.
 					assignmentNode.Parent = argNode
+				}
+
+				// Link to variable node if exists
+				pkey := paramKey{
+					Name:      baseVar,
+					Pkg:       originPkg,
+					Container: getString(meta, edge.Caller.Name),
+				}
+
+				if parent, ok := tree.variableNodes[pkey]; ok {
+					parent.Children = append(parent.Children, argNode)
 				}
 
 				children = append(children, argNode)
