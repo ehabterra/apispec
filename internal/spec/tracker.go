@@ -271,7 +271,7 @@ type TrackerTree struct {
 	limits    metadata.TrackerLimits
 
 	// Enhanced tracking indices
-	variableNodes map[paramKey]*TrackerNode // Track variable nodes by name
+	variableNodes map[paramKey][]*TrackerNode // Track variable nodes by name
 
 	// Chain relationships for efficient lookup
 	chainParentMap map[string]*metadata.CallGraphEdge
@@ -319,7 +319,7 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 	t := &TrackerTree{
 		meta:          meta,
 		positions:     make(map[string]bool, 100), // Pre-allocate with estimated capacity
-		variableNodes: make(map[paramKey]*TrackerNode, 50),
+		variableNodes: make(map[paramKey][]*TrackerNode, 50),
 
 		limits:                 limits,
 		chainParentMap:         make(map[string]*metadata.CallGraphEdge, 100),
@@ -376,13 +376,26 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 		// Cache string lookups to avoid repeated calls
 		calleeName := getString(meta, edge.Callee.Name)
 		calleePkg := getString(meta, edge.Callee.Pkg)
+		callerName := getString(meta, edge.Caller.Name)
+		callerPkg := getString(meta, edge.Caller.Pkg)
 
 		for param, arg := range edge.ParamArgMap {
+			// Trace the actual argument from the caller's context, not the parameter name
+			// This ensures each different argument (e.g., productMod, inventoryMod) traces to its own origin
+			var argVarName string
+			if arg.GetKind() == metadata.KindIdent {
+				argVarName = arg.GetName()
+			} else {
+				// For non-ident arguments, fall back to parameter name
+				argVarName = param
+			}
+
 			// Enhanced variable tracing and assignment linking
+			// Use caller context to trace where the argument came from
 			_, _, originArg, _ := metadata.TraceVariableOrigin(
-				param,
-				calleeName, // Use cached value
-				calleePkg,  // Use cached value
+				argVarName,
+				callerName, // Trace from caller's context
+				callerPkg,  // Trace from caller's context
 				meta,
 			)
 
@@ -396,11 +409,11 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *Tra
 				Container: calleeName, // Use cached value
 			}
 
-			t.variableNodes[pkey] = &TrackerNode{
+			t.variableNodes[pkey] = append(t.variableNodes[pkey], &TrackerNode{
 				key:           originArg.ID(),
 				CallGraphEdge: edge,
 				CallArgument:  &arg,
-			}
+			})
 		}
 	}
 
@@ -565,12 +578,14 @@ func (a *assignmentNodes) Assign(f func(*TrackerNode) bool) {
 }
 
 type variableNodes struct {
-	variables map[paramKey]*TrackerNode
+	variables map[paramKey][]*TrackerNode
 }
 
 func (v *variableNodes) Assign(f func(*TrackerNode) bool) {
-	for _, nd := range v.variables {
-		f(nd)
+	for _, nds := range v.variables {
+		if len(nds) > 0 {
+			f(nds[0])
+		}
 	}
 }
 
@@ -709,11 +724,21 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 		argType := classifyArgument(arg)
 
-		// Use object pool for argNode
-		argNode := getTrackerNode()
-		argNode.Parent = parentNode
-		argNode.CallArgument = arg
-		argNode.CallGraphEdge = edge // Include the edge to preserve type parameters
+		// Choose the most relevant edge for the argument node.
+		// For function-call arguments, prefer the argument's own edge so matchers (e.g. requestBody detection)
+		// see the actual callee rather than the parent route edge.
+		argNodeEdge := edge
+		if argType == ArgTypeFunctionCall && argEdge != nil {
+			argNodeEdge = argEdge
+		}
+
+		argNode := newArgumentNode(tree, parentNode, argID, argNodeEdge, arg)
+
+		if argNode == nil {
+			continue
+		}
+
+		// Set argument-specific fields after node creation
 		argNode.ArgType = argType
 		argNode.IsArgument = true
 		argNode.ArgIndex = i
@@ -731,8 +756,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					Container: getString(meta, edge.Caller.Name),
 				}
 
-				if parent, ok := tree.variableNodes[pkey]; ok {
-					parent.Children = append(parent.Children, argNode)
+				if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+					// Link to most recent assignment (last in slice) for cleaner tree structure
+					mostRecentParent := parents[len(parents)-1]
+					mostRecentParent.Children = append(mostRecentParent.Children, argNode)
 				}
 
 				if selectorArg.Sel.GetKind() == metadata.KindIdent && strings.HasPrefix(selectorArg.Sel.GetType(), "func(") || strings.HasPrefix(selectorArg.Sel.GetType(), "func[") {
@@ -843,6 +870,18 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 			if parent, ok := (*assignmentIndex)[akey]; ok {
 				parent.Children = append(parent.Children, argNode)
+				argNode.Parent = parent
+			} else {
+				akey = assignmentKey{
+					Name:      varName,
+					Pkg:       getString(meta, edge.Callee.Pkg),
+					Type:      arg.GetType(),
+					Container: getString(meta, edge.Caller.Name),
+				}
+
+				if assignmentNode, ok := (*assignmentIndex)[akey]; ok {
+					assignmentNode.Parent = argNode
+				}
 			}
 
 			pkey := paramKey{
@@ -851,8 +890,19 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 				Container: getString(meta, edge.Caller.Name),
 			}
 
-			if parent, ok := tree.variableNodes[pkey]; ok {
-				parent.Children = append(parent.Children, argNode)
+			if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+				// Link to the most recent assignment (last in slice) as it represents
+				// the actual value at the point of use. This creates a cleaner tree
+				// structure while preserving the logical relationship.
+				mostRecentParent := parents[len(parents)-1]
+				mostRecentParent.Children = append(mostRecentParent.Children, argNode)
+
+				// Optionally: Store reference to all possible origins for completeness
+				// This allows tracking all possible values without cluttering the tree
+				if argNode.RootAssignmentMap == nil {
+					argNode.RootAssignmentMap = make(map[string][]metadata.Assignment, 1)
+				}
+				// The RootAssignmentMap will be populated by the assignment linking above
 			}
 			children = append(children, argNode)
 
@@ -886,15 +936,18 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						parent.Children = append(parent.Children, argNode)
 					}
 
-					// Link	param
+					// Link param
 					pkey := paramKey{
 						Name:      originVar,
 						Pkg:       originPkg,
 						Container: getString(meta, edge.Caller.Name),
 					}
 
-					if parent, ok := tree.variableNodes[pkey]; ok {
-						parent.Children = append(parent.Children, argNode)
+					if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+						// Link to the most recent assignment (last in slice) as it represents
+						// the actual value at the point of use
+						mostRecentParent := parents[len(parents)-1]
+						mostRecentParent.Children = append(mostRecentParent.Children, argNode)
 					}
 					children = append(children, argNode)
 
@@ -996,8 +1049,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 					Container: getString(meta, edge.Caller.Name),
 				}
 
-				if parent, ok := tree.variableNodes[pkey]; ok {
-					parent.Children = append(parent.Children, argNode)
+				if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+					// Link to most recent assignment (last in slice) for cleaner tree structure
+					mostRecentParent := parents[len(parents)-1]
+					mostRecentParent.Children = append(mostRecentParent.Children, argNode)
 				}
 
 				children = append(children, argNode)
@@ -1058,6 +1113,32 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 	return children
 }
 
+// newArgumentNode creates a lightweight TrackerNode for arguments without expensive traversal.
+// This is optimized for performance - it skips full child traversal and recursion tracking
+// that's done in NewTrackerNode, since arguments are typically leaf nodes.
+func newArgumentNode(tree *TrackerTree, parentNode *TrackerNode, argID string, edge *metadata.CallGraphEdge, arg *metadata.CallArgument) *TrackerNode {
+	if argID == "" {
+		return nil
+	}
+
+	// Create new node using object pool
+	node := getTrackerNode()
+	node.CallGraphEdge = edge
+	node.CallArgument = arg
+	node.Parent = parentNode
+
+	// Initialize minimal structures - only allocate if needed
+	node.Children = make([]*TrackerNode, 0, 2)                         // Small capacity for argument nodes
+	node.RootAssignmentMap = make(map[string][]metadata.Assignment, 2) // Small capacity
+
+	// Add to node map for O(1) lookup (only if tree is available)
+	if tree != nil && argID != "" {
+		tree.nodeMap[argID] = node
+	}
+
+	return node
+}
+
 // NewTrackerNode creates a new TrackerNode for the tree.
 func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id string, parentEdge *metadata.CallGraphEdge, callArg *metadata.CallArgument, visited map[string]int, assignmentIndex *assigmentIndexMap, limits metadata.TrackerLimits) *TrackerNode {
 	if id == "" {
@@ -1110,6 +1191,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	callerID := metadata.StripToBase(id)
 	functionID := callerID
 
+	// TODO: Remove this after testing
+	if strings.Contains(callerID, "APIModule") {
+		fmt.Println("callerID", callerID)
+	}
+
 	if parentEdge != nil && parentEdge.CalleeVarName != "" {
 		// Enhanced variable tracing and assignment linking
 		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
@@ -1118,6 +1204,36 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 			getString(meta, parentEdge.Caller.Pkg),
 			meta,
 		)
+
+		// Link to assignment node if found
+		if originVar != "" && originPkg != "" {
+			assignmentKey := assignmentKey{
+				Name:      originVar,
+				Pkg:       originPkg,
+				Type:      getString(meta, parentEdge.Callee.RecvType),
+				Container: getString(meta, parentEdge.Caller.Name),
+			}
+			if parent, ok := (*assignmentIndex)[assignmentKey]; ok {
+				parent.Children = append(parent.Children, node)
+			}
+		}
+
+		// Link to variable node if found
+		pkey := paramKey{
+			Name:      parentEdge.CalleeVarName,
+			Pkg:       getString(meta, parentEdge.Caller.Pkg),  // Use cached value
+			Container: getString(meta, parentEdge.Callee.Name), // Use cached value
+		}
+
+		if parentEdge.ParentFunction != nil {
+			pkey.Container = getString(meta, parentEdge.ParentFunction.Name)
+		}
+
+		if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+			// Link to most recent assignment (last in slice) for cleaner tree structure
+			mostRecentParent := parents[len(parents)-1]
+			mostRecentParent.Children = append(mostRecentParent.Children, node)
+		}
 
 		// Get the correct edge for selector arguments
 		recvType := strings.ReplaceAll(originVar, originPkg+".", "")
@@ -1245,8 +1361,10 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 						Container: funcName,  // Use cached value
 					}
 
-					if parent, ok := tree.variableNodes[pkey]; ok {
-						parent.Children = append(parent.Children, childNode)
+					if parents, ok := tree.variableNodes[pkey]; ok && len(parents) > 0 {
+						// Link to most recent assignment (last in slice) for cleaner tree structure
+						mostRecentParent := parents[len(parents)-1]
+						mostRecentParent.Children = append(mostRecentParent.Children, childNode)
 					}
 				}
 
@@ -1422,12 +1540,13 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
 		)
 
 		// Look for the origin variable in variable nodes
-		if originNode, ok := t.variableNodes[paramKey{
+		// Use the most recent assignment (last in slice) as it represents the actual value
+		if originNodes, ok := t.variableNodes[paramKey{
 			Name:      originVar,
 			Pkg:       originPkg,
 			Container: funName,
-		}]; ok {
-			return originNode
+		}]; ok && len(originNodes) > 0 {
+			return originNodes[len(originNodes)-1]
 		}
 	}
 
@@ -1437,8 +1556,8 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
 // FindVariableNodes returns all nodes that represent variables
 func (t *TrackerTree) FindVariableNodes() []*TrackerNode {
 	var result []*TrackerNode
-	for _, node := range t.variableNodes {
-		result = append(result, node)
+	for _, nodes := range t.variableNodes {
+		result = append(result, nodes...)
 	}
 	return result
 }

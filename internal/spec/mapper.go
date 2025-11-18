@@ -234,10 +234,10 @@ func deduplicateParameters(params []Parameter) []Parameter {
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	responses := make(map[string]Response)
 
-	if respInfo == nil {
+	if len(respInfo) == 0 {
 		// Default response
-		responses["200"] = Response{
-			Description: "Success",
+		responses["default"] = Response{
+			Description: "Default response (no response found)",
 			Content: map[string]MediaType{
 				"application/json": {
 					Schema: &Schema{Type: "object"},
@@ -249,8 +249,19 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 
 	// Add success response
 	for statusCode, resp := range respInfo {
+		// if status less than 0, use "default" to indicate unknown/invalid status
+		// OpenAPI only accepts status codes 100-599, "default", or vendor extensions
+		if resp.StatusCode < 0 {
+			statusCode = "default"
+		}
+
+		description := http.StatusText(resp.StatusCode)
+		if resp.StatusCode < 0 || description == "" {
+			description = "Status code could not be determined"
+		}
+
 		responses[statusCode] = Response{
-			Description: http.StatusText(resp.StatusCode),
+			Description: description,
 			Content: map[string]MediaType{
 				resp.ContentType: {
 					Schema: resp.Schema,
@@ -1722,6 +1733,11 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 					// Generate inline schema for the type
 					schema, newSchemas := generateSchemaFromType(usedTypes, key, typ, meta, cfg, visitedTypes)
 					if schema != nil {
+						if canAddRefSchemaForType(key) {
+							schemas[key] = schema
+							schema = addRefSchemaForType(key)
+						}
+
 						maps.Copy(schemas, newSchemas)
 						markUsedType(usedTypes, goType, schema)
 

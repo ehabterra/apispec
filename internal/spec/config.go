@@ -11,8 +11,6 @@ const (
 	defaultRequestContentType  = "application/json"
 	defaultResponseContentType = "application/json"
 	defaultResponseStatus      = 200
-	primitiveObjectIDType      = "go.mongodb.org/mongo-driver/bson/primitive.ObjectID"
-	primitiveObjectIDFormat    = "objectid"
 )
 
 // FrameworkConfig defines framework-specific extraction patterns
@@ -484,6 +482,20 @@ func DefaultChiConfig() *APISpecConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
 					CallRegex:     `^JSON$`,
 					TypeArgIndex:  2,
 					TypeFromArg:   true,
@@ -496,14 +508,6 @@ func DefaultChiConfig() *APISpecConfig {
 					StatusArgIndex: 1,
 					StatusFromArg:  true,
 					RecvTypeRegex:  "^github\\.com/go-chi/render$",
-				},
-				{
-					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   1,
-					TypeFromArg:    true,
-					StatusFromArg:  true,
-					Deref:          true,
 				},
 				{
 					CallRegex:    `^Marshal$`,
@@ -580,16 +584,16 @@ func DefaultChiConfig() *APISpecConfig {
 			ResponseContentType: defaultResponseContentType,
 			ResponseStatus:      defaultResponseStatus,
 		},
-		// example of external type mapping
-		ExternalTypes: []ExternalType{
-			{
-				Name: primitiveObjectIDType,
-				OpenAPIType: &Schema{
-					Type:   "string",
-					Format: primitiveObjectIDFormat,
-				},
-			},
-		},
+		// // example of external type mapping
+		// ExternalTypes: []ExternalType{
+		// 	{
+		// 		Name: primitiveObjectIDType,
+		// 		OpenAPIType: &Schema{
+		// 			Type:   "string",
+		// 			Format: primitiveObjectIDFormat,
+		// 		},
+		// 	},
+		// },
 	}
 }
 
@@ -632,6 +636,20 @@ func DefaultEchoConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
@@ -690,11 +708,6 @@ func DefaultEchoConfig() *APISpecConfig {
 				},
 			},
 		},
-		Exclude: IncludeExclude{
-			Files: []string{
-				"docs/*",
-			},
-		},
 		Defaults: Defaults{
 			RequestContentType:  defaultRequestContentType,
 			ResponseContentType: defaultResponseContentType,
@@ -742,6 +755,20 @@ func DefaultFiberConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
 				{
 					CallRegex:      `^JSON$`,
 					StatusArgIndex: -1, // Fiber's c.JSON does not take status, only data
@@ -882,6 +909,20 @@ func DefaultGinConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
@@ -1117,6 +1158,20 @@ func DefaultHTTPConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
