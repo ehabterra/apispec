@@ -234,8 +234,8 @@ func deduplicateParameters(params []Parameter) []Parameter {
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	responses := make(map[string]Response)
 
+	// Handle nil case - return default response indicating no response was found
 	if len(respInfo) == 0 {
-		// Default response
 		responses["default"] = Response{
 			Description: "Default response (no response found)",
 			Content: map[string]MediaType{
@@ -1609,7 +1609,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 					// Detect enum values for this value type
 					if enumValues := detectEnumFromConstants(valueType, pkgName, meta); len(enumValues) > 0 {
 						// Apply enum values to the stored schema if it exists
-						if storedSchema, exists := schemas[resolvedType]; exists {
+						if storedSchema, exists := usedTypes[resolvedType]; exists && storedSchema != nil {
+							storedSchema.Enum = enumValues
+						} else if storedSchema, exists := schemas[resolvedType]; exists {
 							storedSchema.Enum = enumValues
 						} else {
 							additionalProperties.Enum = enumValues
@@ -1680,7 +1682,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			// Detect enum values for this element type
 			if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
 				// Apply enum values to the stored schema if it exists
-				if storedSchema, exists := schemas[resolvedType]; exists {
+				if storedSchema, exists := usedTypes[resolvedType]; exists && storedSchema != nil {
+					storedSchema.Enum = enumValues
+				} else if storedSchema, exists := schemas[resolvedType]; exists {
 					storedSchema.Enum = enumValues
 				} else {
 					items.Enum = enumValues

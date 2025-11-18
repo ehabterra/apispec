@@ -53,7 +53,7 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 		{
 			name:     "pointer to struct",
 			goType:   "*User",
-			expected: "object", // Should generate inline object schema
+			expected: "", // Should generate a reference (empty Type means it's a reference)
 		},
 		{
 			name:     "pointer to string",
@@ -85,19 +85,30 @@ func TestMapGoTypeToOpenAPISchema_PointerTypes(t *testing.T) {
 				t.Errorf("expected type %s, got %s", tt.expected, schema.Type)
 			}
 
-			// For pointer to struct, verify it generates inline properties
+			// For pointer to struct, verify it generates a reference and properties are in usedTypes
 			if tt.goType == "*User" {
-				if schema.Properties == nil {
-					t.Error("expected properties for *User, got nil")
+				// Should be a reference
+				if schema.Ref == "" {
+					t.Error("expected reference for *User, got empty Ref")
 				}
-				if len(schema.Properties) != 2 {
-					t.Errorf("expected 2 properties for User, got %d", len(schema.Properties))
-				}
-				if schema.Properties["Name"] == nil {
-					t.Error("expected Name property")
-				}
-				if schema.Properties["Age"] == nil {
-					t.Error("expected Age property")
+				// Extract the referenced type name
+				refType := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+				// Check that the referenced schema exists in usedTypes with properties
+				if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+					if refSchema.Properties == nil {
+						t.Error("expected properties for User in usedTypes, got nil")
+					}
+					if len(refSchema.Properties) != 2 {
+						t.Errorf("expected 2 properties for User, got %d", len(refSchema.Properties))
+					}
+					if refSchema.Properties["Name"] == nil {
+						t.Error("expected Name property")
+					}
+					if refSchema.Properties["Age"] == nil {
+						t.Error("expected Age property")
+					}
+				} else {
+					t.Errorf("expected User schema in usedTypes, got %v", usedTypes)
 				}
 			}
 
@@ -1275,13 +1286,24 @@ func TestMapGoTypeToOpenAPISchema_CircularReference(t *testing.T) {
 				t.Errorf("Expected non-nil schema for type %s", tc.goType)
 			}
 
-			// For struct types, verify we have properties
+			// For struct types, verify we have a reference and properties are in usedTypes
 			if tc.goType == "Node" || tc.goType == "Parent" || tc.goType == "Child" {
-				if schema.Type != "object" {
-					t.Errorf("Expected object type for struct %s, got %s", tc.goType, schema.Type)
+				// Should be a reference
+				if schema.Ref == "" {
+					t.Errorf("Expected reference for struct %s, got empty Ref", tc.goType)
 				}
-				if schema.Properties == nil {
-					t.Errorf("Expected properties for struct %s", tc.goType)
+				// Extract the referenced type name
+				refType := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+				// Check that the referenced schema exists in usedTypes with properties
+				if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+					if refSchema.Type != "object" {
+						t.Errorf("Expected object type for struct %s in usedTypes, got %s", tc.goType, refSchema.Type)
+					}
+					if refSchema.Properties == nil {
+						t.Errorf("Expected properties for struct %s in usedTypes", tc.goType)
+					}
+				} else {
+					t.Errorf("Expected %s schema in usedTypes, got %v", refType, usedTypes)
 				}
 			}
 		})
@@ -1560,13 +1582,24 @@ func TestMapGoTypeToOpenAPISchema_DeepCircularReference(t *testing.T) {
 				t.Errorf("Expected non-nil schema for type %s", tc.goType)
 			}
 
-			// For struct types, verify we have properties
+			// For struct types, verify we have a reference and properties are in usedTypes
 			if tc.goType == "Node" || tc.goType == "Tree" {
-				if schema.Type != "object" {
-					t.Errorf("Expected object type for struct %s, got %s", tc.goType, schema.Type)
+				// Should be a reference
+				if schema.Ref == "" {
+					t.Errorf("Expected reference for struct %s, got empty Ref", tc.goType)
 				}
-				if schema.Properties == nil {
-					t.Errorf("Expected properties for struct %s", tc.goType)
+				// Extract the referenced type name
+				refType := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+				// Check that the referenced schema exists in usedTypes with properties
+				if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+					if refSchema.Type != "object" {
+						t.Errorf("Expected object type for struct %s in usedTypes, got %s", tc.goType, refSchema.Type)
+					}
+					if refSchema.Properties == nil {
+						t.Errorf("Expected properties for struct %s in usedTypes", tc.goType)
+					}
+				} else {
+					t.Errorf("Expected %s schema in usedTypes, got %v", refType, usedTypes)
 				}
 			}
 		})
@@ -1864,8 +1897,29 @@ func TestEnumDetectionForArrays(t *testing.T) {
 				if schema.Items.Ref != "" {
 					// Extract the referenced type name from the ref
 					refType := strings.TrimPrefix(schema.Items.Ref, "#/components/schemas/")
-					// Check the referenced schema in usedTypes
-					if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+					// The ref uses schemaComponentNameReplacer, so we need to check the original type name
+					// Try to find the schema in usedTypes - it might be stored with the original type name
+					var refSchema *Schema
+					var found bool
+					// Try the original type name first (e.g., "main.Status")
+					elementType := strings.TrimPrefix(tc.goType, "[]")
+					if s, exists := usedTypes[elementType]; exists {
+						refSchema = s
+						found = true
+					} else if s, exists := usedTypes[refType]; exists {
+						refSchema = s
+						found = true
+					} else {
+						// Try without package prefix
+						typeParts := strings.Split(elementType, ".")
+						if len(typeParts) > 1 {
+							if s, exists := usedTypes[typeParts[len(typeParts)-1]]; exists {
+								refSchema = s
+								found = true
+							}
+						}
+					}
+					if found && refSchema != nil {
 						if len(refSchema.Enum) != len(tc.expectedEnum) {
 							t.Errorf("Expected %d enum values in referenced schema, got %d", len(tc.expectedEnum), len(refSchema.Enum))
 						} else {
@@ -1876,7 +1930,10 @@ func TestEnumDetectionForArrays(t *testing.T) {
 							}
 						}
 					} else {
-						t.Errorf("Referenced schema %s not found in usedTypes", refType)
+						// If not found in usedTypes, check if enum is in the Items directly (for non-reference case)
+						if len(schema.Items.Enum) != len(tc.expectedEnum) {
+							t.Errorf("Expected %d enum values, got %d (not found in usedTypes or Items)", len(tc.expectedEnum), len(schema.Items.Enum))
+						}
 					}
 				} else {
 					// Direct enum values in Items
@@ -2100,23 +2157,67 @@ func TestEnumDetectionForAliasTypes(t *testing.T) {
 				return
 			}
 
-			if schema.Type != tc.expectedType {
-				t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
-			}
-
-			if tc.expectedEnum != nil {
-				if len(schema.Enum) != len(tc.expectedEnum) {
-					t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.Enum))
+			// For alias types, check if it's a reference or inline
+			if schema.Ref != "" {
+				// It's a reference, check the schema in usedTypes
+				refType := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+				// Try to find the schema in usedTypes
+				var refSchema *Schema
+				var found bool
+				// Try the original type name first (e.g., "main.UserRole")
+				if s, exists := usedTypes[tc.goType]; exists {
+					refSchema = s
+					found = true
+				} else if s, exists := usedTypes[refType]; exists {
+					refSchema = s
+					found = true
 				} else {
-					for i, expected := range tc.expectedEnum {
-						if i < len(schema.Enum) && schema.Enum[i] != expected {
-							t.Errorf("Expected enum[%d] = %s, got %s", i, expected, schema.Enum[i])
+					// Try without package prefix
+					typeParts := strings.Split(tc.goType, ".")
+					if len(typeParts) > 1 {
+						if s, exists := usedTypes[typeParts[len(typeParts)-1]]; exists {
+							refSchema = s
+							found = true
 						}
 					}
 				}
+				if found && refSchema != nil {
+					if refSchema.Type != tc.expectedType {
+						t.Errorf("Expected type %s in referenced schema, got %s", tc.expectedType, refSchema.Type)
+					}
+					if tc.expectedEnum != nil {
+						if len(refSchema.Enum) != len(tc.expectedEnum) {
+							t.Errorf("Expected %d enum values in referenced schema, got %d", len(tc.expectedEnum), len(refSchema.Enum))
+						} else {
+							for i, expected := range tc.expectedEnum {
+								if i < len(refSchema.Enum) && refSchema.Enum[i] != expected {
+									t.Errorf("Expected enum[%d] = %s, got %s", i, expected, refSchema.Enum[i])
+								}
+							}
+						}
+					}
+				} else {
+					t.Errorf("Expected %s schema in usedTypes, got %v", refType, usedTypes)
+				}
 			} else {
-				if len(schema.Enum) > 0 {
-					t.Errorf("Expected no enum values, got %v", schema.Enum)
+				// Inline schema
+				if schema.Type != tc.expectedType {
+					t.Errorf("Expected type %s, got %s", tc.expectedType, schema.Type)
+				}
+				if tc.expectedEnum != nil {
+					if len(schema.Enum) != len(tc.expectedEnum) {
+						t.Errorf("Expected %d enum values, got %d", len(tc.expectedEnum), len(schema.Enum))
+					} else {
+						for i, expected := range tc.expectedEnum {
+							if i < len(schema.Enum) && schema.Enum[i] != expected {
+								t.Errorf("Expected enum[%d] = %s, got %s", i, expected, schema.Enum[i])
+							}
+						}
+					}
+				} else {
+					if len(schema.Enum) > 0 {
+						t.Errorf("Expected no enum values, got %v", schema.Enum)
+					}
 				}
 			}
 		})

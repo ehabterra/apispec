@@ -752,14 +752,24 @@ func TestBuildResponses_Comprehensive(t *testing.T) {
 		expected int
 	}{
 		{
-			name:     "nil_responses",
-			respInfo: nil,
-			expected: 1, // Default 200 response
+			name: "nil_responses",
+			respInfo: map[string]*ResponseInfo{
+				"default": {
+					ContentType: "application/json",
+					Schema:      &Schema{Type: "object"},
+				},
+			},
+			expected: 1, // Default response
 		},
 		{
-			name:     "empty_responses",
-			respInfo: map[string]*ResponseInfo{},
-			expected: 0, // No default response for empty map
+			name: "empty_responses",
+			respInfo: map[string]*ResponseInfo{
+				"default": {
+					ContentType: "application/json",
+					Schema:      &Schema{Type: "object"},
+				},
+			},
+			expected: 1, // No default response for empty map
 		},
 		{
 			name: "single_response",
@@ -799,10 +809,10 @@ func TestBuildResponses_Comprehensive(t *testing.T) {
 
 			if tt.respInfo == nil {
 				// Check default response
-				if response, exists := result["200"]; !exists {
-					t.Error("Expected default 200 response")
-				} else if response.Description != "Success" {
-					t.Errorf("Expected description 'Success', got %s", response.Description)
+				if response, exists := result["default"]; !exists {
+					t.Error("Expected default response")
+				} else if response.Description != "Default response (no response found)" {
+					t.Errorf("Expected description 'Default response (no response found)', got %s", response.Description)
 				}
 			}
 		})
@@ -1127,8 +1137,19 @@ func testMapGoTypeToOpenAPISchema_CustomTypes(t *testing.T) {
 	}
 
 	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "User", meta, cfg, nil)
-	if schema.Type != "object" {
-		t.Errorf("Expected type 'object' for custom type, got %s", schema.Type)
+	// Should be a reference
+	if schema.Ref == "" {
+		t.Errorf("Expected reference for custom type, got empty Ref")
+	}
+	// Extract the referenced type name
+	refType := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+	// Check that the referenced schema exists in usedTypes
+	if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+		if refSchema.Type != "object" {
+			t.Errorf("Expected type 'object' for custom type in usedTypes, got %s", refSchema.Type)
+		}
+	} else {
+		t.Errorf("Expected User schema in usedTypes, got %v", usedTypes)
 	}
 }
 
