@@ -1191,11 +1191,6 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	callerID := metadata.StripToBase(id)
 	functionID := callerID
 
-	// TODO: Remove this after testing
-	if strings.Contains(callerID, "APIModule") {
-		fmt.Println("callerID", callerID)
-	}
-
 	if parentEdge != nil && parentEdge.CalleeVarName != "" {
 		// Enhanced variable tracing and assignment linking
 		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
