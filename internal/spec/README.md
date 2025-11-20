@@ -149,6 +149,8 @@ framework:
       statusArgIndex: 0
       responseArgIndex: 1
       statusFromArg: true
+      defaultContentType: "application/json"
+      defaultStatus: 404 # Optional fallback status code when not inferred
 
 defaults:
   requestContentType: "application/json"
@@ -270,4 +272,4 @@ The new system replaces the complex `mapper.go` with:
 2. **Validation**: Validate configuration and extracted data
 3. **Caching**: Cache extracted information for performance
 4. **Testing**: Comprehensive test suite for all patterns
-5. **Documentation**: Auto-generated documentation from patterns 
+5. **Documentation**: Auto-generated documentation from patterns

@@ -135,8 +135,8 @@ func main() {
 			// Simulate creating product
 			product.ID = 1
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(product)
 			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(product)
 		}
 	})
 

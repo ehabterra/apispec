@@ -252,13 +252,14 @@ func detachChild(child *TrackerNode) {
 		if len(child.Parent.Children) == 1 {
 			child.Parent.Children = child.Parent.Children[:0]
 		} else {
-			for i, item := range child.Parent.Children {
-				if item.Key() == child.Key() {
-					child.Parent.Children[i] = child.Parent.Children[len(child.Parent.Children)-1]
-					child.Parent.Children = child.Parent.Children[:len(child.Parent.Children)-1]
-					break
+			// Should retain the order of the children
+			newChildren := make([]*TrackerNode, 0, len(child.Parent.Children)-1)
+			for _, item := range child.Parent.Children {
+				if item.Key() != child.Key() {
+					newChildren = append(newChildren, item)
 				}
 			}
+			child.Parent.Children = newChildren
 		}
 	}
 }
@@ -486,12 +487,11 @@ func (t *TrackerTree) processChainRelationships() {
 				childNode := t.findNodeByEdgeID(childKey)
 
 				if childNode != nil && parentNode != childNode {
-					// check if child is an argument, keep parent node as grandparent
-					if childNode.CallArgument != nil {
+					// For argument nodes, ensure we keep the original parent as grandparent
+					if childNode.CallArgument != nil && childNode.Parent.Key() != parentNode.Key() {
 						childNode.Parent.AddChild(parentNode)
 					}
 
-					// Establish parent-child relationship
 					parentNode.AddChild(childNode)
 				}
 			}
@@ -949,7 +949,6 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						mostRecentParent := parents[len(parents)-1]
 						mostRecentParent.Children = append(mostRecentParent.Children, argNode)
 					}
-					children = append(children, argNode)
 
 					// Get the correct edge for method calls
 					funcNameIndex := arg.Sel.Name

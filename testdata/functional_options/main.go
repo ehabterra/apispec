@@ -211,7 +211,7 @@ func main() {
 	srv := InitializeServer()
 
 	// Add a health check endpoint
-	srv.router.HandleFunc("/health", HealthHandler).Methods("GET")
+	srv.router.Methods("GET").Path("/health").HandlerFunc(HealthHandler)
 
 	http.ListenAndServe(":8080", srv.router)
 }

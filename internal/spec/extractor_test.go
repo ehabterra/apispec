@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -349,6 +350,48 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 				t.Errorf("Expected Schema.Type to be '%s', got '%s'", tc.expectedSchemaType, result.Schema.Type)
 			}
 		})
+	}
+}
+
+func TestResponsePattern_DefaultStatus(t *testing.T) {
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+	}
+
+	cfg := &APISpecConfig{
+		Defaults: Defaults{
+			ResponseContentType: "application/json",
+		},
+	}
+
+	matcher := &ResponsePatternMatcherImpl{
+		BasePatternMatcher: &BasePatternMatcher{
+			cfg:             cfg,
+			contextProvider: NewContextProvider(meta),
+			schemaMapper:    NewSchemaMapper(cfg),
+		},
+		pattern: ResponsePattern{
+			DefaultStatus:      http.StatusNotFound,
+			DefaultContentType: "application/problem+json",
+		},
+	}
+
+	result := matcher.ExtractResponse(&TrackerNode{
+		CallGraphEdge: &metadata.CallGraphEdge{},
+	}, &RouteInfo{
+		Response: map[string]*ResponseInfo{},
+	})
+
+	if result == nil {
+		t.Fatal("expected response info when default status is configured")
+	}
+
+	if result.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, result.StatusCode)
+	}
+
+	if result.ContentType != "application/problem+json" {
+		t.Fatalf("expected content type application/problem+json, got %s", result.ContentType)
 	}
 }
 

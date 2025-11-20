@@ -554,7 +554,9 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 
 // ExtractResponse extracts response information from a matched node
 func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
-	var processed bool
+	var (
+		statusResolved bool
+	)
 
 	// Get least status code from response map
 	leastStatusCode := 0
@@ -564,18 +566,28 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
+	contentType := r.cfg.Defaults.ResponseContentType
+	if r.pattern.DefaultContentType != "" {
+		contentType = r.pattern.DefaultContentType
+	}
+
 	respInfo := &ResponseInfo{
 		StatusCode:  leastStatusCode - 1,
-		ContentType: r.cfg.Defaults.ResponseContentType,
+		ContentType: contentType,
 	}
 
 	edge := node.GetEdge()
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
 		statusStr := r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.StatusArgIndex])
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
-			processed = true
+			statusResolved = true
 			respInfo.StatusCode = status
 		}
+	}
+
+	if !statusResolved && r.pattern.DefaultStatus > 0 {
+		respInfo.StatusCode = r.pattern.DefaultStatus
+		statusResolved = true
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
@@ -619,7 +631,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.Schema = schema
 	}
 
-	if !processed && respInfo.BodyType == "" {
+	if !statusResolved && respInfo.BodyType == "" {
 		return nil
 	}
 
