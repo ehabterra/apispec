@@ -963,7 +963,7 @@ func TestProcessArguments_ArgTypeSelector_FunctionType(t *testing.T) {
 			Pkg:       "main",
 			Container: "TestFunction",
 		}
-		tree.variableNodes[pkey] = varParent
+		tree.variableNodes[pkey] = append(tree.variableNodes[pkey], varParent)
 
 		visited := make(map[string]int)
 		result := processArguments(tree, meta, parentNode, edge, visited, &assignmentIndex, limits)

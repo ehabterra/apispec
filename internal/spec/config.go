@@ -11,8 +11,6 @@ const (
 	defaultRequestContentType  = "application/json"
 	defaultResponseContentType = "application/json"
 	defaultResponseStatus      = 200
-	primitiveObjectIDType      = "go.mongodb.org/mongo-driver/bson/primitive.ObjectID"
-	primitiveObjectIDFormat    = "objectid"
 )
 
 // FrameworkConfig defines framework-specific extraction patterns
@@ -126,6 +124,10 @@ type ResponsePattern struct {
 	StatusFromArg bool `yaml:"statusFromArg,omitempty"` // Extract status from argument
 	TypeFromArg   bool `yaml:"typeFromArg,omitempty"`   // Extract type from argument
 	Deref         bool `yaml:"deref,omitempty"`         // Dereference pointer types
+	// DefaultStatus specifies a fallback status code when it can't be extracted from args
+	DefaultStatus int `yaml:"defaultStatus,omitempty"`
+	// DefaultContentType overrides the config default content type when set
+	DefaultContentType string `yaml:"defaultContentType,omitempty"`
 
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
@@ -484,6 +486,44 @@ func DefaultChiConfig() *APISpecConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+				},
+				{
 					CallRegex:     `^JSON$`,
 					TypeArgIndex:  2,
 					TypeFromArg:   true,
@@ -496,14 +536,6 @@ func DefaultChiConfig() *APISpecConfig {
 					StatusArgIndex: 1,
 					StatusFromArg:  true,
 					RecvTypeRegex:  "^github\\.com/go-chi/render$",
-				},
-				{
-					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   1,
-					TypeFromArg:    true,
-					StatusFromArg:  true,
-					Deref:          true,
 				},
 				{
 					CallRegex:    `^Marshal$`,
@@ -580,16 +612,6 @@ func DefaultChiConfig() *APISpecConfig {
 			ResponseContentType: defaultResponseContentType,
 			ResponseStatus:      defaultResponseStatus,
 		},
-		// example of external type mapping
-		ExternalTypes: []ExternalType{
-			{
-				Name: primitiveObjectIDType,
-				OpenAPIType: &Schema{
-					Type:   "string",
-					Format: primitiveObjectIDFormat,
-				},
-			},
-		},
 	}
 }
 
@@ -632,6 +654,44 @@ func DefaultEchoConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
@@ -690,11 +750,6 @@ func DefaultEchoConfig() *APISpecConfig {
 				},
 			},
 		},
-		Exclude: IncludeExclude{
-			Files: []string{
-				"docs/*",
-			},
-		},
 		Defaults: Defaults{
 			RequestContentType:  defaultRequestContentType,
 			ResponseContentType: defaultResponseContentType,
@@ -743,11 +798,56 @@ func DefaultFiberConfig() *APISpecConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+				},
+				{
 					CallRegex:      `^JSON$`,
 					StatusArgIndex: -1, // Fiber's c.JSON does not take status, only data
 					TypeArgIndex:   0,
 					TypeFromArg:    true,
 					Deref:          true,
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:      `^Status$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
 					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
 				{
@@ -883,6 +983,44 @@ func DefaultGinConfig() *APISpecConfig {
 			},
 			ResponsePatterns: []ResponsePattern{
 				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+				},
+				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,
 					TypeArgIndex:   1,
@@ -978,22 +1116,48 @@ func DefaultMuxConfig() *APISpecConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:         `^HandleFunc$`,
-					MethodFromHandler: true,
-					PathFromArg:       true,
-					HandlerFromArg:    true,
-					PathArgIndex:      0,
-					HandlerArgIndex:   1,
-					RecvTypeRegex:     `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
-					MethodExtraction:  DefaultMethodExtractionConfig(),
+					CallRegex:        `^HandleFunc$`,
+					PathFromArg:      true,
+					HandlerFromArg:   true,
+					PathArgIndex:     0,
+					HandlerArgIndex:  1,
+					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Router$`,
+					MethodExtraction: DefaultMethodExtractionConfig(),
 				},
 				{
-					CallRegex:         `^Handle$`,
+					CallRegex:        `^Handle$`,
+					PathFromArg:      true,
+					HandlerFromArg:   true,
+					PathArgIndex:     0,
+					HandlerArgIndex:  1,
+					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Router$`,
+					MethodExtraction: DefaultMethodExtractionConfig(),
+				},
+				{
+					CallRegex:        `^HandleFunc$`,
+					HandlerFromArg:   true,
+					HandlerArgIndex:  0,
+					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Route$`,
+					MethodExtraction: DefaultMethodExtractionConfig(),
+				},
+				{
+					CallRegex:        `^Handle$`,
+					HandlerFromArg:   true,
+					HandlerArgIndex:  0,
+					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Route$`,
+					MethodExtraction: DefaultMethodExtractionConfig(),
+				},
+				{
+					CallRegex:        `^Path$`,
+					PathFromArg:      true,
+					PathArgIndex:     0,
+					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
+					MethodExtraction: DefaultMethodExtractionConfig(),
+				},
+				{
+					CallRegex:         `^Methods$`,
 					MethodFromHandler: true,
-					PathFromArg:       true,
-					HandlerFromArg:    true,
-					PathArgIndex:      0,
-					HandlerArgIndex:   1,
+					MethodArgIndex:    0,
 					RecvTypeRegex:     `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
 					MethodExtraction:  DefaultMethodExtractionConfig(),
 				},
@@ -1028,6 +1192,30 @@ func DefaultMuxConfig() *APISpecConfig {
 					TypeFromArg:   true,
 					Deref:         true,
 					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
 				},
 				{
 					CallRegex:    `^Marshal$`,
@@ -1117,6 +1305,44 @@ func DefaultHTTPConfig() *APISpecConfig {
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
+				{
+					CallRegex:      `^WriteHeader$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:     `^Write$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: `^net/http\.ResponseWriter$`,
+				},
+				{
+					CallRegex:          `^Error$`,
+					StatusArgIndex:     2,
+					StatusFromArg:      true,
+					TypeFromArg:        true,
+					TypeArgIndex:       1,
+					RecvTypeRegex:      `^net/http$`,
+					DefaultContentType: "text/plain; charset=utf-8",
+				},
+				{
+					CallRegex:      `^NotFound$`,
+					StatusArgIndex: -1, // Always 404
+					StatusFromArg:  false,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+					DefaultStatus:  http.StatusNotFound,
+				},
+				{
+					CallRegex:      `^Redirect$`,
+					StatusArgIndex: 3,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  `^net/http$`,
+				},
 				{
 					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 					StatusArgIndex: 0,

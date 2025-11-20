@@ -197,6 +197,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteI
 // extractRouteDetails extracts route details from a node
 func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface, routeInfo *RouteInfo) {
 	edge := node.GetEdge()
+
 	if r.pattern.MethodFromCall {
 		funcName := r.contextProvider.GetString(edge.Callee.Name)
 		routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(funcName, r.pattern.MethodExtraction)
@@ -232,7 +233,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		}
 
 		// If we still don't have a method, try to infer from context (if enabled)
-		if (routeInfo.Method == "" || routeInfo.Method == http.MethodPost) && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
+		if routeInfo.Method == "" && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
 			routeInfo.Method = r.inferMethodFromContext(node, edge)
 		}
 	}

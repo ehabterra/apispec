@@ -281,8 +281,9 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo RouteIn
 		routeInfo.Tags = mountTags
 	}
 
-	// Extract request/response/params from children
-	e.extractRouteChildren(node, &routeInfo)
+	// Extract request/response/params from children with visited edges tracking
+	visitedEdges := make(map[string]bool)
+	e.extractRouteChildren(node, &routeInfo, visitedEdges)
 
 	// Apply overrides
 	e.overrideApplier.ApplyOverrides(&routeInfo)
@@ -343,7 +344,7 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNod
 }
 
 // extractRouteChildren extracts request, response, and params from children nodes
-func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo) {
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) {
 	for _, child := range routeNode.GetChildren() {
 		// Extract request
 		if req := e.extractRequestFromNode(child, route); req != nil {
@@ -351,7 +352,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		}
 
 		// Extract response
-		if resp := e.extractResponseFromNode(child, route); resp != nil && resp.BodyType != "" {
+		if resp := e.extractResponseFromNode(child, route, visitedEdges); resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
 			route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
 		}
 
@@ -361,7 +362,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		}
 
 		// Recursive extraction
-		e.extractRouteChildren(child, route)
+		e.extractRouteChildren(child, route, visitedEdges)
 	}
 
 	// Extract parameters from the route node itself
@@ -381,16 +382,32 @@ func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *Rou
 }
 
 // extractResponseFromNode extracts response information from a node
-func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
+func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) *ResponseInfo {
+	// Ensure that each edge is visited only once
+	if node == nil || node.GetEdge() == nil {
+		return nil
+	}
+
+	edge := node.GetEdge()
+	edgeID := edge.Callee.ID()
+	if visitedEdges[edgeID] {
+		return nil // Edge already processed
+	}
+
+	// Mark edge as visited before processing to ensure MatchNode is only called once per edge
+	visitedEdges[edgeID] = true
+
 	for _, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractResponse(node, route)
 		}
 	}
-	return &ResponseInfo{
-		StatusCode:  e.cfg.Defaults.ResponseStatus,
-		ContentType: e.cfg.Defaults.ResponseContentType,
-	}
+	// // If no response matcher matches, return the default response info
+	// return &ResponseInfo{
+	// 	StatusCode:  e.cfg.Defaults.ResponseStatus,
+	// 	ContentType: e.cfg.Defaults.ResponseContentType,
+	// }
+	return nil
 }
 
 // extractParamFromNode extracts parameter information from a node
@@ -537,20 +554,52 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 
 // ExtractResponse extracts response information from a matched node
 func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
+	var (
+		statusResolved bool
+	)
+
+	// Get least status code from response map
+	leastStatusCode := 0
+	for _, resp := range route.Response {
+		if resp.StatusCode < leastStatusCode {
+			leastStatusCode = resp.StatusCode
+		}
+	}
+
+	contentType := r.cfg.Defaults.ResponseContentType
+	if r.pattern.DefaultContentType != "" {
+		contentType = r.pattern.DefaultContentType
+	}
+
 	respInfo := &ResponseInfo{
-		StatusCode:  r.cfg.Defaults.ResponseStatus,
-		ContentType: r.cfg.Defaults.ResponseContentType,
+		StatusCode:  leastStatusCode - 1,
+		ContentType: contentType,
 	}
 
 	edge := node.GetEdge()
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
 		statusStr := r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.StatusArgIndex])
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
+			statusResolved = true
 			respInfo.StatusCode = status
 		}
 	}
 
+	if !statusResolved && r.pattern.DefaultStatus > 0 {
+		respInfo.StatusCode = r.pattern.DefaultStatus
+		statusResolved = true
+	}
+
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
+		// If status code is not from argument, find the first response with no body type
+		if !r.pattern.StatusFromArg {
+			for _, resp := range route.Response {
+				if resp.BodyType == "" && resp.StatusCode >= 100 && resp.StatusCode < 600 {
+					respInfo.StatusCode = resp.StatusCode
+					break
+				}
+			}
+		}
 
 		arg := edge.Args[r.pattern.TypeArgIndex]
 
@@ -580,6 +629,10 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
 		respInfo.Schema = schema
+	}
+
+	if !statusResolved && respInfo.BodyType == "" {
+		return nil
 	}
 
 	return respInfo

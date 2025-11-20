@@ -714,6 +714,7 @@ func (a *CallArgument) ID() string {
 	a.idstr = id + typeParam + pos
 
 	a.idstr = strings.TrimPrefix(a.idstr, "*")
+	a.idstr = strings.TrimPrefix(a.idstr, "&")
 
 	return a.idstr
 }

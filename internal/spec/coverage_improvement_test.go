@@ -40,8 +40,8 @@ func TestDefaultMuxConfig(t *testing.T) {
 		t.Errorf("Expected CallRegex '^HandleFunc$', got %s", pattern.CallRegex)
 	}
 
-	if !pattern.MethodFromHandler {
-		t.Error("Expected MethodFromHandler to be true")
+	if pattern.MethodFromHandler {
+		t.Error("Expected MethodFromHandler to be false")
 	}
 
 	if !pattern.PathFromArg {
@@ -60,7 +60,7 @@ func TestDefaultMuxConfig(t *testing.T) {
 		t.Errorf("Expected HandlerArgIndex 1, got %d", pattern.HandlerArgIndex)
 	}
 
-	if pattern.RecvTypeRegex != `^github\.com/gorilla/mux\.\*?(Router|Route)$` {
+	if pattern.RecvTypeRegex != `^github\.com/gorilla/mux\.\*?Router$` {
 		t.Errorf("Expected specific RecvTypeRegex, got %s", pattern.RecvTypeRegex)
 	}
 

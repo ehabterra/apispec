@@ -234,10 +234,10 @@ func deduplicateParameters(params []Parameter) []Parameter {
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	responses := make(map[string]Response)
 
-	if respInfo == nil {
-		// Default response
-		responses["200"] = Response{
-			Description: "Success",
+	// Handle nil case - return default response indicating no response was found
+	if len(respInfo) == 0 {
+		responses["default"] = Response{
+			Description: "Default response (no response found)",
 			Content: map[string]MediaType{
 				"application/json": {
 					Schema: &Schema{Type: "object"},
@@ -249,8 +249,19 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 
 	// Add success response
 	for statusCode, resp := range respInfo {
+		// if status less than 0, use "default" to indicate unknown/invalid status
+		// OpenAPI only accepts status codes 100-599, "default", or vendor extensions
+		if resp.StatusCode < 0 {
+			statusCode = "default"
+		}
+
+		description := http.StatusText(resp.StatusCode)
+		if resp.StatusCode < 0 || description == "" {
+			description = "Status code could not be determined"
+		}
+
 		responses[statusCode] = Response{
-			Description: http.StatusText(resp.StatusCode),
+			Description: description,
 			Content: map[string]MediaType{
 				resp.ContentType: {
 					Schema: resp.Schema,
@@ -1598,7 +1609,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 					// Detect enum values for this value type
 					if enumValues := detectEnumFromConstants(valueType, pkgName, meta); len(enumValues) > 0 {
 						// Apply enum values to the stored schema if it exists
-						if storedSchema, exists := schemas[resolvedType]; exists {
+						if storedSchema, exists := usedTypes[resolvedType]; exists && storedSchema != nil {
+							storedSchema.Enum = enumValues
+						} else if storedSchema, exists := schemas[resolvedType]; exists {
 							storedSchema.Enum = enumValues
 						} else {
 							additionalProperties.Enum = enumValues
@@ -1669,7 +1682,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			// Detect enum values for this element type
 			if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
 				// Apply enum values to the stored schema if it exists
-				if storedSchema, exists := schemas[resolvedType]; exists {
+				if storedSchema, exists := usedTypes[resolvedType]; exists && storedSchema != nil {
+					storedSchema.Enum = enumValues
+				} else if storedSchema, exists := schemas[resolvedType]; exists {
 					storedSchema.Enum = enumValues
 				} else {
 					items.Enum = enumValues
@@ -1722,6 +1737,11 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 					// Generate inline schema for the type
 					schema, newSchemas := generateSchemaFromType(usedTypes, key, typ, meta, cfg, visitedTypes)
 					if schema != nil {
+						if canAddRefSchemaForType(key) {
+							schemas[key] = schema
+							schema = addRefSchemaForType(key)
+						}
+
 						maps.Copy(schemas, newSchemas)
 						markUsedType(usedTypes, goType, schema)
 

@@ -151,7 +151,10 @@ func (s *SchemaMapperImpl) MapStatusCode(statusStr string) (int, bool) {
 	// Remove quotes if present
 	statusStr = strings.Trim(statusStr, "\"")
 
+	// TODO: This is a temporary solution till having an external const value
+	// resolution for status codes for the different frameworks.
 	statusStr = strings.TrimPrefix(statusStr, "net/http.")
+	statusStr = strings.TrimPrefix(statusStr, "github.com/gofiber/fiber.")
 
 	// Check for net/http status constants
 	switch statusStr {
