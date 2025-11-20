@@ -487,11 +487,12 @@ func (t *TrackerTree) processChainRelationships() {
 				childNode := t.findNodeByEdgeID(childKey)
 
 				if childNode != nil && parentNode != childNode {
-					// For argument nodes, ensure we keep the original parent as grandparent
-					if childNode.CallArgument != nil && childNode.Parent.Key() != parentNode.Key() {
+					// check if child is an argument, keep parent node as grandparent
+					if childNode.CallArgument != nil {
 						childNode.Parent.AddChild(parentNode)
 					}
 
+					// Establish parent-child relationship
 					parentNode.AddChild(childNode)
 				}
 			}
