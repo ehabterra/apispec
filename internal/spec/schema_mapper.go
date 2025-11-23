@@ -166,16 +166,64 @@ func (s *SchemaMapperImpl) MapStatusCode(statusStr string) (int, bool) {
 		return http.StatusAccepted, true
 	case "StatusNoContent":
 		return http.StatusNoContent, true
+	case "StatusResetContent":
+		return http.StatusResetContent, true
+	case "StatusPartialContent":
+		return http.StatusPartialContent, true
+	case "StatusMultipleChoices":
+		return http.StatusMultipleChoices, true
+	case "StatusMovedPermanently":
+		return http.StatusMovedPermanently, true
+	case "StatusFound":
+		return http.StatusFound, true
+	case "StatusSeeOther":
+		return http.StatusSeeOther, true
+	case "StatusNotModified":
+		return http.StatusNotModified, true
+	case "StatusTemporaryRedirect":
+		return http.StatusTemporaryRedirect, true
+	case "StatusPermanentRedirect":
+		return http.StatusPermanentRedirect, true
 	case "StatusBadRequest":
 		return http.StatusBadRequest, true
 	case "StatusUnauthorized":
 		return http.StatusUnauthorized, true
+	case "StatusPaymentRequired":
+		return http.StatusPaymentRequired, true
 	case "StatusForbidden":
 		return http.StatusForbidden, true
 	case "StatusNotFound":
 		return http.StatusNotFound, true
+	case "StatusMethodNotAllowed":
+		return http.StatusMethodNotAllowed, true
+	case "StatusNotAcceptable":
+		return http.StatusNotAcceptable, true
+	case "StatusProxyAuthRequired":
+		return http.StatusProxyAuthRequired, true
+	case "StatusRequestTimeout":
+		return http.StatusRequestTimeout, true
 	case "StatusConflict":
 		return http.StatusConflict, true
+	case "StatusGone":
+		return http.StatusGone, true
+	case "StatusLengthRequired":
+		return http.StatusLengthRequired, true
+	case "StatusPreconditionFailed":
+		return http.StatusPreconditionFailed, true
+	case "StatusRequestEntityTooLarge":
+		return http.StatusRequestEntityTooLarge, true
+	case "StatusRequestURITooLong":
+		return http.StatusRequestURITooLong, true
+	case "StatusUnsupportedMediaType":
+		return http.StatusUnsupportedMediaType, true
+	case "StatusRequestedRangeNotSatisfiable":
+		return http.StatusRequestedRangeNotSatisfiable, true
+	case "StatusExpectationFailed":
+		return http.StatusExpectationFailed, true
+	case "StatusUnprocessableEntity":
+		return http.StatusUnprocessableEntity, true
+	case "StatusTooManyRequests":
+		return http.StatusTooManyRequests, true
 	case "StatusInternalServerError":
 		return http.StatusInternalServerError, true
 	case "StatusNotImplemented":
@@ -184,6 +232,10 @@ func (s *SchemaMapperImpl) MapStatusCode(statusStr string) (int, bool) {
 		return http.StatusBadGateway, true
 	case "StatusServiceUnavailable":
 		return http.StatusServiceUnavailable, true
+	case "StatusGatewayTimeout":
+		return http.StatusGatewayTimeout, true
+	case "StatusHTTPVersionNotSupported":
+		return http.StatusHTTPVersionNotSupported, true
 	}
 
 	// Try to parse as integer

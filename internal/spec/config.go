@@ -702,6 +702,13 @@ func DefaultEchoConfig() *APISpecConfig {
 					RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
 				},
 				{
+					CallRegex:      `^(?i)(NoContent)$`,
+					StatusArgIndex: 0,
+					StatusFromArg:  true,
+					TypeArgIndex:   -1,
+					RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
 					CallRegex:    `^Marshal$`,
 					TypeArgIndex: 0,
 					TypeFromArg:  true,
