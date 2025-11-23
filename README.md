@@ -1,6 +1,6 @@
 # APISpec: Generate OpenAPI from Go code
 
-![Coverage](https://img.shields.io/badge/coverage-52.3%25-red.svg)
+![Coverage](https://img.shields.io/badge/coverage-52.1%25-red.svg)
 
 <!-- markdownlint-disable MD033 -->
 <div align="center">
