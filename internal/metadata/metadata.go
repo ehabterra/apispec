@@ -7,7 +7,6 @@ import (
 	"go/types"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -95,7 +94,7 @@ func (ci *CallIdentifier) ID(idType CallIdentifierType) string {
 			for param, concrete := range ci.generics {
 				genericParts = append(genericParts, fmt.Sprintf("%s=%s", param, concrete))
 			}
-			sort.Slice(genericParts, func(i, j int) bool { return genericParts[i] < genericParts[j] })
+			slices.Sort(genericParts)
 			parts = append(parts, fmt.Sprintf("[%s]", strings.Join(genericParts, ",")))
 		}
 
@@ -135,9 +134,9 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 
 // VerboseLogger interface for conditional logging
 type VerboseLogger interface {
-	Printf(format string, args ...interface{})
-	Println(args ...interface{})
-	Print(args ...interface{})
+	Printf(format string, args ...any)
+	Println(args ...any)
+	Print(args ...any)
 }
 
 func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger) *Metadata {
@@ -414,31 +413,6 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	return metadata
 }
 
-// NEW: Enhanced metadata methods for tracker tree simplification
-
-// GetArgumentProcessor returns the argument processor instance
-func (m *Metadata) GetArgumentProcessor() *ArgumentProcessor {
-	if m.argumentProcessor == nil {
-		m.argumentProcessor = &ArgumentProcessor{
-			argTypeCache:        make(map[string]ArgumentType),
-			variableOriginCache: make(map[string]VariableOrigin),
-			assignmentLinkCache: make(map[string][]AssignmentLink),
-		}
-	}
-	return m.argumentProcessor
-}
-
-// GetGenericTypeResolver returns the generic type resolver instance
-func (m *Metadata) GetGenericTypeResolver() *GenericTypeResolver {
-	if m.genericResolver == nil {
-		m.genericResolver = &GenericTypeResolver{
-			typeParamCache:     make(map[string]map[string]string),
-			compatibilityCache: make(map[string]bool),
-		}
-	}
-	return m.genericResolver
-}
-
 // ClassifyArgument determines the type of an argument for enhanced processing
 func (m *Metadata) ClassifyArgument(arg *CallArgument) ArgumentType {
 	switch arg.GetKind() {
@@ -469,41 +443,6 @@ func (m *Metadata) ClassifyArgument(arg *CallArgument) ArgumentType {
 	default:
 		return ArgTypeComplex
 	}
-}
-
-// ProcessArguments processes arguments with enhanced classification and tracking
-func (m *Metadata) ProcessArguments(edge *CallGraphEdge, limits TrackerLimits) []*ProcessedArgument {
-	var processed []*ProcessedArgument
-	argCount := 0
-
-	for i, arg := range edge.Args {
-		if argCount >= limits.MaxArgsPerFunction {
-			break
-		}
-
-		// Skip certain arguments
-		if edge.Caller.ID() == StripToBase(arg.ID()) ||
-			edge.Callee.ID() == arg.ID() ||
-			arg.GetName() == "nil" ||
-			arg.ID() == "" {
-			continue
-		}
-
-		processedArg := &ProcessedArgument{
-			Argument: arg,
-			Edge:     edge,
-			ArgType:  m.ClassifyArgument(arg),
-			ArgIndex: i,
-			ArgContext: fmt.Sprintf("%s.%s",
-				m.StringPool.GetString(edge.Caller.Name),
-				m.StringPool.GetString(edge.Callee.Name)),
-		}
-
-		processed = append(processed, processedArg)
-		argCount++
-	}
-
-	return processed
 }
 
 // BuildAssignmentRelationships builds assignment relationships for all call graph edges
@@ -578,105 +517,12 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 	return relationships
 }
 
-// BuildVariableRelationships builds variable relationships for all call graph edges
-func (m *Metadata) BuildVariableRelationships() map[ParamKey]*VariableLink {
-	relationships := make(map[ParamKey]*VariableLink)
-
-	for i := range m.CallGraph {
-		edge := &m.CallGraph[i]
-
-		for param, arg := range edge.ParamArgMap {
-			originVar, originPkg, _, originFunc := TraceVariableOrigin(
-				param,
-				m.StringPool.GetString(edge.Callee.Name),
-				m.StringPool.GetString(edge.Callee.Pkg),
-				m,
-			)
-
-			if originVar == "" {
-				continue
-			}
-
-			pkey := ParamKey{
-				Name:      param,
-				Pkg:       m.StringPool.GetString(edge.Callee.Pkg),
-				Container: m.StringPool.GetString(edge.Callee.Name),
-			}
-
-			relationships[pkey] = &VariableLink{
-				ParamKey:   pkey,
-				OriginVar:  originVar,
-				OriginPkg:  originPkg,
-				OriginFunc: originFunc,
-				Edge:       edge,
-				Argument:   &arg,
-			}
-		}
-	}
-
-	return relationships
-}
-
 // GetAssignmentRelationships returns the cached assignment relationships
 func (m *Metadata) GetAssignmentRelationships() map[AssignmentKey]*AssignmentLink {
 	if m.assignmentRelationships == nil {
 		m.assignmentRelationships = m.BuildAssignmentRelationships()
 	}
 	return m.assignmentRelationships
-}
-
-// GetVariableRelationships returns the cached variable relationships
-func (m *Metadata) GetVariableRelationships() map[ParamKey]*VariableLink {
-	if m.variableRelationships == nil {
-		m.variableRelationships = m.BuildVariableRelationships()
-	}
-	return m.variableRelationships
-}
-
-// FindRelatedAssignments finds assignments related to a variable
-func (m *Metadata) FindRelatedAssignments(varName, pkg, container string) []*AssignmentLink {
-	akey := AssignmentKey{
-		Name:      varName,
-		Pkg:       pkg,
-		Container: container,
-	}
-
-	if link, exists := m.GetAssignmentRelationships()[akey]; exists {
-		return []*AssignmentLink{link}
-	}
-
-	// Find partial matches
-	var matches []*AssignmentLink
-	for key, link := range m.GetAssignmentRelationships() {
-		if key.Name == varName && key.Pkg == pkg {
-			matches = append(matches, link)
-		}
-	}
-
-	return matches
-}
-
-// FindRelatedVariables finds variables related to a parameter
-func (m *Metadata) FindRelatedVariables(varName, pkg, container string) []*VariableLink {
-	pkey := ParamKey{
-		Name:      varName,
-		Pkg:       pkg,
-		Container: container,
-	}
-
-	if link, exists := m.GetVariableRelationships()[pkey]; exists {
-		return []*VariableLink{link}
-	}
-
-	// Find partial matches
-	var matches []*VariableLink
-	for key, link := range m.GetVariableRelationships() {
-		if key.Name == varName && key.Pkg == pkg {
-			matches = append(matches, link)
-		}
-	}
-
-	return matches
 }
 
 // TraverseCallGraph traverses the call graph with a visitor function
@@ -798,63 +644,6 @@ func (m *Metadata) GetCallPath(fromFunc, toFunc string) []*CallGraphEdge {
 		return path
 	}
 	return nil
-}
-
-// Generic Type Resolver Methods
-
-// ResolveTypeParameters resolves type parameters for a call graph edge
-func (m *Metadata) ResolveTypeParameters(edge *CallGraphEdge) map[string]string {
-	resolver := m.GetGenericTypeResolver()
-	return resolver.ResolveTypeParameters(edge)
-}
-
-// IsGenericTypeCompatible checks if generic types are compatible
-func (m *Metadata) IsGenericTypeCompatible(callerTypes, calleeTypes []string) bool {
-	resolver := m.GetGenericTypeResolver()
-	return resolver.IsCompatible(callerTypes, calleeTypes)
-}
-
-// ResolveTypeParameters resolves type parameters for a call graph edge
-func (r *GenericTypeResolver) ResolveTypeParameters(edge *CallGraphEdge) map[string]string {
-	cacheKey := edge.Caller.ID() + "->" + edge.Callee.ID()
-
-	if cached, exists := r.typeParamCache[cacheKey]; exists {
-		return cached
-	}
-
-	// Extract and resolve type parameters
-	resolved := r.extractTypeParameters(edge)
-	r.typeParamCache[cacheKey] = resolved
-
-	return resolved
-}
-
-// extractTypeParameters extracts type parameters from a call graph edge
-func (r *GenericTypeResolver) extractTypeParameters(edge *CallGraphEdge) map[string]string {
-	resolved := make(map[string]string)
-
-	// Copy existing type parameter map
-	if edge.TypeParamMap != nil {
-		for k, v := range edge.TypeParamMap {
-			resolved[k] = v
-		}
-	}
-
-	return resolved
-}
-
-// IsCompatible checks if caller types are compatible with callee types
-func (r *GenericTypeResolver) IsCompatible(callerTypes, calleeTypes []string) bool {
-	cacheKey := strings.Join(callerTypes, ",") + "->" + strings.Join(calleeTypes, ",")
-
-	if cached, exists := r.compatibilityCache[cacheKey]; exists {
-		return cached
-	}
-
-	compatible := IsSubset(callerTypes, calleeTypes)
-	r.compatibilityCache[cacheKey] = compatible
-
-	return compatible
 }
 
 // BuildFuncMap creates a map of function names to their declarations.

@@ -129,13 +129,8 @@ type Metadata struct {
 
 	callDepth map[string]int `yaml:"_"`
 
-	// NEW: Enhanced fields for tracker tree simplification
+	// Enhanced fields for tracker tree simplification
 	assignmentRelationships map[AssignmentKey]*AssignmentLink `yaml:"-"`
-	variableRelationships   map[ParamKey]*VariableLink        `yaml:"-"`
-	argumentProcessor       *ArgumentProcessor                `yaml:"-"`
-	genericResolver         *GenericTypeResolver              `yaml:"-"`
-
-	// NEW: Enhanced metadata structures for tracker tree simplification
 
 	// Performance optimization caches
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
@@ -1085,27 +1080,6 @@ type InterfaceResolutionKey struct {
 
 func (k InterfaceResolutionKey) String() string {
 	return k.Pkg + k.StructType + k.InterfaceType
-}
-
-// ArgumentProcessor handles argument processing and classification
-type ArgumentProcessor struct {
-	// Argument classification cache
-	argTypeCache map[string]ArgumentType
-
-	// Variable tracing cache
-	variableOriginCache map[string]VariableOrigin
-
-	// Assignment linking cache
-	assignmentLinkCache map[string][]AssignmentLink
-}
-
-// GenericTypeResolver handles generic type parameter resolution
-type GenericTypeResolver struct {
-	// Type parameter mapping cache
-	typeParamCache map[string]map[string]string
-
-	// Generic type compatibility cache
-	compatibilityCache map[string]bool
 }
 
 // TrackerLimits holds configuration for tree/graph traversal limits
