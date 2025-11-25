@@ -1,6 +1,13 @@
 # APISpec: Generate OpenAPI from Go code
 
-![Coverage](https://img.shields.io/badge/coverage-52.6%25-red.svg)
+[![Coverage](https://img.shields.io/badge/coverage-52.6%25-red.svg)](https://github.com/ehabterra/apispec)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ehabterra/apispec)](https://goreportcard.com/report/github.com/ehabterra/apispec)
+[![Go Version](https://img.shields.io/badge/go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/ehabterra/apispec/blob/main/LICENSE)
+[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/ci.yml?branch=main&label=CI&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/test.yml?branch=main&label=Tests&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/test.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ehabterra/apispec.svg)](https://pkg.go.dev/github.com/ehabterra/apispec)
+[![GitHub release](https://img.shields.io/github/v/release/ehabterra/apispec?include_prereleases&sort=semver)](https://github.com/ehabterra/apispec/releases)
 
 <!-- markdownlint-disable MD033 -->
 <div align="center">
