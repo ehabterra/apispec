@@ -1,6 +1,13 @@
 # APISpec: Generate OpenAPI from Go code
 
 ![Coverage](https://img.shields.io/badge/coverage-52.6%25-red.svg)
+![Go Report Card](https://goreportcard.com/badge/github.com/ehabterra/apispec)
+![Go Version](https://img.shields.io/badge/go-1.24+-00ADD8?style=flat&logo=go)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/ci.yml?branch=main&label=CI&logo=github)
+![Tests](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/test.yml?branch=main&label=Tests&logo=github)
+![Go Reference](https://pkg.go.dev/badge/github.com/ehabterra/apispec.svg)
+![GitHub release](https://img.shields.io/github/v/release/ehabterra/apispec?include_prereleases&sort=semver)
 
 <!-- markdownlint-disable MD033 -->
 <div align="center">
