@@ -1372,6 +1372,53 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		}
 	}
 
+	// Handle interface method calls by resolving to concrete implementations
+	if parentEdge != nil && parentEdge.Callee.RecvType != -1 {
+		recvTypeName := getString(meta, parentEdge.Callee.RecvType)
+		calleePkg := getString(meta, parentEdge.Callee.Pkg)
+		methodName := getString(meta, parentEdge.Callee.Name)
+
+		if pkg, exists := meta.Packages[calleePkg]; exists {
+			for _, file := range pkg.Files {
+				if typ, exists := file.Types[recvTypeName]; exists {
+					kindStr := getString(meta, typ.Kind)
+					if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
+						for _, implTypeIdx := range typ.ImplementedBy {
+							implTypeName := getString(meta, implTypeIdx)
+							parts := strings.Split(implTypeName, ".")
+							if len(parts) != 2 {
+								continue
+							}
+							implPkg, implType := parts[0], parts[1]
+
+							if implPkgObj, exists := meta.Packages[implPkg]; exists {
+								for _, implFile := range implPkgObj.Files {
+									if implTypeObj, exists := implFile.Types[implType]; exists {
+										for _, method := range implTypeObj.Methods {
+											if getString(meta, method.Name) != methodName {
+												continue
+											}
+
+											concreteMethodID := implPkg + "." + implType + "." + methodName
+											if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
+												for _, concreteEdge := range concreteEdges {
+													concreteCalleeID := concreteEdge.Callee.ID()
+													if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
+														node.AddChild(childNode)
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Add node to hash map for O(1) lookup optimization
 	nodeID := node.Key()
 	if nodeID != "" {
