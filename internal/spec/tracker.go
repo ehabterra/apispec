@@ -1403,6 +1403,10 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 											if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
 												for _, concreteEdge := range concreteEdges {
 													concreteCalleeID := concreteEdge.Callee.ID()
+													if tree.nodeMap[concreteCalleeID] != nil {
+														continue
+													}
+
 													if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
 														node.AddChild(childNode)
 													}
