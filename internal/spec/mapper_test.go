@@ -699,7 +699,7 @@ func TestDefaultAPISpecConfig(t *testing.T) {
 
 func TestBuildPathsFromRoutes(t *testing.T) {
 	// Test with empty routes
-	routes := []RouteInfo{}
+	routes := []*RouteInfo{}
 	paths := buildPathsFromRoutes(routes)
 	if paths == nil {
 		t.Fatal("Paths should not be nil")
@@ -710,7 +710,7 @@ func TestBuildPathsFromRoutes(t *testing.T) {
 	}
 
 	// Test with single route
-	routes = []RouteInfo{
+	routes = []*RouteInfo{
 		{
 			Path:    "/users",
 			Method:  "GET",
@@ -765,7 +765,7 @@ func TestGenerateComponentSchemas(t *testing.T) {
 	}
 
 	// Create routes that use the User type
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:    "/users",
 			Method:  "GET",
@@ -795,7 +795,7 @@ func TestGenerateComponentSchemas(t *testing.T) {
 
 func TestCollectUsedTypesFromRoutes(t *testing.T) {
 	// Create routes with various types
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:    "/users",
 			Method:  "GET",

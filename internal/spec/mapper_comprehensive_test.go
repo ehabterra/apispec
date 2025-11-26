@@ -304,7 +304,7 @@ func TestBuildPathsFromRoutes_Comprehensive(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_Empty(t *testing.T) {
-	routes := []RouteInfo{}
+	routes := []*RouteInfo{}
 	paths := buildPathsFromRoutes(routes)
 
 	if len(paths) != 0 {
@@ -313,7 +313,7 @@ func testBuildPathsFromRoutes_Empty(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_Single(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "GET",
@@ -343,7 +343,7 @@ func testBuildPathsFromRoutes_Single(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_MultipleSamePath(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "GET",
@@ -379,7 +379,7 @@ func testBuildPathsFromRoutes_MultipleSamePath(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_WithParams(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users/:id",
 			Method:   "GET",
@@ -402,10 +402,10 @@ func testBuildPathsFromRoutes_WithParams(t *testing.T) {
 
 func testBuildPathsFromRoutes_AllMethods(t *testing.T) {
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
-	routes := make([]RouteInfo, len(methods))
+	routes := make([]*RouteInfo, len(methods))
 
 	for i, method := range methods {
-		routes[i] = RouteInfo{
+		routes[i] = &RouteInfo{
 			Path:     "/test",
 			Method:   method,
 			Function: method + "Test",
@@ -444,7 +444,7 @@ func testBuildPathsFromRoutes_AllMethods(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_WithRequestBody(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "POST",
@@ -478,7 +478,7 @@ func testBuildPathsFromRoutes_WithRequestBody(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_WithParameters(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "GET",
@@ -516,7 +516,7 @@ func testBuildPathsFromRoutes_WithParameters(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_WithResponses(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "GET",
@@ -558,7 +558,7 @@ func testBuildPathsFromRoutes_WithResponses(t *testing.T) {
 }
 
 func testBuildPathsFromRoutes_WithPackagePrefix(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Path:     "/users",
 			Method:   "GET",
@@ -1935,7 +1935,7 @@ func TestCollectUsedTypesFromRoutes_Comprehensive(t *testing.T) {
 }
 
 func testCollectUsedTypesFromRoutes_Empty(t *testing.T) {
-	routes := []RouteInfo{}
+	routes := []*RouteInfo{}
 	result := collectUsedTypesFromRoutes(routes)
 	if len(result) != 0 {
 		t.Errorf("Expected empty result, got %d types", len(result))
@@ -1943,7 +1943,7 @@ func testCollectUsedTypesFromRoutes_Empty(t *testing.T) {
 }
 
 func testCollectUsedTypesFromRoutes_WithRequestBody(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Request: &RequestInfo{
 				BodyType: "User",
@@ -1958,7 +1958,7 @@ func testCollectUsedTypesFromRoutes_WithRequestBody(t *testing.T) {
 }
 
 func testCollectUsedTypesFromRoutes_WithResponseTypes(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Response: map[string]*ResponseInfo{
 				"200": {
@@ -1975,7 +1975,7 @@ func testCollectUsedTypesFromRoutes_WithResponseTypes(t *testing.T) {
 }
 
 func testCollectUsedTypesFromRoutes_WithParameters(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Params: []Parameter{
 				{
@@ -1994,7 +1994,7 @@ func testCollectUsedTypesFromRoutes_WithParameters(t *testing.T) {
 }
 
 func testCollectUsedTypesFromRoutes_MixedTypes(t *testing.T) {
-	routes := []RouteInfo{
+	routes := []*RouteInfo{
 		{
 			Request: &RequestInfo{
 				BodyType: "CreateUserRequest",

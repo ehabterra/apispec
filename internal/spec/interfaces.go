@@ -21,7 +21,7 @@ type RoutePatternMatcher interface {
 	PatternMatcher
 
 	// ExtractRoute extracts route information from a matched node
-	ExtractRoute(node TrackerNodeInterface) RouteInfo
+	ExtractRoute(node TrackerNodeInterface, routeInfo *RouteInfo) bool
 }
 
 // MountPatternMatcher matches mount patterns

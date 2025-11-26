@@ -49,23 +49,31 @@ const (
 
 // RouteInfo represents extracted route information
 type RouteInfo struct {
-	Path     string
-	Method   string
-	Handler  string
-	Package  string
-	File     string
-	Function string
-	Summary  string
-	Tags     []string
-	Request  *RequestInfo
-	Response map[string]*ResponseInfo
-	Params   []Parameter
+	Path      string
+	MountPath string
+	Method    string
+	Handler   string
+	Package   string
+	File      string
+	Function  string
+	Summary   string
+	Tags      []string
+	Request   *RequestInfo
+	Response  map[string]*ResponseInfo
+	Params    []Parameter
 
 	UsedTypes map[string]*Schema
 	Metadata  *metadata.Metadata
 
 	// Resolved router group prefix (if any)
 	GroupPrefix string
+}
+
+func NewRouteInfo() *RouteInfo {
+	return &RouteInfo{
+		Response:  make(map[string]*ResponseInfo),
+		UsedTypes: make(map[string]*Schema),
+	}
 }
 
 // IsValid checks if the route info is valid
@@ -161,8 +169,8 @@ func (e *Extractor) initializePatternMatchers() {
 }
 
 // ExtractRoutes extracts all routes from the tracker tree
-func (e *Extractor) ExtractRoutes() []RouteInfo {
-	routes := make([]RouteInfo, 0)
+func (e *Extractor) ExtractRoutes() []*RouteInfo {
+	routes := make([]*RouteInfo, 0)
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, &routes)
 	}
@@ -170,12 +178,12 @@ func (e *Extractor) ExtractRoutes() []RouteInfo {
 }
 
 // traverseForRoutes traverses the tree to find routes
-func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]*RouteInfo) {
 	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
 }
 
 // traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
-func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
@@ -187,10 +195,12 @@ func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, moun
 	}
 	visited[nodeKey] = true
 
+	routeInfo := NewRouteInfo()
+
 	// Check for mount patterns first
 	if mountInfo, isMount := e.executeMountPattern(node); isMount {
 		e.handleMountNode(node, mountInfo, mountPath, mountTags, routes, visited)
-	} else if routeInfo, isRoute := e.executeRoutePattern(node); isRoute {
+	} else if isRoute := e.executeRoutePattern(node, routeInfo); isRoute {
 		// Check for route patterns
 		e.handleRouteNode(node, routeInfo, mountPath, mountTags, routes)
 	} else {
@@ -223,8 +233,7 @@ func (e *Extractor) executeMountPattern(node TrackerNodeInterface) (MountInfo, b
 }
 
 // executeRoutePattern executes route pattern matching
-func (e *Extractor) executeRoutePattern(node TrackerNodeInterface) (RouteInfo, bool) {
-	var bestMatch RouteInfo
+func (e *Extractor) executeRoutePattern(node TrackerNodeInterface, routeInfo *RouteInfo) bool {
 	var bestPriority int
 	var found bool
 
@@ -232,23 +241,23 @@ func (e *Extractor) executeRoutePattern(node TrackerNodeInterface) (RouteInfo, b
 		if matcher.MatchNode(node) {
 			priority := matcher.GetPriority()
 			if !found || priority > bestPriority {
-				routeInfo := matcher.ExtractRoute(node)
-				bestMatch = routeInfo
-				bestPriority = priority
-				found = true
+				found = matcher.ExtractRoute(node, routeInfo)
+				if found {
+					bestPriority = priority
+				}
 			}
 		}
 	}
 
-	return bestMatch, found
+	return found
 }
 
 // handleMountNode handles a mount node
-func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
-			mountPath = e.joinPaths(mountPath, mountInfo.Path)
+			mountPath = joinPaths(mountPath, mountInfo.Path)
 		}
 	}
 
@@ -270,10 +279,10 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 }
 
 // handleRouteNode handles a route node
-func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo RouteInfo, mountPath string, mountTags []string, routes *[]RouteInfo) {
+func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, routes *[]*RouteInfo) {
 	// Prepend mount path if present
-	if mountPath != "" && routeInfo.Path != "" {
-		routeInfo.Path = e.joinPaths(mountPath, routeInfo.Path)
+	if mountPath != "" {
+		routeInfo.MountPath = joinPaths(mountPath, routeInfo.MountPath)
 	}
 
 	// Set tags from mountTags if present
@@ -281,14 +290,14 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo RouteIn
 		routeInfo.Tags = mountTags
 	}
 
-	// Extract request/response/params from children with visited edges tracking
+	// Extract route/request/response/params from children with visited edges tracking
 	visitedEdges := make(map[string]bool)
-	e.extractRouteChildren(node, &routeInfo, visitedEdges)
+	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges)
 
 	// Apply overrides
-	e.overrideApplier.ApplyOverrides(&routeInfo)
+	e.overrideApplier.ApplyOverrides(routeInfo)
 
-	if routeInfo.IsValid() {
+	if routeInfo.IsValid() && routes != nil {
 		// Update existing route or add new one
 		var found bool
 		for i := range *routes {
@@ -305,7 +314,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo RouteIn
 }
 
 // handleRouterAssignment handles router assignment for mounts
-func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
 	// Find the target node for the assignment
 	targetNode := e.findTargetNode(mountInfo.Assignment)
 	if targetNode != nil {
@@ -344,8 +353,13 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNod
 }
 
 // extractRouteChildren extracts request, response, and params from children nodes
-func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) {
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool) {
 	for _, child := range routeNode.GetChildren() {
+		// Check for route patterns in children nodes
+		if isRoute := e.executeRoutePattern(child, route); isRoute {
+			e.handleRouteNode(child, route, "", mountTags, routes)
+		}
+
 		// Extract request
 		if req := e.extractRequestFromNode(child, route); req != nil {
 			route.Request = req
@@ -362,7 +376,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		}
 
 		// Recursive extraction
-		e.extractRouteChildren(child, route, visitedEdges)
+		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges)
 	}
 
 	// Extract parameters from the route node itself
@@ -421,7 +435,7 @@ func (e *Extractor) extractParamFromNode(node TrackerNodeInterface, route *Route
 }
 
 // joinPaths joins two URL paths cleanly
-func (e *Extractor) joinPaths(a, b string) string {
+func joinPaths(a, b string) string {
 	a = strings.TrimRight(a, "/")
 	b = strings.TrimLeft(b, "/")
 	if a == "" {

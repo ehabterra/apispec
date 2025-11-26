@@ -421,7 +421,7 @@ func TestTraverseForRoutesWithVisited_CycleDetection(t *testing.T) {
 	node3.children = append(node3.children, node1)
 
 	// Test that cycle detection prevents infinite recursion
-	routes := []RouteInfo{}
+	routes := []*RouteInfo{}
 	visited := make(map[string]bool)
 
 	start := time.Now()
@@ -464,7 +464,7 @@ func TestTraverseForRoutesWithVisited_NoCycle(t *testing.T) {
 	node2.children = append(node2.children, node3)
 
 	// Test traversal
-	routes := []RouteInfo{}
+	routes := []*RouteInfo{}
 	visited := make(map[string]bool)
 
 	extractor.traverseForRoutesWithVisited(node1, "", []string{}, &routes, visited)
