@@ -7,22 +7,6 @@ import (
 )
 
 func TestExtractor_joinPaths(t *testing.T) {
-	// Create test metadata and extractor
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-	limits := metadata.TrackerLimits{
-		MaxNodesPerTree:    100,
-		MaxChildrenPerNode: 10,
-		MaxArgsPerFunction: 5,
-		MaxNestedArgsDepth: 3,
-	}
-
-	mockTree := NewMockTrackerTree(meta, limits)
-	cfg := &APISpecConfig{}
-	extractor := NewExtractor(mockTree, cfg)
-
 	tests := []struct {
 		name     string
 		base     string
@@ -87,7 +71,7 @@ func TestExtractor_joinPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractor.joinPaths(tt.base, tt.path)
+			result := joinPaths(tt.base, tt.path)
 			if result != tt.expected {
 				t.Errorf("joinPaths(%q, %q) = %q, want %q", tt.base, tt.path, result, tt.expected)
 			}

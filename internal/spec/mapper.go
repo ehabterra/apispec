@@ -131,12 +131,12 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 }
 
 // buildPathsFromRoutes builds OpenAPI paths from extracted routes
-func buildPathsFromRoutes(routes []RouteInfo) map[string]PathItem {
+func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 	paths := make(map[string]PathItem)
 
 	for _, route := range routes {
 		// Convert path to OpenAPI format
-		openAPIPath := convertPathToOpenAPI(route.Path)
+		openAPIPath := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
 
 		// Get or create path item
 		pathItem, exists := paths[openAPIPath]
@@ -306,7 +306,7 @@ func convertPathToOpenAPI(path string) string {
 }
 
 // generateComponentSchemas generates component schemas from metadata
-func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, routes []RouteInfo) Components {
+func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, routes []*RouteInfo) Components {
 	components := Components{
 		Schemas: make(map[string]*Schema),
 	}
@@ -363,7 +363,7 @@ func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, component
 }
 
 // collectUsedTypesFromRoutes collects all types used in routes
-func collectUsedTypesFromRoutes(routes []RouteInfo) map[string]*Schema {
+func collectUsedTypesFromRoutes(routes []*RouteInfo) map[string]*Schema {
 	usedTypes := make(map[string]*Schema)
 
 	for _, route := range routes {

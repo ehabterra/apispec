@@ -140,18 +140,22 @@ func (r *RoutePatternMatcherImpl) GetPriority() int {
 }
 
 // ExtractRoute extracts route information from a matched node
-func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteInfo {
+func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeInfo *RouteInfo) bool {
+	found := false
+
 	edge := node.GetEdge()
-	routeInfo := RouteInfo{
-		Method:    http.MethodPost, // Default method
-		Package:   r.contextProvider.GetString(edge.Callee.Pkg),
-		File:      r.contextProvider.GetString(edge.Position),
-		Response:  make(map[string]*ResponseInfo),
-		UsedTypes: make(map[string]*Schema),
+	if routeInfo == nil || routeInfo.File == "" || routeInfo.Package == "" {
+		*routeInfo = RouteInfo{
+			Method:    http.MethodPost, // Default method
+			Package:   r.contextProvider.GetString(edge.Callee.Pkg),
+			File:      r.contextProvider.GetString(edge.Position),
+			Response:  make(map[string]*ResponseInfo),
+			UsedTypes: make(map[string]*Schema),
+		}
 	}
 
-	if node.GetEdge() != nil {
-		routeInfo.Metadata = node.GetEdge().Callee.Meta
+	if edge != nil {
+		routeInfo.Metadata = edge.Callee.Meta
 	} else if node.GetArgument() != nil {
 		routeInfo.Metadata = node.GetArgument().Meta
 	}
@@ -160,10 +164,11 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteI
 		routeInfo.File = node.GetArgument().GetPosition()
 	}
 
-	r.extractRouteDetails(node, &routeInfo)
+	found = r.extractRouteDetails(node, routeInfo)
 
 	// Extract handler information
 	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
+		found = true
 		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
 		if handlerArg.GetKind() == metadata.KindIdent || handlerArg.GetKind() == metadata.KindFuncLit {
 
@@ -191,22 +196,25 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface) RouteI
 		}
 	}
 
-	return routeInfo
+	return found
 }
 
 // extractRouteDetails extracts route details from a node
-func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface, routeInfo *RouteInfo) {
+func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface, routeInfo *RouteInfo) bool {
+	found := false
 	edge := node.GetEdge()
 
 	if r.pattern.MethodFromCall {
 		funcName := r.contextProvider.GetString(edge.Callee.Name)
 		routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(funcName, r.pattern.MethodExtraction)
+		found = true
 	} else if r.pattern.MethodFromHandler && r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
 		// Extract method from handler function name
 		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
 		handlerName := r.contextProvider.GetArgumentInfo(handlerArg)
 		if handlerName != "" {
 			routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
+			found = true
 		}
 	} else if r.pattern.MethodArgIndex >= 0 && len(edge.Args) > r.pattern.MethodArgIndex {
 		methodArg := edge.Args[r.pattern.MethodArgIndex]
@@ -220,6 +228,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			// Check if it's a valid HTTP method
 			if r.isValidHTTPMethod(cleanMethod) {
 				routeInfo.Method = strings.ToUpper(cleanMethod)
+				found = true
 			} else {
 				// If not a valid method, try to extract from argument info
 				argInfo := r.contextProvider.GetArgumentInfo(methodArg)
@@ -227,6 +236,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 					cleanArgInfo := strings.Trim(argInfo, "\"'")
 					if r.isValidHTTPMethod(cleanArgInfo) {
 						routeInfo.Method = strings.ToUpper(cleanArgInfo)
+						found = true
 					}
 				}
 			}
@@ -235,6 +245,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		// If we still don't have a method, try to infer from context (if enabled)
 		if routeInfo.Method == "" && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
 			routeInfo.Method = r.inferMethodFromContext(node, edge)
+			found = true
 		}
 	}
 
@@ -243,6 +254,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		if routeInfo.Path == "" {
 			routeInfo.Path = "/"
 		}
+		found = true
 	}
 
 	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
@@ -256,7 +268,10 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			}
 		}
 		routeInfo.Package = pkg
+		found = true
 	}
+
+	return found
 }
 
 // isValidHTTPMethod checks if a string is a valid HTTP method
