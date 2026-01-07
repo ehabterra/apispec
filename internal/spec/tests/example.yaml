@@ -3,30 +3,30 @@ string_pool:
   - u
   - example
   - '*example.User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:21:9
+  - example/src/example/types.go:21:9
   - Name
   - string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:21:11
+  - example/src/example/types.go:21:11
   - selector
   - GetName
   - '*User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:20:26
+  - example/src/example/types.go:20:26
   - func_type
   - func_results
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:20:1
+  - example/src/example/types.go:20:1
   - exported
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go
+  - example/src/example/types.go
   - func() string
   - int
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:24:27
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:2
+  - example/src/example/types.go:24:27
+  - example/src/example/types.go:25:2
   - Age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:4
+  - example/src/example/types.go:25:4
   - example.User.Age
   - age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:25:10
+  - example/src/example/types.go:25:10
   - SetAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:24:1
+  - example/src/example/types.go:24:1
   - 'func(int) '
   - User
   - struct
@@ -34,60 +34,60 @@ string_pool:
   - json:"age"
   - interface
   - Namer
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:9:12
+  - example/src/example/types.go:9:12
   - Ager
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:13:13
+  - example/src/example/types.go:13:13
   - Phoner
   - SetPhone
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:17:16
+  - example/src/example/types.go:17:16
   - 'func(string) '
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:36:9
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:19
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:31
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:37
+  - example/src/example/types.go:36:9
+  - example/src/example/types.go:28:19
+  - example/src/example/types.go:28:31
+  - example/src/example/types.go:28:37
   - star
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:36
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:29:8
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:30:3
+  - example/src/example/types.go:28:36
+  - example/src/example/types.go:29:8
+  - example/src/example/types.go:30:3
   - name
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:30:9
+  - example/src/example/types.go:30:9
   - key_value
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:31:3
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:31:9
+  - example/src/example/types.go:31:3
+  - example/src/example/types.go:31:9
   - composite_lit
   - unary
   - '&'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:29:7
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:29:2
+  - example/src/example/types.go:29:7
+  - example/src/example/types.go:29:2
   - unexported
   - NewUser
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:28:1
+  - example/src/example/types.go:28:1
   - func(string, int) *User
   - literal
   - '"User Name"'
   - "40"
   - func(name string, age int) *example.User
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:40:10
+  - example/src/example/types.go:40:10
   - call
   - user
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:40:2
+  - example/src/example/types.go:40:2
   - main
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:39:1
+  - example/src/example/types.go:39:1
   - 'func() '
   - example.Namer
   - example.User
   - example.Ager
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:11
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:34:2
+  - example/src/example/types.go:34:11
+  - example/src/example/types.go:34:2
   - func(age int)
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:15
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:14
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:41:2
+  - example/src/example/types.go:41:15
+  - example/src/example/types.go:41:14
+  - example/src/example/types.go:41:2
   - Println
 packages:
   example:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/example/src/example/types.go:
+      example/src/example/types.go:
         types:
           Ager:
             name: 36
@@ -988,6 +988,53 @@ call_graph:
         position: 78
         resolved_type: -1
         generic_type_name: -1
+    assignments:
+      example.User.Age:
+        - variable_name: 23
+          pkg: 2
+          concrete_type: 18
+          position: 20
+          scope: 8
+          value:
+            kind: 0
+            name: 24
+            value: -1
+            raw: -1
+            pkg: 2
+            type: 18
+            position: 25
+            resolved_type: -1
+            generic_type_name: -1
+          lhs:
+            kind: 8
+            name: -1
+            value: -1
+            x:
+              kind: 0
+              name: 1
+              value: -1
+              raw: -1
+              pkg: 2
+              type: 3
+              position: 20
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 0
+              name: 21
+              value: -1
+              raw: -1
+              pkg: 2
+              type: 18
+              position: 22
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 2
+            type: 18
+            position: 20
+            resolved_type: -1
+            generic_type_name: -1
     param_arg_map:
       age:
         kind: 0

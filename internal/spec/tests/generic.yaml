@@ -3,110 +3,110 @@ string_pool:
   - c
   - generic
   - '*generic.Container[T]'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:8:9
+  - generic/src/generic/generic.go:8:9
   - Value
   - T
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:8:11
+  - generic/src/generic/generic.go:8:11
   - selector
   - Get
   - '*Container[T]'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:7:30
+  - generic/src/generic/generic.go:7:30
   - func_type
   - func_results
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:7:1
+  - generic/src/generic/generic.go:7:1
   - exported
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go
+  - generic/src/generic/generic.go
   - func() T
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:11:34
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:12:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:12:4
+  - generic/src/generic/generic.go:11:34
+  - generic/src/generic/generic.go:12:2
+  - generic/src/generic/generic.go:12:4
   - generic.Container[T].Value
   - value
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:12:12
+  - generic/src/generic/generic.go:12:12
   - Set
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:11:1
+  - generic/src/generic/generic.go:11:1
   - 'func(T) '
   - Container
   - struct
   - interface
   - Container[T any]
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:16:10
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:16:20
+  - generic/src/generic/generic.go:16:10
+  - generic/src/generic/generic.go:16:20
   - index
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:16:23
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:16:30
+  - generic/src/generic/generic.go:16:23
+  - generic/src/generic/generic.go:16:30
   - key_value
   - composite_lit
   - unary
   - '&'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:16:9
+  - generic/src/generic/generic.go:16:9
   - NewContainer
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:32
+  - generic/src/generic/generic.go:15:32
   - any
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:21
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:36
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:46
+  - generic/src/generic/generic.go:15:21
+  - generic/src/generic/generic.go:15:36
+  - generic/src/generic/generic.go:15:46
   - star
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:35
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:15:1
+  - generic/src/generic/generic.go:15:35
+  - generic/src/generic/generic.go:15:1
   - func[T any](T) *Container[T any][T]
   - zero
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:22:10
+  - generic/src/generic/generic.go:22:10
   - Process
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:19:36
+  - generic/src/generic/generic.go:19:36
   - array_type
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:19:34
+  - generic/src/generic/generic.go:19:34
   - comparable
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:19:16
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:19:39
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:19:1
+  - generic/src/generic/generic.go:19:16
+  - generic/src/generic/generic.go:19:39
+  - generic/src/generic/generic.go:19:1
   - func[T comparable]([]T) T
   - literal
   - "42"
   - func[T any](value T) *generic.Container[T]
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:28:7
+  - generic/src/generic/generic.go:28:7
   - int
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:28:20
+  - generic/src/generic/generic.go:28:20
   - call
   - '*generic.Container[int]'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:28:2
+  - generic/src/generic/generic.go:28:2
   - unexported
   - main
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:29:9
+  - generic/src/generic/generic.go:29:9
   - func() int
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:29:11
+  - generic/src/generic/generic.go:29:11
   - Container[int]
   - val
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:29:2
+  - generic/src/generic/generic.go:29:2
   - string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:32:30
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:32:28
+  - generic/src/generic/generic.go:32:30
+  - generic/src/generic/generic.go:32:28
   - '"hello"'
   - '"world"'
   - func[T comparable](items []T) T
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:32:12
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:32:20
+  - generic/src/generic/generic.go:32:12
+  - generic/src/generic/generic.go:32:20
   - result
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:32:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:27:1
+  - generic/src/generic/generic.go:32:2
+  - generic/src/generic/generic.go:27:1
   - 'func() '
   - Container[T]
   - '[]string'
   - items
   - '[]T'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:21:9
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:21:5
+  - generic/src/generic/generic.go:21:9
+  - generic/src/generic/generic.go:21:5
   - len
   - func([]T) int
   - '*Container'
   - "100"
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:30:2
+  - generic/src/generic/generic.go:30:2
   - func(value int)
   - '*'
 packages:
   generic:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/generic/src/generic/generic.go:
+      generic/src/generic/generic.go:
         types:
           Container:
             name: 27

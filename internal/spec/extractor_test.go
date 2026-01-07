@@ -184,6 +184,11 @@ func TestSchemaMapper(t *testing.T) {
 		t.Error("Expected status code 200")
 	}
 
+	status, ok = mapper.MapStatusCode("StatusSeeOther")
+	if !ok || status != 303 {
+		t.Error("Expected status code 303")
+	}
+
 	// Test method extraction
 	method := mapper.MapMethodFromFunctionName("GetUsers")
 	if method != "GET" {

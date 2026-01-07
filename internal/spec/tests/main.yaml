@@ -7,39 +7,39 @@ string_pool:
   - int
   - x
   - main
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:9:2
+  - main/src/main/test.go:9:2
   - unexported
   - '"hello"'
   - string
   - "y"
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:10:2
+  - main/src/main/test.go:10:2
   - '"%d"'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:25
+  - main/src/main/test.go:11:25
   - fmt
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:7
+  - main/src/main/test.go:11:7
   - Sprintf
   - func(format string, a ...any) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:11
+  - main/src/main/test.go:11:11
   - selector
   - call
   - z
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:11:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:8:1
+  - main/src/main/test.go:11:2
+  - main/src/main/test.go:8:1
   - 'func() '
   - strings
   - exported
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:14
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:12:2
+  - main/src/main/test.go:12:14
+  - main/src/main/test.go:12:2
   - Println
   - func(a ...any) (n int, err error)
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:18
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:13:2
+  - main/src/main/test.go:13:18
+  - main/src/main/test.go:13:2
   - ToUpper
   - func(s string) string
 packages:
   main:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/main/src/main/test.go:
+      main/src/main/test.go:
         functions:
           main:
             name: 7
