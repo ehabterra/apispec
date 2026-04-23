@@ -13,16 +13,16 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
-      
+      uses: actions/checkout@v6
+
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.24.3'
-        
+        go-version: '1.26.2'
+
     - name: Cache Go modules
       uses: actions/cache@v4
       id: cache
@@ -34,19 +34,19 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
-        
+
     - name: Download dependencies
       run: go mod download
-      
+
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out ./...
-      
+
     - name: Run integration tests
       run: go test -v ./cmd/apispec/...
-      
+
     - name: Generate coverage report
       run: go tool cover -func=coverage.out
-      
+
     - name: Cleanup test artifacts
       if: always()
       run: |
