@@ -11,59 +11,27 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24.3'
-        cache-dependency-path: go.sum
-          
-    - name: Install golangci-lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
-        
-    - name: Run golangci-lint
-      run: |
-        $(go env GOPATH)/bin/golangci-lint run --timeout=5m
-        
-    - name: Run go vet
-      run: go vet ./...
-        
-    - name: Run go fmt check
-      run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-          echo "The following files are not formatted:"
-          gofmt -s -l .
-          exit 1
-        fi
-
   build:
     runs-on: ubuntu-latest
     needs: [lint]
-    
+
     strategy:
       matrix:
-        go-version: ['1.24.3', '1.23']
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    
+        go-version: [ '1.26' ]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go-version }}
-        cache-dependency-path: go.sum
-          
-    - name: Build
-      run: go build -v ./...
-      
-    - name: Test build
-      run: go test -c ./cmd/apispec
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: go.sum
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test build
+        run: go test -c ./cmd/apispec

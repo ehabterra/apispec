@@ -10,41 +10,41 @@ string_pool:
   - string
   - Message
   - constants
-  - constants/src/constants/const.go:15:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:15:2
   - exported
   - init
-  - constants/src/constants/const.go:14:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:14:1
   - unexported
   - 'func() '
   - MaxSize
   - untyped int
-  - constants/src/constants/const.go:19:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:19:10
   - int
   - size
-  - constants/src/constants/const.go:19:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:19:2
   - UseConstants
   - Name
   - untyped string
-  - constants/src/constants/const.go:20:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:20:10
   - name
-  - constants/src/constants/const.go:20:2
-  - constants/src/constants/const.go:18:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:20:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:18:1
   - const
-  - constants/src/constants/const.go:4:2
-  - constants/src/constants/const.go:5:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:4:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:5:2
   - test
   - Pi
-  - constants/src/constants/const.go:6:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:6:2
   - untyped float
   - GlobalVar
   - var
-  - constants/src/constants/const.go:10:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:10:2
   - "42"
-  - constants/src/constants/const.go:11:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:11:2
 packages:
   constants:
     files:
-      constants/src/constants/const.go:
+      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/constants/const.go:
         functions:
           UseConstants:
             name: 23

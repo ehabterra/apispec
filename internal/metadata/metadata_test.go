@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,8 +13,52 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/packages/packagestest"
 )
+
+// testModule describes a module to materialize on disk for a test.
+type testModule struct {
+	Name  string
+	Files map[string]interface{}
+}
+
+// exportModules writes the given modules to a per-test temporary directory
+// as real Go modules and returns a packages.Config rooted at the first
+// module, ready for packages.Load.
+func exportModules(t *testing.T, modules []testModule) *packages.Config {
+	t.Helper()
+	root := t.TempDir()
+
+	for _, mod := range modules {
+		modDir := filepath.Join(root, mod.Name)
+		if err := os.MkdirAll(modDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		goMod := fmt.Sprintf("module %s\n\ngo 1.21\n", mod.Name)
+		if err := os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(goMod), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range mod.Files {
+			filePath := filepath.Join(modDir, name)
+			if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			var data []byte
+			switch v := content.(type) {
+			case string:
+				data = []byte(v)
+			case []byte:
+				data = v
+			default:
+				t.Fatalf("unsupported file content type %T for %s", content, name)
+			}
+			if err := os.WriteFile(filePath, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	return &packages.Config{Dir: filepath.Join(root, modules[0].Name)}
+}
 
 func TestGenerateMetadata(t *testing.T) {
 	fset := token.NewFileSet()
@@ -93,14 +138,14 @@ func TestGenerateMetadata(t *testing.T) {
 
 	type testCase struct {
 		name     string
-		src      []packagestest.Module
+		src      []testModule
 		expected Expected
 	}
 
 	tests := []testCase{
 		{
 			name: "Simple function with variables and imports",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "main",
 				Files: map[string]interface{}{
 					"test.go": `package main
@@ -145,7 +190,7 @@ func main() {
 		},
 		{
 			name: "Struct types with methods and interfaces",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "example",
 				Files: map[string]interface{}{
 					"types.go": `package example
@@ -261,7 +306,7 @@ func main() {
 		},
 		{
 			name: "Generic functions and types",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "generic",
 				Files: map[string]interface{}{
 					"generic.go": `package generic
@@ -339,7 +384,7 @@ func main() {
 		},
 		{
 			name: "Constants and variables",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "constants",
 				Files: map[string]interface{}{
 					"const.go": `package constants
@@ -392,7 +437,7 @@ func UseConstants() {
 		},
 		{
 			name: "Complex call graph with method chains",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "complex",
 				Files: map[string]interface{}{
 					"service.go": `package complex
@@ -495,7 +540,7 @@ func main() {
 		},
 		{
 			name: "Multi-package with cross-package dependencies",
-			src: []packagestest.Module{{
+			src: []testModule{{
 				Name: "multipackage",
 				Files: map[string]interface{}{
 					"main.go": `package main
@@ -720,15 +765,14 @@ var DefaultFormat = "uppercase"`,
 		t.Run(tc.name, func(t *testing.T) {
 			pkgsMetadata := map[string]map[string]*ast.File{}
 
-			exported := packagestest.Export(t, packagestest.GOPATH, tc.src)
-			defer exported.Cleanup()
+			cfg := exportModules(t, tc.src)
 			importPaths := map[string]string{}
 			fileToInfo := map[*ast.File]*types.Info{}
-			exported.Config.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
-			exported.Config.Fset = fset
-			exported.Config.Tests = false
+			cfg.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
+			cfg.Fset = fset
+			cfg.Tests = false
 
-			pkgs, err := packages.Load(exported.Config, "./...")
+			pkgs, err := packages.Load(cfg, "./...")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1169,7 +1213,7 @@ func TestStringPool(t *testing.T) {
 func TestMethodChaining(t *testing.T) {
 	fset := token.NewFileSet()
 
-	src := []packagestest.Module{{
+	src := []testModule{{
 		Name: "chaining",
 		Files: map[string]interface{}{
 			"builder.go": `package chaining
@@ -1220,18 +1264,17 @@ func main() {
 }`,
 		}}}
 
-	exported := packagestest.Export(t, packagestest.GOPATH, src)
-	defer exported.Cleanup()
+	cfg := exportModules(t, src)
 
 	pkgsMetadata := map[string]map[string]*ast.File{}
 	fileToInfo := map[*ast.File]*types.Info{}
 	importPaths := map[string]string{}
 
-	exported.Config.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
-	exported.Config.Fset = fset
-	exported.Config.Tests = false
+	cfg.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports
+	cfg.Fset = fset
+	cfg.Tests = false
 
-	pkgs, err := packages.Load(exported.Config, "./...")
+	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1411,7 +1454,7 @@ func sanitizeString(s string) string {
 	return s
 }
 
-// sanitizeFilePath strips system temp paths, random test IDs, and keeps meaningful structure.
+// sanitizeFilePath strips system temp paths, random test IDs, and keeps a meaningful structure.
 func sanitizeFilePath(path string) string {
 	parts := strings.Split(path, string(filepath.Separator))
 	var meaningful []string

@@ -3,30 +3,30 @@ string_pool:
   - u
   - example
   - '*example.User'
-  - example/src/example/types.go:21:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:21:9
   - Name
   - string
-  - example/src/example/types.go:21:11
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:21:11
   - selector
   - GetName
   - '*User'
-  - example/src/example/types.go:20:26
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:20:26
   - func_type
   - func_results
-  - example/src/example/types.go:20:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:20:1
   - exported
-  - example/src/example/types.go
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go
   - func() string
   - int
-  - example/src/example/types.go:24:27
-  - example/src/example/types.go:25:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:24:27
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:2
   - Age
-  - example/src/example/types.go:25:4
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:4
   - example.User.Age
   - age
-  - example/src/example/types.go:25:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:10
   - SetAge
-  - example/src/example/types.go:24:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:24:1
   - 'func(int) '
   - User
   - struct
@@ -34,60 +34,60 @@ string_pool:
   - json:"age"
   - interface
   - Namer
-  - example/src/example/types.go:9:12
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:9:12
   - Ager
-  - example/src/example/types.go:13:13
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:13:13
   - Phoner
   - SetPhone
-  - example/src/example/types.go:17:16
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:17:16
   - 'func(string) '
-  - example/src/example/types.go:36:9
-  - example/src/example/types.go:28:19
-  - example/src/example/types.go:28:31
-  - example/src/example/types.go:28:37
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:36:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:19
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:31
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:37
   - star
-  - example/src/example/types.go:28:36
-  - example/src/example/types.go:29:8
-  - example/src/example/types.go:30:3
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:36
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:8
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:30:3
   - name
-  - example/src/example/types.go:30:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:30:9
   - key_value
-  - example/src/example/types.go:31:3
-  - example/src/example/types.go:31:9
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:31:3
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:31:9
   - composite_lit
   - unary
   - '&'
-  - example/src/example/types.go:29:7
-  - example/src/example/types.go:29:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:7
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:2
   - unexported
   - NewUser
-  - example/src/example/types.go:28:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:1
   - func(string, int) *User
   - literal
   - '"User Name"'
   - "40"
   - func(name string, age int) *example.User
-  - example/src/example/types.go:40:10
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:40:10
   - call
   - user
-  - example/src/example/types.go:40:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:40:2
   - main
-  - example/src/example/types.go:39:1
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:39:1
   - 'func() '
   - example.Namer
   - example.User
   - example.Ager
-  - example/src/example/types.go:34:11
-  - example/src/example/types.go:34:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:34:11
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:34:2
   - func(age int)
-  - example/src/example/types.go:41:15
-  - example/src/example/types.go:41:14
-  - example/src/example/types.go:41:2
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:15
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:14
+  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:2
   - Println
 packages:
   example:
     files:
-      example/src/example/types.go:
+      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:
         types:
           Ager:
             name: 36
