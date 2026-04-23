@@ -133,10 +133,8 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 				}
 
 				// Check if it's a built-in type
-				for _, builtin := range builtinTypes {
-					if arg.GetType() == builtin {
-						return arg.GetType()
-					}
+				if slices.Contains(builtinTypes, arg.GetType()) {
+					return arg.GetType()
 				}
 
 				// If we have a package and type, process as custom type
