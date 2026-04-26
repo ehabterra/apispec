@@ -1,0 +1,2022 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>apispec — Configuration & Preview</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #161b22;
+      --panel-2: #1f2733;
+      --border: #2a323d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-2: #3fb950;
+      --danger: #f85149;
+      --warn: #d29922;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    a { color: var(--accent); }
+    code, .mono, textarea.yaml { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace; }
+
+    header {
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+      background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20;
+    }
+    header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+    header .meta { color: var(--muted); font-size: 12px; }
+    header .grow { flex: 1; }
+
+    .btn {
+      background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+      padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;
+    }
+    .btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+    .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn.danger { background: var(--danger); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn + .btn { margin-left: 6px; }
+
+    main { display: grid; grid-template-columns: 440px 1fr; min-height: calc(100vh - 49px); }
+    aside { background: var(--panel); border-right: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+    section.viewer { padding: 0; display: flex; flex-direction: column; }
+
+    .tab-groups {
+      padding: 6px 8px 0; border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    .tab-group {
+      display: flex; align-items: center; gap: 4px; padding: 2px 0; flex-wrap: wrap;
+    }
+    .tab-group .group-label {
+      font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px;
+      width: 78px; flex-shrink: 0; font-weight: 600; padding-left: 2px;
+    }
+    .tab {
+      padding: 4px 9px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent;
+      font-size: 11px; white-space: nowrap; border-radius: 4px 4px 0 0;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); background: var(--panel-2); }
+    .tab:hover { color: var(--text); }
+
+    .panels { flex: 1; overflow-y: auto; padding: 12px 14px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 3px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: .5px; }
+    input[type=text], input[type=email], input[type=url], input[type=number], select, textarea {
+      width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit;
+    }
+    textarea { min-height: 56px; resize: vertical; }
+    textarea.yaml { min-height: 380px; font-size: 12px; line-height: 1.5; tab-size: 2; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px;
+      background: var(--panel-2);
+    }
+    .card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .card .head .title { font-weight: 600; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .icon-btn { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 4px; }
+    .icon-btn:hover { color: var(--danger); }
+
+    .add-btn {
+      width: 100%; background: transparent; color: var(--accent); border: 1px dashed var(--border);
+      border-radius: 6px; padding: 7px; font-size: 12px; cursor: pointer; margin-top: 4px;
+    }
+
+    .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+
+    .viewer .top {
+      display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border);
+      background: var(--panel); align-items: center;
+    }
+    .viewer iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+    .viewer .empty {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: var(--muted); padding: 40px; text-align: center;
+    }
+    .viewer .empty h2 { color: var(--text); font-weight: 500; }
+
+    .badge {
+      display: inline-block; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+      border-radius: 999px; padding: 2px 8px; font-size: 11px;
+    }
+    .badge.ok { color: var(--accent-2); border-color: var(--accent-2); }
+    .badge.err { color: var(--danger); border-color: var(--danger); }
+    .badge.warn { color: var(--warn); border-color: var(--warn); }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .toolbar-group { display: flex; align-items: center; gap: 6px; }
+    .check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); padding: 4px 0; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: none; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      width: 640px; max-width: 92vw; max-height: 78vh; display: flex; flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    }
+    .modal .head {
+      display: flex; padding: 10px 14px; gap: 6px; border-bottom: 1px solid var(--border);
+      align-items: center;
+    }
+    .modal .head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .modal .body { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .modal .foot {
+      padding: 10px 14px; border-top: 1px solid var(--border);
+      display: flex; gap: 6px; align-items: center;
+    }
+    .modal-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 14px; cursor: pointer;
+      font-size: 13px;
+    }
+    .modal-row:hover { background: var(--panel-2); }
+    .modal-row.go { color: var(--accent-2); }
+    .modal-row .glyph { width: 18px; text-align: center; }
+
+    .meta-counts { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0; }
+    .meta-counts span {
+      display: inline-block; background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 999px; padding: 2px 9px; font-size: 11px; color: var(--muted);
+    }
+    .meta-counts strong { color: var(--text); margin-right: 4px; }
+    details.meta-block { margin-top: 6px; border: 1px solid var(--border); border-radius: 5px;
+      padding: 6px 10px; background: var(--panel-2); }
+    details.meta-block > summary { cursor: pointer; font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; }
+    details.meta-block ul { list-style: none; padding: 6px 0 0; margin: 0; max-height: 240px;
+      overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    details.meta-block li { padding: 2px 0; color: var(--text); cursor: pointer; }
+    details.meta-block li:hover { color: var(--accent); }
+
+    pre.integrate-code {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 12px; margin: 0; font-size: 11px; line-height: 1.45;
+      max-height: 280px; overflow: auto; white-space: pre;
+    }
+
+    .subcard {
+      border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px;
+      margin: 4px 0; background: var(--bg);
+    }
+    .subcard .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .subcard .head .vname { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--accent); }
+    .placeholder-hint {
+      display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+      font-size: 11px; color: var(--muted); margin: 4px 0;
+    }
+    .placeholder-hint .chip {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 6px; font-family: ui-monospace, Menlo, monospace;
+      cursor: pointer;
+    }
+    .placeholder-hint .chip.matched { color: var(--accent-2); border-color: var(--accent-2); cursor: default; }
+    .placeholder-hint .chip:not(.matched):hover { background: var(--accent); color: #fff; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>apispec</h1>
+  <input type="text" id="projectDirInput" placeholder="/path/to/go/project"
+         style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;width:280px;" />
+  <button class="btn ghost" onclick="openBrowse()" title="Browse for a project folder">📁 Browse…</button>
+  <button class="btn ghost" onclick="switchProject()" title="Switch to this project & re-detect framework">Open</button>
+  <span class="meta" id="projectMeta">loading…</span>
+  <span class="grow"></span>
+  <span id="status" class="badge">idle</span>
+  <button class="btn" id="generateBtn" onclick="generate()">⚡ Generate</button>
+  <button class="btn secondary" onclick="downloadConfig()">Save config.yaml</button>
+</header>
+<main>
+  <aside>
+    <div class="tab-groups" id="tabs">
+      <div class="tab-group" title="Identity, servers, security, tags">
+        <span class="group-label">Basics</span>
+        <div class="tab active" data-tab="info">Info</div>
+        <div class="tab" data-tab="servers">Servers</div>
+        <div class="tab" data-tab="security">Security</div>
+        <div class="tab" data-tab="tags">Tags</div>
+      </div>
+      <div class="tab-group" title="Type mappings, manual overrides, filters">
+        <span class="group-label">Schemas</span>
+        <div class="tab" data-tab="defaults">Defaults</div>
+        <div class="tab" data-tab="filters">Filters</div>
+        <div class="tab" data-tab="types">Types</div>
+        <div class="tab" data-tab="overrides">Overrides</div>
+      </div>
+      <div class="tab-group" title="Edit only if your code uses a custom framework or HTTP wrapper">
+        <span class="group-label">Detection</span>
+        <div class="tab" data-tab="routes">Routes</div>
+        <div class="tab" data-tab="requestbody">Request</div>
+        <div class="tab" data-tab="responses">Response</div>
+        <div class="tab" data-tab="parameters">Params</div>
+        <div class="tab" data-tab="groups">Groups</div>
+      </div>
+      <div class="tab-group">
+        <span class="group-label">Advanced</span>
+        <div class="tab" data-tab="advanced">Project</div>
+        <div class="tab" data-tab="rawyaml">Full YAML</div>
+      </div>
+    </div>
+
+    <div class="panels">
+
+    <!-- INFO -->
+    <div class="panel active" id="panel-info">
+      <label>Title</label>
+      <input type="text" id="info-title" placeholder="My API" />
+      <div class="row">
+        <div>
+          <label>Version</label>
+          <input type="text" id="info-version" placeholder="1.0.0" />
+        </div>
+        <div>
+          <label>OpenAPI version</label>
+          <select id="openapi-version">
+            <option value="3.1.0">3.1.0</option>
+            <option value="3.0.3">3.0.3</option>
+          </select>
+        </div>
+      </div>
+      <label>Description</label>
+      <textarea id="info-description" placeholder="What this API does"></textarea>
+      <label>Terms of service URL</label>
+      <input type="url" id="info-terms" />
+      <div class="card">
+        <div class="head"><span class="title">Contact</span></div>
+        <label>Name</label>
+        <input type="text" id="contact-name" />
+        <label>URL</label>
+        <input type="url" id="contact-url" />
+        <label>Email</label>
+        <input type="email" id="contact-email" />
+      </div>
+      <div class="card">
+        <div class="head"><span class="title">License</span></div>
+        <label>Name</label>
+        <input type="text" id="license-name" placeholder="Apache-2.0" />
+        <label>URL</label>
+        <input type="url" id="license-url" />
+      </div>
+      <div class="card">
+        <div class="head"><span class="title">External Docs</span></div>
+        <label>Description</label>
+        <input type="text" id="extdocs-description" placeholder="Find more info here" />
+        <label>URL</label>
+        <input type="url" id="extdocs-url" placeholder="https://docs.example.com" />
+      </div>
+    </div>
+
+    <!-- SERVERS -->
+    <div class="panel" id="panel-servers">
+      <div id="servers-list"></div>
+      <button class="add-btn" onclick="addServer()">+ Add server</button>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="panel" id="panel-security">
+      <label>Security schemes</label>
+      <div id="schemes-list"></div>
+      <button class="add-btn" onclick="addScheme()">+ Add scheme</button>
+
+      <label style="margin-top:14px;">Required schemes (global)</label>
+      <div class="hint">Schemes listed here are required for all operations.</div>
+      <div id="security-req"></div>
+    </div>
+
+    <!-- ROUTES -->
+    <div class="panel" id="panel-routes">
+      <div class="hint">How apispec recognises route registration calls (e.g. <code>r.GET("/users", h)</code>).
+        Loaded from the framework defaults; edit, add, or remove patterns as needed.</div>
+      <div class="toolbar">
+        <button class="btn ghost" onclick="reloadFrameworkDefaults()">↻ Reload framework defaults</button>
+      </div>
+      <div id="route-patterns-list"></div>
+      <button class="add-btn" onclick="addPattern('routePatterns')">+ Add route pattern</button>
+    </div>
+
+    <!-- REQUEST BODY -->
+    <div class="panel" id="panel-requestbody">
+      <div class="hint">How apispec recognises request-body decoding calls (e.g. <code>c.BindJSON(&amp;req)</code>).</div>
+      <div id="request-patterns-list"></div>
+      <button class="add-btn" onclick="addPattern('requestBodyPatterns')">+ Add request-body pattern</button>
+    </div>
+
+    <!-- RESPONSES -->
+    <div class="panel" id="panel-responses">
+      <div class="hint">How apispec recognises response calls (e.g. <code>c.JSON(200, resp)</code>, <code>render.JSON(w, r, resp)</code>).</div>
+      <div id="response-patterns-list"></div>
+      <button class="add-btn" onclick="addPattern('responsePatterns')">+ Add response pattern</button>
+    </div>
+
+    <!-- PARAMETERS -->
+    <div class="panel" id="panel-parameters">
+      <div class="hint">How apispec recognises path/query/header/cookie parameter accessors (e.g. <code>chi.URLParam(r, "id")</code>).</div>
+      <div id="param-patterns-list"></div>
+      <button class="add-btn" onclick="addPattern('paramPatterns')">+ Add parameter pattern</button>
+    </div>
+
+    <!-- GROUPS / MOUNT -->
+    <div class="panel" id="panel-groups">
+      <div class="hint">How apispec recognises subrouter mounts and route groups (e.g. <code>r.Mount("/api/v1", subrouter)</code>, <code>r.Route("/users", fn)</code>).</div>
+      <div id="mount-patterns-list"></div>
+      <button class="add-btn" onclick="addPattern('mountPatterns')">+ Add group/mount pattern</button>
+    </div>
+
+    <!-- TAGS -->
+    <div class="panel" id="panel-tags">
+      <div class="hint">
+        Tags here only <strong>annotate</strong> tags that apispec already discovers from your routes.
+        If a tag's name matches a discovered tag, the description and external-docs URL you set are attached;
+        if no route uses the name, the entry has no visible effect. Tags do not group routes — that comes from how
+        apispec extracts tags during analysis.
+      </div>
+      <div id="tags-list"></div>
+      <button class="add-btn" onclick="addTag()">+ Add tag annotation</button>
+    </div>
+
+    <!-- DEFAULTS -->
+    <div class="panel" id="panel-defaults">
+      <div class="hint">Fallback values used when apispec can't infer them from your code.</div>
+      <label>Default request content type</label>
+      <input type="text" id="def-req-ct" placeholder="application/json" />
+      <label>Default response content type</label>
+      <input type="text" id="def-res-ct" placeholder="application/json" />
+      <label>Default response status</label>
+      <input type="number" id="def-res-status" placeholder="200" />
+    </div>
+
+    <!-- FILTERS -->
+    <div class="panel" id="panel-filters">
+      <div class="hint">Gitignore-style patterns. Exclude takes precedence over include.</div>
+      <div class="grid-2">
+        <div>
+          <label>Include packages</label>
+          <textarea id="include-packages" placeholder="github.com/me/api/handlers"></textarea>
+        </div>
+        <div>
+          <label>Exclude packages</label>
+          <textarea id="exclude-packages" placeholder="*/vendor/*"></textarea>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label>Include files</label>
+          <textarea id="include-files"></textarea>
+        </div>
+        <div>
+          <label>Exclude files</label>
+          <textarea id="exclude-files" placeholder="*_test.go"></textarea>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label>Include functions</label>
+          <textarea id="include-functions"></textarea>
+        </div>
+        <div>
+          <label>Exclude functions</label>
+          <textarea id="exclude-functions"></textarea>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label>Include types</label>
+          <textarea id="include-types"></textarea>
+        </div>
+        <div>
+          <label>Exclude types</label>
+          <textarea id="exclude-types"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- TYPE MAPPINGS -->
+    <div class="panel" id="panel-types">
+      <div class="hint">Map a Go type to a custom OpenAPI schema. The schema field accepts a JSON object — e.g. <code>{"type":"string","format":"date-time"}</code>.</div>
+      <div style="margin-top:8px"><strong style="font-size:12px;">Type mappings</strong></div>
+      <div id="typemap-list"></div>
+      <button class="add-btn" onclick="addTypeMapping()">+ Add type mapping</button>
+
+      <div style="margin-top:18px"><strong style="font-size:12px;">External types</strong></div>
+      <div class="hint">Tell apispec how to schematise a type from a third-party package without analysing it.</div>
+      <div id="exttype-list"></div>
+      <button class="add-btn" onclick="addExternalType()">+ Add external type</button>
+    </div>
+
+    <!-- OVERRIDES -->
+    <div class="panel" id="panel-overrides">
+      <div class="hint">Override generated documentation for specific functions (by full name, e.g. <code>github.com/me/pkg.Handler</code>).</div>
+      <div id="overrides-list"></div>
+      <button class="add-btn" onclick="addOverride()">+ Add override</button>
+    </div>
+
+    <!-- PROJECT -->
+    <div class="panel" id="panel-advanced">
+      <label>Framework</label>
+      <select id="framework">
+        <option value="net/http">net/http</option>
+        <option value="gin">gin</option>
+        <option value="chi">chi</option>
+        <option value="echo">echo</option>
+        <option value="fiber">fiber</option>
+        <option value="mux">gorilla/mux</option>
+      </select>
+      <div class="hint" id="detected-hint"></div>
+
+      <label style="margin-top:12px;">Project directory</label>
+      <input type="text" id="project-dir" readonly />
+      <label>Module path</label>
+      <input type="text" id="module-path" readonly />
+
+      <label style="margin-top:14px;">Last generated</label>
+      <pre id="last-status" class="mono" style="background:var(--panel-2);padding:8px;border-radius:6px;font-size:11px;">—</pre>
+
+      <label style="margin-top:14px;">Project metadata</label>
+      <div class="hint">Extracted from your code — used to populate suggestion lists. Click any item to copy it.</div>
+      <div class="meta-counts" id="meta-counts">
+        <span><strong>0</strong> packages</span>
+        <span><strong>0</strong> functions</span>
+        <span><strong>0</strong> types</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn ghost" onclick="loadMetadataSuggestions(true)">↻ Refresh metadata</button>
+      </div>
+      <details class="meta-block"><summary>Packages</summary><ul id="meta-packages"></ul></details>
+      <details class="meta-block"><summary>Functions</summary><ul id="meta-functions"></ul></details>
+      <details class="meta-block"><summary>Methods</summary><ul id="meta-methods"></ul></details>
+      <details class="meta-block"><summary>Types</summary><ul id="meta-types"></ul></details>
+      <details class="meta-block"><summary>Imports (third-party)</summary><ul id="meta-imports"></ul></details>
+    </div>
+
+    <!-- FULL YAML -->
+    <div class="panel" id="panel-rawyaml">
+      <div class="hint">
+        Full <code>APISpecConfig</code> editor. Use this for any field the form doesn't expose — framework
+        <code>routePatterns</code>, <code>requestBodyPatterns</code>, <code>methodExtraction</code>,
+        <code>responsePatterns</code>, custom regex matchers, etc.
+      </div>
+      <label class="check" style="margin-top:6px;">
+        <input type="checkbox" id="use-raw-config" />
+        <span><strong>Use this YAML directly</strong> — bypasses the structured form on the next Generate.</span>
+      </label>
+      <div class="toolbar">
+        <button class="btn ghost" onclick="syncYAMLFromForm()" title="Re-render YAML from current form values">↓ Sync from form</button>
+        <button class="btn" onclick="applyYAMLToForm()" title="Parse YAML and replace every form field">↑ Apply to form</button>
+        <button class="btn ghost" onclick="loadFrameworkDefaultYAML()">Framework defaults</button>
+        <button class="btn ghost" onclick="loadCurrentEffectiveYAML()" id="loadEffectiveBtn" disabled>Last effective</button>
+        <button class="btn ghost" onclick="copyYAML()">Copy</button>
+        <button class="btn ghost" onclick="downloadRawYAML()">Download</button>
+      </div>
+      <textarea id="raw-yaml" class="yaml" spellcheck="false" placeholder="# Click 'Load framework defaults' to start"></textarea>
+      <div class="hint" id="raw-yaml-status"></div>
+    </div>
+
+    </div><!-- /panels -->
+  </aside>
+
+  <section class="viewer">
+    <div class="top">
+      <div class="toolbar-group">
+        <span class="meta" style="color:var(--muted)">View:</span>
+        <button class="btn ghost" data-view="swagger">Swagger UI</button>
+        <button class="btn ghost" data-view="redoc">Redoc</button>
+        <button class="btn ghost" data-view="scalar">Scalar</button>
+        <button class="btn ghost" onclick="openIntegrateGuide()" title="How to host this view in your own app">ⓘ Integrate</button>
+      </div>
+      <span style="flex:1"></span>
+      <a class="btn secondary" href="/api/spec.json" target="_blank" rel="noreferrer">spec.json</a>
+      <a class="btn secondary" href="/api/spec.yaml" target="_blank" rel="noreferrer">spec.yaml</a>
+    </div>
+    <div class="empty" id="viewerEmpty">
+      <h2>No spec yet</h2>
+      <p>Edit the configuration on the left, then click <strong>Generate</strong>.<br/>
+         When the spec is ready, pick a viewer above to preview it.</p>
+      <p style="margin-top:18px;">
+        <a href="javascript:void(0)" onclick="openIntegrateGuide()">How do I host these viewers in my own app? →</a>
+      </p>
+    </div>
+    <iframe id="viewerFrame" style="display:none" title="OpenAPI viewer"></iframe>
+  </section>
+</main>
+
+<!-- Folder browser modal -->
+<div class="modal-backdrop" id="browseModal">
+  <div class="modal" role="dialog" aria-label="Browse folder">
+    <div class="head">
+      <h3>📁 Browse</h3>
+      <input type="text" id="browsePath" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;" />
+      <button class="btn ghost" onclick="browseGo()">Go</button>
+    </div>
+    <div class="body" id="browseList"></div>
+    <div class="foot">
+      <button class="btn ghost" onclick="browseUp()">↑ Parent</button>
+      <span style="flex:1"></span>
+      <button class="btn ghost" onclick="closeBrowse()">Cancel</button>
+      <button class="btn" onclick="commitBrowse()">Open this folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Integrate-in-your-app modal -->
+<div class="modal-backdrop" id="integrateModal">
+  <div class="modal" role="dialog" aria-label="Integrate viewer">
+    <div class="head">
+      <h3>📖 Embed this view in your app</h3>
+      <span style="flex:1"></span>
+      <div class="toolbar-group">
+        <button class="tab active" data-iview="swagger">Swagger UI</button>
+        <button class="tab" data-iview="redoc">Redoc</button>
+        <button class="tab" data-iview="scalar">Scalar</button>
+      </div>
+    </div>
+    <div class="body" id="integrateBody" style="padding:14px 16px;"></div>
+    <div class="foot">
+      <span class="hint" style="flex:1">Snippets reference your generated spec. Replace <code>/openapi.json</code> with wherever you host the file.</span>
+      <button class="btn" onclick="closeIntegrate()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Datalists used as suggestion sources for project-aware inputs -->
+<datalist id="dl-functions"></datalist>
+<datalist id="dl-types"></datalist>
+<datalist id="dl-imports"></datalist>
+<datalist id="dl-packages"></datalist>
+
+<script>
+const state = {
+  detected: null,
+  current: {
+    schemes: {}, security: [], servers: [], tags: [],
+    typeMap: [], extTypes: [], overrides: [],
+    framework: {
+      routePatterns: [],
+      requestBodyPatterns: [],
+      responsePatterns: [],
+      paramPatterns: [],
+      mountPatterns: [],
+    },
+  },
+  lastView: null,
+};
+
+// patternFields drives the per-type editor. Each pattern type lists the
+// type-specific fields beyond the common matcher block; the matcher block
+// (callRegex, functionNameRegex, recvType, recvTypeRegex) and caller/callee
+// filters are rendered the same way for every pattern.
+const patternFields = {
+  routePatterns: {
+    label: "Route",
+    args:  [{k:"methodArgIndex",t:"int"},{k:"pathArgIndex",t:"int"},{k:"handlerArgIndex",t:"int"}],
+    flags: [{k:"methodFromCall"},{k:"methodFromHandler"},{k:"pathFromArg"},{k:"handlerFromArg"}],
+    extra: "methodExtraction",
+  },
+  requestBodyPatterns: {
+    label: "Request body",
+    args:  [{k:"typeArgIndex",t:"int"}],
+    flags: [{k:"typeFromArg"},{k:"typeFromReturn"},{k:"deref"},{k:"allowForGetMethods"}],
+  },
+  responsePatterns: {
+    label: "Response",
+    args:  [{k:"statusArgIndex",t:"int"},{k:"typeArgIndex",t:"int"},{k:"defaultStatus",t:"int"}],
+    flags: [{k:"statusFromArg"},{k:"typeFromArg"},{k:"deref"}],
+    text:  [{k:"defaultContentType",placeholder:"application/json"}],
+  },
+  paramPatterns: {
+    label: "Parameter",
+    args:  [{k:"paramArgIndex",t:"int"},{k:"typeArgIndex",t:"int"}],
+    flags: [{k:"typeFromArg"},{k:"deref"}],
+    select: [{k:"paramIn",options:["","path","query","header","cookie"]}],
+  },
+  mountPatterns: {
+    label: "Group/Mount",
+    args:  [{k:"pathArgIndex",t:"int"},{k:"routerArgIndex",t:"int"}],
+    flags: [{k:"pathFromArg"},{k:"routerFromArg"},{k:"isMount"}],
+  },
+};
+
+const patternContainer = {
+  routePatterns:       "#route-patterns-list",
+  requestBodyPatterns: "#request-patterns-list",
+  responsePatterns:    "#response-patterns-list",
+  paramPatterns:       "#param-patterns-list",
+  mountPatterns:       "#mount-patterns-list",
+};
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+// --- tabs -----------------------------------------------------------------
+$$(".tab").forEach((t) => {
+  t.addEventListener("click", () => {
+    $$(".tab").forEach((x) => x.classList.remove("active"));
+    $$(".panel").forEach((x) => x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("panel-" + t.dataset.tab).classList.add("active");
+    if (t.dataset.tab === "rawyaml") maybeSyncYAMLFromForm();
+  });
+});
+
+// --- viewer switching -----------------------------------------------------
+$$("[data-view]").forEach((b) => {
+  b.addEventListener("click", () => openView(b.dataset.view));
+});
+
+function openView(name) {
+  state.lastView = name;
+  const frame = $("#viewerFrame");
+  $("#viewerEmpty").style.display = "none";
+  frame.style.display = "block";
+  frame.src = "/" + name + "?t=" + Date.now();
+}
+
+// --- detect ---------------------------------------------------------------
+async function detect() {
+  setStatus("detecting…");
+  try {
+    const r = await fetch("/api/detect");
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    state.detected = d;
+    applyDetected(d);
+    setStatus("ready", "ok");
+    // Load metadata in the background to power suggestions.
+    metaSummary = null;
+    loadMetadataSuggestions();
+  } catch (e) {
+    setStatus("detect failed", "err");
+    console.error(e);
+  }
+}
+
+function applyDetected(d) {
+  $("#projectMeta").textContent =
+    (d.modulePath || d.moduleRoot) + " · framework: " + d.detectedFramework;
+  $("#project-dir").value = d.inputDir;
+  $("#module-path").value = d.modulePath || "(no go.mod found)";
+  $("#detected-hint").textContent = "Detected from imports: " + d.detectedFramework;
+
+  $("#framework").value = ["gin","chi","echo","fiber","mux","net/http"].includes(d.detectedFramework)
+    ? d.detectedFramework : "net/http";
+  $("#openapi-version").value = d.openapiVersion || "3.1.0";
+
+  // The DetectResponse shape mirrors APISpecConfig at the top level
+  // (info, servers, security, tags, defaults, frameworkConfig, …) so we
+  // can reuse the same population code for parsed-YAML payloads.
+  applyAPISpecConfig(d);
+
+  // Reflect the current dir in the header input
+  if (d.inputDir) $("#projectDirInput").value = d.inputDir;
+}
+
+// applyAPISpecConfig populates every structured form field from a structured
+// config object. Accepts either a DetectResponse or an APISpecConfig (from
+// /api/parse-config). Reads `frameworkConfig` (DetectResponse) OR
+// `framework` (APISpecConfig) for the patterns block.
+function applyAPISpecConfig(cfg) {
+  cfg = cfg || {};
+
+  // Info
+  const i = cfg.info || {};
+  $("#info-title").value = i.title || "";
+  $("#info-version").value = i.version || "1.0.0";
+  $("#info-description").value = i.description || "";
+  $("#info-terms").value = i.termsOfService || "";
+  const c = i.contact || {};
+  $("#contact-name").value = c.name || "";
+  $("#contact-url").value = c.url || "";
+  $("#contact-email").value = c.email || "";
+  const l = i.license || {};
+  $("#license-name").value = l.name || "";
+  $("#license-url").value = l.url || "";
+
+  // External docs
+  const ed = cfg.externalDocs || {};
+  $("#extdocs-description").value = ed.description || "";
+  $("#extdocs-url").value = ed.url || "";
+
+  // Servers — convert variables map → array for editing
+  state.current.servers = (cfg.servers || []).map((s) => ({
+    url: s.url || "",
+    description: s.description || "",
+    variables: serverVariablesFromMap(s.variables),
+  }));
+  renderServers();
+
+  // Security
+  state.current.schemes = cfg.securitySchemes || {};
+  state.current.security = cfg.security || [];
+  renderSchemes();
+  renderSecurityRequirements();
+
+  // Tags
+  state.current.tags = cfg.tags || [];
+  renderTags();
+
+  // Defaults
+  const def = cfg.defaults || {};
+  $("#def-req-ct").value = def.requestContentType || "";
+  $("#def-res-ct").value = def.responseContentType || "";
+  $("#def-res-status").value = def.responseStatus || "";
+
+  // TypeMapping / ExternalTypes / Overrides
+  state.current.typeMap = cfg.typeMapping || [];
+  state.current.extTypes = cfg.externalTypes || [];
+  state.current.overrides = cfg.overrides || [];
+  renderTypeMappings();
+  renderExternalTypes();
+  renderOverrides();
+
+  // Filters
+  const inc = cfg.include || {};
+  const exc = cfg.exclude || {};
+  $("#include-files").value     = (inc.files     || []).join("\n");
+  $("#include-packages").value  = (inc.packages  || []).join("\n");
+  $("#include-functions").value = (inc.functions || []).join("\n");
+  $("#include-types").value     = (inc.types     || []).join("\n");
+  $("#exclude-files").value     = (exc.files     || []).join("\n");
+  $("#exclude-packages").value  = (exc.packages  || []).join("\n");
+  $("#exclude-functions").value = (exc.functions || []).join("\n");
+  $("#exclude-types").value     = (exc.types     || []).join("\n");
+
+  // Framework patterns. Detect responses use `frameworkConfig`,
+  // APISpecConfig YAML uses `framework`.
+  const fc = cfg.frameworkConfig || cfg.framework || {};
+  state.current.framework = {
+    routePatterns:       fc.routePatterns       || [],
+    requestBodyPatterns: fc.requestBodyPatterns || [],
+    responsePatterns:    fc.responsePatterns    || [],
+    paramPatterns:       fc.paramPatterns       || [],
+    mountPatterns:       fc.mountPatterns       || [],
+  };
+  renderAllPatterns();
+}
+
+// --- project switch ------------------------------------------------------
+async function switchProject() {
+  const dir = $("#projectDirInput").value.trim();
+  if (!dir) { setStatus("enter a project path", "warn"); return; }
+  setStatus("switching project…");
+  try {
+    const r = await fetch("/api/project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dir }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    state.detected = d;
+    applyDetected(d);
+    setStatus("ready · " + d.detectedFramework + " auto-detected", "ok");
+    metaSummary = null;
+    loadMetadataSuggestions();
+  } catch (e) {
+    console.error(e);
+    setStatus("switch failed: " + (e.message || e), "err");
+  }
+}
+
+// --- folder browser modal -----------------------------------------------
+let browseCur = null;
+
+function openBrowse() {
+  $("#browseModal").classList.add("open");
+  const start = $("#projectDirInput").value || "";
+  browseTo(start);
+}
+function closeBrowse() { $("#browseModal").classList.remove("open"); }
+
+async function browseTo(path) {
+  $("#browseList").innerHTML = `<div class="hint" style="padding:14px 16px;">loading…</div>`;
+  try {
+    const url = "/api/browse" + (path ? "?path=" + encodeURIComponent(path) : "");
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    browseCur = d;
+    $("#browsePath").value = d.path;
+    const rows = [];
+    if (d.parent) {
+      rows.push(`<div class="modal-row" data-path="${escapeAttr(d.parent)}"><span class="glyph">↑</span><span>..</span></div>`);
+    }
+    if (!d.entries || d.entries.length === 0) {
+      rows.push(`<div class="hint" style="padding:14px 16px;">(empty directory)</div>`);
+    } else {
+      d.entries.forEach((e) => {
+        const cls = e.hasGoMod ? "go" : "";
+        const glyph = e.hasGoMod ? "📦" : "📁";
+        rows.push(`<div class="modal-row ${cls}" data-path="${escapeAttr(e.path)}"><span class="glyph">${glyph}</span><span>${escapeText(e.name)}</span></div>`);
+      });
+    }
+    $("#browseList").innerHTML = rows.join("");
+    $$("#browseList .modal-row").forEach((el) => {
+      el.addEventListener("click", () => browseTo(el.dataset.path));
+    });
+  } catch (e) {
+    $("#browseList").innerHTML = `<div class="hint" style="padding:14px 16px;color:var(--danger);">${escapeText(e.message)}</div>`;
+  }
+}
+function browseUp() { if (browseCur && browseCur.parent) browseTo(browseCur.parent); }
+function browseGo() { browseTo($("#browsePath").value.trim()); }
+function commitBrowse() {
+  const path = (browseCur && browseCur.path) || $("#browsePath").value.trim();
+  if (!path) return;
+  $("#projectDirInput").value = path;
+  closeBrowse();
+  switchProject();
+}
+// dismiss on backdrop click
+document.addEventListener("DOMContentLoaded", () => {
+  const bd = document.getElementById("browseModal");
+  if (bd) bd.addEventListener("click", (e) => { if (e.target === bd) closeBrowse(); });
+  const im = document.getElementById("integrateModal");
+  if (im) im.addEventListener("click", (e) => { if (e.target === im) closeIntegrate(); });
+  // wire integrate sub-tabs
+  document.querySelectorAll("[data-iview]").forEach((b) => {
+    b.addEventListener("click", () => renderIntegrate(b.dataset.iview));
+  });
+});
+
+// --- viewer integration guide -------------------------------------------
+const integrateSnippets = {
+  swagger: {
+    title: "Swagger UI",
+    blurb: "The interactive 'Try it out' viewer. Bundle is ~1.5 MB; use the CDN form for zero-build setups.",
+    npm: "npm install swagger-ui-dist  # or: swagger-ui-react",
+    html:
+`<!doctype html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"><\/script>
+  <script>
+    SwaggerUIBundle({
+      url: "/openapi.json",
+      dom_id: "#swagger-ui",
+      tryItOutEnabled: true,
+    });
+  <\/script>
+</body>
+</html>`,
+    react:
+`import SwaggerUI from "swagger-ui-react";
+import "swagger-ui-react/swagger-ui.css";
+
+export default function Docs() {
+  return <SwaggerUI url="/openapi.json" />;
+}`,
+  },
+  redoc: {
+    title: "Redoc",
+    blurb: "A clean, single-page reference doc — read-only (no Try-it-out). Great for public API portals.",
+    npm: "npm install redoc",
+    html:
+`<!doctype html>
+<html>
+<body>
+  <redoc spec-url="/openapi.json"></redoc>
+  <script src="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js"><\/script>
+</body>
+</html>`,
+    react:
+`import { RedocStandalone } from "redoc";
+
+export default function Docs() {
+  return <RedocStandalone specUrl="/openapi.json" />;
+}`,
+  },
+  scalar: {
+    title: "Scalar",
+    blurb: "Modern, fast, with built-in API testing. Active development; supports OpenAPI 3.1 features well.",
+    npm: "npm install @scalar/api-reference  # or @scalar/api-reference-react",
+    html:
+`<!doctype html>
+<html>
+<body>
+  <script id="api-reference" data-url="/openapi.json"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"><\/script>
+</body>
+</html>`,
+    react:
+`import { ApiReferenceReact } from "@scalar/api-reference-react";
+import "@scalar/api-reference-react/style.css";
+
+export default function Docs() {
+  return <ApiReferenceReact configuration={{ spec: { url: "/openapi.json" } }} />;
+}`,
+  },
+};
+
+function openIntegrateGuide() {
+  $("#integrateModal").classList.add("open");
+  // default to whichever viewer is currently active, else swagger
+  renderIntegrate(state.lastView || "swagger");
+}
+function closeIntegrate() { $("#integrateModal").classList.remove("open"); }
+
+function renderIntegrate(name) {
+  const s = integrateSnippets[name] || integrateSnippets.swagger;
+  document.querySelectorAll("[data-iview]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.iview === name);
+  });
+  $("#integrateBody").innerHTML = `
+    <p style="margin:0 0 10px;color:var(--muted);">${escapeText(s.blurb)}</p>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;">1 · Drop-in HTML (CDN)</div>
+    <pre class="mono integrate-code">${escapeText(s.html)}</pre>
+    <button class="btn ghost" data-copy="html" style="margin-top:4px;">Copy HTML</button>
+
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:14px 0 4px;">2 · React component</div>
+    <pre class="mono integrate-code">${escapeText(s.react)}</pre>
+    <button class="btn ghost" data-copy="react" style="margin-top:4px;">Copy React</button>
+    <div class="hint" style="margin-top:6px;">Install: <code>${escapeText(s.npm)}</code></div>
+
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:14px 0 4px;">3 · Where to host the spec</div>
+    <ul class="hint" style="margin:0 0 0 16px;padding:0;list-style:disc;">
+      <li>Generate with <code>apispec -o public/openapi.json -d ./your-project</code> and serve <code>public/</code> with your app or static host (gh-pages, S3, Vercel, …).</li>
+      <li>Or expose a live <code>/openapi.json</code> handler in your Go service that returns the file you generated at build time.</li>
+      <li>Replace the URL in the snippets above with whatever path/origin you choose. Cross-origin? Add CORS or proxy through your app.</li>
+    </ul>
+  `;
+  // wire copy buttons
+  $("#integrateBody").querySelectorAll("[data-copy]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const which = b.dataset.copy === "html" ? s.html : s.react;
+      if (navigator.clipboard) navigator.clipboard.writeText(which);
+      const orig = b.textContent;
+      b.textContent = "Copied!";
+      setTimeout(() => { b.textContent = orig; }, 1200);
+    });
+  });
+}
+
+// --- metadata-driven suggestions ----------------------------------------
+let metaSummary = null;
+
+async function loadMetadataSuggestions(force) {
+  if (metaSummary && !force) {
+    populateMetadataUI(metaSummary);
+    return;
+  }
+  setStatus("loading project metadata…");
+  try {
+    const r = await fetch("/api/metadata-summary");
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    metaSummary = d;
+    populateMetadataUI(d);
+    setStatus("metadata loaded · " + (d.functions || []).length + " fns / " + (d.types || []).length + " types", "ok");
+  } catch (e) {
+    setStatus("metadata failed: " + e.message, "err");
+  }
+}
+
+function populateMetadataUI(d) {
+  const fnAll = [].concat(d.functions || [], d.methods || []);
+  populateDatalist("dl-functions", fnAll);
+  populateDatalist("dl-types", d.types || []);
+  populateDatalist("dl-imports", [].concat(d.imports || [], d.types || []));
+  populateDatalist("dl-packages", d.packages || []);
+
+  // Project-tab counts + lists
+  const counts = $("#meta-counts");
+  if (counts) {
+    counts.innerHTML =
+      `<span><strong>${(d.packages || []).length}</strong> packages</span>` +
+      `<span><strong>${(d.functions || []).length}</strong> functions</span>` +
+      `<span><strong>${(d.methods || []).length}</strong> methods</span>` +
+      `<span><strong>${(d.types || []).length}</strong> types</span>` +
+      `<span><strong>${(d.imports || []).length}</strong> imports</span>`;
+  }
+  fillMetaList("meta-packages", d.packages || []);
+  fillMetaList("meta-functions", d.functions || []);
+  fillMetaList("meta-methods", d.methods || []);
+  fillMetaList("meta-types", d.types || []);
+  fillMetaList("meta-imports", d.imports || []);
+}
+
+function populateDatalist(id, items) {
+  const dl = document.getElementById(id);
+  if (!dl) return;
+  // de-dupe and cap to keep DOM reasonable
+  const seen = new Set();
+  const opts = [];
+  for (const s of items) {
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    opts.push(`<option value="${escapeAttr(s)}"></option>`);
+    if (opts.length >= 2000) break;
+  }
+  dl.innerHTML = opts.join("");
+}
+
+function fillMetaList(id, items) {
+  const ul = document.getElementById(id);
+  if (!ul) return;
+  if (items.length === 0) {
+    ul.innerHTML = `<li style="color:var(--muted);cursor:default;">(none)</li>`;
+    return;
+  }
+  ul.innerHTML = items.slice(0, 500)
+    .map((s) => `<li title="click to copy">${escapeText(s)}</li>`).join("");
+  ul.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => {
+      const text = li.textContent;
+      if (navigator.clipboard) navigator.clipboard.writeText(text);
+      setStatus("copied: " + text, "ok");
+    });
+  });
+  if (items.length > 500) {
+    ul.insertAdjacentHTML("beforeend", `<li style="color:var(--muted);cursor:default;">… ${items.length - 500} more</li>`);
+  }
+}
+
+// --- framework selector → reload pattern editors ------------------------
+async function reloadFrameworkDefaults() {
+  const fw = $("#framework").value;
+  if (!confirm("Reload " + fw + " framework defaults? Edits to all pattern tabs will be discarded.")) return;
+  setStatus("loading defaults for " + fw + "…");
+  try {
+    const r = await fetch("/api/default-framework?framework=" + encodeURIComponent(fw));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    const fc = d.frameworkConfig || {};
+    state.current.framework = {
+      routePatterns:       fc.routePatterns || [],
+      requestBodyPatterns: fc.requestBodyPatterns || [],
+      responsePatterns:    fc.responsePatterns || [],
+      paramPatterns:       fc.paramPatterns || [],
+      mountPatterns:       fc.mountPatterns || [],
+    };
+    renderAllPatterns();
+    setStatus("loaded " + fw + " defaults", "ok");
+  } catch (e) {
+    setStatus("reload failed: " + (e.message || e), "err");
+  }
+}
+
+// --- pattern editors -----------------------------------------------------
+function renderAllPatterns() {
+  Object.keys(patternFields).forEach(renderPatterns);
+}
+
+function renderPatterns(kind) {
+  const container = $(patternContainer[kind]);
+  container.innerHTML = "";
+  const items = state.current.framework[kind];
+  const def = patternFields[kind];
+
+  items.forEach((p, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    let html = `
+      <div class="head">
+        <span class="title">${def.label} #${idx + 1}</span>
+        <button class="icon-btn" data-act="remove" title="Remove">✕</button>
+      </div>
+      ${renderMatcherFieldsHTML(p)}
+    `;
+
+    // Type-specific text inputs (e.g. response defaultContentType)
+    (def.text || []).forEach((t) => {
+      html += `<label>${labelFor(t.k)}</label>
+        <input type="text" data-pf="${t.k}" value="${escapeAttr(p[t.k] || "")}" placeholder="${escapeAttr(t.placeholder || "")}" />`;
+    });
+
+    // Type-specific selects
+    (def.select || []).forEach((s) => {
+      html += `<label>${labelFor(s.k)}</label>
+        <select data-pf="${s.k}">
+          ${s.options.map((opt) => `<option value="${opt}" ${p[s.k] === opt ? "selected" : ""}>${opt || "(unset)"}</option>`).join("")}
+        </select>`;
+    });
+
+    // Numeric arg-index fields, two per row
+    if (def.args && def.args.length) {
+      html += `<div style="margin-top:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500;">Arg indices</div>`;
+      html += `<div class="grid-2">`;
+      def.args.forEach((a) => {
+        html += `<div><label>${labelFor(a.k)}</label>
+          <input type="number" data-pf="${a.k}" value="${p[a.k] != null ? p[a.k] : 0}" /></div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Boolean flags
+    if (def.flags && def.flags.length) {
+      html += `<div style="margin-top:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500;">Flags</div>`;
+      def.flags.forEach((f) => {
+        html += `<label class="check"><input type="checkbox" data-pf="${f.k}" ${p[f.k] ? "checked" : ""}/> <span>${labelFor(f.k)}</span></label>`;
+      });
+    }
+
+    // Method extraction (RoutePattern only)
+    if (def.extra === "methodExtraction") {
+      const me = p.methodExtraction || {};
+      html += `
+        <details style="margin-top:8px;border:1px solid var(--border);border-radius:5px;padding:6px 10px;background:var(--bg);">
+          <summary style="cursor:pointer;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Method extraction (advanced)</summary>
+          <label class="check"><input type="checkbox" data-me="usePrefix" ${me.usePrefix?"checked":""}/> usePrefix</label>
+          <label class="check"><input type="checkbox" data-me="useContains" ${me.useContains?"checked":""}/> useContains</label>
+          <label class="check"><input type="checkbox" data-me="caseSensitive" ${me.caseSensitive?"checked":""}/> caseSensitive</label>
+          <label class="check"><input type="checkbox" data-me="inferFromContext" ${me.inferFromContext?"checked":""}/> inferFromContext</label>
+          <label>defaultMethod</label>
+          <input type="text" data-me="defaultMethod" value="${escapeAttr(me.defaultMethod || "")}" placeholder="GET" />
+          <label>methodMappings (one per line: <code>method=pattern1,pattern2[,priority]</code>)</label>
+          <textarea data-me="methodMappings" class="mono" style="font-size:12px;min-height:60px;">${escapeText(methodMappingsToText(me.methodMappings))}</textarea>
+        </details>
+      `;
+    }
+
+    // Caller/callee filters
+    html += `<div style="margin-top:6px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500;">Caller / callee filters</div>`;
+    html += `<div class="grid-2">`;
+    ["callerPkgPatterns","callerRecvTypePatterns","calleePkgPatterns","calleeRecvTypePatterns"].forEach((k) => {
+      html += `<div><label>${labelFor(k)}</label>
+        <textarea data-pf="${k}" placeholder="one regex per line">${escapeText((p[k] || []).join("\n"))}</textarea></div>`;
+    });
+    html += `</div>`;
+
+    card.innerHTML = html;
+
+    // Wire up remove
+    card.querySelector("[data-act=remove]").addEventListener("click", () => {
+      state.current.framework[kind].splice(idx, 1);
+      renderPatterns(kind);
+    });
+
+    // Wire up matcher fields (4 common)
+    card.querySelectorAll("[data-mf]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        state.current.framework[kind][idx][inp.dataset.mf] = inp.value;
+      });
+    });
+
+    // Wire up pattern-specific fields
+    card.querySelectorAll("[data-pf]").forEach((inp) => {
+      inp.addEventListener("input", () => commitPF(kind, idx, inp));
+      inp.addEventListener("change", () => commitPF(kind, idx, inp));
+    });
+
+    // Wire up methodExtraction fields
+    card.querySelectorAll("[data-me]").forEach((inp) => {
+      inp.addEventListener("input", () => commitME(kind, idx, inp));
+      inp.addEventListener("change", () => commitME(kind, idx, inp));
+    });
+
+    container.appendChild(card);
+  });
+}
+
+// commitPF writes a single pattern-specific field back into state.
+function commitPF(kind, idx, inp) {
+  const k = inp.dataset.pf;
+  const p = state.current.framework[kind][idx];
+  if (inp.type === "checkbox") {
+    p[k] = inp.checked;
+  } else if (inp.type === "number") {
+    const n = parseInt(inp.value, 10);
+    p[k] = isNaN(n) ? 0 : n;
+  } else if (inp.tagName === "TEXTAREA" && (k.endsWith("Patterns"))) {
+    // list-of-strings textarea (caller/callee filters)
+    p[k] = inp.value.split("\n").map(s => s.trim()).filter(Boolean);
+  } else {
+    p[k] = inp.value;
+  }
+}
+
+// commitME writes a single methodExtraction field on a route pattern.
+function commitME(kind, idx, inp) {
+  const k = inp.dataset.me;
+  const p = state.current.framework[kind][idx];
+  if (!p.methodExtraction) p.methodExtraction = {};
+  if (inp.type === "checkbox") {
+    p.methodExtraction[k] = inp.checked;
+  } else if (k === "methodMappings") {
+    p.methodExtraction.methodMappings = textToMethodMappings(inp.value);
+  } else {
+    p.methodExtraction[k] = inp.value;
+  }
+}
+
+function methodMappingsToText(arr) {
+  if (!arr || arr.length === 0) return "";
+  return arr.map((m) => {
+    const pats = (m.patterns || []).join(",");
+    const base = (m.method || "") + "=" + pats;
+    return m.priority ? base + "," + m.priority : base;
+  }).join("\n");
+}
+function textToMethodMappings(text) {
+  const out = [];
+  text.split("\n").forEach((line) => {
+    line = line.trim();
+    if (!line) return;
+    const eq = line.indexOf("=");
+    if (eq <= 0) return;
+    const method = line.slice(0, eq).trim().toUpperCase();
+    const rest = line.slice(eq + 1).split(",").map(s => s.trim()).filter(Boolean);
+    let priority = 0;
+    // last token may be a number priority
+    const last = rest[rest.length - 1];
+    if (last && /^\d+$/.test(last)) {
+      priority = parseInt(last, 10);
+      rest.pop();
+    }
+    out.push({ method, patterns: rest, priority });
+  });
+  return out;
+}
+
+// renderMatcherFieldsHTML returns the 4 common matcher inputs for a pattern.
+function renderMatcherFieldsHTML(p) {
+  return `
+    <div class="grid-2">
+      <div><label>callRegex</label>
+        <input type="text" data-mf="callRegex" value="${escapeAttr(p.callRegex || "")}" class="mono" placeholder="^Get|Post$" /></div>
+      <div><label>functionNameRegex</label>
+        <input type="text" data-mf="functionNameRegex" value="${escapeAttr(p.functionNameRegex || "")}" class="mono" placeholder=".*Handler$" /></div>
+    </div>
+    <div class="grid-2">
+      <div><label>recvType</label>
+        <input type="text" data-mf="recvType" value="${escapeAttr(p.recvType || "")}" class="mono" /></div>
+      <div><label>recvTypeRegex</label>
+        <input type="text" data-mf="recvTypeRegex" value="${escapeAttr(p.recvTypeRegex || "")}" class="mono" placeholder="^github\\.com/gin-gonic/gin\\.\\*Engine$" /></div>
+    </div>
+  `;
+}
+
+function labelFor(camelKey) {
+  // turn camelCase into "camel case" for human display
+  return camelKey.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toLowerCase()).trim();
+}
+
+function addPattern(kind) {
+  state.current.framework[kind].push({});
+  renderPatterns(kind);
+}
+
+// --- servers --------------------------------------------------------------
+//
+// state.current.servers stores variables as an *ordered array* of
+// {name, default, description, enum[]} objects rather than the OpenAPI map
+// shape — this lets users rename a variable without losing the entry. On
+// submit (collectForm) we convert back to the spec's map form.
+
+function placeholdersInUrl(url) {
+  const out = [];
+  const seen = new Set();
+  const re = /\{([^{}]+)\}/g;
+  let m;
+  while ((m = re.exec(url || ""))) {
+    const name = m[1].trim();
+    if (name && !seen.has(name)) { seen.add(name); out.push(name); }
+  }
+  return out;
+}
+
+function renderServers() {
+  const el = $("#servers-list");
+  el.innerHTML = "";
+  state.current.servers.forEach((s, idx) => {
+    if (!Array.isArray(s.variables)) s.variables = [];
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">Server #${idx + 1}</span>
+        <button class="icon-btn" data-act="remove" title="Remove">✕</button>
+      </div>
+      <label>URL</label>
+      <input type="url" data-field="url" value="${escapeAttr(s.url || "")}" placeholder="https://{host}:{port}/v1" />
+      <div class="placeholder-hint" data-placeholders></div>
+      <label>Description</label>
+      <input type="text" data-field="description" value="${escapeAttr(s.description || "")}" />
+
+      <div style="margin-top:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500;">
+        Variables
+      </div>
+      <div class="hint">
+        Substituted into <code>{name}</code> placeholders in the URL. <code>default</code> is required;
+        list <strong>allowed values</strong> (comma-separated) to render a dropdown in viewers.
+      </div>
+      <div data-vars-list></div>
+      <button class="add-btn" data-act="add-var">+ Add variable</button>
+    `;
+
+    card.querySelector("[data-act=remove]").addEventListener("click", () => {
+      state.current.servers.splice(idx, 1);
+      renderServers();
+    });
+    card.querySelectorAll("input[data-field]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        state.current.servers[idx][inp.dataset.field] = inp.value;
+        if (inp.dataset.field === "url") refreshPlaceholderHint(card, idx);
+      });
+    });
+    card.querySelector("[data-act=add-var]").addEventListener("click", () => {
+      addServerVariable(idx);
+    });
+
+    refreshPlaceholderHint(card, idx);
+    renderServerVariables(card, idx);
+    el.appendChild(card);
+  });
+}
+
+function refreshPlaceholderHint(card, idx) {
+  const s = state.current.servers[idx];
+  const phs = placeholdersInUrl(s.url || "");
+  const haveNames = new Set((s.variables || []).map((v) => (v.name || "").trim()).filter(Boolean));
+  const hint = card.querySelector("[data-placeholders]");
+  if (phs.length === 0) {
+    hint.innerHTML = "";
+    return;
+  }
+  const parts = ['<span>Detected placeholders:</span>'];
+  phs.forEach((name) => {
+    const matched = haveNames.has(name);
+    const cls = matched ? "chip matched" : "chip";
+    const title = matched ? "Already defined" : "Click to add a variable for this placeholder";
+    parts.push(`<span class="${cls}" data-ph="${escapeAttr(name)}" title="${title}">{${escapeText(name)}}</span>`);
+  });
+  hint.innerHTML = parts.join("");
+  hint.querySelectorAll(".chip:not(.matched)").forEach((chip) => {
+    chip.addEventListener("click", () => addServerVariable(idx, chip.dataset.ph));
+  });
+}
+
+function renderServerVariables(card, sidx) {
+  const list = card.querySelector("[data-vars-list]");
+  list.innerHTML = "";
+  const s = state.current.servers[sidx];
+  s.variables.forEach((v, vidx) => {
+    const sub = document.createElement("div");
+    sub.className = "subcard";
+    sub.innerHTML = `
+      <div class="head">
+        <span class="vname">{${escapeText(v.name || "(unnamed)")}}</span>
+        <button class="icon-btn" data-act="remove-var" title="Remove">✕</button>
+      </div>
+      <div class="grid-2">
+        <div><label>Name</label>
+          <input type="text" data-vf="name" value="${escapeAttr(v.name || "")}" placeholder="host" /></div>
+        <div><label>Default</label>
+          <input type="text" data-vf="default" value="${escapeAttr(v.default || "")}" placeholder="api.example.com" /></div>
+      </div>
+      <label>Description (optional)</label>
+      <input type="text" data-vf="description" value="${escapeAttr(v.description || "")}" />
+      <label>Allowed values (optional, comma-separated)</label>
+      <input type="text" data-vf="enum" value="${escapeAttr((v.enum || []).join(", "))}" placeholder="dev, staging, prod" />
+    `;
+    sub.querySelector("[data-act=remove-var]").addEventListener("click", () => {
+      s.variables.splice(vidx, 1);
+      renderServerVariables(card, sidx);
+      refreshPlaceholderHint(card, sidx);
+    });
+    sub.querySelectorAll("[data-vf]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const k = inp.dataset.vf;
+        if (k === "enum") {
+          v.enum = inp.value.split(",").map(x => x.trim()).filter(Boolean);
+        } else {
+          v[k] = inp.value;
+        }
+        if (k === "name") {
+          sub.querySelector(".vname").textContent = "{" + (v.name || "(unnamed)") + "}";
+          refreshPlaceholderHint(card, sidx);
+        }
+      });
+    });
+    list.appendChild(sub);
+  });
+}
+
+function addServerVariable(serverIdx, presetName) {
+  const s = state.current.servers[serverIdx];
+  if (!Array.isArray(s.variables)) s.variables = [];
+  s.variables.push({ name: presetName || "", default: "", description: "", enum: [] });
+  // Re-render just this server card
+  const card = $$("#servers-list .card")[serverIdx];
+  if (card) {
+    renderServerVariables(card, serverIdx);
+    refreshPlaceholderHint(card, serverIdx);
+  } else {
+    renderServers();
+  }
+}
+
+function addServer() {
+  state.current.servers.push({ url: "", description: "", variables: [] });
+  renderServers();
+}
+
+// Convert a server's variables array → OpenAPI map shape for submission.
+function serverVariablesToMap(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return undefined;
+  const out = {};
+  arr.forEach((v) => {
+    const name = (v.name || "").trim();
+    if (!name) return;
+    const entry = { default: v.default || "" };
+    if (v.description) entry.description = v.description;
+    if (Array.isArray(v.enum) && v.enum.length > 0) entry.enum = v.enum;
+    out[name] = entry;
+  });
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+// Convert OpenAPI map shape → array form used in state.
+function serverVariablesFromMap(m) {
+  if (!m || typeof m !== "object") return [];
+  return Object.entries(m).map(([name, v]) => ({
+    name,
+    default: (v && v.default) || "",
+    description: (v && v.description) || "",
+    enum: Array.isArray(v && v.enum) ? v.enum : [],
+  }));
+}
+
+// --- security schemes -----------------------------------------------------
+const schemeTypes = ["apiKey", "http", "oauth2", "openIdConnect"];
+function renderSchemes() {
+  const el = $("#schemes-list");
+  el.innerHTML = "";
+  Object.entries(state.current.schemes).forEach(([name, sch]) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">Scheme</span>
+        <button class="icon-btn" title="Remove">✕</button>
+      </div>
+      <label>Name</label>
+      <input type="text" data-field="name" value="${escapeAttr(name)}" />
+      <label>Type</label>
+      <select data-field="type">
+        ${schemeTypes.map((t) => `<option value="${t}" ${sch.type === t ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+      <div data-extra></div>
+      <label>Description</label>
+      <input type="text" data-field="description" value="${escapeAttr(sch.description || "")}" />
+    `;
+    const renderExtra = () => {
+      const t = card.querySelector("[data-field=type]").value;
+      const extra = card.querySelector("[data-extra]");
+      if (t === "apiKey") {
+        extra.innerHTML = `
+          <label>Header / query / cookie name</label>
+          <input type="text" data-field="apikey-name" value="${escapeAttr(sch.name || "")}" placeholder="X-API-Key" />
+          <label>In</label>
+          <select data-field="apikey-in">
+            ${["header","query","cookie"].map(v=>`<option value="${v}" ${sch.in===v?"selected":""}>${v}</option>`).join("")}
+          </select>`;
+      } else if (t === "http") {
+        extra.innerHTML = `
+          <label>Scheme</label>
+          <input type="text" data-field="http-scheme" value="${escapeAttr(sch.scheme || "bearer")}" />
+          <label>Bearer format</label>
+          <input type="text" data-field="http-bearer" value="${escapeAttr(sch.bearerFormat || "")}" placeholder="JWT" />`;
+      } else if (t === "openIdConnect") {
+        extra.innerHTML = `
+          <label>OpenID Connect URL</label>
+          <input type="url" data-field="oidc-url" value="${escapeAttr(sch.openIdConnectUrl || "")}" />`;
+      } else if (t === "oauth2") {
+        extra.innerHTML = `
+          <label>Authorization URL</label>
+          <input type="url" data-field="oauth-auth" value="${escapeAttr((sch.flows?.authorizationCode?.authorizationUrl) || (sch.flows?.implicit?.authorizationUrl) || "")}" />
+          <label>Token URL</label>
+          <input type="url" data-field="oauth-token" value="${escapeAttr((sch.flows?.authorizationCode?.tokenUrl) || (sch.flows?.password?.tokenUrl) || "")}" />
+          <label>Scopes (one per line: name=description)</label>
+          <textarea data-field="oauth-scopes">${escapeText(scopesToText(sch.flows))}</textarea>`;
+      } else {
+        extra.innerHTML = "";
+      }
+    };
+    renderExtra();
+    card.querySelector("[data-field=type]").addEventListener("change", renderExtra);
+    card.querySelector(".icon-btn").addEventListener("click", () => {
+      delete state.current.schemes[name];
+      renderSchemes();
+      renderSecurityRequirements();
+    });
+
+    card.addEventListener("input", () => {
+      const newName = card.querySelector("[data-field=name]").value || name;
+      const t = card.querySelector("[data-field=type]").value;
+      const desc = card.querySelector("[data-field=description]").value;
+      const built = { type: t, description: desc };
+      if (t === "apiKey") {
+        built.name = card.querySelector("[data-field=apikey-name]")?.value || "";
+        built.in = card.querySelector("[data-field=apikey-in]")?.value || "header";
+      } else if (t === "http") {
+        built.scheme = card.querySelector("[data-field=http-scheme]")?.value || "bearer";
+        built.bearerFormat = card.querySelector("[data-field=http-bearer]")?.value || "";
+      } else if (t === "openIdConnect") {
+        built.openIdConnectUrl = card.querySelector("[data-field=oidc-url]")?.value || "";
+      } else if (t === "oauth2") {
+        const authURL = card.querySelector("[data-field=oauth-auth]")?.value || "";
+        const tokenURL = card.querySelector("[data-field=oauth-token]")?.value || "";
+        const scopes = parseScopes(card.querySelector("[data-field=oauth-scopes]")?.value || "");
+        built.flows = { authorizationCode: { authorizationUrl: authURL, tokenUrl: tokenURL, scopes } };
+      }
+      if (newName !== name) {
+        delete state.current.schemes[name];
+        name = newName;
+      }
+      state.current.schemes[name] = built;
+      renderSecurityRequirements();
+    });
+    el.appendChild(card);
+  });
+}
+function addScheme() {
+  let i = 1;
+  while (state.current.schemes["scheme" + i]) i++;
+  state.current.schemes["scheme" + i] = { type: "http", scheme: "bearer", bearerFormat: "JWT" };
+  renderSchemes();
+  renderSecurityRequirements();
+}
+
+function scopesToText(flows) {
+  if (!flows) return "";
+  const flow = flows.authorizationCode || flows.implicit || flows.password || flows.clientCredentials;
+  if (!flow || !flow.scopes) return "";
+  return Object.entries(flow.scopes).map(([k,v]) => `${k}=${v}`).join("\n");
+}
+function parseScopes(text) {
+  const out = {};
+  text.split("\n").forEach((line) => {
+    line = line.trim();
+    if (!line) return;
+    const eq = line.indexOf("=");
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+    else out[line] = "";
+  });
+  return out;
+}
+
+function renderSecurityRequirements() {
+  const el = $("#security-req");
+  el.innerHTML = "";
+  const names = Object.keys(state.current.schemes);
+  if (names.length === 0) {
+    el.innerHTML = `<div class="hint">Add a security scheme first.</div>`;
+    return;
+  }
+  const active = new Set();
+  if (state.current.security && state.current.security.length > 0) {
+    Object.keys(state.current.security[0] || {}).forEach((n) => active.add(n));
+  }
+  names.forEach((n) => {
+    const id = "req-" + n;
+    const wrap = document.createElement("label");
+    wrap.className = "check";
+    wrap.innerHTML = `<input type="checkbox" id="${id}" ${active.has(n) ? "checked" : ""}/> <span>${escapeText(n)}</span>`;
+    wrap.querySelector("input").addEventListener("change", () => {
+      const checked = $$("#security-req input[type=checkbox]:checked").map((c) => c.id.replace("req-", ""));
+      if (checked.length === 0) state.current.security = [];
+      else {
+        const obj = {};
+        checked.forEach((c) => { obj[c] = []; });
+        state.current.security = [obj];
+      }
+    });
+    el.appendChild(wrap);
+  });
+}
+
+// --- tags -----------------------------------------------------------------
+function renderTags() {
+  const el = $("#tags-list");
+  el.innerHTML = "";
+  state.current.tags.forEach((t, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">Tag</span>
+        <button class="icon-btn" title="Remove">✕</button>
+      </div>
+      <label>Name</label>
+      <input type="text" data-field="name" value="${escapeAttr(t.name || "")}" placeholder="users" />
+      <label>Description</label>
+      <input type="text" data-field="description" value="${escapeAttr(t.description || "")}" />
+      <label>External Docs URL (optional)</label>
+      <input type="url" data-field="extUrl" value="${escapeAttr(t.externalDocs?.url || "")}" />
+    `;
+    card.querySelector(".icon-btn").addEventListener("click", () => {
+      state.current.tags.splice(idx, 1);
+      renderTags();
+    });
+    card.addEventListener("input", () => {
+      const tag = state.current.tags[idx];
+      tag.name = card.querySelector("[data-field=name]").value;
+      tag.description = card.querySelector("[data-field=description]").value;
+      const extUrl = card.querySelector("[data-field=extUrl]").value;
+      tag.externalDocs = extUrl ? { url: extUrl } : null;
+    });
+    el.appendChild(card);
+  });
+}
+function addTag() {
+  state.current.tags.push({ name: "", description: "" });
+  renderTags();
+}
+
+// --- type mappings --------------------------------------------------------
+function renderTypeMappings() {
+  const el = $("#typemap-list");
+  el.innerHTML = "";
+  state.current.typeMap.forEach((m, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">Mapping</span>
+        <button class="icon-btn" title="Remove">✕</button>
+      </div>
+      <label>Go type</label>
+      <input type="text" data-field="goType" list="dl-types" value="${escapeAttr(m.goType || "")}" placeholder="time.Time" />
+      <label>OpenAPI schema (JSON)</label>
+      <textarea data-field="schema" class="mono" style="font-size:12px;">${escapeText(JSON.stringify(m.openapiType || {}, null, 2))}</textarea>
+      <div class="hint" data-err style="color:var(--danger);"></div>
+    `;
+    card.querySelector(".icon-btn").addEventListener("click", () => {
+      state.current.typeMap.splice(idx, 1);
+      renderTypeMappings();
+    });
+    card.addEventListener("input", () => {
+      const m = state.current.typeMap[idx];
+      m.goType = card.querySelector("[data-field=goType]").value;
+      const txt = card.querySelector("[data-field=schema]").value.trim();
+      const errEl = card.querySelector("[data-err]");
+      if (!txt) { m.openapiType = {}; errEl.textContent = ""; return; }
+      try {
+        m.openapiType = JSON.parse(txt);
+        errEl.textContent = "";
+      } catch (e) {
+        errEl.textContent = "Invalid JSON: " + e.message;
+      }
+    });
+    el.appendChild(card);
+  });
+}
+function addTypeMapping() {
+  state.current.typeMap.push({ goType: "", openapiType: { type: "string" } });
+  renderTypeMappings();
+}
+
+// --- external types -------------------------------------------------------
+function renderExternalTypes() {
+  const el = $("#exttype-list");
+  el.innerHTML = "";
+  state.current.extTypes.forEach((t, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">External type</span>
+        <button class="icon-btn" title="Remove">✕</button>
+      </div>
+      <label>Full type name</label>
+      <input type="text" data-field="name" list="dl-imports" value="${escapeAttr(t.name || "")}" placeholder="primitive.ObjectID" />
+      <label>Description</label>
+      <input type="text" data-field="description" value="${escapeAttr(t.description || "")}" />
+      <label>OpenAPI schema (JSON)</label>
+      <textarea data-field="schema" class="mono" style="font-size:12px;">${escapeText(JSON.stringify(t.openapiType || {}, null, 2))}</textarea>
+      <div class="hint" data-err style="color:var(--danger);"></div>
+    `;
+    card.querySelector(".icon-btn").addEventListener("click", () => {
+      state.current.extTypes.splice(idx, 1);
+      renderExternalTypes();
+    });
+    card.addEventListener("input", () => {
+      const e = state.current.extTypes[idx];
+      e.name = card.querySelector("[data-field=name]").value;
+      e.description = card.querySelector("[data-field=description]").value;
+      const txt = card.querySelector("[data-field=schema]").value.trim();
+      const errEl = card.querySelector("[data-err]");
+      if (!txt) { e.openapiType = {}; errEl.textContent = ""; return; }
+      try {
+        e.openapiType = JSON.parse(txt);
+        errEl.textContent = "";
+      } catch (err) {
+        errEl.textContent = "Invalid JSON: " + err.message;
+      }
+    });
+    el.appendChild(card);
+  });
+}
+function addExternalType() {
+  state.current.extTypes.push({ name: "", description: "", openapiType: { type: "string" } });
+  renderExternalTypes();
+}
+
+// --- overrides ------------------------------------------------------------
+function renderOverrides() {
+  const el = $("#overrides-list");
+  el.innerHTML = "";
+  state.current.overrides.forEach((o, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="head">
+        <span class="title">Override</span>
+        <button class="icon-btn" title="Remove">✕</button>
+      </div>
+      <label>Function name</label>
+      <input type="text" data-field="functionName" list="dl-functions" value="${escapeAttr(o.functionName || "")}" placeholder="github.com/me/pkg.Handler" />
+      <label>Summary</label>
+      <input type="text" data-field="summary" value="${escapeAttr(o.summary || "")}" />
+      <label>Description</label>
+      <textarea data-field="description">${escapeText(o.description || "")}</textarea>
+      <div class="row">
+        <div>
+          <label>Response status</label>
+          <input type="number" data-field="responseStatus" value="${o.responseStatus || ""}" />
+        </div>
+        <div>
+          <label>Response type</label>
+          <input type="text" data-field="responseType" value="${escapeAttr(o.responseType || "")}" placeholder="MyResponse" />
+        </div>
+      </div>
+      <label>Tags (comma-separated)</label>
+      <input type="text" data-field="tags" value="${escapeAttr((o.tags || []).join(", "))}" />
+    `;
+    card.querySelector(".icon-btn").addEventListener("click", () => {
+      state.current.overrides.splice(idx, 1);
+      renderOverrides();
+    });
+    card.addEventListener("input", () => {
+      const o = state.current.overrides[idx];
+      o.functionName = card.querySelector("[data-field=functionName]").value;
+      o.summary = card.querySelector("[data-field=summary]").value;
+      o.description = card.querySelector("[data-field=description]").value;
+      const st = parseInt(card.querySelector("[data-field=responseStatus]").value, 10);
+      o.responseStatus = isNaN(st) ? 0 : st;
+      o.responseType = card.querySelector("[data-field=responseType]").value;
+      o.tags = card.querySelector("[data-field=tags]").value
+        .split(",").map(s => s.trim()).filter(Boolean);
+    });
+    el.appendChild(card);
+  });
+}
+function addOverride() {
+  state.current.overrides.push({ functionName: "", summary: "", description: "" });
+  renderOverrides();
+}
+
+// --- raw YAML -------------------------------------------------------------
+async function loadFrameworkDefaultYAML() {
+  const fw = $("#framework").value;
+  setRawStatus("loading defaults for " + fw + "…");
+  try {
+    const r = await fetch("/api/default-config.yaml?framework=" + encodeURIComponent(fw));
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    $("#raw-yaml").value = await r.text();
+    setRawStatus("loaded framework defaults for " + fw);
+  } catch (e) {
+    setRawStatus("failed: " + e.message, true);
+  }
+}
+async function loadCurrentEffectiveYAML() {
+  setRawStatus("loading last effective…");
+  try {
+    const r = await fetch("/api/config.yaml");
+    if (!r.ok) throw new Error("HTTP " + r.status + " — generate a spec first");
+    $("#raw-yaml").value = await r.text();
+    setRawStatus("loaded last effective config");
+  } catch (e) {
+    setRawStatus("failed: " + e.message, true);
+  }
+}
+function copyYAML() {
+  const t = $("#raw-yaml");
+  t.select();
+  document.execCommand("copy");
+  setRawStatus("copied to clipboard");
+}
+function downloadRawYAML() {
+  const blob = new Blob([$("#raw-yaml").value], { type: "application/x-yaml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "apispec.yaml";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function setRawStatus(msg, isErr) {
+  const el = $("#raw-yaml-status");
+  el.textContent = msg;
+  el.style.color = isErr ? "var(--danger)" : "var(--muted)";
+}
+
+// --- form ↔ YAML sync ----------------------------------------------------
+// Triggered when the user opens the Full YAML tab. If they're authoring
+// raw YAML (checkbox on, textarea has content) we don't clobber their work;
+// otherwise we re-render from the current form so the YAML always
+// reflects what the form would send.
+async function maybeSyncYAMLFromForm() {
+  const ta = $("#raw-yaml");
+  if ($("#use-raw-config").checked && ta.value.trim() !== "") return;
+  await syncYAMLFromForm();
+}
+
+async function syncYAMLFromForm() {
+  setRawStatus("syncing from form…");
+  try {
+    const body = collectForm();
+    body.useRawConfig = false;
+    body.rawConfig = "";
+    const r = await fetch("/api/render-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || ("HTTP " + r.status));
+    }
+    $("#raw-yaml").value = await r.text();
+    setRawStatus("synced from form · " + new Date().toLocaleTimeString());
+  } catch (e) {
+    setRawStatus("sync failed: " + e.message, true);
+  }
+}
+
+async function applyYAMLToForm() {
+  if (!$("#raw-yaml").value.trim()) {
+    setRawStatus("nothing to apply", true);
+    return;
+  }
+  setRawStatus("parsing YAML…");
+  try {
+    const r = await fetch("/api/parse-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ yaml: $("#raw-yaml").value }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    applyAPISpecConfig(data);
+    setRawStatus("form updated from YAML · " + new Date().toLocaleTimeString());
+    setStatus("form synced from YAML", "ok");
+  } catch (e) {
+    setRawStatus("apply failed: " + e.message, true);
+  }
+}
+
+// When the user toggles "Use this YAML directly" on, fill the textarea
+// from the form so they have something to edit (rather than starting blank).
+document.addEventListener("DOMContentLoaded", () => {
+  const cb = document.getElementById("use-raw-config");
+  if (!cb) return;
+  cb.addEventListener("change", async () => {
+    if (cb.checked && $("#raw-yaml").value.trim() === "") {
+      await syncYAMLFromForm();
+    }
+  });
+});
+
+// --- generate -------------------------------------------------------------
+async function generate() {
+  setStatus("generating…");
+  $("#generateBtn").disabled = true;
+  try {
+    const body = collectForm();
+    const r = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    const took = data.durationMs;
+    const mode = body.useRawConfig ? "raw YAML" : "form";
+    setStatus(`spec ready · ${data.pathCount} paths · ${took} ms · ${mode}`, "ok");
+    $("#last-status").textContent =
+      `framework: ${data.framework}\nat: ${data.generatedAt}\npaths: ${data.pathCount}\ntook: ${took} ms\nmode: ${mode}`;
+    $("#loadEffectiveBtn").disabled = false;
+    if (state.lastView) openView(state.lastView);
+    else openView("scalar");
+  } catch (e) {
+    console.error(e);
+    setStatus(("generation failed: " + (e.message || e)).slice(0, 240), "err");
+  } finally {
+    $("#generateBtn").disabled = false;
+  }
+}
+
+function collectForm() {
+  const linesOf = (id) => ($(id).value || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const useRaw = $("#use-raw-config").checked;
+  const rawYAML = $("#raw-yaml").value;
+
+  const extDocsURL = $("#extdocs-url").value.trim();
+  const extDocsDesc = $("#extdocs-description").value.trim();
+
+  const reqStatus = parseInt($("#def-res-status").value, 10);
+
+  return {
+    framework: $("#framework").value,
+    openapiVersion: $("#openapi-version").value,
+    useRawConfig: useRaw,
+    rawConfig: useRaw ? rawYAML : "",
+    info: {
+      title: $("#info-title").value,
+      version: $("#info-version").value,
+      description: $("#info-description").value,
+      termsOfService: $("#info-terms").value,
+      contact: {
+        name: $("#contact-name").value,
+        url: $("#contact-url").value,
+        email: $("#contact-email").value,
+      },
+      license: {
+        name: $("#license-name").value,
+        url: $("#license-url").value,
+      },
+    },
+    servers: state.current.servers
+      .filter((s) => (s.url || "").trim() !== "")
+      .map((s) => {
+        const out = { url: s.url, description: s.description };
+        const vm = serverVariablesToMap(s.variables);
+        if (vm) out.variables = vm;
+        return out;
+      }),
+    security: state.current.security || [],
+    securitySchemes: state.current.schemes || {},
+    tags: state.current.tags.filter((t) => (t.name || "").trim() !== ""),
+    externalDocs: (extDocsURL || extDocsDesc) ? { url: extDocsURL, description: extDocsDesc } : null,
+    defaults: {
+      requestContentType: $("#def-req-ct").value,
+      responseContentType: $("#def-res-ct").value,
+      responseStatus: isNaN(reqStatus) ? 0 : reqStatus,
+    },
+    typeMapping: state.current.typeMap.filter((m) => (m.goType || "").trim() !== ""),
+    externalTypes: state.current.extTypes.filter((t) => (t.name || "").trim() !== ""),
+    overrides: state.current.overrides.filter((o) => (o.functionName || "").trim() !== ""),
+    frameworkConfig: {
+      routePatterns:       state.current.framework.routePatterns,
+      requestBodyPatterns: state.current.framework.requestBodyPatterns,
+      responsePatterns:    state.current.framework.responsePatterns,
+      paramPatterns:       state.current.framework.paramPatterns,
+      mountPatterns:       state.current.framework.mountPatterns,
+    },
+    include: {
+      files: linesOf("#include-files"),
+      packages: linesOf("#include-packages"),
+      functions: linesOf("#include-functions"),
+      types: linesOf("#include-types"),
+    },
+    exclude: {
+      files: linesOf("#exclude-files"),
+      packages: linesOf("#exclude-packages"),
+      functions: linesOf("#exclude-functions"),
+      types: linesOf("#exclude-types"),
+    },
+  };
+}
+
+function downloadConfig() {
+  window.location.href = "/api/config.yaml";
+}
+
+// --- helpers --------------------------------------------------------------
+function setStatus(text, kind) {
+  const s = $("#status");
+  s.textContent = text;
+  s.className = "badge" + (kind ? " " + kind : "");
+}
+function escapeAttr(s) {
+  return String(s == null ? "" : s).replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+function escapeText(s) {
+  return String(s == null ? "" : s).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Enter on project-dir input switches project
+$("#projectDirInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); switchProject(); }
+});
+
+// kick off
+detect();
+</script>
+</body>
+</html>

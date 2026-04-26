@@ -16,196 +16,196 @@ const (
 // FrameworkConfig defines framework-specific extraction patterns
 type FrameworkConfig struct {
 	// Route extraction patterns
-	RoutePatterns []RoutePattern `yaml:"routePatterns"`
+	RoutePatterns []RoutePattern `yaml:"routePatterns" json:"routePatterns,omitempty"`
 
 	// Request body extraction patterns
-	RequestBodyPatterns []RequestBodyPattern `yaml:"requestBodyPatterns"`
+	RequestBodyPatterns []RequestBodyPattern `yaml:"requestBodyPatterns" json:"requestBodyPatterns,omitempty"`
 
 	// Response extraction patterns
-	ResponsePatterns []ResponsePattern `yaml:"responsePatterns"`
+	ResponsePatterns []ResponsePattern `yaml:"responsePatterns" json:"responsePatterns,omitempty"`
 
 	// Parameter extraction patterns
-	ParamPatterns []ParamPattern `yaml:"paramPatterns"`
+	ParamPatterns []ParamPattern `yaml:"paramPatterns" json:"paramPatterns,omitempty"`
 
 	// Mount/subrouter patterns
-	MountPatterns []MountPattern `yaml:"mountPatterns"`
+	MountPatterns []MountPattern `yaml:"mountPatterns" json:"mountPatterns,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names
 type MethodMapping struct {
-	Patterns []string `yaml:"patterns,omitempty"` // Function name patterns (e.g., ["get", "list", "show"])
-	Method   string   `yaml:"method,omitempty"`   // HTTP method (e.g., "GET")
-	Priority int      `yaml:"priority,omitempty"` // Higher priority = checked first
+	Patterns []string `yaml:"patterns,omitempty" json:"patterns,omitempty"` // Function name patterns (e.g., ["get", "list", "show"])
+	Method   string   `yaml:"method,omitempty" json:"method,omitempty"`     // HTTP method (e.g., "GET")
+	Priority int      `yaml:"priority,omitempty" json:"priority,omitempty"` // Higher priority = checked first
 }
 
 // MethodExtractionConfig defines how to extract HTTP methods
 type MethodExtractionConfig struct {
 	// Method mappings from function names
-	MethodMappings []MethodMapping `yaml:"methodMappings,omitempty"`
+	MethodMappings []MethodMapping `yaml:"methodMappings,omitempty" json:"methodMappings,omitempty"`
 
 	// Extraction strategy
-	UsePrefix     bool `yaml:"usePrefix,omitempty"`     // Check for prefix matches (getUser -> GET)
-	UseContains   bool `yaml:"useContains,omitempty"`   // Check for contains matches (userGet -> GET)
-	CaseSensitive bool `yaml:"caseSensitive,omitempty"` // Case sensitive matching
+	UsePrefix     bool `yaml:"usePrefix,omitempty" json:"usePrefix,omitempty"`         // Check for prefix matches (getUser -> GET)
+	UseContains   bool `yaml:"useContains,omitempty" json:"useContains,omitempty"`     // Check for contains matches (userGet -> GET)
+	CaseSensitive bool `yaml:"caseSensitive,omitempty" json:"caseSensitive,omitempty"` // Case sensitive matching
 
 	// Fallback behavior
-	DefaultMethod    string `yaml:"defaultMethod,omitempty"`    // Default method when none found
-	InferFromContext bool   `yaml:"inferFromContext,omitempty"` // Try to infer from call context
+	DefaultMethod    string `yaml:"defaultMethod,omitempty" json:"defaultMethod,omitempty"`       // Default method when none found
+	InferFromContext bool   `yaml:"inferFromContext,omitempty" json:"inferFromContext,omitempty"` // Try to infer from call context
 }
 
 // RoutePattern defines how to extract route information
 type RoutePattern struct {
 	// Function call patterns to match
-	CallRegex         string `yaml:"callRegex,omitempty"`         // e.g., '^BindJSON$'
-	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"` // e.g., '.*Handler$'
-	RecvType          string `yaml:"recvType,omitempty"`          // e.g., 'context.Context'
-	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`     // e.g., '^context\.Context$'
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`                 // e.g., '^BindJSON$'
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"` // e.g., '.*Handler$'
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`                   // e.g., 'context.Context'
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`         // e.g., '^context\.Context$'
 
 	// Argument extraction hints
-	MethodArgIndex  int `yaml:"methodArgIndex,omitempty"`  // Which arg contains HTTP method
-	PathArgIndex    int `yaml:"pathArgIndex,omitempty"`    // Which arg contains path
-	HandlerArgIndex int `yaml:"handlerArgIndex,omitempty"` // Which arg contains handler
+	MethodArgIndex  int `yaml:"methodArgIndex,omitempty" json:"methodArgIndex,omitempty"`   // Which arg contains HTTP method
+	PathArgIndex    int `yaml:"pathArgIndex,omitempty" json:"pathArgIndex,omitempty"`       // Which arg contains path
+	HandlerArgIndex int `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"` // Which arg contains handler
 
 	// Extraction hints
-	MethodFromCall    bool `yaml:"methodFromCall,omitempty"`    // Extract method from function name
-	MethodFromHandler bool `yaml:"methodFromHandler,omitempty"` // Extract method from handler function name
-	PathFromArg       bool `yaml:"pathFromArg,omitempty"`       // Extract path from argument
-	HandlerFromArg    bool `yaml:"handlerFromArg,omitempty"`    // Extract handler from argument
+	MethodFromCall    bool `yaml:"methodFromCall,omitempty" json:"methodFromCall,omitempty"`       // Extract method from function name
+	MethodFromHandler bool `yaml:"methodFromHandler,omitempty" json:"methodFromHandler,omitempty"` // Extract method from handler function name
+	PathFromArg       bool `yaml:"pathFromArg,omitempty" json:"pathFromArg,omitempty"`             // Extract path from argument
+	HandlerFromArg    bool `yaml:"handlerFromArg,omitempty" json:"handlerFromArg,omitempty"`       // Extract handler from argument
 
 	// Method extraction configuration
-	MethodExtraction *MethodExtractionConfig `yaml:"methodExtraction,omitempty"`
+	MethodExtraction *MethodExtractionConfig `yaml:"methodExtraction,omitempty" json:"methodExtraction,omitempty"`
 
 	// Package/type filtering
-	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
-	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty"`
-	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty"`
-	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty"`
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 }
 
 // RequestBodyPattern defines how to extract request body information
 type RequestBodyPattern struct {
 	// Function call patterns to match
-	CallRegex         string `yaml:"callRegex,omitempty"`
-	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"`
-	RecvType          string `yaml:"recvType,omitempty"`
-	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
-	TypeArgIndex int `yaml:"typeArgIndex,omitempty"` // Which arg contains type info
+	TypeArgIndex int `yaml:"typeArgIndex,omitempty" json:"typeArgIndex,omitempty"` // Which arg contains type info
 
 	// Extraction hints
-	TypeFromArg    bool `yaml:"typeFromArg,omitempty"`    // Extract type from argument
-	TypeFromReturn bool `yaml:"typeFromReturn,omitempty"` // Extract type from return value
-	Deref          bool `yaml:"deref,omitempty"`          // Dereference pointer types
+	TypeFromArg    bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"`       // Extract type from argument
+	TypeFromReturn bool `yaml:"typeFromReturn,omitempty" json:"typeFromReturn,omitempty"` // Extract type from return value
+	Deref          bool `yaml:"deref,omitempty" json:"deref,omitempty"`                   // Dereference pointer types
 
 	// Context-aware validation
-	AllowForGetMethods bool `yaml:"allowForGetMethods,omitempty"` // Allow this pattern for GET/HEAD methods
+	AllowForGetMethods bool `yaml:"allowForGetMethods,omitempty" json:"allowForGetMethods,omitempty"` // Allow this pattern for GET/HEAD methods
 
 	// Package/type filtering
-	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
-	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty"`
-	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty"`
-	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty"`
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 }
 
 // ResponsePattern defines how to extract response information
 type ResponsePattern struct {
 	// Function call patterns to match
-	CallRegex         string `yaml:"callRegex,omitempty"`
-	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"`
-	RecvType          string `yaml:"recvType,omitempty"`
-	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
-	StatusArgIndex int `yaml:"statusArgIndex,omitempty"` // Which arg contains status code
-	TypeArgIndex   int `yaml:"typeArgIndex,omitempty"`   // Which arg contains type info
+	StatusArgIndex int `yaml:"statusArgIndex,omitempty" json:"statusArgIndex,omitempty"` // Which arg contains status code
+	TypeArgIndex   int `yaml:"typeArgIndex,omitempty" json:"typeArgIndex,omitempty"`     // Which arg contains type info
 
 	// Extraction hints
-	StatusFromArg bool `yaml:"statusFromArg,omitempty"` // Extract status from argument
-	TypeFromArg   bool `yaml:"typeFromArg,omitempty"`   // Extract type from argument
-	Deref         bool `yaml:"deref,omitempty"`         // Dereference pointer types
+	StatusFromArg bool `yaml:"statusFromArg,omitempty" json:"statusFromArg,omitempty"` // Extract status from argument
+	TypeFromArg   bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"`     // Extract type from argument
+	Deref         bool `yaml:"deref,omitempty" json:"deref,omitempty"`                 // Dereference pointer types
 	// DefaultStatus specifies a fallback status code when it can't be extracted from args
-	DefaultStatus int `yaml:"defaultStatus,omitempty"`
+	DefaultStatus int `yaml:"defaultStatus,omitempty" json:"defaultStatus,omitempty"`
 	// DefaultContentType overrides the config default content type when set
-	DefaultContentType string `yaml:"defaultContentType,omitempty"`
+	DefaultContentType string `yaml:"defaultContentType,omitempty" json:"defaultContentType,omitempty"`
 
 	// Package/type filtering
-	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
-	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty"`
-	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty"`
-	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty"`
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 }
 
 // ParamPattern defines how to extract parameter information
 type ParamPattern struct {
 	// Function call patterns to match
-	CallRegex         string `yaml:"callRegex,omitempty"`
-	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"`
-	RecvType          string `yaml:"recvType,omitempty"`
-	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 
 	// Parameter location and extraction
-	ParamIn       string `yaml:"paramIn,omitempty"`       // path, query, header, cookie
-	ParamArgIndex int    `yaml:"paramArgIndex,omitempty"` // Which arg contains parameter
-	TypeArgIndex  int    `yaml:"typeArgIndex,omitempty"`  // Which arg contains type info
+	ParamIn       string `yaml:"paramIn,omitempty" json:"paramIn,omitempty"`             // path, query, header, cookie
+	ParamArgIndex int    `yaml:"paramArgIndex,omitempty" json:"paramArgIndex,omitempty"` // Which arg contains parameter
+	TypeArgIndex  int    `yaml:"typeArgIndex,omitempty" json:"typeArgIndex,omitempty"`   // Which arg contains type info
 
 	// Extraction hints
-	TypeFromArg bool `yaml:"typeFromArg,omitempty"` // Extract type from argument
-	Deref       bool `yaml:"deref,omitempty"`       // Dereference pointer types
+	TypeFromArg bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"` // Extract type from argument
+	Deref       bool `yaml:"deref,omitempty" json:"deref,omitempty"`             // Dereference pointer types
 
 	// Package/type filtering
-	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
-	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty"`
-	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty"`
-	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty"`
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 }
 
 // MountPattern defines how to extract mount/subrouter information
 type MountPattern struct {
 	// Function call patterns to match
-	CallRegex         string `yaml:"callRegex,omitempty"`
-	FunctionNameRegex string `yaml:"functionNameRegex,omitempty"`
-	RecvType          string `yaml:"recvType,omitempty"`
-	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty"`
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 
 	// Argument extraction hints
-	PathArgIndex   int `yaml:"pathArgIndex,omitempty"`   // Which arg contains mount path
-	RouterArgIndex int `yaml:"routerArgIndex,omitempty"` // Which arg contains router
+	PathArgIndex   int `yaml:"pathArgIndex,omitempty" json:"pathArgIndex,omitempty"`     // Which arg contains mount path
+	RouterArgIndex int `yaml:"routerArgIndex,omitempty" json:"routerArgIndex,omitempty"` // Which arg contains router
 
 	// Extraction hints
-	PathFromArg   bool `yaml:"pathFromArg,omitempty"`   // Extract path from argument
-	RouterFromArg bool `yaml:"routerFromArg,omitempty"` // Extract router from argument
-	IsMount       bool `yaml:"isMount,omitempty"`       // This is a mount operation
+	PathFromArg   bool `yaml:"pathFromArg,omitempty" json:"pathFromArg,omitempty"`     // Extract path from argument
+	RouterFromArg bool `yaml:"routerFromArg,omitempty" json:"routerFromArg,omitempty"` // Extract router from argument
+	IsMount       bool `yaml:"isMount,omitempty" json:"isMount,omitempty"`             // This is a mount operation
 
 	// Package/type filtering
-	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty"`
-	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty"`
-	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty"`
-	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty"`
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 }
 
 // TypeMapping maps Go types to OpenAPI schemas
 type TypeMapping struct {
-	GoType      string  `yaml:"goType"`
-	OpenAPIType *Schema `yaml:"openapiType"`
+	GoType      string  `yaml:"goType" json:"goType,omitempty"`
+	OpenAPIType *Schema `yaml:"openapiType" json:"openapiType,omitempty"`
 }
 
 // Override provides manual overrides for specific functions
 type Override struct {
-	FunctionName   string   `yaml:"functionName"`
-	Summary        string   `yaml:"summary,omitempty"`
-	Description    string   `yaml:"description,omitempty"`
-	ResponseStatus int      `yaml:"responseStatus,omitempty"`
-	ResponseType   string   `yaml:"responseType,omitempty"`
-	Tags           []string `yaml:"tags,omitempty"`
+	FunctionName   string   `yaml:"functionName" json:"functionName,omitempty"`
+	Summary        string   `yaml:"summary,omitempty" json:"summary,omitempty"`
+	Description    string   `yaml:"description,omitempty" json:"description,omitempty"`
+	ResponseStatus int      `yaml:"responseStatus,omitempty" json:"responseStatus,omitempty"`
+	ResponseType   string   `yaml:"responseType,omitempty" json:"responseType,omitempty"`
+	Tags           []string `yaml:"tags,omitempty" json:"tags,omitempty"`
 }
 
 // IncludeExclude defines what to include/exclude
 type IncludeExclude struct {
-	Files     []string `yaml:"files"`
-	Packages  []string `yaml:"packages"`
-	Functions []string `yaml:"functions"`
-	Types     []string `yaml:"types"`
+	Files     []string `yaml:"files" json:"files,omitempty"`
+	Packages  []string `yaml:"packages" json:"packages,omitempty"`
+	Functions []string `yaml:"functions" json:"functions,omitempty"`
+	Types     []string `yaml:"types" json:"types,omitempty"`
 }
 
 // matchesPattern checks if a path matches a gitignore-style pattern
@@ -343,46 +343,46 @@ func (ie *IncludeExclude) ShouldExcludeType(typeName string) bool {
 
 // Defaults provides default values
 type Defaults struct {
-	RequestContentType  string `yaml:"requestContentType,omitempty"`
-	ResponseContentType string `yaml:"responseContentType,omitempty"`
-	ResponseStatus      int    `yaml:"responseStatus,omitempty"`
+	RequestContentType  string `yaml:"requestContentType,omitempty" json:"requestContentType,omitempty"`
+	ResponseContentType string `yaml:"responseContentType,omitempty" json:"responseContentType,omitempty"`
+	ResponseStatus      int    `yaml:"responseStatus,omitempty" json:"responseStatus,omitempty"`
 }
 
 // ExternalType defines an external type that should be treated as known
 type ExternalType struct {
-	Name        string  `yaml:"name"`        // Full type name (e.g., "primitive.ObjectID")
-	OpenAPIType *Schema `yaml:"openapiType"` // OpenAPI schema for this type
-	Description string  `yaml:"description,omitempty"`
+	Name        string  `yaml:"name" json:"name,omitempty"`               // Full type name (e.g., "primitive.ObjectID")
+	OpenAPIType *Schema `yaml:"openapiType" json:"openapiType,omitempty"` // OpenAPI schema for this type
+	Description string  `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
 // APISpecConfig is the main configuration struct
 type APISpecConfig struct {
 	// Framework-specific patterns
-	Framework FrameworkConfig `yaml:"framework"`
+	Framework FrameworkConfig `yaml:"framework" json:"framework,omitempty"`
 
 	// Type mappings
-	TypeMapping []TypeMapping `yaml:"typeMapping"`
+	TypeMapping []TypeMapping `yaml:"typeMapping" json:"typeMapping,omitempty"`
 
 	// External types that should be treated as known
-	ExternalTypes []ExternalType `yaml:"externalTypes"`
+	ExternalTypes []ExternalType `yaml:"externalTypes" json:"externalTypes,omitempty"`
 
 	// Manual overrides
-	Overrides []Override `yaml:"overrides"`
+	Overrides []Override `yaml:"overrides" json:"overrides,omitempty"`
 
 	// Include/exclude filters
-	Include IncludeExclude `yaml:"include"`
-	Exclude IncludeExclude `yaml:"exclude"`
+	Include IncludeExclude `yaml:"include" json:"include,omitempty"`
+	Exclude IncludeExclude `yaml:"exclude" json:"exclude,omitempty"`
 
 	// Defaults
-	Defaults Defaults `yaml:"defaults"`
+	Defaults Defaults `yaml:"defaults" json:"defaults,omitempty"`
 
 	// OpenAPI metadata
-	Info            Info                      `yaml:"info"`
-	Servers         []Server                  `yaml:"servers"`
-	Security        []SecurityRequirement     `yaml:"security"`
-	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes"`
-	Tags            []Tag                     `yaml:"tags"`
-	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs"`
+	Info            Info                      `yaml:"info" json:"info,omitempty"`
+	Servers         []Server                  `yaml:"servers" json:"servers,omitempty"`
+	Security        []SecurityRequirement     `yaml:"security" json:"security,omitempty"`
+	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes" json:"securitySchemes,omitempty"`
+	Tags            []Tag                     `yaml:"tags" json:"tags,omitempty"`
+	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters
