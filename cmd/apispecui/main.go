@@ -81,11 +81,11 @@ type ProjectRequest struct {
 // GenerateRequest is what the UI POSTs to /api/generate.
 //
 // Two modes:
-//   1. Structured: framework defaults + form fields are merged into APISpecConfig.
-//   2. Raw: when UseRawConfig is true, RawConfig (YAML text) is parsed directly
-//      into APISpecConfig and used as-is. Use this to edit any field — including
-//      framework patterns, method extraction rules, etc. — that the form doesn't
-//      surface.
+//  1. Structured: framework defaults + form fields are merged into APISpecConfig.
+//  2. Raw: when UseRawConfig is true, RawConfig (YAML text) is parsed directly
+//     into APISpecConfig and used as-is. Use this to edit any field — including
+//     framework patterns, method extraction rules, etc. — that the form doesn't
+//     surface.
 type GenerateRequest struct {
 	Framework       string                         `json:"framework"`
 	OpenAPIVersion  string                         `json:"openapiVersion"`
@@ -116,12 +116,12 @@ type GenerateRequest struct {
 
 // GenerateResponse is the result of a successful generation.
 type GenerateResponse struct {
-	OK         bool      `json:"ok"`
-	Framework  string    `json:"framework"`
-	PathCount  int       `json:"pathCount"`
+	OK          bool      `json:"ok"`
+	Framework   string    `json:"framework"`
+	PathCount   int       `json:"pathCount"`
 	GeneratedAt time.Time `json:"generatedAt"`
-	DurationMs int64     `json:"durationMs"`
-	Message    string    `json:"message,omitempty"`
+	DurationMs  int64     `json:"durationMs"`
+	Message     string    `json:"message,omitempty"`
 }
 
 // UIServer holds shared state across requests.
@@ -274,7 +274,12 @@ func readModulePath(gomod string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			log.Printf("failed to close %s: %v", gomod, err)
+		}
+	}()
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		line := strings.TrimSpace(scan.Text())

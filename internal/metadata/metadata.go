@@ -922,15 +922,26 @@ func processStructFields(structType *ast.StructType, pkgName string, metadata *M
 		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
 		comments := getComments(field)
+		var fieldTypeInfo types.Type
+		var hasStar bool
 
 		if !IsPrimitiveType(fieldType) && info != nil {
-			fieldTypeInfo := info.TypeOf(field.Type)
+			switch ft := field.Type.(type) {
+			case *ast.StarExpr:
+				hasStar = true
+				fieldTypeInfo = info.TypeOf(ft.X)
+			default:
+				fieldTypeInfo = info.TypeOf(ft)
+			}
 			if fieldTypeInfo != nil {
 				// Only resolve external types to their underlying primitives
 				// Internal project types should remain as-is since they'll be resolved from the project
 				if isExternalType(fieldTypeInfo, metadata.CurrentModulePath) {
 					underlyingFieldType := fieldTypeInfo.Underlying().String()
 					if IsPrimitiveType(underlyingFieldType) {
+						if hasStar {
+							underlyingFieldType = "*" + underlyingFieldType
+						}
 						fieldType = underlyingFieldType
 					}
 				}
