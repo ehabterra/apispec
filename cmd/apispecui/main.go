@@ -513,18 +513,33 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The engine already analysed the project to build `out`. Reuse the same
+	// metadata for the suggestion summary so we don't pay for the analysis
+	// twice.
+	var summary *MetadataSummary
+	if meta := gen.GetMetadata(); meta != nil {
+		summary = summarizeMetadata(meta, gen.ModuleRoot())
+	}
+
+	now := time.Now()
 	s.mu.Lock()
 	s.currentSpec = out
 	s.currentCfg = apiCfg
-	s.lastGen = time.Now()
+	s.lastGen = now
 	s.lastErr = ""
+	if summary != nil {
+		if s.metaCache == nil {
+			s.metaCache = make(map[string]*MetadataSummary)
+		}
+		s.metaCache[s.inputDir] = summary
+	}
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusOK, GenerateResponse{
 		OK:          true,
 		Framework:   req.Framework,
 		PathCount:   len(out.Paths),
-		GeneratedAt: s.lastGen,
+		GeneratedAt: now,
 		DurationMs:  time.Since(start).Milliseconds(),
 	})
 }
@@ -688,8 +703,11 @@ type MetadataSummary struct {
 	Imports      []string `json:"imports"`      // import paths NOT in user module (third-party)
 }
 
-// handleMetadataSummary runs metadata-only analysis on the active project
-// and returns a flattened summary for UI suggestions. Cached per input dir.
+// handleMetadataSummary returns the metadata summary that was extracted as a
+// side-effect of the most recent successful /api/generate. We deliberately do
+// NOT run a separate analysis pass here — running the engine twice (once for
+// the OpenAPI spec, once for the suggestions) doubles the wall-clock cost on
+// every project change. Generate writes the cache; this endpoint just reads.
 func (s *UIServer) handleMetadataSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET only")
@@ -698,44 +716,14 @@ func (s *UIServer) handleMetadataSummary(w http.ResponseWriter, r *http.Request)
 	dir := s.currentDir()
 
 	s.mu.RLock()
-	if cached, ok := s.metaCache[dir]; ok {
-		s.mu.RUnlock()
-		writeJSON(w, http.StatusOK, cached)
-		return
-	}
+	cached, ok := s.metaCache[dir]
 	s.mu.RUnlock()
-
-	engCfg := &engine.EngineConfig{
-		InputDir:                     dir,
-		MaxNodesPerTree:              engine.DefaultMaxNodesPerTree,
-		MaxChildrenPerNode:           engine.DefaultMaxChildrenPerNode,
-		MaxArgsPerFunction:           engine.DefaultMaxArgsPerFunction,
-		MaxNestedArgsDepth:           engine.DefaultMaxNestedArgsDepth,
-		MaxRecursionDepth:            engine.DefaultMaxRecursionDepth,
-		SkipCGOPackages:              true,
-		AnalyzeFrameworkDependencies: true,
-		AutoIncludeFrameworkPackages: true,
-		AutoExcludeTests:             true,
-		AutoExcludeMocks:             true,
-		Verbose:                      s.cfg.Verbose,
-	}
-	eng := engine.NewEngine(engCfg)
-	meta, err := eng.GenerateMetadataOnly()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "metadata failed: "+err.Error())
+	if !ok {
+		writeError(w, http.StatusNotFound,
+			"no metadata yet — click Generate to analyze the project (suggestions populate after the first run)")
 		return
 	}
-
-	summary := summarizeMetadata(meta, eng.ModuleRoot())
-
-	s.mu.Lock()
-	if s.metaCache == nil {
-		s.metaCache = make(map[string]*MetadataSummary)
-	}
-	s.metaCache[dir] = summary
-	s.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, summary)
+	writeJSON(w, http.StatusOK, cached)
 }
 
 // summarizeMetadata flattens *metadata.Metadata into the summary the UI

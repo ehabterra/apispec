@@ -444,14 +444,15 @@
       <pre id="last-status" class="mono" style="background:var(--panel-2);padding:8px;border-radius:6px;font-size:11px;">—</pre>
 
       <label style="margin-top:14px;">Project metadata</label>
-      <div class="hint">Extracted from your code — used to populate suggestion lists. Click any item to copy it.</div>
+      <div class="hint">
+        Extracted from your code as a side-effect of <strong>Generate</strong> —
+        feeds the autocomplete on Override / Type-mapping / External-type
+        inputs. Click any item below to copy it.
+      </div>
       <div class="meta-counts" id="meta-counts">
         <span><strong>0</strong> packages</span>
         <span><strong>0</strong> functions</span>
         <span><strong>0</strong> types</span>
-      </div>
-      <div class="toolbar">
-        <button class="btn ghost" onclick="loadMetadataSuggestions(true)">↻ Refresh metadata</button>
       </div>
       <details class="meta-block"><summary>Packages</summary><ul id="meta-packages"></ul></details>
       <details class="meta-block"><summary>Functions</summary><ul id="meta-functions"></ul></details>
@@ -652,9 +653,13 @@ async function detect() {
     state.detected = d;
     applyDetected(d);
     setStatus("ready", "ok");
-    // Load metadata in the background to power suggestions.
+    // Metadata-driven suggestions are populated as a side effect of the
+    // first successful Generate — running a second analysis here just to
+    // fill datalists would double the wall-clock cost on every project
+    // change. Clear the previous project's cache so stale suggestions
+    // don't leak between projects.
     metaSummary = null;
-    loadMetadataSuggestions();
+    populateMetadataUI({});
   } catch (e) {
     setStatus("detect failed", "err");
     console.error(e);
@@ -780,8 +785,9 @@ async function switchProject() {
     state.detected = d;
     applyDetected(d);
     setStatus("ready · " + d.detectedFramework + " auto-detected", "ok");
+    // Reset the suggestions UI; the next Generate will populate it.
     metaSummary = null;
-    loadMetadataSuggestions();
+    populateMetadataUI({});
   } catch (e) {
     console.error(e);
     setStatus("switch failed: " + (e.message || e), "err");
@@ -967,21 +973,28 @@ function renderIntegrate(name) {
 // --- metadata-driven suggestions ----------------------------------------
 let metaSummary = null;
 
-async function loadMetadataSuggestions(force) {
-  if (metaSummary && !force) {
-    populateMetadataUI(metaSummary);
-    return;
-  }
-  setStatus("loading project metadata…");
+// loadMetadataSuggestions reads the cached metadata summary that the server
+// populates as a side-effect of /api/generate. It's a pure cache read — we
+// never trigger a separate analysis. Call this after a successful generate
+// (or to refresh the UI when the user navigates back from the Project tab).
+//
+// Returns silently if the cache is empty (404), since "haven't generated
+// yet" is the normal pre-generate state and shouldn't surface as an error.
+async function loadMetadataSuggestions() {
   try {
     const r = await fetch("/api/metadata-summary");
+    if (r.status === 404) {
+      // Pre-generate state: nothing to show, leave the UI in its empty state.
+      metaSummary = null;
+      populateMetadataUI({});
+      return;
+    }
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
     metaSummary = d;
     populateMetadataUI(d);
-    setStatus("metadata loaded · " + (d.functions || []).length + " fns / " + (d.types || []).length + " types", "ok");
   } catch (e) {
-    setStatus("metadata failed: " + e.message, "err");
+    console.warn("metadata-summary fetch failed:", e);
   }
 }
 
@@ -1911,6 +1924,9 @@ async function generate() {
     $("#last-status").textContent =
       `framework: ${data.framework}\nat: ${data.generatedAt}\npaths: ${data.pathCount}\ntook: ${took} ms\nmode: ${mode}`;
     $("#loadEffectiveBtn").disabled = false;
+    // Pull the metadata summary that the server populated as a side-effect
+    // of this generate. No additional analysis runs server-side.
+    loadMetadataSuggestions();
     if (state.lastView) openView(state.lastView);
     else openView("scalar");
   } catch (e) {
