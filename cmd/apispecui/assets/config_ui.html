@@ -309,6 +309,26 @@
     <!-- REQUEST BODY -->
     <div class="panel" id="panel-requestbody">
       <div class="hint">How apispec recognises request-body decoding calls (e.g. <code>c.BindJSON(&amp;req)</code>).</div>
+
+      <details open style="margin: 12px 0 6px;">
+        <summary style="cursor:pointer; font-weight:600;">Request context (body-source taint)</summary>
+        <div class="hint">
+          Generic decoders (<code>json.Decode</code>, <code>json.Unmarshal</code>, <code>render.DecodeJSON</code>) are only treated as request-body extraction when their input can be traced back to a request-context's body accessor. Set the <em>type regexes</em> that identify the framework's request-bearing parameter and the <em>body accessors</em> applied to it.
+          <br>
+          Per-pattern, enable <code>requireRequestSource</code> and set either <code>bodyFromReceiver</code> (for chained <code>NewDecoder(src).Decode()</code> patterns) or <code>bodySourceArgIndex</code> (for <code>Unmarshal(data, &amp;v)</code>-style patterns).
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+          <label>
+            <div>Type regexes <span class="hint" style="display:inline;">(one per line)</span></div>
+            <textarea id="rc-type-regexes" class="mono" rows="3" placeholder="^\*?net/http\.Request$"></textarea>
+          </label>
+          <label>
+            <div>Body accessors <span class="hint" style="display:inline;">(one per line)</span></div>
+            <textarea id="rc-body-accessors" class="mono" rows="3" placeholder="^Body$"></textarea>
+          </label>
+        </div>
+      </details>
+
       <div id="request-patterns-list"></div>
       <button class="add-btn" onclick="addPattern('requestBodyPatterns')">+ Add request-body pattern</button>
     </div>
@@ -568,6 +588,11 @@ const state = {
       responsePatterns: [],
       paramPatterns: [],
       mountPatterns: [],
+      // requestContext gates generic decoders (json.Decode / json.Unmarshal /
+      // render.DecodeJSON) on whether the source argument can be traced to a
+      // request-bearing context's body accessor. Empty arrays mean
+      // "permissive" — existing receiver-only matching is preserved.
+      requestContext: { typeRegexes: [], bodyAccessors: [] },
     },
   },
   lastView: null,
@@ -586,8 +611,23 @@ const patternFields = {
   },
   requestBodyPatterns: {
     label: "Request body",
-    args:  [{k:"typeArgIndex",t:"int"}],
-    flags: [{k:"typeFromArg"},{k:"typeFromReturn"},{k:"deref"},{k:"allowForGetMethods"}],
+    args:  [
+      {k:"typeArgIndex",t:"int"},
+      {k:"bodySourceArgIndex",t:"int"},
+    ],
+    flags: [
+      {k:"typeFromArg"},
+      {k:"typeFromReturn"},
+      {k:"deref"},
+      {k:"allowForGetMethods"},
+      // requireRequestSource turns on the body-source taint check for this
+      // pattern. Use with bodyFromReceiver (e.g. *json.Decoder.Decode whose
+      // source is json.NewDecoder's arg) or with bodySourceArgIndex set to
+      // the arg holding the input bytes (e.g. json.Unmarshal: 0,
+      // render.DecodeJSON: 0).
+      {k:"requireRequestSource"},
+      {k:"bodyFromReceiver"},
+    ],
   },
   responsePatterns: {
     label: "Response",
@@ -759,14 +799,20 @@ function applyAPISpecConfig(cfg) {
   // Framework patterns. Detect responses use `frameworkConfig`,
   // APISpecConfig YAML uses `framework`.
   const fc = cfg.frameworkConfig || cfg.framework || {};
+  const rc = fc.requestContext || {};
   state.current.framework = {
     routePatterns:       fc.routePatterns       || [],
     requestBodyPatterns: fc.requestBodyPatterns || [],
     responsePatterns:    fc.responsePatterns    || [],
     paramPatterns:       fc.paramPatterns       || [],
     mountPatterns:       fc.mountPatterns       || [],
+    requestContext: {
+      typeRegexes:   rc.typeRegexes   || [],
+      bodyAccessors: rc.bodyAccessors || [],
+    },
   };
   renderAllPatterns();
+  renderRequestContext();
 }
 
 // --- project switch ------------------------------------------------------
@@ -1068,14 +1114,20 @@ async function reloadFrameworkDefaults() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
     const fc = d.frameworkConfig || {};
+    const rc = fc.requestContext || {};
     state.current.framework = {
       routePatterns:       fc.routePatterns || [],
       requestBodyPatterns: fc.requestBodyPatterns || [],
       responsePatterns:    fc.responsePatterns || [],
       paramPatterns:       fc.paramPatterns || [],
       mountPatterns:       fc.mountPatterns || [],
+      requestContext: {
+        typeRegexes:   rc.typeRegexes   || [],
+        bodyAccessors: rc.bodyAccessors || [],
+      },
     };
     renderAllPatterns();
+    renderRequestContext();
     setStatus("loaded " + fw + " defaults", "ok");
   } catch (e) {
     setStatus("reload failed: " + (e.message || e), "err");
@@ -1085,6 +1137,27 @@ async function reloadFrameworkDefaults() {
 // --- pattern editors -----------------------------------------------------
 function renderAllPatterns() {
   Object.keys(patternFields).forEach(renderPatterns);
+}
+
+// renderRequestContext fills the typeRegexes/bodyAccessors textareas from
+// state and wires change handlers that push back into state. Each non-empty
+// line becomes one regex entry.
+function renderRequestContext() {
+  const rc = state.current.framework.requestContext || { typeRegexes: [], bodyAccessors: [] };
+  const typeEl = document.getElementById("rc-type-regexes");
+  const accEl  = document.getElementById("rc-body-accessors");
+  if (!typeEl || !accEl) return;
+  typeEl.value = (rc.typeRegexes   || []).join("\n");
+  accEl.value  = (rc.bodyAccessors || []).join("\n");
+  // Avoid stacking listeners across re-renders.
+  typeEl.oninput = () => {
+    state.current.framework.requestContext.typeRegexes =
+      typeEl.value.split("\n").map((s) => s.trim()).filter(Boolean);
+  };
+  accEl.oninput = () => {
+    state.current.framework.requestContext.bodyAccessors =
+      accEl.value.split("\n").map((s) => s.trim()).filter(Boolean);
+  };
 }
 
 function renderPatterns(kind) {
@@ -1993,6 +2066,7 @@ function collectForm() {
       responsePatterns:    state.current.framework.responsePatterns,
       paramPatterns:       state.current.framework.paramPatterns,
       mountPatterns:       state.current.framework.mountPatterns,
+      requestContext:      state.current.framework.requestContext,
     },
     include: {
       files: linesOf("#include-files"),
