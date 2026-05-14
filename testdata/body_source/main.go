@@ -46,7 +46,7 @@ func main() {
 func createUser(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -57,14 +57,14 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 func syncFromUpstream(w http.ResponseWriter, r *http.Request) {
 	remote, err := http.Get("https://example.com/sync")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "upstream unreachable", http.StatusBadGateway)
 		return
 	}
 	defer remote.Body.Close()
 
 	var payload SyncPayload
 	if err := json.NewDecoder(remote.Body).Decode(&payload); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		http.Error(w, "upstream decode failed", http.StatusBadGateway)
 		return
 	}
 	_ = payload
@@ -76,19 +76,19 @@ func syncFromUpstream(w http.ResponseWriter, r *http.Request) {
 func refresh(w http.ResponseWriter, r *http.Request) {
 	f, err := os.Open("/etc/refresh.json")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "open config failed", http.StatusInternalServerError)
 		return
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "read config failed", http.StatusInternalServerError)
 		return
 	}
 	var cfg RefreshConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "parse config failed", http.StatusInternalServerError)
 		return
 	}
 	_ = cfg

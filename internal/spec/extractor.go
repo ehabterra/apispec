@@ -666,6 +666,15 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgumen
 		}
 	}
 
+	// Selector expression like `api.Message` — resolve the field's declared
+	// type via metadata so the schema mapper doesn't $ref a nonexistent
+	// "APIError.Message" pseudo-type.
+	if arg.GetKind() == metadata.KindSelector {
+		if t := resolveSelectorFieldType(arg, r.contextProvider); t != "" {
+			return t
+		}
+	}
+
 	// Original logic for type resolution
 	if arg.GetKind() == metadata.KindIdent {
 		// Check if this variable has assignments that might give us more type information
@@ -821,6 +830,13 @@ func (p *ParamPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument, 
 	if arg.IsGenericType && arg.GenericTypeName != -1 {
 		if concreteType, exists := node.GetTypeParamMap()[arg.GetGenericTypeName()]; exists {
 			return concreteType
+		}
+	}
+
+	// Selector expression — resolve via metadata field lookup.
+	if arg.GetKind() == metadata.KindSelector {
+		if t := resolveSelectorFieldType(arg, p.contextProvider); t != "" {
+			return t
 		}
 	}
 
