@@ -898,6 +898,12 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		if fc.MountPatterns != nil {
 			cfg.Framework.MountPatterns = fc.MountPatterns
 		}
+		// Request-context describes how to detect the request body source
+		// for generic decoders (json.Decode / Unmarshal / render.DecodeJSON).
+		// Only override defaults when the UI submitted something.
+		if len(fc.RequestContext.TypeRegexes) > 0 || len(fc.RequestContext.BodyAccessors) > 0 {
+			cfg.Framework.RequestContext = fc.RequestContext
+		}
 	}
 	return cfg, nil
 }

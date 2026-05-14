@@ -460,7 +460,8 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 // RequestPatternMatcherImpl implements RequestPatternMatcher
 type RequestPatternMatcherImpl struct {
 	*BasePatternMatcher
-	pattern RequestBodyPattern
+	pattern      RequestBodyPattern
+	bodyResolver *bodySourceResolver
 }
 
 // NewRequestPatternMatcher creates a new request pattern matcher
@@ -468,6 +469,7 @@ func NewRequestPatternMatcher(pattern RequestBodyPattern, cfg *APISpecConfig, co
 	return &RequestPatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
+		bodyResolver:       newBodySourceResolver(cfg, contextProvider),
 	}
 }
 
@@ -514,7 +516,34 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		return false
 	}
 
+	// Body-source verification: only meaningful for ambiguous decoders
+	// (json.Decode, json.Unmarshal, render.DecodeJSON, ...). Receiver-based
+	// patterns like *gin.Context.BindJSON are already unambiguous because
+	// the receiver type IS the request.
+	if r.pattern.RequireRequestSource && r.bodyResolver != nil && r.bodyResolver.Enabled() {
+		src := r.bodySource(edge)
+		if src == nil || !r.bodyResolver.IsRequestSource(src, edge) {
+			return false
+		}
+	}
+
 	return true
+}
+
+// bodySource returns the CallArgument that carries the decoder's input bytes
+// for the given call edge, according to the pattern configuration.
+func (r *RequestPatternMatcherImpl) bodySource(edge *metadata.CallGraphEdge) *metadata.CallArgument {
+	if edge == nil {
+		return nil
+	}
+	if r.pattern.BodyFromReceiver {
+		return resolveReceiverSource(edge, r.bodyResolver.metadata())
+	}
+	idx := r.pattern.BodySourceArgIndex
+	if idx < 0 || idx >= len(edge.Args) {
+		return nil
+	}
+	return edge.Args[idx]
 }
 
 // GetPattern returns the request pattern
