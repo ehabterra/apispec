@@ -142,6 +142,46 @@ func lookupFieldType(meta *metadata.Metadata, pkg, typeName, fieldName string) s
 	return ""
 }
 
+// constIdentDeclaredType returns the declared Go type of an ident that
+// refers to a `const` declaration. When the ident is not a const (or its
+// package/variable cannot be located), it returns the empty string and
+// callers should fall back to their previous behaviour.
+//
+// This exists because the context-provider's renderer for const idents
+// returns the constant's *value* (e.g. the body of an embedded HTML
+// string), which leaks into schemas as a $ref to a nonexistent type.
+func constIdentDeclaredType(arg *metadata.CallArgument, cp ContextProvider) string {
+	if arg == nil || arg.GetKind() != metadata.KindIdent {
+		return ""
+	}
+	impl, ok := cp.(*ContextProviderImpl)
+	if !ok || impl.meta == nil {
+		return ""
+	}
+	pkg, ok2 := impl.meta.Packages[arg.GetPkg()]
+	if !ok2 {
+		return ""
+	}
+	name := arg.GetName()
+	for _, file := range pkg.Files {
+		v, ok := file.Variables[name]
+		if !ok {
+			continue
+		}
+		if impl.GetString(v.Tok) != "const" {
+			return ""
+		}
+		if t := impl.GetString(v.Type); t != "" {
+			return t
+		}
+		if t := impl.GetString(v.ResolvedType); t != "" {
+			return t
+		}
+		return ""
+	}
+	return ""
+}
+
 // findType resolves (pkg, typeName) to a Type entry. Checks package-level
 // Types first, then per-file Types as a fallback.
 func findType(meta *metadata.Metadata, pkg, typeName string) *metadata.Type {

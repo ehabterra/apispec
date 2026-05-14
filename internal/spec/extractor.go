@@ -617,18 +617,33 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 		arg := edge.Args[r.pattern.TypeArgIndex]
 
-		// If the argument is a type conversion, get the value of the original argument
-		if arg.GetKind() == metadata.KindTypeConversion {
-			arg = arg.Args[0]
+		// Type conversion like `[]byte(swaggerUIHTML)`: the *target* type of
+		// the conversion (e.g. []byte) is what the function actually
+		// receives, not the type of the inner value. Use the conversion's
+		// Fun directly rather than peeling to the inner ident — otherwise a
+		// const ident's literal value can leak into the schema as a $ref.
+		var bodyType string
+		if arg.GetKind() == metadata.KindTypeConversion && arg.Fun != nil {
+			bodyType = r.contextProvider.GetArgumentInfo(arg.Fun)
+		} else {
+			bodyType = r.contextProvider.GetArgumentInfo(arg)
 		}
-
-		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
 		// Check if this is a literal value - if so, determine appropriate type
 		if arg.GetKind() == metadata.KindLiteral {
 			// For literal values, determine the appropriate type based on the value
 			bodyType = determineLiteralType(bodyType)
 		} else {
+			// For ident arguments referring to a `const` declaration, the
+			// context-provider rendering above returns the constant's
+			// *value* (its literal contents — e.g. an embedded HTML
+			// string), which then leaks into the schema as a $ref. Replace
+			// it with the const's declared Go type when we can find it.
+			if arg.GetKind() == metadata.KindIdent {
+				if t := constIdentDeclaredType(arg, r.contextProvider); t != "" {
+					bodyType = t
+				}
+			}
 
 			// Trace type origin for non-literal arguments
 			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
