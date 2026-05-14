@@ -29,6 +29,33 @@ type FrameworkConfig struct {
 
 	// Mount/subrouter patterns
 	MountPatterns []MountPattern `yaml:"mountPatterns" json:"mountPatterns,omitempty"`
+
+	// RequestContext describes how to recognise the request-bearing parameter
+	// of a handler and the accessor chain that yields its body. Used to gate
+	// generic decoders (json.Decode, json.Unmarshal, render.DecodeJSON, ...)
+	// so they are only treated as request-body extraction when the bytes
+	// actually originate from an HTTP request.
+	RequestContext RequestContextConfig `yaml:"requestContext,omitempty" json:"requestContext,omitempty"`
+}
+
+// RequestContextConfig describes the types and accessors that identify an
+// HTTP request body source for a framework.
+type RequestContextConfig struct {
+	// TypeRegexes match the (fully-qualified) types of handler parameters that
+	// carry an HTTP request. The leftmost root of a body-source expression
+	// must have one of these types for the chain to be considered a body
+	// source. Example for net/http: "^\\*?net/http\\.Request$".
+	TypeRegexes []string `yaml:"typeRegexes,omitempty" json:"typeRegexes,omitempty"`
+
+	// BodyAccessors are regexes matched against the dot-joined accessor chain
+	// applied to a request-context root. The chain is the sequence of
+	// selectors/calls between the root ident and the leaf expression, with
+	// method calls rendered as "Name()". Examples:
+	//   net/http -> "^Body$"
+	//   gin      -> "^Request\\.Body$"
+	//   echo     -> "^Request\\(\\)\\.Body$"
+	//   fiber    -> "^Body\\(\\)$"
+	BodyAccessors []string `yaml:"bodyAccessors,omitempty" json:"bodyAccessors,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names
@@ -97,6 +124,16 @@ type RequestBodyPattern struct {
 	TypeFromArg    bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"`       // Extract type from argument
 	TypeFromReturn bool `yaml:"typeFromReturn,omitempty" json:"typeFromReturn,omitempty"` // Extract type from return value
 	Deref          bool `yaml:"deref,omitempty" json:"deref,omitempty"`                   // Dereference pointer types
+
+	// Body-source verification. When RequireRequestSource is true, the
+	// matcher only accepts the call if its data source can be traced back to
+	// a request-context body accessor (see FrameworkConfig.RequestContext).
+	// Use BodyFromReceiver for chained decoders like *json.Decoder.Decode,
+	// whose source is the argument given to json.NewDecoder. Otherwise the
+	// source is taken from Args[BodySourceArgIndex].
+	RequireRequestSource bool `yaml:"requireRequestSource,omitempty" json:"requireRequestSource,omitempty"`
+	BodyFromReceiver     bool `yaml:"bodyFromReceiver,omitempty" json:"bodyFromReceiver,omitempty"`
+	BodySourceArgIndex   int  `yaml:"bodySourceArgIndex,omitempty" json:"bodySourceArgIndex,omitempty"`
 
 	// Context-aware validation
 	AllowForGetMethods bool `yaml:"allowForGetMethods,omitempty" json:"allowForGetMethods,omitempty"` // Allow this pattern for GET/HEAD methods
@@ -447,6 +484,48 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 }
 
 // DefaultChiConfig returns a default configuration for Chi router
+// Request-context presets used by the framework defaults. These describe
+// which parameter types carry an HTTP request and how its body is accessed,
+// so that generic decoders (json.Decode, json.Unmarshal, render.DecodeJSON)
+// can be gated on whether their input actually originates from a request.
+var (
+	netHTTPRequestContext = RequestContextConfig{
+		TypeRegexes:   []string{`^\*?net/http\.Request$`},
+		BodyAccessors: []string{`^Body$`},
+	}
+
+	ginRequestContext = RequestContextConfig{
+		TypeRegexes: []string{
+			`^\*?github\.com/gin-gonic/gin\.Context$`,
+			`^\*?net/http\.Request$`,
+		},
+		BodyAccessors: []string{
+			`^Request\.Body$`,
+			`^Body$`,
+		},
+	}
+
+	echoRequestContext = RequestContextConfig{
+		TypeRegexes: []string{
+			`^github\.com/labstack/echo(/v\d+)?\.Context$`,
+			`^\*?net/http\.Request$`,
+		},
+		BodyAccessors: []string{
+			`^Request\(\)\.Body$`,
+			`^Body$`,
+		},
+	}
+
+	fiberRequestContext = RequestContextConfig{
+		TypeRegexes: []string{
+			`^\*?github\.com/gofiber/fiber(/v\d+)?\.Ctx$`,
+		},
+		BodyAccessors: []string{
+			`^Body\(\)$`,
+		},
+	}
+)
+
 func DefaultChiConfig() *APISpecConfig {
 	return &APISpecConfig{
 		Framework: FrameworkConfig{
@@ -461,27 +540,34 @@ func DefaultChiConfig() *APISpecConfig {
 					RecvTypeRegex:   "^github.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$",
 				},
 			},
+			RequestContext: netHTTPRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:     `^DecodeJSON$`,
-					TypeArgIndex:  1,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "^github\\.com/go-chi/render$",
+					CallRegex:            `^DecodeJSON$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        "^github\\.com/go-chi/render$",
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 				{
-					CallRegex:     `^Decode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*Decoder",
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        ".*json(iter)?\\.\\*Decoder",
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:     `^Unmarshal$`,
-					TypeArgIndex:  1,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "json",
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        "json",
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
@@ -630,6 +716,7 @@ func DefaultEchoConfig() *APISpecConfig {
 					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
 				},
 			},
+			RequestContext: echoRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^(?i)(Bind)$`,
@@ -639,18 +726,22 @@ func DefaultEchoConfig() *APISpecConfig {
 					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
 				},
 				{
-					CallRegex:     `^Decode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*Decoder",
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        ".*json(iter)?\\.\\*Decoder",
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:     `^Unmarshal$`,
-					TypeArgIndex:  1,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "json",
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        "json",
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
@@ -780,6 +871,7 @@ func DefaultFiberConfig() *APISpecConfig {
 					RecvTypeRegex:   `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
 				},
 			},
+			RequestContext: fiberRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^BodyParser$`,
@@ -789,18 +881,22 @@ func DefaultFiberConfig() *APISpecConfig {
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*?Ctx$`,
 				},
 				{
-					CallRegex:     `^Decode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Decoder",
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        ".*json(iter)?\\.\\*?Decoder",
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:     `^Unmarshal$`,
-					TypeArgIndex:  1,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "json",
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        "json",
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
@@ -968,6 +1064,7 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex:   "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
+			RequestContext: ginRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:    `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,
@@ -976,16 +1073,20 @@ func DefaultGinConfig() *APISpecConfig {
 					Deref:        true,
 				},
 				{
-					CallRegex:    `^Decode$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:    `^Unmarshal$`,
-					TypeArgIndex: 1,
-					TypeFromArg:  true,
-					Deref:        true,
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
@@ -1169,20 +1270,25 @@ func DefaultMuxConfig() *APISpecConfig {
 					MethodExtraction:  DefaultMethodExtractionConfig(),
 				},
 			},
+			RequestContext: netHTTPRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:     `^Decode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Decoder",
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        ".*json(iter)?\\.\\*?Decoder",
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:     `^Unmarshal$`,
-					TypeArgIndex:  1,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "json",
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RecvTypeRegex:        "json",
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
@@ -1292,18 +1398,23 @@ func DefaultHTTPConfig() *APISpecConfig {
 					HandlerArgIndex: 1,
 				},
 			},
+			RequestContext: netHTTPRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:    `^Decode$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
+					CallRegex:            `^Decode$`,
+					TypeArgIndex:         0,
+					TypeFromArg:          true,
+					Deref:                true,
+					RequireRequestSource: true,
+					BodyFromReceiver:     true,
 				},
 				{
-					CallRegex:    `^Unmarshal$`,
-					TypeArgIndex: 1,
-					TypeFromArg:  true,
-					Deref:        true,
+					CallRegex:            `^Unmarshal$`,
+					TypeArgIndex:         1,
+					TypeFromArg:          true,
+					Deref:                true,
+					RequireRequestSource: true,
+					BodySourceArgIndex:   0,
 				},
 			},
 			ResponsePatterns: []ResponsePattern{
