@@ -714,6 +714,13 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument
 		return genericType
 	}
 
+	// Selector expression — resolve via metadata field lookup.
+	if arg.GetKind() == metadata.KindSelector {
+		if t := resolveSelectorFieldType(arg, r.contextProvider); t != "" {
+			return t
+		}
+	}
+
 	// Original logic for type resolution
 	if arg.GetKind() == metadata.KindIdent || arg.GetKind() == metadata.KindFuncLit {
 		// Check if this variable has assignments that might give us more type information
