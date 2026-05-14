@@ -336,4 +336,3 @@ func findFunction(meta *metadata.Metadata, pkg, name string) *metadata.Function 
 	}
 	return nil
 }
-
