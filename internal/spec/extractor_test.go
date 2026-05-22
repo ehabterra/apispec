@@ -303,8 +303,8 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 				},
 			}
 
-			// Extract response
-			result := matcher.ExtractResponse(node, &RouteInfo{
+			// Extract response (now returns []*ResponseInfo)
+			results := matcher.ExtractResponse(node, &RouteInfo{
 				Path:     "/test",
 				Method:   "POST",
 				Handler:  "testHandler",
@@ -335,10 +335,11 @@ func TestExtractResponse_WithLiteralValue(t *testing.T) {
 			})
 
 			// Verify that literal values are handled correctly
-			if result == nil {
-				t.Fatal("Expected non-nil result")
+			if len(results) == 0 {
+				t.Fatal("Expected non-empty result")
 				return
 			}
+			result := results[0]
 
 			// For literal values, we expect the appropriate type based on the value
 			if result.BodyType != tc.expectedType {
@@ -381,15 +382,16 @@ func TestResponsePattern_DefaultStatus(t *testing.T) {
 		},
 	}
 
-	result := matcher.ExtractResponse(&TrackerNode{
+	results := matcher.ExtractResponse(&TrackerNode{
 		CallGraphEdge: &metadata.CallGraphEdge{},
 	}, &RouteInfo{
 		Response: map[string]*ResponseInfo{},
 	})
 
-	if result == nil {
-		t.Fatal("expected response info when default status is configured")
+	if len(results) != 1 {
+		t.Fatalf("expected single response info when default status is configured, got %d", len(results))
 	}
+	result := results[0]
 
 	if result.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d", http.StatusNotFound, result.StatusCode)

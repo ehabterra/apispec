@@ -44,8 +44,12 @@ type RequestPatternMatcher interface {
 type ResponsePatternMatcher interface {
 	PatternMatcher
 
-	// ExtractResponse extracts response information from a matched node
-	ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo
+	// ExtractResponse extracts response information from a matched node.
+	// Returns one entry for the typical "one status per call" case, and
+	// multiple entries when the status arg traces back to a local variable
+	// with multiple branched assignments — e.g. an `err` reassigned in
+	// each branch of an if/else chain with a different status code.
+	ExtractResponse(node TrackerNodeInterface, route *RouteInfo) []*ResponseInfo
 }
 
 // ParamPatternMatcher matches parameter patterns

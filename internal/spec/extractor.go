@@ -365,9 +365,13 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 			route.Request = req
 		}
 
-		// Extract response
-		if resp := e.extractResponseFromNode(child, route, visitedEdges); resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
-			route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
+		// Extract responses (multiple if status fan-out applies — see
+		// ExtractResponse / issue #39). Each emitted ResponseInfo lands
+		// under its own status-keyed slot in route.Response.
+		for _, resp := range e.extractResponseFromNode(child, route, visitedEdges) {
+			if resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
+				route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
+			}
 		}
 
 		// Extract parameters
@@ -395,8 +399,10 @@ func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *Rou
 	return nil
 }
 
-// extractResponseFromNode extracts response information from a node
-func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) *ResponseInfo {
+// extractResponseFromNode extracts response information from a node.
+// Returns a slice because a single call site can yield multiple responses
+// when conditional status codes apply (see ExtractResponse / issue #39).
+func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) []*ResponseInfo {
 	// Ensure that each edge is visited only once
 	if node == nil || node.GetEdge() == nil {
 		return nil
@@ -416,11 +422,6 @@ func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *Ro
 			return matcher.ExtractResponse(node, route)
 		}
 	}
-	// // If no response matcher matches, return the default response info
-	// return &ResponseInfo{
-	// 	StatusCode:  e.cfg.Defaults.ResponseStatus,
-	// 	ContentType: e.cfg.Defaults.ResponseContentType,
-	// }
 	return nil
 }
 
@@ -566,8 +567,15 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 	return priority
 }
 
-// ExtractResponse extracts response information from a matched node
-func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, route *RouteInfo) *ResponseInfo {
+// ExtractResponse extracts response information from a matched node.
+//
+// Returns a slice to support conditional status codes (issue #39): when the
+// status arg is a local variable reassigned across branches with different
+// status codes, we emit one ResponseInfo per distinct status (all sharing
+// the same body/schema). For the typical "one status per call" case, the
+// slice has exactly one element — byte-identical to the previous
+// single-response behaviour.
+func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, route *RouteInfo) []*ResponseInfo {
 	var (
 		statusResolved bool
 	)
@@ -660,11 +668,87 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.Schema = schema
 	}
 
+	// Conditional status codes (issue #39): if the status arg is a local
+	// variable with multiple branched assignments mapping to *distinct*
+	// status codes, emit one response per status, sharing the body/schema.
+	// This runs before the "no status, no body — return nil" guard so that
+	// patterns whose status arg is an opaque ident (e.g. RespondWithError(w,
+	// err)) still produce responses when the branches encode the codes.
+	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
+		if expanded := r.expandStatusesFromIdent(edge.Args[r.pattern.StatusArgIndex], edge); len(expanded) > 1 {
+			out := make([]*ResponseInfo, 0, len(expanded))
+			for _, st := range expanded {
+				out = append(out, &ResponseInfo{
+					StatusCode:  st,
+					ContentType: respInfo.ContentType,
+					BodyType:    respInfo.BodyType,
+					Schema:      respInfo.Schema,
+				})
+			}
+			return out
+		}
+	}
+
 	if !statusResolved && respInfo.BodyType == "" {
 		return nil
 	}
 
-	return respInfo
+	return []*ResponseInfo{respInfo}
+}
+
+// expandStatusesFromIdent walks the caller's function-level AssignmentMap
+// for the given ident and returns the distinct status codes implied by the
+// RHS calls of each assignment. For each assignment whose value is a call,
+// the first argument that parses as a known HTTP status (via
+// schemaMapper.MapStatusCode) is taken as that branch's status.
+//
+// Returns nil when:
+//   - the arg is not a KindIdent,
+//   - the caller function or its AssignmentMap can't be located, or
+//   - fewer than two assignments exist (single-branch flows are left
+//     untouched so existing latest-wins behaviour is preserved).
+func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) []int {
+	if arg == nil || arg.GetKind() != metadata.KindIdent || edge == nil {
+		return nil
+	}
+	impl, ok := r.contextProvider.(*ContextProviderImpl)
+	if !ok || impl.meta == nil {
+		return nil
+	}
+	callerName := impl.GetString(edge.Caller.Name)
+	callerPkg := impl.GetString(edge.Caller.Pkg)
+	fn := findFunction(impl.meta, callerPkg, callerName)
+	if fn == nil {
+		return nil
+	}
+	assigns, ok := fn.AssignmentMap[arg.GetName()]
+	if !ok || len(assigns) < 2 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(assigns))
+	out := make([]int, 0, len(assigns))
+	for _, a := range assigns {
+		if a.Value.GetKind() != metadata.KindCall {
+			continue
+		}
+		for _, callArg := range a.Value.Args {
+			if callArg == nil {
+				continue
+			}
+			argStr := impl.GetArgumentInfo(callArg)
+			status, ok := r.schemaMapper.MapStatusCode(argStr)
+			if !ok {
+				continue
+			}
+			if _, dup := seen[status]; dup {
+				break
+			}
+			seen[status] = struct{}{}
+			out = append(out, status)
+			break // first matching arg wins per assignment
+		}
+	}
+	return out
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
