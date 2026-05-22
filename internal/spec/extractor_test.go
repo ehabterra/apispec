@@ -432,7 +432,7 @@ func TestTraverseForRoutesWithVisited_CycleDetection(t *testing.T) {
 	visited := make(map[string]bool)
 
 	start := time.Now()
-	extractor.traverseForRoutesWithVisited(node1, "", []string{}, &routes, visited)
+	extractor.traverseForRoutesWithVisited(node1, "", []string{}, nil, &routes, visited)
 	duration := time.Since(start)
 
 	// Should complete quickly (cycle detection should work)
@@ -474,7 +474,7 @@ func TestTraverseForRoutesWithVisited_NoCycle(t *testing.T) {
 	routes := []*RouteInfo{}
 	visited := make(map[string]bool)
 
-	extractor.traverseForRoutesWithVisited(node1, "", []string{}, &routes, visited)
+	extractor.traverseForRoutesWithVisited(node1, "", []string{}, nil, &routes, visited)
 
 	// Check that visited map was populated
 	if len(visited) == 0 {

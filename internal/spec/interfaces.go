@@ -96,6 +96,11 @@ type MountInfo struct {
 	RouterArg  *metadata.CallArgument
 	Assignment *metadata.CallArgument
 	Pattern    MountPattern
+
+	// DynamicParams names path placeholders synthesized from unresolvable
+	// call expressions (issue #34). Propagated to nested routes so each
+	// inheriting operation can $ref the corresponding component parameter.
+	DynamicParams []string
 }
 
 // PatternExecutor defines the interface for pattern execution
