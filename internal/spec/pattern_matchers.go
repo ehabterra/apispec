@@ -59,6 +59,37 @@ func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, 
 	}
 }
 
+// resolvePathArg renders a CallArgument as an OpenAPI path string.
+//
+// Literals and const idents resolve to their value via the context
+// provider. Function-call expressions (e.g. r.Mount(mountPoint(prefix,
+// "/api"), sub)) cannot be statically evaluated without interpreting
+// the Go body — see issue #34 — so they surface as a {placeholder}
+// named after the called function. The second return value, dynamicName,
+// is the placeholder name when one was synthesized (so the caller can
+// register a shared component parameter) and the empty string otherwise.
+//
+// All other kinds fall through to GetArgumentInfo for backwards
+// compatibility — handling KindIdent (non-const variable) and
+// KindBinary (`prefix + "/x"`) similarly is a possible follow-up but
+// is out of scope for the initial fix.
+func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument) (path, dynamicName string) {
+	if arg == nil {
+		return "", ""
+	}
+	if arg.GetKind() == metadata.KindCall {
+		name := arg.GetName()
+		if name == "" && arg.Fun != nil {
+			name = arg.Fun.GetName()
+		}
+		if name == "" {
+			name = "path"
+		}
+		return "{" + name + "}", name
+	}
+	return b.contextProvider.GetArgumentInfo(arg), ""
+}
+
 // RoutePatternMatcherImpl implements RoutePatternMatcher
 type RoutePatternMatcherImpl struct {
 	*BasePatternMatcher
@@ -250,9 +281,13 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	}
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
-		routeInfo.Path = r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.PathArgIndex])
+		path, dynName := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex])
+		routeInfo.Path = path
 		if routeInfo.Path == "" {
 			routeInfo.Path = "/"
+		}
+		if dynName != "" {
+			routeInfo.DynamicParams = append(routeInfo.DynamicParams, dynName)
 		}
 		found = true
 	}
@@ -440,7 +475,11 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 	edge := node.GetEdge()
 	// Extract path if available
 	if m.pattern.PathFromArg && len(edge.Args) > m.pattern.PathArgIndex {
-		mountInfo.Path = m.contextProvider.GetArgumentInfo(edge.Args[m.pattern.PathArgIndex])
+		path, dynName := m.resolvePathArg(edge.Args[m.pattern.PathArgIndex])
+		mountInfo.Path = path
+		if dynName != "" {
+			mountInfo.DynamicParams = append(mountInfo.DynamicParams, dynName)
+		}
 	}
 
 	// Extract router argument if available

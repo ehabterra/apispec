@@ -67,6 +67,12 @@ type RouteInfo struct {
 
 	// Resolved router group prefix (if any)
 	GroupPrefix string
+
+	// DynamicParams names path placeholders synthesized from unresolvable
+	// call expressions (issue #34). The mapper uses these to emit one
+	// shared component parameter per name and $ref it from each operation
+	// instead of inlining a fresh declaration on every route.
+	DynamicParams []string
 }
 
 func NewRouteInfo() *RouteInfo {
@@ -172,24 +178,28 @@ func (e *Extractor) initializePatternMatchers() {
 func (e *Extractor) ExtractRoutes() []*RouteInfo {
 	routes := make([]*RouteInfo, 0)
 	for _, root := range e.tree.GetRoots() {
-		e.traverseForRoutes(root, "", nil, &routes)
+		e.traverseForRoutes(root, "", nil, nil, &routes)
 	}
 	return routes
 }
 
 // traverseForRoutes traverses the tree to find routes
-func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]*RouteInfo) {
-	e.traverseForRoutesWithVisited(node, mountPath, mountTags, routes, make(map[string]bool))
+func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo) {
+	e.traverseForRoutesWithVisited(node, mountPath, mountTags, mountDynParams, routes, make(map[string]bool))
 }
 
 // traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
-func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
 
-	// Prevent infinite recursion
-	nodeKey := node.GetKey()
+	// Prevent infinite recursion. The key includes mountPath so the same
+	// sub-router can be mounted at multiple prefixes (each visit walks
+	// the sub-tree under a different mount). Cycles within a single mount
+	// context still short-circuit because mountPath only changes when a
+	// Mount call introduces a new prefix — see issue #34 follow-up.
+	nodeKey := node.GetKey() + "@" + mountPath
 	if visited[nodeKey] {
 		return
 	}
@@ -199,14 +209,14 @@ func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, moun
 
 	// Check for mount patterns first
 	if mountInfo, isMount := e.executeMountPattern(node); isMount {
-		e.handleMountNode(node, mountInfo, mountPath, mountTags, routes, visited)
+		e.handleMountNode(node, mountInfo, mountPath, mountTags, mountDynParams, routes, visited)
 	} else if isRoute := e.executeRoutePattern(node, routeInfo); isRoute {
 		// Check for route patterns
-		e.handleRouteNode(node, routeInfo, mountPath, mountTags, routes)
+		e.handleRouteNode(node, routeInfo, mountPath, mountTags, mountDynParams, routes)
 	} else {
 		// Continue traversing children
 		for _, child := range node.GetChildren() {
-			e.traverseForRoutesWithVisited(child, mountPath, mountTags, routes, visited)
+			e.traverseForRoutesWithVisited(child, mountPath, mountTags, mountDynParams, routes, visited)
 		}
 	}
 }
@@ -253,7 +263,7 @@ func (e *Extractor) executeRoutePattern(node TrackerNodeInterface, routeInfo *Ro
 }
 
 // handleMountNode handles a mount node
-func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
@@ -261,9 +271,16 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 		}
 	}
 
+	// Carry dynamic placeholder names from this mount into nested routes
+	// so each child operation $refs the shared component parameter.
+	childDynParams := mountDynParams
+	if len(mountInfo.DynamicParams) > 0 {
+		childDynParams = appendUniqueStrings(mountDynParams, mountInfo.DynamicParams...)
+	}
+
 	// Handle router assignment if present
 	if mountInfo.Assignment != nil {
-		e.handleRouterAssignment(mountInfo, mountPath, mountTags, routes, visited)
+		e.handleRouterAssignment(mountInfo, mountPath, mountTags, childDynParams, routes, visited)
 	}
 
 	// Continue traversing children
@@ -274,12 +291,12 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 		} else {
 			newTags = mountTags
 		}
-		e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
+		e.traverseForRoutesWithVisited(child, mountPath, newTags, childDynParams, routes, visited)
 	}
 }
 
 // handleRouteNode handles a route node
-func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, routes *[]*RouteInfo) {
+func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo) {
 	// Prepend mount path if present
 	if mountPath != "" {
 		routeInfo.MountPath = joinPaths(mountPath, routeInfo.MountPath)
@@ -290,6 +307,11 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 		routeInfo.Tags = mountTags
 	}
 
+	// Merge inherited mount dynamic params with any produced by the route itself.
+	if len(mountDynParams) > 0 {
+		routeInfo.DynamicParams = appendUniqueStrings(mountDynParams, routeInfo.DynamicParams...)
+	}
+
 	// Extract route/request/response/params from children with visited edges tracking
 	visitedEdges := make(map[string]bool)
 	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges)
@@ -298,10 +320,17 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	e.overrideApplier.ApplyOverrides(routeInfo)
 
 	if routeInfo.IsValid() && routes != nil {
-		// Update existing route or add new one
+		// Update existing route or add new one. Dedup key is the
+		// effective OpenAPI identity (mount + path + method + handler)
+		// rather than just the handler name, so the same sub-router
+		// mounted at multiple prefixes yields one route per prefix
+		// instead of the last-mount-wins behaviour from before.
 		var found bool
 		for i := range *routes {
-			if (*routes)[i].Function == routeInfo.Function {
+			if (*routes)[i].Function == routeInfo.Function &&
+				(*routes)[i].MountPath == routeInfo.MountPath &&
+				(*routes)[i].Path == routeInfo.Path &&
+				(*routes)[i].Method == routeInfo.Method {
 				(*routes)[i] = routeInfo
 				found = true
 				break
@@ -314,7 +343,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 }
 
 // handleRouterAssignment handles router assignment for mounts
-func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
 	// Find the target node for the assignment
 	targetNode := e.findTargetNode(mountInfo.Assignment)
 	if targetNode != nil {
@@ -325,9 +354,35 @@ func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string
 			} else {
 				newTags = mountTags
 			}
-			e.traverseForRoutesWithVisited(child, mountPath, newTags, routes, visited)
+			e.traverseForRoutesWithVisited(child, mountPath, newTags, mountDynParams, routes, visited)
 		}
 	}
+}
+
+// appendUniqueStrings returns base + extras with duplicates removed,
+// preserving first-seen order. Used to merge mount-inherited dynamic
+// placeholder names into a route without ballooning the slice.
+func appendUniqueStrings(base []string, extras ...string) []string {
+	if len(extras) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base)+len(extras))
+	out := make([]string, 0, len(base)+len(extras))
+	for _, s := range base {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	for _, s := range extras {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // findTargetNode finds the target node for an assignment
@@ -357,7 +412,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes
 		if isRoute := e.executeRoutePattern(child, route); isRoute {
-			e.handleRouteNode(child, route, "", mountTags, routes)
+			e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, routes)
 		}
 
 		// Extract request

@@ -79,8 +79,9 @@ type Operation struct {
 
 // Parameter represents an OpenAPI parameter
 type Parameter struct {
-	Name        string                 `yaml:"name" json:"name"`
-	In          string                 `yaml:"in" json:"in"`
+	Ref         string                 `yaml:"$ref,omitempty" json:"$ref,omitempty"`
+	Name        string                 `yaml:"name,omitempty" json:"name,omitempty"`
+	In          string                 `yaml:"in,omitempty" json:"in,omitempty"`
 	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
 	Required    bool                   `yaml:"required,omitempty" json:"required,omitempty"`
 	Schema      *Schema                `yaml:"schema,omitempty" json:"schema,omitempty"`

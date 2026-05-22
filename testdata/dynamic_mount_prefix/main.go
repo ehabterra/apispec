@@ -77,7 +77,11 @@ func main() {
 
 	// A literal-mount sibling, to make sure the regression of the
 	// dynamic-mount case doesn't drag the literal case down with it.
-	r.Mount("/static", apiRoutes())
+	// Same sub-router (apiRoutes) mounted at a second, literal path. With
+	// the per-node visited map this second traversal short-circuited and
+	// none of /v2/api's routes appeared in the spec — see the visited
+	// map fix in extractor.go (now keyed by node + mountPath).
+	r.Mount("/v2/api", apiRoutes())
 
 	http.ListenAndServe(":8080", r)
 }

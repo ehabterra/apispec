@@ -93,6 +93,12 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 	// Generate component schemas
 	components := generateComponentSchemas(tree.GetMetadata(), cfg, routes)
 
+	// Register shared component parameters for dynamic-path placeholders
+	// (issue #34). Each unique placeholder name across routes becomes one
+	// component, $ref'd from every operation that uses it — see
+	// buildPathsFromRoutes for the per-operation wiring.
+	addDynamicPathParamComponents(&components, routes)
+
 	// Use Info from config if present, else fallback to GeneratorConfig
 	var info Info
 	if cfg != nil && (cfg.Info.Title != "" || cfg.Info.Description != "" || cfg.Info.Version != "") {
@@ -174,6 +180,11 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		} else {
 			operation.Parameters = nil
 		}
+		// Emit $refs for dynamic-path placeholders so each operation
+		// reuses the shared component parameter rather than inlining a
+		// fresh declaration. The matching {name} in the path is then
+		// considered "covered" by ensureAllPathParams below.
+		operation.Parameters = appendDynamicParamRefs(operation.Parameters, route.DynamicParams)
 		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters)
 
 		// Add responses
@@ -193,6 +204,13 @@ func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
 	for _, p := range params {
 		if p.In == "path" {
 			paramMap[p.Name] = true
+		}
+		// Treat a $ref parameter as covering its target name so we don't
+		// re-inline an auto-declared duplicate (issue #34).
+		if p.Ref != "" {
+			if name := refTargetName(p.Ref); name != "" {
+				paramMap[name] = true
+			}
 		}
 	}
 	// Find all {param} in the path
@@ -214,6 +232,96 @@ func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
 		}
 	}
 	return params
+}
+
+// appendDynamicParamRefs adds one $ref entry per dynamic placeholder name,
+// pointing at the shared component parameter. Duplicates (a name already
+// covered by an inline parameter or another $ref) are skipped.
+func appendDynamicParamRefs(params []Parameter, dynamic []string) []Parameter {
+	if len(dynamic) == 0 {
+		return params
+	}
+	covered := make(map[string]struct{}, len(params))
+	for _, p := range params {
+		if p.In == "path" && p.Name != "" {
+			covered[p.Name] = struct{}{}
+		}
+		if p.Ref != "" {
+			if name := refTargetName(p.Ref); name != "" {
+				covered[name] = struct{}{}
+			}
+		}
+	}
+	for _, name := range dynamic {
+		if _, ok := covered[name]; ok {
+			continue
+		}
+		covered[name] = struct{}{}
+		params = append(params, Parameter{Ref: dynamicParamRef(name)})
+	}
+	return params
+}
+
+// addDynamicPathParamComponents registers one component parameter per
+// unique dynamic placeholder name found across all routes. Once registered,
+// each operation references it via $ref (see appendDynamicParamRefs).
+func addDynamicPathParamComponents(components *Components, routes []*RouteInfo) {
+	if components == nil {
+		return
+	}
+	for _, route := range routes {
+		for _, name := range route.DynamicParams {
+			if components.Parameters == nil {
+				components.Parameters = map[string]*Parameter{}
+			}
+			key := dynamicParamComponentName(name)
+			if _, exists := components.Parameters[key]; exists {
+				continue
+			}
+			components.Parameters[key] = &Parameter{
+				Name:        name,
+				In:          "path",
+				Required:    true,
+				Description: "Auto-declared from an unresolved path expression (e.g. a function call evaluated at runtime). APISpec could not statically determine the path segment — see issue #34.",
+				Schema:      &Schema{Type: "string"},
+				Extensions: map[string]any{
+					"x-warning": "This parameter was synthesized from an unresolved path expression and may not represent a real per-request parameter.",
+				},
+			}
+		}
+	}
+}
+
+// dynamicParamComponentName returns the PascalCase + "Param" suffix used as
+// the key under components.parameters for a synthesized placeholder.
+func dynamicParamComponentName(name string) string {
+	if name == "" {
+		return "PathParam"
+	}
+	first := strings.ToUpper(name[:1])
+	return first + name[1:] + "Param"
+}
+
+// dynamicParamRef returns the $ref string pointing at the component
+// parameter for the given synthesized placeholder name.
+func dynamicParamRef(name string) string {
+	return "#/components/parameters/" + dynamicParamComponentName(name)
+}
+
+// refTargetName extracts the trailing segment of a #/components/parameters/<X>
+// ref and reverses the PascalCase + "Param" mangling so callers can match
+// against placeholder names found in a path.
+func refTargetName(ref string) string {
+	const prefix = "#/components/parameters/"
+	if !strings.HasPrefix(ref, prefix) {
+		return ""
+	}
+	key := strings.TrimPrefix(ref, prefix)
+	key = strings.TrimSuffix(key, "Param")
+	if key == "" {
+		return ""
+	}
+	return strings.ToLower(key[:1]) + key[1:]
 }
 
 // deduplicateParameters removes duplicate parameters by (name, in)
