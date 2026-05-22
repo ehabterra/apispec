@@ -2,7 +2,7 @@
 
 [![Coverage](https://img.shields.io/badge/coverage-49.0%25-red.svg)](https://github.com/ehabterra/apispec)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ehabterra/apispec)](https://goreportcard.com/report/github.com/ehabterra/apispec)
-[![Go Version](https://img.shields.io/badge/go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/ehabterra/apispec/blob/main/LICENSE)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/ci.yml?branch=main&label=CI&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/test.yml?branch=main&label=Tests&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/test.yml)
@@ -43,6 +43,9 @@ Click *the image above to watch the full demo on YouTube*
 - **Performance Profiling**: Built-in CPU, memory, block, mutex, and trace profiling for performance analysis.
 - **Configurable Limits**: Fine-tune analysis limits for large codebases with detailed warning messages.
 - **CGO Support**: Skip CGO packages during analysis to avoid build errors.
+- **Conditional Response Status Codes**: When an error/status variable is reassigned across `if`/`else` branches with distinct HTTP status codes, APISpec emits one response per status (sharing the body/schema). Closes [#39](https://github.com/ehabterra/apispec/issues/39).
+- **Request Body Source Disambiguation**: New `framework.requestContext` config (`typeRegexes` + `bodyAccessors`) lets generic decoders like `json.Decode` and `json.Unmarshal` be classified as request-body decoders only when the source argument can be traced back to a request-context body accessor (e.g. `r.Body`), eliminating false positives from unrelated decoding.
+- **Underlying Field Type Rendering**: Schema generation now resolves the underlying primitive type of struct fields whose declared type is an alias or named type, so aliased fields render with their concrete OpenAPI type.
 
 > **Note**: Generating call-graph diagrams and metadata files consumes additional resources and time.
 
@@ -82,7 +85,7 @@ APISpec focuses on practical coverage for real-world services. Current coverage 
 - [x] **External type introspection**: types from external packages are automatically resolved to their underlying primitives; complex external types can be defined via `externalTypes` in config.
 - [x] **Generics (functions)**: detects type parameters and maps concrete types at call sites.
 - [ ] **Generics (types)**: generic struct and type instantiation are partially supported.
-- [ ] **Inferred status codes**: status codes assigned via variables are not inferred.
+- [x] **Inferred status codes (branched)**: when a response call's status argument traces back to a local variable reassigned across `if`/`else` branches (each branch calling a constructor like `NewError(msg, http.StatusXxx)`), APISpec emits one response per distinct status code, sharing the body schema. Status codes assigned via a single variable still follow latest-wins resolution.
 - [x] **Interfaces**: captures interface types and methods; unresolved dynamic values are represented generically.
 - [x] **Chain calls**: efficiently processes method chaining and establishes parent-child relationships in the call graph.
 - [x] **Nested calls**: handles chained/method calls and nested expressions.
@@ -215,6 +218,7 @@ type User struct {
 #### How External Type Resolution Works
 
 - **External Types**: Types from packages like `github.com/google/uuid.UUID` are automatically resolved to their underlying primitive types (e.g., `string` with `format: "byte"`)
+- **Pointer External Types**: Pointers to external types (e.g., `*uuid.UUID`) are now resolved to the same primitive schema as their non-pointer counterparts.
 - **Internal Types**: Types from your own project (even in different packages) are preserved as-is for proper schema generation
 - **Standard Library**: Types like `time.Time` are handled appropriately based on configuration
 
@@ -883,6 +887,25 @@ typeMapping:
         type: string
 ```
 
+#### Request Body Source (Generic Decoder Disambiguation)
+
+Generic decoders like `json.Decode`, `json.Unmarshal`, and `render.DecodeJSON` are used both for request bodies *and* for unrelated decoding (config files, internal payloads). The `requestContext` block tells APISpec which receivers count as "request context" and which method names are body accessors. A decoder call is only classified as a request-body decoder when its source argument can be traced — through selectors, idents, assignments, and parameter boundaries — back to a body accessor on a request-context typed root.
+
+```yaml
+framework:
+  requestContext:
+    # Receivers (and pointer variants) that represent a request context.
+    typeRegexes:
+      - ^net/http\.\*Request$
+      - ^github\.com/gin-gonic/gin\.\*Context$
+    # Method/field names on those receivers that yield the request body.
+    bodyAccessors:
+      - ^Body$
+      - ^GetRawData$
+```
+
+When `requestContext` is omitted, APISpec falls back to its prior receiver-only matching behaviour, so existing configs keep working without modification.
+
 #### External Package Types
 
 ```yaml
@@ -918,7 +941,7 @@ externalTypes:
 
 ### Prerequisites
 
-- Go 1.24+ (Didn't test it on version before 1.24)
+- Go 1.26+
 - Understanding of AST (Abstract Syntax Tree)
 - Familiarity with OpenAPI 3.1 specification
 
