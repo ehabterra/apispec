@@ -157,7 +157,7 @@ func TestExtractResponse_SingleAssignment_NoFanOut(t *testing.T) {
 		pattern: ResponsePattern{
 			StatusFromArg:  true,
 			StatusArgIndex: 0,
-			DefaultStatus: 200,
+			DefaultStatus:  200,
 		},
 	}
 
