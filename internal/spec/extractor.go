@@ -621,10 +621,22 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 	edge := node.GetEdge()
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
-		statusStr := r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.StatusArgIndex])
+		statusArg := edge.Args[r.pattern.StatusArgIndex]
+		statusStr := r.contextProvider.GetArgumentInfo(statusArg)
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
 			statusResolved = true
 			respInfo.StatusCode = status
+		} else if callerArg := r.traceArgViaParent(statusArg, node); callerArg != nil {
+			// The status arg is a parameter of the enclosing function
+			// (e.g. WriteHeader(status) inside writeJSON(w, status, v)).
+			// Walk up to the caller's call site and read the actual value.
+			// Per-route tracker tree isolates each handler's path, so the
+			// status pairs correctly with the body resolved below.
+			callerStr := r.contextProvider.GetArgumentInfo(callerArg)
+			if status, ok := r.schemaMapper.MapStatusCode(callerStr); ok {
+				statusResolved = true
+				respInfo.StatusCode = status
+			}
 		}
 	}
 
@@ -645,6 +657,16 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 
 		arg := edge.Args[r.pattern.TypeArgIndex]
+
+		// Parameter tracing: if the body arg is a parameter of the
+		// enclosing function (e.g. Encode(v) inside writeJSON(w, status,
+		// v)), follow it to the caller's actual argument so we get the
+		// concrete type — otherwise `v any` would resolve to a generic
+		// object. Per-route isolation in the tracker tree means each
+		// handler's response gets the type from its own call site.
+		if callerArg := r.traceArgViaParent(arg, node); callerArg != nil {
+			arg = callerArg
+		}
 
 		// Type conversion like `[]byte(swaggerUIHTML)`: the *target* type of
 		// the conversion (e.g. []byte) is what the function actually
@@ -715,6 +737,39 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	return []*ResponseInfo{respInfo}
+}
+
+// traceArgViaParent walks one step up the tracker tree to recover the
+// caller-site value of a parameter ident. When a response pattern matches
+// inside a helper (writeJSON-style) — e.g. WriteHeader(status) where
+// status is a parameter of writeJSON — the matched call's args reference
+// parameters, not literals. The parent tracker node represents the call
+// to the helper, and that edge's ParamArgMap maps callee parameter
+// names back to the caller's actual arguments.
+//
+// Returns nil when the arg isn't an ident, there is no parent node,
+// or the parameter name isn't present in the parent's ParamArgMap.
+//
+// Per-route isolation in the tracker tree is what makes this sound:
+// each handler's path through the helper is a distinct tracker subtree,
+// so two routes that call writeJSON with different statuses each
+// resolve to their own value independently.
+func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
+	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
+		return nil
+	}
+	parent := node.GetParent()
+	if parent == nil {
+		return nil
+	}
+	parentEdge := parent.GetEdge()
+	if parentEdge == nil || parentEdge.ParamArgMap == nil {
+		return nil
+	}
+	if callerArg, ok := parentEdge.ParamArgMap[arg.GetName()]; ok {
+		return &callerArg
+	}
+	return nil
 }
 
 // expandStatusesFromIdent walks the caller's function-level AssignmentMap
