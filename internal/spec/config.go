@@ -526,978 +526,119 @@ var (
 	}
 )
 
-func DefaultChiConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$",
-				},
-			},
-			RequestContext: netHTTPRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:            `^DecodeJSON$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        "^github\\.com/go-chi/render$",
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        ".*json(iter)?\\.\\*Decoder",
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        "json",
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:     `^JSON$`,
-					TypeArgIndex:  2,
-					TypeFromArg:   true,
-					StatusFromArg: false,
-					Deref:         true,
-					RecvTypeRegex: "^github\\.com/go-chi/render$",
-				},
-				{
-					CallRegex:      `^Status$`,
-					StatusArgIndex: 1,
-					StatusFromArg:  true,
-					RecvTypeRegex:  "^github\\.com/go-chi/render$",
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:     `^Encode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^URLParam$",
-					ParamIn:       "path",
-					ParamArgIndex: 1,
-					RecvTypeRegex: "^github\\.com/go-chi/chi(/v\\d)?$",
-				},
-				{
-					CallRegex:     "^URLParam$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-					RecvTypeRegex: "^github\\.com/go-chi/chi(/v\\d)?\\.\\*?Context$",
-				},
-				{
-					CallRegex:     "^URLParamFromCtx$",
-					ParamIn:       "path",
-					ParamArgIndex: 1,
-					RecvTypeRegex: "^github\\.com/go-chi/chi(/v\\d)?$",
-				},
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Get$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					RecvType:      "net/url.Values",
-				},
-				{
-					CallRegex:     "^PathValue$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-					RecvType:      "net/http.*Request",
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Mount$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-				},
-				{
-					CallRegex:      `^Route$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-				},
-			},
+// Shared pattern helpers used by the framework defaults. These collapse
+// duplication that previously sat in every Default*Config function — for
+// example the five net/http ResponseWriter patterns were copied verbatim
+// across all six configs, drifting slightly over time (audit finding #3 /
+// #11). Each helper returns a fresh value so callers can append to it
+// without worrying about shared mutable state.
+
+// netHTTPResponsePatterns returns the standard ResponseWriter and net/http
+// helper response patterns. Identical across every framework default.
+func netHTTPResponsePatterns() []ResponsePattern {
+	return []ResponsePattern{
+		{
+			CallRegex:      `^WriteHeader$`,
+			StatusArgIndex: 0,
+			StatusFromArg:  true,
+			TypeArgIndex:   -1,
+			RecvTypeRegex:  `^net/http\.ResponseWriter$`,
 		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      defaultResponseStatus,
+		{
+			CallRegex:     `^Write$`,
+			TypeArgIndex:  0,
+			TypeFromArg:   true,
+			Deref:         true,
+			RecvTypeRegex: `^net/http\.ResponseWriter$`,
+		},
+		{
+			CallRegex:          `^Error$`,
+			StatusArgIndex:     2,
+			StatusFromArg:      true,
+			TypeFromArg:        true,
+			TypeArgIndex:       1,
+			RecvTypeRegex:      `^net/http$`,
+			DefaultContentType: "text/plain; charset=utf-8",
+		},
+		{
+			CallRegex:      `^NotFound$`,
+			StatusArgIndex: -1, // Always 404
+			StatusFromArg:  false,
+			TypeArgIndex:   -1,
+			RecvTypeRegex:  `^net/http$`,
+			DefaultStatus:  http.StatusNotFound,
+		},
+		{
+			CallRegex:      `^Redirect$`,
+			StatusArgIndex: 3,
+			StatusFromArg:  true,
+			TypeArgIndex:   -1,
+			RecvTypeRegex:  `^net/http$`,
 		},
 	}
 }
 
-// DefaultEchoConfig returns a default configuration for Echo framework
-func DefaultEchoConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
-				},
-			},
-			RequestContext: echoRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:     `^(?i)(Bind)$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
-				},
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        ".*json(iter)?\\.\\*Decoder",
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        "json",
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   1,
-					TypeFromArg:    true,
-					StatusFromArg:  true,
-					Deref:          true,
-					RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
-				},
-				{
-					CallRegex:      `^(?i)(NoContent)$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:     `^Encode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^Param$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^QueryParam$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
-				},
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Cookie$",
-					ParamIn:       "cookie",
-					ParamArgIndex: 0,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Group$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-					RecvTypeRegex:  "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      http.StatusOK,
-		},
+// jsonMarshalPattern returns the encoding/json.Marshal-style response
+// pattern. Identical across every framework default.
+func jsonMarshalPattern() ResponsePattern {
+	return ResponsePattern{
+		CallRegex:    `^Marshal$`,
+		TypeArgIndex: 0,
+		TypeFromArg:  true,
+		Deref:        true,
 	}
 }
 
-// DefaultFiberConfig returns a default configuration for Fiber framework
-func DefaultFiberConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
-				},
-			},
-			RequestContext: fiberRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:     `^BodyParser$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*?Ctx$`,
-				},
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        ".*json(iter)?\\.\\*?Decoder",
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        "json",
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:      `^JSON$`,
-					StatusArgIndex: -1, // Fiber's c.JSON does not take status, only data
-					TypeArgIndex:   0,
-					TypeFromArg:    true,
-					Deref:          true,
-					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:      `^Status$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:      `^SendString$`,
-					StatusArgIndex: -1,
-					TypeArgIndex:   0,
-					TypeFromArg:    true,
-					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:      `^SendStatus$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:     `^Encode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^Params$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:     "^Query$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-				{
-					CallRegex:     "^Cookies$",
-					ParamIn:       "cookie",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Mount$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-				},
-				{
-					CallRegex:      `^Group$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
-				},
-				{
-					CallRegex:     `^Use$`,
-					PathFromArg:   false,
-					RouterFromArg: false,
-					IsMount:       false,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      http.StatusOK,
-		},
-		ExternalTypes: []ExternalType{
-			{
-				Name: "github.com/gofiber/fiber.Map",
-				OpenAPIType: &Schema{
-					Type: "object",
-				},
-			},
-		},
+// jsonEncodePattern returns the json.Encoder.Encode response pattern.
+// recvTypeRegex varies between frameworks: pass "" to match any receiver,
+// or `.*json(iter)?\.\*?Encoder` to restrict to JSON encoders specifically.
+func jsonEncodePattern(recvTypeRegex string) ResponsePattern {
+	return ResponsePattern{
+		CallRegex:     `^Encode$`,
+		TypeArgIndex:  0,
+		TypeFromArg:   true,
+		Deref:         true,
+		RecvTypeRegex: recvTypeRegex,
 	}
 }
 
-// DefaultGinConfig returns a default configuration for Gin framework
-func DefaultGinConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
-				},
-			},
-			RequestContext: ginRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:    `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   1,
-					TypeFromArg:    true,
-					StatusFromArg:  true,
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Encode$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^Param$",
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Query$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^DefaultQuery$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^GetHeader$",
-					ParamIn:       "header",
-					ParamArgIndex: 0,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:      `^Group$`,
-					PathFromArg:    true,
-					RouterFromArg:  true,
-					PathArgIndex:   0,
-					RouterArgIndex: 1,
-					IsMount:        true,
-					RecvTypeRegex:  "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      http.StatusOK,
-		},
-		ExternalTypes: []ExternalType{
-			{
-				Name: "github.com/gin-gonic/gin.H",
-				OpenAPIType: &Schema{
-					Type: "object",
-				},
-			},
-		},
+// jsonDecodeRequestPattern returns the json.Decoder.Decode request-body
+// pattern. recvTypeRegex varies between frameworks (some restrict to
+// *Decoder, some accept any receiver).
+func jsonDecodeRequestPattern(recvTypeRegex string) RequestBodyPattern {
+	return RequestBodyPattern{
+		CallRegex:            `^Decode$`,
+		TypeArgIndex:         0,
+		TypeFromArg:          true,
+		Deref:                true,
+		RecvTypeRegex:        recvTypeRegex,
+		RequireRequestSource: true,
+		BodyFromReceiver:     true,
 	}
 }
 
-// DefaultMethodExtractionConfig returns a default method extraction configuration
-func DefaultMethodExtractionConfig() *MethodExtractionConfig {
-	return &MethodExtractionConfig{
-		MethodMappings: []MethodMapping{
-			{Patterns: []string{"get", "list", "show", "find", "fetch", "retrieve"}, Method: "GET", Priority: 10},
-			{Patterns: []string{"post", "create", "add", "new", "insert"}, Method: "POST", Priority: 10},
-			{Patterns: []string{"put", "update", "edit", "modify", "replace"}, Method: "PUT", Priority: 10},
-			{Patterns: []string{"delete", "remove", "destroy"}, Method: "DELETE", Priority: 10},
-			{Patterns: []string{"patch", "partial"}, Method: "PATCH", Priority: 10},
-			{Patterns: []string{"options"}, Method: "OPTIONS", Priority: 10},
-			{Patterns: []string{"head"}, Method: "HEAD", Priority: 10},
-		},
-		UsePrefix:        true,
-		UseContains:      true,
-		CaseSensitive:    false,
-		DefaultMethod:    "GET",
-		InferFromContext: true,
+// jsonUnmarshalRequestPattern returns the encoding/json.Unmarshal
+// request-body pattern. recvTypeRegex varies similarly to Decode.
+func jsonUnmarshalRequestPattern(recvTypeRegex string) RequestBodyPattern {
+	return RequestBodyPattern{
+		CallRegex:            `^Unmarshal$`,
+		TypeArgIndex:         1,
+		TypeFromArg:          true,
+		Deref:                true,
+		RecvTypeRegex:        recvTypeRegex,
+		RequireRequestSource: true,
+		BodySourceArgIndex:   0,
 	}
 }
 
-// DefaultMuxConfig returns a default configuration for Gorilla Mux framework
-func DefaultMuxConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:        `^HandleFunc$`,
-					PathFromArg:      true,
-					HandlerFromArg:   true,
-					PathArgIndex:     0,
-					HandlerArgIndex:  1,
-					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Router$`,
-					MethodExtraction: DefaultMethodExtractionConfig(),
-				},
-				{
-					CallRegex:        `^Handle$`,
-					PathFromArg:      true,
-					HandlerFromArg:   true,
-					PathArgIndex:     0,
-					HandlerArgIndex:  1,
-					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Router$`,
-					MethodExtraction: DefaultMethodExtractionConfig(),
-				},
-				{
-					CallRegex:        `^HandlerFunc$`,
-					HandlerFromArg:   true,
-					HandlerArgIndex:  0,
-					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Route$`,
-					MethodExtraction: DefaultMethodExtractionConfig(),
-				},
-				{
-					CallRegex:        `^Handler$`,
-					HandlerFromArg:   true,
-					HandlerArgIndex:  0,
-					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?Route$`,
-					MethodExtraction: DefaultMethodExtractionConfig(),
-				},
-				{
-					CallRegex:        `^Path$`,
-					PathFromArg:      true,
-					PathArgIndex:     0,
-					RecvTypeRegex:    `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
-					MethodExtraction: DefaultMethodExtractionConfig(),
-				},
-				{
-					CallRegex:         `^Methods$`,
-					MethodFromHandler: true,
-					MethodArgIndex:    0,
-					RecvTypeRegex:     `^github\.com/gorilla/mux\.\*?(Router|Route)$`,
-					MethodExtraction:  DefaultMethodExtractionConfig(),
-				},
-			},
-			RequestContext: netHTTPRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        ".*json(iter)?\\.\\*?Decoder",
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RecvTypeRegex:        "json",
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:     `^Encode$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: ".*json(iter)?\\.\\*?Encoder",
-				},
-			},
-			ParamPatterns: []ParamPattern{ // @note: mux does not have a ParamPattern and it's not supported in this version
-				{
-					CallRegex:     `^Vars$`,
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gorilla/mux$`,
-				},
-			},
-			MountPatterns: []MountPattern{
-				{
-					CallRegex:     `^PathPrefix$`,
-					PathFromArg:   true,
-					PathArgIndex:  0,
-					IsMount:       true,
-					RecvTypeRegex: `^github\.com/gorilla/mux\.\*?Router$`,
-				},
-				{
-					CallRegex:     `^Subrouter$`,
-					IsMount:       true,
-					RecvTypeRegex: `^github\.com/gorilla/mux\.\*?Route$`,
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      http.StatusOK,
-		},
+// stdDefaults returns the Defaults block shared by every framework config,
+// parameterised on responseStatus (HTTP-style defaults all use 200; Chi's
+// older config kept its own constant — preserved here for parity).
+func stdDefaults(responseStatus int) Defaults {
+	return Defaults{
+		RequestContentType:  defaultRequestContentType,
+		ResponseContentType: defaultResponseContentType,
+		ResponseStatus:      responseStatus,
 	}
 }
 
-// DefaultHTTPConfig returns a default configuration for net/http
-func DefaultHTTPConfig() *APISpecConfig {
-	return &APISpecConfig{
-		Framework: FrameworkConfig{
-			RoutePatterns: []RoutePattern{
-				{
-					CallRegex:       `^HandleFunc$`,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					MethodArgIndex:  -1,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^net/http(\\.\\*ServeMux)?$",
-				},
-				{
-					CallRegex:       `^Handle$`,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					MethodArgIndex:  -1,
-					HandlerArgIndex: 1,
-				},
-			},
-			RequestContext: netHTTPRequestContext,
-			RequestBodyPatterns: []RequestBodyPattern{
-				{
-					CallRegex:            `^Decode$`,
-					TypeArgIndex:         0,
-					TypeFromArg:          true,
-					Deref:                true,
-					RequireRequestSource: true,
-					BodyFromReceiver:     true,
-				},
-				{
-					CallRegex:            `^Unmarshal$`,
-					TypeArgIndex:         1,
-					TypeFromArg:          true,
-					Deref:                true,
-					RequireRequestSource: true,
-					BodySourceArgIndex:   0,
-				},
-			},
-			ResponsePatterns: []ResponsePattern{
-				{
-					CallRegex:      `^WriteHeader$`,
-					StatusArgIndex: 0,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:     `^Write$`,
-					TypeArgIndex:  0,
-					TypeFromArg:   true,
-					Deref:         true,
-					RecvTypeRegex: `^net/http\.ResponseWriter$`,
-				},
-				{
-					CallRegex:          `^Error$`,
-					StatusArgIndex:     2,
-					StatusFromArg:      true,
-					TypeFromArg:        true,
-					TypeArgIndex:       1,
-					RecvTypeRegex:      `^net/http$`,
-					DefaultContentType: "text/plain; charset=utf-8",
-				},
-				{
-					CallRegex:      `^NotFound$`,
-					StatusArgIndex: -1, // Always 404
-					StatusFromArg:  false,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-					DefaultStatus:  http.StatusNotFound,
-				},
-				{
-					CallRegex:      `^Redirect$`,
-					StatusArgIndex: 3,
-					StatusFromArg:  true,
-					TypeArgIndex:   -1,
-					RecvTypeRegex:  `^net/http$`,
-				},
-				{
-					CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-					StatusArgIndex: 0,
-					TypeArgIndex:   1,
-					TypeFromArg:    true,
-					Deref:          true,
-				},
-				{
-					CallRegex:    `^Marshal$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-				{
-					CallRegex:    `^Encode$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
-				},
-			},
-			ParamPatterns: []ParamPattern{
-				{
-					CallRegex:     "^FormValue$",
-					ParamIn:       "form",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Get$",
-					ParamIn:       "header",
-					ParamArgIndex: 0,
-				},
-				{
-					CallRegex:     "^Cookie$",
-					ParamIn:       "cookie",
-					ParamArgIndex: 0,
-				},
-			},
-		},
-		Defaults: Defaults{
-			RequestContentType:  defaultRequestContentType,
-			ResponseContentType: defaultResponseContentType,
-			ResponseStatus:      http.StatusOK,
-		},
-	}
-}
