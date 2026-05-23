@@ -641,4 +641,3 @@ func stdDefaults(responseStatus int) Defaults {
 		ResponseStatus:      responseStatus,
 	}
 }
-
