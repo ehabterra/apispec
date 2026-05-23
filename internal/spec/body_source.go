@@ -28,12 +28,12 @@ func newBodySourceResolver(cfg *APISpecConfig, contextProvider ContextProvider) 
 		return r
 	}
 	for _, p := range cfg.Framework.RequestContext.TypeRegexes {
-		if re, err := getCachedPatternRegex(p); err == nil {
+		if re, err := cachedRegex(p); err == nil {
 			r.typeREs = append(r.typeREs, re)
 		}
 	}
 	for _, p := range cfg.Framework.RequestContext.BodyAccessors {
-		if re, err := getCachedPatternRegex(p); err == nil {
+		if re, err := cachedRegex(p); err == nil {
 			r.accessorREs = append(r.accessorREs, re)
 		}
 	}

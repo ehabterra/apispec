@@ -6,44 +6,14 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
-
-// Regex cache for performance optimization
-var (
-	mapperRegexCache = make(map[string]*regexp.Regexp)
-	mapperRegexMutex sync.RWMutex
-)
-
-// getCachedMapperRegex returns a cached compiled regex or compiles and caches a new one
-func getCachedMapperRegex(pattern string) *regexp.Regexp {
-	mapperRegexMutex.RLock()
-	if re, exists := mapperRegexCache[pattern]; exists {
-		mapperRegexMutex.RUnlock()
-		return re
-	}
-	mapperRegexMutex.RUnlock()
-
-	mapperRegexMutex.Lock()
-	defer mapperRegexMutex.Unlock()
-
-	// Double-check after acquiring write lock
-	if re, exists := mapperRegexCache[pattern]; exists {
-		return re
-	}
-
-	re := regexp.MustCompile(pattern)
-	mapperRegexCache[pattern] = re
-	return re
-}
 
 const (
 	refComponentsSchemasPrefix = "#/components/schemas/"
@@ -214,7 +184,7 @@ func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
 		}
 	}
 	// Find all {param} in the path
-	re := getCachedMapperRegex(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	re := mustCachedRegex(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 	matches := re.FindAllStringSubmatch(openAPIPath, -1)
 	for _, match := range matches {
 		name := match[1]
@@ -405,7 +375,7 @@ func setOperationOnPathItem(item *PathItem, method string, op *Operation) {
 func convertPathToOpenAPI(path string) string {
 	// Regular expression to match :param format
 	// This matches a colon followed by one or more word characters (letters, digits, underscore)
-	re := getCachedMapperRegex(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
+	re := mustCachedRegex(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
 
 	// Replace all matches with {param} format
 	result := re.ReplaceAllString(path, "{$1}")
@@ -739,7 +709,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			isPrimitive := metadata.IsPrimitiveType(fieldType)
 
 			if !isPrimitive && !strings.Contains(fieldType, ".") {
-				re := getCachedMapperRegex(`((\[\])?\*?)(.+)$`)
+				re := mustCachedRegex(`((\[\])?\*?)(.+)$`)
 				matches := re.FindStringSubmatch(fieldType)
 				if len(matches) >= 4 {
 					fieldType = matches[1] + pkgName + "." + matches[3]
@@ -992,7 +962,7 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 			// - Simple rules: required, email, url, etc.
 			// - Rules with values: min=5, max=10, len=8
 			// - Rules with complex values: regexp=^[a-z]{2,3}$, oneof=val1 val2 val3
-			rules := getCachedMapperRegex(`([a-zA-Z_][a-zA-Z0-9_]*(?:=(?:[^,{}]|{[^}]*})*)?)`).FindAllStringSubmatch(validateTag, -1)
+			rules := mustCachedRegex(`([a-zA-Z_][a-zA-Z0-9_]*(?:=(?:[^,{}]|{[^}]*})*)?)`).FindAllStringSubmatch(validateTag, -1)
 			for _, ruleSet := range rules {
 				rule := strings.TrimSpace(ruleSet[1])
 				if rule == "required" {
