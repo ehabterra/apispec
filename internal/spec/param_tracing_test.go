@@ -15,18 +15,18 @@ type fakeNode struct {
 	edge   *metadata.CallGraphEdge
 }
 
-func (f *fakeNode) GetKey() string                                          { return "" }
-func (f *fakeNode) GetParent() TrackerNodeInterface                         { return f.parent }
-func (f *fakeNode) GetChildren() []TrackerNodeInterface                     { return nil }
-func (f *fakeNode) GetEdge() *metadata.CallGraphEdge                        { return f.edge }
-func (f *fakeNode) GetCallGraphEdge() *metadata.CallGraphEdge               { return f.edge }
-func (f *fakeNode) GetCallArgument() *metadata.CallArgument                 { return nil }
-func (f *fakeNode) GetArgContext() string                                   { return "" }
-func (f *fakeNode) GetArgIndex() int                                        { return 0 }
-func (f *fakeNode) GetArgType() metadata.ArgumentType                       { return metadata.ArgTypeDirectCallee }
-func (f *fakeNode) GetArgument() *metadata.CallArgument                     { return nil }
-func (f *fakeNode) GetTypeParamMap() map[string]string                      { return nil }
-func (f *fakeNode) GetRootAssignmentMap() map[string][]metadata.Assignment  { return nil }
+func (f *fakeNode) GetKey() string                                         { return "" }
+func (f *fakeNode) GetParent() TrackerNodeInterface                        { return f.parent }
+func (f *fakeNode) GetChildren() []TrackerNodeInterface                    { return nil }
+func (f *fakeNode) GetEdge() *metadata.CallGraphEdge                       { return f.edge }
+func (f *fakeNode) GetCallGraphEdge() *metadata.CallGraphEdge              { return f.edge }
+func (f *fakeNode) GetCallArgument() *metadata.CallArgument                { return nil }
+func (f *fakeNode) GetArgContext() string                                  { return "" }
+func (f *fakeNode) GetArgIndex() int                                       { return 0 }
+func (f *fakeNode) GetArgType() metadata.ArgumentType                      { return metadata.ArgTypeDirectCallee }
+func (f *fakeNode) GetArgument() *metadata.CallArgument                    { return nil }
+func (f *fakeNode) GetTypeParamMap() map[string]string                     { return nil }
+func (f *fakeNode) GetRootAssignmentMap() map[string][]metadata.Assignment { return nil }
 
 // TestTraceArgViaParent_ResolvesParameterToCallerArg mirrors the writeJSON
 // case from issue: an inner call like WriteHeader(status) inside
