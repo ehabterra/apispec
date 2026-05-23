@@ -14,12 +14,12 @@ import (
 // TestTrackerWarnings tests the new debug warning functionality
 func TestTrackerWarnings(t *testing.T) {
 	// Capture stdout to test warning messages
-	oldStdout := os.Stdout
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
 	defer func() {
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		_ = w.Close()
 	}()
 
@@ -46,9 +46,9 @@ func TestTrackerWarnings(t *testing.T) {
 	// Test MaxArgsPerFunction warning
 	t.Run("MaxArgsPerFunction warning", func(t *testing.T) {
 		// Reset stdout capture
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		r, w, _ = os.Pipe()
-		os.Stdout = w
+		os.Stderr = w
 
 		// Create a tracker with very low limits
 		limits := metadata.TrackerLimits{
@@ -102,9 +102,9 @@ func TestTrackerWarnings(t *testing.T) {
 	// Test MaxNodesPerTree warning
 	t.Run("MaxNodesPerTree warning", func(t *testing.T) {
 		// Reset stdout capture
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		r, w, _ = os.Pipe()
-		os.Stdout = w
+		os.Stderr = w
 
 		// Create a tracker with very low limits
 		limits := metadata.TrackerLimits{
@@ -137,9 +137,9 @@ func TestTrackerWarnings(t *testing.T) {
 	// Test MaxChildrenPerNode warning
 	t.Run("MaxChildrenPerNode warning", func(t *testing.T) {
 		// Reset stdout capture
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		r, w, _ = os.Pipe()
-		os.Stdout = w
+		os.Stderr = w
 
 		// Create a tracker with very low limits
 		limits := metadata.TrackerLimits{
@@ -191,12 +191,12 @@ func TestTrackerWarnings(t *testing.T) {
 // TestTrackerWithoutWarnings tests that no warnings are printed when limits are not exceeded
 func TestTrackerWithoutWarnings(t *testing.T) {
 	// Capture stdout to test that no warnings are printed
-	oldStdout := os.Stdout
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
 	defer func() {
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		_ = w.Close()
 	}()
 
@@ -279,12 +279,12 @@ func TestTrackerWithoutWarnings(t *testing.T) {
 // TestTrackerLimitsIntegration tests the integration of all limit checks
 func TestTrackerLimitsIntegration(t *testing.T) {
 	// Capture stdout to test warning messages
-	oldStdout := os.Stdout
+	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
 	defer func() {
-		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 		_ = w.Close()
 	}()
 
@@ -394,7 +394,7 @@ func TestFindNodeInSubtree_CycleDetection(t *testing.T) {
 		MaxArgsPerFunction: 100,
 		MaxNestedArgsDepth: 10,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 
 	// Create simple nodes for testing
 	node1 := &TrackerNode{
@@ -439,7 +439,7 @@ func TestFindNodeInSubtreeWithVisited_CycleDetection(t *testing.T) {
 		MaxArgsPerFunction: 100,
 		MaxNestedArgsDepth: 10,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 
 	node1 := &TrackerNode{
 		Children: make([]*TrackerNode, 0),
@@ -489,7 +489,7 @@ func TestFindNodeInSubtree_NoCycle(t *testing.T) {
 		MaxArgsPerFunction: 100,
 		MaxNestedArgsDepth: 10,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 
 	node1 := &TrackerNode{
 		Children: make([]*TrackerNode, 0),
@@ -523,7 +523,7 @@ func TestFindNodeInSubtree_Performance(t *testing.T) {
 		MaxArgsPerFunction: 100,
 		MaxNestedArgsDepth: 10,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 
 	// Create a deep tree (100 levels)
 	root := &TrackerNode{
@@ -583,7 +583,7 @@ func TestProcessArguments_ArgTypeSelector_NestedSelector(t *testing.T) {
 		MaxRecursionDepth:  10,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 	parentNode := &TrackerNode{
 		Children: make([]*TrackerNode, 0),
 	}
@@ -850,7 +850,7 @@ func TestProcessArguments_ArgTypeSelector_FunctionType(t *testing.T) {
 		MaxRecursionDepth:  10,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 	parentNode := &TrackerNode{
 		Children: make([]*TrackerNode, 0),
 	}
@@ -1141,7 +1141,7 @@ func TestAssignmentNodeParentLinking(t *testing.T) {
 		MaxRecursionDepth:  10,
 	}
 
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 	parentNode := &TrackerNode{
 		Children: make([]*TrackerNode, 0),
 	}

@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"maps"
+	"os"
 	"strings"
 	"sync"
 
@@ -271,6 +272,10 @@ type TrackerTree struct {
 	roots     []*TrackerNode
 	limits    metadata.TrackerLimits
 
+	// logger receives traversal-time warnings (limit truncations, etc.).
+	// May be nil; callers should reach it via t.warn / t.info.
+	logger metadata.VerboseLogger
+
 	// Enhanced tracking indices
 	variableNodes map[paramKey][]*TrackerNode // Track variable nodes by name
 
@@ -283,6 +288,16 @@ type TrackerTree struct {
 	// Performance optimizations
 	nodeMap map[string]*TrackerNode // O(1) node lookup by edge ID
 	idCache map[string]string       // Cache for ID generation
+}
+
+// warn forwards to the configured logger, defaulting to stderr when none
+// was supplied so existing CLI behaviour is preserved verbatim.
+func (t *TrackerTree) warn(format string, args ...any) {
+	if t == nil || t.logger == nil {
+		fmt.Fprintf(os.Stderr, format, args...)
+		return
+	}
+	t.logger.Warnf(format, args...)
 }
 
 type paramKey struct {
@@ -316,11 +331,14 @@ func (k interfaceKey) String() string {
 }
 
 // NewTrackerTree constructs a TrackerTree from metadata and limits.
-func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *TrackerTree {
+// logger may be nil — warnings then route directly to stderr so the CLI
+// behaviour callers had before this parameter existed is preserved.
+func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logger metadata.VerboseLogger) *TrackerTree {
 	t := &TrackerTree{
 		meta:          meta,
 		positions:     make(map[string]bool, 100), // Pre-allocate with estimated capacity
 		variableNodes: make(map[paramKey][]*TrackerNode, 50),
+		logger:        logger,
 
 		limits:                 limits,
 		chainParentMap:         make(map[string]*metadata.CallGraphEdge, 100),
@@ -714,7 +732,7 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 		argCount++
 
 		if argCount >= limits.MaxArgsPerFunction {
-			fmt.Printf("Warning: MaxArgsPerFunction limit (%d) reached for function %s.%s, truncating arguments\n",
+			tree.warn("Warning: MaxArgsPerFunction limit (%d) reached for function %s.%s, truncating arguments\n",
 				limits.MaxArgsPerFunction, getString(meta, edge.Caller.Name), getString(meta, edge.Callee.Name))
 			break
 		}
@@ -1157,13 +1175,13 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 	// Use configurable recursion depth limit to prevent infinite recursion
 	if currentDepth >= limits.MaxRecursionDepth {
-		fmt.Printf("Warning: MaxRecursionDepth limit (%d) reached for node %s\n", limits.MaxRecursionDepth, id)
+		tree.warn("Warning: MaxRecursionDepth limit (%d) reached for node %s\n", limits.MaxRecursionDepth, id)
 		return nil
 	}
 
 	// Limit total nodes to prevent memory explosion
 	if len(visited) > limits.MaxNodesPerTree {
-		fmt.Printf("Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
+		tree.warn("Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
 		node := getTrackerNode()
 		node.CallGraphEdge = parentEdge
 		node.CallArgument = callArg
@@ -1272,7 +1290,7 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 		for i := range edges {
 			if childCount >= limits.MaxChildrenPerNode {
-				fmt.Printf("Warning: MaxChildrenPerNode limit (%d) reached for node %s, truncating children\n",
+				tree.warn("Warning: MaxChildrenPerNode limit (%d) reached for node %s, truncating children\n",
 					limits.MaxChildrenPerNode, id)
 				break
 			}

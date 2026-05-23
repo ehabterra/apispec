@@ -52,6 +52,16 @@ func (vl *VerboseLogger) Print(args ...interface{}) {
 	}
 }
 
+// Warnf writes an always-on warning to stderr. Unlike Printf/Println/Print,
+// it is not gated on the verbose flag: warnings about limit overruns or
+// recoverable failures are surfaced to the consumer either way.
+func (vl *VerboseLogger) Warnf(format string, args ...interface{}) {
+	_, err := fmt.Fprintf(os.Stderr, format, args...)
+	if err != nil {
+		return
+	}
+}
+
 const (
 	// Default values for OpenAPI generation
 	DefaultOutputFile         = "openapi.json"
@@ -477,7 +487,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
-	tree := intspec.NewTrackerTree(meta, limits)
+	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
 
 	// Generate OpenAPI spec
 	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, apispecConfig, generatorConfig)
