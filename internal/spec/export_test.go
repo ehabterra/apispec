@@ -28,7 +28,7 @@ func TestGenerateCytoscapeHTML(t *testing.T) {
 		MaxArgsPerFunction: 5,
 		MaxNestedArgsDepth: 3,
 	}
-	tree := NewTrackerTree(meta, limits)
+	tree := NewTrackerTree(meta, limits, nil)
 
 	// Test HTML generation
 	outputPath := filepath.Join(tempDir, "test_diagram.html")

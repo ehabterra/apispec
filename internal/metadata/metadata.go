@@ -132,11 +132,16 @@ func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.
 	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil)
 }
 
-// VerboseLogger interface for conditional logging
+// VerboseLogger is the cross-cutting logging contract for the analyzer
+// pipeline. Printf/Println/Print are progress-style entries gated on a
+// verbose flag in the implementation. Warnf is for conditions the consumer
+// likely wants to see regardless of verbosity — limit truncations, suspect
+// inputs, recoverable extraction failures.
 type VerboseLogger interface {
 	Printf(format string, args ...any)
 	Println(args ...any)
 	Print(args ...any)
+	Warnf(format string, args ...any)
 }
 
 func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger) *Metadata {

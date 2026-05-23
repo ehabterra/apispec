@@ -416,7 +416,7 @@ func (s *DiagramServer) getAllData(diagramType string, includeFullDepth bool) *s
 			MaxArgsPerFunction: 100,
 			MaxNestedArgsDepth: 100,
 			MaxRecursionDepth:  maxDepth,
-		})
+		}, nil)
 		data = spec.DrawTrackerTreeCytoscapeWithMetadata(trackerTree.GetRoots(), s.metadata)
 	} else {
 		data = spec.DrawCallGraphCytoscape(s.metadata)
