@@ -2,45 +2,11 @@ package spec
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
-
-// Regex cache for performance optimization
-var (
-	regexCache = make(map[string]*regexp.Regexp)
-	regexMutex sync.RWMutex
-)
-
-// getCachedRegex returns a cached compiled regex or compiles and caches a new one
-func getCachedRegex(pattern string) (*regexp.Regexp, error) {
-	regexMutex.RLock()
-	if re, exists := regexCache[pattern]; exists {
-		regexMutex.RUnlock()
-		return re, nil
-	}
-	regexMutex.RUnlock()
-
-	regexMutex.Lock()
-	defer regexMutex.Unlock()
-
-	// Double-check after acquiring write lock
-	if re, exists := regexCache[pattern]; exists {
-		return re, nil
-	}
-
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, err
-	}
-
-	regexCache[pattern] = re
-	return re, nil
-}
 
 const (
 	TypeSep    = "-->"
@@ -591,7 +557,7 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if r.pattern.RecvTypeRegex != "" {
-		re, err := getCachedRegex(r.pattern.RecvTypeRegex)
+		re, err := cachedRegex(r.pattern.RecvTypeRegex)
 		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
@@ -896,7 +862,7 @@ func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if p.pattern.RecvTypeRegex != "" {
-		re, err := getCachedRegex(p.pattern.RecvTypeRegex)
+		re, err := cachedRegex(p.pattern.RecvTypeRegex)
 		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}

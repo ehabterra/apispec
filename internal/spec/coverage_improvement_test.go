@@ -133,7 +133,7 @@ func TestInferMethodFromContext(t *testing.T) {
 
 func TestGetCachedRegex(t *testing.T) {
 	// Test with empty pattern
-	regex, err := getCachedRegex("")
+	regex, err := cachedRegex("")
 	if regex == nil {
 		t.Error("Expected non-nil regex for empty pattern")
 	}
@@ -142,7 +142,7 @@ func TestGetCachedRegex(t *testing.T) {
 	}
 
 	// Test with simple pattern
-	regex, err = getCachedRegex("test")
+	regex, err = cachedRegex("test")
 	if regex == nil {
 		t.Error("Expected non-nil regex for simple pattern")
 	}
@@ -151,7 +151,7 @@ func TestGetCachedRegex(t *testing.T) {
 	}
 
 	// Test with complex pattern
-	regex, err = getCachedRegex("^test[0-9]+$")
+	regex, err = cachedRegex("^test[0-9]+$")
 	if regex == nil {
 		t.Error("Expected non-nil regex for complex pattern")
 	}
@@ -160,15 +160,15 @@ func TestGetCachedRegex(t *testing.T) {
 	}
 
 	// Test with invalid regex pattern
-	_, err = getCachedRegex("[invalid")
+	_, err = cachedRegex("[invalid")
 	if err == nil {
 		t.Error("Expected error for invalid pattern")
 	}
 	// The regex might be nil for invalid patterns, which is acceptable
 
 	// Test caching - same pattern should return same regex
-	regex1, _ := getCachedRegex("cached")
-	regex2, _ := getCachedRegex("cached")
+	regex1, _ := cachedRegex("cached")
+	regex2, _ := cachedRegex("cached")
 	if regex1 != regex2 {
 		t.Error("Expected cached regex to return same instance")
 	}

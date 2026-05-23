@@ -2,44 +2,10 @@ package spec
 
 import (
 	"net/http"
-	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
-
-// Regex cache for pattern matchers
-var (
-	patternRegexCache = make(map[string]*regexp.Regexp)
-	patternRegexMutex sync.RWMutex
-)
-
-// getCachedPatternRegex returns a cached compiled regex or compiles and caches a new one
-func getCachedPatternRegex(pattern string) (*regexp.Regexp, error) {
-	patternRegexMutex.RLock()
-	if re, exists := patternRegexCache[pattern]; exists {
-		patternRegexMutex.RUnlock()
-		return re, nil
-	}
-	patternRegexMutex.RUnlock()
-
-	patternRegexMutex.Lock()
-	defer patternRegexMutex.Unlock()
-
-	// Double-check after acquiring write lock
-	if re, exists := patternRegexCache[pattern]; exists {
-		return re, nil
-	}
-
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, err
-	}
-
-	patternRegexCache[pattern] = re
-	return re, nil
-}
 
 // BasePatternMatcher provides common functionality for all pattern matchers
 type BasePatternMatcher struct {
@@ -138,7 +104,7 @@ func (r *RoutePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if r.pattern.RecvTypeRegex != "" {
-		re, err := getCachedPatternRegex(r.pattern.RecvTypeRegex)
+		re, err := cachedRegex(r.pattern.RecvTypeRegex)
 		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
@@ -435,7 +401,7 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if m.pattern.RecvTypeRegex != "" {
-		re, err := getCachedPatternRegex(m.pattern.RecvTypeRegex)
+		re, err := cachedRegex(m.pattern.RecvTypeRegex)
 		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
@@ -547,7 +513,7 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	// Check receiver type
 	if r.pattern.RecvTypeRegex != "" {
-		re, err := getCachedPatternRegex(r.pattern.RecvTypeRegex)
+		re, err := cachedRegex(r.pattern.RecvTypeRegex)
 		if err != nil || !re.MatchString(fqRecvType) {
 			return false
 		}
@@ -656,7 +622,7 @@ func (b *BasePatternMatcher) matchPattern(pattern, value string) bool {
 	if pattern == "" {
 		return false
 	}
-	re, err := getCachedPatternRegex(pattern)
+	re, err := cachedRegex(pattern)
 	if err != nil {
 		return false
 	}
