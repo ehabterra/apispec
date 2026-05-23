@@ -2,6 +2,14 @@ package spec
 
 import "net/http"
 
+// netHTTPRequestContext is the RequestContext preset for plain net/http
+// handlers. Chi and Mux share it because their handlers also bind to
+// *http.Request; both refer to it directly within this package.
+var netHTTPRequestContext = RequestContextConfig{
+	TypeRegexes:   []string{`^\*?net/http\.Request$`},
+	BodyAccessors: []string{`^Body$`},
+}
+
 // DefaultHTTPConfig returns a default configuration for net/http.
 func DefaultHTTPConfig() *APISpecConfig {
 	// net/http response patterns come from netHTTPResponsePatterns(); the

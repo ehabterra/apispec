@@ -2,6 +2,17 @@ package spec
 
 import "net/http"
 
+// fiberRequestContext is the RequestContext preset for the Fiber framework:
+// handlers receive a *fiber.Ctx whose Body() method yields the bytes.
+var fiberRequestContext = RequestContextConfig{
+	TypeRegexes: []string{
+		`^\*?github\.com/gofiber/fiber(/v\d+)?\.Ctx$`,
+	},
+	BodyAccessors: []string{
+		`^Body\(\)$`,
+	},
+}
+
 // DefaultFiberConfig returns a default configuration for the Fiber framework.
 func DefaultFiberConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()

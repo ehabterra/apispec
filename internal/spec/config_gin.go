@@ -2,6 +2,19 @@ package spec
 
 import "net/http"
 
+// ginRequestContext is the RequestContext preset for the Gin framework:
+// handlers receive a *gin.Context whose Request field carries the body.
+var ginRequestContext = RequestContextConfig{
+	TypeRegexes: []string{
+		`^\*?github\.com/gin-gonic/gin\.Context$`,
+		`^\*?net/http\.Request$`,
+	},
+	BodyAccessors: []string{
+		`^Request\.Body$`,
+		`^Body$`,
+	},
+}
+
 // DefaultGinConfig returns a default configuration for the Gin framework.
 func DefaultGinConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()

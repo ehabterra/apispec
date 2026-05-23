@@ -483,48 +483,12 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 	return p.MatchPattern(p.FunctionNameRegex, functionName)
 }
 
-// DefaultChiConfig returns a default configuration for Chi router
-// Request-context presets used by the framework defaults. These describe
-// which parameter types carry an HTTP request and how its body is accessed,
-// so that generic decoders (json.Decode, json.Unmarshal, render.DecodeJSON)
-// can be gated on whether their input actually originates from a request.
-var (
-	netHTTPRequestContext = RequestContextConfig{
-		TypeRegexes:   []string{`^\*?net/http\.Request$`},
-		BodyAccessors: []string{`^Body$`},
-	}
-
-	ginRequestContext = RequestContextConfig{
-		TypeRegexes: []string{
-			`^\*?github\.com/gin-gonic/gin\.Context$`,
-			`^\*?net/http\.Request$`,
-		},
-		BodyAccessors: []string{
-			`^Request\.Body$`,
-			`^Body$`,
-		},
-	}
-
-	echoRequestContext = RequestContextConfig{
-		TypeRegexes: []string{
-			`^github\.com/labstack/echo(/v\d+)?\.Context$`,
-			`^\*?net/http\.Request$`,
-		},
-		BodyAccessors: []string{
-			`^Request\(\)\.Body$`,
-			`^Body$`,
-		},
-	}
-
-	fiberRequestContext = RequestContextConfig{
-		TypeRegexes: []string{
-			`^\*?github\.com/gofiber/fiber(/v\d+)?\.Ctx$`,
-		},
-		BodyAccessors: []string{
-			`^Body\(\)$`,
-		},
-	}
-)
+// The four per-framework RequestContext presets — netHTTPRequestContext,
+// ginRequestContext, echoRequestContext, fiberRequestContext — used to
+// live in this file. They now sit next to the framework default that owns
+// them, in config_http.go, config_gin.go, config_echo.go, config_fiber.go.
+// Chi and Mux reference netHTTPRequestContext from config_http.go directly
+// (same package, no import needed).
 
 // Shared pattern helpers used by the framework defaults. These collapse
 // duplication that previously sat in every Default*Config function — for

@@ -2,6 +2,19 @@ package spec
 
 import "net/http"
 
+// echoRequestContext is the RequestContext preset for the Echo framework:
+// handlers receive an echo.Context whose Request() method yields the body.
+var echoRequestContext = RequestContextConfig{
+	TypeRegexes: []string{
+		`^github\.com/labstack/echo(/v\d+)?\.Context$`,
+		`^\*?net/http\.Request$`,
+	},
+	BodyAccessors: []string{
+		`^Request\(\)\.Body$`,
+		`^Body$`,
+	},
+}
+
 // DefaultEchoConfig returns a default configuration for the Echo framework.
 func DefaultEchoConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
