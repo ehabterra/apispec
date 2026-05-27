@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go/types"
 
@@ -133,6 +135,13 @@ type EngineConfig struct {
 	// Verbose output control
 	Verbose bool
 
+	// OnPhase, if set, is invoked at each major engine phase boundary with a
+	// short stable identifier ("packages", "framework-deps", "metadata",
+	// "spec") and the elapsed time for that phase. Always-on regardless of
+	// Verbose — intended for UIs that want to surface live progress without
+	// firehosing every debug log to the user.
+	OnPhase func(phase string, elapsed time.Duration)
+
 	moduleRoot string
 }
 
@@ -168,6 +177,22 @@ func DefaultEngineConfig() *EngineConfig {
 		SkipHTTPFramework:            false,
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
+	}
+}
+
+// reportPhase logs an engine phase boundary to stderr and invokes any
+// OnPhase callback on the config. It's always-on so users running the UI or
+// CLI can see *which* stage of analysis is taking time without flipping the
+// verbose flag.
+func (e *Engine) reportPhase(phase string, elapsed time.Duration) {
+	if e == nil {
+		return
+	}
+	log.Printf("[engine] %s in %s", phase, elapsed.Round(time.Millisecond))
+	if e.config != nil && e.config.OnPhase != nil {
+		// Defensive: don't let a misbehaving callback panic the analysis.
+		defer func() { _ = recover() }()
+		e.config.OnPhase(phase, elapsed)
 	}
 }
 
@@ -263,10 +288,12 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	}
 
 	// Filter packages and files based on include/exclude patterns
+	t0 := time.Now()
 	filteredPkgs, err := e.loadFilteredPackages(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
 	}
+	e.reportPhase(fmt.Sprintf("loaded %d packages", len(filteredPkgs)), time.Since(t0))
 
 	// Filter out packages with errors and continue with valid packages
 	var validPkgs []*packages.Package
@@ -335,12 +362,15 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	var dependencyTree *metadata.FrameworkDependencyList
 	if e.config.AnalyzeFrameworkDependencies {
 		logger.Println("Analyzing framework dependencies...")
+		tDeps := time.Now()
 		var err error
 		dependencyTree, err = e.analyzeFrameworkDependencies(validPkgs, pkgsMetadata, fileToInfo, fset)
 		if err != nil {
 			logger.Printf("Warning: Failed to analyze framework dependencies: %v\n", err)
+			e.reportPhase("framework-dependency analysis failed", time.Since(tDeps))
 		} else {
 			logger.Printf("Framework dependency analysis completed: %d packages found\n", dependencyTree.TotalPackages)
+			e.reportPhase(fmt.Sprintf("framework dependencies analysed (%d pkgs)", dependencyTree.TotalPackages), time.Since(tDeps))
 
 			// Auto-include framework packages in IncludePackages if requested
 			if e.config.AutoIncludeFrameworkPackages {
@@ -356,7 +386,9 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	}
 
 	// Generate metadata (now only on framework packages if auto-include is enabled)
+	tMeta := time.Now()
 	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger)
+	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
 
 	// Store metadata in engine
 	e.metadata = meta
@@ -388,13 +420,13 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		if e.config.PaginatedDiagram {
 			// Use paginated visualization for better performance with large call graphs
 			// This solves the 3997-edge performance problem by loading data progressively
-			err := intspec.GeneratePaginatedCytoscapeHTML(meta, diagramPath, e.config.DiagramPageSize)
+			err = intspec.GeneratePaginatedCytoscapeHTML(meta, diagramPath, e.config.DiagramPageSize)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate paginated diagram: %w", err)
 			}
 		} else {
 			// Use regular call graph visualization for smaller graphs
-			err := intspec.GenerateCallGraphCytoscapeHTML(meta, diagramPath)
+			err = intspec.GenerateCallGraphCytoscapeHTML(meta, diagramPath)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate diagram: %w", err)
 			}
@@ -487,13 +519,17 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
+	tTree := time.Now()
 	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
+	e.reportPhase("tracker tree built", time.Since(tTree))
 
 	// Generate OpenAPI spec
+	tSpec := time.Now()
 	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, apispecConfig, generatorConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
 	}
+	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
 	// Handle metadata writing if requested
 	if e.config.WriteMetadata {

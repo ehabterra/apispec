@@ -288,6 +288,11 @@ type TrackerTree struct {
 	// Performance optimizations
 	nodeMap map[string]*TrackerNode // O(1) node lookup by edge ID
 	idCache map[string]string       // Cache for ID generation
+
+	// warnedKeys dedupes per-node limit warnings (recursion-depth,
+	// max-nodes, max-children) so a single hot node doesn't spam stderr
+	// once per visiting call path.
+	warnedKeys map[string]struct{}
 }
 
 // warn forwards to the configured logger, defaulting to stderr when none
@@ -298,6 +303,55 @@ func (t *TrackerTree) warn(format string, args ...any) {
 		return
 	}
 	t.logger.Warnf(format, args...)
+}
+
+// info forwards to the verbose-gated channel on the logger. Use it for
+// "fyi" diagnostics that don't reflect a problem with the output — e.g. the
+// recursion-depth safety brake firing, which keeps analysis bounded without
+// affecting the spec. Stays quiet unless --verbose is set.
+func (t *TrackerTree) info(format string, args ...any) {
+	if t == nil || t.logger == nil {
+		return
+	}
+	t.logger.Printf(format, args...)
+}
+
+// warnOnce emits a warning only the first time a given key is seen. Use it
+// for traversal limits that can be hit repeatedly for the same node from
+// many call paths — repeating the message gives no extra information and
+// drowns out everything else on stderr.
+//
+// When the receiver is nil (which a handful of code paths and tests rely on),
+// we can't dedupe — we just forward to warn so the message still surfaces.
+func (t *TrackerTree) warnOnce(key, format string, args ...any) {
+	if t == nil {
+		t.warn(format, args...)
+		return
+	}
+	if t.warnedKeys == nil {
+		t.warnedKeys = make(map[string]struct{})
+	}
+	if _, ok := t.warnedKeys[key]; ok {
+		return
+	}
+	t.warnedKeys[key] = struct{}{}
+	t.warn(format, args...)
+}
+
+// infoOnce is warnOnce's verbose-gated sibling. Same dedupe semantics, but
+// silenced unless --verbose is on.
+func (t *TrackerTree) infoOnce(key, format string, args ...any) {
+	if t == nil || t.logger == nil {
+		return
+	}
+	if t.warnedKeys == nil {
+		t.warnedKeys = make(map[string]struct{})
+	}
+	if _, ok := t.warnedKeys[key]; ok {
+		return
+	}
+	t.warnedKeys[key] = struct{}{}
+	t.logger.Printf(format, args...)
 }
 
 type paramKey struct {
@@ -1173,15 +1227,20 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	recursionDepthKey := id
 	currentDepth := visited[recursionDepthKey]
 
-	// Use configurable recursion depth limit to prevent infinite recursion
+	// Use configurable recursion depth limit to prevent infinite recursion.
+	// Hitting this is a safety brake, not a truncation — analysis simply
+	// stops following the path further. Demoted to verbose-only so a normal
+	// run on a self-referential codebase doesn't look like an error.
 	if currentDepth >= limits.MaxRecursionDepth {
-		tree.warn("Warning: MaxRecursionDepth limit (%d) reached for node %s\n", limits.MaxRecursionDepth, id)
+		tree.infoOnce("recursion:"+id,
+			"Info: MaxRecursionDepth limit (%d) reached for node %s (analysis continues)\n", limits.MaxRecursionDepth, id)
 		return nil
 	}
 
 	// Limit total nodes to prevent memory explosion
 	if len(visited) > limits.MaxNodesPerTree {
-		tree.warn("Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
+		tree.warnOnce("maxnodes:"+id,
+			"Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
 		node := getTrackerNode()
 		node.CallGraphEdge = parentEdge
 		node.CallArgument = callArg
@@ -1290,7 +1349,8 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 		for i := range edges {
 			if childCount >= limits.MaxChildrenPerNode {
-				tree.warn("Warning: MaxChildrenPerNode limit (%d) reached for node %s, truncating children\n",
+				tree.warnOnce("maxchildren:"+id,
+					"Warning: MaxChildrenPerNode limit (%d) reached for node %s, truncating children\n",
 					limits.MaxChildrenPerNode, id)
 				break
 			}
