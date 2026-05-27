@@ -28,7 +28,7 @@
 - [The Tools](#the-tools)
   - [`apispec` — CLI generator](#apispec--cli-generator)
   - [`apispecui` — Browser-based config & preview](#apispecui--browser-based-config--preview)
-  - [`apidiag` — Interactive call-graph server](#apidiag--interactive-call-graph-server)
+  - [`apidiag` — Interactive call-graph server (standalone)](#apidiag--interactive-call-graph-server-standalone)
 - [Framework Support](#framework-support)
 - [Go Language Support](#go-language-support)
 - [How It Works](#how-it-works)
@@ -90,8 +90,8 @@ APISpec ships three binaries that share the same analysis engine.
 | Binary       | Purpose                                                                | Entry point                  |
 |--------------|------------------------------------------------------------------------|------------------------------|
 | `apispec`    | Generate an OpenAPI 3.1 spec from a Go module                          | `cmd/apispec`                |
-| `apispecui`  | Browser UI to configure APISpec and preview the spec live              | `cmd/apispecui`              |
-| `apidiag`    | Interactive paginated call-graph server (debug large codebases)        | `cmd/apidiag`                |
+| `apispecui`  | Browser UI: configure APISpec, preview the spec, *and* explore the call graph at `/diagram` | `cmd/apispecui` |
+| `apidiag`    | Standalone interactive call-graph server (same engine, headless)       | `cmd/apidiag`                |
 
 ### `apispec` — CLI generator
 
@@ -171,14 +171,15 @@ See also: [`cmd/apispec/README.md`](cmd/apispec/README.md).
 
 ### `apispecui` — Browser-based config & preview
 
-`apispecui` is a small local web server that lets you configure APISpec interactively, generate a spec on demand, and immediately preview it through embedded **Swagger UI**, **Redoc**, or **Scalar** viewers. Useful when you're iterating on a config file or want to share an interactive preview without committing the spec.
+`apispecui` is a small local web server that lets you configure APISpec interactively, generate a spec on demand, immediately preview it through embedded **Swagger UI**, **Redoc**, or **Scalar** viewers, *and* explore the project's call graph at `/diagram` — the same interactive, paginated visualization that `apidiag` provides, hosted on the same port and project.
 
 ```bash
 # Build and run
 go build -o apispecui ./cmd/apispecui
 ./apispecui --dir ./my-go-project
 
-# Open http://localhost:8088 in your browser
+# Open http://localhost:8088 — config UI
+# Open http://localhost:8088/diagram — call-graph visualization
 ```
 
 Endpoints exposed:
@@ -189,16 +190,20 @@ Endpoints exposed:
 | `/swagger`                  | Swagger UI preview                                     |
 | `/redoc`                    | Redoc preview                                          |
 | `/scalar`                   | Scalar preview                                         |
+| `/diagram`                  | Interactive call-graph / tracker-tree visualization    |
 | `/api/spec.json`            | Last-generated spec (JSON)                             |
 | `/api/spec.yaml`            | Last-generated spec (YAML)                             |
 | `/api/config.yaml`          | Current effective config                               |
 | `/api/generate` (POST)      | Trigger spec generation with the current config        |
+| `/api/diagram/*`            | Paginated diagram API (same surface as `apidiag`)      |
+
+The diagram lazily loads metadata on the first request and re-loads when the project directory is switched via the UI, so a single `apispecui` process covers both spec preview and graph debugging. The standalone `apidiag` binary is still shipped for headless use.
 
 Flags: `--host` (default `localhost`), `--port` (default `8088`), `--dir`/`-d` (project root, default `.`), `--config`/`-c` (initial config), `--verbose`.
 
-### `apidiag` — Interactive call-graph server
+### `apidiag` — Interactive call-graph server (standalone)
 
-`apidiag` provides a paginated, filterable visualization of the call graph for large codebases — useful when a static HTML diagram becomes unwieldy.
+The same diagram server, packaged as its own binary. Use it when you want a dedicated graph explorer without the config UI, or to run it on its own host/port. Internally both binaries share `internal/diagserver`.
 
 ```bash
 go install github.com/ehabterra/apispec/cmd/apidiag@latest
@@ -550,6 +555,7 @@ apispec/
 ├── generator/         # High-level generator interface
 ├── internal/
 │   ├── core/          # Framework detection & shared logic
+│   ├── diagserver/    # Shared call-graph HTTP server (used by apidiag + apispecui)
 │   ├── engine/        # Processing engine
 │   ├── metadata/      # AST analysis & metadata extraction
 │   └── spec/          # OpenAPI generation & mapping
