@@ -24,28 +24,6 @@ func loadTestdata(t *testing.T, name string, cfg *spec.APISpecConfig) *spec.Open
 	return out
 }
 
-// firstResponseSchema returns the first response body schema attached
-// to the first operation of the given path, or nil if none was emitted.
-func firstResponseSchema(t *testing.T, out *spec.OpenAPISpec, path string) *intspec.Schema {
-	t.Helper()
-	item, ok := out.Paths[path]
-	if !ok {
-		t.Fatalf("path %q missing; have %v", path, mapPathKeys(out.Paths))
-	}
-	op := firstOperation(&item)
-	if op == nil {
-		t.Fatalf("no operation on %q", path)
-	}
-	for _, resp := range op.Responses {
-		for _, media := range resp.Content {
-			if media.Schema != nil {
-				return media.Schema
-			}
-		}
-	}
-	return nil
-}
-
 // firstRequestSchema returns the request body schema attached to the
 // first operation of the given path, or nil if no request body is
 // declared.
