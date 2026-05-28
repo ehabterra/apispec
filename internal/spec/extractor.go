@@ -696,6 +696,18 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 				}
 			}
 
+			// Call-expression body args (e.g. err.Error() in
+			// http.Error(w, err.Error(), 400), or any helper(x) used
+			// directly as a response payload) carry their *return* type on
+			// the CallArgument — see metadata.handleCallExpr. Prefer it
+			// over the stringified call, which would otherwise produce
+			// an unresolvable name like "error.Error" or "pkg.Helper".
+			if arg.GetKind() == metadata.KindCall {
+				if t := arg.GetType(); t != "" {
+					bodyType = t
+				}
+			}
+
 			// Trace type origin for non-literal arguments
 			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
 

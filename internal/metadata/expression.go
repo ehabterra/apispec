@@ -231,6 +231,20 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	arg.SetKind(KindCall)
 	arg.ParamArgMap = paramArgMap
 	arg.TypeParamMap = typeParamMap
+
+	// Capture the call's *return* type so body-type derivation can use
+	// the actual returned type (e.g. err.Error() -> string) instead of
+	// stringifying the call (which produces things like "error.Error").
+	// Tuple returns are intentionally skipped — body args are
+	// single-valued in practice, and using just the first element of a
+	// tuple would silently drop information.
+	if info != nil {
+		if rt := info.TypeOf(e); rt != nil {
+			if _, isTuple := rt.(*types.Tuple); !isTuple {
+				arg.SetType(rt.String())
+			}
+		}
+	}
 	return arg
 }
 
