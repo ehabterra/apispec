@@ -36,63 +36,6 @@ var schemaComponentNameReplacer = strings.NewReplacer(
 	", ", "-",
 )
 
-// wellKnownExternalTypes maps opaque external Go types to their natural
-// OpenAPI representation, so users don't need to configure typeMapping for
-// the common cases. Both forms are listed for each type: the fully
-// qualified import path (what the analyzer emits when the package is
-// imported from outside its own module) and the bare package.Type form
-// (emitted for in-module references). Looked up before the primitive
-// switch in mapGoTypeToOpenAPISchema; user-supplied typeMapping entries
-// still take precedence over this table.
-var wellKnownExternalTypes = func() map[string]*Schema {
-	uuidSchema := &Schema{Type: "string", Format: "uuid"}
-	decimalSchema := &Schema{Type: "string", Format: "decimal"}
-	rawJSON := &Schema{Type: "object", Description: "Arbitrary JSON value"}
-	dateTime := &Schema{Type: "string", Format: "date-time"}
-	duration := &Schema{Type: "integer", Format: "int64", Description: "Duration in nanoseconds"}
-
-	m := map[string]*Schema{
-		// time
-		"time.Duration": duration,
-
-		// UUID / ULID libraries — render as RFC-4122-style strings.
-		"github.com/google/uuid.UUID":      uuidSchema,
-		"github.com/gofrs/uuid.UUID":       uuidSchema,
-		"github.com/satori/go.uuid.UUID":   uuidSchema,
-		"github.com/oklog/ulid.ULID":       uuidSchema,
-		"github.com/oklog/ulid/v2.ULID":    uuidSchema,
-		"uuid.UUID":                        uuidSchema,
-		"ulid.ULID":                        uuidSchema,
-
-		// Decimal libraries — string-encoded to preserve precision.
-		"github.com/shopspring/decimal.Decimal":     decimalSchema,
-		"github.com/cockroachdb/apd/v3.Decimal":     decimalSchema,
-		"github.com/ericlagergren/decimal.Big":      decimalSchema,
-		"decimal.Decimal":                           decimalSchema,
-		"decimal.Big":                               decimalSchema,
-
-		// encoding/json
-		"encoding/json.RawMessage": rawJSON,
-		"json.RawMessage":          rawJSON,
-
-		// database/sql nullable wrappers — render as the underlying primitive.
-		// Lossy on writes (Valid is hidden) but matches what clients see.
-		"database/sql.NullString":  {Type: "string"},
-		"sql.NullString":           {Type: "string"},
-		"database/sql.NullInt32":   {Type: "integer", Format: "int32"},
-		"sql.NullInt32":            {Type: "integer", Format: "int32"},
-		"database/sql.NullInt64":   {Type: "integer", Format: "int64"},
-		"sql.NullInt64":            {Type: "integer", Format: "int64"},
-		"database/sql.NullFloat64": {Type: "number", Format: "double"},
-		"sql.NullFloat64":          {Type: "number", Format: "double"},
-		"database/sql.NullBool":    {Type: "boolean"},
-		"sql.NullBool":             {Type: "boolean"},
-		"database/sql.NullTime":    dateTime,
-		"sql.NullTime":             dateTime,
-	}
-	return m
-}()
-
 // unresolvedExternalPlaceholder returns the schema we register when a
 // referenced type can't be resolved through metadata, typeMapping,
 // externalTypes, or the well-known table. Without it, the $ref dangles and
@@ -1638,15 +1581,6 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 
 			return schema, schemas
 		}
-	}
-
-	// Well-known opaque external types (uuid, decimal, sql.Null*, ...).
-	// Tried after typeMapping so user overrides win, but before the
-	// primitive switch and the fallback metadata lookup so external types
-	// never reach the dangling-$ref path.
-	if wk, ok := wellKnownExternalTypes[goType]; ok {
-		markUsedType(usedTypes, goType, wk)
-		return wk, schemas
 	}
 
 	// Check external types

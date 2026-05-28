@@ -2479,76 +2479,12 @@ func TestNoDanglingRefForUnknownExternalType(t *testing.T) {
 	}
 }
 
-// TestWellKnownExternalTypes_InlineNotRef pins the policy: opaque external
-// types we know the shape of (uuid.UUID, decimal.Decimal, sql.NullString,
-// json.RawMessage, …) must render as inline primitive schemas — *not* as
-// $refs to a separately-defined component. Previously these produced
-// `items: { $ref: .../uuid_UUID }` plus a wrapper component that was either
-// missing (dangling) or self-referential. Now they're emitted directly.
-func TestWellKnownExternalTypes_InlineNotRef(t *testing.T) {
-	meta := &metadata.Metadata{
-		StringPool: metadata.NewStringPool(),
-		Packages:   map[string]*metadata.Package{},
-	}
-	cfg := DefaultAPISpecConfig()
-
-	cases := []struct {
-		goType     string
-		wantType   string
-		wantFormat string
-	}{
-		{"github.com/google/uuid.UUID", "string", "uuid"},
-		{"github.com/gofrs/uuid.UUID", "string", "uuid"},
-		{"uuid.UUID", "string", "uuid"},
-		{"github.com/shopspring/decimal.Decimal", "string", "decimal"},
-		{"decimal.Decimal", "string", "decimal"},
-		{"database/sql.NullString", "string", ""},
-		{"database/sql.NullInt64", "integer", "int64"},
-		{"database/sql.NullTime", "string", "date-time"},
-		{"encoding/json.RawMessage", "object", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.goType, func(t *testing.T) {
-			usedTypes := make(map[string]*Schema)
-			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
-			if schema == nil {
-				t.Fatalf("nil schema for %s", tc.goType)
-			}
-			if schema.Ref != "" {
-				t.Fatalf("%s should be inline, got $ref %q", tc.goType, schema.Ref)
-			}
-			if schema.Type != tc.wantType {
-				t.Errorf("%s: want type %q, got %q", tc.goType, tc.wantType, schema.Type)
-			}
-			if schema.Format != tc.wantFormat {
-				t.Errorf("%s: want format %q, got %q", tc.goType, tc.wantFormat, schema.Format)
-			}
-		})
-	}
-}
-
-// TestSliceOfWellKnownType_InlineItems verifies that a slice of an opaque
-// external type renders as `items: { type: ..., format: ... }` inline, not
-// as `items: { $ref: ... }` pointing at a one-line wrapper component.
-func TestSliceOfWellKnownType_InlineItems(t *testing.T) {
-	meta := &metadata.Metadata{
-		StringPool: metadata.NewStringPool(),
-		Packages:   map[string]*metadata.Package{},
-	}
-	cfg := DefaultAPISpecConfig()
-
-	usedTypes := make(map[string]*Schema)
-	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "[]github.com/google/uuid.UUID", meta, cfg, nil)
-	if schema == nil || schema.Type != "array" || schema.Items == nil {
-		t.Fatalf("Expected array schema with items, got %+v", schema)
-	}
-	if schema.Items.Ref != "" {
-		t.Fatalf("items should be inline {string, format: uuid}, got $ref %q", schema.Items.Ref)
-	}
-	if schema.Items.Type != "string" || schema.Items.Format != "uuid" {
-		t.Errorf("items want {string, uuid}, got {%s, %s}", schema.Items.Type, schema.Items.Format)
-	}
-}
+// Note: external-type resolution is exercised end-to-end in
+// internal/metadata/external_types_test.go, which runs the real type
+// checker against synthesised packages. String-level mapper tests against
+// a bare "uuid.UUID" can't represent what the analyzer sees and were
+// removed when the hard-coded lookup table was replaced by the general
+// types.Type walker (resolveExternalNamedTypes).
 
 func mapKeys(m map[string]*Schema) []string {
 	out := make([]string, 0, len(m))
