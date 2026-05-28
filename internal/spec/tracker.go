@@ -858,13 +858,18 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 					var FuncType string
 
-					if selectorArg.X.GetKind() == metadata.KindSelector && selectorArg.X.X.Type != -1 {
+					if selectorArg.X.GetKind() == metadata.KindSelector && selectorArg.X.X != nil && selectorArg.X.X.Type != -1 {
 						FuncType = selectorArg.X.X.GetType()
 						FuncType = strings.ReplaceAll(FuncType, selectorArg.X.X.GetPkg()+".", "")
 						FuncType = strings.TrimPrefix(FuncType, "*")
-					} else if selectorArg.X.GetKind() == metadata.KindCall && selectorArg.X.Fun.Type != -1 {
+					} else if selectorArg.X.GetKind() == metadata.KindCall && selectorArg.X.Fun != nil && selectorArg.X.Fun.Type != -1 {
 						FuncType = selectorArg.X.Fun.GetType()
-						FuncType = strings.ReplaceAll(FuncType, selectorArg.X.X.GetPkg()+".", "")
+						// For Call args, the package qualifier lives on Fun
+						// (the function being called); X is unset by
+						// handleCallExpr. Dereferencing X.X here was a
+						// long-standing nil-deref that complex_chi_router
+						// happens to trigger.
+						FuncType = strings.ReplaceAll(FuncType, selectorArg.X.Fun.GetPkg()+".", "")
 						FuncType = strings.TrimPrefix(FuncType, "*")
 					}
 
