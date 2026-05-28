@@ -1,6 +1,6 @@
 # Contributing to APISpec
 
-**APISpec** analyzes your Go code and automatically generates OpenAPI 3.1 specifications (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, net/http), follows call graphs to final handlers, and infers request/response types from real code.
+**APISpec** analyzes your Go code and automatically generates OpenAPI 3.1 specifications (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, Gorilla Mux, `net/http`), follows call graphs to final handlers, and infers request/response types from real code.
 
 Thank you for your interest in contributing to APISpec! Your contributions, feedback, and help are greatly appreciated.
 
@@ -8,7 +8,7 @@ Thank you for your interest in contributing to APISpec! Your contributions, feed
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.26+
 - Git
 - Basic understanding of Go AST and OpenAPI 3.1 specification (helpful but not required)
 
@@ -104,9 +104,9 @@ This helps us work together effectively and ensures contributions align with the
 To add support for a new web framework:
 
 1. **Update framework detection** in `internal/core/detector.go`
-2. **Add default configuration** in `internal/spec/config.go`
-3. **Update detection logic** in `cmd/apispec/main.go`
-4. **Add test cases** in `testdata/` directory
+2. **Add the default configuration** in `internal/spec/config_<framework>.go` (each framework lives in its own file alongside `config.go`)
+3. **Register the framework** in `cmd/apispec/main.go`
+4. **Add a fixture project** under `testdata/<framework>/` and a corresponding test case
 5. **Update documentation** in `README.md`
 
 If you're unsure about any step, feel free to ask questions or create a draft PR - I'm happy to help!

@@ -55,48 +55,67 @@ type RoutePattern struct {
 }
 ```
 
-### 2. Extraction (`extractors.go`)
+### 2. Extraction (`extractor.go`, `pattern_matchers.go`)
 
-The extractor system uses the configuration patterns to extract information from metadata:
+The extractor walks the tracker tree, dispatching each node to the
+configured pattern matchers (routes, mounts, request bodies, responses,
+params). Each matcher is a small struct backed by a regex/index pattern
+from `FrameworkConfig`. Cross-cutting helpers live in companion files:
+`context_provider.go`, `schema_mapper.go`, `type_resolver.go`,
+`body_source.go`.
 
 ```go
 type Extractor struct {
-    meta *metadata.Metadata
-    cfg  *APISpecConfig
+    tree            TrackerTreeInterface
+    cfg             *APISpecConfig
+    contextProvider ContextProvider
+    schemaMapper    SchemaMapper
+    typeResolver    TypeResolver
+    overrideApplier OverrideApplier
+
+    routeMatchers    []RoutePatternMatcher
+    mountMatchers    []MountPatternMatcher
+    requestMatchers  []RequestPatternMatcher
+    responseMatchers []ResponsePatternMatcher
+    paramMatchers    []ParamPatternMatcher
 }
 
-func (e *Extractor) ExtractRoutes() []RouteInfo
+func (e *Extractor) ExtractRoutes() []*RouteInfo
 ```
 
 #### Route Information
 
 ```go
 type RouteInfo struct {
-    Path     string
-    Method   string
-    Handler  string
-    Package  string
-    File     string
-    Function string
-    Summary  string
-    Tags     []string
-    Request  *RequestInfo
-    Response *ResponseInfo
-    Params   []Parameter
+    Path      string
+    MountPath string
+    Method    string
+    Handler   string
+    Package   string
+    File      string
+    Function  string
+    Summary   string
+    Tags      []string
+    Request   *RequestInfo
+    Response  map[string]*ResponseInfo // status code -> response
+    Params    []Parameter
+    // ... see extractor.go for the full struct
 }
 ```
 
 ### 3. Mapping (`mapper.go`)
 
-The mapper converts extracted route information into OpenAPI specifications:
+The mapper converts extracted routes into an OpenAPI specification. It
+takes the tracker tree (so it can resolve types through the call graph)
+rather than the raw metadata:
 
 ```go
-func MapMetadataToOpenAPI(meta *metadata.Metadata, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error)
+func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error)
 ```
 
 ### 4. OpenAPI Types (`openapi.go`)
 
-Complete OpenAPI 3.0 specification types for building the final output.
+Complete OpenAPI 3.1 specification types for building the final output.
 
 ## Usage
 
@@ -249,27 +268,3 @@ overrides:
 - Minimal memory allocations during extraction
 - Lazy evaluation of complex patterns
 
-## Migration from Old System
-
-The new system replaces the complex `mapper.go` with:
-
-1. **Clean extractors** that focus on pattern matching
-2. **Framework-agnostic configuration** that's easy to understand
-3. **Organized OpenAPI types** for complete specification support
-4. **Simple mapping logic** that builds specs from extracted data
-
-### Key Improvements
-
-- **Framework Independence**: No hardcoded framework logic
-- **Pattern-Based**: Uses regex and call chain patterns
-- **Configuration-Driven**: Easy to customize for different frameworks
-- **Clean Architecture**: Clear separation between extraction and mapping
-- **Extensible**: Easy to add new patterns and frameworks
-
-## Future Enhancements
-
-1. **Plugin System**: Allow custom extractors and mappers
-2. **Validation**: Validate configuration and extracted data
-3. **Caching**: Cache extracted information for performance
-4. **Testing**: Comprehensive test suite for all patterns
-5. **Documentation**: Auto-generated documentation from patterns
