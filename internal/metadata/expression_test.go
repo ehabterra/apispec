@@ -9,6 +9,67 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestHandleCallExpr_CapturesReturnType pins the fix for the
+// err.Error() / generic-call-as-body-arg bug: handleCallExpr must set
+// the CallArgument's Type field to the call's *return* type (from
+// types.Info.TypeOf(callExpr)) so that downstream body-type derivation
+// can use the actual returned type instead of stringifying the call
+// (which produced unresolvable names like "error.Error").
+func TestHandleCallExpr_CapturesReturnType(t *testing.T) {
+	fset := token.NewFileSet()
+	meta := &Metadata{StringPool: NewStringPool()}
+
+	// Build an info whose Types map answers `info.TypeOf(callExpr)`
+	// with a concrete return type, the way the type checker would.
+	stringType := types.Typ[types.String]
+	callExpr := &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   &ast.Ident{Name: "err"},
+			Sel: &ast.Ident{Name: "Error"},
+		},
+	}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{
+			callExpr: {Type: stringType},
+		},
+	}
+
+	arg := handleCallExpr(callExpr, info, "pkg", fset, meta)
+	assert.NotNil(t, arg)
+	assert.Equal(t, KindCall, arg.GetKind())
+	assert.Equal(t, "string", arg.GetType(),
+		"call argument must carry the call's return type")
+}
+
+// TestHandleCallExpr_SkipsTupleReturn confirms that handleCallExpr
+// does NOT collapse a multi-return call (types.Tuple) to a single
+// type string — using just one element would silently drop info.
+// The arg.Type stays empty and downstream falls back to the
+// stringified form.
+func TestHandleCallExpr_SkipsTupleReturn(t *testing.T) {
+	fset := token.NewFileSet()
+	meta := &Metadata{StringPool: NewStringPool()}
+
+	callExpr := &ast.CallExpr{
+		Fun: &ast.Ident{Name: "split"},
+	}
+	tuple := types.NewTuple(
+		types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+		types.NewVar(token.NoPos, nil, "", types.Universe.Lookup("error").Type()),
+	)
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{
+			callExpr: {Type: tuple},
+		},
+	}
+
+	arg := handleCallExpr(callExpr, info, "pkg", fset, meta)
+	assert.NotNil(t, arg)
+	assert.Equal(t, KindCall, arg.GetKind())
+	assert.Empty(t, arg.GetType(),
+		"tuple-returning calls must not collapse to a single Type")
+}
+
 func TestHandleIndexListExpr(t *testing.T) {
 	fset := token.NewFileSet()
 	info := &types.Info{}

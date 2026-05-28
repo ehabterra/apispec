@@ -586,6 +586,17 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		if arg.GetKind() == metadata.KindLiteral {
 			bodyType = determineLiteralType(bodyType)
 		} else {
+			// Call-expression body args (e.g. helper(r) decoded into a
+			// schema, or err.Error() rendered as a response) carry their
+			// *return* type on the CallArgument — see handleCallExpr.
+			// Prefer it over the stringified call, which would otherwise
+			// produce an unresolvable name like "pkg.Method".
+			if arg.GetKind() == metadata.KindCall {
+				if t := arg.GetType(); t != "" {
+					bodyType = t
+				}
+			}
+
 			// Check for resolved type information in the CallArgument
 			if resolvedType := arg.GetResolvedType(); resolvedType != "" {
 				bodyType = resolvedType

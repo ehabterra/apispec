@@ -3,6 +3,7 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	intspec "github.com/ehabterra/apispec/internal/spec"
@@ -170,6 +171,121 @@ func main() {
 	if err == nil {
 		t.Error("Expected error for invalid Go code")
 	}
+}
+
+// TestGenerateFromDirectory_CallExpressionBody verifies that when a
+// handler's request/response body is a *call expression* — e.g.
+// http.Error(w, err.Error(), 400), or render.JSON(w, r, buildSummary(r))
+// — APISpec resolves the body type to the call's actual return type
+// rather than stringifying the call (which would produce unresolvable
+// names like "error.Error" with $ref placeholders in components).
+func TestGenerateFromDirectory_CallExpressionBody(t *testing.T) {
+	dir := filepath.Join("..", "testdata", "call_body")
+
+	gen := NewGenerator(spec.DefaultHTTPConfig())
+	out, err := gen.GenerateFromDirectory(dir)
+	if err != nil {
+		t.Fatalf("GenerateFromDirectory(%s) failed: %v", dir, err)
+	}
+	if out == nil || out.Paths == nil {
+		t.Fatal("nil spec or paths")
+	}
+
+	respSchema := func(path string) *intspec.Schema {
+		t.Helper()
+		item, ok := out.Paths[path]
+		if !ok {
+			t.Fatalf("path %q missing; paths=%v", path, mapPathKeys(out.Paths))
+		}
+		op := firstOperation(&item)
+		if op == nil {
+			t.Fatalf("no operation on %q", path)
+		}
+		for _, resp := range op.Responses {
+			for _, media := range resp.Content {
+				if media.Schema != nil {
+					return media.Schema
+				}
+			}
+		}
+		t.Fatalf("no response schema on %q", path)
+		return nil
+	}
+
+	// /errstr: err.Error() → string. This is the original bug — the
+	// schema must be a plain string, not a $ref to "error_Error".
+	s := respSchema("/errstr")
+	if s.Type != "string" || s.Ref != "" {
+		t.Errorf("/errstr response: want string, got type=%q ref=%q", s.Type, s.Ref)
+	}
+
+	// /count: countItems() → int.
+	s = respSchema("/count")
+	if s.Type != "integer" || s.Ref != "" {
+		t.Errorf("/count response: want integer, got type=%q ref=%q", s.Type, s.Ref)
+	}
+
+	// /summary: buildSummary(r) → summary (named struct). Must $ref to
+	// the summary component, and that component must have real fields
+	// (not the unresolved-placeholder shape).
+	s = respSchema("/summary")
+	if s.Ref == "" {
+		t.Errorf("/summary response: want $ref, got type=%q", s.Type)
+	} else if !strings.HasSuffix(s.Ref, "summary") {
+		t.Errorf("/summary $ref should target summary, got %q", s.Ref)
+	}
+	if out.Components == nil {
+		t.Fatal("missing components")
+	}
+	var found *intspec.Schema
+	for k, v := range out.Components.Schemas {
+		if strings.HasSuffix(k, "summary") {
+			found = v
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("summary component missing; schemas=%v", mapSchemaKeys(out.Components.Schemas))
+	}
+	if found.Type != "object" || len(found.Properties) == 0 {
+		t.Errorf("summary component must be an object with properties, got %+v", found)
+	}
+
+	// Regression guard: there must be no "error.Error" / "error_Error"
+	// placeholder anywhere in components.
+	for k, v := range out.Components.Schemas {
+		if strings.Contains(strings.ToLower(k), "error_error") {
+			t.Errorf("unexpected placeholder component %q = %+v", k, v)
+		}
+		if v != nil && strings.Contains(v.Description, "External or unresolved type: error.Error") {
+			t.Errorf("found error.Error placeholder schema: %+v", v)
+		}
+	}
+}
+
+func firstOperation(item *intspec.PathItem) *intspec.Operation {
+	for _, op := range []*intspec.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete, item.Options, item.Head} {
+		if op != nil {
+			return op
+		}
+	}
+	return nil
+}
+
+func mapPathKeys(m map[string]intspec.PathItem) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func mapSchemaKeys(m map[string]*intspec.Schema) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func TestGenerateFromDirectory_WithAPISpecConfig(t *testing.T) {
