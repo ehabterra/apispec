@@ -2532,3 +2532,156 @@ func TestSliceOfUnknownExternalType_NoSelfRef(t *testing.T) {
 		t.Fatalf("Component %s should have a type set as a fallback, got %+v", refName, stored)
 	}
 }
+
+// TestMapGoTypeToOpenAPISchema_AnonymousStruct exercises the metadata-side
+// representation of inline anonymous structs: a synthetic *metadata.Type
+// is registered under metadata.AnonStructKey(pos), and downstream lookup
+// resolves it to an inline object schema with properly resolved field
+// types — including named types that get promoted to components and
+// nested anonymous structs that stay inline.
+func TestMapGoTypeToOpenAPISchema_AnonymousStruct(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+
+	const anonKey = "_apispec_anonstruct_42"
+	const anonKeyNested = "_apispec_anonstruct_99"
+
+	itemReq := &metadata.Type{
+		Name: stringPool.Get("itemReq"),
+		Kind: stringPool.Get("struct"),
+		Fields: []metadata.Field{
+			{Name: stringPool.Get("SKU"), Type: stringPool.Get("string")},
+			{Name: stringPool.Get("Quantity"), Type: stringPool.Get("int")},
+		},
+	}
+	anonTopPrimitives := &metadata.Type{
+		Name: stringPool.Get(anonKey),
+		Kind: stringPool.Get("struct"),
+		Fields: []metadata.Field{
+			{
+				Name: stringPool.Get("Tags"),
+				Type: stringPool.Get("[]string"),
+				Tag:  stringPool.Get(`json:"tags"`),
+			},
+		},
+	}
+	anonTopWithRef := &metadata.Type{
+		Name: stringPool.Get(anonKey),
+		Kind: stringPool.Get("struct"),
+		Fields: []metadata.Field{
+			{
+				Name: stringPool.Get("Items"),
+				Type: stringPool.Get("[]main.itemReq"),
+				Tag:  stringPool.Get(`json:"items"`),
+			},
+		},
+	}
+	anonNested := &metadata.Type{
+		Name: stringPool.Get(anonKey),
+		Kind: stringPool.Get("struct"),
+		Fields: []metadata.Field{
+			{
+				Name: stringPool.Get("Meta"),
+				Type: stringPool.Get(anonKeyNested),
+				Tag:  stringPool.Get(`json:"meta"`),
+				NestedType: &metadata.Type{
+					Name: stringPool.Get(anonKeyNested),
+					Kind: stringPool.Get("struct"),
+					Fields: []metadata.Field{
+						{Name: stringPool.Get("Source"), Type: stringPool.Get("string"), Tag: stringPool.Get(`json:"source"`)},
+						{Name: stringPool.Get("DryRun"), Type: stringPool.Get("bool"), Tag: stringPool.Get(`json:"dry_run"`)},
+					},
+				},
+			},
+		},
+	}
+
+	cfg := DefaultAPISpecConfig()
+
+	makeMeta := func(anon *metadata.Type) *metadata.Metadata {
+		return &metadata.Metadata{
+			StringPool: stringPool,
+			Packages: map[string]*metadata.Package{
+				"main": {
+					Files: map[string]*metadata.File{
+						"main.go": {
+							Types: map[string]*metadata.Type{
+								"itemReq": itemReq,
+								anonKey:   anon,
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("primitive fields inline", func(t *testing.T) {
+		usedTypes := make(map[string]*Schema)
+		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "main-->"+anonKey, makeMeta(anonTopPrimitives), cfg, nil)
+		if schema == nil || schema.Type != "object" || schema.Ref != "" {
+			t.Fatalf("expected inline object, got %+v", schema)
+		}
+		tags := schema.Properties["tags"]
+		if tags == nil || tags.Type != "array" || tags.Items == nil || tags.Items.Type != "string" {
+			t.Fatalf("expected tags: []string, got %+v", tags)
+		}
+	})
+
+	t.Run("named field type promoted to component", func(t *testing.T) {
+		usedTypes := make(map[string]*Schema)
+		schema, schemas := mapGoTypeToOpenAPISchema(usedTypes, "main-->"+anonKey, makeMeta(anonTopWithRef), cfg, nil)
+		if schema == nil || schema.Type != "object" || schema.Ref != "" {
+			t.Fatalf("expected inline object, got %+v", schema)
+		}
+		items := schema.Properties["items"]
+		if items == nil || items.Type != "array" || items.Items == nil || items.Items.Ref == "" {
+			t.Fatalf("expected items: array of $ref, got %+v", items)
+		}
+		if !strings.HasSuffix(items.Items.Ref, "itemReq") {
+			t.Fatalf("expected $ref to itemReq, got %q", items.Items.Ref)
+		}
+		var found bool
+		for k := range schemas {
+			if strings.Contains(k, "itemReq") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("itemReq component not registered; keys=%v", mapKeys(schemas))
+		}
+	})
+
+	t.Run("nested anonymous struct stays inline", func(t *testing.T) {
+		usedTypes := make(map[string]*Schema)
+		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "main-->"+anonKey, makeMeta(anonNested), cfg, nil)
+		if schema == nil {
+			t.Fatalf("nil schema")
+		}
+		m := schema.Properties["meta"]
+		if m == nil || m.Type != "object" || m.Ref != "" {
+			t.Fatalf("nested anonymous struct must inline, got %+v", m)
+		}
+		if src := m.Properties["source"]; src == nil || src.Type != "string" {
+			t.Fatalf("expected source: string, got %+v", src)
+		}
+		if dry := m.Properties["dry_run"]; dry == nil || dry.Type != "boolean" {
+			t.Fatalf("expected dry_run: boolean, got %+v", dry)
+		}
+	})
+}
+
+// TestCanAddRefSchemaForType_AnonymousStruct guards the invariant that
+// synthetic anon-struct keys are not eligible to become $ref targets, so
+// the schema is always inlined at the use site.
+func TestCanAddRefSchemaForType_AnonymousStruct(t *testing.T) {
+	cases := []string{
+		"_apispec_anonstruct_42",
+		"main-->_apispec_anonstruct_42",
+	}
+	for _, c := range cases {
+		if canAddRefSchemaForType(c) {
+			t.Errorf("canAddRefSchemaForType(%q) = true, want false", c)
+		}
+	}
+}

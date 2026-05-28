@@ -331,6 +331,11 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 			// Process types
 			processTypes(file, info, pkgName, fset, f, allTypeMethods, allTypes, metadata)
 
+			// Register synthetic types for inline anonymous-struct local
+			// vars before any expression walk runs handleIdent — otherwise
+			// the synthetic key handleIdent emits would point at nothing.
+			processLocalAnonymousStructs(file, info, pkgName, f, metadata)
+
 			// Process functions
 			processFunctions(file, info, pkgName, fset, f, fileToInfo, funcMap, metadata)
 
@@ -1044,6 +1049,98 @@ func isExternalPackage(pkgPath, currentModulePath string) bool {
 }
 
 // processStructFields processes fields of a struct type
+
+// AnonStructTypePrefix is the tag carried by every synthetic type that
+// represents an inline (anonymous) struct local var. Downstream
+// (mapper.canAddRefSchemaForType) uses this to keep those entries
+// inlined at their use site instead of promoting them to a $ref.
+const AnonStructTypePrefix = "_apispec_anonstruct_"
+
+// AnonStructKey returns the stable synthetic key used to register and
+// later look up an inline anonymous-struct type. The token.Pos is
+// unique within a given build, so two distinct `var x struct{...}`
+// declarations never collide.
+func AnonStructKey(pos token.Pos) string {
+	if pos == token.NoPos {
+		return ""
+	}
+	return fmt.Sprintf("%s%d", AnonStructTypePrefix, int(pos))
+}
+
+// IsAnonStructTypeName reports whether name is one of the synthetic
+// keys produced by AnonStructKey.
+func IsAnonStructTypeName(name string) bool {
+	return strings.Contains(name, AnonStructTypePrefix)
+}
+
+// processLocalAnonymousStructs walks info.Defs for variables whose
+// type is an inline *types.Struct (anonymous struct) and registers a
+// proper *Type for each one in f.Types under AnonStructKey(pos). This
+// lets every downstream consumer (findTypesInMetadata,
+// generateStructSchema, ...) treat them like any other struct type,
+// without trying to round-trip the Go-syntax form through go/parser.
+func processLocalAnonymousStructs(file *ast.File, info *types.Info, pkgName string, f *File, metadata *Metadata) {
+	if info == nil {
+		return
+	}
+	for ident, obj := range info.Defs {
+		if obj == nil || ident == nil {
+			continue
+		}
+		v, ok := obj.(*types.Var)
+		if !ok {
+			continue
+		}
+		st, ok := v.Type().(*types.Struct)
+		if !ok {
+			continue
+		}
+		key := AnonStructKey(v.Pos())
+		if key == "" {
+			continue
+		}
+		if _, exists := f.Types[key]; exists {
+			continue
+		}
+		f.Types[key] = buildAnonStructType(st, key, pkgName, metadata)
+	}
+}
+
+// buildAnonStructType produces a *Type for a *types.Struct by walking
+// its fields directly via go/types. Nested anonymous structs land on
+// Field.NestedType so generateStructSchema's existing recursion picks
+// them up.
+func buildAnonStructType(s *types.Struct, name, pkgName string, metadata *Metadata) *Type {
+	t := &Type{
+		Name: metadata.StringPool.Get(name),
+		Pkg:  metadata.StringPool.Get(pkgName),
+		Kind: metadata.StringPool.Get("struct"),
+	}
+	for i := 0; i < s.NumFields(); i++ {
+		fv := s.Field(i)
+		tag := s.Tag(i)
+		fieldType := fv.Type()
+
+		f := Field{
+			Name: metadata.StringPool.Get(fv.Name()),
+			Type: metadata.StringPool.Get(fieldType.String()),
+			Tag:  metadata.StringPool.Get(tag),
+		}
+
+		// Inline-struct field: record it as a NestedType so the
+		// schema generator inlines the object instead of trying to
+		// resolve "struct{...}" through name lookup. Field types like
+		// "[]struct{...}" or "*struct{...}" fall through to the
+		// string path for now.
+		if nested, ok := fieldType.(*types.Struct); ok {
+			f.NestedType = buildAnonStructType(nested, fv.Name()+"_nested", pkgName, metadata)
+		}
+
+		t.Fields = append(t.Fields, f)
+	}
+	return t
+}
+
 func processStructFields(structType *ast.StructType, pkgName string, metadata *Metadata, t *Type, info *types.Info) {
 	for _, field := range structType.Fields.List {
 		fieldType := getTypeName(field.Type, info)

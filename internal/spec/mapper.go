@@ -443,6 +443,13 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, route
 
 func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
 	for typeName := range usedTypes {
+		// Synthetic anonymous-struct types (see metadata.AnonStructKey)
+		// are emitted inline at the use site, so they have no name to
+		// register under components/schemas.
+		if metadata.IsAnonStructTypeName(typeName) {
+			continue
+		}
+
 		// Check external types
 		if cfg != nil {
 			for _, externalType := range cfg.ExternalTypes {
@@ -1916,6 +1923,14 @@ func canAddRefSchemaForType(key string) bool {
 
 	// Exclude _nested types from reference schema generation
 	if strings.HasSuffix(key, "_nested") {
+		return false
+	}
+
+	// Anonymous (inline) structs are registered as synthetic *Type
+	// entries with a fixed key prefix (see metadata.AnonStructKey).
+	// They have no name in Go and so should never become a $ref
+	// target — they are inlined at the use site.
+	if metadata.IsAnonStructTypeName(key) {
 		return false
 	}
 

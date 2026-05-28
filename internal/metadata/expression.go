@@ -109,7 +109,21 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 				if obj.Pkg() != nil {
 					pkg = obj.Pkg().Path()
 				}
-				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+				// When the variable's type is an inline anonymous struct
+				// (*types.Struct as opposed to a *types.Named), reuse the
+				// synthetic key registered for it by
+				// processLocalAnonymousStructs. Without this, the type
+				// would render as its full "struct{...}" Go-syntax string
+				// downstream — un-resolvable through normal name lookup
+				// and not always reparseable (module names with dashes).
+				if obj.Type() != nil {
+					if _, isStruct := obj.Type().(*types.Struct); isStruct {
+						typeStr = AnonStructKey(obj.Pos())
+					}
+				}
+				if typeStr == "" {
+					typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+				}
 
 				if obj.Type().String() == "untyped nil" {
 					typeStr = "nil"
