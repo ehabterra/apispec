@@ -204,7 +204,7 @@ func TestMapGoTypeToOpenAPISchema_EdgeCases(t *testing.T) {
 		{
 			name:     "custom type with dots",
 			goType:   "github.com/user/project/types.Response",
-			expected: &Schema{Ref: "#/components/schemas/github.com_user_project_types.Response"},
+			expected: &Schema{Ref: "#/components/schemas/github_com_user_project_types_Response"},
 		},
 	}
 

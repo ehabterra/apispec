@@ -305,17 +305,6 @@ func (t *TrackerTree) warn(format string, args ...any) {
 	t.logger.Warnf(format, args...)
 }
 
-// info forwards to the verbose-gated channel on the logger. Use it for
-// "fyi" diagnostics that don't reflect a problem with the output — e.g. the
-// recursion-depth safety brake firing, which keeps analysis bounded without
-// affecting the spec. Stays quiet unless --verbose is set.
-func (t *TrackerTree) info(format string, args ...any) {
-	if t == nil || t.logger == nil {
-		return
-	}
-	t.logger.Printf(format, args...)
-}
-
 // warnOnce emits a warning only the first time a given key is seen. Use it
 // for traversal limits that can be hit repeatedly for the same node from
 // many call paths — repeating the message gives no extra information and

@@ -439,12 +439,12 @@ func TestSchemaMapper_CustomTypes(t *testing.T) {
 		{
 			name:     "models.Product",
 			goType:   "models.Product",
-			expected: &Schema{Ref: "#/components/schemas/models.Product"},
+			expected: &Schema{Ref: "#/components/schemas/models_Product"},
 		},
 		{
 			name:     "github.com/user/project/types.Response",
 			goType:   "github.com/user/project/types.Response",
-			expected: &Schema{Ref: "#/components/schemas/github.com_user_project_types.Response"},
+			expected: &Schema{Ref: "#/components/schemas/github_com_user_project_types_Response"},
 		},
 		{
 			name:     "empty string",

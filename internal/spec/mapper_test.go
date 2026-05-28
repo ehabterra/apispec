@@ -313,21 +313,21 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 			name:   "external_objectid",
 			goType: "primitive.ObjectID",
 			expected: &Schema{
-				Ref: "#/components/schemas/primitive.ObjectID",
+				Ref: "#/components/schemas/primitive_ObjectID",
 			},
 		},
 		{
 			name:   "external_datetime",
 			goType: "primitive.DateTime",
 			expected: &Schema{
-				Ref: "#/components/schemas/primitive.DateTime",
+				Ref: "#/components/schemas/primitive_DateTime",
 			},
 		},
 		{
 			name:   "pointer_to_external",
 			goType: "*primitive.ObjectID",
 			expected: &Schema{
-				Ref: "#/components/schemas/primitive.ObjectID",
+				Ref: "#/components/schemas/primitive_ObjectID",
 			},
 		},
 		{
@@ -336,7 +336,7 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 			expected: &Schema{
 				Type: "array",
 				Items: &Schema{
-					Ref: "#/components/schemas/primitive.ObjectID",
+					Ref: "#/components/schemas/primitive_ObjectID",
 				},
 			},
 		},
@@ -344,7 +344,7 @@ func TestMapGoTypeToOpenAPISchema_ExternalTypes(t *testing.T) {
 			name:   "unknown_external",
 			goType: "unknown.ExternalType",
 			expected: &Schema{
-				Ref: "#/components/schemas/unknown.ExternalType",
+				Ref: "#/components/schemas/unknown_ExternalType",
 			},
 		},
 	}
@@ -2046,10 +2046,19 @@ func TestEnumDetectionForMaps(t *testing.T) {
 			if tc.expectedEnum != nil {
 				// Check if AdditionalProperties is a reference schema
 				if schema.AdditionalProperties.Ref != "" {
-					// Extract the referenced type name from the ref
+					// Extract the referenced type name from the ref. usedTypes
+					// is keyed by the *raw* Go type name (e.g. main.Priority)
+					// while the ref uses the sanitized form
+					// (main_Priority), so resolve by sanitizing each key.
 					refType := strings.TrimPrefix(schema.AdditionalProperties.Ref, "#/components/schemas/")
-					// Check the referenced schema in usedTypes
-					if refSchema, exists := usedTypes[refType]; exists && refSchema != nil {
+					var refSchema *Schema
+					for rawName, s := range usedTypes {
+						if schemaComponentNameReplacer.Replace(rawName) == refType {
+							refSchema = s
+							break
+						}
+					}
+					if refSchema != nil {
 						if len(refSchema.Enum) != len(tc.expectedEnum) {
 							t.Errorf("Expected %d enum values in referenced schema, got %d", len(tc.expectedEnum), len(refSchema.Enum))
 						} else {
@@ -2427,5 +2436,163 @@ func TestCanAddRefSchemaForTypeWithMap(t *testing.T) {
 				t.Errorf("Expected %v for key %s, got %v", tc.expected, tc.key, result)
 			}
 		})
+	}
+}
+
+// TestNoDanglingRefForUnknownExternalType pins the Redoc-compat fix: when an
+// genuinely unknown external type is mapped, the produced $ref must point
+// at a component that actually exists. Otherwise Redoc aborts with
+// "Invalid reference token". Uses a clearly-fictional package to avoid the
+// well-known-types fast path (uuid.UUID, decimal.Decimal, …) which now
+// render inline.
+func TestNoDanglingRefForUnknownExternalType(t *testing.T) {
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+		Packages:   map[string]*metadata.Package{},
+	}
+	cfg := DefaultAPISpecConfig()
+
+	const goType = "example.com/some/unknown.WeirdType"
+
+	usedTypes := make(map[string]*Schema)
+	schema, schemas := mapGoTypeToOpenAPISchema(usedTypes, goType, meta, cfg, nil)
+
+	if schema == nil || schema.Ref == "" {
+		t.Fatalf("Expected a $ref schema for %s, got %+v", goType, schema)
+	}
+	refName := strings.TrimPrefix(schema.Ref, "#/components/schemas/")
+	if refName == "" {
+		t.Fatalf("Ref did not start with #/components/schemas/: %q", schema.Ref)
+	}
+
+	// The returned schemas map must contain an entry whose sanitized name
+	// matches the ref target — otherwise the $ref would dangle.
+	found := false
+	for raw := range schemas {
+		if schemaComponentNameReplacer.Replace(raw) == refName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("$ref %q has no matching entry in returned schemas; keys=%v", schema.Ref, mapKeys(schemas))
+	}
+}
+
+// TestWellKnownExternalTypes_InlineNotRef pins the policy: opaque external
+// types we know the shape of (uuid.UUID, decimal.Decimal, sql.NullString,
+// json.RawMessage, …) must render as inline primitive schemas — *not* as
+// $refs to a separately-defined component. Previously these produced
+// `items: { $ref: .../uuid_UUID }` plus a wrapper component that was either
+// missing (dangling) or self-referential. Now they're emitted directly.
+func TestWellKnownExternalTypes_InlineNotRef(t *testing.T) {
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+		Packages:   map[string]*metadata.Package{},
+	}
+	cfg := DefaultAPISpecConfig()
+
+	cases := []struct {
+		goType     string
+		wantType   string
+		wantFormat string
+	}{
+		{"github.com/google/uuid.UUID", "string", "uuid"},
+		{"github.com/gofrs/uuid.UUID", "string", "uuid"},
+		{"uuid.UUID", "string", "uuid"},
+		{"github.com/shopspring/decimal.Decimal", "string", "decimal"},
+		{"decimal.Decimal", "string", "decimal"},
+		{"database/sql.NullString", "string", ""},
+		{"database/sql.NullInt64", "integer", "int64"},
+		{"database/sql.NullTime", "string", "date-time"},
+		{"encoding/json.RawMessage", "object", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goType, func(t *testing.T) {
+			usedTypes := make(map[string]*Schema)
+			schema, _ := mapGoTypeToOpenAPISchema(usedTypes, tc.goType, meta, cfg, nil)
+			if schema == nil {
+				t.Fatalf("nil schema for %s", tc.goType)
+			}
+			if schema.Ref != "" {
+				t.Fatalf("%s should be inline, got $ref %q", tc.goType, schema.Ref)
+			}
+			if schema.Type != tc.wantType {
+				t.Errorf("%s: want type %q, got %q", tc.goType, tc.wantType, schema.Type)
+			}
+			if schema.Format != tc.wantFormat {
+				t.Errorf("%s: want format %q, got %q", tc.goType, tc.wantFormat, schema.Format)
+			}
+		})
+	}
+}
+
+// TestSliceOfWellKnownType_InlineItems verifies that a slice of an opaque
+// external type renders as `items: { type: ..., format: ... }` inline, not
+// as `items: { $ref: ... }` pointing at a one-line wrapper component.
+func TestSliceOfWellKnownType_InlineItems(t *testing.T) {
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+		Packages:   map[string]*metadata.Package{},
+	}
+	cfg := DefaultAPISpecConfig()
+
+	usedTypes := make(map[string]*Schema)
+	schema, _ := mapGoTypeToOpenAPISchema(usedTypes, "[]github.com/google/uuid.UUID", meta, cfg, nil)
+	if schema == nil || schema.Type != "array" || schema.Items == nil {
+		t.Fatalf("Expected array schema with items, got %+v", schema)
+	}
+	if schema.Items.Ref != "" {
+		t.Fatalf("items should be inline {string, format: uuid}, got $ref %q", schema.Items.Ref)
+	}
+	if schema.Items.Type != "string" || schema.Items.Format != "uuid" {
+		t.Errorf("items want {string, uuid}, got {%s, %s}", schema.Items.Type, schema.Items.Format)
+	}
+}
+
+func mapKeys(m map[string]*Schema) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// TestSliceOfUnknownExternalType_NoSelfRef pins the second half of the Redoc
+// fix: when a slice/map element resolves to a $ref (genuinely unknown
+// external type), the surrounding handler must NOT clobber the component
+// entry with that same $ref. The previous code produced
+// SomeWeirdType → $ref(SomeWeirdType), an effectively self-referential
+// definition that Redoc rejects.
+func TestSliceOfUnknownExternalType_NoSelfRef(t *testing.T) {
+	meta := &metadata.Metadata{
+		StringPool: metadata.NewStringPool(),
+		Packages:   map[string]*metadata.Package{},
+	}
+	cfg := DefaultAPISpecConfig()
+
+	usedTypes := make(map[string]*Schema)
+	schema, schemas := mapGoTypeToOpenAPISchema(usedTypes, "[]example.com/some/unknown.WeirdType", meta, cfg, nil)
+
+	if schema == nil || schema.Type != "array" || schema.Items == nil || schema.Items.Ref == "" {
+		t.Fatalf("Expected array of $ref, got %+v", schema)
+	}
+
+	refName := strings.TrimPrefix(schema.Items.Ref, "#/components/schemas/")
+	var stored *Schema
+	for raw, s := range schemas {
+		if schemaComponentNameReplacer.Replace(raw) == refName {
+			stored = s
+			break
+		}
+	}
+	if stored == nil {
+		t.Fatalf("Component for %s missing; keys=%v", refName, mapKeys(schemas))
+	}
+	if stored.Ref != "" {
+		t.Fatalf("Component %s must be a real schema, not a $ref (self-reference): %+v", refName, stored)
+	}
+	if stored.Type == "" {
+		t.Fatalf("Component %s should have a type set as a fallback, got %+v", refName, stored)
 	}
 }
