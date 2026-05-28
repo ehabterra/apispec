@@ -287,6 +287,85 @@ func TestTestdata_RouterMountOptions(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
+// helper_response_body
+// ---------------------------------------------------------------------
+
+// TestTestdata_HelperResponseBody pins the expected behaviour of
+// per-route parameter tracing through an indirection helper
+// (writeJSON(w, status, v any)). All three handlers feed the helper
+// a []items.Item, so all three response schemas MUST resolve to
+// `array of $ref(Item)` — the helper's own `v any` parameter must be
+// traced back to the caller-site argument for every route, not just
+// some.
+//
+// This test currently asserts the working subset (/a, /b) and
+// documents the known regression at /c via a sub-test that runs the
+// same assertion. When the underlying bug is fixed — see comment in
+// testdata/helper_response_body/main.go — the sub-test will pass on
+// its own without changes here, surfacing the fix as a green run.
+func TestTestdata_HelperResponseBody(t *testing.T) {
+	out := loadTestdata(t, "helper_response_body", spec.DefaultHTTPConfig())
+
+	expectArrayOfItem := func(t *testing.T, path string) {
+		t.Helper()
+		if !hasPath(out, path) {
+			t.Fatalf("path %q missing; have %v", path, mapPathKeys(out.Paths))
+		}
+		s := firstResponseSchemaAtStatus(t, out, path, "200")
+		if s == nil {
+			t.Fatalf("%s 200 response missing schema", path)
+		}
+		if s.Type != "array" {
+			t.Errorf("%s 200 schema should be array, got type=%q "+
+				"(the helper's `v any` was not traced back to the caller's typed argument)",
+				path, s.Type)
+			return
+		}
+		if s.Items == nil || s.Items.Ref == "" || !strings.HasSuffix(s.Items.Ref, "Item") {
+			t.Errorf("%s 200 schema should be array of $ref(Item), got items=%+v", path, s.Items)
+		}
+	}
+
+	// All three call sites of the shared writeJSON helper must
+	// independently resolve to array<$ref(Item)> — i.e. the per-route
+	// trace from `v any` back to the caller's typed `out` survives the
+	// fact that the underlying Encode call is shared across handlers.
+	t.Run("a", func(t *testing.T) { expectArrayOfItem(t, "/a") })
+	t.Run("b", func(t *testing.T) { expectArrayOfItem(t, "/b") })
+	t.Run("c", func(t *testing.T) { expectArrayOfItem(t, "/c") })
+
+	if componentByName(out, "Item") == nil {
+		t.Errorf("Item component missing; have %v", mapSchemaKeys(out.Components.Schemas))
+	}
+}
+
+// firstResponseSchemaAtStatus returns the response schema attached to a
+// specific status code on the path's first operation. Helper local to
+// the helper_response_body test because every other test inspects
+// either request bodies or the *first* response only.
+func firstResponseSchemaAtStatus(t *testing.T, out *spec.OpenAPISpec, path, status string) *intspec.Schema {
+	t.Helper()
+	item, ok := out.Paths[path]
+	if !ok {
+		t.Fatalf("path %q missing; have %v", path, mapPathKeys(out.Paths))
+	}
+	op := firstOperation(&item)
+	if op == nil {
+		t.Fatalf("no operation on %q", path)
+	}
+	resp, ok := op.Responses[status]
+	if !ok {
+		return nil
+	}
+	for _, media := range resp.Content {
+		if media.Schema != nil {
+			return media.Schema
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------
 // complex_chi_router  /  another_chi_router
 // ---------------------------------------------------------------------
 

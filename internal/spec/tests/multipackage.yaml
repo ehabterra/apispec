@@ -2289,6 +2289,158 @@ packages:
           104: 104
 call_graph:
   - caller:
+      name: 112
+      pkg: 102
+      position: -1
+      recv_type: -1
+      scope: 48
+      signature_str: 116
+    callee:
+      name: 110
+      pkg: 104
+      position: 109
+      recv_type: -1
+      scope: 48
+      signature_str: 107
+    position: 109
+    args:
+      - kind: 21
+        name: -1
+        value: -1
+        fun:
+          kind: 10
+          name: -1
+          value: -1
+          x:
+            kind: 2
+            name: 104
+            value: -1
+            raw: -1
+            pkg: 104
+            type: -1
+            position: 105
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 2
+            name: 106
+            value: -1
+            raw: -1
+            pkg: 104
+            type: 107
+            position: 108
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 104
+          type: 107
+          position: 105
+          resolved_type: -1
+          generic_type_name: -1
+        args:
+          - kind: 2
+            name: 101
+            value: -1
+            raw: -1
+            pkg: 102
+            type: 8
+            position: 103
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 8
+        position: 105
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      s:
+        kind: 21
+        name: -1
+        value: -1
+        fun:
+          kind: 10
+          name: -1
+          value: -1
+          x:
+            kind: 2
+            name: 104
+            value: -1
+            raw: -1
+            pkg: 104
+            type: -1
+            position: 105
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 2
+            name: 106
+            value: -1
+            raw: -1
+            pkg: 104
+            type: 107
+            position: 108
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 104
+          type: 107
+          position: 105
+          resolved_type: -1
+          generic_type_name: -1
+        args:
+          - kind: 2
+            name: 101
+            value: -1
+            raw: -1
+            pkg: 102
+            type: 8
+            position: 103
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 8
+        position: 105
+        resolved_type: -1
+        generic_type_name: -1
+  - caller:
+      name: 112
+      pkg: 102
+      position: -1
+      recv_type: -1
+      scope: 48
+      signature_str: 116
+    callee:
+      name: 106
+      pkg: 104
+      position: 105
+      recv_type: -1
+      scope: 48
+      signature_str: 107
+    position: 105
+    args:
+      - kind: 2
+        name: 101
+        value: -1
+        raw: -1
+        pkg: 102
+        type: 8
+        position: 103
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      s:
+        kind: 2
+        name: 101
+        value: -1
+        raw: -1
+        pkg: 102
+        type: 8
+        position: 103
+        resolved_type: -1
+        generic_type_name: -1
+  - caller:
       name: 40
       pkg: 4
       position: -1
@@ -2939,157 +3091,5 @@ call_graph:
         pkg: 82
         type: 8
         position: 174
-        resolved_type: -1
-        generic_type_name: -1
-  - caller:
-      name: 112
-      pkg: 102
-      position: -1
-      recv_type: -1
-      scope: 48
-      signature_str: 116
-    callee:
-      name: 110
-      pkg: 104
-      position: 109
-      recv_type: -1
-      scope: 48
-      signature_str: 107
-    position: 109
-    args:
-      - kind: 21
-        name: -1
-        value: -1
-        fun:
-          kind: 10
-          name: -1
-          value: -1
-          x:
-            kind: 2
-            name: 104
-            value: -1
-            raw: -1
-            pkg: 104
-            type: -1
-            position: 105
-            resolved_type: -1
-            generic_type_name: -1
-          sel:
-            kind: 2
-            name: 106
-            value: -1
-            raw: -1
-            pkg: 104
-            type: 107
-            position: 108
-            resolved_type: -1
-            generic_type_name: -1
-          raw: -1
-          pkg: 104
-          type: 107
-          position: 105
-          resolved_type: -1
-          generic_type_name: -1
-        args:
-          - kind: 2
-            name: 101
-            value: -1
-            raw: -1
-            pkg: 102
-            type: 8
-            position: 103
-            resolved_type: -1
-            generic_type_name: -1
-        raw: -1
-        pkg: -1
-        type: 8
-        position: 105
-        resolved_type: -1
-        generic_type_name: -1
-    param_arg_map:
-      s:
-        kind: 21
-        name: -1
-        value: -1
-        fun:
-          kind: 10
-          name: -1
-          value: -1
-          x:
-            kind: 2
-            name: 104
-            value: -1
-            raw: -1
-            pkg: 104
-            type: -1
-            position: 105
-            resolved_type: -1
-            generic_type_name: -1
-          sel:
-            kind: 2
-            name: 106
-            value: -1
-            raw: -1
-            pkg: 104
-            type: 107
-            position: 108
-            resolved_type: -1
-            generic_type_name: -1
-          raw: -1
-          pkg: 104
-          type: 107
-          position: 105
-          resolved_type: -1
-          generic_type_name: -1
-        args:
-          - kind: 2
-            name: 101
-            value: -1
-            raw: -1
-            pkg: 102
-            type: 8
-            position: 103
-            resolved_type: -1
-            generic_type_name: -1
-        raw: -1
-        pkg: -1
-        type: 8
-        position: 105
-        resolved_type: -1
-        generic_type_name: -1
-  - caller:
-      name: 112
-      pkg: 102
-      position: -1
-      recv_type: -1
-      scope: 48
-      signature_str: 116
-    callee:
-      name: 106
-      pkg: 104
-      position: 105
-      recv_type: -1
-      scope: 48
-      signature_str: 107
-    position: 105
-    args:
-      - kind: 2
-        name: 101
-        value: -1
-        raw: -1
-        pkg: 102
-        type: 8
-        position: 103
-        resolved_type: -1
-        generic_type_name: -1
-    param_arg_map:
-      s:
-        kind: 2
-        name: 101
-        value: -1
-        raw: -1
-        pkg: 102
-        type: 8
-        position: 103
         resolved_type: -1
         generic_type_name: -1
