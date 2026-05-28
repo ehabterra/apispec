@@ -241,7 +241,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Pointers and automatic dereferencing.
 - Selectors and nested field access (`pkg.Type.Field`).
 - Struct fields, embedded fields, tag-based metadata (`json`, `xml`, `form`, `validate`, …).
-- Anonymous nested struct types preserve full schema information.
+- Inline (anonymous) struct types — used as request/response bodies via local `var req struct{...}` declarations *and* as nested struct fields. Captured structurally from `go/types`, so the inline schema shows real properties, honours JSON tags, and resolves named field types to `$ref`s.
 - Function & method return types resolved from signatures.
 - Function literals (anonymous handlers).
 - Generics on functions (concrete types mapped at call sites).
@@ -350,6 +350,31 @@ router.POST("/users", func(c *gin.Context) {
 ```
 
 The body and response types are analyzed even for anonymous handlers.
+
+</details>
+
+<details>
+<summary><strong>Inline anonymous struct request / response bodies</strong></summary>
+
+```go
+func createOrder(w http.ResponseWriter, r *http.Request) {
+    var req struct {
+        Items []itemReq `json:"items"`
+    }
+    if err := render.DecodeJSON(r.Body, &req); err != nil {
+        http.Error(w, "invalid JSON", http.StatusBadRequest)
+        return
+    }
+    // ...
+}
+```
+
+APISpec captures the local `struct{...}` type structurally from `go/types`,
+emits an inline `object` schema on the `requestBody`, and promotes named
+field types (`itemReq` here) to their own components with `$ref`. Nested
+anonymous structs stay inlined. See `testdata/anonymous_struct/` for a
+worked example covering primitive fields, named-type fields, nested
+inline structs, and inline response bodies.
 
 </details>
 
