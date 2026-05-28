@@ -533,30 +533,50 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 	return t
 }
 
-// processChainRelationships efficiently establishes parent-child relationships for chain calls
+// processChainRelationships establishes parent-child relationships for
+// chained calls (e.g. `json.NewEncoder(w).Encode(v)` should reflect that
+// Encode follows NewEncoder).
+//
+// Subtle: the tracker tree shares nodes by edge ID across all roots, so
+// the same Encode tracker node is referenced from every handler that
+// reaches `NewEncoder(w).Encode(v)`. Wiring the chain via
+// AddChild(child) would detach the child from its existing call-site
+// parent (the surrounding writeJSON-style helper) and re-parent it
+// under the factory call (NewEncoder). That breaks per-route parameter
+// tracing in `traceArgViaParent` — every consumer past the first chain
+// resolve falls back to a bare `type: object`.
+//
+// Instead we append the child to the chain-parent's Children list
+// without touching `childNode.Parent`, so the call-site parent stays
+// the canonical ancestor for tracing while chain ordering is still
+// represented in the tree.
 func (t *TrackerTree) processChainRelationships() {
-	// Process chain relationships in a single pass through the call graph
 	for _, edge := range t.meta.CallGraph {
-		if edge.ChainParent != nil {
-			// Find the parent node in the tree
-			parentKey := edge.ChainParent.Callee.ID()
-			parentNode := t.findNodeByEdgeID(parentKey)
+		if edge.ChainParent == nil {
+			continue
+		}
+		parentKey := edge.ChainParent.Callee.ID()
+		parentNode := t.findNodeByEdgeID(parentKey)
+		if parentNode == nil {
+			continue
+		}
+		childKey := edge.Callee.ID()
+		childNode := t.findNodeByEdgeID(childKey)
+		if childNode == nil || parentNode == childNode {
+			continue
+		}
 
-			if parentNode != nil {
-				// Find the child node in the tree
-				childKey := edge.Callee.ID()
-				childNode := t.findNodeByEdgeID(childKey)
-
-				if childNode != nil && parentNode != childNode {
-					// check if child is an argument, keep parent node as grandparent
-					if childNode.CallArgument != nil {
-						childNode.Parent.AddChild(parentNode)
-					}
-
-					// Establish parent-child relationship
-					parentNode.AddChild(childNode)
-				}
+		// Skip if the chain parent is already a child (idempotent under
+		// repeated calls).
+		alreadyChild := false
+		for _, c := range parentNode.Children {
+			if c == childNode {
+				alreadyChild = true
+				break
 			}
+		}
+		if !alreadyChild {
+			parentNode.Children = append(parentNode.Children, childNode)
 		}
 	}
 }
