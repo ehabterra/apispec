@@ -19,7 +19,50 @@ const (
 	refComponentsSchemasPrefix = "#/components/schemas/"
 )
 
-var schemaComponentNameReplacer = strings.NewReplacer("/", "_", "-->", ".", " ", "-", "[", "_", "]", "", ", ", "-")
+// schemaComponentNameReplacer sanitizes a Go-flavoured type identifier into a
+// safe OpenAPI component schema name. Dots are deliberately collapsed to
+// underscores: Redoc's JSON-pointer resolver splits on '.' when looking up
+// `$ref` targets and rejects any component name containing one (see
+// https://github.com/Redocly/redoc/issues/1816). Swagger UI and Scalar
+// tolerate dots, but the underscore form works everywhere, so we normalise
+// to it.
+var schemaComponentNameReplacer = strings.NewReplacer(
+	"/", "_",
+	"-->", "_", // internal type separator → safe word break
+	".", "_", // dotted package paths (github.com/...) → safe word break
+	" ", "-",
+	"[", "_",
+	"]", "",
+	", ", "-",
+)
+
+// unresolvedExternalPlaceholder returns the schema we register when a
+// referenced type can't be resolved through metadata, typeMapping,
+// externalTypes, or the well-known table. Without it, the $ref dangles and
+// Redoc aborts with "Invalid reference token".
+func unresolvedExternalPlaceholder(name string) *Schema {
+	return &Schema{
+		Type:        "object",
+		Description: "External or unresolved type: " + name,
+	}
+}
+
+// shouldPromoteToComponent reports whether an inline schema should be
+// promoted into a named component and replaced with a $ref at the call
+// site. Three reasons it shouldn't:
+//   - The schema is already a $ref (avoid self-referencing components).
+//   - The schema is primitive-shaped (uuid → {string, uuid} reads better
+//     inline than as a one-line wrapper component).
+//   - The key isn't ref-eligible (primitives, containers, _nested types).
+func shouldPromoteToComponent(key string, s *Schema) bool {
+	if s == nil || s.Ref != "" {
+		return false
+	}
+	if !canAddRefSchemaForType(key) {
+		return false
+	}
+	return !isPrimitiveShapedSchema(s)
+}
 
 // GeneratorConfig holds generation configuration
 type GeneratorConfig struct {
@@ -413,6 +456,16 @@ func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, component
 		// Find the type in metadata
 		typs := findTypesInMetadata(meta, typeName)
 		if len(typs) == 0 || typs[typeName] == nil {
+			// Belt-and-suspenders: even when the type isn't resolvable,
+			// any $ref produced earlier still needs a target. Skip the
+			// placeholder for primitives and container types — those are
+			// emitted inline and never reach a $ref site.
+			if canAddRefSchemaForType(typeName) {
+				key := schemaComponentNameReplacer.Replace(typeName)
+				if _, exists := components.Schemas[key]; !exists {
+					components.Schemas[key] = unresolvedExternalPlaceholder(typeName)
+				}
+			}
 			continue
 		}
 
@@ -733,7 +786,11 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 
 			} else {
 				fieldSchema, newSchemas = mapGoTypeToOpenAPISchema(usedTypes, derivedFieldType, meta, cfg, visitedTypes)
-				if canAddRefSchemaForType(derivedFieldType) {
+				// Promote to component only for complex schemas — keep
+				// primitive-shaped values (like uuid.UUID → {string,
+				// format: uuid}) inline so the field renders as the
+				// actual primitive, not as a $ref to a wrapper.
+				if shouldPromoteToComponent(derivedFieldType, fieldSchema) {
 					schemas[derivedFieldType] = fieldSchema
 					fieldSchema = addRefSchemaForType(derivedFieldType)
 				}
@@ -1611,8 +1668,12 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 			maps.Copy(schemas, newSchemas)
 
-			// Use reference for complex element types in arrays
-			if canAddRefSchemaForType(resolvedType) && items != nil {
+			// Use reference for complex element types in arrays.
+			// Skip when items is already a $ref (avoid self-references —
+			// see TestSliceOfUnknownExternalType_NoSelfRef) or when items
+			// is primitive-shaped (uuid.UUID → {string, format: uuid}
+			// shouldn't be promoted to its own component).
+			if shouldPromoteToComponent(resolvedType, items) {
 				schemas[resolvedType] = items
 				items = addRefSchemaForType(resolvedType)
 			}
@@ -1670,8 +1731,10 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 				additionalProperties, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 				maps.Copy(schemas, newSchemas)
 
-				// Use reference for complex value types in maps
-				if !metadata.IsPrimitiveType(resolvedType) && canAddRefSchemaForType(resolvedType) {
+				// Use reference for complex value types in maps. Skip when
+				// inner returned a $ref (avoid self-references) or when
+				// the schema is primitive-shaped (keep inline).
+				if !metadata.IsPrimitiveType(resolvedType) && shouldPromoteToComponent(resolvedType, additionalProperties) {
 					schemas[resolvedType] = additionalProperties
 					additionalProperties = addRefSchemaForType(resolvedType)
 				}
@@ -1743,8 +1806,10 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 		maps.Copy(schemas, newSchemas)
 
-		// Use reference for complex element types in arrays
-		if !isPrimitiveElement && canAddRefSchemaForType(resolvedType) && items != nil {
+		// Use reference for complex element types in arrays. Skip when
+		// inner returned a $ref (avoid self-references) or when the
+		// schema is primitive-shaped (keep inline).
+		if !isPrimitiveElement && shouldPromoteToComponent(resolvedType, items) {
 			schemas[resolvedType] = items
 			items = addRefSchemaForType(resolvedType)
 		}
@@ -1791,10 +1856,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	case "bool":
 		return &Schema{Type: "boolean"}, schemas
 	case "time.Time":
-		return &Schema{
-			Type:   "string",
-			Format: "date-time",
-		}, schemas
+		return &Schema{Type: "string", Format: "date-time"}, schemas
 	case "[]byte":
 		return &Schema{Type: "string", Format: "byte"}, schemas
 	case "[]string":
@@ -1830,6 +1892,16 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		}
 
 		if !isPrimitive && goType != "" {
+			// Register a placeholder under the referenced name so we never
+			// emit a $ref to a component nothing else will populate.
+			// Reached when a type isn't in metadata, isn't in the
+			// wellKnownExternalTypes table, isn't in externalTypes, and
+			// has no primitive mapping — typical of opaque types from
+			// packages that weren't part of the analyzed module.
+			derivedKey := strings.TrimPrefix(goType, "*")
+			if _, exists := schemas[derivedKey]; !exists {
+				schemas[derivedKey] = unresolvedExternalPlaceholder(derivedKey)
+			}
 			return addRefSchemaForType(goType), schemas
 		}
 
@@ -1849,6 +1921,22 @@ func canAddRefSchemaForType(key string) bool {
 
 	// Allow reference schemas for custom types
 	return true
+}
+
+// isPrimitiveShapedSchema reports whether a schema carries only scalar/array
+// fields (Type/Format/Enum/Min/Max) with no structural members. Used by
+// shouldPromoteToComponent to keep simple shapes inline.
+func isPrimitiveShapedSchema(s *Schema) bool {
+	if s == nil || s.Ref != "" {
+		return false
+	}
+	if len(s.Properties) > 0 || len(s.AllOf) > 0 || len(s.OneOf) > 0 || len(s.AnyOf) > 0 {
+		return false
+	}
+	if s.AdditionalProperties != nil {
+		return false
+	}
+	return s.Type != "" && s.Type != "object"
 }
 
 func addRefSchemaForType(goType string) *Schema {

@@ -1724,7 +1724,7 @@
         function addDataToGraph(data) {
             let addedNodes = 0;
             let addedEdges = 0;
-            
+
             // Collect new nodes to add
             const nodesToAdd = [];
             if (data.nodes && Array.isArray(data.nodes)) {
@@ -1736,7 +1736,7 @@
                     }
                 });
             }
-            
+
             // Collect new edges to add
             const edgesToAdd = [];
             if (data.edges && Array.isArray(data.edges)) {
@@ -1751,18 +1751,24 @@
                     }
                 });
             }
-            
-            // Add all new elements at once
+
+            // Add all new elements in a single batch to suppress intermediate
+            // style/layout invalidation.
             const elementsToAdd = [...nodesToAdd, ...edgesToAdd];
             if (elementsToAdd.length > 0) {
-                cy.add(elementsToAdd);
+                cy.startBatch();
+                try {
+                    cy.add(elementsToAdd);
+                } finally {
+                    cy.endBatch();
+                }
             }
-            
+
             console.log(`Added ${addedNodes} new nodes and ${addedEdges} new edges`);
-            
+
             // Validate graph connectivity
             validateGraphConnectivity();
-            
+
             // Update stats
             totalNodes = data.total_nodes;
             totalEdges = data.total_edges;
@@ -1771,9 +1777,11 @@
             updateStats(data.load_time_ms);
             updatePagination();
             updateFilters();
-            
-            // Apply layout and fit view
-            const layout = cy.layout({
+
+            // Pick layout tuning based on graph size — large graphs use a much
+            // faster ranker and no animation; small ones get the prettier defaults.
+            const nodeCount = cy.nodes().length;
+            const layoutOpts = {
                 name: 'dagre',
                 rankDir: 'LR',
                 nodeDimensionsIncludeLabels: true,
@@ -1781,9 +1789,10 @@
                 padding: 50,
                 spacingFactor: 1.2,
                 animate: false,
-                compound: true
-            });
-            layout.run();
+                compound: true,
+                ranker: nodeCount > 1000 ? 'tight-tree' : 'network-simplex',
+            };
+            cy.layout(layoutOpts).run();
         }
         
         // Load more data
@@ -2210,21 +2219,24 @@
         // Change layout
         function changeLayout() {
             const layoutName = document.getElementById('layoutSelect').value;
-            
+            const nodeCount = cy.nodes().length;
+            const isLarge = nodeCount > 500;
+
             // Reset any tree-specific styling when switching away from tree layout
             if (layoutName !== 'tree') {
                 cy.elements().removeClass('tree-root tree-leaf');
             }
-            
+
             let layoutOptions = {
                 name: layoutName,
-                animate: 'end',
-                animationDuration: 1000,
+                // Skip the animation on big graphs — it's the dominant cost.
+                animate: isLarge ? false : 'end',
+                animationDuration: 800,
                 fit: true,
                 padding: 50,
                 compound: true
             };
-            
+
             if (layoutName === 'cose') {
                 layoutOptions = {
                     ...layoutOptions,
@@ -2234,7 +2246,9 @@
                     edgeElasticity: 0.45,
                     nestingFactor: 0.1,
                     gravity: 0.25,
-                    numIter: 2500,
+                    // Fewer iterations for big graphs — the layout still converges
+                    // well enough and the wall-clock saving is large.
+                    numIter: isLarge ? 750 : 2500,
                     initialTemp: 200,
                     coolingFactor: 0.95,
                     minTemp: 1.0
@@ -2243,7 +2257,9 @@
                 layoutOptions = {
                     ...layoutOptions,
                     rankDir: 'LR',
-                    ranker: 'network-simplex',
+                    // network-simplex is prettier but O(V·E²) — use tight-tree
+                    // on big graphs.
+                    ranker: nodeCount > 1000 ? 'tight-tree' : 'network-simplex',
                     nodeSep: 80,
                     edgeSep: 30,
                     rankSep: 100,
@@ -2306,21 +2322,32 @@
         // Toggle argument nodes visibility
         function toggleArguments() {
             const showArguments = document.getElementById('showArguments').checked;
-            
-            if (showArguments) {
-                // Show all argument nodes
-                cy.nodes('[type = "argument"], [type = "call_argument"], [type = "generic"]').style('display', 'element');
-            } else {
-                // Hide argument nodes
-                cy.nodes('[type = "argument"], [type = "call_argument"], [type = "generic"]').style('display', 'none');
+            const argNodes = cy.nodes('[type = "argument"], [type = "call_argument"], [type = "generic"]');
+
+            // Batch the style mutation so Cytoscape applies it in one pass.
+            cy.startBatch();
+            try {
+                argNodes.style('display', showArguments ? 'element' : 'none');
+            } finally {
+                cy.endBatch();
             }
-            
-            // Re-apply layout
-            cy.layout({
-                name: currentLayout || 'dagre',
-                fit: true,
-                padding: 50
-            }).run();
+
+            // Only re-run layout when we just revealed nodes (which changes
+            // the visible topology). Hiding nodes leaves the existing layout
+            // valid, so we skip the expensive recompute.
+            if (showArguments) {
+                const nodeCount = cy.nodes(':visible').length;
+                cy.layout({
+                    name: currentLayout || 'dagre',
+                    fit: true,
+                    padding: 50,
+                    animate: nodeCount <= 500,
+                    ranker: nodeCount > 1000 ? 'tight-tree' : 'network-simplex',
+                }).run();
+            } else {
+                // Keep the viewport pleasant without re-laying out.
+                cy.fit();
+            }
         }
         
         // Toggle fullscreen

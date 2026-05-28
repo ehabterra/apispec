@@ -1368,3 +1368,37 @@ func TestAssignmentNodeParentLinking(t *testing.T) {
 		}
 	})
 }
+
+// TestTrackerWarnOnceDedupesPerNode verifies that hitting the same limit on the
+// same node from multiple call paths only emits the warning once. The previous
+// behaviour spammed the message once per visiting path, drowning stderr.
+func TestTrackerWarnOnceDedupesPerNode(t *testing.T) {
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	defer func() {
+		os.Stderr = oldStderr
+		_ = w.Close()
+	}()
+
+	tree := &TrackerTree{}
+	// Same key fired three times — only one line should make it through.
+	tree.warnOnce("recursion:nodeA", "Warning: limit reached for %s\n", "nodeA")
+	tree.warnOnce("recursion:nodeA", "Warning: limit reached for %s\n", "nodeA")
+	tree.warnOnce("recursion:nodeA", "Warning: limit reached for %s\n", "nodeA")
+	// A different key still fires.
+	tree.warnOnce("recursion:nodeB", "Warning: limit reached for %s\n", "nodeB")
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	got := buf.String()
+
+	if c := strings.Count(got, "limit reached for nodeA"); c != 1 {
+		t.Errorf("Expected one warning for nodeA, got %d: %q", c, got)
+	}
+	if c := strings.Count(got, "limit reached for nodeB"); c != 1 {
+		t.Errorf("Expected one warning for nodeB, got %d: %q", c, got)
+	}
+}

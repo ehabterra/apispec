@@ -97,6 +97,9 @@
       display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border);
       background: var(--panel); align-items: center;
     }
+    .viewer .top [data-view].active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
     .viewer iframe { flex: 1; width: 100%; border: 0; background: #fff; }
     .viewer .empty {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -188,15 +191,15 @@
 <body>
 <header>
   <h1>apispec</h1>
-  <input type="text" id="projectDirInput" placeholder="/path/to/go/project"
-         style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;width:280px;" />
+  <input type="text" id="projectDirInput" placeholder="/path/to/go/project — press Enter to load"
+         title="Path to the Go module to analyze. Press Enter or click away to apply."
+         style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;width:320px;" />
   <button class="btn ghost" onclick="openBrowse()" title="Browse for a project folder">📁 Browse…</button>
-  <button class="btn ghost" onclick="switchProject()" title="Switch to this project & re-detect framework">Open</button>
   <span class="meta" id="projectMeta">loading…</span>
   <span class="grow"></span>
   <span id="status" class="badge">idle</span>
-  <button class="btn" id="generateBtn" onclick="generate()">⚡ Generate</button>
-  <button class="btn secondary" onclick="downloadConfig()">Save config.yaml</button>
+  <button class="btn" id="generateBtn" onclick="generate()" title="Analyze the project and produce an OpenAPI spec. Auto-loads the project first if the path changed.">⚡ Generate</button>
+  <button class="btn secondary" onclick="downloadConfig()" title="Download the current configuration as YAML">Save config.yaml</button>
 </header>
 <main>
   <aside>
@@ -511,24 +514,30 @@
     <div class="top">
       <div class="toolbar-group">
         <span class="meta" style="color:var(--muted)">View:</span>
-        <button class="btn ghost" data-view="swagger">Swagger UI</button>
-        <button class="btn ghost" data-view="redoc">Redoc</button>
-        <button class="btn ghost" data-view="scalar">Scalar</button>
+        <button class="btn ghost" data-view="swagger" title="Interactive OpenAPI explorer (Swagger UI)">Swagger UI</button>
+        <button class="btn ghost" data-view="redoc" title="Three-pane reference docs (Redoc)">Redoc</button>
+        <button class="btn ghost" data-view="scalar" title="Modern API reference (Scalar)">Scalar</button>
+        <span class="meta" style="color:var(--muted); margin-left:6px;">·</span>
+        <button class="btn ghost" data-view="callgraph" title="Interactive call-graph visualization of the analyzed code (apidiag, embedded). Works even before you generate a spec.">🕸 Call Graph</button>
         <button class="btn ghost" onclick="openIntegrateGuide()" title="How to host this view in your own app">ⓘ Integrate</button>
       </div>
       <span style="flex:1"></span>
-      <a class="btn secondary" href="/api/spec.json" target="_blank" rel="noreferrer">spec.json</a>
-      <a class="btn secondary" href="/api/spec.yaml" target="_blank" rel="noreferrer">spec.yaml</a>
+      <a class="btn secondary" href="/api/spec.json" target="_blank" rel="noreferrer" title="Download the last-generated spec as JSON">spec.json</a>
+      <a class="btn secondary" href="/api/spec.yaml" target="_blank" rel="noreferrer" title="Download the last-generated spec as YAML">spec.yaml</a>
     </div>
     <div class="empty" id="viewerEmpty">
-      <h2>No spec yet</h2>
-      <p>Edit the configuration on the left, then click <strong>Generate</strong>.<br/>
-         When the spec is ready, pick a viewer above to preview it.</p>
+      <h2>Pick a view on the right ↗</h2>
+      <p style="max-width:520px;">
+        Configure your project on the left, hit <strong>⚡ Generate</strong>, then preview it with
+        <strong>Swagger UI</strong>, <strong>Redoc</strong>, or <strong>Scalar</strong>.<br/>
+        Want to see how the code wires together first? Open <strong>🕸 Call Graph</strong> — it works
+        without generating a spec and shows every function relationship in your module.
+      </p>
       <p style="margin-top:18px;">
         <a href="javascript:void(0)" onclick="openIntegrateGuide()">How do I host these viewers in my own app? →</a>
       </p>
     </div>
-    <iframe id="viewerFrame" style="display:none" title="OpenAPI viewer"></iframe>
+    <iframe id="viewerFrame" style="display:none" title="OpenAPI / Call-graph viewer"></iframe>
   </section>
 </main>
 
@@ -680,7 +689,20 @@ function openView(name) {
   const frame = $("#viewerFrame");
   $("#viewerEmpty").style.display = "none";
   frame.style.display = "block";
-  frame.src = "/" + name + "?t=" + Date.now();
+
+  // Most views are the spec preview routes (/swagger, /redoc, /scalar).
+  // "callgraph" embeds the interactive apidiag UI mounted at /diagram so
+  // users can explore the code without leaving this page.
+  if (name === "callgraph") {
+    frame.src = "/diagram?t=" + Date.now();
+  } else {
+    frame.src = "/" + name + "?t=" + Date.now();
+  }
+
+  // Mark the active view button so it's obvious which pane is showing.
+  $$("[data-view]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === name);
+  });
 }
 
 // --- detect ---------------------------------------------------------------
@@ -816,9 +838,17 @@ function applyAPISpecConfig(cfg) {
 }
 
 // --- project switch ------------------------------------------------------
+// switchProject re-runs framework detection for the typed dir and repopulates
+// the form with that framework's defaults. Triggered by explicit user
+// signals (Enter, blur, folder-browser commit) — Generate itself sends the
+// dir as part of its request body and doesn't need to call this.
 async function switchProject() {
   const dir = $("#projectDirInput").value.trim();
-  if (!dir) { setStatus("enter a project path", "warn"); return; }
+  if (!dir) { setStatus("enter a project path", "warn"); return false; }
+  // Skip the round-trip if the typed path already matches the detected one —
+  // saves a re-analysis when the user just refocuses the field.
+  if (state.detected && state.detected.inputDir === dir) return true;
+
   setStatus("switching project…");
   try {
     const r = await fetch("/api/project", {
@@ -834,9 +864,11 @@ async function switchProject() {
     // Reset the suggestions UI; the next Generate will populate it.
     metaSummary = null;
     populateMetadataUI({});
+    return true;
   } catch (e) {
     console.error(e);
     setStatus("switch failed: " + (e.message || e), "err");
+    return false;
   }
 }
 
@@ -1980,7 +2012,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // --- generate -------------------------------------------------------------
 async function generate() {
-  setStatus("generating…");
+  // The dir is collected into the request body by collectForm(), so the
+  // server applies it directly — no pre-flight project switch needed.
+
+  // Show the framework we believe applies. The server returns the actual
+  // detected framework in the response and we use that below for the final
+  // status; for the in-flight badge we use the locally-detected value so the
+  // user sees something concrete instead of "?". On a fresh path that hasn't
+  // been switched yet this may briefly disagree with the server, which the
+  // success line then corrects.
+  const fw = (state.detected && state.detected.detectedFramework) || "?";
+
+  // Start polling the server for the current engine phase. Falls back
+  // gracefully if the endpoint is unavailable.
+  pollProgress = true;
+  pollGenerateProgress();
+
+  // Live elapsed-time indicator so the UI feels alive on big codebases —
+  // analysis can take 30s+ on a large repo and a static "generating…" badge
+  // looks indistinguishable from a frozen server.
+  const t0 = Date.now();
+  setStatus(`generating (${fw}) · 0s`);
+  const tick = setInterval(() => {
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    let suffix = generatePhase ? " · " + generatePhase : "";
+    if (!suffix) {
+      if (elapsed >= 30) suffix = " · large project — hang tight";
+      else if (elapsed >= 10) suffix = " · analyzing call graph";
+    }
+    setStatus(`generating (${fw}) · ${elapsed}s${suffix}`);
+  }, 1000);
+
   $("#generateBtn").disabled = true;
   try {
     const body = collectForm();
@@ -2006,7 +2068,28 @@ async function generate() {
     console.error(e);
     setStatus(("generation failed: " + (e.message || e)).slice(0, 240), "err");
   } finally {
+    clearInterval(tick);
+    pollProgress = false;
+    generatePhase = "";
     $("#generateBtn").disabled = false;
+  }
+}
+
+// generatePhase carries the most-recent engine phase label returned by the
+// server during a long-running generate. The 1-second tick reads it and
+// renders it into the status badge so users see what stage is slow.
+let generatePhase = "";
+let pollProgress = false;
+async function pollGenerateProgress() {
+  while (pollProgress) {
+    try {
+      const r = await fetch("/api/generate/progress");
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.phase) generatePhase = d.phase;
+      }
+    } catch (_) { /* ignore network blips during heavy generation */ }
+    await new Promise((res) => setTimeout(res, 1000));
   }
 }
 
@@ -2021,6 +2104,7 @@ function collectForm() {
   const reqStatus = parseInt($("#def-res-status").value, 10);
 
   return {
+    dir: $("#projectDirInput").value,
     framework: $("#framework").value,
     openapiVersion: $("#openapi-version").value,
     useRawConfig: useRaw,
@@ -2100,10 +2184,13 @@ function escapeText(s) {
   return String(s == null ? "" : s).replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Enter on project-dir input switches project
+// Enter / blur on the project-dir input refreshes framework detection so the
+// form re-populates with the new project's defaults. Generate itself sends
+// the dir along in its request body, so it never depends on these firing.
 $("#projectDirInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); switchProject(); }
 });
+$("#projectDirInput").addEventListener("blur", () => { switchProject(); });
 
 // kick off
 detect();

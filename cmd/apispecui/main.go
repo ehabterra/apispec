@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ehabterra/apispec/internal/core"
+	"github.com/ehabterra/apispec/internal/diagserver"
 	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/ehabterra/apispec/internal/spec"
@@ -87,6 +88,7 @@ type ProjectRequest struct {
 //     framework patterns, method extraction rules, etc. — that the form doesn't
 //     surface.
 type GenerateRequest struct {
+	Dir             string                         `json:"dir"`
 	Framework       string                         `json:"framework"`
 	OpenAPIVersion  string                         `json:"openapiVersion"`
 	Info            spec.Info                      `json:"info"`
@@ -137,6 +139,20 @@ type UIServer struct {
 
 	// metaCache is keyed by absolute input dir. Cleared on project switch.
 	metaCache map[string]*MetadataSummary
+
+	// diag serves the embedded call-graph / tracker-tree visualization.
+	// Routes are mounted under /diagram (UI) and /api/diagram/* (API).
+	diag *diagserver.Server
+
+	// genMu serializes Generate requests so a frantic double-click doesn't
+	// stack two parallel analyses (each consuming a full CPU+RAM hit).
+	genMu sync.Mutex
+
+	// genPhase / genPhaseAt expose the most recent engine phase to the UI
+	// via /api/generate/progress. Updated from the engine's OnPhase
+	// callback so a long-running generate doesn't look frozen.
+	genPhase   string
+	genPhaseAt time.Time
 }
 
 func (s *UIServer) currentDir() string {
@@ -149,13 +165,36 @@ func (s *UIServer) setDir(d string) {
 	s.mu.Lock()
 	s.inputDir = d
 	s.metaCache = nil // invalidate metadata cache
+	diag := s.diag
 	s.mu.Unlock()
+
+	// Propagate to the diagram server so its next request reloads metadata
+	// against the new project directory.
+	if diag != nil {
+		diag.SetInputDir(d)
+	}
 }
 
 func main() {
 	cfg := parseFlags()
 
-	srv := &UIServer{cfg: cfg, inputDir: cfg.InputDir}
+	diag := diagserver.New(&diagserver.Config{
+		Host:                         cfg.Host,
+		Port:                         cfg.Port,
+		InputDir:                     cfg.InputDir,
+		PageSize:                     100,
+		MaxDepth:                     3,
+		EnableCORS:                   true,
+		CacheTimeout:                 5 * time.Minute,
+		Verbose:                      cfg.Verbose,
+		AnalyzeFrameworkDependencies: false,
+		AutoIncludeFrameworkPackages: false,
+		AutoExcludeTests:             true,
+		AutoExcludeMocks:             true,
+		DiagramType:                  "call-graph",
+	})
+
+	srv := &UIServer{cfg: cfg, inputDir: cfg.InputDir, diag: diag}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handleIndex)
@@ -167,6 +206,7 @@ func main() {
 	mux.HandleFunc("/api/project", srv.handleProject)
 	mux.HandleFunc("/api/default-framework", srv.handleDefaultFramework)
 	mux.HandleFunc("/api/generate", srv.handleGenerate)
+	mux.HandleFunc("/api/generate/progress", srv.handleGenerateProgress)
 	mux.HandleFunc("/api/spec.json", srv.handleSpecJSON)
 	mux.HandleFunc("/api/spec.yaml", srv.handleSpecYAML)
 	mux.HandleFunc("/api/config.yaml", srv.handleConfigYAML)
@@ -177,10 +217,19 @@ func main() {
 	mux.HandleFunc("/api/metadata-summary", srv.handleMetadataSummary)
 	mux.HandleFunc("/api/health", srv.handleHealth)
 
+	// Mount the diagram server under /diagram (UI) and /api/diagram/* (API).
+	// Use a namespaced health path to avoid colliding with anything else.
+	diag.RegisterRoutes(mux, diagserver.RouteOptions{
+		UIPath:     "/diagram",
+		APIPrefix:  "/api/diagram",
+		HealthPath: "/api/diagram/health",
+	})
+
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	log.Printf("🛠  apispec-ui starting on http://%s", addr)
 	log.Printf("📁 Project: %s", cfg.InputDir)
 	log.Printf("    Open http://%s in your browser to configure & preview", addr)
+	log.Printf("    Call graph: http://%s/diagram", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("server failed: %v", err)
@@ -453,6 +502,15 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize generates. A second request that arrives while one is in
+	// flight gets a clear 409 instead of silently stacking another full
+	// engine run on top of the first.
+	if !s.genMu.TryLock() {
+		writeError(w, http.StatusConflict, "generation already in progress — wait for it to finish")
+		return
+	}
+	defer s.genMu.Unlock()
+
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
@@ -466,6 +524,20 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		req.OpenAPIVersion = "3.1.0"
 	}
 
+	// Resolve and validate the project dir before touching anything else.
+	// Falls back to the currently-selected dir when the request omits it
+	// (older clients, programmatic callers).
+	dir := strings.TrimSpace(req.Dir)
+	if dir == "" {
+		dir = s.currentDir()
+	}
+	abs, err := validateProjectDir(dir)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project dir: "+err.Error())
+		return
+	}
+	s.setDir(abs)
+
 	apiCfg, err := buildAPISpecConfig(&req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -473,6 +545,13 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
+
+	// Reset progress at the start of each generate so stale phase strings
+	// from a previous run don't leak into the new one.
+	s.mu.Lock()
+	s.genPhase = "loading packages…"
+	s.genPhaseAt = time.Now()
+	s.mu.Unlock()
 
 	engCfg := &engine.EngineConfig{
 		InputDir:                     s.currentDir(),
@@ -492,6 +571,15 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
 		Verbose:                      s.cfg.Verbose,
+		OnPhase: func(phase string, elapsed time.Duration) {
+			// Pushed by the engine at each major phase boundary. The UI
+			// polls /api/generate/progress to surface this as the live
+			// "what is it doing right now?" hint.
+			s.mu.Lock()
+			s.genPhase = phase
+			s.genPhaseAt = time.Now()
+			s.mu.Unlock()
+		},
 	}
 	if req.Info.Contact != nil {
 		engCfg.ContactName = req.Info.Contact.Name
@@ -508,6 +596,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.mu.Lock()
 		s.lastErr = err.Error()
+		s.genPhase = ""
 		s.mu.Unlock()
 		writeError(w, http.StatusInternalServerError, "generation failed: "+err.Error())
 		return
@@ -527,6 +616,8 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	s.currentCfg = apiCfg
 	s.lastGen = now
 	s.lastErr = ""
+	// Clear the live phase so the next poll reports no work in flight.
+	s.genPhase = ""
 	if summary != nil {
 		if s.metaCache == nil {
 			s.metaCache = make(map[string]*MetadataSummary)
@@ -541,6 +632,37 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		PathCount:   len(out.Paths),
 		GeneratedAt: now,
 		DurationMs:  time.Since(start).Milliseconds(),
+	})
+}
+
+// handleGenerateProgress returns the most-recent engine phase label and how
+// long it has been running. The UI polls this once a second during a
+// generate so users can see *which* stage is slow instead of staring at a
+// frozen-looking spinner.
+func (s *UIServer) handleGenerateProgress(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	phase := s.genPhase
+	at := s.genPhaseAt
+	s.mu.RUnlock()
+
+	// Probe the generate mutex without blocking. If we can acquire it, no
+	// generate is running — release immediately. If not, a generate is in
+	// flight.
+	inFlight := true
+	if s.genMu.TryLock() {
+		inFlight = false
+		s.genMu.Unlock()
+	}
+
+	var sinceMs int64
+	if !at.IsZero() {
+		sinceMs = time.Since(at).Milliseconds()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"phase":    phase,
+		"sinceMs":  sinceMs,
+		"inFlight": inFlight,
 	})
 }
 
