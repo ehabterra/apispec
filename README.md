@@ -249,6 +249,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Parameter tracing across the call graph; arguments mapped to parameters.
 - Method chaining and nested call expressions.
 - Conditional response status codes — when a status variable is reassigned across `if`/`else` branches with distinct HTTP codes, APISpec emits one response per status, sharing the body schema.
+- Wrapper/envelope response specialisation — when a handler's payload flows through a shared helper whose field is declared `interface{}`/`any` (e.g. `RespondWithSuccess(w, msg, data, code)` → `NewEnvelope{Data: data}`), APISpec recovers the concrete per-route payload type from the call site and emits an `allOf` of the base envelope `$ref` plus a `data` override, instead of a generic `object`.
 - External package types automatically resolved to underlying primitives (with `externalTypes` for custom overrides).
 - `go-playground/validator` tags mapped to OpenAPI constraints.
 - CGO packages can be skipped to avoid build errors.
@@ -375,6 +376,56 @@ field types (`itemReq` here) to their own components with `$ref`. Nested
 anonymous structs stay inlined. See `testdata/anonymous_struct/` for a
 worked example covering primitive fields, named-type fields, nested
 inline structs, and inline response bodies.
+
+</details>
+
+<details>
+<summary><strong>Wrapper / envelope response specialisation</strong></summary>
+
+Many services wrap every response in a shared envelope whose payload field
+is `interface{}` — so the concrete type is only knowable at the call site:
+
+```go
+type Envelope struct {
+    Message string      `json:"message"`
+    Data    interface{} `json:"data"`
+    Code    int         `json:"code"`
+}
+
+func NewEnvelope(message string, data interface{}, code int) *Envelope {
+    return &Envelope{Message: message, Data: data, Code: code}
+}
+
+func RespondWithSuccess(w http.ResponseWriter, message string, data interface{}, code int) {
+    response := NewEnvelope(message, data, code)
+    _ = json.NewEncoder(w).Encode(response)
+}
+
+func listOrders(w http.ResponseWriter, r *http.Request) {
+    common.RespondWithSuccess(w, "ok", orders.Order{...}, http.StatusOK)
+}
+```
+
+APISpec follows the assignment + constructor + parameter chain
+(`response` → `NewEnvelope`'s return literal → the `Data` field's bound
+parameter → the helper's `ParamArgMap`) to recover the caller-site payload
+type, then composes a per-route schema:
+
+```yaml
+allOf:
+  - $ref: '#/components/schemas/Envelope'   # base wrapper (message, code, …)
+  - type: object
+    properties:
+      data:
+        $ref: '#/components/schemas/Order'   # recovered per-route payload
+```
+
+Only genuinely generic fields (`interface{}`/`any`) are overridden;
+concrete fields like `message`/`code` keep rendering from the base schema.
+The recovered payload type is always registered as a component, so the
+`data` `$ref` never dangles. See `testdata/wrapped_response/` for a worked
+example (composite-literal payloads *and* a `var`-declared DTO with a
+`[]any` field passed by value).
 
 </details>
 

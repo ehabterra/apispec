@@ -514,10 +514,23 @@ func handleEllipsis(e *ast.Ellipsis, info *types.Info, pkgName string, fset *tok
 func handleFuncType(e *ast.FuncType, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) *CallArgument {
 	var params []*CallArgument
 	if e.Params != nil {
-		params = make([]*CallArgument, len(e.Params.List))
-		for i, field := range e.Params.List {
-			fieldType := ExprToCallArgument(field.Type, info, pkgName, fset, meta)
-			params[i] = fieldType
+		params = make([]*CallArgument, 0, len(e.Params.List))
+		for _, field := range e.Params.List {
+			// Attach the declared parameter name to the type
+			// CallArgument so downstream consumers can identify
+			// positional parameters by name (e.g. wrapper-response
+			// specialisation). A field can declare multiple names
+			// (`a, b int`), so each name yields its own positional
+			// arg.
+			if len(field.Names) == 0 {
+				params = append(params, ExprToCallArgument(field.Type, info, pkgName, fset, meta))
+				continue
+			}
+			for _, name := range field.Names {
+				paramArg := ExprToCallArgument(field.Type, info, pkgName, fset, meta)
+				paramArg.SetName(name.Name)
+				params = append(params, paramArg)
+			}
 		}
 	}
 

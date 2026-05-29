@@ -720,6 +720,18 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 
 		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+
+		// Wrapper specialisation: when the body resolves to a struct
+		// whose fields are bound to constructor parameters at the
+		// helper boundary (e.g. `response := NewEnvelope(msg, data,
+		// code)` inside RespondWithSuccess), recover the caller-site
+		// concrete type for each bound field and compose an `allOf`
+		// override so per-route schemas reflect the actual payload
+		// type instead of the wrapper's declared `interface{}`.
+		if overrides := r.collectWrapperOverrides(arg, node); len(overrides) > 0 {
+			schema = specialiseWrapperSchema(schema, overrides, bodyType, route.UsedTypes, route.Metadata, r.cfg)
+		}
+
 		respInfo.Schema = schema
 	}
 

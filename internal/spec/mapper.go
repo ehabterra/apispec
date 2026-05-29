@@ -1724,8 +1724,14 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			keyType := goType[startIdx+4 : endIdx]
 			valueType := strings.TrimSpace(goType[endIdx+1:])
 
-			// add package name to value type
-			if startIdx > 0 {
+			// add package name to value type — but only when the value
+			// is a project-local named type that needs qualification.
+			// Builtins (interface{}, any, string, …) must stay bare:
+			// otherwise the recursive call sees e.g.
+			// "pkg.interface{}", falls into the unresolved-external
+			// branch, and emits a $ref to a component nothing
+			// populates (the Redoc "Invalid reference token" error).
+			if startIdx > 0 && !metadata.IsPrimitiveType(valueType) {
 				valueType = goType[:startIdx] + "." + valueType
 			}
 
