@@ -42,24 +42,38 @@ func BuildExportMarkdown(rep *OverviewReport, opts ExportOptions) string {
 	b.WriteString("# apispec — issues to resolve\n\n")
 	fmt.Fprintf(&b, "%s\n\n", rep.Summary())
 
+	// Nothing to fix → don't emit an AI prompt or dump the config. A clean
+	// spec needs no action, so the export is just a one-line clean bill.
 	if len(warns) == 0 {
-		b.WriteString("No blocking issues were detected — the spec resolved cleanly. ")
-		b.WriteString("You can still ask for review suggestions on the config below.\n\n")
-	} else {
-		fmt.Fprintf(&b, "There are %d issue(s). For **each**, suggest the *smallest* fix and give it verbatim — either:\n", len(warns))
-		b.WriteString("- (A) a Go code change in the handler/type, or\n")
-		b.WriteString("- (B) an apispec config entry (`externalTypes` / `typeMapping` / `overrides`) to add.\n")
-		b.WriteString("State which you chose and why.\n\n")
+		b.WriteString("No blocking issues were detected — the spec resolved cleanly. Nothing to fix.\n")
+		return b.String()
+	}
 
-		for idx, is := range warns {
-			fmt.Fprintf(&b, "## %d. %s %s\n", idx+1, is.Method, red(is.Path))
-			fmt.Fprintf(&b, "- **Kind:** %s\n", is.Kind)
-			fmt.Fprintf(&b, "- **Problem:** %s\n", red(is.Detail))
-			if is.Ref != "" {
-				fmt.Fprintf(&b, "- **Schema/component:** `%s`\n", red(is.Ref))
+	modPrefix := moduleRefPrefix(opts.ModulePath)
+	inModule := func(ref string) bool {
+		return modPrefix != "" && strings.HasPrefix(ref, modPrefix)
+	}
+
+	fmt.Fprintf(&b, "There are %d issue(s). Suggest the *smallest* fix for **each** — but first classify the type, because the right fix differs:\n\n", len(warns))
+	b.WriteString("- **In-module type** (defined in your own module): apispec should resolve it automatically, so a placeholder almost always means the analyzer never saw the definition — prefer **(A) a Go code / analysis fix**. Common causes: the package failed to type-check and was skipped (re-run with `-verbose` and look for \"Skipping package … due to errors\"), the type uses generics/embedding/aliases the resolver didn't follow, or the body/response isn't assigned in a traceable way. Add a config entry only as a last resort — it hand-writes a schema apispec should derive, and it rots when the type changes.\n")
+	b.WriteString("- **External type** (third-party, outside your module): prefer **(B) an apispec config entry** (`externalTypes` / `typeMapping` / `overrides`) mapping it to an explicit schema — like the existing `uuid.UUID` entry.\n")
+	b.WriteString("State the class, which option you chose, and why. Give the fix verbatim.\n\n")
+
+	for idx, is := range warns {
+		fmt.Fprintf(&b, "## %d. %s %s\n", idx+1, is.Method, red(is.Path))
+		fmt.Fprintf(&b, "- **Kind:** %s\n", is.Kind)
+		fmt.Fprintf(&b, "- **Problem:** %s\n", red(is.Detail))
+		if is.Ref != "" {
+			fmt.Fprintf(&b, "- **Schema/component:** `%s`\n", red(is.Ref))
+			if modPrefix != "" {
+				if inModule(is.Ref) {
+					b.WriteString("- **Type class:** in-module → should auto-resolve; prefer a code/analysis fix (A)\n")
+				} else {
+					b.WriteString("- **Type class:** external → prefer a config entry (B)\n")
+				}
 			}
-			b.WriteString("\n")
 		}
+		b.WriteString("\n")
 	}
 
 	if strings.TrimSpace(opts.ConfigYAML) != "" {
@@ -69,6 +83,17 @@ func BuildExportMarkdown(rep *OverviewReport, opts ExportOptions) string {
 	}
 
 	return b.String()
+}
+
+// moduleRefPrefix sanitizes the module path the same way schema component
+// names are built (dots and slashes → underscores), so an in-module schema
+// ref can be recognised by a simple prefix check. Returns "" when the module
+// path is unknown, in which case callers should skip classification.
+func moduleRefPrefix(modulePath string) string {
+	if modulePath == "" {
+		return ""
+	}
+	return strings.NewReplacer("/", "_", ".", "_").Replace(modulePath)
 }
 
 // BuildEndpointExportMarkdown builds a fix-ready prompt for a single
@@ -114,12 +139,20 @@ func BuildEndpointExportMarkdown(rep *EndpointReport, opts ExportOptions) string
 			warns = append(warns, i)
 		}
 	}
+	modPrefix := moduleRefPrefix(opts.ModulePath)
 	if len(warns) > 0 {
 		b.WriteString("## Problem(s)\n")
 		for _, is := range warns {
 			fmt.Fprintf(&b, "- **%s** — %s", is.Kind, red(is.Detail))
 			if is.Ref != "" {
 				fmt.Fprintf(&b, " (`%s`)", red(is.Ref))
+				if modPrefix != "" {
+					if strings.HasPrefix(is.Ref, modPrefix) {
+						b.WriteString(" — _in-module type; should auto-resolve, prefer a code/analysis fix_")
+					} else {
+						b.WriteString(" — _external type; prefer a config entry_")
+					}
+				}
 			}
 			b.WriteString("\n")
 		}
@@ -154,9 +187,7 @@ func BuildEndpointExportMarkdown(rep *EndpointReport, opts ExportOptions) string
 	}
 
 	b.WriteString("## What I need\n")
-	b.WriteString("Suggest the smallest fix for the problem(s) above — either a Go code change ")
-	b.WriteString("in the handler/types, or an apispec config entry (`externalTypes` / `typeMapping` / `overrides`). ")
-	b.WriteString("Give it verbatim and say which you chose.\n")
+	b.WriteString("Suggest the smallest fix for the problem(s) above. For an **in-module type** (your own module) a placeholder usually means the analyzer didn't see the definition — prefer a Go code/analysis fix (check for a skipped package, generics/embedding the resolver missed, or an untraceable assignment). For an **external type** prefer an apispec config entry (`externalTypes` / `typeMapping` / `overrides`). Give the fix verbatim and say which class and option you chose.\n")
 	return b.String()
 }
 
@@ -202,6 +233,29 @@ func readSourceWindow(pos string, before, after int) string {
 		out = append(out, sc.Text())
 	}
 	return strings.Join(out, "\n")
+}
+
+// PosFile returns just the file path of a "file:line[:col]" position (empty
+// when unparseable). Callers use it to validate the path before reading.
+func PosFile(pos string) string {
+	f, _ := parsePos(pos)
+	return f
+}
+
+// SourceSnippet reads a window of source around a file:line position. It
+// returns the code, the 1-based line the window starts at, and the target
+// line itself (so the UI can number lines and highlight the call site).
+// Best-effort: returns ("", 0, 0) on any problem.
+func SourceSnippet(pos string, before, after int) (code string, startLine, targetLine int) {
+	file, line := parsePos(pos)
+	if file == "" || line <= 0 {
+		return "", 0, 0
+	}
+	start := line - before
+	if start < 1 {
+		start = 1
+	}
+	return readSourceWindow(pos, before, after), start, line
 }
 
 // parsePos splits "file:line:col" (col optional). File paths may contain

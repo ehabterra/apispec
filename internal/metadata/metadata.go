@@ -129,7 +129,7 @@ var processAssignmentCount int
 
 // GenerateMetadata extracts all metadata and call graph info
 func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet) *Metadata {
-	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil)
+	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil, "")
 }
 
 // VerboseLogger is the cross-cutting logging contract for the analyzer
@@ -144,7 +144,11 @@ type VerboseLogger interface {
 	Warnf(format string, args ...any)
 }
 
-func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger) *Metadata {
+// modulePath, when non-empty, is the authoritative module path (read from
+// go.mod by the caller). It's preferred over inferring the path from import
+// paths, which is only a heuristic and mis-detects when third-party packages
+// are analyzed alongside the project (see the inference block below).
+func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger, modulePath string) *Metadata {
 	funcMap := BuildFuncMap(pkgs)
 
 	if logger != nil {
@@ -154,8 +158,9 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		logger.Printf("Processing %d packages...\n", len(pkgs))
 	}
 
-	// Determine the current module path from import paths
-	var currentModulePath string
+	// Determine the current module path. Prefer the authoritative value the
+	// caller read from go.mod; only infer it from import paths as a fallback.
+	currentModulePath := modulePath
 	var packagePaths []string
 
 	// Collect all unique package paths
@@ -167,8 +172,11 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		}
 	}
 
-	// Find the longest common prefix among all package paths
-	if len(packagePaths) > 0 {
+	// Fallback: infer the module path as the longest common prefix among all
+	// package paths. This is heuristic — when third-party deps are analyzed
+	// too, the common prefix can collapse (e.g. to "github.com/"), which
+	// misclassifies project vs library packages. Hence go.mod is preferred.
+	if currentModulePath == "" && len(packagePaths) > 0 {
 		currentModulePath = packagePaths[0]
 		for _, path := range packagePaths[1:] {
 			// Find common prefix

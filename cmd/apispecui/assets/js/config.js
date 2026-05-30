@@ -3,10 +3,14 @@
 // AND the framework detection patterns (routes / request body / responses
 // / parameters / mounts / request context). Everything is bound to the
 // store and sent (structured) to /api/generate — no legacy editor.
-import { html, useState } from "/assets/js/preact.js";
+import { html, useState, useEffect, createContext, useContext } from "/assets/js/preact.js";
 import { useStore, setConfig, setState } from "/assets/js/store.js";
 import { openLoadConfig, openSaveConfig, resetFrameworkDefaults } from "/assets/js/actions.js";
 import { Info } from "/assets/js/components/charts.js";
+
+// Shares the config toolbar's filter query and expand/collapse signal with
+// every Section without threading props through each one.
+const ConfigUI = createContext({ query: "", bulk: { n: 0, open: false } });
 
 /* ---- small field helpers ------------------------------------------- */
 const txt = (label, value, onInput, ph = "") => html`
@@ -31,15 +35,30 @@ const toLines = (v) =>
     .filter(Boolean);
 
 function Section({ title, hint, help, desc, children, openDefault = false }) {
+  const { query, bulk } = useContext(ConfigUI);
   const [open, setOpen] = useState(openDefault);
+
+  // Apply an Expand-all / Collapse-all signal (bump bulk.n to broadcast).
+  useEffect(() => {
+    if (bulk && bulk.n > 0) setOpen(bulk.open);
+  }, [bulk && bulk.n]);
+
+  // Filtering: hide non-matching sections and auto-expand matches so the
+  // result is immediately readable. Matches title, help and description.
+  const q = (query || "").trim().toLowerCase();
+  if (q && !(title + " " + (help || "") + " " + (desc || "")).toLowerCase().includes(q)) return "";
+  const isOpen = q ? true : open;
+
+  const hasCount = hint !== undefined && hint !== null && hint !== "";
   return html`
-    <div class=${"section" + (open ? " open" : "")}>
+    <div class=${"section" + (isOpen ? " open" : "")}>
       <div class="section-head" onClick=${() => setOpen((o) => !o)}>
         <span class="chev">▸</span><span>${title}</span>
         ${help && html`<${Info} text=${help} />`}
-        ${hint && html`<span class="spacer"></span><span class="muted" style="font-size:var(--fs-xs)">${hint}</span>`}
+        <span class="spacer"></span>
+        ${hasCount ? html`<span class="sec-count">${hint}</span>` : ""}
       </div>
-      ${open &&
+      ${isOpen &&
       html`<div class="section-body">
         ${desc && html`<p class="muted" style="font-size:var(--fs-sm);margin:0 0 var(--sp-3)">${desc}</p>`}
         ${children}
@@ -54,6 +73,11 @@ const RowDelete = (onClick) =>
 export function ConfigMode() {
   const s = useStore();
   const c = s.config;
+
+  // Config toolbar: live filter + expand/collapse-all (shared via ConfigUI).
+  const [query, setQuery] = useState("");
+  const [bulk, setBulk] = useState({ n: 0, open: false });
+  const expandAll = (open) => setBulk((b) => ({ n: b.n + 1, open }));
 
   // generic list ops bound to a config key
   const setKey = (k, v) => setConfig({ [k]: v });
@@ -83,6 +107,7 @@ export function ConfigMode() {
   const setFC = (key, value) => setState({ frameworkConfig: { ...fc, [key]: value } });
 
   return html`
+    <${ConfigUI.Provider} value=${{ query, bulk }}>
     <div class="mode-split">
       <div class="leftpanel">
         <div class="pad" style="border-bottom:1px solid var(--border)">
@@ -106,20 +131,31 @@ export function ConfigMode() {
         </div>
       </div>
 
-      <div class="content pad">
+      <div class="content">
+        <div class="config-toolbar pad">
+          <span class="ct-search">
+            <span class="ct-ico">⌕</span>
+            <input class="input" placeholder="Filter settings…" value=${query} onInput=${(e) => setQuery(e.target.value)} />
+            ${query && html`<button class="ct-clear" title="Clear filter" onClick=${() => setQuery("")}>✕</button>`}
+          </span>
+          <span class="spacer"></span>
+          <button class="btn ghost sm" title="Expand all sections" onClick=${() => expandAll(true)}>⊞ Expand all</button>
+          <button class="btn ghost sm" title="Collapse all sections" onClick=${() => expandAll(false)}>⊟ Collapse all</button>
+        </div>
         <div style="width:100%">
-          <${Section} title="API information" openDefault=${true}>
+          <${Section} title="API information" help="Document metadata shown at the top of the spec and docs UI — the API title, version and description. Example: title 'User Service API', version '1.0.0'. The description supports Markdown (headings, lists, links)." openDefault=${true}>
             ${txt("Title", c.info?.title, (e) => setInfo({ title: e.target.value }))}
             ${txt("Version", c.info?.version, (e) => setInfo({ version: e.target.value }))}
             ${area("Description", c.info?.description, (e) => setInfo({ description: e.target.value }))}
           <//>
 
-          <${Section} title="External docs">
+          <${Section} title="External docs" help="An optional link to documentation hosted elsewhere (e.g. your developer portal or a guide). Renders as a 'Find out more' link in Swagger/Redoc. Example: URL https://docs.example.com, description 'Full developer guide'.">
+
             ${txt("URL", c.externalDocs?.url, (e) => setExtDocs({ url: e.target.value }), "https://…")}
             ${txt("Description", c.externalDocs?.description, (e) => setExtDocs({ description: e.target.value }))}
           <//>
 
-          <${Section} title="Servers" hint=${`${(c.servers || []).length}`}>
+          <${Section} title="Servers" help="Base URLs the API is served from, shown in the Servers dropdown of Swagger/Redoc/Scalar. List one per environment, e.g. https://api.example.com (Production) and http://localhost:8080 (Local). URLs may use variables like https://{host}:{port}/v1." hint=${`${(c.servers || []).length}`}>
             ${(c.servers || []).map(
               (sv, i) => html`
                 <div class="card">
@@ -135,7 +171,7 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("servers", { url: "", description: "" })}>+ Add server</button>
           <//>
 
-          <${Section} title="Tags" hint=${`${(c.tags || []).length}`}>
+          <${Section} title="Tags" help="Named groups that organise operations into sections in the docs UI. Routes are usually tagged automatically from their mount/group prefix; add tags here to give them an order and a description. Example: name 'Users', description 'Account and profile endpoints'." hint=${`${(c.tags || []).length}`}>
             ${(c.tags || []).map(
               (t, i) => html`
                 <div class="card">
@@ -151,13 +187,15 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("tags", { name: "", description: "" })}>+ Add tag</button>
           <//>
 
-          <${Section} title="Defaults">
+          <${Section} title="Defaults" help="Fallback content-types and status code used when a handler doesn't make them explicit in code. Typical values: request & response content-type application/json, default response status 200. A per-pattern 'Default content-type' or an override can still take precedence.">
+
             ${txt("Request content-type", c.defaults?.requestContentType, (e) => setDefaults({ requestContentType: e.target.value }), "application/json")}
             ${txt("Response content-type", c.defaults?.responseContentType, (e) => setDefaults({ responseContentType: e.target.value }), "application/json")}
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
           <//>
 
-          <${Section} title="Include / exclude filters">
+          <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
+
             <div class="grid-cards" style="grid-template-columns:1fr 1fr">
               ${["include", "exclude"].map(
                 (which) => html`
@@ -177,7 +215,7 @@ export function ConfigMode() {
             </div>
           <//>
 
-          <${Section} title="Type mappings" hint=${`${(c.typeMapping || []).length}`}>
+          <${Section} title="Type mappings" help="Map a Go type to an explicit OpenAPI type+format for every occurrence. Use when apispec CAN see the type but you want a specific representation. Examples: time.Time → string/date-time · uuid.UUID → string/uuid · domain.UserStatus → string with enum [active, inactive, pending]." hint=${`${(c.typeMapping || []).length}`}>
             ${(c.typeMapping || []).map(
               (m, i) => html`
                 <div class="card">
@@ -196,7 +234,7 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("typeMapping", { goType: "", openapiType: { type: "string" } })}>+ Add mapping</button>
           <//>
 
-          <${Section} title="External types" hint=${`${(c.externalTypes || []).length}`}>
+          <${Section} title="External types" help="Like type mappings, but for types apispec can't see the source of (third-party / opaque). The fix for an 'unresolved/external placeholder type' on a NON-module type — in-module types should resolve automatically, so investigate those instead. Examples: gin.H → object (additionalProperties: true) · primitive.ObjectID → string · shared.Response → object with properties {code: integer, message: string, data: object}." hint=${`${(c.externalTypes || []).length}`}>
             ${(c.externalTypes || []).map(
               (m, i) => html`
                 <div class="card">
@@ -215,7 +253,7 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("externalTypes", { name: "", openapiType: { type: "string" } })}>+ Add external type</button>
           <//>
 
-          <${Section} title="Overrides" hint=${`${(c.overrides || []).length}`}>
+          <${Section} title="Overrides" help="Per-handler escape hatch when inference is wrong or incomplete: force a summary, response status/type or tags. Matched by fully-qualified function name. Example: function github.com/me/api/handlers.GetUser → summary 'Fetch a user by ID', response status 200, response type github.com/me/api/models.User, tags Users." hint=${`${(c.overrides || []).length}`}>
             ${(c.overrides || []).map(
               (o, i) => html`
                 <div class="card">
@@ -236,50 +274,51 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("overrides", { functionName: "" })}>+ Add override</button>
           <//>
 
-          <${Section} title="Security schemes" hint=${`${Object.keys(c.securitySchemes || {}).length}`}>
+          <${Section} title="Security schemes" help="Define auth schemes that operations reference; the active scheme becomes the Authorize button in the docs UI. Examples: a JWT 'bearerAuth' (type http, scheme bearer, bearerFormat JWT), an 'apiKeyAuth' (type apiKey, in header, name X-API-Key), or oauth2. Reference them from the top-level Security requirement." hint=${`${Object.keys(c.securitySchemes || {}).length}`}>
             <${SecuritySchemes} c=${c} />
           <//>
 
           <div class="section-group">Detection — how routes &amp; types are discovered</div>
 
-          <${Section} title="Routes" help="Patterns that recognise route registration calls (e.g. e.GET(path, handler)) and where to read the method, path and handler." hint=${`${(fc.routePatterns || []).length}`}>
+          <${Section} title="Routes" help="How route registrations are recognised, and where the method, path and handler are read from. Each pattern matches a call by the called name (Call regex) and its receiver type (Receiver type regex). Example (Gin): r.GET('/users/{id}', h) — Call regex ^(?i)(GET|POST|PUT|DELETE|PATCH)$, receiver ^.*gin\\.\\*(Engine|RouterGroup)$, method from the call name, path from arg 0, handler from arg 1." hint=${`${(fc.routePatterns || []).length}`}>
             <${PatternList} items=${fc.routePatterns} fields=${PATTERN_FIELDS.routePatterns} onChange=${(a) => setFC("routePatterns", a)} />
           <//>
-          <${Section} title="Request body" help="Patterns that recognise request-body decoding (e.g. c.Bind(&req)) and which argument's type is the body." hint=${`${(fc.requestBodyPatterns || []).length}`}>
+          <${Section} title="Request body" help="How request-body decoding is recognised and which argument's type becomes the body schema. Example (Gin): c.ShouldBindJSON(&req) — Call regex ^(?i)(ShouldBind|BindJSON|ShouldBindJSON)$, 'Type from arg' on, 'Dereference pointer' on (strips the * from *req). For generic decoders (json.Unmarshal, render.DecodeJSON) also turn on 'Require request source' and configure Request context below." hint=${`${(fc.requestBodyPatterns || []).length}`}>
             <${PatternList} items=${fc.requestBodyPatterns} fields=${PATTERN_FIELDS.requestBodyPatterns} onChange=${(a) => setFC("requestBodyPatterns", a)} />
           <//>
-          <${Section} title="Responses" help="Patterns that recognise response writes (e.g. c.JSON(status, body)) and where to read the status and body type." hint=${`${(fc.responsePatterns || []).length}`}>
+          <${Section} title="Responses" help="How response writes are recognised, and where the status code and body type are read from. Example (Gin): c.JSON(200, user) — Call regex ^(?i)(JSON|XML|YAML|ProtoBuf)$, 'Status from arg' index 0, 'Type from arg' index 1. Use 'Default status' for writers without an explicit code (e.g. 200), and 'Default content-type' to override per pattern." hint=${`${(fc.responsePatterns || []).length}`}>
             <${PatternList} items=${fc.responsePatterns} fields=${PATTERN_FIELDS.responsePatterns} onChange=${(a) => setFC("responsePatterns", a)} />
           <//>
-          <${Section} title="Parameters" help="Patterns that recognise path/query/header/cookie parameter reads (e.g. c.Param('id'))." hint=${`${(fc.paramPatterns || []).length}`}>
+          <${Section} title="Parameters" help="How path/query/header/cookie/form parameter reads are recognised. The 'Parameter location' sets where it appears in the spec. Examples (Gin): c.Param('id') → location path · c.Query('q') → location query · c.GetHeader('X-Token') → location header. The parameter name is read from the named-argument index." hint=${`${(fc.paramPatterns || []).length}`}>
             <${PatternList} items=${fc.paramPatterns} fields=${PATTERN_FIELDS.paramPatterns} onChange=${(a) => setFC("paramPatterns", a)} />
           <//>
-          <${Section} title="Mounts / groups" help="Patterns that recognise sub-router mounts/groups (e.g. r.Group('/v1')) so nested routes get the right prefix." hint=${`${(fc.mountPatterns || []).length}`}>
+          <${Section} title="Mounts / groups" help="How sub-router mounts/groups are recognised so nested routes inherit the right path prefix. Examples: Chi r.Mount('/api', sub) or r.Route('/v1', fn) · Gin r.Group('/v1'). Set 'Path from arg' (the prefix) and 'Router from arg' (the sub-router being mounted) and mark 'Is mount'." hint=${`${(fc.mountPatterns || []).length}`}>
             <${PatternList} items=${fc.mountPatterns} fields=${PATTERN_FIELDS.mountPatterns} onChange=${(a) => setFC("mountPatterns", a)} />
           <//>
-          <${Section} title="Request context" help="Constrains which values count as the request body: the handler parameter types to watch and how the body is accessed.">
+          <${Section} title="Request context" help="Disambiguates generic decoders. json.Decode / json.Unmarshal / render.DecodeJSON decode request bodies AND unrelated data (config files, internal payloads). A decoder counts as a request body only when its source traces back to a body accessor on a request-context value. Type regexes = the request types to watch (e.g. ^\\*?net/http\\.Request$, ^.*gin\\.\\*Context$). Body accessors = methods that yield the body (e.g. ^Body$, ^GetRawData$). Leave empty to fall back to receiver-only matching.">
             <${RequestContextEditor} rc=${fc.requestContext} onChange=${(v) => setFC("requestContext", v)} />
           <//>
         </div>
       </div>
     </div>
+    <//>
   `;
 }
 
 /* ---- framework detection pattern editors --------------------------- */
 
 const COMMON_MATCH = [
-  ["callRegex", "Call regex", "text", "Regex matching the called function name, e.g. ^(?i)(GET|POST|PUT|DELETE)$"],
-  ["recvTypeRegex", "Receiver type regex", "text", "Regex matching the receiver/owner type, e.g. echo(/v\\d)?\\.(Echo|Group)"],
-  ["functionNameRegex", "Function name regex", "text", "Optional — match by the enclosing function's name instead of the call."],
+  ["callRegex", "Call regex", "text", "Regex matching the called method/function name. Anchor with ^…$ and use (?i) for case-insensitive. e.g. ^(?i)(GET|POST|PUT|DELETE)$ matches Gin's verb methods; ^ShouldBindJSON$ matches one decoder."],
+  ["recvTypeRegex", "Receiver type regex", "text", "Regex matching the fully-qualified receiver/owner type of the call. e.g. ^.*gin\\.\\*(Engine|RouterGroup)$ (Gin), ^github\\.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$ (Chi), ^.*echo(/v\\d)?\\.(Echo|Group)$ (Echo). Leave blank to match any receiver."],
+  ["functionNameRegex", "Function name regex", "text", "Optional — match by the ENCLOSING function's name instead of the call (e.g. only routes registered inside RegisterRoutes)."],
 ];
 
 const PATTERN_FIELDS = {
   routePatterns: [
     ...COMMON_MATCH,
-    ["handlerArgIndex", "Handler arg index", "int", "0-based position of the handler argument."],
-    ["pathArgIndex", "Path arg index", "int", "0-based position of the path argument."],
-    ["methodArgIndex", "Method arg index", "int", "0-based position of the HTTP-method argument (if any)."],
+    ["handlerArgIndex", "Handler arg index", "int", "0-based position of the handler argument. e.g. in r.GET(path, handler) the handler is index 1."],
+    ["pathArgIndex", "Path arg index", "int", "0-based position of the path argument. e.g. in r.GET(path, handler) the path is index 0."],
+    ["methodArgIndex", "Method arg index", "int", "0-based position of the HTTP-method argument, for routers that take the method as a value. e.g. r.Handle(method, path, h) → 0."],
     ["methodFromCall", "Method from call name", "bool", "Derive the HTTP method from the called function name (e.g. GET())."],
     ["methodFromHandler", "Method from handler", "bool", "Derive the method from the handler function name."],
     ["pathFromArg", "Path from arg", "bool", "Read the path from the path argument."],
@@ -287,40 +326,40 @@ const PATTERN_FIELDS = {
   ],
   requestBodyPatterns: [
     ...COMMON_MATCH,
-    ["typeArgIndex", "Type arg index", "int", "Argument whose type is the request body."],
-    ["typeFromArg", "Type from arg", "bool", "Use the argument's type as the body type."],
-    ["typeFromReturn", "Type from return", "bool", "Use the call's return type as the body type."],
-    ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
-    ["requireRequestSource", "Require request source", "bool", "Only when the value originates from the HTTP request body."],
-    ["bodyFromReceiver", "Body from receiver", "bool", "The body comes from the call receiver (e.g. a decoder bound to r.Body)."],
-    ["bodySourceArgIndex", "Body source arg index", "int", "Argument carrying the request-body source."],
-    ["allowForGetMethods", "Allow for GET/HEAD", "bool", "Permit a request body on GET/HEAD routes."],
+    ["typeArgIndex", "Type arg index", "int", "Index of the argument whose type is the request body. e.g. render.DecodeJSON(r, &req) → 1 (combine with Dereference)."],
+    ["typeFromArg", "Type from arg", "bool", "Use the matched argument's type as the body schema. e.g. c.ShouldBindJSON(&req) → uses *req's type."],
+    ["typeFromReturn", "Type from return", "bool", "Use the call's RETURN type as the body type instead of an argument."],
+    ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type, so *CreateUserRequest becomes CreateUserRequest. Usually on for &req decoders."],
+    ["requireRequestSource", "Require request source", "bool", "Only classify as a request body when the value traces back to the HTTP request — prevents config/file decoders (json.Unmarshal of a file) from being mistaken for body decoders. Pair with Request context below."],
+    ["bodyFromReceiver", "Body from receiver", "bool", "The body comes from the call RECEIVER, not an argument — e.g. a json.Decoder bound to r.Body: dec.Decode(&req)."],
+    ["bodySourceArgIndex", "Body source arg index", "int", "Index of the argument carrying the request-body source (the io.Reader/request), used with Require request source."],
+    ["allowForGetMethods", "Allow for GET/HEAD", "bool", "Permit a request body on GET/HEAD routes (off by default, since those rarely carry one)."],
   ],
   responsePatterns: [
     ...COMMON_MATCH,
-    ["statusArgIndex", "Status arg index", "int", "Argument holding the HTTP status code."],
-    ["typeArgIndex", "Type arg index", "int", "Argument whose type is the response body."],
-    ["statusFromArg", "Status from arg", "bool", "Read the status from the status argument."],
-    ["typeFromArg", "Type from arg", "bool", "Use the argument's type as the response type."],
-    ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
-    ["defaultStatus", "Default status", "int", "Status used when none is detected (e.g. 200)."],
-    ["defaultContentType", "Default content-type", "text", "Overrides the default content type for this pattern."],
+    ["statusArgIndex", "Status arg index", "int", "Index of the argument holding the HTTP status code. e.g. c.JSON(200, body) → 0."],
+    ["typeArgIndex", "Type arg index", "int", "Index of the argument whose type is the response body. e.g. c.JSON(200, body) → 1."],
+    ["statusFromArg", "Status from arg", "bool", "Read the status code from the status argument (vs using Default status)."],
+    ["typeFromArg", "Type from arg", "bool", "Use the matched argument's type as the response schema."],
+    ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type (e.g. *User → User)."],
+    ["defaultStatus", "Default status", "int", "Status used when the writer has no explicit code. e.g. 200 for c.JSON-style writers, 204 for an empty response."],
+    ["defaultContentType", "Default content-type", "text", "Content-type for this pattern when not otherwise known. e.g. text/plain; charset=utf-8 for a c.String writer."],
   ],
   paramPatterns: [
     ...COMMON_MATCH,
-    ["paramIn", "Parameter location", "select:path,query,header,cookie,form", "Where this parameter is read from."],
-    ["paramArgIndex", "Param arg index", "int", "Argument holding the parameter name."],
-    ["typeArgIndex", "Type arg index", "int", "Argument whose type is the parameter type."],
-    ["typeFromArg", "Type from arg", "bool", "Use the argument's type as the parameter type."],
+    ["paramIn", "Parameter location", "select:path,query,header,cookie,form", "Where this parameter appears in the spec. e.g. c.Param→path, c.Query→query, c.GetHeader→header, c.Cookie→cookie, c.PostForm→form."],
+    ["paramArgIndex", "Param arg index", "int", "Index of the argument holding the parameter NAME. e.g. c.Query('q') → 0."],
+    ["typeArgIndex", "Type arg index", "int", "Index of the argument whose type is the parameter type (for typed getters)."],
+    ["typeFromArg", "Type from arg", "bool", "Use the matched argument's type as the parameter type (otherwise defaults to string)."],
     ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
   ],
   mountPatterns: [
     ...COMMON_MATCH,
-    ["pathArgIndex", "Path arg index", "int", "Argument holding the mount path / prefix."],
-    ["routerArgIndex", "Router arg index", "int", "Argument holding the sub-router."],
-    ["pathFromArg", "Path from arg", "bool", "Read the mount path from the path argument."],
-    ["routerFromArg", "Router from arg", "bool", "Track the sub-router from the router argument."],
-    ["isMount", "Is mount", "bool", "Treat this call as a router mount/group."],
+    ["pathArgIndex", "Path arg index", "int", "Index of the mount path/prefix argument. e.g. r.Mount('/api', sub) → 0."],
+    ["routerArgIndex", "Router arg index", "int", "Index of the sub-router argument. e.g. r.Mount('/api', sub) → 1."],
+    ["pathFromArg", "Path from arg", "bool", "Read the prefix from the path argument and prepend it to nested routes."],
+    ["routerFromArg", "Router from arg", "bool", "Follow the sub-router argument so its routes are attached under the prefix."],
+    ["isMount", "Is mount", "bool", "Treat this call as a router mount/group (e.g. Chi Mount/Route, Gin Group)."],
   ],
 };
 

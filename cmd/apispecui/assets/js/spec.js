@@ -74,7 +74,7 @@ function Onboarding({ s, onGenerate, onBrowse }) {
           </div>
           <div class="field" style="margin-bottom:0">
             <label>③ Generate</label>
-            <button class="btn" disabled=${s.generating || !s.project} onClick=${onGenerate}>
+            <button class="btn" disabled=${s.generating || !s.project} style="display: block" onClick=${onGenerate}>
               ${s.generating ? `Generating… ${s.genPhase || ""}` : "Generate spec ▸"}
             </button>
           </div>

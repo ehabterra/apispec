@@ -19,9 +19,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"go/build"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -286,6 +288,7 @@ func main() {
 	mux.HandleFunc("/api/insight/overview", srv.handleInsightOverview)
 	mux.HandleFunc("/api/insight/endpoint", srv.handleInsightEndpoint)
 	mux.HandleFunc("/api/insight/export", srv.handleInsightExport)
+	mux.HandleFunc("/api/insight/source", srv.handleInsightSource)
 	mux.HandleFunc("/api/metadata-summary", srv.handleMetadataSummary)
 	mux.HandleFunc("/api/health", srv.handleHealth)
 
@@ -1304,6 +1307,100 @@ func (s *UIServer) handleInsightEndpoint(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, insight.BuildEndpoint(sp, mt, method, path))
+}
+
+// handleInsightSource returns a window of Go source around a "file:line"
+// position (taken from a resolution-trace node) so the UI can show the
+// caller/callee code inline. The file must live under the analyzed module,
+// GOROOT, or the module cache — never an arbitrary path — so this can't be
+// used to read unrelated files off disk.
+func (s *UIServer) handleInsightSource(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	pos := r.URL.Query().Get("pos")
+	file := insight.PosFile(pos)
+	if file == "" {
+		writeError(w, http.StatusBadRequest, "pos is required (file:line)")
+		return
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad path: "+err.Error())
+		return
+	}
+	if !s.sourcePathAllowed(abs) {
+		writeError(w, http.StatusForbidden, "source is outside the analyzed module / module cache")
+		return
+	}
+	before := queryInt(r, "before", 3)
+	after := queryInt(r, "after", 26)
+	code, start, line := insight.SourceSnippet(pos, before, after)
+	if code == "" {
+		writeError(w, http.StatusNotFound, "source not available for this position")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"file":      abs,
+		"code":      code,
+		"startLine": start,
+		"line":      line,
+	})
+}
+
+// sourcePathAllowed reports whether abs is inside a directory we're willing to
+// serve source from: the analyzed module root, GOROOT (stdlib), or the Go
+// module cache (third-party deps). Everything else is rejected.
+func (s *UIServer) sourcePathAllowed(abs string) bool {
+	root, _ := findModuleRoot(s.currentDir())
+	roots := []string{root, build.Default.GOROOT, goModCache()}
+	for _, base := range roots {
+		if base == "" {
+			continue
+		}
+		baseAbs, err := filepath.Abs(base)
+		if err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(baseAbs, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// goModCache returns the Go module cache directory (where third-party source
+// lives), honoring GOMODCACHE then falling back to $GOPATH/pkg/mod.
+func goModCache() string {
+	if mc := os.Getenv("GOMODCACHE"); mc != "" {
+		return mc
+	}
+	gp := os.Getenv("GOPATH")
+	if gp == "" {
+		gp = build.Default.GOPATH
+	}
+	if gp == "" {
+		return ""
+	}
+	return filepath.Join(gp, "pkg", "mod")
+}
+
+// queryInt reads an int query param, returning def when absent/invalid, and
+// clamps to a sane [0, 200] window so a request can't ask for a huge slice.
+func queryInt(r *http.Request, key string, def int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	if n > 200 {
+		n = 200
+	}
+	return n
 }
 
 // handleInsightExport returns the "Export to AI" bundle. scope=all

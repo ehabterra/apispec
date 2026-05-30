@@ -56,7 +56,8 @@ const INFO = {
   tags: "OpenAPI tags grouping the routes.",
   toptypes: "Schemas referenced most often across request/response bodies.",
   callgraph: "Coarse size of the analysed call graph backing the spec.",
-  fanout: "Average and max number of direct calls per function in this endpoint's call subtree. Higher = more branching.",
+  fanout:
+    "How many distinct functions each function directly calls, within this endpoint's call subtree (Go builtins like len/append and standard-library calls like fmt/net/http are excluded, so only your code + frameworks count). Average = total direct calls ÷ functions that make at least one call — leaf functions (0 calls) are left out of the divisor, so it reflects the branching factor among branching functions rather than being diluted toward 0 by leaves. Max = the single most-branching function. Example: handler calls 3, A calls 2, B calls 0 → avg (3+2)/2 = 2.5, max 3. Higher = more branching.",
   paths:
     "How many distinct routes a call can take from the handler down to a leaf function. Branches multiply: if the handler calls A and B, and each calls C and D, that's 4 paths. Expand “Show paths” below to see exactly where the number comes from. '+' = traversal limit hit.",
   depth: "Longest call-chain depth from the handler. '+' = traversal limit reached.",
@@ -64,7 +65,7 @@ const INFO = {
   ptrval: "Arguments passed by pointer vs by value across the subtree (memory-safety vs copy cost).",
   chain: "Fluent method-chain depth at the handler (e.g. r.Group().Use()).",
   grade:
-    "Heuristic complexity grade (A best … D worst) blending call-path fan-out, depth, mutations and unresolved types. A readability indicator — NOT a correctness or performance guarantee. Built on AST, not SSA.",
+    "Heuristic complexity grade (A best … D worst) blending call-path fan-out, depth, mutations and unresolved types. A readability indicator — NOT a correctness or performance guarantee (built on AST, not SSA). The bars below are NOT a percent of a total: each gauges its metric against a fixed reference ceiling (a 'notably high' value, e.g. fan-out 8, depth 12, paths 200), so a full bar means 'at or above that ceiling'. Hover any bar to see its ceiling. The pointer:value bar is the exception — a true proportion.",
 };
 
 /* ---- root ----------------------------------------------------------- */
@@ -131,7 +132,9 @@ function Overview({ rep, onTag }) {
   return html`
     <div class="row" style="margin-bottom:var(--sp-3)">
       <span class="spacer"></span>
-      <button class="btn" onClick=${() => setExportOpen(true)}>⤴ Export to AI</button>
+      ${warns.length
+        ? html`<button class="btn export" onClick=${() => setExportOpen(true)}>⤴ Export to AI</button>`
+        : html`<button class="btn export" disabled title="No issues to fix — nothing to export">⤴ Export to AI</button>`}
     </div>
 
     <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:var(--sp-3)">
@@ -319,13 +322,26 @@ function EndpointView({ rep, initialFilter }) {
   `;
 }
 
-const Metric = ({ label, info, value, frac, color }) => html`
-  <div class="metric">
-    <span class="m-label">${label}${info ? html`<${Info} text=${info} />` : ""}</span>
-    <span class="m-value">${value}</span>
-    ${frac != null ? html`<div class="m-meter"><span style=${`width:${Math.min(100, frac * 100)}%${color ? ";background:" + color : ""}`}></span></div>` : ""}
-  </div>
-`;
+// Metric — a labelled value with an optional meter bar. The bar is a visual
+// gauge, not a percent of a total: pass `cap` (the reference ceiling that fills
+// the bar) and the hover tooltip explains it, or pass `barTip` to override the
+// wording (e.g. for a true proportion like pointer:value).
+const Metric = ({ label, info, value, frac, color, cap, barTip }) => {
+  const tip =
+    barTip ||
+    (cap != null
+      ? `${Math.round(Math.min(1, frac) * 100)}% of the reference ceiling (${cap}). The bar fills as the value approaches that ceiling — it's a gauge, not a percent of a total.`
+      : `${Math.round(Math.min(1, frac) * 100)}%`);
+  return html`
+    <div class="metric">
+      <span class="m-label">${label}${info ? html`<${Info} text=${info} />` : ""}</span>
+      <span class="m-value">${value}</span>
+      ${frac != null
+        ? html`<div class="m-meter" title=${tip}><span style=${`width:${Math.min(100, frac * 100)}%${color ? ";background:" + color : ""}`}></span></div>`
+        : ""}
+    </div>
+  `;
+};
 
 // PathsBreakdown — an expandable list of the actual handler→leaf call
 // paths, so the call-paths count is inspectable ("where does 12 come
@@ -366,7 +382,14 @@ function EndpointDetail({ ep, onExport }) {
         <span class="badge">${ep.method}</span>
         <span class="mono">${ep.path}</span>
         <span class="spacer"></span>
-        <button class="btn sm" onClick=${onExport}>⤴ to AI</button>
+        <button
+          class="btn export sm"
+          disabled=${!warns.length}
+          title=${warns.length ? "Export this endpoint's issue(s), trace & source for an AI assistant" : "No issues on this endpoint — nothing to export"}
+          onClick=${onExport}
+        >
+          ⤴ to AI
+        </button>
       </div>
       <div class="muted" style="font-size:var(--fs-sm);margin-top:4px">${ep.handler}${ep.handlerPos ? " · " + ep.handlerPos : ""}</div>
     </div>
@@ -428,13 +451,16 @@ function EndpointDetail({ ep, onExport }) {
               </div>
             </div>
             <div style="margin-top:var(--sp-3)">
-              ${Metric({ label: "call fan-out", info: INFO.fanout, value: `${m.fanoutAvg.toFixed(1)} avg / ${m.fanoutMax} max`, frac: Math.min(1, m.fanoutMax / 8) })}
-              ${Metric({ label: "call-paths", info: INFO.paths, value: maxOf(m.callPaths, m.callPathsTruncated), frac: Math.min(1, m.callPaths / 200), color: "var(--info)" })}
-              ${Metric({ label: "max depth", info: INFO.depth, value: maxOf(m.maxDepth, m.depthTruncated), frac: Math.min(1, m.maxDepth / 12), color: "var(--warn)" })}
-              ${Metric({ label: "reachable fns", info: INFO.reachable, value: maxOf(m.reachable, m.depthTruncated), frac: Math.min(1, m.reachable / 100) })}
-              ${Metric({ label: "pointer : value args", info: INFO.ptrval, value: `${m.pointerArgs} : ${m.valueArgs}`, frac: ptrTotal ? m.pointerArgs / ptrTotal : 0, color: "var(--accent-2)" })}
-              ${Metric({ label: "chain depth", info: INFO.chain, value: "" + m.chainDepth, frac: Math.min(1, m.chainDepth / 6) })}
+              ${Metric({ label: "call fan-out", info: INFO.fanout, value: `${m.fanoutAvg.toFixed(1)} avg / ${m.fanoutMax} max`, frac: Math.min(1, m.fanoutMax / 8), cap: "8 max direct calls" })}
+              ${Metric({ label: "call-paths", info: INFO.paths, value: maxOf(m.callPaths, m.callPathsTruncated), frac: Math.min(1, m.callPaths / 200), color: "var(--info)", cap: "200 paths" })}
+              ${Metric({ label: "max depth", info: INFO.depth, value: maxOf(m.maxDepth, m.depthTruncated), frac: Math.min(1, m.maxDepth / 12), color: "var(--warn)", cap: "12 levels deep" })}
+              ${Metric({ label: "reachable fns", info: INFO.reachable, value: maxOf(m.reachable, m.depthTruncated), frac: Math.min(1, m.reachable / 100), cap: "100 functions" })}
+              ${Metric({ label: "pointer : value args", info: INFO.ptrval, value: `${m.pointerArgs} : ${m.valueArgs}`, frac: ptrTotal ? m.pointerArgs / ptrTotal : 0, color: "var(--accent-2)", barTip: `True proportion: ${m.pointerArgs} of ${ptrTotal || 0} args (${Math.round((ptrTotal ? m.pointerArgs / ptrTotal : 0) * 100)}%) are passed by pointer. Unlike the other bars, this one IS a real percentage.` })}
+              ${Metric({ label: "chain depth", info: INFO.chain, value: "" + m.chainDepth, frac: Math.min(1, m.chainDepth / 6), cap: "6 chained calls" })}
             </div>
+            <p class="muted" style="font-size:var(--fs-xs);margin:var(--sp-2) 0 0">
+              Bars gauge each metric against a reference ceiling (a notably-high value) — a full bar means at or above it, not a percent of a total. Hover a bar for its ceiling.
+            </p>
             <${PathsBreakdown} trace=${ep.trace} count=${m.callPaths} truncated=${m.callPathsTruncated} />
           </div>
           <div class="card">

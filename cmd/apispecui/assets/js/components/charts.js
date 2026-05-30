@@ -141,7 +141,7 @@ export function TraceDiagram({ trace }) {
   // Focus node: hovered (cursor) or pinned. When set, only its edges and
   // direct neighbours stay bright — everything else dims, so the
   // relationships of the focused node are unmistakable.
-  const focusId = (hover && hover.node.id) || (selected && selected.id) || null;
+  const focusId = (hover && hover.node.id) || (selected && selected.node.id) || null;
   const neighbors = new Set();
   if (focusId) {
     trace.edges.forEach((e) => {
@@ -149,7 +149,6 @@ export function TraceDiagram({ trace }) {
       if (e.target === focusId) neighbors.add(e.source);
     });
   }
-  const edgeActive = (e) => focusId && (e.source === focusId || e.target === focusId);
   const nodeDim = (id) => focusId && id !== focusId && !neighbors.has(id);
 
   const edgePaths = trace.edges
@@ -162,23 +161,30 @@ export function TraceDiagram({ trace }) {
         x2 = t.x - 2,
         y2 = t.y + NH / 2;
       const mx = (x1 + x2) / 2;
-      const hi = edgeActive(e);
+      // Relative to the focused node: outgoing = it calls the target (accent),
+      // incoming = it is called by the source (warn). Distinct colours make
+      // the direction of every relationship readable at a glance.
+      const out = focusId === e.source;
+      const inc = focusId === e.target;
+      const hi = out || inc;
       const dim = focusId && !hi;
+      const col = out ? "var(--accent)" : inc ? "var(--warn)" : "var(--border-strong)";
+      const marker = out ? "url(#tr-arrow-out)" : inc ? "url(#tr-arrow-in)" : "url(#tr-arrow)";
       return html`<path d=${`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none"
-        stroke=${hi ? "var(--accent)" : "var(--border-strong)"} stroke-width=${hi ? 2.2 : 1.3}
-        opacity=${dim ? 0.12 : 1} marker-end=${hi ? "url(#tr-arrow-hi)" : "url(#tr-arrow)"} />`;
+        stroke=${col} stroke-width=${hi ? 2.2 : 1.3}
+        opacity=${dim ? 0.12 : 1} marker-end=${marker} />`;
     });
 
   const nodeColor = (k) => (k === "handler" ? "var(--accent)" : k === "leaf" ? "var(--faint)" : "var(--accent-2)");
   const nodeFill = (k) => (k === "handler" ? "var(--accent-weak)" : "var(--panel-2)");
   const nodes = trace.nodes.map((n) => {
     const p = pos[n.id];
-    const isSel = selected && selected.id === n.id;
+    const isSel = selected && selected.node.id === n.id;
     const isFocus = focusId === n.id;
     return html`<g transform=${`translate(${p.x},${p.y})`} style="cursor:pointer" opacity=${nodeDim(n.id) ? 0.28 : 1}
       onMouseMove=${(e) => setHover({ node: n, x: e.clientX, y: e.clientY })}
       onMouseLeave=${() => setHover(null)}
-      onClick=${() => setSelected(n)}>
+      onClick=${(e) => setSelected({ node: n, x: e.clientX, y: e.clientY })}>
       <rect width=${NW} height=${NH} rx="6" fill=${nodeFill(n.kind)}
         stroke=${isSel ? "var(--text)" : isFocus ? "var(--accent)" : nodeColor(n.kind)}
         stroke-width=${isSel || isFocus ? 2.5 : n.kind === "handler" ? 2 : 1} />
@@ -201,13 +207,15 @@ export function TraceDiagram({ trace }) {
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--r-2);background:var(--bg)">
       <svg width=${(width + 16) * zoom} height=${(height + 16) * zoom} viewBox=${`-8 -8 ${width + 16} ${height + 16}`} style="display:block">
-        <defs>${arrow("tr-arrow", "var(--border-strong)")}${arrow("tr-arrow-hi", "var(--accent)")}</defs>
+        <defs>${arrow("tr-arrow", "var(--border-strong)")}${arrow("tr-arrow-out", "var(--accent)")}${arrow("tr-arrow-in", "var(--warn)")}</defs>
         ${edgePaths}${nodes}
       </svg>
     </div>
-    <p class="muted" style="font-size:var(--fs-xs);margin:6px 0 0">Arrows show call direction · hover a node to highlight its calls · click to pin details.</p>
-    ${selected ? html`<${NodeDetails} node=${selected} onClose=${() => setSelected(null)} />` : ""}
-    ${hover && (!selected || selected.id !== hover.node.id) ? html`<${TraceTip} node=${hover.node} x=${hover.x} y=${hover.y} />` : ""}
+    <p class="muted" style="font-size:var(--fs-xs);margin:6px 0 0">
+      Focus a node to highlight its edges: <span style="color:var(--accent)">▸ calls</span> · <span style="color:var(--warn)">◂ called by</span> · hover to preview, click to pin (the pinned card is hoverable &amp; copyable).
+    </p>
+    ${selected ? html`<${TraceTip} key=${selected.node.id} node=${selected.node} x=${selected.x} y=${selected.y} pinned onClose=${() => setSelected(null)} />` : ""}
+    ${hover && (!selected || selected.node.id !== hover.node.id) ? html`<${TraceTip} node=${hover.node} x=${hover.x} y=${hover.y} />` : ""}
   </div>`;
 }
 
@@ -217,33 +225,45 @@ const ORIGIN = {
   standard: ["standard", "var(--muted)"],
 };
 
-function TraceTip({ node, x, y }) {
+// TraceTip is the node card. As a hover preview it follows the cursor and is
+// click-through; when `pinned` (after a click) it freezes at the click point,
+// becomes mouse-interactive (selectable + copy buttons) and stays until
+// unpinned — so the user can move onto it, unlike the floating preview.
+function TraceTip({ node, x, y, pinned, onClose }) {
+  const [copied, setCopied] = useState("");
+  const [drag, setDrag] = useState(null); // {left,top} once the user has moved it
+  const [src, setSrc] = useState(null); // null | "loading" | {error} | {code,startLine,line,file}
+  const dragRef = useRef(null);
   const o = ORIGIN[node.origin] || ["", "var(--muted)"];
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const W = 300,
-    H = 150; // approximate tooltip box
+  const hasSrc = !!(src && src.code);
+  // The card widens and grows taller once source is shown.
+  const W = pinned && hasSrc ? 560 : 300;
+  const H = pinned ? (hasSrc ? 440 : 210) : 150;
   // keep on-screen: prefer cursor+offset, flip when near the right/bottom edge
-  const left = Math.max(8, Math.min(x + 14, vw - W - 8));
-  const top = y + 14 + H > vh ? Math.max(8, y - H - 8) : y + 14;
-  return html`<div class="trace-tip" style=${`left:${left}px;top:${top}px`}>
-    <div class="tt-title">${node.symbol || node.label}</div>
-    ${node.pkg ? html`<div class="tt-pkg">${node.pkg}</div>` : ""}
-    <div class="tt-badges">
-      <span class="tt-badge" style=${`color:${o[1]};border-color:${o[1]}`}>${o[0] || node.origin || "?"}</span>
-      <span class="tt-badge">${node.kind}</span>
-      <span class="tt-badge">depth ${node.depth}</span>
-    </div>
-    <div class="tt-meta">calls ${node.calls} · called by ${node.calledBy}</div>
-    ${node.pos ? html`<div class="tt-meta tt-pos">${node.pos}</div>` : ""}
-    <div class="tt-hint">click to pin &amp; copy</div>
-  </div>`;
-}
+  const baseLeft = Math.max(8, Math.min(x + 14, vw - W - 8));
+  const baseTop = y + 14 + H > vh ? Math.max(8, y - H - 8) : y + 14;
+  const left = drag ? drag.left : baseLeft;
+  const top = drag ? drag.top : baseTop;
 
-// NodeDetails is the pinned, interactive (selectable, copyable) panel
-// shown below the diagram — always on-screen, unlike the hover tooltip.
-function NodeDetails({ node, onClose }) {
-  const [copied, setCopied] = useState("");
+  // Fetch the source window around this node's file:line. Best-effort —
+  // failures (no pos, file outside the module, etc.) surface as a small note.
+  const loadSrc = async () => {
+    if (!node.pos || src === "loading") return;
+    setSrc("loading");
+    try {
+      const r = await fetch(`/api/insight/source?pos=${encodeURIComponent(node.pos)}&before=3&after=28`);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `HTTP ${r.status}`);
+      }
+      setSrc(await r.json());
+    } catch (e) {
+      setSrc({ error: e.message || "could not load source" });
+    }
+  };
+
   const allText = [
     "symbol: " + (node.symbol || node.label),
     "id: " + node.id,
@@ -263,23 +283,82 @@ function NodeDetails({ node, onClose }) {
       /* ignore */
     }
   };
-  const row = (k, v, mono) =>
-    v ? html`<div class="nd-k">${k}</div><div class=${"nd-v" + (mono ? " mono" : "")}>${v}</div>` : "";
-  return html`<div class="node-details">
-    <div class="row">
-      <strong>Pinned node</strong>
-      <span class="spacer"></span>
-      <button class="btn ghost sm" onClick=${() => copy(node.id, "id")}>${copied === "id" ? "✓" : "Copy ID"}</button>
-      <button class="btn ghost sm" onClick=${() => copy(allText, "all")}>${copied === "all" ? "✓ Copied" : "Copy all"}</button>
-      <button class="btn ghost sm" title="Unpin" onClick=${onClose}>✕</button>
+
+  // Drag the pinned card by its header. Window-level listeners track the
+  // pointer until release; clamped so the card can't be dragged off-screen.
+  const startDrag = (e) => {
+    e.preventDefault();
+    dragRef.current = { sx: e.clientX, sy: e.clientY, l: left, t: top };
+    const move = (ev) => {
+      const b = dragRef.current;
+      if (!b) return;
+      setDrag({
+        left: Math.max(0, Math.min(b.l + (ev.clientX - b.sx), vw - 40)),
+        top: Math.max(0, Math.min(b.t + (ev.clientY - b.sy), vh - 24)),
+      });
+    };
+    const up = () => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  return html`<div class=${"trace-tip" + (pinned ? " pinned" : "") + (hasSrc ? " has-src" : "")} style=${`left:${left}px;top:${top}px`}>
+    ${pinned
+      ? html`<div class="tt-drag" onPointerDown=${startDrag}>
+          <span class="tt-grip">⠿</span><span>drag to move</span>
+          <span class="spacer"></span>
+          <button class="tt-x" title="Unpin" onPointerDown=${(e) => e.stopPropagation()} onClick=${onClose}>✕</button>
+        </div>`
+      : ""}
+    <div class="tt-title">${node.symbol || node.label}</div>
+    ${node.pkg ? html`<div class="tt-pkg">${node.pkg}</div>` : ""}
+    <div class="tt-badges">
+      <span class="tt-badge" style=${`color:${o[1]};border-color:${o[1]}`}>${o[0] || node.origin || "?"}</span>
+      <span class="tt-badge">${node.kind}</span>
+      <span class="tt-badge">depth ${node.depth}</span>
     </div>
-    <div class="nd-grid">
-      ${row("symbol", node.symbol || node.label, true)}
-      ${row("id", node.id, true)}
-      ${row("package", node.pkg, true)}
-      ${row("origin", `${node.origin} · ${node.kind} · depth ${node.depth}`)}
-      ${row("calls", `${node.calls} out · ${node.calledBy} in`)}
-      ${row("position", node.pos, true)}
+    <div class="tt-meta">
+      <span style="color:var(--accent)">▸ ${node.calls} calls</span> · <span style="color:var(--warn)">◂ called by ${node.calledBy}</span>
     </div>
+    ${node.pos ? html`<div class="tt-meta tt-pos">${node.pos}</div>` : ""}
+    ${pinned
+      ? html`<div class="tt-actions">
+          <button class="btn ghost sm" onClick=${() => copy(node.id, "id")}>${copied === "id" ? "✓" : "Copy ID"}</button>
+          <button class="btn ghost sm" onClick=${() => copy(allText, "all")}>${copied === "all" ? "✓ Copied" : "Copy all"}</button>
+          ${node.pos
+            ? html`<button
+                class="btn ghost sm"
+                title="Show the source around this function/call"
+                onClick=${() => (hasSrc || src === "loading" ? setSrc(null) : loadSrc())}
+              >
+                ${src === "loading" ? "loading…" : hasSrc ? "◇ Hide source" : "◇ View source"}
+              </button>`
+            : ""}
+        </div>`
+      : html`<div class="tt-hint">click to pin &amp; copy</div>`}
+    ${hasSrc ? html`<${SourceView} src=${src} />` : ""}
+    ${pinned && src && src.error ? html`<div class="tt-meta" style="color:var(--danger);margin-top:6px">${src.error}</div>` : ""}
+  </div>`;
+}
+
+// SourceView renders a fetched code window with line numbers; the line that
+// matches the node's position (the function/call site) is highlighted.
+function SourceView({ src }) {
+  const lines = (src.code || "").split("\n");
+  const shortFile = (src.file || "").split("/").slice(-2).join("/");
+  return html`<div class="tt-src">
+    <div class="tt-src-code">
+      ${lines.map((ln, i) => {
+        const n = src.startLine + i;
+        return html`<div class=${"tt-src-row" + (n === src.line ? " hit" : "")}>
+          <span class="tt-src-n">${n}</span><span class="tt-src-c">${ln === "" ? " " : ln}</span>
+        </div>`;
+      })}
+    </div>
+    <div class="tt-src-foot">${shortFile}${src.line ? ":" + src.line : ""}</div>
   </div>`;
 }

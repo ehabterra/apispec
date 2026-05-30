@@ -405,7 +405,7 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 
 	// Generate metadata (now only on framework packages if auto-include is enabled)
 	tMeta := time.Now()
-	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger)
+	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger, e.moduleImportPath())
 	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
@@ -655,6 +655,28 @@ func (e *Engine) findModuleRoot(startPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no go.mod found in %s or any parent directory", startPath)
+}
+
+// moduleImportPath reads the `module` path from go.mod at the resolved module
+// root. This is the authoritative project import prefix; metadata generation
+// uses it to classify project vs library packages (driving the Insight
+// call-graph stats and external-vs-internal type resolution) instead of
+// inferring it from import paths. Returns "" if go.mod is missing/unreadable.
+func (e *Engine) moduleImportPath() string {
+	if e.config.moduleRoot == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(e.config.moduleRoot, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module"))
+		}
+	}
+	return ""
 }
 
 // matchesPattern checks if a path matches a gitignore-style pattern
