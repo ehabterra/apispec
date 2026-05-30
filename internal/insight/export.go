@@ -161,14 +161,27 @@ func BuildEndpointExportMarkdown(rep *EndpointReport, opts ExportOptions) string
 
 	// scoped trace
 	if len(rep.Trace.Edges) > 0 {
-		b.WriteString("## Resolution trace (call subtree, this endpoint)\n```\n")
+		// Node IDs whose target is a concrete implementation resolved from an
+		// interface call — annotated below so the AI sees the interface→impl hop.
+		resolved := make(map[string]bool, len(rep.Trace.Nodes))
+		for _, n := range rep.Trace.Nodes {
+			if n.Resolved {
+				resolved[n.ID] = true
+			}
+		}
+		b.WriteString("## Resolution trace (call subtree, this endpoint)\n")
+		b.WriteString("`⟐ impl` marks a concrete implementation resolved from an interface call.\n```\n")
 		max := 40
 		for i, e := range rep.Trace.Edges {
 			if i >= max {
 				b.WriteString("…\n")
 				break
 			}
-			fmt.Fprintf(&b, "%s → %s\n", red(shortLabel(e.Source)), red(shortLabel(e.Target)))
+			marker := ""
+			if resolved[e.Target] {
+				marker = "   ⟐ impl (resolved from interface)"
+			}
+			fmt.Fprintf(&b, "%s → %s%s\n", red(shortLabel(e.Source)), red(shortLabel(e.Target)), marker)
 		}
 		b.WriteString("```\n\n")
 	}
