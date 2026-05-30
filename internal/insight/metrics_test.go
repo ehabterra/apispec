@@ -1,0 +1,92 @@
+package insight
+
+import (
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/spec"
+)
+
+// TestResolveImplementers verifies an interface method resolves to the
+// concrete implementer recorded in ImplementedBy (with the implementer name
+// "import/path.Type" split on the last dot, not every dot).
+func TestResolveImplementers(t *testing.T) {
+	pool := metadata.NewStringPool()
+	mkCall := func(pkg, recv, name string) metadata.Call {
+		return metadata.Call{Pkg: pool.Get(pkg), RecvType: pool.Get(recv), Name: pool.Get(name)}
+	}
+	iface := &metadata.Type{
+		Kind:          pool.Get("interface"),
+		ImplementedBy: []int{pool.Get("github.com/x/usecase.Payment")},
+	}
+	meta := &metadata.Metadata{
+		StringPool: pool,
+		Packages: map[string]*metadata.Package{
+			"github.com/x/handlers": {Files: map[string]*metadata.File{
+				"h.go": {Types: map[string]*metadata.Type{"UseCase": iface}},
+			}},
+		},
+		Callers: map[string][]*metadata.CallGraphEdge{
+			"github.com/x/usecase.Payment.Check": {{Caller: mkCall("github.com/x/usecase", "Payment", "Check")}},
+		},
+	}
+	callee := mkCall("github.com/x/handlers", "UseCase", "Check")
+	got := resolveImplementers(meta, &callee)
+	if _, ok := got["github.com/x/usecase.Payment.Check"]; !ok {
+		t.Fatalf("expected concrete impl resolved, got %v", got)
+	}
+
+	// An implementer with no recorded body is not returned.
+	iface.ImplementedBy = append(iface.ImplementedBy, pool.Get("github.com/x/usecase.NoBody"))
+	got = resolveImplementers(meta, &callee)
+	if _, ok := got["github.com/x/usecase.NoBody.Check"]; ok {
+		t.Fatal("implementer without a body should be skipped")
+	}
+
+	// Non-interface receiver → nothing.
+	iface.Kind = pool.Get("struct")
+	if len(resolveImplementers(meta, &callee)) != 0 {
+		t.Fatal("non-interface should resolve to nothing")
+	}
+}
+
+// TestAnalyzers_Fixture drives the trace analyzers with real metadata loaded
+// from a testdata fixture, covering the BFS, metrics, trace-graph build, the
+// tracker-tree entry point (both the cfg/extractor path and the call-graph
+// fallback), and interface resolution.
+func TestAnalyzers_Fixture(t *testing.T) {
+	m, err := metadata.LoadMetadata("../../testdata/echo/metadata.yaml")
+	if err != nil {
+		t.Skipf("fixture unavailable: %v", err)
+	}
+	m.BuildCallGraphMaps()
+	const root = "github.com/ehabterra/apispec/testdata/echo.Handler.CreateUser"
+	if len(m.Callers[root]) == 0 {
+		t.Skip("fixture lacks expected handler")
+	}
+
+	// Raw call-graph trace.
+	if _, tg := analyzeFromHandler(m, root); len(tg.Nodes) == 0 || tg.Nodes[0].ID != root {
+		t.Fatalf("analyzeFromHandler: bad trace (%d nodes)", len(tg.Nodes))
+	}
+
+	// Call-graph + structural interface resolution.
+	mtr, tg, ok := analyzeResolvedCallGraph(m, root)
+	if !ok || len(tg.Nodes) == 0 {
+		t.Fatalf("analyzeResolvedCallGraph: ok=%v nodes=%d", ok, len(tg.Nodes))
+	}
+	if mtr.Reachable < 1 || len(tg.Edges) == 0 {
+		t.Fatalf("metrics look empty: reachable=%d edges=%d", mtr.Reachable, len(tg.Edges))
+	}
+
+	// Tracker entry, no cfg → falls back to the resolved call graph.
+	if _, _, ok := analyzeFromTrackerTree(m, nil, "POST", "/users", root); !ok {
+		t.Fatal("analyzeFromTrackerTree (nil cfg) should fall back and succeed")
+	}
+
+	// Tracker entry with a cfg → builds the tree + runs the extractor (route
+	// may or may not match; either way the tree-building path is exercised).
+	if _, _, ok := analyzeFromTrackerTree(m, spec.DefaultEchoConfig(), "POST", "/users", root); !ok {
+		t.Fatal("analyzeFromTrackerTree (echo cfg) should succeed")
+	}
+}
