@@ -21,6 +21,8 @@ Gopkg.toml
 
 # APISpec generated files
 metadata.yaml
+# …except committed test fixtures the test suite loads (must exist in CI).
+!testdata/echo/metadata.yaml
 metadata-string-pool.yaml
 metadata-packages.yaml
 metadata-call-graph.yaml
