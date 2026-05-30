@@ -37,6 +37,7 @@ const state = {
   genPhase: "",
   hasSpec: false,
   lastPaths: 0,
+  skipped: [], // [{package, reason}] dropped due to type errors (project didn't build)
   specView: "swagger", // swagger | redoc | scalar
   panelCollapsed: false,
 };

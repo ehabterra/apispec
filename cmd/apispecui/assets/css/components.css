@@ -547,6 +547,41 @@ textarea.input {
   background: #fff;
 }
 
+/* ---- Skipped-packages warning banner ------------------------------- */
+.skip-banner {
+  border-bottom: 1px solid var(--border);
+  background: var(--warn-bg);
+}
+.skip-banner .skip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+.skip-banner .skip-msg {
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.skip-banner .skip-msg code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 0 4px;
+}
+.skip-banner .skip-list {
+  max-height: 30vh;
+  overflow: auto;
+  padding: 0 var(--sp-3) var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.skip-banner .skip-item {
+  font-size: var(--fs-sm);
+  padding: 2px 0;
+  word-break: break-all;
+}
+
 /* ---- Toasts / status ------------------------------------------------ */
 .toast {
   position: fixed;

@@ -144,14 +144,20 @@ export async function generate() {
     if (res && res.cancelled) {
       setStatus("generation stopped", "warn");
     } else {
+      const skipped = res.skippedPackages || [];
       setState({
         hasSpec: true,
         lastPaths: res.pathCount || 0,
         lastGenTick: Date.now(),
         mode: "start",
         specView: "swagger",
+        skipped,
       });
-      setStatus(`generated ${res.pathCount || 0} paths`, "ok");
+      if (skipped.length) {
+        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped`, "warn");
+      } else {
+        setStatus(`generated ${res.pathCount || 0} paths`, "ok");
+      }
     }
   } catch (e) {
     // A rerun attempted while a stopped run is still winding down returns
