@@ -15,7 +15,13 @@
 package metadata
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func TestFrameworkDetector_Configure(t *testing.T) {
@@ -268,4 +274,72 @@ func TestDefaultFrameworkDetectorConfig(t *testing.T) {
 	if config.DisabledFrameworks == nil {
 		t.Error("Expected DisabledFrameworks to be initialized")
 	}
+}
+
+func TestFrameworkDetector_PureHelpers(t *testing.T) {
+	fd := NewFrameworkDetector()
+	if got := fd.findCommonPrefix("github.com/a/b", "github.com/a/c"); got != "github.com/a/" {
+		t.Errorf("findCommonPrefix = %q", got)
+	}
+	if !fd.contains([]string{"x", "y"}, "y") || fd.contains([]string{"x"}, "z") {
+		t.Error("contains wrong")
+	}
+	if !fd.isTestMockPackage("github.com/x/mocks") {
+		t.Error("mocks should be a test/mock package")
+	}
+	if fd.isTestMockPackage("github.com/x/handlers") {
+		t.Error("handlers is not a mock package")
+	}
+	if fd.isProjectRelatedPackage("github.com/gin-gonic/gin") {
+		t.Error("gin is external, not project-related")
+	}
+}
+
+func TestFrameworkDetector_DetectAndAnalyze(t *testing.T) {
+	fset := token.NewFileSet()
+	mainFile, err := parser.ParseFile(fset, "main.go", `package main
+import "github.com/gin-gonic/gin"
+func main() { _ = gin.New() }`, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse main: %v", err)
+	}
+	ginFile, err := parser.ParseFile(fset, "gin.go", `package gin`, 0)
+	if err != nil {
+		t.Fatalf("parse gin: %v", err)
+	}
+
+	ginPkg := &packages.Package{PkgPath: "github.com/gin-gonic/gin", Name: "gin", Syntax: []*ast.File{ginFile}}
+	appPkg := &packages.Package{
+		PkgPath: "example.com/app", Name: "main", Syntax: []*ast.File{mainFile},
+		Imports: map[string]*packages.Package{"github.com/gin-gonic/gin": ginPkg},
+	}
+
+	fd := NewFrameworkDetector()
+	if ft := fd.detectFrameworkType(appPkg); ft != "gin" {
+		t.Errorf("detectFrameworkType(app) = %q, want gin", ft)
+	}
+	if ft := fd.detectFrameworkType(ginPkg); ft != "" {
+		t.Errorf("detectFrameworkType(gin, no imports) = %q, want empty", ft)
+	}
+
+	list, err := fd.AnalyzeFrameworkDependencies(
+		[]*packages.Package{appPkg, ginPkg},
+		map[string]map[string]*ast.File{},
+		map[*ast.File]*types.Info{},
+		fset,
+	)
+	if err != nil {
+		t.Fatalf("AnalyzeFrameworkDependencies: %v", err)
+	}
+	if list == nil || list.TotalPackages == 0 {
+		t.Fatalf("expected framework packages, got %+v", list)
+	}
+	if list.TotalPackages != list.DirectPackages+list.IndirectPackages {
+		t.Errorf("counts inconsistent: %+v", list)
+	}
+	_ = list.GetFrameworkPackages()
+	_ = list.GetImportedPackages()
+	_ = list.GetDirectPackages()
+	_ = list.GetIndirectPackages()
+	list.PrintDependencyList()
 }
