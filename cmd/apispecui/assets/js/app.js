@@ -39,6 +39,24 @@ function fmtBuilt(iso) {
   });
 }
 
+// projectLabel renders the project as a module-relative path — the module
+// name plus any subpath under it — instead of the absolute filesystem path.
+// This keeps the username and parent directories (which often reveal client
+// or employer names) off-screen in demos/screenshots while still identifying
+// the project. Falls back to the basename when there's no module root.
+function projectLabel(s) {
+  if (!s.project) return "no project selected";
+  const trim = (p) => p.replace(/\/+$/, "");
+  const base = (p) => trim(p).split("/").filter(Boolean).pop() || p;
+  const root = s.moduleRoot ? trim(s.moduleRoot) : "";
+  const proj = trim(s.project);
+  if (root && (proj === root || proj.startsWith(root + "/"))) {
+    const rel = proj.slice(root.length).replace(/^\/+/, "");
+    return rel ? base(root) + "/" + rel : base(root);
+  }
+  return base(proj);
+}
+
 function TopBar({ s }) {
   return html`
     <header class="topbar">
@@ -53,7 +71,7 @@ function TopBar({ s }) {
           : ""}
       </div>
       <div class="project" title=${s.project}>
-        <span class="path">${s.project || "no project selected"}</span>
+        <span class="path">${projectLabel(s)}</span>
         <button class="btn ghost sm" onClick=${openProject}>📁</button>
       </div>
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
