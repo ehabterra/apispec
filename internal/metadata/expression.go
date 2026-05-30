@@ -108,6 +108,14 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 			} else {
 				if obj.Pkg() != nil {
 					pkg = obj.Pkg().Path()
+				} else {
+					// Universe scope: builtin functions (len, append, make,
+					// new, cap, copy, delete, close, panic, recover, …),
+					// builtin types (int, string, error, …) and predeclared
+					// identifiers (nil, true, false, iota). These belong to
+					// no package, so they must not inherit the current
+					// file's package name.
+					pkg = ""
 				}
 				// When the variable's type is an inline anonymous struct
 				// (*types.Struct as opposed to a *types.Named), reuse the

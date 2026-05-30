@@ -5,17 +5,48 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"regexp"
 	"strings"
 )
 
-// implementsInterface checks if a struct implements an interface
-func implementsInterface(structMethods map[int]int, ifaceType *Type) bool {
+// pkgQualifierRe matches a leading "pkg." qualifier on a type name. Stripping
+// it lets the same type compare equal whether written in-package (Order) or
+// cross-package (usecase.Order) — see normalizeSignature.
+var pkgQualifierRe = regexp.MustCompile(`[\p{L}_][\p{L}\p{N}_]*\.`)
+
+// normalizeSignature removes package qualifiers from a signature string so a
+// method declared in package P (where a same-package type T is written "T")
+// compares equal to an interface declared in package Q (where the same type is
+// written "P.T"). Without this, structurally-identical methods fail to match
+// purely because of where the interface happens to be declared — which is why
+// dependency-injected interfaces (e.g. a handler's narrow UseCase interface)
+// were never recorded as implemented.
+func normalizeSignature(sig string) string {
+	return pkgQualifierRe.ReplaceAllString(sig, "")
+}
+
+// implementsInterface checks if a struct implements an interface. Signatures
+// are compared with package qualifiers normalized (see normalizeSignature), so
+// in-package vs cross-package spelling of the same type doesn't defeat the
+// match. memo caches normalized signatures by string-pool index.
+func implementsInterface(structMethods map[int]int, ifaceType *Type, pool *StringPool, memo map[int]string) bool {
+	if len(ifaceType.Methods) == 0 {
+		return false // an empty interface is "implemented" by everything — useless for resolution
+	}
+	norm := func(idx int) string {
+		if v, ok := memo[idx]; ok {
+			return v
+		}
+		v := normalizeSignature(pool.GetString(idx))
+		memo[idx] = v
+		return v
+	}
 	for _, ifaceMethod := range ifaceType.Methods {
-		// Check if method exists with matching signature
-		if structSignatureStr, exists := structMethods[ifaceMethod.Name]; !exists {
+		structSig, exists := structMethods[ifaceMethod.Name]
+		if !exists {
 			return false
-		} else if structSignatureStr != ifaceMethod.SignatureStr {
-			// Method exists but signature doesn't match
+		}
+		if norm(structSig) != norm(ifaceMethod.SignatureStr) {
 			return false
 		}
 	}

@@ -1477,11 +1477,14 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 					if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
 						for _, implTypeIdx := range typ.ImplementedBy {
 							implTypeName := getString(meta, implTypeIdx)
-							parts := strings.Split(implTypeName, ".")
-							if len(parts) != 2 {
+							// ImplementedBy is "import/path.Type"; the import path
+							// itself contains dots (github.com/…), so split on the
+							// LAST dot — not every dot — to separate pkg from type.
+							dot := strings.LastIndex(implTypeName, ".")
+							if dot <= 0 || dot == len(implTypeName)-1 {
 								continue
 							}
-							implPkg, implType := parts[0], parts[1]
+							implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
 
 							if implPkgObj, exists := meta.Packages[implPkg]; exists {
 								for _, implFile := range implPkgObj.Files {

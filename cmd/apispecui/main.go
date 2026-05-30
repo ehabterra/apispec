@@ -10,15 +10,20 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,14 +31,71 @@ import (
 	"github.com/ehabterra/apispec/internal/core"
 	"github.com/ehabterra/apispec/internal/diagserver"
 	"github.com/ehabterra/apispec/internal/engine"
+	"github.com/ehabterra/apispec/internal/insight"
 	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/ehabterra/apispec/internal/spec"
 	pubspec "github.com/ehabterra/apispec/spec"
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed assets/*.html
+//go:embed assets
 var assets embed.FS
+
+var (
+	Version   = "0.0.1"
+	Commit    = "unknown"
+	GoVersion = "unknown"
+	// BuildTime is the modification time of the running executable — the most
+	// reliable signal for "is this the binary I just rebuilt?". A dev Version
+	// is always "dev", so it can't reveal a stale binary; this can.
+	BuildTime = "unknown"
+)
+
+func detectVersionInfo() {
+	// Binary mtime: changes on every rebuild, so it exposes a stale binary
+	// that "dev" never would (e.g. an IDE run-config launching an old path).
+	if exe, err := os.Executable(); err == nil {
+		if st, serr := os.Stat(exe); serr == nil {
+			BuildTime = st.ModTime().Format(time.RFC3339)
+		}
+	}
+
+	if Version != "0.0.1" {
+		return
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if info.GoVersion != "" {
+			GoVersion = info.GoVersion
+		}
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			Version = info.Main.Version
+		}
+		hasVCS := false
+		dirty := false
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				hasVCS = true
+				if len(s.Value) >= 7 {
+					Commit = s.Value[:7]
+				} else {
+					Commit = s.Value
+				}
+			case "vcs.modified":
+				dirty = s.Value == "true"
+			}
+		}
+		if dirty && !strings.Contains(Version, "+dirty") {
+			Version += "+dirty"
+		}
+		if hasVCS && (Version == "0.0.1" || Version == "(devel)") {
+			Version = "dev"
+		}
+	}
+	if Version == "0.0.1" || Version == "(devel)" {
+		Version = "dev"
+	}
+}
 
 // supportedFrameworks lists frameworks the UI can pick from.
 var supportedFrameworks = []string{"gin", "chi", "echo", "fiber", "mux", "net/http"}
@@ -134,6 +196,7 @@ type UIServer struct {
 	inputDir    string // current project directory; mutable from the UI
 	currentSpec *pubspec.OpenAPISpec
 	currentCfg  *spec.APISpecConfig
+	currentMeta *metadata.Metadata // retained for the insight view (call-graph stats)
 	lastGen     time.Time
 	lastErr     string
 
@@ -147,6 +210,9 @@ type UIServer struct {
 	// genMu serializes Generate requests so a frantic double-click doesn't
 	// stack two parallel analyses (each consuming a full CPU+RAM hit).
 	genMu sync.Mutex
+
+	// genCancel cancels the in-flight generation, if any. Guarded by mu.
+	genCancel context.CancelFunc
 
 	// genPhase / genPhaseAt expose the most recent engine phase to the UI
 	// via /api/generate/progress. Updated from the engine's OnPhase
@@ -176,6 +242,7 @@ func (s *UIServer) setDir(d string) {
 }
 
 func main() {
+	detectVersionInfo()
 	cfg := parseFlags()
 
 	diag := diagserver.New(&diagserver.Config{
@@ -198,6 +265,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handleIndex)
+	mux.Handle("/assets/", noCacheAssets(http.FileServer(http.FS(assets))))
 	mux.HandleFunc("/swagger", srv.handleSwagger)
 	mux.HandleFunc("/redoc", srv.handleRedoc)
 	mux.HandleFunc("/scalar", srv.handleScalar)
@@ -207,13 +275,20 @@ func main() {
 	mux.HandleFunc("/api/default-framework", srv.handleDefaultFramework)
 	mux.HandleFunc("/api/generate", srv.handleGenerate)
 	mux.HandleFunc("/api/generate/progress", srv.handleGenerateProgress)
+	mux.HandleFunc("/api/generate/cancel", srv.handleGenerateCancel)
 	mux.HandleFunc("/api/spec.json", srv.handleSpecJSON)
 	mux.HandleFunc("/api/spec.yaml", srv.handleSpecYAML)
 	mux.HandleFunc("/api/config.yaml", srv.handleConfigYAML)
 	mux.HandleFunc("/api/default-config.yaml", srv.handleDefaultConfigYAML)
 	mux.HandleFunc("/api/render-config", srv.handleRenderConfig)
 	mux.HandleFunc("/api/parse-config", srv.handleParseConfig)
+	mux.HandleFunc("/api/load-config", srv.handleLoadConfig)
+	mux.HandleFunc("/api/save-config", srv.handleSaveConfig)
 	mux.HandleFunc("/api/browse", srv.handleBrowse)
+	mux.HandleFunc("/api/insight/overview", srv.handleInsightOverview)
+	mux.HandleFunc("/api/insight/endpoint", srv.handleInsightEndpoint)
+	mux.HandleFunc("/api/insight/export", srv.handleInsightExport)
+	mux.HandleFunc("/api/insight/source", srv.handleInsightSource)
 	mux.HandleFunc("/api/metadata-summary", srv.handleMetadataSummary)
 	mux.HandleFunc("/api/health", srv.handleHealth)
 
@@ -227,6 +302,7 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	log.Printf("🛠  apispec-ui starting on http://%s", addr)
+	log.Printf("🔖 version=%s commit=%s built=%s (go=%s)", Version, Commit, BuildTime, GoVersion)
 	log.Printf("📁 Project: %s", cfg.InputDir)
 	log.Printf("    Open http://%s in your browser to configure & preview", addr)
 	log.Printf("    Call graph: http://%s/diagram", addr)
@@ -278,6 +354,27 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 func readAsset(name string) ([]byte, error) {
 	return assets.ReadFile("assets/" + name)
+}
+
+// assetETag tags every embedded asset with the running build. embed.FS reports
+// a zero ModTime, so http.FileServer ships JS/CSS with no Last-Modified, no
+// ETag and no Cache-Control — leaving the browser to cache them heuristically
+// and serve stale code after a rebuild. A build-derived ETag fixes both ends:
+// the browser gets a fast 304 within a build, and the tag changes the instant
+// a rebuild moves BuildTime, so a hard refresh is no longer needed.
+func assetETag() string {
+	return fmt.Sprintf("%q", Version+"-"+BuildTime)
+}
+
+// noCacheAssets wraps the asset file server to attach the build ETag and force
+// revalidation. With the ETag set, ServeContent answers conditional requests
+// (If-None-Match) with 304 automatically.
+func noCacheAssets(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", assetETag())
+		h.ServeHTTP(w, r)
+	})
 }
 
 // defaultConfigForFramework returns the default APISpecConfig for the named
@@ -346,11 +443,14 @@ func (s *UIServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	body, err := readAsset("config_ui.html")
+	body, err := readAsset("index.html")
 	if err != nil {
 		http.Error(w, "UI template missing", http.StatusInternalServerError)
 		return
 	}
+	// The shell HTML is tiny and pins static asset URLs; always revalidate it
+	// so a rebuilt UI is never masked by a cached entry point.
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(body)
 }
@@ -364,6 +464,9 @@ func (s *UIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"lastGenAt":  s.lastGen,
 		"lastError":  s.lastErr,
 		"projectDir": s.inputDir,
+		"version":    Version,
+		"commit":     Commit,
+		"buildTime":  BuildTime,
 	})
 }
 
@@ -503,13 +606,15 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Serialize generates. A second request that arrives while one is in
-	// flight gets a clear 409 instead of silently stacking another full
-	// engine run on top of the first.
+	// flight (or while a stopped run is still winding down) gets a clear
+	// 409 instead of stacking another full engine run on top of the first.
+	// NOTE: the lock is released manually — on a Stop we return to the
+	// client immediately but keep the lock until the engine goroutine
+	// actually exits, so a rerun can't start a second concurrent analysis.
 	if !s.genMu.TryLock() {
-		writeError(w, http.StatusConflict, "generation already in progress — wait for it to finish")
+		writeError(w, http.StatusConflict, "a generation is in progress (or stopping) — try again in a moment")
 		return
 	}
-	defer s.genMu.Unlock()
 
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -548,12 +653,17 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Reset progress at the start of each generate so stale phase strings
 	// from a previous run don't leak into the new one.
+	// Cancellable context so the UI can stop this run via
+	// /api/generate/cancel. Stored under mu and cleared when done.
+	genCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.genPhase = "loading packages…"
 	s.genPhaseAt = time.Now()
+	s.genCancel = cancel
 	s.mu.Unlock()
 
 	engCfg := &engine.EngineConfig{
+		Context:                      genCtx,
 		InputDir:                     s.currentDir(),
 		Title:                        req.Info.Title,
 		APIVersion:                   req.Info.Version,
@@ -592,47 +702,100 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gen := engine.NewEngine(engCfg)
-	out, err := gen.GenerateOpenAPI()
-	if err != nil {
+
+	// Run the engine in a goroutine so a Stop can unblock the request
+	// immediately. The engine still honours genCtx and exits at its next
+	// checkpoint; until it does we keep genMu held (in the drain below) so
+	// a rerun can't start a second concurrent analysis.
+	type genResult struct {
+		out  *pubspec.OpenAPISpec
+		meta *metadata.Metadata
+		err  error
+	}
+	done := make(chan genResult, 1)
+	go func() {
+		out, err := gen.GenerateOpenAPI()
+		var m *metadata.Metadata
+		if err == nil {
+			m = gen.GetMetadata()
+		}
+		done <- genResult{out, m, err}
+	}()
+
+	select {
+	case <-genCtx.Done():
+		// User pressed Stop — respond now; release the lock only once the
+		// engine goroutine has actually wound down.
 		s.mu.Lock()
-		s.lastErr = err.Error()
-		s.genPhase = ""
+		s.genPhase = "stopping…"
 		s.mu.Unlock()
-		writeError(w, http.StatusInternalServerError, "generation failed: "+err.Error())
+		go func() {
+			<-done
+			cancel()
+			s.mu.Lock()
+			s.genCancel = nil
+			s.genPhase = ""
+			s.mu.Unlock()
+			s.genMu.Unlock()
+		}()
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
+		return
+
+	case res := <-done:
+		cancel()
+		s.mu.Lock()
+		s.genCancel = nil
+		s.mu.Unlock()
+		defer s.genMu.Unlock()
+
+		if res.err != nil {
+			s.mu.Lock()
+			s.genPhase = ""
+			cancelled := genCtx.Err() != nil
+			if !cancelled {
+				s.lastErr = res.err.Error()
+			}
+			s.mu.Unlock()
+			if cancelled {
+				writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "generation failed: "+res.err.Error())
+			return
+		}
+
+		out := res.out
+		genMeta := res.meta
+		var summary *MetadataSummary
+		if genMeta != nil {
+			summary = summarizeMetadata(genMeta, gen.ModuleRoot())
+		}
+
+		now := time.Now()
+		s.mu.Lock()
+		s.currentSpec = out
+		s.currentCfg = apiCfg
+		s.currentMeta = genMeta
+		s.lastGen = now
+		s.lastErr = ""
+		s.genPhase = ""
+		if summary != nil {
+			if s.metaCache == nil {
+				s.metaCache = make(map[string]*MetadataSummary)
+			}
+			s.metaCache[s.inputDir] = summary
+		}
+		s.mu.Unlock()
+
+		writeJSON(w, http.StatusOK, GenerateResponse{
+			OK:          true,
+			Framework:   req.Framework,
+			PathCount:   len(out.Paths),
+			GeneratedAt: now,
+			DurationMs:  time.Since(start).Milliseconds(),
+		})
 		return
 	}
-
-	// The engine already analysed the project to build `out`. Reuse the same
-	// metadata for the suggestion summary so we don't pay for the analysis
-	// twice.
-	var summary *MetadataSummary
-	if meta := gen.GetMetadata(); meta != nil {
-		summary = summarizeMetadata(meta, gen.ModuleRoot())
-	}
-
-	now := time.Now()
-	s.mu.Lock()
-	s.currentSpec = out
-	s.currentCfg = apiCfg
-	s.lastGen = now
-	s.lastErr = ""
-	// Clear the live phase so the next poll reports no work in flight.
-	s.genPhase = ""
-	if summary != nil {
-		if s.metaCache == nil {
-			s.metaCache = make(map[string]*MetadataSummary)
-		}
-		s.metaCache[s.inputDir] = summary
-	}
-	s.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, GenerateResponse{
-		OK:          true,
-		Framework:   req.Framework,
-		PathCount:   len(out.Paths),
-		GeneratedAt: now,
-		DurationMs:  time.Since(start).Milliseconds(),
-	})
 }
 
 // handleGenerateProgress returns the most-recent engine phase label and how
@@ -664,6 +827,22 @@ func (s *UIServer) handleGenerateProgress(w http.ResponseWriter, r *http.Request
 		"sinceMs":  sinceMs,
 		"inFlight": inFlight,
 	})
+}
+
+// handleGenerateCancel stops the in-flight generation, if any. The
+// engine aborts at its next phase boundary (or immediately during the
+// cancellable package-load phase), the generate handler returns a
+// "stopped" result, and a new generation can then be started.
+func (s *UIServer) handleGenerateCancel(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	cancel := s.genCancel
+	s.mu.Unlock()
+	if cancel == nil {
+		writeError(w, http.StatusConflict, "no generation in progress")
+		return
+	}
+	cancel()
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "cancelling": true})
 }
 
 func (s *UIServer) handleSpecJSON(w http.ResponseWriter, r *http.Request) {
@@ -726,6 +905,7 @@ type BrowseEntry struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
 	HasGoMod bool   `json:"hasGoMod"`
+	Dir      bool   `json:"dir"` // false for files (only listed when files filter is set)
 }
 
 // BrowseResponse is the result of GET /api/browse.
@@ -772,26 +952,41 @@ func (s *UIServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional file listing: ?files=yaml also returns *.yaml/*.yml files
+	// (selectable in the config open/save dialogs). Default is dirs-only.
+	wantYAML := r.URL.Query().Get("files") == "yaml"
+
 	var out []BrowseEntry
 	for _, e := range dirEntries {
-		if !e.IsDir() {
-			continue
-		}
 		name := e.Name()
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		sub := filepath.Join(abs, name)
-		_, gerr := os.Stat(filepath.Join(sub, "go.mod"))
-		out = append(out, BrowseEntry{
-			Name:     name,
-			Path:     sub,
-			HasGoMod: gerr == nil,
-		})
+		full := filepath.Join(abs, name)
+		if e.IsDir() {
+			_, gerr := os.Stat(filepath.Join(full, "go.mod"))
+			out = append(out, BrowseEntry{
+				Name:     name,
+				Path:     full,
+				HasGoMod: gerr == nil,
+				Dir:      true,
+			})
+			continue
+		}
+		if wantYAML {
+			ln := strings.ToLower(name)
+			if strings.HasSuffix(ln, ".yaml") || strings.HasSuffix(ln, ".yml") {
+				out = append(out, BrowseEntry{Name: name, Path: full})
+			}
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		// projects (with go.mod) float to the top, then alpha
-		if out[i].HasGoMod != out[j].HasGoMod {
+		// directories before files; projects (with go.mod) float to the
+		// top of the directories; then alpha within each group.
+		if out[i].Dir != out[j].Dir {
+			return out[i].Dir
+		}
+		if out[i].Dir && out[i].HasGoMod != out[j].HasGoMod {
 			return out[i].HasGoMod
 		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
@@ -1078,6 +1273,298 @@ func (s *UIServer) handleParseConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cfg)
+}
+
+// handleInsightOverview returns the whole-API insight report derived
+// from the last-generated spec and metadata.
+func (s *UIServer) handleInsightOverview(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	sp := s.currentSpec
+	mt := s.currentMeta
+	s.mu.RUnlock()
+	if sp == nil {
+		writeError(w, http.StatusConflict, "no spec yet — generate first")
+		return
+	}
+	writeJSON(w, http.StatusOK, insight.BuildOverview(sp, mt))
+}
+
+// handleInsightEndpoint returns the per-route insight report for
+// ?method=&path=.
+func (s *UIServer) handleInsightEndpoint(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	sp := s.currentSpec
+	mt := s.currentMeta
+	cfg := s.currentCfg
+	s.mu.RUnlock()
+	if sp == nil {
+		writeError(w, http.StatusConflict, "no spec yet — generate first")
+		return
+	}
+	method := r.URL.Query().Get("method")
+	path := r.URL.Query().Get("path")
+	if method == "" || path == "" {
+		writeError(w, http.StatusBadRequest, "method and path are required")
+		return
+	}
+	writeJSON(w, http.StatusOK, insight.BuildEndpointWithSource(sp, mt, cfg, method, path, traceSourceFromQuery(r)))
+}
+
+// traceSourceFromQuery reads the ?trace= selector (tracker | callgraph),
+// defaulting to the interface-resolved tracker tree.
+func traceSourceFromQuery(r *http.Request) string {
+	if r.URL.Query().Get("trace") == insight.TraceSourceCallGraph {
+		return insight.TraceSourceCallGraph
+	}
+	return insight.TraceSourceTracker
+}
+
+// handleInsightSource returns a window of Go source around a "file:line"
+// position (taken from a resolution-trace node) so the UI can show the
+// caller/callee code inline. The file must live under the analyzed module,
+// GOROOT, or the module cache — never an arbitrary path — so this can't be
+// used to read unrelated files off disk.
+func (s *UIServer) handleInsightSource(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	pos := r.URL.Query().Get("pos")
+	file := insight.PosFile(pos)
+	if file == "" {
+		writeError(w, http.StatusBadRequest, "pos is required (file:line)")
+		return
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad path: "+err.Error())
+		return
+	}
+	if !s.sourcePathAllowed(abs) {
+		writeError(w, http.StatusForbidden, "source is outside the analyzed module / module cache")
+		return
+	}
+	before := queryInt(r, "before", 3)
+	after := queryInt(r, "after", 26)
+	code, start, line := insight.SourceSnippet(pos, before, after)
+	if code == "" {
+		writeError(w, http.StatusNotFound, "source not available for this position")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"file":      abs,
+		"code":      code,
+		"startLine": start,
+		"line":      line,
+	})
+}
+
+// sourcePathAllowed reports whether abs is inside a directory we're willing to
+// serve source from: the analyzed module root, GOROOT (stdlib), or the Go
+// module cache (third-party deps). Everything else is rejected.
+func (s *UIServer) sourcePathAllowed(abs string) bool {
+	root, _ := findModuleRoot(s.currentDir())
+	roots := []string{root, build.Default.GOROOT, goModCache()}
+	for _, base := range roots {
+		if base == "" {
+			continue
+		}
+		baseAbs, err := filepath.Abs(base)
+		if err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(baseAbs, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// goModCache returns the Go module cache directory (where third-party source
+// lives), honoring GOMODCACHE then falling back to $GOPATH/pkg/mod.
+func goModCache() string {
+	if mc := os.Getenv("GOMODCACHE"); mc != "" {
+		return mc
+	}
+	gp := os.Getenv("GOPATH")
+	if gp == "" {
+		gp = build.Default.GOPATH
+	}
+	if gp == "" {
+		return ""
+	}
+	return filepath.Join(gp, "pkg", "mod")
+}
+
+// queryInt reads an int query param, returning def when absent/invalid, and
+// clamps to a sane [0, 200] window so a request can't ask for a huge slice.
+func queryInt(r *http.Request, key string, def int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	if n > 200 {
+		n = 200
+	}
+	return n
+}
+
+// handleInsightExport returns the "Export to AI" bundle. scope=all
+// (default) bundles every issue; scope=endpoint&method=&path= bundles one
+// route with its trace and handler source. format=md (default) | json;
+// redact=1 replaces the module path.
+func (s *UIServer) handleInsightExport(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	sp := s.currentSpec
+	mt := s.currentMeta
+	cfg := s.currentCfg
+	s.mu.RUnlock()
+	if sp == nil {
+		writeError(w, http.StatusConflict, "no spec yet — generate first")
+		return
+	}
+
+	cfgYAML := ""
+	if cfg != nil {
+		if b, err := yaml.Marshal(cfg); err == nil {
+			cfgYAML = string(b)
+		}
+	}
+	modulePath := ""
+	if mt != nil {
+		modulePath = mt.CurrentModulePath
+	}
+	opts := insight.ExportOptions{
+		ConfigYAML: cfgYAML,
+		ModulePath: modulePath,
+		Redact:     r.URL.Query().Get("redact") == "1",
+	}
+	jsonFmt := r.URL.Query().Get("format") == "json"
+
+	if r.URL.Query().Get("scope") == "endpoint" {
+		ep := insight.BuildEndpointWithSource(sp, mt, cfg, r.URL.Query().Get("method"), r.URL.Query().Get("path"), traceSourceFromQuery(r))
+		if jsonFmt {
+			writeJSON(w, http.StatusOK, ep)
+			return
+		}
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(insight.BuildEndpointExportMarkdown(ep, opts)))
+		return
+	}
+
+	rep := insight.BuildOverview(sp, mt)
+	if jsonFmt {
+		writeJSON(w, http.StatusOK, rep)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	_, _ = w.Write([]byte(insight.BuildExportMarkdown(rep, opts)))
+}
+
+// handleLoadConfig reads an APISpec config YAML file from an absolute
+// path and returns the parsed config as JSON so the form can populate
+// itself — the file-picker counterpart of handleParseConfig.
+func (s *UIServer) handleLoadConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	p := strings.TrimSpace(r.URL.Query().Get("path"))
+	if p == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad path: "+err.Error())
+		return
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "cannot stat: "+err.Error())
+		return
+	}
+	if st.IsDir() {
+		writeError(w, http.StatusBadRequest, "not a file: "+abs)
+		return
+	}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read failed: "+err.Error())
+		return
+	}
+	cfg := &spec.APISpecConfig{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid YAML: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"path": abs, "config": cfg})
+}
+
+// saveConfigRequest is a GenerateRequest plus the destination path. The
+// current form state is rendered to a config YAML and written to disk.
+type saveConfigRequest struct {
+	GenerateRequest
+	SavePath  string `json:"savePath"`
+	Overwrite bool   `json:"overwrite"`
+}
+
+// handleSaveConfig renders the posted form state to config YAML and
+// writes it to SavePath. Refuses to clobber an existing file unless
+// Overwrite is set (409 so the UI can confirm), and requires the target
+// directory to already exist.
+func (s *UIServer) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req saveConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.SavePath) == "" {
+		writeError(w, http.StatusBadRequest, "savePath is required")
+		return
+	}
+	abs, err := filepath.Abs(req.SavePath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad path: "+err.Error())
+		return
+	}
+	parent := filepath.Dir(abs)
+	if st, err := os.Stat(parent); err != nil || !st.IsDir() {
+		writeError(w, http.StatusBadRequest, "target directory does not exist: "+parent)
+		return
+	}
+	if !req.Overwrite {
+		if _, err := os.Stat(abs); err == nil {
+			writeError(w, http.StatusConflict, "file already exists: "+abs)
+			return
+		}
+	}
+	cfg, err := buildAPISpecConfig(&req.GenerateRequest)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "encode failed: "+err.Error())
+		return
+	}
+	_ = enc.Close()
+	if err := os.WriteFile(abs, buf.Bytes(), 0o644); err != nil {
+		writeError(w, http.StatusInternalServerError, "write failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "path": abs, "bytes": buf.Len()})
 }
 
 // handleDefaultConfigYAML returns the YAML for the named framework's default

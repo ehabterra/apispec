@@ -343,7 +343,7 @@ packages:
                   name: 6
                   value: -1
                   raw: -1
-                  pkg: 2
+                  pkg: -1
                   type: 43
                   position: 44
                   resolved_type: -1
@@ -492,7 +492,7 @@ packages:
                   name: 6
                   value: -1
                   raw: -1
-                  pkg: 2
+                  pkg: -1
                   type: 58
                   position: 59
                   resolved_type: -1
@@ -576,7 +576,7 @@ packages:
                         name: 67
                         value: -1
                         raw: -1
-                        pkg: 2
+                        pkg: -1
                         type: 67
                         position: 68
                         resolved_type: -1
@@ -645,7 +645,7 @@ packages:
                         name: 80
                         value: -1
                         raw: -1
-                        pkg: 2
+                        pkg: -1
                         type: 80
                         position: 87
                         resolved_type: -1
@@ -669,7 +669,7 @@ packages:
                             name: 80
                             value: -1
                             raw: -1
-                            pkg: 2
+                            pkg: -1
                             type: 80
                             position: 81
                             resolved_type: -1
@@ -1048,7 +1048,7 @@ call_graph:
                 name: 67
                 value: -1
                 raw: -1
-                pkg: 2
+                pkg: -1
                 type: 67
                 position: 68
                 resolved_type: -1
@@ -1256,7 +1256,7 @@ call_graph:
             name: 80
             value: -1
             raw: -1
-            pkg: 2
+            pkg: -1
             type: 80
             position: 81
             resolved_type: -1
@@ -1322,7 +1322,7 @@ call_graph:
                 name: 80
                 value: -1
                 raw: -1
-                pkg: 2
+                pkg: -1
                 type: 80
                 position: 87
                 resolved_type: -1
@@ -1346,7 +1346,7 @@ call_graph:
                     name: 80
                     value: -1
                     raw: -1
-                    pkg: 2
+                    pkg: -1
                     type: 80
                     position: 81
                     resolved_type: -1
@@ -1415,7 +1415,7 @@ call_graph:
             name: 80
             value: -1
             raw: -1
-            pkg: 2
+            pkg: -1
             type: 80
             position: 81
             resolved_type: -1

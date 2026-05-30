@@ -1,0 +1,120 @@
+/* tokens.css — design tokens for apispecui.
+ * Single source of truth for color, spacing, radius, shadow, typography.
+ * Dark is default; a light theme is provided via [data-theme="light"].
+ * The dark palette intentionally matches the legacy UI so the migration
+ * is visually continuous. */
+
+:root,
+:root[data-theme="dark"] {
+  /* surfaces */
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-2: #1f2733;
+  --panel-3: #252e3a;
+  --border: #2a323d;
+  --border-strong: #3a4452;
+
+  /* text */
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --faint: #6b7480;
+
+  /* accents */
+  --accent: #58a6ff;
+  --accent-weak: #1f3a5f;
+  --accent-2: #3fb950;
+  --danger: #f85149;
+  --warn: #d29922;
+  --info: #a371f7;
+
+  /* state tints (backgrounds for badges/cards) */
+  --ok-bg: #11301c;
+  --warn-bg: #3a2e0c;
+  --danger-bg: #3a1413;
+  --info-bg: #2a1f3d;
+
+  /* grading scale for the insight efficiency score */
+  --grade-a: #3fb950;
+  --grade-b: #88c0ff;
+  --grade-c: #d29922;
+  --grade-d: #f85149;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel-2: #f0f3f6;
+  --panel-3: #e7ecf1;
+  --border: #d0d7de;
+  --border-strong: #b6bfca;
+
+  --text: #1f2328;
+  --muted: #59636e;
+  --faint: #818b96;
+
+  --accent: #0969da;
+  --accent-weak: #ddf4ff;
+  --accent-2: #1a7f37;
+  --danger: #cf222e;
+  --warn: #9a6700;
+  --info: #8250df;
+
+  --ok-bg: #dafbe1;
+  --warn-bg: #fff8c5;
+  --danger-bg: #ffebe9;
+  --info-bg: #fbefff;
+
+  --grade-a: #1a7f37;
+  --grade-b: #0969da;
+  --grade-c: #9a6700;
+  --grade-d: #cf222e;
+
+  color-scheme: light;
+}
+
+:root {
+  /* spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* radius */
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 10px;
+  --r-4: 14px;
+  --r-pill: 999px;
+
+  /* shadow */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.45);
+
+  /* typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo,
+    Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 24px;
+
+  /* layout */
+  --rail-w: 56px;
+  --topbar-h: 50px;
+  /* left panel scales with the viewport, within sensible bounds */
+  --leftpanel-w: clamp(240px, 26vw, 340px);
+
+  /* motion */
+  --t-fast: 0.12s ease;
+  --t-med: 0.2s ease;
+}

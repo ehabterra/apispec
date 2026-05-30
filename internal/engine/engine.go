@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -142,7 +143,20 @@ type EngineConfig struct {
 	// firehosing every debug log to the user.
 	OnPhase func(phase string, elapsed time.Duration)
 
+	// Context, if set, cancels generation. The slow package-load phase is
+	// passed this context, and the engine aborts at each phase boundary
+	// when it's cancelled — so a UI can stop a run in flight.
+	Context context.Context
+
 	moduleRoot string
+}
+
+// ctx returns the configured context or a background context.
+func (e *Engine) ctx() context.Context {
+	if e.config != nil && e.config.Context != nil {
+		return e.config.Context
+	}
+	return context.Background()
 }
 
 // DefaultEngineConfig returns a new EngineConfig with default values
@@ -282,9 +296,10 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	fileToInfo := make(map[*ast.File]*types.Info)
 
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-		Dir:  e.config.moduleRoot,
-		Fset: fset,
+		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+		Dir:     e.config.moduleRoot,
+		Fset:    fset,
+		Context: e.ctx(),
 	}
 
 	// Filter packages and files based on include/exclude patterns
@@ -292,6 +307,9 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	filteredPkgs, err := e.loadFilteredPackages(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
+	}
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
 	}
 	e.reportPhase(fmt.Sprintf("loaded %d packages", len(filteredPkgs)), time.Since(t0))
 
@@ -387,8 +405,11 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 
 	// Generate metadata (now only on framework packages if auto-include is enabled)
 	tMeta := time.Now()
-	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger)
+	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger, e.moduleImportPath())
 	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 
 	// Store metadata in engine
 	e.metadata = meta
@@ -519,9 +540,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 	tTree := time.Now()
 	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
 	e.reportPhase("tracker tree built", time.Since(tTree))
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 
 	// Generate OpenAPI spec
 	tSpec := time.Now()
@@ -628,6 +655,28 @@ func (e *Engine) findModuleRoot(startPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no go.mod found in %s or any parent directory", startPath)
+}
+
+// moduleImportPath reads the `module` path from go.mod at the resolved module
+// root. This is the authoritative project import prefix; metadata generation
+// uses it to classify project vs library packages (driving the Insight
+// call-graph stats and external-vs-internal type resolution) instead of
+// inferring it from import paths. Returns "" if go.mod is missing/unreadable.
+func (e *Engine) moduleImportPath() string {
+	if e.config.moduleRoot == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(e.config.moduleRoot, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module"))
+		}
+	}
+	return ""
 }
 
 // matchesPattern checks if a path matches a gitignore-style pattern
@@ -894,10 +943,24 @@ func (e *Engine) filterToFrameworkPackages(
 		frameworkPackages[dep.PackagePath] = true
 	}
 
+	// keep decides whether a package survives the framework filter. Framework
+	// packages are kept, and so is every in-module (project) package: dropping
+	// project packages would discard interface implementations that are only
+	// reached through dependency injection (e.g. a concrete store assigned to
+	// an interface field), breaking interface→concrete resolution and type
+	// inference. Only third-party non-framework deps are pruned.
+	modPath := e.moduleImportPath()
+	keep := func(pkgPath string) bool {
+		if frameworkPackages[pkgPath] {
+			return true
+		}
+		return modPath != "" && (pkgPath == modPath || strings.HasPrefix(pkgPath, modPath+"/"))
+	}
+
 	// Filter packages metadata
 	filteredPkgsMetadata := make(map[string]map[string]*ast.File)
 	for pkgPath, files := range pkgsMetadata {
-		if frameworkPackages[pkgPath] {
+		if keep(pkgPath) {
 			filteredPkgsMetadata[pkgPath] = files
 		}
 	}
@@ -927,7 +990,7 @@ func (e *Engine) filterToFrameworkPackages(
 	// Filter import paths
 	filteredImportPaths := make(map[string]string)
 	for fileName, pkgPath := range importPaths {
-		if frameworkPackages[pkgPath] {
+		if keep(pkgPath) {
 			filteredImportPaths[fileName] = pkgPath
 		}
 	}
