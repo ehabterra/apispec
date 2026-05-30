@@ -16,10 +16,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
 	"log"
 	"net/http"
 	"os"
-	"go/build"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
@@ -1295,6 +1295,7 @@ func (s *UIServer) handleInsightEndpoint(w http.ResponseWriter, r *http.Request)
 	s.mu.RLock()
 	sp := s.currentSpec
 	mt := s.currentMeta
+	cfg := s.currentCfg
 	s.mu.RUnlock()
 	if sp == nil {
 		writeError(w, http.StatusConflict, "no spec yet — generate first")
@@ -1306,7 +1307,16 @@ func (s *UIServer) handleInsightEndpoint(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "method and path are required")
 		return
 	}
-	writeJSON(w, http.StatusOK, insight.BuildEndpoint(sp, mt, method, path))
+	writeJSON(w, http.StatusOK, insight.BuildEndpointWithSource(sp, mt, cfg, method, path, traceSourceFromQuery(r)))
+}
+
+// traceSourceFromQuery reads the ?trace= selector (tracker | callgraph),
+// defaulting to the interface-resolved tracker tree.
+func traceSourceFromQuery(r *http.Request) string {
+	if r.URL.Query().Get("trace") == insight.TraceSourceCallGraph {
+		return insight.TraceSourceCallGraph
+	}
+	return insight.TraceSourceTracker
 }
 
 // handleInsightSource returns a window of Go source around a "file:line"
@@ -1436,7 +1446,7 @@ func (s *UIServer) handleInsightExport(w http.ResponseWriter, r *http.Request) {
 	jsonFmt := r.URL.Query().Get("format") == "json"
 
 	if r.URL.Query().Get("scope") == "endpoint" {
-		ep := insight.BuildEndpoint(sp, mt, r.URL.Query().Get("method"), r.URL.Query().Get("path"))
+		ep := insight.BuildEndpointWithSource(sp, mt, cfg, r.URL.Query().Get("method"), r.URL.Query().Get("path"), traceSourceFromQuery(r))
 		if jsonFmt {
 			writeJSON(w, http.StatusOK, ep)
 			return

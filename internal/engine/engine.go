@@ -943,10 +943,24 @@ func (e *Engine) filterToFrameworkPackages(
 		frameworkPackages[dep.PackagePath] = true
 	}
 
+	// keep decides whether a package survives the framework filter. Framework
+	// packages are kept, and so is every in-module (project) package: dropping
+	// project packages would discard interface implementations that are only
+	// reached through dependency injection (e.g. a concrete store assigned to
+	// an interface field), breaking interface→concrete resolution and type
+	// inference. Only third-party non-framework deps are pruned.
+	modPath := e.moduleImportPath()
+	keep := func(pkgPath string) bool {
+		if frameworkPackages[pkgPath] {
+			return true
+		}
+		return modPath != "" && (pkgPath == modPath || strings.HasPrefix(pkgPath, modPath+"/"))
+	}
+
 	// Filter packages metadata
 	filteredPkgsMetadata := make(map[string]map[string]*ast.File)
 	for pkgPath, files := range pkgsMetadata {
-		if frameworkPackages[pkgPath] {
+		if keep(pkgPath) {
 			filteredPkgsMetadata[pkgPath] = files
 		}
 	}
@@ -976,7 +990,7 @@ func (e *Engine) filterToFrameworkPackages(
 	// Filter import paths
 	filteredImportPaths := make(map[string]string)
 	for fileName, pkgPath := range importPaths {
-		if frameworkPackages[pkgPath] {
+		if keep(pkgPath) {
 			filteredImportPaths[fileName] = pkgPath
 		}
 	}

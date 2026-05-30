@@ -39,6 +39,19 @@ type RouteInfo struct {
 	// shared component parameter per name and $ref it from each operation
 	// instead of inlining a fresh declaration on every route.
 	DynamicParams []string
+
+	// Node is the tracker-tree node where this route was matched (the route
+	// registration call). Its subtree is the interface-resolved handler flow;
+	// the insight view traverses it to build the resolution trace. Not part of
+	// the spec output.
+	Node TrackerNodeInterface `json:"-"`
+}
+
+// OpenAPIPath returns the route's effective OpenAPI path (mount + path,
+// converted to {param} form) — the same key buildPathsFromRoutes emits, so
+// callers can match a RouteInfo to an OpenAPI path.
+func (r *RouteInfo) OpenAPIPath() string {
+	return convertPathToOpenAPI(joinPaths(r.MountPath, r.Path))
 }
 
 func NewRouteInfo() *RouteInfo {
@@ -263,6 +276,9 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 
 // handleRouteNode handles a route node
 func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo) {
+	// Remember the matched node so consumers (e.g. the insight trace) can
+	// traverse the interface-resolved handler subtree.
+	routeInfo.Node = node
 	// Prepend mount path if present
 	if mountPath != "" {
 		routeInfo.MountPath = joinPaths(mountPath, routeInfo.MountPath)

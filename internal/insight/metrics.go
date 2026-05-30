@@ -2,8 +2,10 @@ package insight
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/spec"
 )
 
 // Traversal bounds. These keep the scoped analysis cheap and bound the
@@ -48,6 +50,10 @@ type TraceNode struct {
 	Calls    int    `json:"calls"`            // outgoing edges within this trace
 	CalledBy int    `json:"calledBy"`         // incoming edges within this trace
 	Origin   string `json:"origin,omitempty"` // project | library | standard
+	// Resolved marks a concrete implementation node reached by resolving an
+	// interface method call to its implementer — the UI badges these so the
+	// "interface → impl" hop is visible.
+	Resolved bool `json:"resolved,omitempty"`
 }
 type TraceEdge struct {
 	Source string `json:"source"`
@@ -110,9 +116,16 @@ func classifyPkg(meta *metadata.Metadata, pkg, recv string) string {
 }
 
 // analyzeFromHandler builds the scoped call subtree rooted at the handler
-// base-ID and computes Tier-1 metrics + the trace graph. meta.Callers
-// must be populated.
+// base-ID from the raw call graph (meta.Callers must be populated) and
+// computes Tier-1 metrics + the trace graph.
 func analyzeFromHandler(meta *metadata.Metadata, root string) (Metrics, TraceGraph) {
+	return analyzeAdjacency(meta, root, func(k string) []*metadata.CallGraphEdge { return meta.Callers[k] })
+}
+
+// analyzeAdjacency is the shared BFS/metrics core. callersOf returns the
+// outgoing call edges of a function key, letting the same logic run over
+// either the raw call graph or an interface-resolved tracker tree.
+func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(string) []*metadata.CallGraphEdge) (Metrics, TraceGraph) {
 	m := Metrics{}
 	tg := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
 
@@ -133,7 +146,7 @@ func analyzeFromHandler(meta *metadata.Metadata, root string) (Metrics, TraceGra
 			continue
 		}
 		seen := map[string]bool{}
-		for _, e := range meta.Callers[cur] {
+		for _, e := range callersOf(cur) {
 			// Skip Go builtins (len, append, make, …) and standard-library
 			// calls (fmt, net/http, encoding/json, …) so the trace shows
 			// the project's own call flow (and third-party frameworks),
@@ -202,6 +215,384 @@ func analyzeFromHandler(meta *metadata.Metadata, root string) (Metrics, TraceGra
 	return m, tg
 }
 
+// analyzeFromTrackerTree builds the trace. It prefers the tracker tree's
+// SCOPED subtree for this route — the tree resolves interface calls through
+// parameter/assignment tracing (e.g. a handler param `uc UseCase` wired to a
+// concrete `*Payment` at module init), which structural matching can't do.
+// Walking only the route's subtree avoids whole-tree bleed-through. When the
+// route isn't found in the tree (or has no body there) it falls back to the
+// call graph augmented with structural interface resolution.
+func analyzeFromTrackerTree(meta *metadata.Metadata, cfg *spec.APISpecConfig, method, path, fallbackRoot string) (Metrics, TraceGraph, bool) {
+	if tree := cachedTrackerTree(meta); tree != nil && cfg != nil {
+		for _, r := range spec.NewExtractor(tree, cfg).ExtractRoutes() {
+			if r == nil || r.Node == nil || !strings.EqualFold(r.Method, method) || r.OpenAPIPath() != path {
+				continue
+			}
+			if m, tg, ok := analyzeTrackerSubtree(meta, r.Node); ok {
+				return m, tg, true
+			}
+			break
+		}
+	}
+	return analyzeResolvedCallGraph(meta, fallbackRoot)
+}
+
+// analyzeResolvedCallGraph builds the trace from the call graph (scoped to the
+// handler's own subtree) and resolves interface-method calls to concrete
+// implementations via the metadata's ImplementedBy index. Used as a fallback
+// when the tracker tree doesn't carry the route's resolved subtree.
+func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, TraceGraph, bool) {
+	if len(meta.Callers[root]) == 0 {
+		return Metrics{}, TraceGraph{}, false
+	}
+
+	m := Metrics{}
+	adj := map[string][]string{}
+	depth := map[string]int{root: 0}
+	info := map[string]traceMeta{}
+	seen := map[string]map[string]bool{}
+	visited := map[string]bool{root: true}
+	queue := []string{root}
+
+	addEdge := func(from, to string) {
+		if from == to {
+			return
+		}
+		if seen[from] == nil {
+			seen[from] = map[string]bool{}
+		}
+		if !seen[from][to] {
+			seen[from][to] = true
+			adj[from] = append(adj[from], to)
+		}
+	}
+	enqueue := func(id string, d int) {
+		if visited[id] {
+			return
+		}
+		visited[id] = true
+		if len(visited) > maxReachable {
+			m.DepthTruncated = true
+			return
+		}
+		depth[id] = d
+		if d > m.MaxDepth {
+			m.MaxDepth = d
+		}
+		queue = append(queue, id)
+	}
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		d := depth[cur]
+		if d >= maxTraceDepth {
+			m.DepthTruncated = true
+			continue
+		}
+		seenCallee := map[string]bool{}
+		for _, e := range meta.Callers[cur] {
+			if calleeIsStdOrBuiltin(meta, &e.Callee) {
+				continue
+			}
+			callee := e.Callee.BaseID()
+			if callee == "" || callee == cur || seenCallee[callee] {
+				continue
+			}
+			seenCallee[callee] = true
+			addEdge(cur, callee)
+			info[callee] = traceMetaFromCall(meta, &e.Callee)
+			if e.ChainDepth > m.ChainDepth {
+				m.ChainDepth = e.ChainDepth
+			}
+			for _, a := range e.Args {
+				if a == nil {
+					continue
+				}
+				if t := strings.TrimSpace(a.GetType()); t != "" {
+					if strings.HasPrefix(t, "*") {
+						m.PointerArgs++
+					} else {
+						m.ValueArgs++
+					}
+				}
+			}
+			enqueue(callee, d+1)
+
+			// Interface resolution: a callee with no body of its own that is an
+			// interface method resolves to its concrete implementation(s). Link
+			// the interface method to each concrete method and descend into it.
+			if len(meta.Callers[callee]) == 0 {
+				for cid, cmeta := range resolveImplementers(meta, &e.Callee) {
+					addEdge(callee, cid)
+					if _, ok := info[cid]; !ok {
+						info[cid] = cmeta
+					}
+					enqueue(cid, d+2)
+				}
+			}
+		}
+	}
+
+	m.Reachable = len(visited)
+	fsum, fn := 0, 0
+	for _, ch := range adj {
+		if len(ch) > 0 {
+			fsum += len(ch)
+			fn++
+			if len(ch) > m.FanoutMax {
+				m.FanoutMax = len(ch)
+			}
+		}
+	}
+	if fn > 0 {
+		m.FanoutAvg = float64(fsum) / float64(fn)
+	}
+	m.CallPaths, m.CallPathsTruncated = countPaths(adj, root)
+	m.Grade, m.GradeLowerBound = grade(m)
+
+	tg := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
+	buildTraceGraph(&tg, adj, depth, root, info)
+	tg.Paths = enumeratePaths(adj, root, maxPathSample)
+	return m, tg, true
+}
+
+// analyzeTrackerSubtree builds the trace from the tracker tree's node structure
+// under a route node — SCOPED to that route, so no shared-helper bleed-through.
+// A node's id is the function it calls (callee BaseID); its children are that
+// function's resolved sub-calls. When the tree resolved an interface call (via
+// parameter/assignment tracing) it attaches the concrete implementation's body
+// as children of the interface-call node, with those child edges' Caller being
+// the concrete method. We surface that concrete method as its own node, so the
+// hop "interface → concrete impl → body" is explicit. Returns ok=false when the
+// route node carries no handler body (caller then falls back to the call graph).
+func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeInterface) (Metrics, TraceGraph, bool) {
+	m := Metrics{}
+	empty := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
+
+	kids := routeNode.GetChildren()
+	root := ""
+	for _, c := range kids {
+		if e := c.GetEdge(); e != nil && e.Caller.BaseID() != "" {
+			root = e.Caller.BaseID()
+			break
+		}
+	}
+	if root == "" {
+		return m, empty, false
+	}
+
+	adj := map[string][]string{}
+	depth := map[string]int{root: 0}
+	info := map[string]traceMeta{}
+	seen := map[string]map[string]bool{}
+	visited := map[string]bool{}
+	addEdge := func(from, to string) {
+		if from == to {
+			return
+		}
+		if seen[from] == nil {
+			seen[from] = map[string]bool{}
+		}
+		if !seen[from][to] {
+			seen[from][to] = true
+			adj[from] = append(adj[from], to)
+		}
+	}
+	setDepth := func(id string, d int) {
+		if _, ok := depth[id]; !ok {
+			depth[id] = d
+			if d > m.MaxDepth {
+				m.MaxDepth = d
+			}
+		}
+	}
+
+	type qi struct {
+		node spec.TrackerNodeInterface
+		id   string
+		d    int
+	}
+	var queue []qi
+	for _, c := range kids {
+		if e := c.GetEdge(); e != nil {
+			info[root] = traceMetaFromCall(meta, &e.Caller)
+			break
+		}
+	}
+	for _, c := range kids {
+		queue = append(queue, qi{c, root, 0})
+	}
+
+	for len(queue) > 0 {
+		it := queue[0]
+		queue = queue[1:]
+		if it.d >= maxTraceDepth {
+			m.DepthTruncated = true
+			continue
+		}
+		if k := it.node.GetKey(); k != "" {
+			if visited[k] {
+				continue
+			}
+			visited[k] = true
+		}
+		ce := it.node.GetEdge()
+		if ce == nil {
+			for _, c := range it.node.GetChildren() {
+				queue = append(queue, qi{c, it.id, it.d})
+			}
+			continue
+		}
+		if calleeIsStdOrBuiltin(meta, &ce.Callee) {
+			continue
+		}
+		callee := ce.Callee.BaseID()
+		if callee == "" {
+			continue
+		}
+		parentID, d := it.id, it.d
+		// Resolution boundary: this call's Caller differs from the function we
+		// are inside → the tree resolved an interface to a concrete impl. Show
+		// the concrete method as an intermediate node.
+		if caller := ce.Caller.BaseID(); caller != "" && caller != parentID && caller != callee {
+			addEdge(parentID, caller)
+			setDepth(caller, d+1)
+			if _, ok := info[caller]; !ok {
+				cm := traceMetaFromCall(meta, &ce.Caller)
+				cm.resolved = true // concrete impl reached via interface resolution
+				info[caller] = cm
+			}
+			parentID, d = caller, d+1
+		}
+		if callee != parentID {
+			addEdge(parentID, callee)
+			info[callee] = traceMetaFromCall(meta, &ce.Callee)
+			setDepth(callee, d+1)
+			if ce.ChainDepth > m.ChainDepth {
+				m.ChainDepth = ce.ChainDepth
+			}
+			for _, a := range ce.Args {
+				if a == nil {
+					continue
+				}
+				if t := strings.TrimSpace(a.GetType()); t != "" {
+					if strings.HasPrefix(t, "*") {
+						m.PointerArgs++
+					} else {
+						m.ValueArgs++
+					}
+				}
+			}
+		}
+		if len(depth) > maxReachable {
+			m.DepthTruncated = true
+			continue
+		}
+		for _, c := range it.node.GetChildren() {
+			queue = append(queue, qi{c, callee, d + 1})
+		}
+	}
+
+	if len(adj[root]) == 0 {
+		return m, empty, false
+	}
+
+	m.Reachable = len(depth)
+	fsum, fn := 0, 0
+	for _, ch := range adj {
+		if len(ch) > 0 {
+			fsum += len(ch)
+			fn++
+			if len(ch) > m.FanoutMax {
+				m.FanoutMax = len(ch)
+			}
+		}
+	}
+	if fn > 0 {
+		m.FanoutAvg = float64(fsum) / float64(fn)
+	}
+	m.CallPaths, m.CallPathsTruncated = countPaths(adj, root)
+	m.Grade, m.GradeLowerBound = grade(m)
+
+	tg := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
+	buildTraceGraph(&tg, adj, depth, root, info)
+	tg.Paths = enumeratePaths(adj, root, maxPathSample)
+	return m, tg, true
+}
+
+// trackerLimits are generous bounds for the insight tree (mirrors the diagram
+// server's limits) — large enough to capture real flow while terminating.
+func trackerLimits() metadata.TrackerLimits {
+	return metadata.TrackerLimits{
+		MaxNodesPerTree:    50000,
+		MaxChildrenPerNode: 500,
+		MaxArgsPerFunction: 100,
+		MaxNestedArgsDepth: 100,
+		MaxRecursionDepth:  1000,
+	}
+}
+
+// cachedTrackerTree builds and memoizes the tracker tree for a metadata,
+// rebuilding only when the metadata pointer changes (after a regenerate).
+var (
+	treeMu  sync.Mutex
+	treeKey *metadata.Metadata
+	treeVal spec.TrackerTreeInterface
+)
+
+func cachedTrackerTree(meta *metadata.Metadata) spec.TrackerTreeInterface {
+	if meta == nil {
+		return nil
+	}
+	treeMu.Lock()
+	defer treeMu.Unlock()
+	if treeKey == meta && treeVal != nil {
+		return treeVal
+	}
+	treeVal = spec.NewTrackerTree(meta, trackerLimits(), nil)
+	treeKey = meta
+	return treeVal
+}
+
+// resolveImplementers maps an interface-method call to the concrete method(s)
+// that implement it, using the metadata's ImplementedBy index. Returns concrete
+// method base-IDs (that have a recorded body) → display metadata.
+func resolveImplementers(meta *metadata.Metadata, callee *metadata.Call) map[string]traceMeta {
+	sp := meta.StringPool
+	recv := sp.GetString(callee.RecvType)
+	pkgPath := sp.GetString(callee.Pkg)
+	name := sp.GetString(callee.Name)
+	if recv == "" || pkgPath == "" || name == "" {
+		return nil
+	}
+	pkg, ok := meta.Packages[pkgPath]
+	if !ok {
+		return nil
+	}
+	out := map[string]traceMeta{}
+	for _, file := range pkg.Files {
+		typ, ok := file.Types[recv]
+		if !ok || sp.GetString(typ.Kind) != "interface" {
+			continue
+		}
+		for _, implIdx := range typ.ImplementedBy {
+			implName := sp.GetString(implIdx) // "import/path.Type"
+			dot := strings.LastIndex(implName, ".")
+			if dot <= 0 || dot == len(implName)-1 {
+				continue
+			}
+			concreteID := implName[:dot] + "." + implName[dot+1:] + "." + name
+			if edges := meta.Callers[concreteID]; len(edges) > 0 {
+				cm := traceMetaFromCall(meta, &edges[0].Caller)
+				cm.resolved = true // concrete impl reached via interface resolution
+				out[concreteID] = cm
+			}
+		}
+	}
+	return out
+}
+
 // enumeratePaths lists distinct root→leaf paths (each a sequence of short
 // labels), capped at `cap`. Mirrors countPaths' semantics: a child
 // already on the current path (cycle) is skipped, and a node whose
@@ -244,10 +635,11 @@ func enumeratePaths(adj map[string][]string, root string, cap int) [][]string {
 
 // traceMeta is per-node display metadata surfaced in the trace tooltip.
 type traceMeta struct {
-	pkg    string
-	symbol string
-	pos    string
-	origin string
+	pkg      string
+	symbol   string
+	pos      string
+	origin   string
+	resolved bool // concrete impl reached via interface resolution
 }
 
 func traceMetaFromCall(meta *metadata.Metadata, c *metadata.Call) traceMeta {
@@ -371,6 +763,7 @@ func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]i
 			Symbol:   md.symbol,
 			Pos:      md.pos,
 			Origin:   md.origin,
+			Resolved: md.resolved,
 			Calls:    len(adj[n.id]),
 			CalledBy: calledBy[n.id],
 		})

@@ -2037,6 +2037,7 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []*Ca
 
 // analyzeInterfaceImplementations analyzes which structs implement which interfaces
 func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool) {
+	sigMemo := make(map[int]string) // normalized signature by string-pool index
 	for pkgName, pkg := range pkgs {
 		for structName, stct := range pkg.Types {
 			if stct.Kind != pool.Get("struct") {
@@ -2054,7 +2055,7 @@ func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool)
 						continue
 					}
 
-					if implementsInterface(structMethods, intrf) {
+					if implementsInterface(structMethods, intrf, pool, sigMemo) {
 						stct.Implements = append(stct.Implements, pool.Get(interfacePkgName+"."+interfaceName))
 						intrf.ImplementedBy = append(intrf.ImplementedBy, pool.Get(pkgName+"."+structName))
 					}

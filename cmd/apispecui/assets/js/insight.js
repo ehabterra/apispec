@@ -271,6 +271,7 @@ function EndpointView({ rep, initialFilter }) {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState(initialFilter || "");
   const [exportOpen, setExportOpen] = useState(false);
+  const [traceSrc, setTraceSrc] = useState("tracker"); // "tracker" | "callgraph"
 
   // Sync the filter when the user clicks a tag from the Overview.
   useEffect(() => {
@@ -286,10 +287,10 @@ function EndpointView({ rep, initialFilter }) {
     if (!sel) return;
     const { method, path } = parse(sel);
     setLoading(true);
-    getJSON(`/api/insight/endpoint?method=${encodeURIComponent(method)}&path=${encodeURIComponent(path)}`)
+    getJSON(`/api/insight/endpoint?method=${encodeURIComponent(method)}&path=${encodeURIComponent(path)}&trace=${traceSrc}`)
       .then(setEp)
       .finally(() => setLoading(false));
-  }, [sel]);
+  }, [sel, traceSrc]);
 
   const list = rep.endpoints.filter((e) => {
     if (!filter) return true;
@@ -314,11 +315,18 @@ function EndpointView({ rep, initialFilter }) {
         </div>
       </div>
       <div>
+        <div class="row" style="margin-bottom:var(--sp-2);align-items:center;gap:var(--sp-2);flex-wrap:wrap">
+          <span class="muted" style="font-size:var(--fs-sm)">Trace from</span>
+          <div class="seg">
+            <button class=${traceSrc === "tracker" ? "active" : ""} title="Call graph ∪ interface/generic resolution — the superset apispec uses to build the spec" onClick=${() => setTraceSrc("tracker")}>Tracker tree</button>
+            <button class=${traceSrc === "callgraph" ? "active" : ""} title="Raw call graph only — syntactic calls, no resolution" onClick=${() => setTraceSrc("callgraph")}>Call graph</button>
+          </div>
+        </div>
         ${loading && !ep ? html`<div class="muted">loading…</div>` : ""}
         ${ep && ep.found ? html`<${EndpointDetail} ep=${ep} onExport=${() => setExportOpen(true)} />` : ep ? html`<div class="muted">No operation found.</div>` : ""}
       </div>
     </div>
-    ${ep && ep.found ? html`<${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} scope="endpoint" method=${ep.method} path=${ep.path} />` : ""}
+    ${ep && ep.found ? html`<${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} scope="endpoint" method=${ep.method} path=${ep.path} trace=${traceSrc} />` : ""}
   `;
 }
 
@@ -464,7 +472,14 @@ function EndpointDetail({ ep, onExport }) {
             <${PathsBreakdown} trace=${ep.trace} count=${m.callPaths} truncated=${m.callPathsTruncated} />
           </div>
           <div class="card">
-            <div class="row" style="gap:6px"><h3>Resolution trace</h3><${Info} text="The call subtree from this handler — a left-to-right layered graph. ● handler, ○ callee, ◌ leaf." /></div>
+            <div class="row" style="gap:6px">
+              <h3>Resolution trace</h3>
+              <${Info} text="The call subtree from this handler — a left-to-right layered graph. ● handler, ○ callee, ◌ leaf. Source is selectable above: the tracker tree resolves interface/generic calls (what apispec used to build the spec); the call graph is raw syntactic calls." />
+              <span class="spacer"></span>
+              ${ep.traceSource
+                ? html`<span class="sec-count" title=${ep.traceSource === "tracker" ? "Interface-resolved tracker tree" : "Raw call graph (syntactic calls only)"}>${ep.traceSource === "tracker" ? "tracker tree" : "call graph"}</span>`
+                : ""}
+            </div>
             <p class="muted" style="font-size:var(--fs-sm);margin:0 0 var(--sp-2)">${ep.trace.nodes.length} nodes · ${ep.trace.edges.length} edges${ep.trace.truncated ? " (truncated)" : ""}</p>
             <${TraceDiagram} trace=${ep.trace} />
           </div>
@@ -475,7 +490,7 @@ function EndpointDetail({ ep, onExport }) {
 
 /* ---- export modal --------------------------------------------------- */
 
-function ExportModal({ open, onClose, scope, method, path }) {
+function ExportModal({ open, onClose, scope, method, path, trace }) {
   const [md, setMd] = useState("");
   const [redact, setRedact] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -483,7 +498,10 @@ function ExportModal({ open, onClose, scope, method, path }) {
 
   const url = () => {
     let u = "/api/insight/export?scope=" + (scope || "all");
-    if (scope === "endpoint") u += `&method=${encodeURIComponent(method)}&path=${encodeURIComponent(path)}`;
+    if (scope === "endpoint") {
+      u += `&method=${encodeURIComponent(method)}&path=${encodeURIComponent(path)}`;
+      if (trace) u += `&trace=${trace}`;
+    }
     if (redact) u += "&redact=1";
     return u;
   };
@@ -495,7 +513,7 @@ function ExportModal({ open, onClose, scope, method, path }) {
       .then((r) => r.text())
       .then(setMd)
       .finally(() => setLoading(false));
-  }, [open, redact]);
+  }, [open, redact, trace]);
 
   if (!open) return null;
 

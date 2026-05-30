@@ -56,15 +56,15 @@ function TopBar({ s }) {
         <span class="path">${s.project || "no project selected"}</span>
         <button class="btn ghost sm" onClick=${openProject}>📁</button>
       </div>
+      <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
+        ${s.generating ? `Generating… ${s.genPhase || ""}` : "Generate ▸"}
+      </button>
+      ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
       <span class="spacer"></span>
       ${s.status.text &&
       html`<span class=${"badge " + (s.status.kind === "err" ? "err" : s.status.kind === "ok" ? "ok" : s.status.kind === "warn" ? "warn" : "")}>
         <span class="dot"></span>${s.status.text}
       </span>`}
-      ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
-      <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
-        ${s.generating ? `Generating… ${s.genPhase || ""}` : "Generate ▸"}
-      </button>
     </header>
   `;
 }

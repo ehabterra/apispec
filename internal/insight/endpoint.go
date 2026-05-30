@@ -59,6 +59,7 @@ type EndpointReport struct {
 	Issues       []Issue     `json:"issues"`
 	Metrics      Metrics     `json:"metrics"`
 	Trace        TraceGraph  `json:"trace"`
+	TraceSource  string      `json:"traceSource"` // "tracker" | "callgraph" — which structure backed the trace
 }
 
 func operationFor(pi spec.PathItem, method string) *spec.Operation {
@@ -96,7 +97,21 @@ func componentsMap(s *spec.OpenAPISpec) map[string]*spec.Schema {
 // can be located in the call graph — Tier-1 metrics and a route-scoped
 // trace. Degrades gracefully (Found/HandlerFound flags) when inputs are
 // missing.
+// traceSource selects which call structure backs the route trace + metrics.
+const (
+	TraceSourceTracker   = "tracker"   // interface-resolved tracker tree (default)
+	TraceSourceCallGraph = "callgraph" // raw call graph
+)
+
 func BuildEndpoint(s *spec.OpenAPISpec, meta *metadata.Metadata, method, path string) *EndpointReport {
+	return BuildEndpointWithSource(s, meta, nil, method, path, TraceSourceTracker)
+}
+
+// BuildEndpointWithSource is BuildEndpoint with an explicit trace source. The
+// tracker tree (default) resolves interfaces/generics; "callgraph" uses the
+// raw edges. cfg enables the tracker tree (route→handler resolution); when nil
+// or the route isn't found, it falls back to the call graph.
+func BuildEndpointWithSource(s *spec.OpenAPISpec, meta *metadata.Metadata, cfg *spec.APISpecConfig, method, path, traceSource string) *EndpointReport {
 	rep := &EndpointReport{
 		Method:    strings.ToUpper(method),
 		Path:      path,
@@ -168,7 +183,19 @@ func BuildEndpoint(s *spec.OpenAPISpec, meta *metadata.Metadata, method, path st
 			if rep.HandlerPos == "" {
 				rep.HandlerPos = extractFilePos(meta.StringPool.GetString(edges[0].Caller.Position))
 			}
-			rep.Metrics, rep.Trace = analyzeFromHandler(meta, key)
+			// Tracker tree (default) walks the handler's scoped subtree and
+			// descends through interface calls into concrete implementations.
+			// Falls back to the raw call graph when the handler isn't in the
+			// tree. "callgraph" forces the raw graph only.
+			rep.TraceSource = TraceSourceCallGraph
+			if traceSource != TraceSourceCallGraph {
+				if mtr, tg, ok := analyzeFromTrackerTree(meta, cfg, rep.Method, path, key); ok {
+					rep.Metrics, rep.Trace, rep.TraceSource = mtr, tg, TraceSourceTracker
+				}
+			}
+			if rep.TraceSource == TraceSourceCallGraph {
+				rep.Metrics, rep.Trace = analyzeFromHandler(meta, key)
+			}
 		}
 	}
 	return rep
