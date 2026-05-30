@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -142,7 +143,20 @@ type EngineConfig struct {
 	// firehosing every debug log to the user.
 	OnPhase func(phase string, elapsed time.Duration)
 
+	// Context, if set, cancels generation. The slow package-load phase is
+	// passed this context, and the engine aborts at each phase boundary
+	// when it's cancelled — so a UI can stop a run in flight.
+	Context context.Context
+
 	moduleRoot string
+}
+
+// ctx returns the configured context or a background context.
+func (e *Engine) ctx() context.Context {
+	if e.config != nil && e.config.Context != nil {
+		return e.config.Context
+	}
+	return context.Background()
 }
 
 // DefaultEngineConfig returns a new EngineConfig with default values
@@ -282,9 +296,10 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	fileToInfo := make(map[*ast.File]*types.Info)
 
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-		Dir:  e.config.moduleRoot,
-		Fset: fset,
+		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+		Dir:     e.config.moduleRoot,
+		Fset:    fset,
+		Context: e.ctx(),
 	}
 
 	// Filter packages and files based on include/exclude patterns
@@ -292,6 +307,9 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	filteredPkgs, err := e.loadFilteredPackages(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load filtered packages: %w", err)
+	}
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
 	}
 	e.reportPhase(fmt.Sprintf("loaded %d packages", len(filteredPkgs)), time.Since(t0))
 
@@ -389,6 +407,9 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	tMeta := time.Now()
 	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger)
 	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 
 	// Store metadata in engine
 	e.metadata = meta
@@ -519,9 +540,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 	}
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 	tTree := time.Now()
 	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
 	e.reportPhase("tracker tree built", time.Since(tTree))
+	if err := e.ctx().Err(); err != nil {
+		return nil, err
+	}
 
 	// Generate OpenAPI spec
 	tSpec := time.Now()
