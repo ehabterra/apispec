@@ -214,6 +214,19 @@ func (e *Engine) reportPhase(phase string, elapsed time.Duration) {
 type Engine struct {
 	config   *EngineConfig
 	metadata *metadata.Metadata
+
+	// skipped records packages dropped during analysis because they failed to
+	// type-check (e.g. an unresolved/private dependency). Surfaced so callers
+	// can warn that the spec may be incomplete. Keyed by package path → first
+	// error message.
+	skipped []SkippedPackage
+}
+
+// SkippedPackage is a package excluded from analysis due to compile/type
+// errors, with a representative reason.
+type SkippedPackage struct {
+	Package string `json:"package"`
+	Reason  string `json:"reason"`
 }
 
 // NewEngine creates a new Engine with the given configuration
@@ -317,6 +330,7 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	var validPkgs []*packages.Package
 	var errorCount int
 
+	e.skipped = nil
 	for _, pkg := range filteredPkgs {
 		if len(pkg.Errors) > 0 {
 			errorCount++
@@ -324,6 +338,15 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 			logger.Printf("Warning: Skipping package %s due to errors:\n", pkg.PkgPath)
 			for _, err := range pkg.Errors {
 				logger.Printf("  - %s\n", err.Msg)
+			}
+			// Record (only in-module packages — third-party type errors are
+			// rarely actionable by the user) so the caller can surface them.
+			if mp := e.moduleImportPath(); mp == "" || pkg.PkgPath == mp || strings.HasPrefix(pkg.PkgPath, mp+"/") {
+				reason := ""
+				if len(pkg.Errors) > 0 {
+					reason = pkg.Errors[0].Msg
+				}
+				e.skipped = append(e.skipped, SkippedPackage{Package: pkg.PkgPath, Reason: reason})
 			}
 			continue
 		}
@@ -862,6 +885,14 @@ func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package
 // GetMetadata returns the current metadata
 func (e *Engine) GetMetadata() *metadata.Metadata {
 	return e.metadata
+}
+
+// SkippedPackages returns the in-module packages excluded from the most recent
+// analysis because they failed to type-check. A non-empty result means the
+// spec is likely incomplete — usually the project doesn't build (e.g. an
+// unresolved/private dependency).
+func (e *Engine) SkippedPackages() []SkippedPackage {
+	return e.skipped
 }
 
 // GetConfig returns the current engine configuration

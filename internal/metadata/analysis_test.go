@@ -545,3 +545,55 @@ func TestFindParentFunction_EmptyFile(t *testing.T) {
 		t.Errorf("Expected empty scope, got %q", scope)
 	}
 }
+
+func TestNormalizeSignature(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"func(context.Context, *domain.Params, usecase.Order) error", "func(Context, *Params, Order) error"},
+		{"func(Order) error", "func(Order) error"},
+		{"func(map[string]pkg.Type) []pkg.Other", "func(map[string]Type) []Other"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := normalizeSignature(c.in); got != c.want {
+			t.Errorf("normalizeSignature(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestImplementsInterface_QualifierNormalization(t *testing.T) {
+	pool := NewStringPool()
+	// Same method, but the concrete spells an in-package type unqualified
+	// ("Order") while the interface (declared elsewhere) qualifies it
+	// ("usecase.Order"). They must still match.
+	ifaceSig := pool.Get("func(context.Context, usecase.Order) error")
+	structSig := pool.Get("func(context.Context, Order) error")
+	mName := pool.Get("CheckEPayment")
+
+	iface := &Type{
+		Kind:    pool.Get("interface"),
+		Methods: []Method{{Name: mName, SignatureStr: ifaceSig}},
+	}
+	structMethods := map[int]int{mName: structSig}
+	memo := map[int]string{}
+
+	if !implementsInterface(structMethods, iface, pool, memo) {
+		t.Fatal("expected struct to implement interface despite pkg-qualifier difference")
+	}
+
+	// A genuinely different signature must NOT match.
+	other := map[int]int{mName: pool.Get("func(context.Context, Order) (bool, error)")}
+	if implementsInterface(other, iface, pool, map[int]string{}) {
+		t.Fatal("different signature should not match")
+	}
+
+	// Missing the method must NOT match.
+	if implementsInterface(map[int]int{}, iface, pool, map[int]string{}) {
+		t.Fatal("missing method should not match")
+	}
+
+	// An empty interface must never be reported as implemented (would match
+	// everything and pollute interface resolution).
+	if implementsInterface(structMethods, &Type{Kind: pool.Get("interface")}, pool, map[int]string{}) {
+		t.Fatal("empty interface should not be considered implemented")
+	}
+}

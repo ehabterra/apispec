@@ -186,6 +186,10 @@ type GenerateResponse struct {
 	GeneratedAt time.Time `json:"generatedAt"`
 	DurationMs  int64     `json:"durationMs"`
 	Message     string    `json:"message,omitempty"`
+	// SkippedPackages lists in-module packages dropped because they failed to
+	// type-check (usually the project doesn't build). When non-empty the spec
+	// is likely incomplete — the UI surfaces this as a warning.
+	SkippedPackages []engine.SkippedPackage `json:"skippedPackages,omitempty"`
 }
 
 // UIServer holds shared state across requests.
@@ -787,12 +791,19 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Unlock()
 
+		skipped := gen.SkippedPackages()
+		msg := ""
+		if len(skipped) > 0 {
+			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
+		}
 		writeJSON(w, http.StatusOK, GenerateResponse{
-			OK:          true,
-			Framework:   req.Framework,
-			PathCount:   len(out.Paths),
-			GeneratedAt: now,
-			DurationMs:  time.Since(start).Milliseconds(),
+			OK:              true,
+			Framework:       req.Framework,
+			PathCount:       len(out.Paths),
+			GeneratedAt:     now,
+			DurationMs:      time.Since(start).Milliseconds(),
+			Message:         msg,
+			SkippedPackages: skipped,
 		})
 		return
 	}

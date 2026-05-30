@@ -41,7 +41,35 @@ export function SpecMode({ onGenerate, onBrowse }) {
         <a class="btn ghost sm" href="/api/spec.yaml" target="_blank">spec.yaml</a>
         <a class="btn ghost sm" href="/api/spec.json" target="_blank">spec.json</a>
       </div>
+      ${s.skipped && s.skipped.length ? html`<${SkippedBanner} skipped=${s.skipped} />` : ""}
       <iframe class="viewer-frame" src=${src} title="OpenAPI preview"></iframe>
+    </div>
+  `;
+}
+
+// SkippedBanner warns that some in-module packages were dropped because they
+// failed to type-check — so the spec is likely incomplete (missing routes).
+// The usual cause is the project not building (e.g. an unresolved dependency).
+function SkippedBanner({ skipped }) {
+  const [open, setOpen] = useState(false);
+  return html`
+    <div class="skip-banner">
+      <div class="skip-head">
+        <span class="badge warn"><span class="dot"></span>${skipped.length} package(s) skipped</span>
+        <span class="skip-msg">failed to type-check — the spec may be missing routes. Ensure the project builds (<code>go build ./...</code>).</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" onClick=${() => setOpen((o) => !o)}>${open ? "Hide" : "Details"}</button>
+        <button class="btn ghost sm" title="Dismiss" onClick=${() => setState({ skipped: [] })}>✕</button>
+      </div>
+      ${open
+        ? html`<div class="skip-list">
+            ${skipped.map(
+              (p) => html`<div class="skip-item">
+                <span class="mono">${p.package}</span>${p.reason ? html`<span class="muted"> — ${p.reason}</span>` : ""}
+              </div>`,
+            )}
+          </div>`
+        : ""}
     </div>
   `;
 }
