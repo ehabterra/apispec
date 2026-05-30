@@ -40,23 +40,23 @@ func BuildExportMarkdown(rep *OverviewReport, opts ExportOptions) string {
 
 	var b strings.Builder
 	b.WriteString("# apispec — issues to resolve\n\n")
-	b.WriteString(fmt.Sprintf("%s\n\n", rep.Summary()))
+	fmt.Fprintf(&b, "%s\n\n", rep.Summary())
 
 	if len(warns) == 0 {
 		b.WriteString("No blocking issues were detected — the spec resolved cleanly. ")
 		b.WriteString("You can still ask for review suggestions on the config below.\n\n")
 	} else {
-		b.WriteString(fmt.Sprintf("There are %d issue(s). For **each**, suggest the *smallest* fix and give it verbatim — either:\n", len(warns)))
+		fmt.Fprintf(&b, "There are %d issue(s). For **each**, suggest the *smallest* fix and give it verbatim — either:\n", len(warns))
 		b.WriteString("- (A) a Go code change in the handler/type, or\n")
 		b.WriteString("- (B) an apispec config entry (`externalTypes` / `typeMapping` / `overrides`) to add.\n")
 		b.WriteString("State which you chose and why.\n\n")
 
 		for idx, is := range warns {
-			b.WriteString(fmt.Sprintf("## %d. %s %s\n", idx+1, is.Method, red(is.Path)))
-			b.WriteString(fmt.Sprintf("- **Kind:** %s\n", is.Kind))
-			b.WriteString(fmt.Sprintf("- **Problem:** %s\n", red(is.Detail)))
+			fmt.Fprintf(&b, "## %d. %s %s\n", idx+1, is.Method, red(is.Path))
+			fmt.Fprintf(&b, "- **Kind:** %s\n", is.Kind)
+			fmt.Fprintf(&b, "- **Problem:** %s\n", red(is.Detail))
 			if is.Ref != "" {
-				b.WriteString(fmt.Sprintf("- **Schema/component:** `%s`\n", red(is.Ref)))
+				fmt.Fprintf(&b, "- **Schema/component:** `%s`\n", red(is.Ref))
 			}
 			b.WriteString("\n")
 		}
@@ -179,7 +179,7 @@ func readSourceWindow(pos string, before, after int) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	start := line - before
 	if start < 1 {
