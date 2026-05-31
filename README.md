@@ -254,6 +254,9 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - `go-playground/validator` tags mapped to OpenAPI constraints.
 - CGO packages can be skipped to avoid build errors.
 - Dependency-injected route groups.
+- Handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())` where `Create() echo.HandlerFunc { return func(c) {…} }`), including when the handler is dispatched through an interface whose implementation lives in a different package.
+- Function-local named types used as request/response bodies (`type Login struct{…}` declared inside a handler) — captured from the function body and emitted as real component schemas rather than dangling `$ref`s.
+- Request bodies bound through a custom wrapper (`util.ReadRequest(c, &dto)` → `ctx.Bind(dto)`) — the concrete type is traced through the wrapper's parameters.
 
 **Partial / not yet supported**
 
