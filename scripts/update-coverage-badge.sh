@@ -17,11 +17,20 @@ go test "${LIB_PKGS[@]}" -coverprofile=$COVERAGE_FILE
 # Extract coverage percentage
 COVERAGE=$(go tool cover -func=$COVERAGE_FILE | grep total | awk '{print substr($3, 1, length($3)-1)}')
 
-# Determine badge color
+# Determine badge color on a graduated scale (codecov-style) rather than a
+# three-band cliff, so the colour tracks coverage smoothly. For a tool whose
+# CLI/UI glue is intentionally left untested, library coverage in the 65–80%
+# range is healthy and should read green-ish, not alarming red.
 if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
     COLOR="brightgreen"
-elif (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+elif (( $(echo "$COVERAGE >= 75" | bc -l) )); then
+    COLOR="green"
+elif (( $(echo "$COVERAGE >= 65" | bc -l) )); then
+    COLOR="yellowgreen"
+elif (( $(echo "$COVERAGE >= 50" | bc -l) )); then
     COLOR="yellow"
+elif (( $(echo "$COVERAGE >= 40" | bc -l) )); then
+    COLOR="orange"
 else
     COLOR="red"
 fi
