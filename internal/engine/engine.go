@@ -287,6 +287,13 @@ func (e *Engine) GenerateMetadataOnly() (*metadata.Metadata, error) {
 
 // GenerateMetadataOnlyWithLogger generates only metadata and call graph without OpenAPI spec with a custom logger
 func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadata.Metadata, error) {
+	// Fold any include/exclude patterns carried on the APISpecConfig (e.g. set
+	// via the UI or a config file) into the EngineConfig filter fields, which
+	// shouldIncludePackage / shouldIncludeFile actually read. Without this the
+	// config's Include/Exclude were silently ignored during analysis (only
+	// CLI-flag patterns took effect).
+	e.applyConfigFilters()
+
 	// Validate input directory
 	targetPath, err := filepath.Abs(e.config.InputDir)
 	if err != nil {
@@ -619,6 +626,45 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 
 	return openAPISpec, nil
+}
+
+// applyConfigFilters folds the include/exclude patterns from the
+// APISpecConfig (set via a config file or the UI) into the EngineConfig filter
+// fields that shouldIncludePackage / shouldIncludeFile read. It unions with any
+// CLI-provided patterns and de-duplicates, so it's safe to call more than once.
+func (e *Engine) applyConfigFilters() {
+	c := e.config.APISpecConfig
+	if c == nil {
+		return
+	}
+	e.config.IncludePackages = unionStrings(e.config.IncludePackages, c.Include.Packages)
+	e.config.IncludeFiles = unionStrings(e.config.IncludeFiles, c.Include.Files)
+	e.config.IncludeFunctions = unionStrings(e.config.IncludeFunctions, c.Include.Functions)
+	e.config.IncludeTypes = unionStrings(e.config.IncludeTypes, c.Include.Types)
+	e.config.ExcludePackages = unionStrings(e.config.ExcludePackages, c.Exclude.Packages)
+	e.config.ExcludeFiles = unionStrings(e.config.ExcludeFiles, c.Exclude.Files)
+	e.config.ExcludeFunctions = unionStrings(e.config.ExcludeFunctions, c.Exclude.Functions)
+	e.config.ExcludeTypes = unionStrings(e.config.ExcludeTypes, c.Exclude.Types)
+}
+
+// unionStrings appends extras to base, skipping values already present, and
+// preserves order.
+func unionStrings(base, extras []string) []string {
+	if len(extras) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base))
+	for _, s := range base {
+		seen[s] = struct{}{}
+	}
+	for _, s := range extras {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		base = append(base, s)
+	}
+	return base
 }
 
 // mergeIncludeExcludePatterns merges CLI include/exclude patterns with the loaded configuration
