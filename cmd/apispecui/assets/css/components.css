@@ -34,6 +34,14 @@
   opacity: 0.7;
   letter-spacing: 0;
 }
+/* Live elapsed counter inside the Generate button while a run is in flight —
+   secondary to the phase label, fixed-width so it doesn't jitter. */
+.gen-elapsed {
+  margin-left: 4px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+}
 .topbar .project {
   display: flex;
   align-items: center;
@@ -725,41 +733,64 @@ h3 + .info {
 
 /* ---- trace diagram zoom + tooltip ---------------------------------- */
 .trace-zoom {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 5;
+  /* A floating pill that sits in normal flow above the graph box, pushed to
+     the right edge, so it never overlaps the diagram's shapes. */
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  width: fit-content;
+  margin: 0 0 8px auto;
+  padding: 3px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--r-2);
-  padding: 2px;
+  border-radius: var(--r-pill);
   box-shadow: var(--shadow-1);
 }
-.trace-zoom button {
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  width: 26px;
-  height: 24px;
-  border-radius: var(--r-1);
-  font-size: 14px;
-  line-height: 1;
-}
-.trace-zoom button:hover {
-  background: var(--panel-2);
-}
-.trace-zoom span {
+.trace-zoom .tz-btn,
+.trace-zoom .tz-pct {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  font-size: var(--fs-xs);
+  height: 26px;
+  border: 0;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--r-pill);
+  line-height: 1;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    transform 0.08s ease;
+}
+.trace-zoom .tz-btn {
+  width: 26px;
+  font-size: 15px;
+}
+.trace-zoom .tz-btn:hover:not(:disabled),
+.trace-zoom .tz-pct:hover {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+.trace-zoom .tz-btn:active:not(:disabled) {
+  transform: scale(0.86);
+}
+.trace-zoom .tz-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.trace-zoom .tz-pct {
+  min-width: 48px;
+  padding: 0 8px;
+  color: var(--text);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
+}
+.trace-zoom .tz-div {
+  width: 1px;
+  height: 15px;
+  margin: 0 4px;
+  background: var(--border);
 }
 .trace-tip {
   position: fixed;

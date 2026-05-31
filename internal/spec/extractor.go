@@ -397,9 +397,13 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 			e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, routes)
 		}
 
-		// Extract request
+		// Extract request. A route's body may be matched at several nodes
+		// (e.g. the same handler reached through more than one tracker path);
+		// keep the most specific result so a concrete type isn't clobbered by
+		// a later generic `object` — which happens when one path resolves the
+		// type through a binding wrapper and another doesn't.
 		if req := e.extractRequestFromNode(child, route); req != nil {
-			route.Request = req
+			route.Request = preferRequestInfo(route.Request, req)
 		}
 
 		// Extract responses (multiple if status fan-out applies — see
@@ -424,6 +428,38 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 	if param := e.extractParamFromNode(routeNode, route); param != nil {
 		route.Params = append(route.Params, *param)
 	}
+}
+
+// preferRequestInfo chooses the more specific of two request bodies for the
+// same route. A concrete schema (a named-type $ref, an object with properties,
+// a composed allOf, or an array) beats a generic placeholder (`{type: object}`
+// from an unresolved `interface{}`). On a tie the newer one wins, preserving
+// the previous last-write-wins behaviour.
+func preferRequestInfo(cur, next *RequestInfo) *RequestInfo {
+	if cur == nil {
+		return next
+	}
+	if next == nil {
+		return cur
+	}
+	curConcrete, nextConcrete := requestIsConcrete(cur), requestIsConcrete(next)
+	if nextConcrete && !curConcrete {
+		return next
+	}
+	if curConcrete && !nextConcrete {
+		return cur
+	}
+	return next
+}
+
+// requestIsConcrete reports whether a request body carries a resolved type
+// rather than a generic `object` fallback.
+func requestIsConcrete(r *RequestInfo) bool {
+	if r == nil || r.Schema == nil {
+		return false
+	}
+	s := r.Schema
+	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
 }
 
 // extractRequestFromNode extracts request information from a node
@@ -795,6 +831,16 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 // so two routes that call writeJSON with different statuses each
 // resolve to their own value independently.
 func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
+	return argViaParent(arg, node)
+}
+
+// argViaParent walks one step up the tracker tree to recover the caller-site
+// value of a parameter ident. The parent tracker node represents the call into
+// the function the matched call lives in, and that edge's ParamArgMap maps
+// callee parameter names back to the caller's actual arguments. Returns nil
+// when the arg isn't an ident, there's no parent, or the name isn't a mapped
+// parameter. Shared by the response and request matchers.
+func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
 	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
 		return nil
 	}
@@ -810,6 +856,28 @@ func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgumen
 		return &callerArg
 	}
 	return nil
+}
+
+// resolveArgThroughParams follows a parameter ident up through one or more
+// wrapper calls to the caller's concrete argument. It is the request/response
+// dual of inlining a binding helper: e.g. for `c.Bind(v)` inside a custom
+// `ReadRequest(c, v)` wrapper, it returns the `&User{}` actually passed at the
+// route's call site. Each hop maps a callee parameter to its caller argument
+// via the parent edge's ParamArgMap; it stops at the first non-parameter (a
+// local, literal, composite, …) or after a small hop cap. Returns the original
+// arg unchanged when nothing resolves.
+func resolveArgThroughParams(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, TrackerNodeInterface) {
+	cur := node
+	const maxHops = 8
+	for i := 0; i < maxHops; i++ {
+		next := argViaParent(arg, cur)
+		if next == nil {
+			break
+		}
+		arg = next
+		cur = cur.GetParent()
+	}
+	return arg, cur
 }
 
 // expandStatusesFromIdent walks the caller's function-level AssignmentMap

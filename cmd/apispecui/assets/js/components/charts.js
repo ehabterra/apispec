@@ -204,11 +204,12 @@ export function TraceDiagram({ trace }) {
     </marker>`;
 
   return html`<div style="position:relative">
-    <div class="trace-zoom">
-      <button title="Zoom out" onClick=${() => z(0.8)}>−</button>
-      <span>${Math.round(zoom * 100)}%</span>
-      <button title="Zoom in" onClick=${() => z(1.25)}>+</button>
-      <button title="Reset" onClick=${() => setZoom(1)}>⟲</button>
+    <div class="trace-zoom" role="group" aria-label="Diagram zoom">
+      <button class="tz-btn" title="Zoom out" aria-label="Zoom out" disabled=${zoom <= 0.4} onClick=${() => z(0.8)}>−</button>
+      <button class="tz-pct" title="Reset to 100%" aria-label="Reset zoom" onClick=${() => setZoom(1)}>${Math.round(zoom * 100)}%</button>
+      <button class="tz-btn" title="Zoom in" aria-label="Zoom in" disabled=${zoom >= 2.5} onClick=${() => z(1.25)}>+</button>
+      <span class="tz-div" aria-hidden="true"></span>
+      <button class="tz-btn" title="Reset view" aria-label="Reset view" onClick=${() => setZoom(1)}>⟲</button>
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--r-2);background:var(--bg)">
       <svg width=${(width + 16) * zoom} height=${(height + 16) * zoom} viewBox=${`-8 -8 ${width + 16} ${height + 16}`} style="display:block">

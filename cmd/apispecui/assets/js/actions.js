@@ -129,8 +129,12 @@ function fullGenerateRequest() {
 export async function generate() {
   const s = getState();
   if (!s.project || s.generating) return;
-  setState({ generating: true, genPhase: "starting…" });
+  const start = Date.now();
+  setState({ generating: true, genPhase: "starting…", genElapsed: 0 });
   setStatus("generating…");
+  // Live elapsed ticker — reassures the run is alive and makes a stall obvious
+  // (a counter climbing on one phase reads as "stuck" where a static label hides it).
+  const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
   const poll = setInterval(async () => {
     try {
       const p = await api.progress();
@@ -142,9 +146,10 @@ export async function generate() {
   try {
     const res = await api.generate(fullGenerateRequest());
     if (res && res.cancelled) {
-      setStatus("generation stopped", "warn");
+      setStatus(`generation stopped · ${fmtDur(Date.now() - start)}`, "warn");
     } else {
       const skipped = res.skippedPackages || [];
+      const took = fmtDur(Date.now() - start);
       setState({
         hasSpec: true,
         lastPaths: res.pathCount || 0,
@@ -154,9 +159,9 @@ export async function generate() {
         skipped,
       });
       if (skipped.length) {
-        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped`, "warn");
+        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
       } else {
-        setStatus(`generated ${res.pathCount || 0} paths`, "ok");
+        setStatus(`generated ${res.pathCount || 0} paths in ${took}`, "ok");
       }
     }
   } catch (e) {
@@ -168,9 +173,20 @@ export async function generate() {
       setStatus("generation failed: " + e.message, "err");
     }
   } finally {
+    clearInterval(tick);
     clearInterval(poll);
-    setState({ generating: false, genPhase: "" });
+    setState({ generating: false, genPhase: "", genElapsed: 0 });
   }
+}
+
+// fmtDur renders an elapsed millisecond span compactly: seconds with one
+// decimal under a minute (e.g. "3.2s"), m:ss beyond (e.g. "1:23"). Empty for
+// zero/negative so the live counter doesn't flash "0.0s" before the first tick.
+export function fmtDur(ms) {
+  if (!ms || ms < 0) return "";
+  if (ms < 60000) return (ms / 1000).toFixed(1) + "s";
+  const sec = Math.round(ms / 1000);
+  return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
 }
 
 // stopGenerate cancels the in-flight generation. The generate() call
