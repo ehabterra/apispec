@@ -815,6 +815,55 @@ h3 + .info {
   color: var(--accent);
 }
 
+/* Call-site list: one row per distinct location the function is invoked from.
+   Each row is a button that opens the source at that exact call site. */
+.trace-tip .tt-sites {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 168px;
+  overflow: auto;
+}
+.trace-tip .tt-site {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--fs-xs);
+}
+.trace-tip .tt-site:hover {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+.trace-tip .tt-site.active {
+  border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.trace-tip .tt-site-pos {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.trace-tip .tt-site-from {
+  color: var(--muted);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trace-tip .tt-site-go {
+  margin-left: auto;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* Pinned card: frozen at the click point, mouse-interactive (so it can be
    hovered, text-selected, and its buttons clicked) and visually distinct. */
 .trace-tip.pinned {

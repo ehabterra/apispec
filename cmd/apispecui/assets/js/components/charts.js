@@ -238,27 +238,34 @@ function TraceTip({ node, x, y, pinned, onClose }) {
   const [copied, setCopied] = useState("");
   const [drag, setDrag] = useState(null); // {left,top} once the user has moved it
   const [src, setSrc] = useState(null); // null | "loading" | {error} | {code,startLine,line,file}
+  const [activePos, setActivePos] = useState(null); // which call site is currently shown
   const dragRef = useRef(null);
   const o = ORIGIN[node.origin] || ["", "var(--muted)"];
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   const hasSrc = !!(src && src.code);
+  // Every distinct location this function is called from. The backend sends
+  // `sites` only when there's more than one; otherwise fall back to the single
+  // `pos`. This is what lets the user pick *which* call site to inspect.
+  const sites = node.sites && node.sites.length ? node.sites : node.pos ? [{ pos: node.pos, caller: "" }] : [];
+  const multi = sites.length > 1;
   // The card widens and grows taller once source is shown.
   const W = pinned && hasSrc ? 560 : 300;
-  const H = pinned ? (hasSrc ? 440 : 210) : 150;
+  const H = pinned ? (hasSrc ? 460 : multi ? 300 : 210) : 150;
   // keep on-screen: prefer cursor+offset, flip when near the right/bottom edge
   const baseLeft = Math.max(8, Math.min(x + 14, vw - W - 8));
   const baseTop = y + 14 + H > vh ? Math.max(8, y - H - 8) : y + 14;
   const left = drag ? drag.left : baseLeft;
   const top = drag ? drag.top : baseTop;
 
-  // Fetch the source window around this node's file:line. Best-effort —
+  // Fetch the source window around a given call site (file:line). Best-effort —
   // failures (no pos, file outside the module, etc.) surface as a small note.
-  const loadSrc = async () => {
-    if (!node.pos || src === "loading") return;
+  const loadSrc = async (pos) => {
+    if (!pos || src === "loading") return;
+    setActivePos(pos);
     setSrc("loading");
     try {
-      const r = await fetch(`/api/insight/source?pos=${encodeURIComponent(node.pos)}&before=3&after=28`);
+      const r = await fetch(`/api/insight/source?pos=${encodeURIComponent(pos)}&before=3&after=28`);
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || `HTTP ${r.status}`);
@@ -268,6 +275,22 @@ function TraceTip({ node, x, y, pinned, onClose }) {
       setSrc({ error: e.message || "could not load source" });
     }
   };
+  // Toggle the source for a call site: clicking the active one again hides it.
+  const toggleSrc = (pos) => {
+    if (activePos === pos && (hasSrc || (src && src.error))) {
+      setSrc(null);
+      setActivePos(null);
+    } else {
+      loadSrc(pos);
+    }
+  };
+  // file.go:line for compact display in the call-site list.
+  const posLabel = (p) => {
+    if (!p) return "";
+    const m = p.match(/^(.*?):(\d+)(?::\d+)?$/);
+    const file = (m ? m[1] : p).split("/").pop();
+    return m ? `${file}:${m[2]}` : file;
+  };
 
   const allText = [
     "symbol: " + (node.symbol || node.label),
@@ -275,7 +298,11 @@ function TraceTip({ node, x, y, pinned, onClose }) {
     node.pkg ? "package: " + node.pkg : "",
     `origin: ${node.origin} · kind: ${node.kind} · depth: ${node.depth}`,
     `calls: ${node.calls} out · ${node.calledBy} in`,
-    node.pos ? "position: " + node.pos : "",
+    multi
+      ? "call sites:\n" + sites.map((st) => `  ${st.pos}${st.caller ? "  (from " + st.caller + ")" : ""}`).join("\n")
+      : node.pos
+        ? "position: " + node.pos
+        : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -332,22 +359,41 @@ function TraceTip({ node, x, y, pinned, onClose }) {
     <div class="tt-meta">
       <span style="color:var(--accent)">▸ ${node.calls} calls</span> · <span style="color:var(--warn)">◂ called by ${node.calledBy}</span>
     </div>
-    ${node.pos ? html`<div class="tt-meta tt-pos">${node.pos}</div>` : ""}
+    ${multi
+      ? html`<div class="tt-meta tt-pos">called from ${sites.length} locations</div>`
+      : node.pos
+        ? html`<div class="tt-meta tt-pos">${node.pos}</div>`
+        : ""}
+    ${pinned && multi
+      ? html`<div class="tt-sites">
+          ${sites.map(
+            (st) => html`<button
+              class=${"tt-site" + (activePos === st.pos ? " active" : "")}
+              title=${`View source at ${st.pos}`}
+              onClick=${() => toggleSrc(st.pos)}
+            >
+              <span class="tt-site-pos">${posLabel(st.pos)}</span>
+              ${st.caller ? html`<span class="tt-site-from">from ${st.caller}</span>` : ""}
+              <span class="tt-site-go">${activePos === st.pos && hasSrc ? "◇ hide" : "◇ view"}</span>
+            </button>`,
+          )}
+        </div>`
+      : ""}
     ${pinned
       ? html`<div class="tt-actions">
           <button class="btn ghost sm" onClick=${() => copy(node.id, "id")}>${copied === "id" ? "✓" : "Copy ID"}</button>
           <button class="btn ghost sm" onClick=${() => copy(allText, "all")}>${copied === "all" ? "✓ Copied" : "Copy all"}</button>
-          ${node.pos
+          ${!multi && node.pos
             ? html`<button
                 class="btn ghost sm"
                 title="Show the source around this function/call"
-                onClick=${() => (hasSrc || src === "loading" ? setSrc(null) : loadSrc())}
+                onClick=${() => toggleSrc(node.pos)}
               >
                 ${src === "loading" ? "loading…" : hasSrc ? "◇ Hide source" : "◇ View source"}
               </button>`
             : ""}
         </div>`
-      : html`<div class="tt-hint">click to pin &amp; copy</div>`}
+      : html`<div class="tt-hint">${multi ? `${sites.length} call sites · ` : ""}click to pin &amp; copy</div>`}
     ${hasSrc ? html`<${SourceView} src=${src} />` : ""}
     ${pinned && src && src.error ? html`<div class="tt-meta" style="color:var(--danger);margin-top:6px">${src.error}</div>` : ""}
   </div>`;

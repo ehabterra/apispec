@@ -3,27 +3,27 @@ string_pool:
   - u
   - multipackage/models
   - '*multipackage/models.User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:14:9
+  - claude-501/001/multipackage/models/user.go:14:9
   - Name
   - string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:14:11
+  - claude-501/001/multipackage/models/user.go:14:11
   - selector
   - GetName
   - '*User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:13:26
+  - claude-501/001/multipackage/models/user.go:13:26
   - func_type
   - func_results
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:13:1
+  - claude-501/001/multipackage/models/user.go:13:1
   - exported
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go
+  - claude-501/001/multipackage/models/user.go
   - func() string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:18:9
+  - claude-501/001/multipackage/models/user.go:18:9
   - Age
   - int
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:18:11
+  - claude-501/001/multipackage/models/user.go:18:11
   - GetAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:17:25
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:17:1
+  - claude-501/001/multipackage/models/user.go:17:25
+  - claude-501/001/multipackage/models/user.go:17:1
   - func() int
   - User
   - struct
@@ -31,156 +31,156 @@ string_pool:
   - json:"age"
   - interface
   - UserInterface
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:9:12
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:10:11
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:22:10
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:23:3
+  - claude-501/001/multipackage/models/user.go:9:12
+  - claude-501/001/multipackage/models/user.go:10:11
+  - claude-501/001/multipackage/models/user.go:22:10
+  - claude-501/001/multipackage/models/user.go:23:3
   - name
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:23:9
+  - claude-501/001/multipackage/models/user.go:23:9
   - key_value
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:24:3
+  - claude-501/001/multipackage/models/user.go:24:3
   - age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:24:9
+  - claude-501/001/multipackage/models/user.go:24:9
   - composite_lit
   - unary
   - '&'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:22:9
+  - claude-501/001/multipackage/models/user.go:22:9
   - NewUser
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:21:19
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:21:31
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:21:37
+  - claude-501/001/multipackage/models/user.go:21:19
+  - claude-501/001/multipackage/models/user.go:21:31
+  - claude-501/001/multipackage/models/user.go:21:37
   - star
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:21:36
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:21:1
+  - claude-501/001/multipackage/models/user.go:21:36
+  - claude-501/001/multipackage/models/user.go:21:1
   - func(string, int) *User
   - literal
   - '"%s %s is %d years old"'
   - s
   - multipackage/services
   - '*multipackage/services.UserService'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:46
+  - claude-501/001/multipackage/services/user_service.go:19:46
   - prefix
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:48
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:56
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:62
+  - claude-501/001/multipackage/services/user_service.go:19:48
+  - claude-501/001/multipackage/services/user_service.go:19:56
+  - claude-501/001/multipackage/services/user_service.go:19:62
   - fmt
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:9
+  - claude-501/001/multipackage/services/user_service.go:19:9
   - Sprintf
   - func(format string, a ...any) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:19:13
+  - claude-501/001/multipackage/services/user_service.go:19:13
   - call
   - models
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:16:41
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:16:48
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:16:40
+  - claude-501/001/multipackage/services/user_service.go:16:41
+  - claude-501/001/multipackage/services/user_service.go:16:48
+  - claude-501/001/multipackage/services/user_service.go:16:40
   - user
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:16:54
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:17:10
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:17:15
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:17:2
+  - claude-501/001/multipackage/services/user_service.go:16:54
+  - claude-501/001/multipackage/services/user_service.go:17:10
+  - claude-501/001/multipackage/services/user_service.go:17:15
+  - claude-501/001/multipackage/services/user_service.go:17:2
   - unexported
   - ProcessUser
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:18:9
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:18:14
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:18:2
+  - claude-501/001/multipackage/services/user_service.go:18:9
+  - claude-501/001/multipackage/services/user_service.go:18:14
+  - claude-501/001/multipackage/services/user_service.go:18:2
   - '*UserService'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:16:1
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go
+  - claude-501/001/multipackage/services/user_service.go:16:1
+  - claude-501/001/multipackage/services/user_service.go
   - func(*models.User) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:22:40
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:23:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:23:4
+  - claude-501/001/multipackage/services/user_service.go:22:40
+  - claude-501/001/multipackage/services/user_service.go:23:2
+  - claude-501/001/multipackage/services/user_service.go:23:4
   - multipackage/services.UserService.prefix
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:23:13
+  - claude-501/001/multipackage/services/user_service.go:23:13
   - SetPrefix
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:22:1
+  - claude-501/001/multipackage/services/user_service.go:22:1
   - 'func(string) '
   - UserService
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:13:10
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:13:22
+  - claude-501/001/multipackage/services/user_service.go:13:10
+  - claude-501/001/multipackage/services/user_service.go:13:22
   - '"User:"'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:13:9
+  - claude-501/001/multipackage/services/user_service.go:13:9
   - NewUserService
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:12:24
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:12:23
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:12:1
+  - claude-501/001/multipackage/services/user_service.go:12:24
+  - claude-501/001/multipackage/services/user_service.go:12:23
+  - claude-501/001/multipackage/services/user_service.go:12:1
   - func() *UserService
   - 'User:'
   - '"John"'
   - "25"
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:10:10
+  - claude-501/001/multipackage/main.go:10:10
   - func(name string, age int) *multipackage/models.User
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:10:17
+  - claude-501/001/multipackage/main.go:10:17
   - multipackage
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:10:2
+  - claude-501/001/multipackage/main.go:10:2
   - main
   - services
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:11:13
+  - claude-501/001/multipackage/main.go:11:13
   - func() *multipackage/services.UserService
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:11:22
+  - claude-501/001/multipackage/main.go:11:22
   - service
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:11:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:13:32
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:13:12
+  - claude-501/001/multipackage/main.go:11:2
+  - claude-501/001/multipackage/main.go:13:32
+  - claude-501/001/multipackage/main.go:13:12
   - func(user *multipackage/models.User) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:13:20
+  - claude-501/001/multipackage/main.go:13:20
   - result
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:13:2
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:9:1
+  - claude-501/001/multipackage/main.go:13:2
+  - claude-501/001/multipackage/main.go:9:1
   - 'func() '
   - "1"
   - "149"
   - input
   - multipackage/utils
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:6:43
+  - claude-501/001/multipackage/utils/helper.go:6:43
   - strings
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:6:25
+  - claude-501/001/multipackage/utils/helper.go:6:25
   - TrimSpace
   - func(s string) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:6:33
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:6:9
+  - claude-501/001/multipackage/utils/helper.go:6:33
+  - claude-501/001/multipackage/utils/helper.go:6:9
   - ToUpper
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:6:17
+  - claude-501/001/multipackage/utils/helper.go:6:17
   - FormatString
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:5:25
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:5:33
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:5:1
+  - claude-501/001/multipackage/utils/helper.go:5:25
+  - claude-501/001/multipackage/utils/helper.go:5:33
+  - claude-501/001/multipackage/utils/helper.go:5:1
   - func(string) string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:10:9
+  - claude-501/001/multipackage/utils/helper.go:10:9
   - "0"
   - binary
   - '>'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:10:20
+  - claude-501/001/multipackage/utils/helper.go:10:20
   - "150"
   - <
   - '&&'
   - ValidateAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:9:22
+  - claude-501/001/multipackage/utils/helper.go:9:22
   - bool
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:9:27
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:9:1
+  - claude-501/001/multipackage/utils/helper.go:9:27
+  - claude-501/001/multipackage/utils/helper.go:9:1
   - func(int) bool
   - MinAge
   - const
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:14:2
+  - claude-501/001/multipackage/utils/helper.go:14:2
   - untyped int
   - MaxAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:15:2
+  - claude-501/001/multipackage/utils/helper.go:15:2
   - DefaultFormat
   - var
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:18:5
+  - claude-501/001/multipackage/utils/helper.go:18:5
   - '"uppercase"'
   - uppercase
   - multipackage/models.UserInterface
   - multipackage/models.User
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:14:14
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:14:2
+  - claude-501/001/multipackage/main.go:14:14
+  - claude-501/001/multipackage/main.go:14:2
   - Println
   - func(a ...any) (n int, err error)
 packages:
   multipackage:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/main.go:
+      claude-501/001/multipackage/main.go:
         functions:
           main:
             name: 114
@@ -432,7 +432,7 @@ packages:
           64: 64
   multipackage/models:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/models/user.go:
+      claude-501/001/multipackage/models/user.go:
         types:
           User:
             name: 26
@@ -1059,7 +1059,7 @@ packages:
         comments: -1
   multipackage/services:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/services/user_service.go:
+      claude-501/001/multipackage/services/user_service.go:
         types:
           UserService:
             name: 96
@@ -1997,7 +1997,7 @@ packages:
         comments: -1
   multipackage/utils:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/multipackage/utils/helper.go:
+      claude-501/001/multipackage/utils/helper.go:
         functions:
           FormatString:
             name: 142

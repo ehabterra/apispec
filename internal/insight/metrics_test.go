@@ -50,6 +50,47 @@ func TestResolveImplementers(t *testing.T) {
 	}
 }
 
+// TestTraceSites_MultipleCallLocations verifies that a function invoked from
+// more than one location collects every distinct call site in node.Sites,
+// while a singly-called function leaves Sites empty (its one location is
+// already carried by Pos).
+func TestTraceSites_MultipleCallLocations(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	mk := func(pkg, recv, name, pos string) metadata.Call {
+		return metadata.Call{Meta: meta, Pkg: pool.Get(pkg), RecvType: pool.Get(recv), Name: pool.Get(name), Position: pool.Get(pos)}
+	}
+	const root = "github.com/x/h.Handler.Do"
+	meta.Callers = map[string][]*metadata.CallGraphEdge{
+		root: {
+			// Svc.Run called twice from two different lines.
+			{Caller: mk("github.com/x/h", "Handler", "Do", "/proj/h.go:5"), Callee: mk("github.com/x/svc", "Svc", "Run", "/proj/h.go:10")},
+			{Caller: mk("github.com/x/h", "Handler", "Do", "/proj/h.go:5"), Callee: mk("github.com/x/svc", "Svc", "Run", "/proj/h.go:22")},
+			// Svc.Once called only once.
+			{Caller: mk("github.com/x/h", "Handler", "Do", "/proj/h.go:5"), Callee: mk("github.com/x/svc", "Svc", "Once", "/proj/h.go:30")},
+		},
+	}
+
+	_, tg := analyzeFromHandler(meta, root)
+	byID := map[string]TraceNode{}
+	for _, n := range tg.Nodes {
+		byID[n.ID] = n
+	}
+	run, ok := byID["github.com/x/svc.Svc.Run"]
+	if !ok {
+		t.Fatalf("Svc.Run node missing; nodes=%v", byID)
+	}
+	if len(run.Sites) != 2 {
+		t.Fatalf("Svc.Run should have 2 call sites, got %d (%v)", len(run.Sites), run.Sites)
+	}
+	if run.Sites[0].Pos != "/proj/h.go:10" || run.Sites[1].Pos != "/proj/h.go:22" {
+		t.Errorf("call sites not sorted/complete: %v", run.Sites)
+	}
+	if once := byID["github.com/x/svc.Svc.Once"]; len(once.Sites) != 0 {
+		t.Errorf("single-call node should leave Sites empty, got %v", once.Sites)
+	}
+}
+
 // TestAnalyzers_Fixture drives the trace analyzers with real metadata loaded
 // from a testdata fixture, covering the BFS, metrics, trace-graph build, the
 // tracker-tree entry point (both the cfg/extractor path and the call-graph

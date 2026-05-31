@@ -3,30 +3,30 @@ string_pool:
   - u
   - example
   - '*example.User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:21:9
+  - claude-501/001/example/types.go:21:9
   - Name
   - string
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:21:11
+  - claude-501/001/example/types.go:21:11
   - selector
   - GetName
   - '*User'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:20:26
+  - claude-501/001/example/types.go:20:26
   - func_type
   - func_results
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:20:1
+  - claude-501/001/example/types.go:20:1
   - exported
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go
+  - claude-501/001/example/types.go
   - func() string
   - int
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:24:27
+  - claude-501/001/example/types.go:24:27
   - age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:2
+  - claude-501/001/example/types.go:25:2
   - Age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:4
+  - claude-501/001/example/types.go:25:4
   - example.User.Age
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:25:10
+  - claude-501/001/example/types.go:25:10
   - SetAge
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:24:1
+  - claude-501/001/example/types.go:24:1
   - 'func(int) '
   - User
   - struct
@@ -34,61 +34,61 @@ string_pool:
   - json:"age"
   - interface
   - Namer
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:9:12
+  - claude-501/001/example/types.go:9:12
   - Ager
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:13:13
+  - claude-501/001/example/types.go:13:13
   - Phoner
   - SetPhone
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:17:16
+  - claude-501/001/example/types.go:17:16
   - numb
   - 'func(string) '
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:36:9
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:19
+  - claude-501/001/example/types.go:36:9
+  - claude-501/001/example/types.go:28:19
   - name
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:31
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:37
+  - claude-501/001/example/types.go:28:31
+  - claude-501/001/example/types.go:28:37
   - star
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:36
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:8
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:30:3
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:30:9
+  - claude-501/001/example/types.go:28:36
+  - claude-501/001/example/types.go:29:8
+  - claude-501/001/example/types.go:30:3
+  - claude-501/001/example/types.go:30:9
   - key_value
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:31:3
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:31:9
+  - claude-501/001/example/types.go:31:3
+  - claude-501/001/example/types.go:31:9
   - composite_lit
   - unary
   - '&'
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:7
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:29:2
+  - claude-501/001/example/types.go:29:7
+  - claude-501/001/example/types.go:29:2
   - unexported
   - NewUser
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:28:1
+  - claude-501/001/example/types.go:28:1
   - func(string, int) *User
   - literal
   - '"User Name"'
   - "40"
   - func(name string, age int) *example.User
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:40:10
+  - claude-501/001/example/types.go:40:10
   - call
   - user
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:40:2
+  - claude-501/001/example/types.go:40:2
   - main
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:39:1
+  - claude-501/001/example/types.go:39:1
   - 'func() '
   - example.Namer
   - example.User
   - example.Ager
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:34:11
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:34:2
+  - claude-501/001/example/types.go:34:11
+  - claude-501/001/example/types.go:34:2
   - func(age int)
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:15
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:14
-  - r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:41:2
+  - claude-501/001/example/types.go:41:15
+  - claude-501/001/example/types.go:41:14
+  - claude-501/001/example/types.go:41:2
   - Println
 packages:
   example:
     files:
-      r1/w8tjj19x3nz2gpwll3xntf4r0000gn/T/001/example/types.go:
+      claude-501/001/example/types.go:
         types:
           Ager:
             name: 36
