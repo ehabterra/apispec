@@ -1,6 +1,7 @@
 package insight
 
 import (
+	"sort"
 	"strings"
 	"sync"
 
@@ -54,7 +55,20 @@ type TraceNode struct {
 	// interface method call to its implementer — the UI badges these so the
 	// "interface → impl" hop is visible.
 	Resolved bool `json:"resolved,omitempty"`
+	// Sites lists every distinct location this function is called from within
+	// the trace (a function reached from several callers, or called more than
+	// once by the same caller, has multiple). The UI shows them all and lets
+	// the user open the source for any one. Populated only when there is more
+	// than one; the single-site case is already covered by Pos.
+	Sites []CallSite `json:"sites,omitempty"`
 }
+
+// CallSite is one location a trace node is invoked from.
+type CallSite struct {
+	Pos    string `json:"pos"`              // file:line of the call expression
+	Caller string `json:"caller,omitempty"` // short label of the calling function
+}
+
 type TraceEdge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
@@ -135,7 +149,21 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 	visited := map[string]bool{root: true}
 	queue := []string{root}
 	fanoutSum, fanoutNodes := 0, 0
-	info := map[string]traceMeta{} // per-node display metadata for the tooltip
+	info := map[string]traceMeta{}            // per-node display metadata for the tooltip
+	sites := map[string]map[string]CallSite{} // callee -> pos -> call site
+	sp := meta.StringPool
+	recordSite := func(callee, callerID string, c *metadata.Call) {
+		pos := extractFilePos(sp.GetString(c.Position))
+		if pos == "" {
+			return
+		}
+		if sites[callee] == nil {
+			sites[callee] = map[string]CallSite{}
+		}
+		if _, ok := sites[callee][pos]; !ok {
+			sites[callee][pos] = CallSite{Pos: pos, Caller: shortLabel(callerID)}
+		}
+	}
 
 	for len(queue) > 0 {
 		cur := queue[0]
@@ -155,7 +183,11 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 				continue
 			}
 			callee := e.Callee.BaseID()
-			if callee == "" || callee == cur || seen[callee] {
+			if callee == "" || callee == cur {
+				continue
+			}
+			recordSite(callee, cur, &e.Callee)
+			if seen[callee] {
 				continue
 			}
 			seen[callee] = true
@@ -210,7 +242,7 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 	m.CallPaths, m.CallPathsTruncated = countPaths(adj, root)
 	m.Grade, m.GradeLowerBound = grade(m)
 
-	buildTraceGraph(&tg, adj, depth, root, info)
+	buildTraceGraph(&tg, adj, depth, root, info, sites)
 	tg.Paths = enumeratePaths(adj, root, maxPathSample)
 	return m, tg
 }
@@ -246,14 +278,28 @@ func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, Tr
 		return Metrics{}, TraceGraph{}, false
 	}
 
+	sp := meta.StringPool
 	m := Metrics{}
 	adj := map[string][]string{}
 	depth := map[string]int{root: 0}
 	info := map[string]traceMeta{}
+	sites := map[string]map[string]CallSite{} // callee -> pos -> site
 	seen := map[string]map[string]bool{}
 	visited := map[string]bool{root: true}
 	queue := []string{root}
 
+	recordSite := func(callee, callerID string, c *metadata.Call) {
+		pos := extractFilePos(sp.GetString(c.Position))
+		if pos == "" {
+			return
+		}
+		if sites[callee] == nil {
+			sites[callee] = map[string]CallSite{}
+		}
+		if _, ok := sites[callee][pos]; !ok {
+			sites[callee][pos] = CallSite{Pos: pos, Caller: shortLabel(callerID)}
+		}
+	}
 	addEdge := func(from, to string) {
 		if from == to {
 			return
@@ -296,7 +342,11 @@ func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, Tr
 				continue
 			}
 			callee := e.Callee.BaseID()
-			if callee == "" || callee == cur || seenCallee[callee] {
+			if callee == "" || callee == cur {
+				continue
+			}
+			recordSite(callee, cur, &e.Callee)
+			if seenCallee[callee] {
 				continue
 			}
 			seenCallee[callee] = true
@@ -325,6 +375,7 @@ func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, Tr
 			if len(meta.Callers[callee]) == 0 {
 				for cid, cmeta := range resolveImplementers(meta, &e.Callee) {
 					addEdge(callee, cid)
+					recordSite(cid, cur, &e.Callee)
 					if _, ok := info[cid]; !ok {
 						info[cid] = cmeta
 					}
@@ -352,7 +403,7 @@ func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, Tr
 	m.Grade, m.GradeLowerBound = grade(m)
 
 	tg := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
-	buildTraceGraph(&tg, adj, depth, root, info)
+	buildTraceGraph(&tg, adj, depth, root, info, sites)
 	tg.Paths = enumeratePaths(adj, root, maxPathSample)
 	return m, tg, true
 }
@@ -382,11 +433,25 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 		return m, empty, false
 	}
 
+	sp := meta.StringPool
 	adj := map[string][]string{}
 	depth := map[string]int{root: 0}
 	info := map[string]traceMeta{}
+	sites := map[string]map[string]CallSite{} // callee -> pos -> site
 	seen := map[string]map[string]bool{}
 	visited := map[string]bool{}
+	recordSite := func(callee, callerID string, c *metadata.Call) {
+		pos := extractFilePos(sp.GetString(c.Position))
+		if pos == "" {
+			return
+		}
+		if sites[callee] == nil {
+			sites[callee] = map[string]CallSite{}
+		}
+		if _, ok := sites[callee][pos]; !ok {
+			sites[callee][pos] = CallSite{Pos: pos, Caller: shortLabel(callerID)}
+		}
+	}
 	addEdge := func(from, to string) {
 		if from == to {
 			return
@@ -457,6 +522,7 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 		// the concrete method as an intermediate node.
 		if caller := ce.Caller.BaseID(); caller != "" && caller != parentID && caller != callee {
 			addEdge(parentID, caller)
+			recordSite(caller, parentID, &ce.Caller)
 			setDepth(caller, d+1)
 			if _, ok := info[caller]; !ok {
 				cm := traceMetaFromCall(meta, &ce.Caller)
@@ -467,6 +533,7 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 		}
 		if callee != parentID {
 			addEdge(parentID, callee)
+			recordSite(callee, parentID, &ce.Callee)
 			info[callee] = traceMetaFromCall(meta, &ce.Callee)
 			setDepth(callee, d+1)
 			if ce.ChainDepth > m.ChainDepth {
@@ -516,7 +583,7 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 	m.Grade, m.GradeLowerBound = grade(m)
 
 	tg := TraceGraph{Nodes: []TraceNode{}, Edges: []TraceEdge{}}
-	buildTraceGraph(&tg, adj, depth, root, info)
+	buildTraceGraph(&tg, adj, depth, root, info, sites)
 	tg.Paths = enumeratePaths(adj, root, maxPathSample)
 	return m, tg, true
 }
@@ -718,7 +785,7 @@ func grade(m Metrics) (string, bool) {
 
 // buildTraceGraph emits up to maxGraphNodes nodes (closest to the
 // handler) and the edges among them, enriched with per-node metadata.
-func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]int, root string, info map[string]traceMeta) {
+func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]int, root string, info map[string]traceMeta, sites map[string]map[string]CallSite) {
 	// in-trace fan-in (how many nodes call each node)
 	calledBy := map[string]int{}
 	for _, kids := range adj {
@@ -764,6 +831,7 @@ func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]i
 			Pos:      md.pos,
 			Origin:   md.origin,
 			Resolved: md.resolved,
+			Sites:    sortedSites(sites[n.id]),
 			Calls:    len(adj[n.id]),
 			CalledBy: calledBy[n.id],
 		})
@@ -782,6 +850,27 @@ func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]i
 	if tg.Edges == nil {
 		tg.Edges = []TraceEdge{}
 	}
+}
+
+// sortedSites flattens the per-callee call-site set into a stable, sorted
+// slice. Returns nil for 0 or 1 sites: a single location is already shown by
+// the node's Pos, so Sites is reserved for the multi-location case the UI
+// renders as a pickable list.
+func sortedSites(m map[string]CallSite) []CallSite {
+	if len(m) < 2 {
+		return nil
+	}
+	out := make([]CallSite, 0, len(m))
+	for _, s := range m {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Pos != out[j].Pos {
+			return out[i].Pos < out[j].Pos
+		}
+		return out[i].Caller < out[j].Caller
+	})
+	return out
 }
 
 // shortLabel keeps the last package segment + symbol for readability.
