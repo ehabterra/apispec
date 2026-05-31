@@ -34,6 +34,164 @@ const toLines = (v) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+// applySchemaPatch merges a patch into an OpenAPI Schema (a type mapping's
+// `openapiType`), dropping keys that become empty so the YAML stays clean
+// (no `pattern: ""`). Empty objects are KEPT — `additionalProperties: {}` and
+// `items: {}` are meaningful ("any").
+function applySchemaPatch(schema, patch) {
+  const next = { ...(schema || {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    const empty =
+      v === "" || v === null || v === undefined || (typeof v === "number" && Number.isNaN(v)) || (Array.isArray(v) && v.length === 0);
+    if (empty) delete next[k];
+    else next[k] = v;
+  }
+  return next;
+}
+
+const SCHEMA_TYPES = ["", "string", "integer", "number", "boolean", "array", "object"];
+// coerce enum/example text to the schema's declared type so the spec is typed.
+const coerceVal = (t, raw) =>
+  t === "integer" ? parseInt(raw, 10) : t === "number" ? parseFloat(raw) : t === "boolean" ? raw === "true" : raw;
+
+// SchemaEditor edits an OpenAPI Schema (the `openapiType` of a type mapping or
+// external type). Type/format/$ref are always shown; the rest of the OpenAPI
+// vocabulary lives under a disclosure so simple cases stay one line.
+function SchemaEditor({ schema, onPatch }) {
+  const sc = schema || {};
+  const [adv, setAdv] = useState(false);
+  const t = sc.type || "";
+
+  const numF = (label, key, val, ph) => html`<div class="field">
+    <label>${label}</label>
+    <input class="input" type="number" value=${val ?? ""} placeholder=${ph || ""}
+      onInput=${(e) => onPatch({ [key]: e.target.value === "" ? "" : Number(e.target.value) })} />
+  </div>`;
+  const chk = (label, key, val, on) => html`<label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+    <input type="checkbox" checked=${!!val} onChange=${(e) => onPatch({ [key]: on ? on(e.target.checked) : e.target.checked || "" })} />
+    <span>${label}</span>
+  </label>`;
+  const setItems = (p) => onPatch({ items: applySchemaPatch(sc.items, p) });
+
+  return html`
+    <div class="row">
+      <div class="field">
+        <label>OpenAPI type</label>
+        <select class="input" value=${t} onChange=${(e) => onPatch({ type: e.target.value })}>
+          ${SCHEMA_TYPES.map((o) => html`<option value=${o}>${o || "—"}</option>`)}
+        </select>
+      </div>
+      ${txt("Format", sc.format, (e) => onPatch({ format: e.target.value }), "uuid, date-time, int64…")}
+    </div>
+    ${txt("$ref (reference a component instead)", sc["$ref"], (e) => onPatch({ ["$ref"]: e.target.value }), "#/components/schemas/Money")}
+
+    <div class="schema-adv-toggle" onClick=${() => setAdv((v) => !v)}>
+      <span class="chev">${adv ? "▾" : "▸"}</span> OpenAPI features (enum, pattern, ranges, items…)
+    </div>
+    ${adv &&
+    html`<div class="schema-adv">
+      ${txt("Description", sc.description, (e) => onPatch({ description: e.target.value }))}
+      ${txt("Example", sc.example, (e) => onPatch({ example: e.target.value === "" ? "" : coerceVal(t, e.target.value) }))}
+      ${txt("Enum (comma-separated)", (sc.enum || []).join(", "), (e) =>
+        onPatch({
+          enum: e.target.value
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .map((x) => coerceVal(t, x)),
+        }),
+        "active, inactive, pending",
+      )}
+      ${t === "string"
+        ? html`${txt("Pattern (regex)", sc.pattern, (e) => onPatch({ pattern: e.target.value }), "^[a-z]+$")}
+            <div class="row">${numF("Min length", "minLength", sc.minLength)}${numF("Max length", "maxLength", sc.maxLength)}</div>`
+        : ""}
+      ${t === "integer" || t === "number"
+        ? html`<div class="row">${numF("Minimum", "minimum", sc.minimum)}${numF("Maximum", "maximum", sc.maximum)}${numF("Multiple of", "multipleOf", sc.multipleOf)}</div>
+            <div class="row">${chk("Exclusive min", "exclusiveMinimum", sc.exclusiveMinimum)}${chk("Exclusive max", "exclusiveMaximum", sc.exclusiveMaximum)}</div>`
+        : ""}
+      ${t === "array"
+        ? html`<div class="schema-items">
+            <div class="schema-adv-label">Items</div>
+            <div class="row">
+              <div class="field">
+                <label>Item type</label>
+                <select class="input" value=${sc.items?.type || ""} onChange=${(e) => setItems({ type: e.target.value })}>
+                  ${SCHEMA_TYPES.map((o) => html`<option value=${o}>${o || "—"}</option>`)}
+                </select>
+              </div>
+              ${txt("Item format", sc.items?.format, (e) => setItems({ format: e.target.value }))}
+            </div>
+            ${txt("Item $ref", sc.items?.["$ref"], (e) => setItems({ ["$ref"]: e.target.value }), "#/components/schemas/Tag")}
+            <div class="row">${numF("Min items", "minItems", sc.minItems)}${numF("Max items", "maxItems", sc.maxItems)}</div>
+            ${chk("Unique items", "uniqueItems", sc.uniqueItems)}
+          </div>`
+        : ""}
+      ${t === "object" ? PropsEditor(sc, onPatch) : ""}
+      <div class="row">${chk("Deprecated", "deprecated", sc.deprecated)}${chk("Read only", "readOnly", sc.readOnly)}${chk("Write only", "writeOnly", sc.writeOnly)}</div>
+    </div>`}
+  `;
+}
+
+// PropsEditor edits an object schema's named `properties` (each itself a full
+// schema, so objects/arrays nest) plus the `required` list and
+// `additionalProperties`. Rendered inside SchemaEditor's object branch.
+function PropsEditor(sc, onPatch) {
+  const props = sc.properties || {};
+  const required = sc.required || [];
+  const addProp = () => {
+    let name = "field",
+      n = 1;
+    while (props[name]) name = `field${++n}`;
+    onPatch({ properties: { ...props, [name]: { type: "string" } } });
+  };
+  const renameProp = (oldK, raw) => {
+    const newK = (raw || "").trim();
+    if (!newK || newK === oldK || props[newK]) return; // ignore empty / dup
+    const next = {};
+    for (const [k, v] of Object.entries(props)) next[k === oldK ? newK : k] = v;
+    onPatch({ properties: next, required: required.map((r) => (r === oldK ? newK : r)) });
+  };
+  const setPropSchema = (k, v) => onPatch({ properties: { ...props, [k]: v } });
+  const delProp = (k) => {
+    const next = { ...props };
+    delete next[k];
+    onPatch({ properties: Object.keys(next).length ? next : "", required: required.filter((r) => r !== k) });
+  };
+  const toggleReq = (k, on) => onPatch({ required: on ? [...new Set([...required, k])] : required.filter((r) => r !== k) });
+  const numF = (label, key, val) => html`<div class="field">
+    <label>${label}</label>
+    <input class="input" type="number" value=${val ?? ""} onInput=${(e) => onPatch({ [key]: e.target.value === "" ? "" : Number(e.target.value) })} />
+  </div>`;
+
+  return html`<div class="schema-items">
+    <div class="schema-adv-label">Properties</div>
+    ${Object.entries(props).map(
+      ([name, ps]) => html`
+        <div class="card" style="margin:6px 0">
+          <div class="row">
+            <div class="field" style="flex:1">
+              <label>Property name</label>
+              <input class="input" value=${name} placeholder="fieldName" onChange=${(e) => renameProp(name, e.target.value)} />
+            </div>
+            <label class="row" style="cursor:pointer;gap:4px;align-self:flex-end;margin-bottom:8px;white-space:nowrap">
+              <input type="checkbox" checked=${required.includes(name)} onChange=${(e) => toggleReq(name, e.target.checked)} /><span>required</span>
+            </label>
+            ${RowDelete(() => delProp(name))}
+          </div>
+          <${SchemaEditor} schema=${ps} onPatch=${(p) => setPropSchema(name, applySchemaPatch(ps, p))} />
+        </div>
+      `,
+    )}
+    <button class="btn ghost sm" onClick=${addProp}>+ Add property</button>
+    <label class="row" style="cursor:pointer;gap:6px;margin:8px 0 0">
+      <input type="checkbox" checked=${!!sc.additionalProperties} onChange=${(e) => onPatch({ additionalProperties: e.target.checked ? {} : "" })} />
+      <span>Allow additional properties</span>
+    </label>
+    <div class="row">${numF("Min properties", "minProperties", sc.minProperties)}${numF("Max properties", "maxProperties", sc.maxProperties)}</div>
+  </div>`;
+}
+
 function Section({ title, hint, help, desc, children, openDefault = false }) {
   const { query, bulk } = useContext(ConfigUI);
   const [open, setOpen] = useState(openDefault);
@@ -215,7 +373,7 @@ export function ConfigMode() {
             </div>
           <//>
 
-          <${Section} title="Type mappings" help="Map a Go type to an explicit OpenAPI type+format for every occurrence. Use when apispec CAN see the type but you want a specific representation. Examples: time.Time → string/date-time · uuid.UUID → string/uuid · domain.UserStatus → string with enum [active, inactive, pending]." hint=${`${(c.typeMapping || []).length}`}>
+          <${Section} title="Type mappings" help="Map a Go type to an explicit OpenAPI schema for every occurrence. Use when apispec CAN see the type but you want a specific representation. The editor exposes the full OpenAPI vocabulary — type/format, enum, pattern, min/max & length, array items, additionalProperties, $ref, example, deprecated. Examples: time.Time → string/date-time · uuid.UUID → string/uuid · domain.UserStatus → string with enum [active, inactive, pending] · Money → $ref #/components/schemas/Money." hint=${`${(c.typeMapping || []).length}`}>
             ${(c.typeMapping || []).map(
               (m, i) => html`
                 <div class="card">
@@ -224,10 +382,7 @@ export function ConfigMode() {
                     <span class="spacer"></span>${RowDelete(() => delAt("typeMapping", i))}
                   </div>
                   ${txt("Go type", m.goType, (e) => updAt("typeMapping", i, { goType: e.target.value }), "uuid.UUID")}
-                  <div class="row">
-                    ${txt("OpenAPI type", m.openapiType?.type, (e) => updAt("typeMapping", i, { openapiType: { ...m.openapiType, type: e.target.value } }), "string")}
-                    ${txt("Format", m.openapiType?.format, (e) => updAt("typeMapping", i, { openapiType: { ...m.openapiType, format: e.target.value } }), "uuid")}
-                  </div>
+                  <${SchemaEditor} schema=${m.openapiType} onPatch=${(p) => updAt("typeMapping", i, { openapiType: applySchemaPatch(m.openapiType, p) })} />
                 </div>
               `,
             )}
@@ -243,10 +398,7 @@ export function ConfigMode() {
                     <span class="spacer"></span>${RowDelete(() => delAt("externalTypes", i))}
                   </div>
                   ${txt("Name", m.name, (e) => updAt("externalTypes", i, { name: e.target.value }), "primitive.ObjectID")}
-                  <div class="row">
-                    ${txt("OpenAPI type", m.openapiType?.type, (e) => updAt("externalTypes", i, { openapiType: { ...m.openapiType, type: e.target.value } }), "string")}
-                    ${txt("Format", m.openapiType?.format, (e) => updAt("externalTypes", i, { openapiType: { ...m.openapiType, format: e.target.value } }))}
-                  </div>
+                  <${SchemaEditor} schema=${m.openapiType} onPatch=${(p) => updAt("externalTypes", i, { openapiType: applySchemaPatch(m.openapiType, p) })} />
                 </div>
               `,
             )}
