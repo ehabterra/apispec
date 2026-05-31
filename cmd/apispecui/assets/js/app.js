@@ -10,6 +10,7 @@ import {
   openProject,
   closeBrowse,
   getBrowse,
+  fmtDur,
 } from "/assets/js/actions.js";
 import { BrowseDialog } from "/assets/js/browse.js";
 import { SpecMode } from "/assets/js/spec.js";
@@ -75,7 +76,9 @@ function TopBar({ s }) {
         <button class="btn ghost sm" onClick=${openProject}>📁</button>
       </div>
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
-        ${s.generating ? `Generating… ${s.genPhase || ""}` : "Generate ▸"}
+        ${s.generating
+          ? html`Generating…${s.genPhase ? html` ${s.genPhase}` : ""}${s.genElapsed ? html` <span class="gen-elapsed">${fmtDur(s.genElapsed)}</span>` : ""}`
+          : "Generate ▸"}
       </button>
       ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
       <span class="spacer"></span>

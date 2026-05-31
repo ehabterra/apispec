@@ -293,6 +293,18 @@ type TrackerTree struct {
 	// max-nodes, max-children) so a single hot node doesn't spam stderr
 	// once per visiting call path.
 	warnedKeys map[string]struct{}
+
+	// parentFnIndex maps a function key ("pkg\x00name\x00recvBare") to the
+	// indices of call-graph edges whose ParentFunction is that function — i.e.
+	// calls made inside a func literal defined in it. Built once, lazily, the
+	// first time the handler-factory resolver needs it, so projects without
+	// that pattern pay nothing. nil until built.
+	parentFnIndex map[string][]int
+
+	// closureAttached dedupes handler-factory closure-body attachment by
+	// concrete-method key, so a method's returned closure is expanded at most
+	// once and re-entrant traversal can't fan it out repeatedly.
+	closureAttached map[string]bool
 }
 
 // warn forwards to the configured logger, defaulting to stderr when none
@@ -915,6 +927,15 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 							}
 						}
 					}
+
+					// Handler-factory pattern: the registered handler is a *call*
+					// returning a func literal (e.g. `g.POST(p, h.Create())` where
+					// `Create() echo.HandlerFunc { return func(c) error {…} }`). The
+					// real body lives in the returned closure, so the loop above —
+					// which keys on the method as Caller — finds nothing. Attach the
+					// closure body explicitly, resolving the receiver's declared type
+					// (here the interface) to its concrete implementer(s).
+					tree.attachReturnedClosureBody(meta, argNode, selectorArg.X.GetType(), selectorArg.Sel.GetName(), selectorArg.Sel.GetPkg(), visited, assignmentIndex, limits)
 				}
 			}
 
@@ -1086,6 +1107,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 						}
 					}
 
+					// NOTE: the handler-factory closure resolution intentionally
+					// runs only in the KindCall branch above (handler registered as
+					// h.Create()). This KindSelector branch is a bare method value
+					// (h.Create) and is left to the existing direct-handler lookup.
 				}
 				varName := metadata.CallArgToString(arg)
 				// Trace the base object
@@ -1774,4 +1799,120 @@ func (t *TrackerTree) ResolveInterfaceFromMetadata(interfaceType, structType, pk
 	}
 
 	return interfaceType
+}
+
+// implRef names a concrete type that implements an interface.
+type implRef struct{ pkg, typ string }
+
+// interfaceImplementers returns the concrete types recorded as implementing the
+// interface named ifaceType in package ifacePkg (via the metadata's
+// ImplementedBy index). Returns nil if the type is unknown or not an interface.
+func interfaceImplementers(meta *metadata.Metadata, ifacePkg, ifaceType string) []implRef {
+	pkg, ok := meta.Packages[ifacePkg]
+	if !ok {
+		return nil
+	}
+	var out []implRef
+	for _, file := range pkg.Files {
+		typ, ok := file.Types[ifaceType]
+		if !ok || getString(meta, typ.Kind) != "interface" {
+			continue
+		}
+		for _, idx := range typ.ImplementedBy {
+			name := getString(meta, idx) // "import/path.Type"
+			// The import path contains dots, so split on the LAST dot.
+			dot := strings.LastIndex(name, ".")
+			if dot <= 0 || dot == len(name)-1 {
+				continue
+			}
+			out = append(out, implRef{name[:dot], name[dot+1:]})
+		}
+	}
+	return out
+}
+
+// attachReturnedClosureBody handles the handler-factory pattern: a route handler
+// registered as a *call* to a method that returns a func literal
+//
+//	g.POST(p, h.Create())   // Create() echo.HandlerFunc { return func(c) {…} }
+//
+// The closure's calls are recorded with the func literal as Caller and the
+// method as ParentFunction, so the normal Caller-keyed lookup misses them and
+// the route ends up with no request/response body. This attaches those
+// closure-body edges under argNode.
+//
+// recvDecl is the declared type of the handler's receiver expression (e.g. the
+// interface "Handlers" in h.Create()); method/pkg name the handler method. When
+// recvDecl is an interface, its concrete implementers are resolved so the
+// closure defined on the implementing type is found. It only ever adds
+// ParentFunction matches, so it is purely additive to the direct-handler loop.
+func (t *TrackerTree) attachReturnedClosureBody(meta *metadata.Metadata, argNode *TrackerNode, recvDecl, method, pkg string, visited map[string]int, assignmentIndex *assigmentIndexMap, limits metadata.TrackerLimits) {
+	if argNode == nil || method == "" || pkg == "" {
+		return
+	}
+	recvDecl = strings.TrimPrefix(recvDecl, "*")
+	// strip a package qualifier if one slipped in (e.g. "auth.Handlers").
+	if dot := strings.LastIndex(recvDecl, "."); dot >= 0 {
+		recvDecl = recvDecl[dot+1:]
+	}
+	if recvDecl == "" {
+		return
+	}
+
+	// Candidate (pkg, bare-type) receivers the handler method may live on: the
+	// declared type itself, plus every concrete implementer when it's an
+	// interface (the impl may live in a different package than the interface).
+	cands := []implRef{{pkg, recvDecl}}
+	cands = append(cands, interfaceImplementers(meta, pkg, recvDecl)...)
+
+	for _, c := range cands {
+		// Expand each concrete method's returned closure at most once per tree.
+		// Without this guard, re-entrant traversal (the closure body itself
+		// containing factory-shaped calls) could fan the same body out
+		// repeatedly and blow up on large interface-heavy graphs.
+		methodKey := c.pkg + "\x00" + method + "\x00" + c.typ
+		if t.closureAttached == nil {
+			t.closureAttached = map[string]bool{}
+		}
+		if t.closureAttached[methodKey] {
+			continue
+		}
+		t.closureAttached[methodKey] = true
+
+		// The request/response/param calls (c.Bind, c.JSON, c.Param, …) sit at
+		// the top of the returned closure, so a shallow descent captures them.
+		// Cap recursion tightly here: the closure body routinely reaches the
+		// business layer (usecase/repository interfaces), and the tracker's
+		// per-path expansion would otherwise fan out exponentially through it.
+		clim := limits
+		if clim.MaxRecursionDepth > 2 {
+			clim.MaxRecursionDepth = 2
+		}
+		for _, k := range t.parentFunctionEdges(meta, c.pkg, method, c.typ) {
+			e := &meta.CallGraph[k]
+			id := e.Callee.ID()
+			if childNode := NewTrackerNode(t, meta, argNode.Key(), id, e, nil, visited, assignmentIndex, clim); childNode != nil {
+				argNode.AddChild(childNode)
+			}
+		}
+	}
+}
+
+// parentFunctionEdges returns the indices of call-graph edges whose
+// ParentFunction is (pkg, name, recvBare) — the calls inside a func literal
+// defined within that function. The index is built once and reused.
+func (t *TrackerTree) parentFunctionEdges(meta *metadata.Metadata, pkg, name, recvBare string) []int {
+	if t.parentFnIndex == nil {
+		t.parentFnIndex = make(map[string][]int)
+		for k := range meta.CallGraph {
+			pf := meta.CallGraph[k].ParentFunction
+			if pf == nil {
+				continue
+			}
+			key := getString(meta, pf.Pkg) + "\x00" + getString(meta, pf.Name) + "\x00" +
+				strings.TrimPrefix(getString(meta, pf.RecvType), "*")
+			t.parentFnIndex[key] = append(t.parentFnIndex[key], k)
+		}
+	}
+	return t.parentFnIndex[pkg+"\x00"+name+"\x00"+strings.TrimPrefix(recvBare, "*")]
 }

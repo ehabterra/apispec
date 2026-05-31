@@ -35,6 +35,7 @@ const state = {
   status: { kind: "", text: "" }, // kind: "" | ok | warn | err
   generating: false,
   genPhase: "",
+  genElapsed: 0, // ms since the current generation started (live ticker)
   hasSpec: false,
   lastPaths: 0,
   skipped: [], // [{package, reason}] dropped due to type errors (project didn't build)

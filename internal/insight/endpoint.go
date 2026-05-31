@@ -238,7 +238,107 @@ func resolveHandlerKey(meta *metadata.Metadata, operationID string) (string, str
 			return fk, pos
 		}
 	}
+	// Interface handler: the operationId names an interface method whose
+	// concrete implementation (and the closure it may return) lives in a
+	// different package — resolve via the metadata's ImplementedBy index.
+	if ik, ipos := resolveInterfaceImplHandler(meta, operationID); ik != "" {
+		return ik, ipos
+	}
 	return operationID, pos
+}
+
+// resolveInterfaceImplHandler maps an interface-method operationId
+// ("pkg.Iface.Method") to a concrete trace root: the implementer's method when
+// it is itself a caller, or the func literal that method returns (the
+// handler-factory pattern). The implementer may live in a different package
+// than the interface, so this consults the ImplementedBy index rather than
+// scanning a single package. Returns ("", "") when nothing resolves.
+func resolveInterfaceImplHandler(meta *metadata.Metadata, operationID string) (string, string) {
+	pkg, recv, name := splitOpID3(operationID)
+	if pkg == "" || recv == "" || name == "" {
+		return "", ""
+	}
+	sp := meta.StringPool
+	p, ok := meta.Packages[pkg]
+	if !ok {
+		return "", ""
+	}
+	for _, f := range p.Files {
+		t, ok := f.Types[recv]
+		if !ok || sp.GetString(t.Kind) != "interface" {
+			continue
+		}
+		for _, idx := range t.ImplementedBy {
+			implName := sp.GetString(idx) // "import/path.Type"
+			dot := strings.LastIndex(implName, ".")
+			if dot <= 0 || dot == len(implName)-1 {
+				continue
+			}
+			implPkg, implType := implName[:dot], implName[dot+1:]
+			concreteKey := implPkg + "." + implType + "." + name
+			mfile, mline := implMethodPos(meta, implPkg, implType, name)
+			mpos := ""
+			if mfile != "" {
+				mpos = mfile + ":" + itoa(mline)
+			}
+			// Direct: the implementer method is itself a caller.
+			if edges, ok := meta.Callers[concreteKey]; ok && len(edges) > 0 {
+				return concreteKey, mpos
+			}
+			// Factory: the implementer method returns a closure — the FuncLit
+			// declared in its file is the real handler body.
+			if mfile != "" {
+				if fk := findFuncLitInFile(meta, mfile, mline); fk != "" {
+					return fk, mpos
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+// splitOpID3 parses "pkg/path.Recv.Method" into package path, receiver type and
+// method name. For a plain function ("pkg/path.Func") recv is "". The receiver
+// and package-name segments are plain identifiers, so the only ambiguous "."
+// is inside the import path, which is handled by splitting after the last "/".
+func splitOpID3(opID string) (pkg, recv, method string) {
+	slash := strings.LastIndex(opID, "/")
+	head, rest := "", opID
+	if slash >= 0 {
+		head, rest = opID[:slash+1], opID[slash+1:]
+	}
+	parts := strings.Split(rest, ".")
+	if len(parts) < 2 {
+		return "", "", ""
+	}
+	pkg = head + parts[0]
+	method = parts[len(parts)-1]
+	if len(parts) >= 3 {
+		recv = parts[len(parts)-2]
+	}
+	return pkg, recv, method
+}
+
+// implMethodPos returns the file:line of method `name` on type implType in
+// package implPkg (empty when not found).
+func implMethodPos(meta *metadata.Metadata, implPkg, implType, name string) (string, int) {
+	sp := meta.StringPool
+	p, ok := meta.Packages[implPkg]
+	if !ok {
+		return "", 0
+	}
+	for _, f := range p.Files {
+		t, ok := f.Types[implType]
+		if !ok {
+			continue
+		}
+		for i := range t.Methods {
+			if sp.GetString(t.Methods[i].Name) == name {
+				return parsePos(sp.GetString(t.Methods[i].Position))
+			}
+		}
+	}
+	return "", 0
 }
 
 // splitOpID parses "pkg/path.Recv.Method" (or "pkg/path.Func") into the

@@ -580,6 +580,17 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 	edge := node.GetEdge()
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
 		arg := edge.Args[r.pattern.TypeArgIndex]
+		// Parameter tracing through a binding wrapper: when the bound value is a
+		// parameter of the enclosing function (e.g. Bind(v) inside a custom
+		// ReadRequest(c, v) wrapper), follow it up to the caller's actual
+		// argument so the concrete request type is recovered instead of the
+		// wrapper's `interface{}` parameter. Per-route tracker isolation makes
+		// this sound: each route resolves its own call-site value.
+		typeNode := node
+		if resolved, rnode := resolveArgThroughParams(arg, node); resolved != arg && rnode != nil {
+			arg = resolved
+			typeNode = rnode
+		}
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
 
 		// Check if this is a literal value - if so, determine appropriate type
@@ -607,8 +618,9 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 				}
 			}
 
-			// Trace type origin
-			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+			// Trace type origin (in the scope the arg was resolved into, so a
+			// wrapper-passed local's assignment is found at the call site).
+			bodyType = r.resolveTypeOrigin(arg, typeNode, bodyType)
 
 			// Apply dereferencing if needed
 			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {

@@ -1,0 +1,3646 @@
+string_pool:
+  - Handlers
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/api
+  - exported
+  - interface
+  - Create
+  - ident
+  - echo
+  - github.com/labstack/echo/v4
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:9:11
+  - HandlerFunc
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:9:16
+  - selector
+  - func_type
+  - func_results
+  - func() echo.HandlerFunc
+  - Get
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:10:8
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:10:13
+  - Login
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:11:10
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:11:15
+  - RegisterRoutes
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:16:24
+  - Group
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:16:29
+  - star
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:16:23
+  - g
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:16:38
+  - h
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:16:1
+  - |-
+    RegisterRoutes registers the routes on a group, passing each handler as a
+    call returning echo.HandlerFunc (the handler-factory pattern).
+  - 'func(*echo.Group, Handlers) '
+  - User
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/models
+  - struct
+  - ID
+  - string
+  - json:"id"
+  - Email
+  - json:"email"
+  - Name
+  - json:"name"
+  - v
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+  - interface{}
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:10:16
+  - c
+  - github.com/labstack/echo/v4.Context
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:10:9
+  - Bind
+  - func(i interface{}) error
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:10:11
+  - Context
+  - call
+  - error
+  - ReadRequest
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:9:20
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:9:25
+  - interface_type
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:9:49
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:9:1
+  - |-
+    ReadRequest is a custom request-binding wrapper around echo.Context.Bind —
+    the indirection real projects use (e.g. AleksK1NG's utils.ReadRequest). The
+    concrete request type is only known at ReadRequest's *call site*; inside,
+    the bound value is the untyped parameter `v`.
+  - func(echo.Context, interface{}) error
+  - func_lit
+  - FuncLit:/Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:22:9
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:22:16
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:22:21
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:22:30
+  - func(echo.Context) error
+  - func()
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:22:9
+  - models
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:23:9
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:23:16
+  - composite_lit
+  - unary
+  - '&'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:23:8
+  - '*github.com/ehabterra/apispec/testdata/echo_handler_factory/models.User'
+  - u
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:23:3
+  - unexported
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:24:30
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:24:33
+  - util
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:24:13
+  - func(c github.com/labstack/echo/v4.Context, v interface{}) error
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:24:18
+  - err
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:24:6
+  - '*userHandlers'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:21:33
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:21:38
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:21:1
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go
+  - FuncLit:/Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:32:9
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:32:16
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:32:21
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:32:30
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:32:9
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:31:30
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:31:35
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:31:1
+  - FuncLit:/Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:46:9
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:46:16
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:46:21
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:46:30
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:46:9
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:47:13
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:47:12
+  - '*github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers.Login'
+  - login
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:47:3
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:48:30
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:48:33
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:48:13
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:48:18
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:48:6
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:41:32
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:41:37
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:41:1
+  - userHandlers
+  - json:"email" validate:"omitempty,email"
+  - Password
+  - json:"password" validate:"required,gte=6"
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:16:35
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:16:34
+  - New
+  - api
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:16:12
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:16:16
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:16:1
+  - New returns the concrete implementation behind the api.Handlers interface.
+  - func() api.Handlers
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/models.User
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:33
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:33
+  - net/http
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:11:7
+  - func() (e *github.com/labstack/echo/v4.Echo)
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:11:12
+  - '*github.com/labstack/echo/v4.Echo'
+  - e
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:11:2
+  - main
+  - literal
+  - '"/api/v1"'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:12:8
+  - func(prefix string, m ...github.com/labstack/echo/v4.MiddlewareFunc) (g *github.com/labstack/echo/v4.Group)
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:12:10
+  - Echo
+  - '*github.com/labstack/echo/v4.Group'
+  - v1
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:12:2
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:10:1
+  - 'func() '
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/api.Handlers
+  - github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers.userHandlers
+  - '"/users"'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:17:19
+  - func() github.com/labstack/echo/v4.HandlerFunc
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:17:21
+  - github.com/labstack/echo/v4.HandlerFunc
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:17:2
+  - POST
+  - '*Group'
+  - func(path string, h github.com/labstack/echo/v4.HandlerFunc, m ...github.com/labstack/echo/v4.MiddlewareFunc) *github.com/labstack/echo/v4.Route
+  - '"/users/:id"'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:18:22
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:18:24
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:18:2
+  - GET
+  - '"/login"'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:19:19
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:19:21
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:19:2
+  - func(c github.com/labstack/echo/v4.Context) error
+  - http
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:27:17
+  - StatusCreated
+  - untyped int
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:27:22
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:27:37
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:27:10
+  - JSON
+  - func(code int, i interface{}) error
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:17
+  - StatusOK
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:22
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:40
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:32
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:33:10
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:17
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:22
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:40
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:32
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:51:10
+  - '*Echo'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:13:21
+  - handlers
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:13:25
+  - func() github.com/ehabterra/apispec/testdata/echo_handler_factory/api.Handlers
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:13:34
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:13:2
+  - func(g *github.com/labstack/echo/v4.Group, h github.com/ehabterra/apispec/testdata/echo_handler_factory/api.Handlers)
+  - '":8080"'
+  - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:14:6
+  - Start
+  - func(address string) error
+  - echo.HandlerFunc
+  - api.Handlers
+  - handlers.New
+  - '*handlers.New'
+packages:
+  github.com/ehabterra/apispec/testdata/echo_handler_factory:
+    files:
+      /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go:
+        functions:
+          main:
+            name: 147
+            pkg: 145
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 158
+            position: 157
+            scope: 83
+            comments: -1
+            assignments:
+              e:
+                - variable_name: 144
+                  pkg: 145
+                  concrete_type: 143
+                  position: 146
+                  scope: 83
+                  value:
+                    kind: 54
+                    name: -1
+                    value: -1
+                    fun:
+                      kind: 11
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 5
+                        name: 6
+                        value: -1
+                        raw: -1
+                        pkg: 7
+                        type: -1
+                        position: 140
+                        resolved_type: -1
+                        generic_type_name: -1
+                      sel:
+                        kind: 5
+                        name: 129
+                        value: -1
+                        raw: -1
+                        pkg: 7
+                        type: 141
+                        position: 142
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: 7
+                      type: 141
+                      position: 140
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: 143
+                    position: 140
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 144
+                    value: -1
+                    raw: -1
+                    pkg: 145
+                    type: 143
+                    position: 146
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 147
+                  callee_func: New
+                  callee_pkg: github.com/labstack/echo/v4
+              v1:
+                - variable_name: 155
+                  pkg: 145
+                  concrete_type: 154
+                  position: 156
+                  scope: 83
+                  value:
+                    kind: 54
+                    name: -1
+                    value: -1
+                    fun:
+                      kind: 11
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 5
+                        name: 144
+                        value: -1
+                        raw: -1
+                        pkg: 145
+                        type: 143
+                        position: 150
+                        resolved_type: -1
+                        generic_type_name: -1
+                      sel:
+                        kind: 5
+                        name: 23
+                        value: -1
+                        raw: -1
+                        pkg: 7
+                        type: 151
+                        position: 152
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: 7
+                      type: 151
+                      position: 150
+                      resolved_type: -1
+                      generic_type_name: -1
+                      receiver_type:
+                        kind: 5
+                        name: 153
+                        value: -1
+                        raw: -1
+                        pkg: 7
+                        type: 153
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                    args:
+                      - kind: 148
+                        name: -1
+                        value: 149
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: -1
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: 154
+                    position: 150
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 155
+                    value: -1
+                    raw: -1
+                    pkg: 145
+                    type: 154
+                    position: 156
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 147
+                  callee_func: Group
+                  callee_pkg: github.com/labstack/echo/v4
+        imports:
+          1: 1
+          7: 7
+          66: 66
+  github.com/ehabterra/apispec/testdata/echo_handler_factory/api:
+    files:
+      /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go:
+        types:
+          Handlers:
+            pkg: 1
+            kind: 3
+            implemented_by:
+              - 160
+            scope: 2
+            methods:
+              - name: 4
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 8
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 10
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 8
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                scope: 2
+                comments: -1
+              - name: 15
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 16
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 17
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 16
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                scope: 2
+                comments: -1
+              - name: 18
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 19
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 20
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 19
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                scope: 2
+                comments: -1
+            comments: -1
+        functions:
+          RegisterRoutes:
+            name: 21
+            pkg: 1
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              args:
+                - kind: 25
+                  name: 27
+                  value: -1
+                  x:
+                    kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 22
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 23
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 23
+                      position: 24
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 23
+                    position: 22
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 26
+                  resolved_type: -1
+                  generic_type_name: -1
+                - kind: 5
+                  name: 29
+                  value: -1
+                  raw: -1
+                  pkg: 1
+                  position: 28
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: -1
+              generic_type_name: -1
+            signature_str: 32
+            position: 30
+            scope: 2
+            comments: 31
+        imports:
+          7: 7
+    types:
+      Handlers:
+        pkg: 1
+        kind: 3
+        implemented_by:
+          - 160
+        scope: 2
+        methods:
+          - name: 4
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 8
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 10
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 8
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            scope: 2
+            comments: -1
+          - name: 15
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 16
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 17
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 16
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            scope: 2
+            comments: -1
+          - name: 18
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 19
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 20
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 19
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            scope: 2
+            comments: -1
+        comments: -1
+  github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers:
+    files:
+      /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go:
+        types:
+          Login:
+            name: 18
+            pkg: 66
+            kind: 35
+            fields:
+              - name: 39
+                type: 37
+                tag: 124
+                scope: 2
+                comments: -1
+              - name: 125
+                type: 37
+                tag: 126
+                scope: 2
+                comments: -1
+            scope: 2
+            comments: -1
+          userHandlers:
+            name: 123
+            pkg: 66
+            kind: 35
+            implements:
+              - 159
+            scope: 83
+            methods:
+              - name: 4
+                receiver: 92
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 93
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 94
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 93
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                position: 95
+                scope: 2
+                filename: 96
+                return_vars:
+                  - kind: 64
+                    name: 65
+                    value: 71
+                    raw: -1
+                    pkg: 66
+                    type: 70
+                    position: 72
+                    resolved_type: -1
+                    generic_type_name: -1
+                assignments:
+                  err:
+                    - variable_name: 90
+                      pkg: 66
+                      concrete_type: 55
+                      position: 91
+                      scope: 83
+                      value:
+                        kind: 54
+                        name: -1
+                        value: -1
+                        fun:
+                          kind: 11
+                          name: -1
+                          value: -1
+                          x:
+                            kind: 5
+                            name: 86
+                            value: -1
+                            raw: -1
+                            pkg: 44
+                            type: -1
+                            position: 87
+                            resolved_type: -1
+                            generic_type_name: -1
+                          sel:
+                            kind: 5
+                            name: 56
+                            value: -1
+                            raw: -1
+                            pkg: 44
+                            type: 88
+                            position: 89
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: 44
+                          type: 88
+                          position: 87
+                          resolved_type: -1
+                          generic_type_name: -1
+                        args:
+                          - kind: 5
+                            name: 47
+                            value: -1
+                            raw: -1
+                            pkg: 66
+                            type: 48
+                            position: 84
+                            resolved_type: -1
+                            generic_type_name: -1
+                          - kind: 5
+                            name: 81
+                            value: -1
+                            raw: -1
+                            pkg: 66
+                            type: 80
+                            position: 85
+                            resolved_type: -1
+                            generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: 55
+                        position: 87
+                        resolved_type: -1
+                        generic_type_name: -1
+                      lhs:
+                        kind: 5
+                        name: 90
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 55
+                        position: 91
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 65
+                      callee_func: ReadRequest
+                      callee_pkg: github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+                  u:
+                    - variable_name: 81
+                      pkg: 66
+                      concrete_type: 80
+                      position: 82
+                      scope: 83
+                      value:
+                        kind: 77
+                        name: -1
+                        value: 78
+                        x:
+                          kind: 76
+                          name: -1
+                          value: -1
+                          x:
+                            kind: 11
+                            name: -1
+                            value: -1
+                            x:
+                              kind: 5
+                              name: 73
+                              value: -1
+                              raw: -1
+                              pkg: 34
+                              type: -1
+                              position: 74
+                              resolved_type: -1
+                              generic_type_name: -1
+                            sel:
+                              kind: 5
+                              name: 33
+                              value: -1
+                              raw: -1
+                              pkg: 34
+                              type: 33
+                              position: 75
+                              resolved_type: -1
+                              generic_type_name: -1
+                            raw: -1
+                            pkg: 34
+                            type: 33
+                            position: 74
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 74
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 79
+                        resolved_type: -1
+                        generic_type_name: -1
+                      lhs:
+                        kind: 5
+                        name: 81
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 80
+                        position: 82
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 65
+              - name: 15
+                receiver: 92
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 102
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 103
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 102
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                position: 104
+                scope: 2
+                filename: 96
+                return_vars:
+                  - kind: 64
+                    name: 97
+                    value: 71
+                    raw: -1
+                    pkg: 66
+                    type: 70
+                    position: 101
+                    resolved_type: -1
+                    generic_type_name: -1
+              - name: 18
+                receiver: 92
+                signature:
+                  kind: 12
+                  name: -1
+                  value: -1
+                  fun:
+                    kind: 13
+                    name: -1
+                    value: -1
+                    args:
+                      - kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 6
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: -1
+                          position: 120
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 9
+                          value: -1
+                          raw: -1
+                          pkg: 7
+                          type: 9
+                          position: 121
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 7
+                        type: 9
+                        position: 120
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: 212
+                  generic_type_name: -1
+                signature_str: 14
+                position: 122
+                scope: 2
+                filename: 96
+                return_vars:
+                  - kind: 64
+                    name: 105
+                    value: 71
+                    raw: -1
+                    pkg: 66
+                    type: 70
+                    position: 109
+                    resolved_type: -1
+                    generic_type_name: -1
+                assignments:
+                  err:
+                    - variable_name: 90
+                      pkg: 66
+                      concrete_type: 55
+                      position: 119
+                      scope: 83
+                      value:
+                        kind: 54
+                        name: -1
+                        value: -1
+                        fun:
+                          kind: 11
+                          name: -1
+                          value: -1
+                          x:
+                            kind: 5
+                            name: 86
+                            value: -1
+                            raw: -1
+                            pkg: 44
+                            type: -1
+                            position: 117
+                            resolved_type: -1
+                            generic_type_name: -1
+                          sel:
+                            kind: 5
+                            name: 56
+                            value: -1
+                            raw: -1
+                            pkg: 44
+                            type: 88
+                            position: 118
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: 44
+                          type: 88
+                          position: 117
+                          resolved_type: -1
+                          generic_type_name: -1
+                        args:
+                          - kind: 5
+                            name: 47
+                            value: -1
+                            raw: -1
+                            pkg: 66
+                            type: 48
+                            position: 115
+                            resolved_type: -1
+                            generic_type_name: -1
+                          - kind: 5
+                            name: 113
+                            value: -1
+                            raw: -1
+                            pkg: 66
+                            type: 112
+                            position: 116
+                            resolved_type: -1
+                            generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: 55
+                        position: 117
+                        resolved_type: -1
+                        generic_type_name: -1
+                      lhs:
+                        kind: 5
+                        name: 90
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 55
+                        position: 119
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 105
+                      callee_func: ReadRequest
+                      callee_pkg: github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+                  login:
+                    - variable_name: 113
+                      pkg: 66
+                      concrete_type: 112
+                      position: 114
+                      scope: 83
+                      value:
+                        kind: 77
+                        name: -1
+                        value: 78
+                        x:
+                          kind: 76
+                          name: -1
+                          value: -1
+                          x:
+                            kind: 5
+                            name: 18
+                            value: -1
+                            raw: -1
+                            pkg: 66
+                            type: 18
+                            position: 110
+                            resolved_type: -1
+                            generic_type_name: -1
+                          raw: -1
+                          pkg: -1
+                          type: -1
+                          position: 110
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: -1
+                        type: -1
+                        position: 111
+                        resolved_type: -1
+                        generic_type_name: -1
+                      lhs:
+                        kind: 5
+                        name: 113
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 112
+                        position: 114
+                        resolved_type: -1
+                        generic_type_name: -1
+                      func: 105
+            comments: -1
+        functions:
+          New:
+            name: 129
+            pkg: 66
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 130
+                      value: -1
+                      raw: -1
+                      pkg: 1
+                      type: -1
+                      position: 131
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      value: -1
+                      raw: -1
+                      pkg: 1
+                      position: 132
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 1
+                    position: 131
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 213
+              generic_type_name: -1
+            signature_str: 135
+            position: 133
+            scope: 2
+            comments: 134
+            return_vars:
+              - kind: 77
+                name: -1
+                value: 78
+                x:
+                  kind: 76
+                  name: -1
+                  value: -1
+                  x:
+                    kind: 5
+                    name: 123
+                    value: -1
+                    raw: -1
+                    pkg: 66
+                    type: 123
+                    position: 127
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: 127
+                  resolved_type: -1
+                  generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: 128
+                resolved_type: -1
+                generic_type_name: -1
+        struct_instances:
+          - type: 123
+            pkg: 66
+            position: 127
+          - type: 136
+            pkg: 66
+            position: 74
+          - type: 136
+            pkg: 66
+            position: 137
+          - type: 18
+            pkg: 66
+            position: 110
+          - type: 136
+            pkg: 66
+            position: 138
+        imports:
+          1: 1
+          7: 7
+          34: 34
+          44: 44
+          139: 139
+    types:
+      Login:
+        name: 18
+        pkg: 66
+        kind: 35
+        fields:
+          - name: 39
+            type: 37
+            tag: 124
+            scope: 2
+            comments: -1
+          - name: 125
+            type: 37
+            tag: 126
+            scope: 2
+            comments: -1
+        scope: 2
+        comments: -1
+      userHandlers:
+        name: 123
+        pkg: 66
+        kind: 35
+        implements:
+          - 159
+        scope: 83
+        methods:
+          - name: 4
+            receiver: 92
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 93
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 94
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 93
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            position: 95
+            scope: 2
+            filename: 96
+            return_vars:
+              - kind: 64
+                name: 65
+                value: 71
+                raw: -1
+                pkg: 66
+                type: 70
+                position: 72
+                resolved_type: -1
+                generic_type_name: -1
+            assignments:
+              err:
+                - variable_name: 90
+                  pkg: 66
+                  concrete_type: 55
+                  position: 91
+                  scope: 83
+                  value:
+                    kind: 54
+                    name: -1
+                    value: -1
+                    fun:
+                      kind: 11
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 5
+                        name: 86
+                        value: -1
+                        raw: -1
+                        pkg: 44
+                        type: -1
+                        position: 87
+                        resolved_type: -1
+                        generic_type_name: -1
+                      sel:
+                        kind: 5
+                        name: 56
+                        value: -1
+                        raw: -1
+                        pkg: 44
+                        type: 88
+                        position: 89
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: 44
+                      type: 88
+                      position: 87
+                      resolved_type: -1
+                      generic_type_name: -1
+                    args:
+                      - kind: 5
+                        name: 47
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 48
+                        position: 84
+                        resolved_type: -1
+                        generic_type_name: -1
+                      - kind: 5
+                        name: 81
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 80
+                        position: 85
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: 55
+                    position: 87
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 90
+                    value: -1
+                    raw: -1
+                    pkg: 66
+                    type: 55
+                    position: 91
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 65
+                  callee_func: ReadRequest
+                  callee_pkg: github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+              u:
+                - variable_name: 81
+                  pkg: 66
+                  concrete_type: 80
+                  position: 82
+                  scope: 83
+                  value:
+                    kind: 77
+                    name: -1
+                    value: 78
+                    x:
+                      kind: 76
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 11
+                        name: -1
+                        value: -1
+                        x:
+                          kind: 5
+                          name: 73
+                          value: -1
+                          raw: -1
+                          pkg: 34
+                          type: -1
+                          position: 74
+                          resolved_type: -1
+                          generic_type_name: -1
+                        sel:
+                          kind: 5
+                          name: 33
+                          value: -1
+                          raw: -1
+                          pkg: 34
+                          type: 33
+                          position: 75
+                          resolved_type: -1
+                          generic_type_name: -1
+                        raw: -1
+                        pkg: 34
+                        type: 33
+                        position: 74
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 74
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 79
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 81
+                    value: -1
+                    raw: -1
+                    pkg: 66
+                    type: 80
+                    position: 82
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 65
+          - name: 15
+            receiver: 92
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 102
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 103
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 102
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            position: 104
+            scope: 2
+            filename: 96
+            return_vars:
+              - kind: 64
+                name: 97
+                value: 71
+                raw: -1
+                pkg: 66
+                type: 70
+                position: 101
+                resolved_type: -1
+                generic_type_name: -1
+          - name: 18
+            receiver: 92
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 11
+                    name: -1
+                    value: -1
+                    x:
+                      kind: 5
+                      name: 6
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: -1
+                      position: 120
+                      resolved_type: -1
+                      generic_type_name: -1
+                    sel:
+                      kind: 5
+                      name: 9
+                      value: -1
+                      raw: -1
+                      pkg: 7
+                      type: 9
+                      position: 121
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: 7
+                    type: 9
+                    position: 120
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 212
+              generic_type_name: -1
+            signature_str: 14
+            position: 122
+            scope: 2
+            filename: 96
+            return_vars:
+              - kind: 64
+                name: 105
+                value: 71
+                raw: -1
+                pkg: 66
+                type: 70
+                position: 109
+                resolved_type: -1
+                generic_type_name: -1
+            assignments:
+              err:
+                - variable_name: 90
+                  pkg: 66
+                  concrete_type: 55
+                  position: 119
+                  scope: 83
+                  value:
+                    kind: 54
+                    name: -1
+                    value: -1
+                    fun:
+                      kind: 11
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 5
+                        name: 86
+                        value: -1
+                        raw: -1
+                        pkg: 44
+                        type: -1
+                        position: 117
+                        resolved_type: -1
+                        generic_type_name: -1
+                      sel:
+                        kind: 5
+                        name: 56
+                        value: -1
+                        raw: -1
+                        pkg: 44
+                        type: 88
+                        position: 118
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: 44
+                      type: 88
+                      position: 117
+                      resolved_type: -1
+                      generic_type_name: -1
+                    args:
+                      - kind: 5
+                        name: 47
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 48
+                        position: 115
+                        resolved_type: -1
+                        generic_type_name: -1
+                      - kind: 5
+                        name: 113
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 112
+                        position: 116
+                        resolved_type: -1
+                        generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: 55
+                    position: 117
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 90
+                    value: -1
+                    raw: -1
+                    pkg: 66
+                    type: 55
+                    position: 119
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 105
+                  callee_func: ReadRequest
+                  callee_pkg: github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+              login:
+                - variable_name: 113
+                  pkg: 66
+                  concrete_type: 112
+                  position: 114
+                  scope: 83
+                  value:
+                    kind: 77
+                    name: -1
+                    value: 78
+                    x:
+                      kind: 76
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 5
+                        name: 18
+                        value: -1
+                        raw: -1
+                        pkg: 66
+                        type: 18
+                        position: 110
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: -1
+                      type: -1
+                      position: 110
+                      resolved_type: -1
+                      generic_type_name: -1
+                    raw: -1
+                    pkg: -1
+                    type: -1
+                    position: 111
+                    resolved_type: -1
+                    generic_type_name: -1
+                  lhs:
+                    kind: 5
+                    name: 113
+                    value: -1
+                    raw: -1
+                    pkg: 66
+                    type: 112
+                    position: 114
+                    resolved_type: -1
+                    generic_type_name: -1
+                  func: 105
+        comments: -1
+  github.com/ehabterra/apispec/testdata/echo_handler_factory/models:
+    files:
+      /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/models/models.go:
+        types:
+          User:
+            name: 33
+            pkg: 34
+            kind: 35
+            fields:
+              - name: 36
+                type: 37
+                tag: 38
+                scope: 2
+                comments: -1
+              - name: 39
+                type: 37
+                tag: 40
+                scope: 2
+                comments: -1
+              - name: 41
+                type: 37
+                tag: 42
+                scope: 2
+                comments: -1
+            scope: 2
+            comments: -1
+        imports: {}
+    types:
+      User:
+        name: 33
+        pkg: 34
+        kind: 35
+        fields:
+          - name: 36
+            type: 37
+            tag: 38
+            scope: 2
+            comments: -1
+          - name: 39
+            type: 37
+            tag: 40
+            scope: 2
+            comments: -1
+          - name: 41
+            type: 37
+            tag: 42
+            scope: 2
+            comments: -1
+        scope: 2
+        comments: -1
+  github.com/ehabterra/apispec/testdata/echo_handler_factory/util:
+    files:
+      /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go:
+        functions:
+          ReadRequest:
+            name: 56
+            pkg: 44
+            signature:
+              kind: 12
+              name: -1
+              value: -1
+              fun:
+                kind: 13
+                name: -1
+                value: -1
+                args:
+                  - kind: 5
+                    name: 55
+                    value: -1
+                    raw: -1
+                    pkg: -1
+                    type: 55
+                    position: 60
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+              args:
+                - kind: 11
+                  name: 47
+                  value: -1
+                  x:
+                    kind: 5
+                    name: 6
+                    value: -1
+                    raw: -1
+                    pkg: 7
+                    type: -1
+                    position: 57
+                    resolved_type: -1
+                    generic_type_name: -1
+                  sel:
+                    kind: 5
+                    name: 53
+                    value: -1
+                    raw: -1
+                    pkg: 7
+                    type: 53
+                    position: 58
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: 7
+                  type: 53
+                  position: 57
+                  resolved_type: -1
+                  generic_type_name: -1
+                - kind: 59
+                  name: 43
+                  value: -1
+                  raw: -1
+                  pkg: -1
+                  type: -1
+                  position: -1
+                  resolved_type: -1
+                  generic_type_name: -1
+              raw: -1
+              pkg: -1
+              type: -1
+              position: -1
+              resolved_type: 55
+              generic_type_name: -1
+            signature_str: 63
+            position: 61
+            scope: 2
+            comments: 62
+            return_vars:
+              - kind: 54
+                name: -1
+                value: -1
+                fun:
+                  kind: 11
+                  name: -1
+                  value: -1
+                  x:
+                    kind: 5
+                    name: 47
+                    value: -1
+                    raw: -1
+                    pkg: 44
+                    type: 48
+                    position: 49
+                    resolved_type: -1
+                    generic_type_name: -1
+                  sel:
+                    kind: 5
+                    name: 50
+                    value: -1
+                    raw: -1
+                    pkg: 7
+                    type: 51
+                    position: 52
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: 7
+                  type: 51
+                  position: 49
+                  resolved_type: -1
+                  generic_type_name: -1
+                  receiver_type:
+                    kind: 5
+                    name: 53
+                    value: -1
+                    raw: -1
+                    pkg: 7
+                    type: 53
+                    position: -1
+                    resolved_type: -1
+                    generic_type_name: -1
+                args:
+                  - kind: 5
+                    name: 43
+                    value: -1
+                    raw: -1
+                    pkg: 44
+                    type: 45
+                    position: 46
+                    resolved_type: -1
+                    generic_type_name: -1
+                raw: -1
+                pkg: -1
+                type: 55
+                position: 49
+                resolved_type: -1
+                generic_type_name: -1
+        imports:
+          7: 7
+call_graph:
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 167
+      pkg: 7
+      position: 166
+      recv_type: 168
+      scope: 2
+      signature_str: 169
+    position: 166
+    args:
+      - kind: 148
+        name: -1
+        value: 161
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 162
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 4
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 164
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 162
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 162
+        resolved_type: 212
+        generic_type_name: -1
+    param_arg_map:
+      h:
+        kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 162
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 4
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 164
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 162
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 162
+        resolved_type: -1
+        generic_type_name: -1
+      path:
+        kind: 148
+        name: -1
+        value: 161
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: g
+    chain_root: g
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 4
+      pkg: 1
+      position: 162
+      scope: 2
+      signature_str: 163
+    position: 162
+    callee_var_name: h
+    chain_root: h
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 174
+      pkg: 7
+      position: 173
+      recv_type: 168
+      scope: 2
+      signature_str: 169
+    position: 173
+    args:
+      - kind: 148
+        name: -1
+        value: 170
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 171
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 15
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 172
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 171
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 171
+        resolved_type: 212
+        generic_type_name: -1
+    param_arg_map:
+      h:
+        kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 171
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 15
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 172
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 171
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 171
+        resolved_type: -1
+        generic_type_name: -1
+      path:
+        kind: 148
+        name: -1
+        value: 170
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: g
+    chain_root: g
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 15
+      pkg: 1
+      position: 171
+      scope: 2
+      signature_str: 163
+    position: 171
+    callee_var_name: h
+    chain_root: h
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 167
+      pkg: 7
+      position: 178
+      recv_type: 168
+      scope: 2
+      signature_str: 169
+    position: 178
+    args:
+      - kind: 148
+        name: -1
+        value: 175
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 176
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 18
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 177
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 176
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 176
+        resolved_type: 212
+        generic_type_name: -1
+    param_arg_map:
+      h:
+        kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 29
+            value: -1
+            raw: -1
+            pkg: 1
+            position: 176
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 18
+            value: -1
+            raw: -1
+            pkg: 1
+            type: 163
+            position: 177
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 1
+          type: 163
+          position: 176
+          resolved_type: 212
+          generic_type_name: -1
+          receiver_type:
+            kind: 5
+            value: -1
+            raw: -1
+            pkg: 1
+            position: -1
+            resolved_type: -1
+            generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 165
+        position: 176
+        resolved_type: -1
+        generic_type_name: -1
+      path:
+        kind: 148
+        name: -1
+        value: 175
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: g
+    chain_root: g
+  - caller:
+      name: 21
+      pkg: 1
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 32
+    callee:
+      name: 18
+      pkg: 1
+      position: 176
+      scope: 2
+      signature_str: 163
+    position: 176
+    callee_var_name: h
+    chain_root: h
+  - caller:
+      name: 56
+      pkg: 44
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 63
+    callee:
+      name: 50
+      pkg: 7
+      position: 49
+      recv_type: 53
+      scope: 2
+      signature_str: 51
+    position: 49
+    args:
+      - kind: 5
+        name: 43
+        value: -1
+        raw: -1
+        pkg: 44
+        type: 45
+        position: 46
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      i:
+        kind: 5
+        name: 43
+        value: -1
+        raw: -1
+        pkg: 44
+        type: 45
+        position: 46
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: c
+    chain_root: c
+  - caller:
+      name: 65
+      pkg: 66
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 179
+    callee:
+      name: 56
+      pkg: 44
+      position: 87
+      recv_type: -1
+      scope: 2
+      signature_str: 88
+    position: 87
+    args:
+      - kind: 5
+        name: 47
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 48
+        position: 84
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 5
+        name: 81
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 80
+        position: 85
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      c:
+        kind: 5
+        name: 47
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 48
+        position: 84
+        resolved_type: -1
+        generic_type_name: -1
+      v:
+        kind: 5
+        name: 81
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 80
+        position: 85
+        resolved_type: -1
+        generic_type_name: -1
+    callee_recv_var_name: err
+    parent_function:
+      name: 4
+      pkg: 66
+      position: -1
+      recv_type: 92
+      scope: 2
+      signature_str: 14
+  - caller:
+      name: 65
+      pkg: 66
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 179
+    callee:
+      name: 187
+      pkg: 7
+      position: 186
+      recv_type: 53
+      scope: 2
+      signature_str: 188
+    position: 186
+    args:
+      - kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 181
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 182
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 184
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 181
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 5
+        name: 81
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 80
+        position: 185
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      code:
+        kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 181
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 182
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 184
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 181
+        resolved_type: -1
+        generic_type_name: -1
+      i:
+        kind: 5
+        name: 81
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 80
+        position: 185
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: c
+    chain_root: c
+    parent_function:
+      name: 4
+      pkg: 66
+      position: -1
+      recv_type: 92
+      scope: 2
+      signature_str: 14
+  - caller:
+      name: 97
+      pkg: 66
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 179
+    callee:
+      name: 187
+      pkg: 7
+      position: 194
+      recv_type: 53
+      scope: 2
+      signature_str: 188
+    position: 194
+    args:
+      - kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 189
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 190
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 191
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 189
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 77
+        name: -1
+        value: 78
+        x:
+          kind: 76
+          name: -1
+          value: -1
+          x:
+            kind: 11
+            name: -1
+            value: -1
+            x:
+              kind: 5
+              name: 73
+              value: -1
+              raw: -1
+              pkg: 34
+              type: -1
+              position: 137
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 5
+              name: 33
+              value: -1
+              raw: -1
+              pkg: 34
+              type: 33
+              position: 192
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 34
+            type: 33
+            position: 137
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 137
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 193
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      code:
+        kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 189
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 190
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 191
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 189
+        resolved_type: -1
+        generic_type_name: -1
+      i:
+        kind: 77
+        name: -1
+        value: 78
+        x:
+          kind: 76
+          name: -1
+          value: -1
+          x:
+            kind: 11
+            name: -1
+            value: -1
+            x:
+              kind: 5
+              name: 73
+              value: -1
+              raw: -1
+              pkg: 34
+              type: -1
+              position: 137
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 5
+              name: 33
+              value: -1
+              raw: -1
+              pkg: 34
+              type: 33
+              position: 192
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 34
+            type: 33
+            position: 137
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 137
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 193
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: c
+    chain_root: c
+    parent_function:
+      name: 15
+      pkg: 66
+      position: -1
+      recv_type: 92
+      scope: 2
+      signature_str: 14
+  - caller:
+      name: 105
+      pkg: 66
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 179
+    callee:
+      name: 56
+      pkg: 44
+      position: 117
+      recv_type: -1
+      scope: 2
+      signature_str: 88
+    position: 117
+    args:
+      - kind: 5
+        name: 47
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 48
+        position: 115
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 5
+        name: 113
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 112
+        position: 116
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      c:
+        kind: 5
+        name: 47
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 48
+        position: 115
+        resolved_type: -1
+        generic_type_name: -1
+      v:
+        kind: 5
+        name: 113
+        value: -1
+        raw: -1
+        pkg: 66
+        type: 112
+        position: 116
+        resolved_type: -1
+        generic_type_name: -1
+    callee_recv_var_name: err
+    parent_function:
+      name: 18
+      pkg: 66
+      position: -1
+      recv_type: 92
+      scope: 2
+      signature_str: 14
+  - caller:
+      name: 105
+      pkg: 66
+      position: -1
+      recv_type: -1
+      scope: 2
+      signature_str: 179
+    callee:
+      name: 187
+      pkg: 7
+      position: 199
+      recv_type: 53
+      scope: 2
+      signature_str: 188
+    position: 199
+    args:
+      - kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 195
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 190
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 196
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 195
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 77
+        name: -1
+        value: 78
+        x:
+          kind: 76
+          name: -1
+          value: -1
+          x:
+            kind: 11
+            name: -1
+            value: -1
+            x:
+              kind: 5
+              name: 73
+              value: -1
+              raw: -1
+              pkg: 34
+              type: -1
+              position: 138
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 5
+              name: 33
+              value: -1
+              raw: -1
+              pkg: 34
+              type: 33
+              position: 197
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 34
+            type: 33
+            position: 138
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 138
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 198
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      code:
+        kind: 11
+        name: -1
+        value: -1
+        x:
+          kind: 5
+          name: 180
+          value: -1
+          raw: -1
+          pkg: 139
+          type: -1
+          position: 195
+          resolved_type: -1
+          generic_type_name: -1
+        sel:
+          kind: 5
+          name: 190
+          value: -1
+          raw: -1
+          pkg: 139
+          type: 183
+          position: 196
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: 139
+        type: 183
+        position: 195
+        resolved_type: -1
+        generic_type_name: -1
+      i:
+        kind: 77
+        name: -1
+        value: 78
+        x:
+          kind: 76
+          name: -1
+          value: -1
+          x:
+            kind: 11
+            name: -1
+            value: -1
+            x:
+              kind: 5
+              name: 73
+              value: -1
+              raw: -1
+              pkg: 34
+              type: -1
+              position: 138
+              resolved_type: -1
+              generic_type_name: -1
+            sel:
+              kind: 5
+              name: 33
+              value: -1
+              raw: -1
+              pkg: 34
+              type: 33
+              position: 197
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: 34
+            type: 33
+            position: 138
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: -1
+          type: -1
+          position: 138
+          resolved_type: -1
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: -1
+        position: 198
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: c
+    chain_root: c
+    parent_function:
+      name: 18
+      pkg: 66
+      position: -1
+      recv_type: 92
+      scope: 2
+      signature_str: 14
+  - caller:
+      name: 147
+      pkg: 145
+      position: -1
+      recv_type: -1
+      scope: 83
+      signature_str: 158
+    callee:
+      name: 129
+      pkg: 7
+      position: 140
+      recv_type: -1
+      scope: 2
+      signature_str: 141
+    position: 140
+    assignments:
+      e:
+        - variable_name: 144
+          pkg: 145
+          concrete_type: 143
+          position: 146
+          scope: 83
+          value:
+            kind: 54
+            name: -1
+            value: -1
+            fun:
+              kind: 11
+              name: -1
+              value: -1
+              x:
+                kind: 5
+                name: 6
+                value: -1
+                raw: -1
+                pkg: 7
+                type: -1
+                position: 140
+                resolved_type: -1
+                generic_type_name: -1
+              sel:
+                kind: 5
+                name: 129
+                value: -1
+                raw: -1
+                pkg: 7
+                type: 141
+                position: 142
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: 7
+              type: 141
+              position: 140
+              resolved_type: -1
+              generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: 143
+            position: 140
+            resolved_type: -1
+            generic_type_name: -1
+          lhs:
+            kind: 5
+            name: 144
+            value: -1
+            raw: -1
+            pkg: 145
+            type: 143
+            position: 146
+            resolved_type: -1
+            generic_type_name: -1
+          func: 147
+          callee_func: New
+          callee_pkg: github.com/labstack/echo/v4
+    callee_recv_var_name: e
+  - caller:
+      name: 147
+      pkg: 145
+      position: -1
+      recv_type: -1
+      scope: 83
+      signature_str: 158
+    callee:
+      name: 23
+      pkg: 7
+      position: 150
+      recv_type: 200
+      scope: 2
+      signature_str: 151
+    position: 150
+    args:
+      - kind: 148
+        name: -1
+        value: 149
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    assignments:
+      v1:
+        - variable_name: 155
+          pkg: 145
+          concrete_type: 154
+          position: 156
+          scope: 83
+          value:
+            kind: 54
+            name: -1
+            value: -1
+            fun:
+              kind: 11
+              name: -1
+              value: -1
+              x:
+                kind: 5
+                name: 144
+                value: -1
+                raw: -1
+                pkg: 145
+                type: 143
+                position: 150
+                resolved_type: -1
+                generic_type_name: -1
+              sel:
+                kind: 5
+                name: 23
+                value: -1
+                raw: -1
+                pkg: 7
+                type: 151
+                position: 152
+                resolved_type: -1
+                generic_type_name: -1
+              raw: -1
+              pkg: 7
+              type: 151
+              position: 150
+              resolved_type: -1
+              generic_type_name: -1
+              receiver_type:
+                kind: 5
+                name: 153
+                value: -1
+                raw: -1
+                pkg: 7
+                type: 153
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+            args:
+              - kind: 148
+                name: -1
+                value: 149
+                raw: -1
+                pkg: -1
+                type: -1
+                position: -1
+                resolved_type: -1
+                generic_type_name: -1
+            raw: -1
+            pkg: -1
+            type: 154
+            position: 150
+            resolved_type: -1
+            generic_type_name: -1
+          lhs:
+            kind: 5
+            name: 155
+            value: -1
+            raw: -1
+            pkg: 145
+            type: 154
+            position: 156
+            resolved_type: -1
+            generic_type_name: -1
+          func: 147
+          callee_func: Group
+          callee_pkg: github.com/labstack/echo/v4
+    param_arg_map:
+      prefix:
+        kind: 148
+        name: -1
+        value: 149
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: e
+    callee_recv_var_name: v1
+    chain_root: e
+  - caller:
+      name: 147
+      pkg: 145
+      position: -1
+      recv_type: -1
+      scope: 83
+      signature_str: 158
+    callee:
+      name: 21
+      pkg: 1
+      position: 206
+      recv_type: -1
+      scope: 2
+      signature_str: 207
+    position: 206
+    args:
+      - kind: 5
+        name: 155
+        value: -1
+        raw: -1
+        pkg: 145
+        type: 154
+        position: 201
+        resolved_type: -1
+        generic_type_name: -1
+      - kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 202
+            value: -1
+            raw: -1
+            pkg: 66
+            type: -1
+            position: 203
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 129
+            value: -1
+            raw: -1
+            pkg: 66
+            type: 204
+            position: 205
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 66
+          type: 204
+          position: 203
+          resolved_type: 213
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 159
+        position: 203
+        resolved_type: 213
+        generic_type_name: -1
+    param_arg_map:
+      g:
+        kind: 5
+        name: 155
+        value: -1
+        raw: -1
+        pkg: 145
+        type: 154
+        position: 201
+        resolved_type: -1
+        generic_type_name: -1
+      h:
+        kind: 54
+        name: -1
+        value: -1
+        fun:
+          kind: 11
+          name: -1
+          value: -1
+          x:
+            kind: 5
+            name: 202
+            value: -1
+            raw: -1
+            pkg: 66
+            type: -1
+            position: 203
+            resolved_type: -1
+            generic_type_name: -1
+          sel:
+            kind: 5
+            name: 129
+            value: -1
+            raw: -1
+            pkg: 66
+            type: 204
+            position: 205
+            resolved_type: -1
+            generic_type_name: -1
+          raw: -1
+          pkg: 66
+          type: 204
+          position: 203
+          resolved_type: 213
+          generic_type_name: -1
+        raw: -1
+        pkg: -1
+        type: 159
+        position: 203
+        resolved_type: -1
+        generic_type_name: -1
+  - caller:
+      name: 147
+      pkg: 145
+      position: -1
+      recv_type: -1
+      scope: 83
+      signature_str: 158
+    callee:
+      name: 129
+      pkg: 66
+      position: 203
+      recv_type: -1
+      scope: 2
+      signature_str: 204
+    position: 203
+  - caller:
+      name: 147
+      pkg: 145
+      position: -1
+      recv_type: -1
+      scope: 83
+      signature_str: 158
+    callee:
+      name: 210
+      pkg: 7
+      position: 209
+      recv_type: 200
+      scope: 2
+      signature_str: 211
+    position: 209
+    args:
+      - kind: 148
+        name: -1
+        value: 208
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    param_arg_map:
+      address:
+        kind: 148
+        name: -1
+        value: 208
+        raw: -1
+        pkg: -1
+        type: -1
+        position: -1
+        resolved_type: -1
+        generic_type_name: -1
+    callee_var_name: e
+    chain_root: e
+framework_dependency_list:
+  all_packages:
+    - package_path: github.com/ehabterra/apispec/testdata/echo_handler_factory/api
+      framework_type: echo
+      is_direct: true
+      files:
+        - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/api/api.go
+      functions:
+        - RegisterRoutes
+      types:
+        - Handlers
+      metadata:
+        files_count: 1
+        imports_count: 1
+        syntax_errors: 0
+    - package_path: github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+      framework_type: echo
+      is_direct: true
+      files:
+        - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/util/util.go
+      functions:
+        - ReadRequest
+      types: []
+      metadata:
+        files_count: 1
+        imports_count: 1
+        syntax_errors: 0
+    - package_path: github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers
+      framework_type: http
+      is_direct: true
+      files:
+        - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/handlers/handlers.go
+      functions:
+        - New
+        - Create
+        - Get
+        - Login
+      types:
+        - userHandlers
+        - Login
+      metadata:
+        files_count: 1
+        imports_count: 5
+        syntax_errors: 0
+    - package_path: github.com/ehabterra/apispec/testdata/echo_handler_factory
+      framework_type: echo
+      is_direct: true
+      files:
+        - /Users/ehab/Documents/Work/Private/apispec/testdata/echo_handler_factory/main.go
+      functions:
+        - main
+      types: []
+      metadata:
+        files_count: 1
+        imports_count: 3
+        syntax_errors: 0
+    - package_path: net/http
+      framework_type: imported
+      is_direct: false
+      files: []
+      functions: []
+      types: []
+      metadata:
+        imported_by: github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers
+        note: package not in original analysis
+    - package_path: github.com/ehabterra/apispec/testdata/echo_handler_factory/models
+      framework_type: imported
+      is_direct: false
+      files: []
+      functions: []
+      types: []
+      metadata:
+        files_count: 1
+        imports_count: 0
+        syntax_errors: 0
+  framework_types:
+    echo:
+      - github.com/ehabterra/apispec/testdata/echo_handler_factory/api
+      - github.com/ehabterra/apispec/testdata/echo_handler_factory/util
+      - github.com/ehabterra/apispec/testdata/echo_handler_factory
+    http:
+      - github.com/ehabterra/apispec/testdata/echo_handler_factory/handlers
+    imported:
+      - net/http
+      - github.com/ehabterra/apispec/testdata/echo_handler_factory/models
+  total_packages: 6
+  direct_packages: 4
+  indirect_packages: 2

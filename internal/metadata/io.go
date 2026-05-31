@@ -99,10 +99,19 @@ func setCallArgumentMeta(arg *CallArgument, meta *Metadata) {
 	setCallArgumentMeta(arg.X, meta)
 	setCallArgumentMeta(arg.Sel, meta)
 	setCallArgumentMeta(arg.Fun, meta)
+	// ReceiverType is read by id()/GetName() for selector arguments; without
+	// rewiring its Meta after load, any reloaded metadata carrying a selector
+	// with a receiver type (e.g. the handler-factory call h.Create()) panics
+	// with a nil StringPool deref.
+	setCallArgumentMeta(arg.ReceiverType, meta)
 
 	// Set Meta for all arguments in Args slice
 	for i := range arg.Args {
 		setCallArgumentMeta(arg.Args[i], meta)
+	}
+	// Type parameters are stored by value; rewire each one's Meta too.
+	for i := range arg.TParams {
+		setCallArgumentMeta(&arg.TParams[i], meta)
 	}
 }
 
