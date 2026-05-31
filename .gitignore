@@ -6,6 +6,10 @@ main
 
 # Go modules
 vendor/
+# …but NOT the embedded UI's vendored bundle — it's a required runtime asset
+# (the Preact/htm module) that must be committed and go:embed'd, or the UI 404s.
+!cmd/apispecui/assets/vendor/
+!cmd/apispecui/assets/vendor/**
 
 # Dependency directories (remove the comment below if you use Go modules)
 Gopkg.lock
