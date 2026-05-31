@@ -1217,3 +1217,155 @@ h3 + .info {
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+
+/* ---- "Embed in your app" modal -------------------------------------- */
+.embed-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.embed-modal {
+  width: 760px;
+  max-width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.embed-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.embed-head h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.embed-head p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+}
+.embed-x {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: var(--r-1);
+}
+.embed-x:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.embed-seg {
+  margin: 12px 18px 0;
+  width: fit-content;
+}
+.embed-body {
+  padding: 14px 18px;
+  overflow: auto;
+}
+.embed-blurb {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.embed-block {
+  margin-bottom: 14px;
+}
+.embed-block-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+.embed-block-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.embed-copy {
+  margin-left: auto;
+}
+.embed-copy.ok {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.embed-code {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  overflow: auto;
+  max-height: 280px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre;
+}
+.embed-npm {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.embed-foot {
+  padding: 11px 18px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+}
+
+/* ---- type-mapping schema editor (advanced OpenAPI fields) ----------- */
+.schema-adv-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent);
+  user-select: none;
+}
+.schema-adv-toggle .chev {
+  color: var(--muted);
+  font-size: 10px;
+}
+.schema-adv {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-2);
+  background: var(--panel-2);
+}
+.schema-items {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-strong);
+}
+.schema-adv-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
