@@ -41,9 +41,13 @@
 
 ## Demo
 
-[![APISpec Demo — Generate OpenAPI for a Go e-commerce app](https://img.youtube.com/vi/fMHDshOeQVs/maxresdefault.jpg)](https://youtu.be/lkKO-a0-ZTU)
+![apispecui — generate an OpenAPI 3.1 spec from Go source, no annotations](docs/demo.gif)
 
-Click the image to watch the full demo on YouTube.
+[![Watch the full apispecui walkthrough on YouTube](https://img.youtube.com/vi/PEG8gDXeOGE/maxresdefault.jpg)](https://youtu.be/PEG8gDXeOGE)
+
+▶︎ **Full 2-minute walkthrough on YouTube** — Install → Generate → Explore → Configure → Insight.
+
+<sub>Earlier end-to-end demo (e-commerce app): <a href="https://youtu.be/lkKO-a0-ZTU">youtu.be/lkKO-a0-ZTU</a></sub>
 
 ## Why APISpec
 
