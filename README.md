@@ -228,7 +228,7 @@ See [`cmd/apidiag/README.md`](cmd/apidiag/README.md) for full documentation and 
 | **Chi**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        |
 | **Fiber**         | ✅               | ✅          | ✅                | ✅           | ✅        |
 | **Gorilla Mux**   | ✅               | ✅ *(detected, not yet wired into handler params)* | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ |
-| **`net/http`**    | ✅ (`HandleFunc`, `Handle`) | basic | basic | ✅ | ✅ |
+| **`net/http`**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ |
 
 Conditional registration (dynamic routes built at runtime) is generally not supported.
 
@@ -258,6 +258,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - `go-playground/validator` tags mapped to OpenAPI constraints.
 - CGO packages can be skipped to avoid build errors.
 - Dependency-injected route groups.
+- Go 1.22 `net/http.ServeMux` method-aware routing — patterns that carry the verb on the registration (`mux.HandleFunc("GET /users/{id}", getUser)`) are split into method + path, `{id}` wildcards become path parameters, and `r.PathValue("id")` is recognised as a path parameter. ServeMux-only syntax (`{path...}` trailing wildcards, the `{$}` end-of-path anchor) is normalised to OpenAPI templating. See `testdata/servemux/`.
 - Handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())` where `Create() echo.HandlerFunc { return func(c) {…} }`), including when the handler is dispatched through an interface whose implementation lives in a different package.
 - Function-local named types used as request/response bodies (`type Login struct{…}` declared inside a handler) — captured from the function body and emitted as real component schemas rather than dangling `$ref`s.
 - Request bodies bound through a custom wrapper (`util.ReadRequest(c, &dto)` → `ctx.Bind(dto)`) — the concrete type is traced through the wrapper's parameters.
@@ -358,6 +359,31 @@ router.POST("/users", func(c *gin.Context) {
 ```
 
 The body and response types are analyzed even for anonymous handlers.
+
+</details>
+
+<details>
+<summary><strong>Go 1.22 <code>net/http.ServeMux</code> method-aware routing</strong></summary>
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("GET /users/{id}", getUser) // method + wildcard
+mux.HandleFunc("POST /users", createUser)
+mux.HandleFunc("GET /health", health)
+
+func getUser(w http.ResponseWriter, r *http.Request) {
+    id := r.PathValue("id") // → path parameter "id"
+    // ...
+}
+```
+
+The HTTP method is parsed off the registration pattern, so `GET /users/{id}`
+becomes a `GET` operation on `/users/{id}` with an `id` path parameter, and
+`POST /users` becomes a `POST` with its request body inferred as usual. Calls to
+`r.PathValue("id")` inside the handler are recognised as path parameters.
+ServeMux-only syntax is normalised to OpenAPI templating: trailing wildcards
+`{path...}` collapse to `{path}` and the `{$}` end-of-path anchor is dropped.
+See `testdata/servemux/` for a worked example.
 
 </details>
 
