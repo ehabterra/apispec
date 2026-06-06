@@ -96,6 +96,7 @@ type RoutePattern struct {
 	// Extraction hints
 	MethodFromCall    bool `yaml:"methodFromCall,omitempty" json:"methodFromCall,omitempty"`       // Extract method from function name
 	MethodFromHandler bool `yaml:"methodFromHandler,omitempty" json:"methodFromHandler,omitempty"` // Extract method from handler function name
+	MethodFromPath    bool `yaml:"methodFromPath,omitempty" json:"methodFromPath,omitempty"`       // Extract method from a leading verb in the path arg (Go 1.22 ServeMux: "GET /users/{id}")
 	PathFromArg       bool `yaml:"pathFromArg,omitempty" json:"pathFromArg,omitempty"`             // Extract path from argument
 	HandlerFromArg    bool `yaml:"handlerFromArg,omitempty" json:"handlerFromArg,omitempty"`       // Extract handler from argument
 

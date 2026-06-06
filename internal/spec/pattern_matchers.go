@@ -56,6 +56,48 @@ func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument) (path, d
 	return b.contextProvider.GetArgumentInfo(arg), ""
 }
 
+// serveMuxTrailingWildcard matches Go 1.22 ServeMux trailing wildcards
+// ({path...}), which OpenAPI cannot express. The capture group keeps the
+// parameter name so it can be rewritten to a plain {path} segment.
+var serveMuxTrailingWildcard = mustCachedRegex(`\{([a-zA-Z_][a-zA-Z0-9_]*)\.\.\.\}`)
+
+// splitMethodFromPath splits a Go 1.22 ServeMux registration pattern of the
+// form "[METHOD ][HOST]/[PATH]" into its method and the remaining path. It
+// returns an empty method (and the input unchanged) when no leading HTTP verb
+// is present, so plain net/http patterns like "/health" pass through untouched.
+func splitMethodFromPath(raw string) (method, path string) {
+	raw = strings.Trim(raw, "\"'")
+	i := strings.IndexByte(raw, ' ')
+	if i <= 0 {
+		return "", raw
+	}
+	candidate := strings.ToUpper(strings.TrimSpace(raw[:i]))
+	if !isHTTPMethod(candidate) {
+		return "", raw
+	}
+	return candidate, strings.TrimSpace(raw[i+1:])
+}
+
+// normalizeServeMuxPath rewrites ServeMux-specific path syntax into OpenAPI
+// path templating: trailing wildcards ({path...}) collapse to {path}, and the
+// {$} end-of-path anchor is dropped.
+func normalizeServeMuxPath(path string) string {
+	path = serveMuxTrailingWildcard.ReplaceAllString(path, "{$1}")
+	path = strings.ReplaceAll(path, "{$}", "")
+	return path
+}
+
+// isHTTPMethod reports whether s is a recognised HTTP method (upper-case).
+func isHTTPMethod(s string) bool {
+	switch s {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete,
+		http.MethodPatch, http.MethodOptions, http.MethodHead, http.MethodConnect, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
+}
+
 // RoutePatternMatcherImpl implements RoutePatternMatcher
 type RoutePatternMatcherImpl struct {
 	*BasePatternMatcher
@@ -248,6 +290,17 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
 		path, dynName := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex])
+		// Go 1.22's net/http.ServeMux carries the HTTP method on the
+		// registration pattern itself: mux.HandleFunc("GET /users/{id}", h).
+		// When MethodFromPath is set, split the leading verb off the path and
+		// normalise ServeMux-specific wildcard syntax ({id...}, {$}).
+		if r.pattern.MethodFromPath {
+			if method, rest := splitMethodFromPath(path); method != "" {
+				routeInfo.Method = method
+				path = rest
+			}
+			path = normalizeServeMuxPath(path)
+		}
 		routeInfo.Path = path
 		if routeInfo.Path == "" {
 			routeInfo.Path = "/"
