@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit AI configuration — https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+early_access: false
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - develop
+
+  # Keep generated/large artifacts out of review.
+  path_filters:
+    - "!**/*.pb.go"
+    - "!**/testdata/**"
+    - "!coverage*.out"
+    - "!coverage*.txt"
+    - "!coverage*.html"
+    - "!**/*.mp4"
+    - "!**/*.png"
+    - "!**/*.svg"
+    - "!README.md.bak"
+
+  tools:
+    golangci-lint:
+      enabled: true
+    github-checks:
+      enabled: true
+    gitleaks:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+
+chat:
+  auto_reply: true
