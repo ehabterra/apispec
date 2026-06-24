@@ -63,30 +63,33 @@ func isBareTypeName(s string) bool {
 	return !strings.HasPrefix(s, "[") && !strings.HasPrefix(s, "*") && !strings.HasPrefix(s, "map[")
 }
 
-// typeNamesMatch reports whether a config entry name matches goType — always by
-// exact string, and additionally by short pkg-qualified name when BOTH are bare
-// named types (so "uuid.UUID" matches "github.com/google/uuid.UUID", but a
-// scalar "uuid.UUID" entry never matches "[]github.com/google/uuid.UUID").
-func typeNamesMatch(entryName, goType string) bool {
-	if entryName == goType {
-		return true
-	}
-	if isBareTypeName(entryName) && isBareTypeName(goType) {
-		return shortTypeName(entryName) == shortTypeName(goType)
-	}
-	return false
+// shortNameMatchesBare reports whether entryName matches goType by short
+// pkg-qualified name, allowed only when BOTH are bare named types (so
+// "uuid.UUID" matches "github.com/google/uuid.UUID", but a scalar "uuid.UUID"
+// entry never matches "[]github.com/google/uuid.UUID"). Exact matches are
+// handled by the caller's first pass.
+func shortNameMatchesBare(entryName, goType string) bool {
+	return isBareTypeName(entryName) && isBareTypeName(goType) &&
+		shortTypeName(entryName) == shortTypeName(goType)
 }
 
 // lookupConfigSchema returns the user-configured typeMapping schema for goType.
-// Returns nil when no entry matches. (externalTypes is handled separately — it
-// produces a named component + $ref rather than an inline schema — see
-// configHasExternalType.)
+// An exact match anywhere in the list wins over a short-name match, so
+// declaration order can't let an earlier short match shadow a later exact one
+// (e.g. two entries sharing a short name from different packages). Returns nil
+// when nothing matches. (externalTypes is handled separately — it produces a
+// named component + $ref rather than an inline schema — see configHasExternalType.)
 func lookupConfigSchema(cfg *APISpecConfig, goType string) *Schema {
 	if cfg == nil {
 		return nil
 	}
-	for _, m := range cfg.TypeMapping {
-		if typeNamesMatch(m.GoType, goType) {
+	for _, m := range cfg.TypeMapping { // exact first
+		if m.GoType == goType {
+			return m.OpenAPIType
+		}
+	}
+	for _, m := range cfg.TypeMapping { // then short-name fallback
+		if shortNameMatchesBare(m.GoType, goType) {
 			return m.OpenAPIType
 		}
 	}
@@ -94,14 +97,20 @@ func lookupConfigSchema(cfg *APISpecConfig, goType string) *Schema {
 }
 
 // configHasExternalType reports whether goType matches a user externalTypes
-// entry. Such types are emitted as named components by the existing
-// externalTypes path, so the built-in registry must not pre-empt them.
+// entry (exact preferred over short-name, as in lookupConfigSchema). Such types
+// are emitted as named components by the existing externalTypes path, so the
+// built-in registry must not pre-empt them.
 func configHasExternalType(cfg *APISpecConfig, goType string) bool {
 	if cfg == nil {
 		return false
 	}
-	for _, e := range cfg.ExternalTypes {
-		if typeNamesMatch(e.Name, goType) {
+	for _, e := range cfg.ExternalTypes { // exact first
+		if e.Name == goType {
+			return true
+		}
+	}
+	for _, e := range cfg.ExternalTypes { // then short-name fallback
+		if shortNameMatchesBare(e.Name, goType) {
 			return true
 		}
 	}

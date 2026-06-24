@@ -132,6 +132,16 @@ func TestLookupConfigSchema_ShortAndFullName(t *testing.T) {
 	if s := lookupConfigSchema(cfg2, "[]uuid.UUID"); s == nil || s.Type != "array" {
 		t.Fatalf("explicit wrapper mapping should match exactly, got %+v", s)
 	}
+
+	// An exact match must win over an earlier short-name match of a same-short
+	// name from a different package (declaration order must not shadow it).
+	cfg3 := &APISpecConfig{TypeMapping: []TypeMapping{
+		{GoType: "github.com/other/uuid.UUID", OpenAPIType: &Schema{Type: "string", Format: "WRONG"}},
+		{GoType: "github.com/google/uuid.UUID", OpenAPIType: &Schema{Type: "string", Format: "uuid"}},
+	}}
+	if s := lookupConfigSchema(cfg3, "github.com/google/uuid.UUID"); s == nil || s.Format != "uuid" {
+		t.Fatalf("exact match must win over an earlier short-name match, got %+v", s)
+	}
 }
 
 func TestResolveExternalType_RegistryOmissions(t *testing.T) {
