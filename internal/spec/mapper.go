@@ -352,6 +352,49 @@ func deduplicateParameters(params []Parameter) []Parameter {
 }
 
 // buildResponses builds OpenAPI responses from response info
+// uninformativeDefault reports whether the "could not determine status"
+// response `def` adds no response-body information beyond the resolved-status
+// responses already in `chosen`: either its body duplicates a resolved one, or
+// it is the bare generic `object` fallback.
+func uninformativeDefault(def *ResponseInfo, chosen map[string]*ResponseInfo) bool {
+	if isGenericObjectResponse(def) {
+		return true
+	}
+	for status, r := range chosen {
+		if status != "default" && sameRenderedBody(r.Schema, def.Schema) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameRenderedBody compares the actual schemas the spec will render, not the Go
+// BodyType label: two responses can share an (often empty) BodyType yet render
+// different bodies, so matching on BodyType could prune a distinct fallback.
+func sameRenderedBody(a, b *Schema) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ab, _ := yaml.Marshal(a)
+	bb, _ := yaml.Marshal(b)
+	return string(ab) == string(bb)
+}
+
+// isGenericObjectResponse reports whether a response body is the featureless
+// `{type: object}` fallback (no $ref, properties, composition, or items) — the
+// least-informative possible body.
+func isGenericObjectResponse(r *ResponseInfo) bool {
+	s := r.Schema
+	if s == nil {
+		return true
+	}
+	if s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || len(s.OneOf) > 0 ||
+		len(s.AnyOf) > 0 || s.Items != nil || s.AdditionalProperties != nil {
+		return false
+	}
+	return s.Type == "" || s.Type == "object"
+}
+
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	responses := make(map[string]Response)
 
@@ -394,6 +437,19 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 			continue
 		}
 		chosen[statusCode] = resp
+	}
+
+	// "default" here means "status could not be determined" — a fallback, not an
+	// OpenAPI catch-all. Once concrete statuses are resolved, a default adds
+	// nothing if it carries no new response-body information: either (a) its
+	// body is already emitted under a resolved status (the status WAS
+	// determined for that body via another call path), or (b) its body is the
+	// bare generic `object` fallback (e.g. an `any` parameter that couldn't be
+	// traced through an indirection helper). Drop it in those cases; keep a
+	// default whose body is concrete and distinct — that's a real response
+	// whose status genuinely couldn't be resolved.
+	if def := chosen["default"]; def != nil && len(chosen) > 1 && uninformativeDefault(def, chosen) {
+		delete(chosen, "default")
 	}
 
 	for statusCode, resp := range chosen {

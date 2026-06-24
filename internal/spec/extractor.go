@@ -487,7 +487,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		// Extract responses (multiple if status fan-out applies — see
 		// ExtractResponse / issue #39). Each emitted ResponseInfo lands
 		// under its own status-keyed slot in route.Response.
-		for _, resp := range e.extractResponseFromNode(child, route, visitedEdges) {
+		for _, resp := range e.extractResponseFromNode(child, route, visitedEdges, routeNode.GetKey()) {
 			if resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
 				route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
 			}
@@ -603,21 +603,26 @@ func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *Rou
 // extractResponseFromNode extracts response information from a node.
 // Returns a slice because a single call site can yield multiple responses
 // when conditional status codes apply (see ExtractResponse / issue #39).
-func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool) []*ResponseInfo {
-	// Ensure that each edge is visited only once
+//
+// The visited-edge key is qualified by parentKey (the node through which this
+// one was reached). A response helper invoked from several branches with
+// different statuses — e.g. respondWithError(w,…,400) and
+// respondWithError(w,…,500), both reaching the SAME WriteHeader edge — would
+// otherwise be deduped by callee alone and collapse to the first status seen.
+// Qualifying by the call site lets each distinct status be resolved. (The same
+// node also gets reached via internal encoder-chain paths with no status
+// context; those yield a "default" that buildResponses drops when it carries no
+// new body information — see uninformativeDefault.)
+func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool, parentKey string) []*ResponseInfo {
 	if node == nil || node.GetEdge() == nil {
 		return nil
 	}
-
 	edge := node.GetEdge()
-	edgeID := edge.Callee.ID()
+	edgeID := parentKey + "|" + edge.Callee.ID()
 	if visitedEdges[edgeID] {
-		return nil // Edge already processed
+		return nil // already processed via this same call site
 	}
-
-	// Mark edge as visited before processing to ensure MatchNode is only called once per edge
 	visitedEdges[edgeID] = true
-
 	for _, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
 			return matcher.ExtractResponse(node, route)
