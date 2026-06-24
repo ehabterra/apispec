@@ -48,7 +48,11 @@ func (r MiddlewareRef) empty() bool {
 //   - selector   h.authMiddleware          -> sel name + pkg + receiver type
 //   - call       middleware.Timeout(60*…)  -> constructor name + pkg (from Fun)
 //
-// It returns ok=false when the argument is nil or yields no usable identity.
+// middlewareRefFromArg resolves a middleware argument to its middleware identity.
+// It returns false when the argument is nil or does not yield a usable identity.
+// 
+// @param arg The middleware call argument to resolve.
+// @returns The resolved middleware reference and true when the argument identifies a middleware value, false otherwise.
 func middlewareRefFromArg(arg *metadata.CallArgument) (MiddlewareRef, bool) {
 	if arg == nil {
 		return MiddlewareRef{}, false
@@ -117,7 +121,7 @@ func middlewareRefFromArg(arg *metadata.CallArgument) (MiddlewareRef, bool) {
 // tracker copies edges without it, so edge.AssignmentMap is usually empty here).
 // Returns ok=false when the arg is not an ident, has no recorded assignment, or
 // the assignment yields no call identity (e.g. a plain package-level function
-// value, which is left as-is so it can still match a mapping by name).
+// value.
 func resolveMiddlewareIdentRef(edge *metadata.CallGraphEdge, arg *metadata.CallArgument, meta *metadata.Metadata) (MiddlewareRef, bool) {
 	if edge == nil || arg == nil || arg.GetKind() != metadata.KindIdent {
 		return MiddlewareRef{}, false
@@ -150,7 +154,7 @@ func resolveMiddlewareIdentRef(edge *metadata.CallGraphEdge, arg *metadata.CallA
 // lookupAssignments finds the assignment records for a variable name in the
 // scope of the matched call. It prefers the edge's own AssignmentMap (when
 // present) and falls back to the caller function's AssignmentMap, which is where
-// assignments survive after the tracker copies edges.
+// matching assignment records from that caller's declaration.
 func lookupAssignments(edge *metadata.CallGraphEdge, name string, meta *metadata.Metadata) []metadata.Assignment {
 	if assigns, ok := edge.AssignmentMap[name]; ok && len(assigns) > 0 {
 		return assigns
@@ -215,7 +219,7 @@ func lookupAssignments(edge *metadata.CallGraphEdge, name string, meta *metadata
 	return nil
 }
 
-// anyMappingMatches reports whether any mapping resolves the ref to a scheme.
+// anyMappingMatches reports whether any security mapping matches the middleware reference.
 func anyMappingMatches(ref MiddlewareRef, mappings []SecurityMapping) bool {
 	for _, m := range mappings {
 		if m.matches(ref) {
