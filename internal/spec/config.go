@@ -560,6 +560,12 @@ type APISpecConfig struct {
 	// (see SecurityMapping). Framework-agnostic; merged from library presets and
 	// user config. Works together with Framework.SecurityPatterns (scope).
 	SecurityMappings []SecurityMapping `yaml:"securityMappings" json:"securityMappings,omitempty"`
+
+	// presetSchemes holds securityScheme definitions contributed by library
+	// presets (see config_security.go). They are added to the output components
+	// only when actually referenced by a resolved operation, so unused presets
+	// don't bloat the spec. Not serialized.
+	presetSchemes map[string]SecurityScheme `yaml:"-" json:"-"`
 	Tags            []Tag                     `yaml:"tags" json:"tags,omitempty"`
 	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
 }

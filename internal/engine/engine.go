@@ -521,6 +521,11 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		}
 	}
 
+	// Merge built-in auth/security library presets based on the project's
+	// imports (framework preset -> library presets -> user config; user wins).
+	// The engine stays framework-agnostic: this only augments config data.
+	intspec.ApplySecurityPresets(apispecConfig, meta)
+
 	// Set info from configuration (only if not already set in APISpecConfig)
 	if apispecConfig.Info.Title == "" {
 		apispecConfig.Info.Title = e.config.Title

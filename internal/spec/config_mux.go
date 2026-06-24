@@ -93,6 +93,7 @@ func DefaultMuxConfig() *APISpecConfig {
 					RecvTypeRegex: `^github\.com/gorilla/mux$`,
 				},
 			},
+			SecurityPatterns: muxSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:     `^PathPrefix$`,

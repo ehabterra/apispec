@@ -614,8 +614,12 @@ func (s *SecurityPatternMatcherImpl) ExtractMiddleware(node TrackerNodeInterface
 	if s.pattern.Scope == SecurityScopeWrapper {
 		idx := s.pattern.HandlerArgIndex
 		if idx >= 0 && idx < len(edge.Args) {
-			if ref, ok := middlewareRefFromArg(edge.Args[idx]); ok {
-				refs = append(refs, ref)
+			// Only a wrapping call (e.g. Auth(h)) is middleware; a bare handler
+			// ident/func-lit is the handler itself, not auth.
+			if h := edge.Args[idx]; h.GetKind() == metadata.KindCall {
+				if ref, ok := middlewareRefFromArg(h); ok {
+					refs = append(refs, ref)
+				}
 			}
 		}
 		return refs

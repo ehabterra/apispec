@@ -332,7 +332,20 @@ paths:
    and the `security: []` literal-empty rendering remain for phase 5/6.
    Verified end-to-end on complex_chi_router (generator/security_test.go): only
    the authMiddleware-group routes get `bearerAuth`; /auth and /health do not.
-6. Default presets per framework + import-based library detector/mappings.
+6. ✓ DONE — Framework scope presets (config_security.go: chi/echo/gin/fiber/mux
+   `Use`+`Group`, echo per-route) wired into each DefaultXConfig; import-based
+   library detector `ApplySecurityPresets` (echo JWT/basic/keyauth, echo-jwt,
+   gin-jwt, gin BasicAuth, fiber jwt/basic/keyauth) merged in the engine
+   (framework → library → user; user wins). Mapper reconciles the scheme catalog
+   (`reconcileSecuritySchemes`): user schemes always emitted, preset schemes only
+   when referenced, dangling refs warned. Unresolved-middleware warning gated on
+   mappings existing (no noise for non-auth projects). net/http handler-wrap
+   preset deferred (too ambiguous); per-route middleware for gin/chi-With
+   deferred (handler-position ambiguity). Real-world note: projects usually wrap
+   library middleware in custom helpers, so the common path is detect→warn→map
+   (the detector still fires to open the gate). Output unchanged for projects
+   without auth libs (verified vs v51 snapshots). Tested: config_security_test.go
+   (detector + reconciliation) + existing e2e.
 7. UI: surface detected schemes; interactive picker to map unresolved
    middleware → scheme, persisted into the generated config.
 

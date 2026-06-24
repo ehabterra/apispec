@@ -107,8 +107,10 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 
 	// Warn about auth middleware that was detected but matched no
 	// SecurityMapping, so the user knows what to map. apispecui surfaces the
-	// same list for interactive assignment (see design doc §5).
-	if unresolved := extractor.UnresolvedSecurity(); len(unresolved) > 0 {
+	// same list for interactive assignment (see design doc §5). Only warn when
+	// some mappings exist (a library was detected or the user configured them);
+	// otherwise auth detection is effectively off and the noise is unwanted.
+	if unresolved := extractor.UnresolvedSecurity(); len(unresolved) > 0 && len(cfg.SecurityMappings) > 0 {
 		names := make([]string, len(unresolved))
 		for i, r := range unresolved {
 			names[i] = r.String()
@@ -155,15 +157,61 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 		ExternalDocs: cfg.ExternalDocs,
 	}
 
-	// Fill securitySchemes in components if present in config
-	if len(cfg.SecuritySchemes) > 0 {
+	// Fill securitySchemes in components: always include user-defined schemes,
+	// plus any library-preset schemes actually referenced by a resolved
+	// operation (or the global security). Unused presets are omitted so the spec
+	// stays lean; a referenced-but-undefined scheme is reported.
+	if schemes := reconcileSecuritySchemes(cfg, routes); len(schemes) > 0 {
 		if spec.Components == nil {
 			spec.Components = &Components{}
 		}
-		spec.Components.SecuritySchemes = cfg.SecuritySchemes
+		spec.Components.SecuritySchemes = schemes
 	}
 
 	return spec, nil
+}
+
+// reconcileSecuritySchemes returns the securityScheme catalog to emit: all
+// user-defined schemes, plus preset schemes referenced by an operation or the
+// global security. Referenced names defined in neither are logged as warnings.
+func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo) map[string]SecurityScheme {
+	out := make(map[string]SecurityScheme, len(cfg.SecuritySchemes))
+	for name, scheme := range cfg.SecuritySchemes {
+		out[name] = scheme
+	}
+
+	// Collect referenced scheme names from per-operation and global security.
+	referenced := make(map[string]struct{})
+	collect := func(reqs []SecurityRequirement) {
+		for _, req := range reqs {
+			for name := range req {
+				referenced[name] = struct{}{}
+			}
+		}
+	}
+	collect(cfg.Security)
+	for _, r := range routes {
+		collect(r.Security)
+	}
+
+	var dangling []string
+	for name := range referenced {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		if def, ok := cfg.presetSchemes[name]; ok {
+			out[name] = def
+			continue
+		}
+		dangling = append(dangling, name)
+	}
+	if len(dangling) > 0 {
+		sort.Strings(dangling)
+		log.Printf("[security] %d security scheme(s) referenced but not defined "+
+			"(add them to securitySchemes): %s", len(dangling), strings.Join(dangling, ", "))
+	}
+
+	return out
 }
 
 // buildPathsFromRoutes builds OpenAPI paths from extracted routes

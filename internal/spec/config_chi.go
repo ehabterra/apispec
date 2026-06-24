@@ -90,6 +90,7 @@ func DefaultChiConfig() *APISpecConfig {
 					RecvType:      "net/http.*Request",
 				},
 			},
+			SecurityPatterns: chiSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:      `^Mount$`,

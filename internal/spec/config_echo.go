@@ -88,6 +88,7 @@ func DefaultEchoConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 				},
 			},
+			SecurityPatterns: echoSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:      `^Group$`,
