@@ -147,12 +147,34 @@ calls and their function-value args must reach the tracker tree. We confirmed:
   for `router`-scope correlation (§5b).
 - `authMiddleware` appears in metadata as a referenced function + call arg.
 
-**Spike (first task):** confirm `r.Use(mw)` and `r.With(mw)` survive as edges
-with their middleware arg resolvable to a function/selector identity. If the
-call-graph builder prunes method calls to bodyless external methods (chi's
-`Use`), add a metadata-side rule to retain calls whose name matches a configured
-SecurityPattern `CallRegex` (or simply stop pruning arg-bearing router-method
-calls). This is the only possible metadata-layer change.
+**Spike — DONE (✓ no metadata change needed).** Verified on
+`testdata/complex_chi_router` (decoded the pooled `metadata.yaml` call graph):
+
+- **`Use` edges survive**, both inside a `Group(func(rg){…})` closure
+  (`rg.Use(h.authMiddleware)` at handler.go:37) and at the root
+  (`r.Use(...)` ×7 in main.go). `Group`/`Mount` edges are present too.
+- **Middleware identity is fully recoverable** from the `CallArgument`:
+  - selector `h.authMiddleware` → `kind=selector`, `sel.name="authMiddleware"`,
+    `sel.pkg="…/handler"`, `receiver_type="Handler"`, func type carried.
+  - constructor `middleware.Timeout(…)` → `kind=call`, `fun.sel.name="Timeout"`,
+    `fun.pkg="…/chi/v5/middleware"`.
+  - bare `customMiddleware` → `kind=ident`, `name="customMiddleware"`,
+    `pkg="complex-chi-router"`.
+  All three forms expose name + pkg (+ recv type), enough to drive
+  `SecurityMapping` regexes.
+- **Scope linkage is recoverable**: the `Group` call's arg is a `func_lit` whose
+  ID equals the `caller` of the `Use`/`Mount` edges inside it — so the
+  subtree-scope set is "edges whose caller is the matched closure". `recvType`
+  distinguishes inner (`chi.Router`) vs root (`*Mux`); source `position`
+  gives ordering for `router`-scope "applies to routes registered after".
+
+Conclusion: `SecurityPattern` matchers can run directly on existing tracker
+nodes. No call-graph/metadata-builder change is required.
+
+Note (`router` scope): `callee_recv_var_name` is populated on some edges but was
+empty for these chi closure edges, so receiver correlation should key on
+(caller function/closure id, callee `recvType`) + source-position ordering
+rather than relying solely on the recv-var name.
 
 ### Step 1 — new pattern matcher
 
@@ -281,8 +303,8 @@ paths:
 
 ## 9. Phased implementation plan
 
-1. **Spike**: confirm `Use`/`With` edges + middleware-arg identity reach the
-   tracker tree (fix metadata pruning only if needed). *(de-risks everything)*
+1. **Spike**: ✓ DONE — `Use`/`Group` edges + middleware-arg identity + scope
+   linkage all reach the tracker tree; no metadata change needed (see §5 Step 0).
 2. Config structs: `SecurityPattern`, `SecurityMapping`, wire into
    `FrameworkConfig` / `APISpecConfig`; JSON-schema/validation.
 3. `SecurityPatternMatcher` + identity resolver (`resolveSecurity`).
