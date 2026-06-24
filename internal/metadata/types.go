@@ -145,6 +145,38 @@ type Metadata struct {
 
 	// Current module path for external type detection
 	CurrentModulePath string `yaml:"-"`
+
+	// ExternalTypes records facts about external (third-party) named types
+	// referenced anywhere in the analyzed code, keyed by every name form
+	// under which the type may later be looked up (full import path and
+	// short pkg-qualified). The spec layer owns the *policy* (what schema an
+	// external type maps to); metadata only reports the *facts* it can see
+	// via go/types so the spec layer doesn't need to re-run type analysis.
+	ExternalTypes map[string]ExternalTypeFact `yaml:"external_types,omitempty"`
+}
+
+// MarshalerKind classifies how a type controls its own JSON encoding.
+type MarshalerKind uint8
+
+const (
+	// MarshalerNone means the type has no custom JSON/Text marshaler, so its
+	// schema should be derived from its underlying type.
+	MarshalerNone MarshalerKind = iota
+	// MarshalerText means the type implements encoding.TextMarshaler. Its JSON
+	// output is *provably* a string, so {type: string} is exact.
+	MarshalerText
+	// MarshalerJSON means the type implements json.Marshaler but not
+	// TextMarshaler. The JSON kind (string/number/object/...) is not knowable
+	// statically; {type: string} is the modal guess and is low-confidence.
+	MarshalerJSON
+)
+
+// ExternalTypeFact carries what the analyzer learned about one external named
+// type. Underlying is the go/types underlying type string (e.g. "[16]byte",
+// "string"); empty when the type couldn't be resolved (opaque dependency).
+type ExternalTypeFact struct {
+	Marshaler  MarshalerKind `yaml:"marshaler,omitempty"`
+	Underlying string        `yaml:"underlying,omitempty"`
 }
 
 // TraceVariableResult caches the result of traceVariableOriginHelper

@@ -64,9 +64,22 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 				},
 				{
+					// r.Header.Get("X-Foo") — scope to the http.Header
+					// receiver so package-level funcs that happen to be named
+					// Get (e.g. http.Get(url), client.Get(url)) are not
+					// mistaken for header reads. See body_source/sync.
 					CallRegex:     "^Get$",
 					ParamIn:       "header",
 					ParamArgIndex: 0,
+					RecvType:      "net/http.Header",
+				},
+				{
+					// r.URL.Query().Get("q") — query parameter. Query()
+					// returns net/url.Values, whose Get reads a query key.
+					CallRegex:     "^Get$",
+					ParamIn:       "query",
+					ParamArgIndex: 0,
+					RecvType:      "net/url.Values",
 				},
 				{
 					CallRegex:     "^Cookie$",

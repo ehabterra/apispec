@@ -159,7 +159,85 @@ func (e *Extractor) ExtractRoutes() []*RouteInfo {
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, nil, &routes)
 	}
-	return routes
+	return dropSubsumedMountPrefixes(routes)
+}
+
+// dropSubsumedMountPrefixes removes spurious partially-mounted duplicates of a
+// route. A nested mount (e.g. main mounts /api → handler, handler mounts /user
+// → userRoutes) is reached by the traversal through several contexts, so the
+// same handler can be emitted at every *subset* of its mount chain
+// (/api/user/{id} but also /api/{id}, /user/{id}, /{id}). Only the most-mounted
+// one is real.
+//
+// A route is dropped when, for the same (Function, Method, Path), another route
+// exists whose mount-path segments are a strict ordered *superset*: i.e. this
+// route's segments are a subsequence of the other's. Genuine multi-mounts of
+// the same sub-router at distinct prefixes (e.g. /v2/api and /{mountPoint}) are
+// not subsequences of each other, so both survive.
+func dropSubsumedMountPrefixes(routes []*RouteInfo) []*RouteInfo {
+	type key struct{ fn, method, path string }
+	groups := make(map[key][]int)
+	segs := make([][]string, len(routes))
+	for i, r := range routes {
+		segs[i] = mountSegments(r.MountPath)
+		k := key{r.Function, r.Method, r.Path}
+		groups[k] = append(groups[k], i)
+	}
+
+	drop := make([]bool, len(routes))
+	for _, idxs := range groups {
+		if len(idxs) < 2 {
+			continue
+		}
+		for _, i := range idxs {
+			for _, j := range idxs {
+				if i == j {
+					continue
+				}
+				// Drop i if its segments are a strictly shorter subsequence
+				// of j's (j is the more-complete mount of the same handler).
+				if len(segs[i]) < len(segs[j]) && isSubsequence(segs[i], segs[j]) {
+					drop[i] = true
+					break
+				}
+			}
+		}
+	}
+
+	out := routes[:0]
+	for i, r := range routes {
+		if !drop[i] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// mountSegments splits a mount path into its non-empty segments
+// ("/api/user/" → ["api","user"], "" → []).
+func mountSegments(mountPath string) []string {
+	mountPath = strings.Trim(mountPath, "/")
+	if mountPath == "" {
+		return nil
+	}
+	return strings.Split(mountPath, "/")
+}
+
+// isSubsequence reports whether a appears as an ordered (not necessarily
+// contiguous) subsequence of b.
+func isSubsequence(a, b []string) bool {
+	if len(a) == 0 {
+		return true
+	}
+	i := 0
+	for _, x := range b {
+		if x == a[i] {
+			if i++; i == len(a) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // traverseForRoutes traverses the tree to find routes
@@ -460,6 +538,56 @@ func requestIsConcrete(r *RequestInfo) bool {
 	}
 	s := r.Schema
 	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
+}
+
+// preferResponseInfo deterministically picks between two responses competing
+// for the same status slot — used for the "default" collapse, where several
+// unresolved-status bodies (a success type and a framework error map) land
+// together. A concrete schema (named-type $ref, object with properties, allOf,
+// or array) beats a generic {type: object}; among equally concrete bodies a
+// success type beats an error-named DTO; finally a stable BodyType tie-break
+// keeps runs in agreement regardless of visitation order.
+func preferResponseInfo(cur, next *ResponseInfo) *ResponseInfo {
+	if cur == nil {
+		return next
+	}
+	if next == nil {
+		return cur
+	}
+	curConcrete, nextConcrete := responseIsConcrete(cur), responseIsConcrete(next)
+	if nextConcrete != curConcrete {
+		if nextConcrete {
+			return next
+		}
+		return cur
+	}
+	curErr, nextErr := isErrorBodyType(cur.BodyType), isErrorBodyType(next.BodyType)
+	if curErr != nextErr {
+		if nextErr {
+			return cur
+		}
+		return next
+	}
+	if next.BodyType < cur.BodyType {
+		return next
+	}
+	return cur
+}
+
+// responseIsConcrete reports whether a response carries a resolved type rather
+// than a generic `object` fallback.
+func responseIsConcrete(r *ResponseInfo) bool {
+	if r == nil || r.Schema == nil {
+		return false
+	}
+	s := r.Schema
+	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
+}
+
+// isErrorBodyType reports whether a body type name looks like an error DTO
+// (e.g. ErrorResponse, APIError). Used only as a tie-break for the default slot.
+func isErrorBodyType(bodyType string) bool {
+	return strings.Contains(strings.ToLower(bodyType), "error")
 }
 
 // extractRequestFromNode extracts request information from a node

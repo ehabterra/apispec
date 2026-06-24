@@ -368,14 +368,35 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 		return responses
 	}
 
-	// Add success response
-	for statusCode, resp := range respInfo {
+	// Choose one ResponseInfo per OpenAPI status key. Iterate sorted so the
+	// outcome never depends on map order. Several unresolved-status bodies
+	// (StatusCode < 0) collapse onto "default" — a handler returning its
+	// success type plus a framework error map; reconcile those with
+	// preferResponseInfo (concrete beats generic, success beats error, stable
+	// tie-break) so the winner is deterministic. Resolved statuses keep
+	// last-in-sorted-order to preserve prior behaviour (no concrete-preference
+	// that could let a mis-paired body displace an intentional one).
+	keys := make([]string, 0, len(respInfo))
+	for k := range respInfo {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	chosen := make(map[string]*ResponseInfo)
+	for _, k := range keys {
+		resp := respInfo[k]
+		statusCode := k
 		// if status less than 0, use "default" to indicate unknown/invalid status
 		// OpenAPI only accepts status codes 100-599, "default", or vendor extensions
 		if resp.StatusCode < 0 {
 			statusCode = "default"
+			chosen[statusCode] = preferResponseInfo(chosen[statusCode], resp)
+			continue
 		}
+		chosen[statusCode] = resp
+	}
 
+	for statusCode, resp := range chosen {
 		description := http.StatusText(resp.StatusCode)
 		if resp.StatusCode < 0 || description == "" {
 			description = "Status code could not be determined"
@@ -458,6 +479,19 @@ func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, component
 					continue
 				}
 			}
+		}
+
+		// Known external types (uuid.UUID, decimal.Decimal, sql.Null*, …) are
+		// resolved by the spec-layer registry/facts and inlined at their use
+		// sites. They have no metadata type entry, so without this they'd be
+		// mistaken for unresolved and get a bogus object placeholder.
+		if s, _, ok := resolveExternalType(typeName, cfg, meta, usedTypes, map[string]bool{}); ok {
+			if s != nil && !isPrimitiveShapedSchema(s) {
+				// Non-primitive resolution (rare): emit it as a real component.
+				components.Schemas[schemaComponentNameReplacer.Replace(typeName)] = s
+			}
+			// Primitive-shaped (the common case): inlined; emit no component.
+			continue
 		}
 
 		// Find the type in metadata
@@ -777,8 +811,12 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			}
 
 			derivedFieldType := strings.TrimPrefix(fieldType, "*")
-			// Check if this field type already exists in usedTypes
-			if bodySchema, ok := usedTypes[derivedFieldType]; !isPrimitive && ok {
+			// Check if this field type already exists in usedTypes. Inline
+			// external types (uuid, decimal, …) are excluded: they resolve to
+			// a primitive-shaped schema with no component, so a $ref to them
+			// would dangle — let them fall through to inline resolution.
+			if bodySchema, ok := usedTypes[derivedFieldType]; !isPrimitive && ok &&
+				!isInlineExternalType(derivedFieldType, cfg, meta) {
 				// Create a reference to the existing schema
 				fieldSchema = addRefSchemaForType(derivedFieldType)
 
@@ -1569,34 +1607,59 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 
 	derivedGoType := strings.TrimPrefix(goType, "*")
 
+	// Inline external types (uuid, decimal, …) are leaves with no component,
+	// so they are never a real cycle and a $ref to them would dangle. Exclude
+	// them from the cycle/recursion guards below so every occurrence inlines.
+	inlineExternal := isInlineExternalType(derivedGoType, cfg, meta)
+
 	// Check for cycles using both the original type and the derived type
-	if (visitedTypes[goType+mapGoTypeToOpenAPISchemaKey] || visitedTypes[derivedGoType+mapGoTypeToOpenAPISchemaKey]) && canAddRefSchemaForType(derivedGoType) {
+	if (visitedTypes[goType+mapGoTypeToOpenAPISchemaKey] || visitedTypes[derivedGoType+mapGoTypeToOpenAPISchemaKey]) && canAddRefSchemaForType(derivedGoType) && !inlineExternal {
 		return addRefSchemaForType(goType), schemas
 	}
 	visitedTypes[goType+mapGoTypeToOpenAPISchemaKey] = true
 
 	// Add recursion guard - if we're already processing this type, return a reference
-	if schema, exists := usedTypes[derivedGoType]; exists && schema != nil && canAddRefSchemaForType(derivedGoType) {
+	if schema, exists := usedTypes[derivedGoType]; exists && schema != nil && canAddRefSchemaForType(derivedGoType) && !inlineExternal {
 		return addRefSchemaForType(derivedGoType), schemas
 	}
 
-	// Check type mappings first
-	for _, mapping := range cfg.TypeMapping {
-		if mapping.GoType == goType {
-			schema = mapping.OpenAPIType
-			markUsedType(usedTypes, goType, schema)
-
-			return schema, schemas
+	// Check user typeMapping first, matched by both the full import path and
+	// the short pkg-qualified name so a config entry for "uuid.UUID" matches a
+	// field typed "github.com/google/uuid.UUID". Primitive-shaped mappings are
+	// inlined at every use site and have no component, so they must NOT be
+	// marked used — otherwise a second occurrence hits the usedTypes guard and
+	// emits a $ref to a component generateSchemas never produces.
+	if s := lookupConfigSchema(cfg, goType); s != nil {
+		if !isPrimitiveShapedSchema(s) {
+			markUsedType(usedTypes, goType, s)
 		}
+		return s, schemas
 	}
 
-	// Check external types
+	// Check external types (emitted as named components by generateSchemas).
 	if cfg != nil {
 		for _, externalType := range cfg.ExternalTypes {
 			if externalType.Name == goType {
 				schemas[goType] = externalType.OpenAPIType
 			}
 		}
+	}
+
+	// Resolve well-known / marshaler-based external types (uuid.UUID,
+	// decimal.Decimal, sql.Null*, …) to a precise schema via the spec-layer
+	// registry + metadata facts. Wrapped forms ([]T, *T, map[K]T) are not
+	// matched here; they fall through to the pointer/array/map branches below
+	// and re-enter this function on the element type, which is matched then.
+	if s, extra, ok := resolveExternalType(goType, cfg, meta, usedTypes, visitedTypes); ok {
+		maps.Copy(schemas, extra)
+		// Only register non-primitive resolutions as used types. Primitive-
+		// shaped results (uuid → {string,uuid}, …) are inlined at every use
+		// site; marking them would make a second occurrence hit the recursion
+		// guard and emit a $ref to a component that is never generated.
+		if s != nil && !isPrimitiveShapedSchema(s) {
+			markUsedType(usedTypes, goType, s)
+		}
+		return s, schemas
 	}
 
 	// Handle pointer types
@@ -1651,8 +1714,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 				return schema, schemas
 			}
 
-			// For complex types, check if already exists in usedTypes
-			if bodySchema, ok := usedTypes[elementType]; ok {
+			// For complex types, check if already exists in usedTypes.
+			// Inline external elements are excluded ($ref would dangle).
+			if bodySchema, ok := usedTypes[elementType]; ok && !isInlineExternalType(elementType, cfg, meta) {
 				if bodySchema == nil {
 					var newBodySchemas map[string]*Schema
 					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
@@ -1797,8 +1861,11 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		}
 		isPrimitiveElement := metadata.IsPrimitiveType(resolvedType)
 
-		// Check if the element type already exists in usedTypes
-		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveElement && ok {
+		// Check if the element type already exists in usedTypes. Inline
+		// external elements (uuid, decimal, …) are excluded: a $ref to them
+		// would dangle since they have no component — fall through to inline.
+		if bodySchema, ok := usedTypes[elementType]; !isPrimitiveElement && ok &&
+			!isInlineExternalType(elementType, cfg, meta) {
 			if bodySchema == nil {
 				var newBodySchemas map[string]*Schema
 

@@ -221,9 +221,17 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 
 			typeParams := arg.TypeParams()
 			if len(typeParams) > 0 {
+				// typeParams is a map[paramName]concreteType; iterate by sorted
+				// key so the rendered type-argument list is deterministic
+				// (otherwise HandleRequest[A, B] vs [B, A] flips between runs).
+				names := make([]string, 0, len(typeParams))
+				for name := range typeParams {
+					names = append(names, name)
+				}
+				slices.Sort(names)
 				typParam := "["
-				for _, val := range typeParams {
-					typParam += val + ", "
+				for _, name := range names {
+					typParam += typeParams[name] + ", "
 				}
 				typParam = typParam[:len(typParam)-2] + "]"
 				argName += typParam
