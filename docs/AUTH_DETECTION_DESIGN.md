@@ -305,8 +305,11 @@ paths:
 
 1. **Spike**: ✓ DONE — `Use`/`Group` edges + middleware-arg identity + scope
    linkage all reach the tracker tree; no metadata change needed (see §5 Step 0).
-2. Config structs: `SecurityPattern`, `SecurityMapping`, wire into
-   `FrameworkConfig` / `APISpecConfig`; JSON-schema/validation.
+2. ✓ DONE — Config structs `SecurityPattern` (+ scope constants) and
+   `SecurityMapping`, wired into `FrameworkConfig.SecurityPatterns` /
+   `APISpecConfig.SecurityMappings`, with `validateSecurityConfig()` enforced in
+   `LoadAPISpecConfig` and YAML round-trip + validation unit tests
+   (`internal/spec/security_config_test.go`). Inert until phase 3.
 3. `SecurityPatternMatcher` + identity resolver (`resolveSecurity`).
 4. Traversal propagation (`mountSecurity`) + `RouteInfo.Security`.
 5. Mapper: populate `Operation.Security`, reconcile catalog, diagnostics.
