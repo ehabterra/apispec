@@ -515,6 +515,151 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 	return mountInfo
 }
 
+// SecurityPatternMatcherImpl implements SecurityPatternMatcher
+type SecurityPatternMatcherImpl struct {
+	*BasePatternMatcher
+	pattern SecurityPattern
+}
+
+// NewSecurityPatternMatcher creates a new security pattern matcher
+func NewSecurityPatternMatcher(pattern SecurityPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *SecurityPatternMatcherImpl {
+	return &SecurityPatternMatcherImpl{
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		pattern:            pattern,
+	}
+}
+
+// MatchNode checks if a node matches the security middleware pattern.
+func (s *SecurityPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
+	if node == nil {
+		return false
+	}
+	return s.MatchEdge(node.GetEdge())
+}
+
+// MatchEdge checks if a call-graph edge matches the security middleware pattern.
+func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) bool {
+	if edge == nil {
+		return false
+	}
+
+	callName := s.contextProvider.GetString(edge.Callee.Name)
+	recvType := s.contextProvider.GetString(edge.Callee.RecvType)
+	recvPkg := s.contextProvider.GetString(edge.Callee.Pkg)
+
+	// Build fully qualified receiver type
+	fqRecvType := recvPkg
+	if fqRecvType != "" && recvType != "" {
+		fqRecvType += "." + recvType
+	} else if recvType != "" {
+		fqRecvType = recvType
+	}
+
+	if s.pattern.CallRegex != "" && !s.matchPattern(s.pattern.CallRegex, callName) {
+		return false
+	}
+
+	if s.pattern.FunctionNameRegex != "" {
+		funcName := s.contextProvider.GetString(edge.Caller.Name)
+		if !s.matchPattern(s.pattern.FunctionNameRegex, funcName) {
+			return false
+		}
+	}
+
+	if s.pattern.RecvTypeRegex != "" {
+		re, err := cachedRegex(s.pattern.RecvTypeRegex)
+		if err != nil || !re.MatchString(fqRecvType) {
+			return false
+		}
+	} else if s.pattern.RecvType != "" && s.pattern.RecvType != fqRecvType {
+		return false
+	}
+
+	return true
+}
+
+// GetPattern returns the security pattern
+func (s *SecurityPatternMatcherImpl) GetPattern() interface{} {
+	return s.pattern
+}
+
+// GetPriority returns the priority of this pattern
+func (s *SecurityPatternMatcherImpl) GetPriority() int {
+	priority := 0
+	if s.pattern.CallRegex != "" {
+		priority += 10
+	}
+	if s.pattern.FunctionNameRegex != "" {
+		priority += 5
+	}
+	if s.pattern.RecvTypeRegex != "" || s.pattern.RecvType != "" {
+		priority += 3
+	}
+	return priority
+}
+
+// Scope returns the scope over which the matched middleware applies.
+func (s *SecurityPatternMatcherImpl) Scope() string {
+	return s.pattern.Scope
+}
+
+// ExtractMiddleware resolves the identity of each middleware value applied by
+// the matched call.
+//
+// For wrapper scope the "middleware" is the function wrapping the handler
+// argument (e.g. mux.Handle("/x", Auth(h))): the handler arg is itself a call
+// whose Fun is the auth wrapper. For the other scopes the middleware values are
+// taken from the call's args starting at MiddlewareArgIndex (a single arg, or
+// all remaining args when MiddlewareVariadic is set).
+func (s *SecurityPatternMatcherImpl) ExtractMiddleware(node TrackerNodeInterface) []MiddlewareRef {
+	if node == nil {
+		return nil
+	}
+	return s.ExtractMiddlewareFromEdge(node.GetEdge())
+}
+
+// ExtractMiddlewareFromEdge is the edge-level form of ExtractMiddleware.
+func (s *SecurityPatternMatcherImpl) ExtractMiddlewareFromEdge(edge *metadata.CallGraphEdge) []MiddlewareRef {
+	if edge == nil {
+		return nil
+	}
+	var refs []MiddlewareRef
+
+	if s.pattern.Scope == SecurityScopeWrapper {
+		idx := s.pattern.HandlerArgIndex
+		if idx >= 0 && idx < len(edge.Args) {
+			// Only a wrapping call (e.g. Auth(h)) is middleware; a bare handler
+			// ident/func-lit is the handler itself, not auth.
+			if h := edge.Args[idx]; h.GetKind() == metadata.KindCall {
+				if ref, ok := middlewareRefFromArg(h); ok {
+					refs = append(refs, ref)
+				}
+			}
+		}
+		return refs
+	}
+
+	start := s.pattern.MiddlewareArgIndex
+	if start < 0 {
+		start = 0
+	}
+	end := start + 1
+	if s.pattern.MiddlewareVariadic {
+		end = len(edge.Args)
+		// gin/fiber put the handler as the final variadic arg; exclude it so it
+		// is not mistaken for middleware.
+		if s.pattern.MiddlewareExcludeLast && end > start {
+			end--
+		}
+	}
+	for i := start; i < end && i < len(edge.Args); i++ {
+		if ref, ok := middlewareRefFromArg(edge.Args[i]); ok {
+			refs = append(refs, ref)
+		}
+	}
+	return refs
+}
+
 // RequestPatternMatcherImpl implements RequestPatternMatcher
 type RequestPatternMatcherImpl struct {
 	*BasePatternMatcher

@@ -122,6 +122,7 @@ type DetectResponse struct {
 	Servers             []spec.Server                  `json:"servers"`
 	Security            []spec.SecurityRequirement     `json:"security"`
 	SecuritySchemes     map[string]spec.SecurityScheme `json:"securitySchemes"`
+	SecurityMappings    []spec.SecurityMapping         `json:"securityMappings"`
 	Tags                []spec.Tag                     `json:"tags"`
 	ExternalDocs        *spec.ExternalDocumentation    `json:"externalDocs"`
 	Defaults            spec.Defaults                  `json:"defaults"`
@@ -150,21 +151,22 @@ type ProjectRequest struct {
 //     framework patterns, method extraction rules, etc. — that the form doesn't
 //     surface.
 type GenerateRequest struct {
-	Dir             string                         `json:"dir"`
-	Framework       string                         `json:"framework"`
-	OpenAPIVersion  string                         `json:"openapiVersion"`
-	Info            spec.Info                      `json:"info"`
-	Servers         []spec.Server                  `json:"servers"`
-	Security        []spec.SecurityRequirement     `json:"security"`
-	SecuritySchemes map[string]spec.SecurityScheme `json:"securitySchemes"`
-	Tags            []spec.Tag                     `json:"tags"`
-	ExternalDocs    *spec.ExternalDocumentation    `json:"externalDocs"`
-	Defaults        spec.Defaults                  `json:"defaults"`
-	TypeMapping     []spec.TypeMapping             `json:"typeMapping"`
-	ExternalTypes   []spec.ExternalType            `json:"externalTypes"`
-	Overrides       []spec.Override                `json:"overrides"`
-	Include         spec.IncludeExclude            `json:"include"`
-	Exclude         spec.IncludeExclude            `json:"exclude"`
+	Dir              string                         `json:"dir"`
+	Framework        string                         `json:"framework"`
+	OpenAPIVersion   string                         `json:"openapiVersion"`
+	Info             spec.Info                      `json:"info"`
+	Servers          []spec.Server                  `json:"servers"`
+	Security         []spec.SecurityRequirement     `json:"security"`
+	SecuritySchemes  map[string]spec.SecurityScheme `json:"securitySchemes"`
+	SecurityMappings []spec.SecurityMapping         `json:"securityMappings"`
+	Tags             []spec.Tag                     `json:"tags"`
+	ExternalDocs     *spec.ExternalDocumentation    `json:"externalDocs"`
+	Defaults         spec.Defaults                  `json:"defaults"`
+	TypeMapping      []spec.TypeMapping             `json:"typeMapping"`
+	ExternalTypes    []spec.ExternalType            `json:"externalTypes"`
+	Overrides        []spec.Override                `json:"overrides"`
+	Include          spec.IncludeExclude            `json:"include"`
+	Exclude          spec.IncludeExclude            `json:"exclude"`
 
 	// FrameworkConfig replaces the named framework's default extraction
 	// patterns when set. Used by the per-pattern editors in the UI (Routes /
@@ -190,6 +192,11 @@ type GenerateResponse struct {
 	// type-check (usually the project doesn't build). When non-empty the spec
 	// is likely incomplete — the UI surfaces this as a warning.
 	SkippedPackages []engine.SkippedPackage `json:"skippedPackages,omitempty"`
+
+	// UnresolvedSecurity lists auth middleware detected but not mapped to a
+	// security scheme. The UI offers a picker to map each to a scheme, which is
+	// persisted into securityMappings for the next generation.
+	UnresolvedSecurity []spec.MiddlewareRef `json:"unresolvedSecurity,omitempty"`
 }
 
 // UIServer holds shared state across requests.
@@ -545,6 +552,7 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		Servers:             base.Servers,
 		Security:            base.Security,
 		SecuritySchemes:     base.SecuritySchemes,
+		SecurityMappings:    base.SecurityMappings,
 		Tags:                base.Tags,
 		ExternalDocs:        base.ExternalDocs,
 		Defaults:            base.Defaults,
@@ -797,13 +805,14 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
 		}
 		writeJSON(w, http.StatusOK, GenerateResponse{
-			OK:              true,
-			Framework:       req.Framework,
-			PathCount:       len(out.Paths),
-			GeneratedAt:     now,
-			DurationMs:      time.Since(start).Milliseconds(),
-			Message:         msg,
-			SkippedPackages: skipped,
+			OK:                 true,
+			Framework:          req.Framework,
+			PathCount:          len(out.Paths),
+			GeneratedAt:        now,
+			DurationMs:         time.Since(start).Milliseconds(),
+			Message:            msg,
+			SkippedPackages:    skipped,
+			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
 		})
 		return
 	}
@@ -1178,6 +1187,9 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		if err := yaml.Unmarshal([]byte(req.RawConfig), cfg); err != nil {
 			return nil, fmt.Errorf("invalid YAML in rawConfig: %w", err)
 		}
+		if err := cfg.ValidateSecurity(); err != nil {
+			return nil, err
+		}
 		return cfg, nil
 	}
 
@@ -1187,6 +1199,11 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 	cfg.Security = req.Security
 	if req.SecuritySchemes != nil {
 		cfg.SecuritySchemes = req.SecuritySchemes
+	}
+	// User-supplied middleware->scheme mappings come first so they take
+	// precedence over the library presets the engine merges by import.
+	if len(req.SecurityMappings) > 0 {
+		cfg.SecurityMappings = append(req.SecurityMappings, cfg.SecurityMappings...)
 	}
 	if len(req.Tags) > 0 {
 		cfg.Tags = req.Tags
@@ -1232,6 +1249,11 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		if len(fc.RequestContext.TypeRegexes) > 0 || len(fc.RequestContext.BodyAccessors) > 0 {
 			cfg.Framework.RequestContext = fc.RequestContext
 		}
+	}
+	// Enforce the same security-config checks LoadAPISpecConfig applies, so
+	// structured securityMappings from the UI can't bypass validation.
+	if err := cfg.ValidateSecurity(); err != nil {
+		return nil, err
 	}
 	return cfg, nil
 }

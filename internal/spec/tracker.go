@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -417,7 +418,20 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 	// Get pre-built relationships from metadata
 	assignmentRelationships := meta.GetAssignmentRelationships()
 
-	for _, assignment := range assignmentRelationships {
+	// Iterate in a stable order: this is a map, and the assignment below is
+	// last-write-wins (assignmentIndex[akey] = …). When two relationships map to
+	// the same akey, random map order would pick a different winner each run,
+	// flipping variable resolution (and the final spec). Order by the edge's
+	// instance ID (unique, position-based).
+	rels := make([]*metadata.AssignmentLink, 0, len(assignmentRelationships))
+	for _, a := range assignmentRelationships {
+		rels = append(rels, a)
+	}
+	sort.Slice(rels, func(i, j int) bool {
+		return rels[i].Edge.Callee.ID() < rels[j].Edge.Callee.ID()
+	})
+
+	for _, assignment := range rels {
 		recvVarName := getString(meta, assignment.Assignment.VariableName)
 		pkgStr := getString(meta, assignment.Assignment.Pkg)
 		typeStr := getString(meta, assignment.Assignment.ConcreteType)
@@ -453,7 +467,17 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 		callerName := getString(meta, edge.Caller.Name)
 		callerPkg := getString(meta, edge.Caller.Pkg)
 
-		for param, arg := range edge.ParamArgMap {
+		// Iterate params in a stable order: ParamArgMap is a map, and the nodes
+		// appended to t.variableNodes below are consumed order-sensitively, so
+		// random map order would make resolution (and the final spec) flip
+		// between runs.
+		paramNames := make([]string, 0, len(edge.ParamArgMap))
+		for param := range edge.ParamArgMap {
+			paramNames = append(paramNames, param)
+		}
+		sort.Strings(paramNames)
+		for _, param := range paramNames {
+			arg := edge.ParamArgMap[param]
 			// Trace the actual argument from the caller's context, not the parameter name
 			// This ensures each different argument (e.g., productMod, inventoryMod) traces to its own origin
 			var argVarName string
@@ -666,7 +690,15 @@ type assignmentNodes struct {
 }
 
 func (a *assignmentNodes) Assign(f func(*TrackerNode) bool) {
+	// Stable order: this map is walked against the tree to attach assignment
+	// nodes, so a random order would attach ambiguous matches differently each
+	// run (flipping which route claims a shared node, and the final spec).
+	nds := make([]*TrackerNode, 0, len(a.assignmentIndex))
 	for _, nd := range a.assignmentIndex {
+		nds = append(nds, nd)
+	}
+	sort.Slice(nds, func(i, j int) bool { return nds[i].Key() < nds[j].Key() })
+	for _, nd := range nds {
 		f(nd)
 	}
 }
@@ -676,8 +708,23 @@ type variableNodes struct {
 }
 
 func (v *variableNodes) Assign(f func(*TrackerNode) bool) {
-	for _, nds := range v.variables {
-		if len(nds) > 0 {
+	// Stable order (see assignmentNodes.Assign): iterate the map's keys sorted.
+	keys := make([]paramKey, 0, len(v.variables))
+	for k := range v.variables {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		if a.Pkg != b.Pkg {
+			return a.Pkg < b.Pkg
+		}
+		return a.Container < b.Container
+	})
+	for _, k := range keys {
+		if nds := v.variables[k]; len(nds) > 0 {
 			f(nds[0])
 		}
 	}
@@ -1650,9 +1697,30 @@ func (t *TrackerTree) GetFunctionContext(functionName string) (*metadata.Functio
 		return nil, "", ""
 	}
 
-	for pkgName, pkg := range t.meta.Packages {
-		for fileName, file := range pkg.Files {
-			for _, fn := range file.Functions {
+	// Deterministic first-match: Packages and Files are maps, so iterating them
+	// directly would return a different (pkg, file) when the same function name
+	// exists in more than one package — flipping resolution between runs.
+	pkgNames := make([]string, 0, len(t.meta.Packages))
+	for pkgName := range t.meta.Packages {
+		pkgNames = append(pkgNames, pkgName)
+	}
+	sort.Strings(pkgNames)
+	for _, pkgName := range pkgNames {
+		pkg := t.meta.Packages[pkgName]
+		fileNames := make([]string, 0, len(pkg.Files))
+		for fileName := range pkg.Files {
+			fileNames = append(fileNames, fileName)
+		}
+		sort.Strings(fileNames)
+		for _, fileName := range fileNames {
+			fns := pkg.Files[fileName].Functions
+			fnKeys := make([]string, 0, len(fns))
+			for key := range fns {
+				fnKeys = append(fnKeys, key)
+			}
+			sort.Strings(fnKeys)
+			for _, key := range fnKeys {
+				fn := fns[key]
 				if t.meta.StringPool.GetString(fn.Name) == functionName {
 					return fn, pkgName, fileName
 				}
@@ -1828,6 +1896,15 @@ func interfaceImplementers(meta *metadata.Metadata, ifacePkg, ifaceType string) 
 			out = append(out, implRef{name[:dot], name[dot+1:]})
 		}
 	}
+	// Stable order: implementers feed the per-(pkg,method,typ) closureAttached
+	// guard, so a random order would change which route claims a shared
+	// handler's closure (and its params) between runs.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].pkg != out[j].pkg {
+			return out[i].pkg < out[j].pkg
+		}
+		return out[i].typ < out[j].typ
+	})
 	return out
 }
 

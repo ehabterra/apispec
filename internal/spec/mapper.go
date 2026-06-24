@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"go/types"
+	"log"
 	"maps"
 	"net/http"
 	"os"
@@ -84,6 +85,10 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 		return nil, err
 	}
 
+	if err := config.ValidateSecurity(); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
 }
 
@@ -92,13 +97,41 @@ func DefaultAPISpecConfig() *APISpecConfig {
 	return &APISpecConfig{}
 }
 
-// MapMetadataToOpenAPI maps metadata to OpenAPI specification
+// SecurityDiagnostics carries non-fatal findings from security extraction.
+type SecurityDiagnostics struct {
+	// UnresolvedMiddleware lists detected auth middleware that matched no
+	// SecurityMapping (deduped). The UI uses this to offer interactive mapping.
+	UnresolvedMiddleware []MiddlewareRef
+}
+
+// MapMetadataToOpenAPI maps metadata to OpenAPI specification.
 func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
+	spec, _, err := MapMetadataToOpenAPIWithDiagnostics(tree, cfg, genCfg)
+	return spec, err
+}
+
+// MapMetadataToOpenAPIWithDiagnostics is MapMetadataToOpenAPI plus the security
+// diagnostics gathered during extraction (e.g. unresolved middleware).
+func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, *SecurityDiagnostics, error) {
 	// Create extractor
 	extractor := NewExtractor(tree, cfg)
 
 	// Extract routes
 	routes := extractor.ExtractRoutes()
+
+	// Warn about auth middleware that was detected but matched no
+	// SecurityMapping, so the user knows what to map. apispecui surfaces the
+	// same list for interactive assignment (see design doc §5). Only warn when
+	// some mappings exist (a library was detected or the user configured them);
+	// otherwise auth detection is effectively off and the noise is unwanted.
+	if unresolved := extractor.UnresolvedSecurity(); len(unresolved) > 0 && len(cfg.SecurityMappings) > 0 {
+		names := make([]string, len(unresolved))
+		for i, r := range unresolved {
+			names[i] = r.String()
+		}
+		log.Printf("[security] %d auth middleware not mapped to a security scheme "+
+			"(add securityMappings to resolve): %s", len(unresolved), strings.Join(names, ", "))
+	}
 
 	// Build paths
 	paths := buildPathsFromRoutes(routes)
@@ -138,15 +171,62 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 		ExternalDocs: cfg.ExternalDocs,
 	}
 
-	// Fill securitySchemes in components if present in config
-	if len(cfg.SecuritySchemes) > 0 {
+	// Fill securitySchemes in components: always include user-defined schemes,
+	// plus any library-preset schemes actually referenced by a resolved
+	// operation (or the global security). Unused presets are omitted so the spec
+	// stays lean; a referenced-but-undefined scheme is reported.
+	if schemes := reconcileSecuritySchemes(cfg, routes); len(schemes) > 0 {
 		if spec.Components == nil {
 			spec.Components = &Components{}
 		}
-		spec.Components.SecuritySchemes = cfg.SecuritySchemes
+		spec.Components.SecuritySchemes = schemes
 	}
 
-	return spec, nil
+	diag := &SecurityDiagnostics{UnresolvedMiddleware: extractor.UnresolvedSecurity()}
+	return spec, diag, nil
+}
+
+// reconcileSecuritySchemes returns the securityScheme catalog to emit: all
+// user-defined schemes, plus preset schemes referenced by an operation or the
+// global security. Referenced names defined in neither are logged as warnings.
+func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo) map[string]SecurityScheme {
+	out := make(map[string]SecurityScheme, len(cfg.SecuritySchemes))
+	for name, scheme := range cfg.SecuritySchemes {
+		out[name] = scheme
+	}
+
+	// Collect referenced scheme names from per-operation and global security.
+	referenced := make(map[string]struct{})
+	collect := func(reqs []SecurityRequirement) {
+		for _, req := range reqs {
+			for name := range req {
+				referenced[name] = struct{}{}
+			}
+		}
+	}
+	collect(cfg.Security)
+	for _, r := range routes {
+		collect(r.Security)
+	}
+
+	var dangling []string
+	for name := range referenced {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		if def, ok := cfg.presetSchemes[name]; ok {
+			out[name] = def
+			continue
+		}
+		dangling = append(dangling, name)
+	}
+	if len(dangling) > 0 {
+		sort.Strings(dangling)
+		log.Printf("[security] %d security scheme(s) referenced but not defined "+
+			"(add them to securitySchemes): %s", len(dangling), strings.Join(dangling, ", "))
+	}
+
+	return out
 }
 
 // buildPathsFromRoutes builds OpenAPI paths from extracted routes
@@ -202,6 +282,16 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 
 		// Add responses
 		operation.Responses = buildResponses(route.Response)
+
+		// Per-operation security resolved from detected auth middleware.
+		// route.Security: nil => inherit the document-level security (field
+		// omitted); non-nil empty => explicitly public (`security: []`);
+		// non-empty => the operation's requirements. The pointer field preserves
+		// that distinction (a non-nil pointer is never dropped by omitempty).
+		if route.Security != nil {
+			sec := route.Security
+			operation.Security = &sec
+		}
 
 		// Set operation on path item
 		setOperationOnPathItem(&pathItem, route.Method, operation)
@@ -680,22 +770,40 @@ func typeByName(typeParts Parts, meta *metadata.Metadata) *metadata.Type {
 	}
 
 	if typeParts.PkgName != "" && typeParts.TypeName != "" {
-		pkgName := typeParts.PkgName
-
-		if pkg, exists := meta.Packages[pkgName]; exists {
-			for _, file := range pkg.Files {
-				if typ, exists := file.Types[typeParts.TypeName]; exists {
-					return typ
-				}
+		if pkg, exists := meta.Packages[typeParts.PkgName]; exists {
+			if typ := typeInPackage(pkg, typeParts.TypeName); typ != nil {
+				return typ
 			}
 		}
 	}
 
-	for _, pkg := range meta.Packages {
-		for _, file := range pkg.Files {
-			if typ, exists := file.Types[typeParts.TypeName]; exists {
-				return typ
-			}
+	// Fallback: the bare type name may exist in several packages. Iterate in a
+	// stable (cached) sorted order so the chosen type is deterministic across
+	// runs — otherwise map iteration would pick a different package's type and
+	// flip the schema between runs.
+	for _, pkgName := range meta.SortedPackageNames() {
+		if typ := typeInPackage(meta.Packages[pkgName], typeParts.TypeName); typ != nil {
+			return typ
+		}
+	}
+	return nil
+}
+
+// typeInPackage returns the named type from a package, scanning files in stable
+// order (Files is a map).
+func typeInPackage(pkg *metadata.Package, typeName string) *metadata.Type {
+	if pkg == nil {
+		return nil
+	}
+	// A type lives in exactly one file, but iterate deterministically anyway.
+	var fileNames []string
+	for fileName := range pkg.Files {
+		fileNames = append(fileNames, fileName)
+	}
+	sort.Strings(fileNames)
+	for _, fileName := range fileNames {
+		if typ, exists := pkg.Files[fileName].Types[typeName]; exists {
+			return typ
 		}
 	}
 	return nil

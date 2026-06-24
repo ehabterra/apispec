@@ -10,7 +10,20 @@ type Info = intspec.Info
 type Server = intspec.Server
 type SecurityRequirement = intspec.SecurityRequirement
 type SecurityScheme = intspec.SecurityScheme
+type SecurityPattern = intspec.SecurityPattern
+type SecurityMapping = intspec.SecurityMapping
+type MiddlewareRef = intspec.MiddlewareRef
+type FrameworkConfig = intspec.FrameworkConfig
 type Tag = intspec.Tag
+
+// Security scope values for SecurityPattern.Scope.
+const (
+	SecurityScopeRouter  = intspec.SecurityScopeRouter
+	SecurityScopeSubtree = intspec.SecurityScopeSubtree
+	SecurityScopeRoute   = intspec.SecurityScopeRoute
+	SecurityScopeWrapper = intspec.SecurityScopeWrapper
+)
+
 type ExternalDocumentation = intspec.ExternalDocumentation
 type Schema = intspec.Schema
 type Components = intspec.Components

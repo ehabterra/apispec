@@ -77,6 +77,7 @@ func DefaultGinConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 				},
 			},
+			SecurityPatterns: ginSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:      `^Group$`,

@@ -136,6 +136,7 @@ type Metadata struct {
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
 	methodLookupCache    map[string]*Method                              `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
+	sortedPkgNames       []string                                        `yaml:"-"` // cached, lazily built
 
 	// Mutex for thread-safe cache access
 	cacheMutex sync.RWMutex `yaml:"-"`
@@ -346,6 +347,31 @@ func (m *Metadata) traverseCallerChildrenHelper(edge *CallGraphEdge, action func
 }
 
 // CallGraphRoots finds root functions using base IDs
+// SortedPackageNames returns the package names in stable sorted order, built
+// once and cached. Used by lookups that must pick a deterministic match when a
+// bare name exists in multiple packages, without re-sorting on every call.
+func (m *Metadata) SortedPackageNames() []string {
+	m.cacheMutex.RLock()
+	cached := m.sortedPkgNames
+	m.cacheMutex.RUnlock()
+	if cached != nil {
+		return cached
+	}
+
+	m.cacheMutex.Lock()
+	defer m.cacheMutex.Unlock()
+	if m.sortedPkgNames != nil { // another goroutine won the race
+		return m.sortedPkgNames
+	}
+	names := make([]string, 0, len(m.Packages))
+	for name := range m.Packages {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	m.sortedPkgNames = names
+	return names
+}
+
 func (m *Metadata) CallGraphRoots() []*CallGraphEdge {
 	if len(m.roots) > 0 {
 		return m.roots

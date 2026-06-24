@@ -35,6 +35,9 @@ diagram.html
 used-config.yaml
 openapi*.yaml
 
+# Local, machine-specific external project list for scripts/compare-spec.sh
+scripts/compare-spec.paths
+
 # Test output
 *.log
 

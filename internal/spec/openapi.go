@@ -66,14 +66,19 @@ type PathItem struct {
 
 // Operation represents an OpenAPI operation
 type Operation struct {
-	Tags         []string               `yaml:"tags,omitempty" json:"tags,omitempty"`
-	Summary      string                 `yaml:"summary,omitempty" json:"summary,omitempty"`
-	Description  string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	OperationID  string                 `yaml:"operationId,omitempty" json:"operationId,omitempty"`
-	Parameters   []Parameter            `yaml:"parameters,omitempty" json:"parameters,omitempty"`
-	RequestBody  *RequestBody           `yaml:"requestBody,omitempty" json:"requestBody,omitempty"`
-	Responses    map[string]Response    `yaml:"responses" json:"responses"`
-	Security     []SecurityRequirement  `yaml:"security,omitempty" json:"security,omitempty"`
+	Tags        []string            `yaml:"tags,omitempty" json:"tags,omitempty"`
+	Summary     string              `yaml:"summary,omitempty" json:"summary,omitempty"`
+	Description string              `yaml:"description,omitempty" json:"description,omitempty"`
+	OperationID string              `yaml:"operationId,omitempty" json:"operationId,omitempty"`
+	Parameters  []Parameter         `yaml:"parameters,omitempty" json:"parameters,omitempty"`
+	RequestBody *RequestBody        `yaml:"requestBody,omitempty" json:"requestBody,omitempty"`
+	Responses   map[string]Response `yaml:"responses" json:"responses"`
+	// Security is a pointer so its three states are distinguishable: nil =>
+	// omitted (the operation inherits the document-level security); a non-nil
+	// pointer to an empty slice => `security: []` (explicitly public, overriding
+	// any global security); non-empty => the operation's own requirements. A
+	// plain slice with omitempty cannot tell "inherit" from "explicitly public".
+	Security     *[]SecurityRequirement `yaml:"security,omitempty" json:"security,omitempty"`
 	ExternalDocs *ExternalDocumentation `yaml:"externalDocs,omitempty" json:"externalDocs,omitempty"`
 }
 

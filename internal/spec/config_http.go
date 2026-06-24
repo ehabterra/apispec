@@ -51,7 +51,8 @@ func DefaultHTTPConfig() *APISpecConfig {
 					HandlerArgIndex: 1,
 				},
 			},
-			RequestContext: netHTTPRequestContext,
+			SecurityPatterns: httpSecurityPatterns(),
+			RequestContext:   netHTTPRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(""),
 				jsonUnmarshalRequestPattern(""),

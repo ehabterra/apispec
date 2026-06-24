@@ -34,6 +34,15 @@ type RouteInfo struct {
 	// Resolved router group prefix (if any)
 	GroupPrefix string
 
+	// Security holds the per-operation OpenAPI security requirements resolved
+	// from auth middleware detected in scope. Semantics:
+	//   nil          -> no per-operation security; the operation inherits the
+	//                   document-level `security`.
+	//   non-nil empty-> explicitly public (overrides global); renders as
+	//                   `security: []`.
+	//   non-empty    -> the operation is protected by these requirements.
+	Security []SecurityRequirement
+
 	// DynamicParams names path placeholders synthesized from unresolvable
 	// call expressions (issue #34). The mapper uses these to emit one
 	// shared component parameter per name and $ref it from each operation
@@ -93,9 +102,22 @@ type Extractor struct {
 	// Pattern matchers
 	routeMatchers    []RoutePatternMatcher
 	mountMatchers    []MountPatternMatcher
+	securityMatchers []SecurityPatternMatcher
 	requestMatchers  []RequestPatternMatcher
 	responseMatchers []ResponsePatternMatcher
 	paramMatchers    []ParamPatternMatcher
+
+	// securityUnresolved collects auth middleware that was detected but matched
+	// no SecurityMapping, deduped by identity. Surfaced as a warning (CLI) and
+	// to the UI for interactive mapping.
+	securityUnresolved    []MiddlewareRef
+	securityUnresolvedSet map[string]struct{}
+
+	// parentFnIndex maps a function's BaseID to call edges made inside func
+	// literals lexically nested in it (keyed by ParentFunction). Lets wrapper
+	// look-through reach a library call that lives in the closure a middleware
+	// returns — the dominant net/http/echo idiom. Built lazily.
+	parentFnIndex map[string][]*metadata.CallGraphEdge
 }
 
 // NewExtractor creates a new refactored extractor
@@ -134,6 +156,12 @@ func (e *Extractor) initializePatternMatchers() {
 		e.mountMatchers = append(e.mountMatchers, matcher)
 	}
 
+	// Initialize security matchers
+	for _, pattern := range e.cfg.Framework.SecurityPatterns {
+		matcher := NewSecurityPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.securityMatchers = append(e.securityMatchers, matcher)
+	}
+
 	// Initialize request matchers
 	for _, pattern := range e.cfg.Framework.RequestBodyPatterns {
 		matcher := NewRequestPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
@@ -157,7 +185,7 @@ func (e *Extractor) initializePatternMatchers() {
 func (e *Extractor) ExtractRoutes() []*RouteInfo {
 	routes := make([]*RouteInfo, 0)
 	for _, root := range e.tree.GetRoots() {
-		e.traverseForRoutes(root, "", nil, nil, &routes)
+		e.traverseForRoutes(root, "", nil, nil, nil, &routes)
 	}
 	return dropSubsumedMountPrefixes(routes)
 }
@@ -241,12 +269,12 @@ func isSubsequence(a, b []string) bool {
 }
 
 // traverseForRoutes traverses the tree to find routes
-func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo) {
-	e.traverseForRoutesWithVisited(node, mountPath, mountTags, mountDynParams, routes, make(map[string]bool))
+func (e *Extractor) traverseForRoutes(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo) {
+	e.traverseForRoutesWithVisited(node, mountPath, mountTags, mountDynParams, mountMW, routes, make(map[string]bool))
 }
 
 // traverseForRoutesWithVisited traverses with visited tracking to prevent cycles
-func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
 	if node == nil {
 		return
 	}
@@ -266,14 +294,20 @@ func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, moun
 
 	// Check for mount patterns first
 	if mountInfo, isMount := e.executeMountPattern(node); isMount {
-		e.handleMountNode(node, mountInfo, mountPath, mountTags, mountDynParams, routes, visited)
+		e.handleMountNode(node, mountInfo, mountPath, mountTags, mountDynParams, mountMW, routes, visited)
 	} else if isRoute := e.executeRoutePattern(node, routeInfo); isRoute {
 		// Check for route patterns
-		e.handleRouteNode(node, routeInfo, mountPath, mountTags, mountDynParams, routes)
+		e.handleRouteNode(node, routeInfo, mountPath, mountTags, mountDynParams, mountMW, routes)
 	} else {
-		// Continue traversing children
-		for _, child := range node.GetChildren() {
-			e.traverseForRoutesWithVisited(child, mountPath, mountTags, mountDynParams, routes, visited)
+		// Continue traversing children. Router-scoped auth middleware (e.g.
+		// chi/echo `Use`) applies to its sibling routes/mounts that share the
+		// same caller scope, so gather it per-caller and fold it into each
+		// child's carried security.
+		children := node.GetChildren()
+		routerByCaller := e.collectRouterSecurityByCaller(children)
+		for _, child := range children {
+			childMW := mergeMW(mountMW, routerByCaller[e.callerKey(child)])
+			e.traverseForRoutesWithVisited(child, mountPath, mountTags, mountDynParams, childMW, routes, visited)
 		}
 	}
 }
@@ -319,8 +353,317 @@ func (e *Extractor) executeRoutePattern(node TrackerNodeInterface, routeInfo *Ro
 	return found
 }
 
+// collectNodeSecurity runs the security matchers on a single node and returns
+// the middleware refs of the best-priority match plus its scope. matched is
+// false when no security pattern applies (the common case).
+func (e *Extractor) collectNodeSecurity(node TrackerNodeInterface) (refs []MiddlewareRef, scope string, matched bool) {
+	var bestPriority int
+	for _, m := range e.securityMatchers {
+		if !m.MatchNode(node) {
+			continue
+		}
+		priority := m.GetPriority()
+		if !matched || priority > bestPriority {
+			refs = m.ExtractMiddleware(node)
+			scope = m.Scope()
+			bestPriority = priority
+			matched = true
+		}
+	}
+	return refs, scope, matched
+}
+
+// callerKey identifies the enclosing function/closure of a node's call. Closure
+// bodies are flattened into the tree, so a node's siblings may belong to
+// different callers; router-scope middleware must only reach siblings sharing
+// its caller (e.g. chi `rg.Use` inside a Group(func(rg){...}) closure applies to
+// the group's routes, not to a Mount registered on the outer router).
+func (e *Extractor) callerKey(node TrackerNodeInterface) string {
+	if node == nil || node.GetEdge() == nil {
+		return ""
+	}
+	edge := node.GetEdge()
+	return e.contextProvider.GetString(edge.Caller.Name) + "|" + e.contextProvider.GetString(edge.Caller.Pkg)
+}
+
+// collectChainSecurity walks the route's chain-parent edges (e.g. the With in
+// r.With(mw).Get(...)) and collects route-scope middleware declared on them.
+// Because the chain links a route to exactly the calls it is chained on, this
+// guards only that route — no leakage to sibling routes.
+func (e *Extractor) collectChainSecurity(node TrackerNodeInterface) []MiddlewareRef {
+	if node == nil || len(e.securityMatchers) == 0 {
+		return nil
+	}
+	edge := node.GetEdge()
+	if edge == nil {
+		return nil
+	}
+	var refs []MiddlewareRef
+	for parent := edge.ChainParent; parent != nil; parent = parent.ChainParent {
+		var bestPriority int
+		var bestRefs []MiddlewareRef
+		var found bool
+		for _, m := range e.securityMatchers {
+			if m.Scope() != SecurityScopeRoute || !m.MatchEdge(parent) {
+				continue
+			}
+			if p := m.GetPriority(); !found || p > bestPriority {
+				bestRefs = m.ExtractMiddlewareFromEdge(parent)
+				bestPriority = p
+				found = true
+			}
+		}
+		refs = append(refs, bestRefs...)
+	}
+	return refs
+}
+
+// collectRouterSecurityByCaller gathers router-scope middleware (e.g. `Use`)
+// from a set of sibling nodes, grouped by their caller, so each sibling only
+// inherits middleware declared in its own enclosing scope. This is an
+// over-approximation of Go's "applies to routes registered after this call":
+// in real code Use precedes the routes it guards, so folding it into every
+// same-caller sibling is correct in practice.
+func (e *Extractor) collectRouterSecurityByCaller(children []TrackerNodeInterface) map[string][]MiddlewareRef {
+	if len(e.securityMatchers) == 0 {
+		return nil
+	}
+	var byCaller map[string][]MiddlewareRef
+	for _, child := range children {
+		if refs, scope, ok := e.collectNodeSecurity(child); ok && scope == SecurityScopeRouter && len(refs) > 0 {
+			if byCaller == nil {
+				byCaller = make(map[string][]MiddlewareRef)
+			}
+			k := e.callerKey(child)
+			byCaller[k] = append(byCaller[k], refs...)
+		}
+	}
+	return byCaller
+}
+
+// mergeMW returns base + extra, deduped, without mutating base. Returns base
+// unchanged when there is nothing to add.
+func mergeMW(base, extra []MiddlewareRef) []MiddlewareRef {
+	if len(extra) == 0 {
+		return base
+	}
+	return dedupMiddlewareRefs(append(append([]MiddlewareRef{}, base...), extra...))
+}
+
+// recordUnresolved adds unmatched middleware to the diagnostics list, deduped
+// by identity.
+func (e *Extractor) recordUnresolved(refs []MiddlewareRef) {
+	if len(refs) == 0 {
+		return
+	}
+	if e.securityUnresolvedSet == nil {
+		e.securityUnresolvedSet = make(map[string]struct{})
+	}
+	for _, r := range refs {
+		key := r.String()
+		if _, ok := e.securityUnresolvedSet[key]; ok {
+			continue
+		}
+		e.securityUnresolvedSet[key] = struct{}{}
+		e.securityUnresolved = append(e.securityUnresolved, r)
+	}
+}
+
+// UnresolvedSecurity returns auth middleware detected during extraction that
+// matched no SecurityMapping (deduped). Empty when nothing was unresolved.
+func (e *Extractor) UnresolvedSecurity() []MiddlewareRef {
+	return e.securityUnresolved
+}
+
+// dedupMiddlewareRefs removes duplicate refs by identity, preserving order.
+func dedupMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
+	if len(refs) <= 1 {
+		return refs
+	}
+	seen := make(map[string]struct{}, len(refs))
+	out := refs[:0]
+	for _, r := range refs {
+		key := r.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, r)
+	}
+	return out
+}
+
+// applyRouteSecurity resolves and sets routeInfo.Security from the inherited
+// (router/subtree) middleware plus any route-scope or handler-wrapper middleware
+// on the route registration call itself. Unmatched middleware is recorded for
+// diagnostics. When no security is configured/detected, routeInfo.Security is
+// left nil so the operation inherits the document-level security and output is
+// unchanged.
+func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *RouteInfo, mountMW []MiddlewareRef) {
+	if len(e.securityMatchers) == 0 {
+		return
+	}
+
+	// Definite middleware: inherited router/subtree middleware plus route-scope
+	// middleware on the call itself. These come from dedicated middleware slots,
+	// so an unresolved one genuinely means "you forgot to map it" -> warn.
+	definite := append([]MiddlewareRef{}, mountMW...)
+
+	// Speculative middleware: the handler argument of a net/http-style Handle is
+	// a wrapping call (auth(h)) that is syntactically indistinguishable from a
+	// handler factory (newUserHandler()). We only treat it as auth when looking
+	// through its body finds a known auth library; otherwise it is silently
+	// ignored (no warning), since it is probably not middleware at all.
+	var speculative []MiddlewareRef
+
+	if refs, scope, ok := e.collectNodeSecurity(node); ok {
+		switch scope {
+		case SecurityScopeRoute:
+			definite = append(definite, refs...)
+		case SecurityScopeWrapper:
+			speculative = append(speculative, refs...)
+		}
+	}
+
+	// Chained-call middleware (e.g. chi r.With(mw).Get(...)): the middleware is
+	// on the route's chain-parent edge, which guards only this route.
+	definite = append(definite, e.collectChainSecurity(node)...)
+
+	var reqs []SecurityRequirement
+	public := false
+
+	if d := dedupMiddlewareRefs(definite); len(d) > 0 {
+		// Look through custom wrappers (e.g. middleware.Protected() that calls
+		// jwtware.New) to the underlying library scheme.
+		d = e.expandMiddlewareRefs(d)
+		r, pub, unresolved := resolveSecurity(d, e.cfg.SecurityMappings)
+		reqs = append(reqs, r...)
+		public = public || pub
+		e.recordUnresolved(unresolved)
+	}
+	if sp := dedupMiddlewareRefs(speculative); len(sp) > 0 {
+		sp = e.expandMiddlewareRefs(sp)
+		r, pub, _ := resolveSecurity(sp, e.cfg.SecurityMappings) // ignore unresolved (ambiguous slot)
+		reqs = append(reqs, r...)
+		public = public || pub
+	}
+
+	reqs = dedupSecurityRequirements(reqs)
+	switch {
+	case public:
+		// Explicitly public: override any inherited/global security.
+		routeInfo.Security = []SecurityRequirement{}
+	case len(reqs) > 0:
+		routeInfo.Security = reqs
+	}
+}
+
+// maxWrapperLookThroughDepth bounds how deep wrapper look-through follows the
+// call graph (custom mw -> wrapper -> ... -> library constructor).
+const maxWrapperLookThroughDepth = 6
+
+// expandMiddlewareRefs replaces custom-wrapper middleware with the library
+// middleware it transitively calls, so a project-defined wrapper resolves to the
+// underlying scheme. Refs that already match a mapping, or that can't be looked
+// through (external/no body, or nothing matching found), are kept unchanged so
+// genuinely-unmapped middleware is still reported.
+func (e *Extractor) expandMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
+	if len(e.cfg.SecurityMappings) == 0 {
+		return refs
+	}
+	meta := e.tree.GetMetadata()
+	if meta == nil || meta.Callers == nil {
+		return refs
+	}
+	e.ensureParentFnIndex(meta)
+	var out []MiddlewareRef
+	for _, ref := range refs {
+		out = append(out, e.lookThroughMiddleware(ref, meta, make(map[string]bool), 0)...)
+	}
+	return dedupMiddlewareRefs(out)
+}
+
+// ensureParentFnIndex builds parentFnIndex once from the call graph: edges made
+// inside func literals, grouped by the BaseID of the lexically-enclosing
+// function. Used so look-through can follow into the closure a wrapper returns.
+func (e *Extractor) ensureParentFnIndex(meta *metadata.Metadata) {
+	if e.parentFnIndex != nil {
+		return
+	}
+	idx := make(map[string][]*metadata.CallGraphEdge)
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		if edge.ParentFunction == nil {
+			continue
+		}
+		key := edge.ParentFunction.BaseID()
+		if key == "" {
+			continue
+		}
+		idx[key] = append(idx[key], edge)
+	}
+	e.parentFnIndex = idx
+}
+
+// lookThroughMiddleware resolves a single middleware ref, following the call
+// graph through wrapper functions until a mapping matches.
+func (e *Extractor) lookThroughMiddleware(ref MiddlewareRef, meta *metadata.Metadata, visited map[string]bool, depth int) []MiddlewareRef {
+	if anyMappingMatches(ref, e.cfg.SecurityMappings) {
+		return []MiddlewareRef{ref}
+	}
+	if depth >= maxWrapperLookThroughDepth {
+		return []MiddlewareRef{ref}
+	}
+	key := middlewareBaseID(ref)
+	if key == "" || visited[key] {
+		return []MiddlewareRef{ref}
+	}
+	visited[key] = true
+
+	// Calls made directly in the function's body, plus calls inside func
+	// literals it defines/returns (e.g. a middleware that validates a token in
+	// the http.Handler closure it returns).
+	direct := meta.Callers[key]
+	nested := e.parentFnIndex[key]
+	if len(direct) == 0 && len(nested) == 0 {
+		return []MiddlewareRef{ref} // external / no analyzable body
+	}
+	var found []MiddlewareRef
+	scan := func(edges []*metadata.CallGraphEdge) {
+		for _, edge := range edges {
+			callee := e.calleeMiddlewareRef(edge)
+			if callee.empty() {
+				continue
+			}
+			for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
+				if anyMappingMatches(r, e.cfg.SecurityMappings) {
+					found = append(found, r)
+				}
+			}
+		}
+	}
+	scan(direct)
+	scan(nested)
+	if len(found) > 0 {
+		return found
+	}
+	return []MiddlewareRef{ref} // nothing matched downstream; keep for diagnostics
+}
+
+// calleeMiddlewareRef builds a MiddlewareRef from a call edge's callee.
+func (e *Extractor) calleeMiddlewareRef(edge *metadata.CallGraphEdge) MiddlewareRef {
+	if edge == nil {
+		return MiddlewareRef{}
+	}
+	return MiddlewareRef{
+		FunctionName: e.contextProvider.GetString(edge.Callee.Name),
+		Pkg:          e.contextProvider.GetString(edge.Callee.Pkg),
+		RecvType:     strings.TrimPrefix(e.contextProvider.GetString(edge.Callee.RecvType), "*"),
+	}
+}
+
 // handleMountNode handles a mount node
-func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
@@ -335,9 +678,20 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 		childDynParams = appendUniqueStrings(mountDynParams, mountInfo.DynamicParams...)
 	}
 
+	// Subtree-scope middleware declared on the mount call itself
+	// (e.g. echo/gin/fiber Group("/x", mw...)) guards the entire mounted
+	// subtree, so fold it into the security carried to all children/assignment.
+	subtreeMW := mountMW
+	if refs, scope, ok := e.collectNodeSecurity(node); ok && scope == SecurityScopeSubtree {
+		subtreeMW = mergeMW(mountMW, refs)
+	}
+	// Router-scope middleware among the mount's children (e.g. a `Use` inside a
+	// chi Group(func(r){ r.Use(...); ... }) closure) is correlated per caller.
+	routerByCaller := e.collectRouterSecurityByCaller(node.GetChildren())
+
 	// Handle router assignment if present
 	if mountInfo.Assignment != nil {
-		e.handleRouterAssignment(mountInfo, mountPath, mountTags, childDynParams, routes, visited)
+		e.handleRouterAssignment(mountInfo, mountPath, mountTags, childDynParams, subtreeMW, routes, visited)
 	}
 
 	// Continue traversing children
@@ -348,12 +702,13 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 		} else {
 			newTags = mountTags
 		}
-		e.traverseForRoutesWithVisited(child, mountPath, newTags, childDynParams, routes, visited)
+		childMW := mergeMW(subtreeMW, routerByCaller[e.callerKey(child)])
+		e.traverseForRoutesWithVisited(child, mountPath, newTags, childDynParams, childMW, routes, visited)
 	}
 }
 
 // handleRouteNode handles a route node
-func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo) {
+func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteInfo, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo) {
 	// Remember the matched node so consumers (e.g. the insight trace) can
 	// traverse the interface-resolved handler subtree.
 	routeInfo.Node = node
@@ -371,6 +726,10 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	if len(mountDynParams) > 0 {
 		routeInfo.DynamicParams = appendUniqueStrings(mountDynParams, routeInfo.DynamicParams...)
 	}
+
+	// Resolve per-operation security: inherited (router/subtree) middleware plus
+	// any route-scope or handler-wrapper middleware on the route call itself.
+	e.applyRouteSecurity(node, routeInfo, mountMW)
 
 	// Extract route/request/response/params from children with visited edges tracking
 	visitedEdges := make(map[string]bool)
@@ -403,18 +762,24 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 }
 
 // handleRouterAssignment handles router assignment for mounts
-func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, routes *[]*RouteInfo, visited map[string]bool) {
+func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
 	// Find the target node for the assignment
 	targetNode := e.findTargetNode(mountInfo.Assignment)
 	if targetNode != nil {
-		for _, child := range targetNode.GetChildren() {
+		// Router-scope middleware among the assigned router's children (e.g.
+		// a `Use` registered on the sub-router) guards its routes, correlated
+		// per caller.
+		children := targetNode.GetChildren()
+		routerByCaller := e.collectRouterSecurityByCaller(children)
+		for _, child := range children {
 			var newTags []string
 			if mountPath != "" {
 				newTags = []string{mountPath}
 			} else {
 				newTags = mountTags
 			}
-			e.traverseForRoutesWithVisited(child, mountPath, newTags, mountDynParams, routes, visited)
+			childMW := mergeMW(mountMW, routerByCaller[e.callerKey(child)])
+			e.traverseForRoutesWithVisited(child, mountPath, newTags, mountDynParams, childMW, routes, visited)
 		}
 	}
 }
@@ -472,7 +837,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes
 		if isRoute := e.executeRoutePattern(child, route); isRoute {
-			e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, routes)
+			e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, nil, routes)
 		}
 
 		// Extract request. A route's body may be matched at several nodes
@@ -831,13 +1196,22 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
-		// If status code is not from argument, find the first response with no body type
+		// If status code is not from argument, attach this body to an existing
+		// response that has no body yet. route.Response is a map, so iterating it
+		// and taking the "first" match is nondeterministic (Go randomizes map
+		// order) — that flips the chosen status between runs. Pick the
+		// lowest-numbered matching status instead, which is order-independent.
 		if !r.pattern.StatusFromArg {
+			best := -1
 			for _, resp := range route.Response {
 				if resp.BodyType == "" && resp.StatusCode >= 100 && resp.StatusCode < 600 {
-					respInfo.StatusCode = resp.StatusCode
-					break
+					if best == -1 || resp.StatusCode < best {
+						best = resp.StatusCode
+					}
 				}
+			}
+			if best != -1 {
+				respInfo.StatusCode = best
 			}
 		}
 

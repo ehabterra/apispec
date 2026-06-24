@@ -39,6 +39,7 @@ function applyConfigSections(o) {
     servers: o.servers || [],
     security: o.security || [],
     securitySchemes: o.securitySchemes || {},
+    securityMappings: o.securityMappings || [],
     tags: o.tags || [],
     externalDocs: o.externalDocs || null,
     defaults: o.defaults || {},
@@ -48,6 +49,8 @@ function applyConfigSections(o) {
     exclude: o.exclude || {},
     overrides: o.overrides || [],
   });
+  // A new config context invalidates middleware detected for the previous one.
+  setState({ unresolvedSecurity: [] });
 }
 
 export function applyDetect(d) {
@@ -114,6 +117,7 @@ function fullGenerateRequest() {
     servers: c.servers,
     security: c.security,
     securitySchemes: c.securitySchemes,
+    securityMappings: c.securityMappings,
     tags: c.tags,
     externalDocs: c.externalDocs,
     defaults: c.defaults,
@@ -130,7 +134,7 @@ export async function generate() {
   const s = getState();
   if (!s.project || s.generating) return;
   const start = Date.now();
-  setState({ generating: true, genPhase: "starting…", genElapsed: 0 });
+  setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [] });
   setStatus("generating…");
   // Live elapsed ticker — reassures the run is alive and makes a stall obvious
   // (a counter climbing on one phase reads as "stuck" where a static label hides it).
@@ -157,6 +161,7 @@ export async function generate() {
         mode: "start",
         specView: "swagger",
         skipped,
+        unresolvedSecurity: res.unresolvedSecurity || [],
       });
       if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");

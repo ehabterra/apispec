@@ -101,6 +101,7 @@ func DefaultFiberConfig() *APISpecConfig {
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
 			},
+			SecurityPatterns: fiberSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:      `^Mount$`,

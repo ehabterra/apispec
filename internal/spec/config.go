@@ -1,8 +1,10 @@
 package spec
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/ehabterra/apispec/pkg/patterns"
 )
@@ -29,6 +31,13 @@ type FrameworkConfig struct {
 
 	// Mount/subrouter patterns
 	MountPatterns []MountPattern `yaml:"mountPatterns" json:"mountPatterns,omitempty"`
+
+	// Security/auth middleware patterns. These recognise middleware-application
+	// calls (e.g. r.Use, r.With, Group(mw...), per-route middleware args, or
+	// handler-wrapping) and describe the SCOPE over which the middleware
+	// applies. The engine stays framework-agnostic: which scheme a given
+	// middleware maps to is resolved separately via APISpecConfig.SecurityMappings.
+	SecurityPatterns []SecurityPattern `yaml:"securityPatterns" json:"securityPatterns,omitempty"`
 
 	// RequestContext describes how to recognise the request-bearing parameter
 	// of a handler and the accessor chain that yields its body. Used to gate
@@ -220,6 +229,161 @@ type MountPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+}
+
+// Security scope values for SecurityPattern.Scope. They describe how far the
+// middleware matched by a SecurityPattern reaches.
+const (
+	// SecurityScopeRouter: middleware applies to routes registered on the SAME
+	// receiver/router, in the same scope, AFTER this call (e.g. chi/echo/gin/mux
+	// `Use`). Correlation keys on (caller function/closure, callee recvType) and
+	// source-position ordering — not on the receiver variable name, which is not
+	// always populated.
+	SecurityScopeRouter = "router"
+	// SecurityScopeSubtree: middleware applies to everything in the mounted
+	// subtree (Group/Route closures, echo/gin/fiber Group(mw...)).
+	SecurityScopeSubtree = "subtree"
+	// SecurityScopeRoute: middleware applies to this single route registration
+	// call only (chi `With`, echo/gin/fiber per-route middleware args).
+	SecurityScopeRoute = "route"
+	// SecurityScopeWrapper: the handler argument is wrapped by an auth function;
+	// the wrapping call's identity is the middleware (net/http, mux Handle).
+	SecurityScopeWrapper = "wrapper"
+)
+
+// SecurityPattern defines how to recognise an auth/security middleware
+// application and the scope over which it applies. It mirrors MountPattern's
+// matcher fields; the resulting OpenAPI scheme is resolved separately through
+// SecurityMapping so the engine never hardcodes a framework or library.
+type SecurityPattern struct {
+	// Function call patterns to match (same matcher fields as other patterns).
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"` // e.g. '^Use$', '^With$', '^Group$'
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
+	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"` // e.g. chi.*Mux / echo.*(Echo|Group)
+
+	// Scope describes how far the matched middleware reaches. One of the
+	// SecurityScope* constants (router|subtree|route|wrapper).
+	Scope string `yaml:"scope,omitempty" json:"scope,omitempty"`
+
+	// Argument extraction hints — where the middleware value(s) live on the call.
+	MiddlewareArgIndex    int  `yaml:"middlewareArgIndex,omitempty" json:"middlewareArgIndex,omitempty"`       // index of the first middleware arg
+	MiddlewareVariadic    bool `yaml:"middlewareVariadic,omitempty" json:"middlewareVariadic,omitempty"`       // collect args from MiddlewareArgIndex..end
+	MiddlewareExcludeLast bool `yaml:"middlewareExcludeLast,omitempty" json:"middlewareExcludeLast,omitempty"` // with variadic: skip the final arg (the handler), for gin/fiber per-route mw
+	MiddlewareFromRecv    bool `yaml:"middlewareFromRecv,omitempty" json:"middlewareFromRecv,omitempty"`       // the middleware value is the receiver (rare)
+	HandlerArgIndex       int  `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"`             // wrapped/guarded handler arg (scope=wrapper/route)
+
+	// Package/type filtering.
+	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
+	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
+	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
+	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+}
+
+// SecurityMapping resolves a middleware *identity* (the function, constructor,
+// or method value applied as middleware) to one or more OpenAPI security
+// requirements. It is framework-agnostic and shared across frameworks; default
+// presets ship these for well-known libraries (selected by an import detector)
+// and users can override or extend them.
+type SecurityMapping struct {
+	// Match the resolved middleware identity. Empty fields are ignored.
+	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"` // e.g. '^authMiddleware$', '^New$'
+	PkgRegex          string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`                   // e.g. 'github.com/golang-jwt/.*'
+	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`         // for method-value middleware (h.authMiddleware)
+
+	// Resulting requirement(s). Entries in Schemes are ANDed (all required).
+	// SchemesAnyOf contributes alternative requirement objects (OR).
+	Schemes      []SecurityRequirement   `yaml:"schemes,omitempty" json:"schemes,omitempty"`
+	SchemesAnyOf [][]SecurityRequirement `yaml:"schemesAnyOf,omitempty" json:"schemesAnyOf,omitempty"`
+
+	// Public marks the matched scope as explicitly unauthenticated: it clears
+	// inherited security for the affected route(s)/subtree (e.g. a skipper or
+	// AllowUnauthenticated middleware), yielding `security: []`.
+	Public bool `yaml:"public,omitempty" json:"public,omitempty"`
+}
+
+// validSecurityScopes is the set of accepted SecurityPattern.Scope values.
+var validSecurityScopes = map[string]bool{
+	SecurityScopeRouter:  true,
+	SecurityScopeSubtree: true,
+	SecurityScopeRoute:   true,
+	SecurityScopeWrapper: true,
+}
+
+// ValidateSecurity checks the auth/security patterns and mappings for obvious
+// mistakes: unknown scopes, patterns/mappings that can never match, and regexes
+// that do not compile. It returns the first error encountered. It is a no-op
+// when no security patterns/mappings are configured, so existing configs are
+// unaffected. Call it on any config built outside LoadAPISpecConfig (e.g. the
+// UI's structured/raw paths) to enforce the same checks.
+func (c *APISpecConfig) ValidateSecurity() error {
+	compile := func(field, expr string) error {
+		if expr == "" {
+			return nil
+		}
+		if _, err := regexp.Compile(expr); err != nil {
+			return fmt.Errorf("securityConfig: invalid regex in %s %q: %w", field, expr, err)
+		}
+		return nil
+	}
+
+	for i, p := range c.Framework.SecurityPatterns {
+		if !validSecurityScopes[p.Scope] {
+			return fmt.Errorf("securityPatterns[%d]: invalid scope %q (want router|subtree|route|wrapper)", i, p.Scope)
+		}
+		if p.CallRegex == "" && p.FunctionNameRegex == "" && p.RecvType == "" && p.RecvTypeRegex == "" {
+			return fmt.Errorf("securityPatterns[%d]: needs at least one matcher (callRegex/functionNameRegex/recvType/recvTypeRegex)", i)
+		}
+		for _, f := range []struct{ name, expr string }{
+			{"callRegex", p.CallRegex}, {"functionNameRegex", p.FunctionNameRegex}, {"recvTypeRegex", p.RecvTypeRegex},
+		} {
+			if err := compile(fmt.Sprintf("securityPatterns[%d].%s", i, f.name), f.expr); err != nil {
+				return err
+			}
+		}
+	}
+
+	for i, m := range c.SecurityMappings {
+		if m.FunctionNameRegex == "" && m.PkgRegex == "" && m.RecvTypeRegex == "" {
+			return fmt.Errorf("securityMappings[%d]: needs at least one identity matcher (functionNameRegex/pkgRegex/recvTypeRegex)", i)
+		}
+		if !m.Public && len(m.Schemes) == 0 && len(m.SchemesAnyOf) == 0 {
+			return fmt.Errorf("securityMappings[%d]: needs schemes, schemesAnyOf, or public:true", i)
+		}
+		// Reject blank scheme keys: `schemes: [{"": []}]` would emit an invalid
+		// OpenAPI security requirement.
+		for j, req := range m.Schemes {
+			if err := checkSchemeKeys(fmt.Sprintf("securityMappings[%d].schemes[%d]", i, j), req); err != nil {
+				return err
+			}
+		}
+		for j, grp := range m.SchemesAnyOf {
+			for k, req := range grp {
+				if err := checkSchemeKeys(fmt.Sprintf("securityMappings[%d].schemesAnyOf[%d][%d]", i, j, k), req); err != nil {
+					return err
+				}
+			}
+		}
+		for _, f := range []struct{ name, expr string }{
+			{"functionNameRegex", m.FunctionNameRegex}, {"pkgRegex", m.PkgRegex}, {"recvTypeRegex", m.RecvTypeRegex},
+		} {
+			if err := compile(fmt.Sprintf("securityMappings[%d].%s", i, f.name), f.expr); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkSchemeKeys rejects blank/whitespace-only scheme names in a security
+// requirement object.
+func checkSchemeKeys(where string, req SecurityRequirement) error {
+	for name := range req {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s: blank security scheme name", where)
+		}
+	}
+	return nil
 }
 
 // TypeMapping maps Go types to OpenAPI schemas
@@ -419,8 +583,23 @@ type APISpecConfig struct {
 	Servers         []Server                  `yaml:"servers" json:"servers,omitempty"`
 	Security        []SecurityRequirement     `yaml:"security" json:"security,omitempty"`
 	SecuritySchemes map[string]SecurityScheme `yaml:"securitySchemes" json:"securitySchemes,omitempty"`
-	Tags            []Tag                     `yaml:"tags" json:"tags,omitempty"`
-	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
+
+	// SecurityMappings resolve detected auth middleware to security schemes
+	// (see SecurityMapping). Framework-agnostic; merged from library presets and
+	// user config. Works together with Framework.SecurityPatterns (scope).
+	SecurityMappings []SecurityMapping `yaml:"securityMappings" json:"securityMappings,omitempty"`
+
+	// presetSchemes holds securityScheme definitions contributed by library
+	// presets (see config_security.go). They are added to the output components
+	// only when actually referenced by a resolved operation, so unused presets
+	// don't bloat the spec. Not serialized.
+	presetSchemes map[string]SecurityScheme `yaml:"-" json:"-"`
+
+	// presetsApplied guards ApplySecurityPresets against appending the same
+	// library mappings twice when a config is reused across runs. Not serialized.
+	presetsApplied bool                   `yaml:"-" json:"-"`
+	Tags           []Tag                  `yaml:"tags" json:"tags,omitempty"`
+	ExternalDocs   *ExternalDocumentation `yaml:"externalDocs" json:"externalDocs,omitempty"`
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters
