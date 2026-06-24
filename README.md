@@ -53,6 +53,7 @@
 
 - **Generated from real code.** Routes, parameters, request bodies, and responses are inferred by analyzing the AST and walking the call graph — not from comments or hand-written annotations that drift out of sync.
 - **Framework-aware.** Out-of-the-box detection for Gin, Echo, Chi, Fiber, Gorilla Mux, and `net/http`.
+- **Auth-aware.** Detects which routes are protected and by what scheme — framework-agnostic, driven by the same config-pattern system. Recognises common JWT/auth libraries with zero config, follows middleware through groups, per-route chains, and handler wrappers, and warns (with a UI picker in `apispecui`) when a custom middleware needs a scheme mapping.
 - **Extensible.** Framework behavior is described as regex-based patterns in YAML, so adding or tweaking a framework doesn't require touching core logic.
 - **Type-aware.** Resolves aliases and enums to their underlying primitives, maps validator tags (`go-playground/validator`) to OpenAPI constraints, and handles generics, arrays (`[16]byte`, `[...]int`), pointer dereferencing, and external package types.
 - **Visualizable.** Optional HTML call-graph diagram and a separate paginated diagram server for large codebases.
@@ -221,14 +222,14 @@ See [`cmd/apidiag/README.md`](cmd/apidiag/README.md) for full documentation and 
 
 ## Framework Support
 
-| Framework         | Routes & methods | Path params | Groups / mounting | Request body | Responses |
-|-------------------|:----------------:|:-----------:|:-----------------:|:------------:|:---------:|
-| **Gin**           | ✅               | ✅          | ✅                | ✅           | ✅        |
-| **Echo**          | ✅               | ✅          | ✅                | ✅           | ✅        |
-| **Chi**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        |
-| **Fiber**         | ✅               | ✅          | ✅                | ✅           | ✅        |
-| **Gorilla Mux**   | ✅               | ✅ *(detected, not yet wired into handler params)* | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ |
-| **`net/http`**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ |
+| Framework         | Routes & methods | Path params | Groups / mounting | Request body | Responses | Auth |
+|-------------------|:----------------:|:-----------:|:-----------------:|:------------:|:---------:|:----:|
+| **Gin**           | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **Echo**          | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **Chi**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        | ✅   |
+| **Fiber**         | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **Gorilla Mux**   | ✅               | ✅ *(detected, not yet wired into handler params)* | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ | ✅ |
+| **`net/http`**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ | ✅ |
 
 Conditional registration (dynamic routes built at runtime) is generally not supported.
 
@@ -262,6 +263,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())` where `Create() echo.HandlerFunc { return func(c) {…} }`), including when the handler is dispatched through an interface whose implementation lives in a different package.
 - Function-local named types used as request/response bodies (`type Login struct{…}` declared inside a handler) — captured from the function body and emitted as real component schemas rather than dangling `$ref`s.
 - Request bodies bound through a custom wrapper (`util.ReadRequest(c, &dto)` → `ctx.Bind(dto)`) — the concrete type is traced through the wrapper's parameters.
+- Authentication / security detection — see [Security & authentication detection](#security--authentication-detection). Protected routes get a per-operation `security` requirement and the scheme is registered under `components.securitySchemes`; explicitly-public routes render `security: []`. Middleware is followed across router-wide `Use`, group/subtree closures, per-route chains (chi `With`), and handler wrappers (`net/http`, mux), including look-through into wrapper bodies that call a known auth library.
 
 **Partial / not yet supported**
 
@@ -462,6 +464,55 @@ example (composite-literal payloads *and* a `var`-declared DTO with a
 
 </details>
 
+<!-- markdownlint-disable MD033 -->
+<a id="security--authentication-detection"></a>
+<!-- markdownlint-enable MD033 -->
+
+<details>
+<summary><strong>Security / authentication detection</strong></summary>
+
+APISpec detects auth middleware and marks the routes it protects, framework-agnostically. Detection has two halves, both config-driven:
+
+- **Scope** (`framework.securityPatterns`) — recognises *how* middleware is applied and how far it reaches: `router` (chi/echo/gin/mux `Use`), `subtree` (group/route closures), `route` (chi `With`, per-route middleware args), and `wrapper` (a handler wrapped by an auth function, e.g. `net/http`/mux).
+- **Identity → scheme** (`securityMappings`) — resolves the *which middleware* to one or more OpenAPI security requirements, by function name, package, and/or receiver type.
+
+```go
+r := chi.NewRouter()
+r.Get("/health", health)              // open
+
+r.Group(func(r chi.Router) {
+    r.Use(jwtauth.Verifier(tokenAuth)) // subtree-wide auth
+    r.Get("/me", me)                   // → security: [{ bearerAuth: [] }]
+})
+
+r.With(authMiddleware).Get("/admin", admin) // per-route chain → protected
+```
+
+Common JWT/auth libraries are recognised with **zero config** via an import detector (echo-jwt, appleboy/gin-jwt, gofiber/contrib/jwt, golang-jwt validation calls, and more) — the scheme is registered under `components.securitySchemes` and attached per operation. Explicitly-public routes (skipper / `AllowUnauthenticated` style middleware) render `security: []`.
+
+When a custom middleware can't be mapped to a scheme automatically, `apispec` **warns and lists** the unresolved middleware; `apispecui` surfaces the same list with a picker to assign a scheme interactively. To map one yourself:
+
+```yaml
+securityMappings:
+  - functionNameRegex: ^authMiddleware$
+    recvTypeRegex: Handler           # optional: method-value middleware
+    schemes:
+      - { bearerAuth: [] }           # entries here are ANDed
+  # OR alternatives (any one satisfies):
+  - functionNameRegex: ^New$
+    pkgRegex: github\.com/golang-jwt/.*
+    schemesAnyOf:
+      - [ { bearerAuth: [] } ]
+      - [ { apiKeyAuth: [] } ]
+  # Mark a middleware as making routes explicitly public:
+  - functionNameRegex: ^AllowPublic$
+    public: true
+```
+
+See `testdata/auth_*` for worked fixtures across chi (`With`), echo groups, gin per-route, fiber groups, mux subrouters, and `net/http` wrappers.
+
+</details>
+
 ## How It Works
 
 ```mermaid
@@ -590,6 +641,31 @@ framework:
 ```
 
 When omitted, APISpec falls back to its prior receiver-only matching, so existing configs keep working unchanged.
+
+### Security / authentication
+
+Most auth setups are detected with no config (see [Security & authentication detection](#security--authentication-detection)). When you use a custom middleware, map its identity to a scheme with `securityMappings`, and — if needed — describe how it's applied with `framework.securityPatterns`:
+
+```yaml
+framework:
+  securityPatterns:
+    - callRegex: ^Use$
+      recvTypeRegex: chi\.Router
+      scope: router            # router | subtree | route | wrapper
+      middlewareArgIndex: 0
+      middlewareVariadic: true
+
+securityMappings:
+  - functionNameRegex: ^authMiddleware$
+    schemes:
+      - { bearerAuth: [] }
+
+securitySchemes:               # only needed for schemes not auto-registered
+  bearerAuth:
+    type: http
+    scheme: bearer
+    bearerFormat: JWT
+```
 
 ## Programmatic Usage
 
