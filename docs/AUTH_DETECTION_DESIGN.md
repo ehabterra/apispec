@@ -394,14 +394,24 @@ paths:
 
 ## 10. Testing
 
-- New `testdata/` fixtures per wiring style: `auth_chi_group`, `auth_chi_with`,
-  `auth_echo_group_mw`, `auth_gin_perroute`, `auth_fiber_group`,
-  `auth_mux_subrouter`, `auth_nethttp_wrap`, plus a public-override case.
-- Snapshot each with `scripts/compare-spec.sh --generate`, then guard with
-  `scripts/compare-spec.sh -v <N>` (the auto-discovered set already picks up new
-  `testdata/*` dirs).
-- Unit tests: matcher scope resolution, AND/OR/public merge, catalog
-  reconciliation, dangling-scheme warning.
-- Re-run the full external corpus (lmd-core etc.) to confirm no regressions and
-  to see real-world protected paths light up.
+- ✓ DONE — `testdata/` fixtures per wiring style, each a self-contained module
+  using a real auth library (zero-config) with one protected and one open route:
+  `auth_chi_with` (chi With chain → golang-jwt look-through), `auth_echo_group`
+  (echo Group → echo-jwt direct), `auth_gin_perroute` (gin per-route →
+  golang-jwt), `auth_fiber_group` (fiber Group/Use → gofiber/contrib/jwt),
+  `auth_mux_subrouter` (gorilla/mux Subrouter Use → golang-jwt), `auth_nethttp_wrap`
+  (net/http handler-wrap → golang-jwt closure look-through). Each protects
+  exactly the intended route and leaves the open one untouched. (No
+  public-override fixture: `security: []` currently renders as omitted, so it is
+  not observable yet — see §5 omitempty note.)
+- Snapshot each with `scripts/compare-spec.sh --generate -v <N>`, then guard with
+  `scripts/compare-spec.sh -v <N>` (auto-discovery picks up new `testdata/*`
+  dirs; snapshots are git-ignored, regenerated locally).
+- ✓ Unit tests: matcher scope resolution, AND/OR/public merge, identity
+  resolution, wrapper look-through (incl. closure-nested), chain resolution,
+  detector + catalog reconciliation, validation. Plus a chi e2e
+  (generator/security_test.go).
+- Verified zero-config on the external corpus (go-ecommerce-app, gofiber
+  auth-jwt recipe, Go-Clean) — real protected paths light up; custom session
+  middleware is surfaced for mapping.
 ```

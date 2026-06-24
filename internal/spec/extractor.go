@@ -110,8 +110,14 @@ type Extractor struct {
 	// securityUnresolved collects auth middleware that was detected but matched
 	// no SecurityMapping, deduped by identity. Surfaced as a warning (CLI) and
 	// to the UI for interactive mapping.
-	securityUnresolved   []MiddlewareRef
+	securityUnresolved    []MiddlewareRef
 	securityUnresolvedSet map[string]struct{}
+
+	// parentFnIndex maps a function's BaseID to call edges made inside func
+	// literals lexically nested in it (keyed by ParentFunction). Lets wrapper
+	// look-through reach a library call that lives in the closure a middleware
+	// returns — the dominant net/http/echo idiom. Built lazily.
+	parentFnIndex map[string][]*metadata.CallGraphEdge
 }
 
 // NewExtractor creates a new refactored extractor
@@ -569,11 +575,34 @@ func (e *Extractor) expandMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
 	if meta == nil || meta.Callers == nil {
 		return refs
 	}
+	e.ensureParentFnIndex(meta)
 	var out []MiddlewareRef
 	for _, ref := range refs {
 		out = append(out, e.lookThroughMiddleware(ref, meta, make(map[string]bool), 0)...)
 	}
 	return dedupMiddlewareRefs(out)
+}
+
+// ensureParentFnIndex builds parentFnIndex once from the call graph: edges made
+// inside func literals, grouped by the BaseID of the lexically-enclosing
+// function. Used so look-through can follow into the closure a wrapper returns.
+func (e *Extractor) ensureParentFnIndex(meta *metadata.Metadata) {
+	if e.parentFnIndex != nil {
+		return
+	}
+	idx := make(map[string][]*metadata.CallGraphEdge)
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		if edge.ParentFunction == nil {
+			continue
+		}
+		key := edge.ParentFunction.BaseID()
+		if key == "" {
+			continue
+		}
+		idx[key] = append(idx[key], edge)
+	}
+	e.parentFnIndex = idx
 }
 
 // lookThroughMiddleware resolves a single middleware ref, following the call
@@ -591,22 +620,30 @@ func (e *Extractor) lookThroughMiddleware(ref MiddlewareRef, meta *metadata.Meta
 	}
 	visited[key] = true
 
-	edges := meta.Callers[key]
-	if len(edges) == 0 {
+	// Calls made directly in the function's body, plus calls inside func
+	// literals it defines/returns (e.g. a middleware that validates a token in
+	// the http.Handler closure it returns).
+	direct := meta.Callers[key]
+	nested := e.parentFnIndex[key]
+	if len(direct) == 0 && len(nested) == 0 {
 		return []MiddlewareRef{ref} // external / no analyzable body
 	}
 	var found []MiddlewareRef
-	for _, edge := range edges {
-		callee := e.calleeMiddlewareRef(edge)
-		if callee.empty() {
-			continue
-		}
-		for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
-			if anyMappingMatches(r, e.cfg.SecurityMappings) {
-				found = append(found, r)
+	scan := func(edges []*metadata.CallGraphEdge) {
+		for _, edge := range edges {
+			callee := e.calleeMiddlewareRef(edge)
+			if callee.empty() {
+				continue
+			}
+			for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
+				if anyMappingMatches(r, e.cfg.SecurityMappings) {
+					found = append(found, r)
+				}
 			}
 		}
 	}
+	scan(direct)
+	scan(nested)
 	if len(found) > 0 {
 		return found
 	}
