@@ -225,6 +225,9 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 
 		// Set the current module path
 		CurrentModulePath: currentModulePath,
+
+		// External-type facts discovered during the type walk.
+		ExternalTypes: make(map[string]ExternalTypeFact),
 	}
 
 	for pkgName, files := range pkgs {
@@ -1046,34 +1049,59 @@ func hasZeroArgMethodOnPtr(ptr *types.Pointer, name string) bool {
 	return false
 }
 
-// isExternalType checks if a type is from an external package (not part of the current project)
-func isExternalType(typeInfo types.Type, currentModulePath string) bool {
-	switch t := typeInfo.(type) {
+// marshalerKind classifies how a named type encodes itself to JSON.
+// TextMarshaler is checked first because it is exact (encoding/json always
+// emits a JSON string for it); MarshalJSON is a weaker, low-confidence signal.
+func marshalerKind(n *types.Named) MarshalerKind {
+	ptr := types.NewPointer(n)
+	if hasZeroArgMethod(n, "MarshalText") || hasZeroArgMethodOnPtr(ptr, "MarshalText") {
+		return MarshalerText
+	}
+	if hasZeroArgMethod(n, "MarshalJSON") || hasZeroArgMethodOnPtr(ptr, "MarshalJSON") {
+		return MarshalerJSON
+	}
+	return MarshalerNone
+}
+
+// recordExternalTypeFacts walks t and records an ExternalTypeFact for every
+// external (third-party) named type it contains — directly or nested inside
+// pointers, slices, arrays, maps and channels. It never mutates the type:
+// resolution policy lives entirely in the spec layer. Facts are keyed by both
+// the full import path (github.com/google/uuid.UUID) and the short
+// pkg-qualified name (uuid.UUID) so either lookup form resolves later.
+func recordExternalTypeFacts(t types.Type, meta *Metadata) {
+	switch tt := t.(type) {
 	case *types.Named:
-		// For named types, check if the package is external
-		if t.Obj() != nil && t.Obj().Pkg() != nil {
-			pkgPath := t.Obj().Pkg().Path()
-			return isExternalPackage(pkgPath, currentModulePath)
+		obj := tt.Obj()
+		if obj == nil || obj.Pkg() == nil {
+			return
 		}
-		return false
+		if !isExternalPackage(obj.Pkg().Path(), meta.CurrentModulePath) {
+			return // internal type: it renders as its own component
+		}
+		if meta.ExternalTypes == nil {
+			meta.ExternalTypes = make(map[string]ExternalTypeFact)
+		}
+		fact := ExternalTypeFact{
+			Marshaler:  marshalerKind(tt),
+			Underlying: tt.Underlying().String(),
+		}
+		meta.ExternalTypes[obj.Pkg().Path()+"."+obj.Name()] = fact // full import path
+		meta.ExternalTypes[obj.Pkg().Name()+"."+obj.Name()] = fact // short pkg.Type
+		// Recurse the underlying so e.g. external `type Foo []Bar` also records
+		// Bar when it too is external.
+		recordExternalTypeFacts(tt.Underlying(), meta)
 	case *types.Pointer:
-		// For pointer types, check the underlying type
-		return isExternalType(t.Elem(), currentModulePath)
+		recordExternalTypeFacts(tt.Elem(), meta)
 	case *types.Slice:
-		// For slice types, check the element type
-		return isExternalType(t.Elem(), currentModulePath)
+		recordExternalTypeFacts(tt.Elem(), meta)
 	case *types.Array:
-		// For array types, check the element type
-		return isExternalType(t.Elem(), currentModulePath)
+		recordExternalTypeFacts(tt.Elem(), meta)
 	case *types.Map:
-		// For map types, check both key and element types
-		return isExternalType(t.Key(), currentModulePath) || isExternalType(t.Elem(), currentModulePath)
+		recordExternalTypeFacts(tt.Key(), meta)
+		recordExternalTypeFacts(tt.Elem(), meta)
 	case *types.Chan:
-		// For channel types, check the element type
-		return isExternalType(t.Elem(), currentModulePath)
-	default:
-		// For primitive types and other types, they're not external
-		return false
+		recordExternalTypeFacts(tt.Elem(), meta)
 	}
 }
 
@@ -1192,41 +1220,25 @@ func processStructFields(structType *ast.StructType, pkgName string, metadata *M
 		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
 		comments := getComments(field)
-		var fieldTypeInfo types.Type
-		var hasStar bool
 
 		if !IsPrimitiveType(fieldType) && info != nil {
+			var fieldTypeInfo types.Type
 			switch ft := field.Type.(type) {
 			case *ast.StarExpr:
-				hasStar = true
 				fieldTypeInfo = info.TypeOf(ft.X)
 			default:
 				fieldTypeInfo = info.TypeOf(ft)
 			}
 			if fieldTypeInfo != nil {
-				// Replace every external types.Named occurrence inside the
-				// field type with its underlying type, leaving internal
-				// project types alone so they still render as components.
-				// Without this, only top-level external types resolved —
-				// `uuid.UUID` worked but `[]uuid.UUID`, `*uuid.UUID`,
-				// `map[string]uuid.UUID` did not, leaking the external
-				// name into the spec.
-				resolved := resolveExternalNamedTypes(fieldTypeInfo, metadata.CurrentModulePath)
-				resolvedStr := resolved.String()
-				if resolvedStr != fieldTypeInfo.String() {
-					fieldType = resolvedStr
-				} else if isExternalType(fieldTypeInfo, metadata.CurrentModulePath) {
-					// Fallback for the simple top-level-named case (kept
-					// for parity with the previous behaviour even when
-					// the recursive walker decided not to substitute).
-					underlyingFieldType := fieldTypeInfo.Underlying().String()
-					if IsPrimitiveType(underlyingFieldType) {
-						fieldType = underlyingFieldType
-					}
-				}
-				if hasStar && !strings.HasPrefix(fieldType, "*") {
-					fieldType = "*" + fieldType
-				}
+				// Record facts about every external named type referenced by
+				// this field (uuid.UUID, decimal.Decimal, []uuid.UUID, ...) so
+				// the spec layer can resolve them without re-running go/types.
+				// We deliberately keep the external *name* in fieldType — no
+				// flattening here — so that config/registry overrides in the
+				// spec layer can still match the type by name. The spec layer
+				// (resolveExternalType) decides the actual schema; metadata
+				// only reports what go/types can see.
+				recordExternalTypeFacts(fieldTypeInfo, metadata)
 			}
 		}
 
