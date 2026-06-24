@@ -466,24 +466,47 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 		return
 	}
 
-	allMW := append([]MiddlewareRef{}, mountMW...)
-	if refs, scope, ok := e.collectNodeSecurity(node); ok && (scope == SecurityScopeRoute || scope == SecurityScopeWrapper) {
-		allMW = append(allMW, refs...)
+	// Definite middleware: inherited router/subtree middleware plus route-scope
+	// middleware on the call itself. These come from dedicated middleware slots,
+	// so an unresolved one genuinely means "you forgot to map it" -> warn.
+	definite := append([]MiddlewareRef{}, mountMW...)
+
+	// Speculative middleware: the handler argument of a net/http-style Handle is
+	// a wrapping call (auth(h)) that is syntactically indistinguishable from a
+	// handler factory (newUserHandler()). We only treat it as auth when looking
+	// through its body finds a known auth library; otherwise it is silently
+	// ignored (no warning), since it is probably not middleware at all.
+	var speculative []MiddlewareRef
+
+	if refs, scope, ok := e.collectNodeSecurity(node); ok {
+		switch scope {
+		case SecurityScopeRoute:
+			definite = append(definite, refs...)
+		case SecurityScopeWrapper:
+			speculative = append(speculative, refs...)
+		}
 	}
-	allMW = dedupMiddlewareRefs(allMW)
-	if len(allMW) == 0 {
-		return
+
+	var reqs []SecurityRequirement
+	public := false
+
+	if d := dedupMiddlewareRefs(definite); len(d) > 0 {
+		// Look through custom wrappers (e.g. middleware.Protected() that calls
+		// jwtware.New) to the underlying library scheme.
+		d = e.expandMiddlewareRefs(d)
+		r, pub, unresolved := resolveSecurity(d, e.cfg.SecurityMappings)
+		reqs = append(reqs, r...)
+		public = public || pub
+		e.recordUnresolved(unresolved)
+	}
+	if sp := dedupMiddlewareRefs(speculative); len(sp) > 0 {
+		sp = e.expandMiddlewareRefs(sp)
+		r, pub, _ := resolveSecurity(sp, e.cfg.SecurityMappings) // ignore unresolved (ambiguous slot)
+		reqs = append(reqs, r...)
+		public = public || pub
 	}
 
-	// Look through custom wrapper middleware: a project-defined function like
-	// middleware.Protected() that itself calls a library middleware constructor
-	// (jwtware.New, echo middleware.JWT, ...) resolves to that library's scheme
-	// by following the call graph.
-	allMW = e.expandMiddlewareRefs(allMW)
-
-	reqs, public, unresolved := resolveSecurity(allMW, e.cfg.SecurityMappings)
-	e.recordUnresolved(unresolved)
-
+	reqs = dedupSecurityRequirements(reqs)
 	switch {
 	case public:
 		// Explicitly public: override any inherited/global security.

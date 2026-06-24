@@ -71,10 +71,26 @@ func fiberSecurityPatterns() []SecurityPattern {
 }
 
 // muxSecurityPatterns: gorilla/mux uses r.Use(mw...) on a Router (and on
-// subrouters), which the router scope covers.
+// subrouters) — router scope — and also handler-wrapping via
+// r.Handle("/x", auth(h)) — wrapper scope.
 func muxSecurityPatterns() []SecurityPattern {
 	return []SecurityPattern{
 		{CallRegex: `^Use$`, Scope: SecurityScopeRouter, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: `^github\.com/gorilla/mux\.\*?Router$`},
+		{CallRegex: `^(Handle|HandleFunc)$`, Scope: SecurityScopeWrapper, HandlerArgIndex: 1, RecvTypeRegex: `^github\.com/gorilla/mux\.\*?Router$`},
+	}
+}
+
+// httpSecurityPatterns: net/http has no dedicated middleware slot — auth is
+// applied by wrapping the handler: mux.Handle("/x", auth(h)) or
+// http.Handle("/x", auth(h)). This is the wrapper scope; whether the wrapping
+// call is really auth is decided by look-through (does its body call a known
+// auth library?), so handler factories like newUserHandler() are not misread as
+// middleware.
+func httpSecurityPatterns() []SecurityPattern {
+	recv := `^net/http(\.\*ServeMux)?$`
+	return []SecurityPattern{
+		{CallRegex: `^Handle$`, Scope: SecurityScopeWrapper, HandlerArgIndex: 1, RecvTypeRegex: recv},
+		{CallRegex: `^HandleFunc$`, Scope: SecurityScopeWrapper, HandlerArgIndex: 1, RecvTypeRegex: recv},
 	}
 }
 
@@ -152,6 +168,24 @@ func securityLibraryBundles() []securityLibraryBundle {
 				apiKey(`^New$`, `^github\.com/gofiber/fiber(/v\d+)?/middleware/keyauth$`),
 			},
 			Schemes: map[string]SecurityScheme{"basicAuth": schemeBasic, "apiKeyAuth": schemeAPIKey},
+		},
+		// JWT token libraries (golang-jwt, dgrijalva). These are not middleware
+		// themselves but are called inside custom auth middleware; wrapper
+		// look-through finds them. Only token *validation* functions are mapped
+		// (Parse*), never issuance (New/SignedString), so a login handler that
+		// mints a token is not mistaken for a protected route.
+		{
+			ImportRegexes: []string{`^github\.com/golang-jwt/jwt(/v\d+)?$`, `^github\.com/dgrijalva/jwt-go$`},
+			Mappings: []SecurityMapping{
+				bearer(`^Parse(WithClaims|FromRequest|FromRequestWithClaims)?$`, `^github\.com/(golang-jwt/jwt(/v\d+)?|dgrijalva/jwt-go)$`),
+			},
+			Schemes: map[string]SecurityScheme{"bearerAuth": schemeBearerJWT},
+		},
+		// auth0 net/http JWT middleware.
+		{
+			ImportRegexes: []string{`^github\.com/auth0/go-jwt-middleware(/v\d+)?$`},
+			Mappings:      []SecurityMapping{bearer(`^New$`, `^github\.com/auth0/go-jwt-middleware(/v\d+)?$`)},
+			Schemes:       map[string]SecurityScheme{"bearerAuth": schemeBearerJWT},
 		},
 	}
 }

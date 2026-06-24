@@ -340,7 +340,7 @@ paths:
    (`reconcileSecuritySchemes`): user schemes always emitted, preset schemes only
    when referenced, dangling refs warned. Unresolved-middleware warning gated on
    mappings existing (no noise for non-auth projects). net/http handler-wrap
-   preset deferred (too ambiguous); chi `With` deferred (chained-call
+   chi `With` deferred (chained-call
    ambiguity). Output unchanged for projects
    without auth libs (verified vs v51 snapshots). Tested: config_security_test.go
    (detector + reconciliation) + existing e2e.
@@ -354,6 +354,20 @@ paths:
    variadic arg). Verified zero-config end-to-end on the gofiber auth-jwt recipe:
    middleware.Protected() -> jwtware.New -> bearerAuth on exactly the guarded
    routes. Unit-tested in security_test.go.
+6c. ✓ DONE — net/http handler-wrapping resolved via look-through, NOT signature
+   analysis. net/http has no dedicated middleware slot: Handle("/x", auth(h)) is
+   structurally identical to a handler factory Handle("/x", newHandler()) (both
+   kind=call, type net/http.Handler). The discriminator is behavioural: does the
+   wrapping function's body call a known auth library? Wrapper-scope refs are
+   "speculative" — resolved via look-through, and SILENTLY dropped when nothing
+   matches (no unresolved warning), so factories/conversions aren't misreported.
+   Added net/http + gorilla/mux wrapper patterns and token-library bundles
+   (golang-jwt/dgrijalva validation funcs Parse*, auth0 jwt-middleware) so
+   look-through into a custom net/http middleware that validates a JWT resolves
+   to bearerAuth. Verified zero-config on real projects: go-ecommerce-app (echo
+   echojwt via Use) and the fiber recipe; Go-Clean correctly leaves custom
+   session middleware for manual mapping. Only token *validation* is mapped (not
+   issuance), so login handlers that mint tokens aren't marked protected.
 7. UI: surface detected schemes; interactive picker to map unresolved
    middleware → scheme, persisted into the generated config.
 
