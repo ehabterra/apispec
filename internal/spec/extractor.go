@@ -1196,13 +1196,22 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
-		// If status code is not from argument, find the first response with no body type
+		// If status code is not from argument, attach this body to an existing
+		// response that has no body yet. route.Response is a map, so iterating it
+		// and taking the "first" match is nondeterministic (Go randomizes map
+		// order) — that flips the chosen status between runs. Pick the
+		// lowest-numbered matching status instead, which is order-independent.
 		if !r.pattern.StatusFromArg {
+			best := -1
 			for _, resp := range route.Response {
 				if resp.BodyType == "" && resp.StatusCode >= 100 && resp.StatusCode < 600 {
-					respInfo.StatusCode = resp.StatusCode
-					break
+					if best == -1 || resp.StatusCode < best {
+						best = resp.StatusCode
+					}
 				}
+			}
+			if best != -1 {
+				respInfo.StatusCode = best
 			}
 		}
 

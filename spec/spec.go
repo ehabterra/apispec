@@ -23,6 +23,7 @@ const (
 	SecurityScopeRoute   = intspec.SecurityScopeRoute
 	SecurityScopeWrapper = intspec.SecurityScopeWrapper
 )
+
 type ExternalDocumentation = intspec.ExternalDocumentation
 type Schema = intspec.Schema
 type Components = intspec.Components

@@ -770,22 +770,40 @@ func typeByName(typeParts Parts, meta *metadata.Metadata) *metadata.Type {
 	}
 
 	if typeParts.PkgName != "" && typeParts.TypeName != "" {
-		pkgName := typeParts.PkgName
-
-		if pkg, exists := meta.Packages[pkgName]; exists {
-			for _, file := range pkg.Files {
-				if typ, exists := file.Types[typeParts.TypeName]; exists {
-					return typ
-				}
+		if pkg, exists := meta.Packages[typeParts.PkgName]; exists {
+			if typ := typeInPackage(pkg, typeParts.TypeName); typ != nil {
+				return typ
 			}
 		}
 	}
 
-	for _, pkg := range meta.Packages {
-		for _, file := range pkg.Files {
-			if typ, exists := file.Types[typeParts.TypeName]; exists {
-				return typ
-			}
+	// Fallback: the bare type name may exist in several packages. Iterate in a
+	// stable (cached) sorted order so the chosen type is deterministic across
+	// runs — otherwise map iteration would pick a different package's type and
+	// flip the schema between runs.
+	for _, pkgName := range meta.SortedPackageNames() {
+		if typ := typeInPackage(meta.Packages[pkgName], typeParts.TypeName); typ != nil {
+			return typ
+		}
+	}
+	return nil
+}
+
+// typeInPackage returns the named type from a package, scanning files in stable
+// order (Files is a map).
+func typeInPackage(pkg *metadata.Package, typeName string) *metadata.Type {
+	if pkg == nil {
+		return nil
+	}
+	// A type lives in exactly one file, but iterate deterministically anyway.
+	var fileNames []string
+	for fileName := range pkg.Files {
+		fileNames = append(fileNames, fileName)
+	}
+	sort.Strings(fileNames)
+	for _, fileName := range fileNames {
+		if typ, exists := pkg.Files[fileName].Types[typeName]; exists {
+			return typ
 		}
 	}
 	return nil

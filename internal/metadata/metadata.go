@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"maps"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -372,9 +373,17 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	if logger != nil {
 		logger.Println("Building call graph...")
 	}
-	for pkgName, files := range pkgs {
+	// Build the call graph in a stable package order: pkgs is a map, so ranging
+	// it directly makes the CallGraph edge order (and therefore roots, traversal
+	// order, and the whole generated spec) differ between runs.
+	cgPkgNames := make([]string, 0, len(pkgs))
+	for pkgName := range pkgs {
+		cgPkgNames = append(cgPkgNames, pkgName)
+	}
+	sort.Strings(cgPkgNames)
+	for _, pkgName := range cgPkgNames {
 		// Build call graph
-		buildCallGraph(files, pkgs, pkgName, fileToInfo, fset, funcMap, metadata)
+		buildCallGraph(pkgs[pkgName], pkgs, pkgName, fileToInfo, fset, funcMap, metadata)
 	}
 	if logger != nil {
 		logger.Printf("Call graph built with %d edges\n", len(metadata.CallGraph))
@@ -1652,7 +1661,15 @@ func processImports(file *ast.File, metadata *Metadata, f *File) {
 
 // buildCallGraph builds the call graph for all files in a package
 func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, metadata *Metadata) {
-	for _, file := range files {
+	// Stable file order within the package (files is a map) so call-graph edge
+	// order is deterministic across runs.
+	fileNames := make([]string, 0, len(files))
+	for fileName := range files {
+		fileNames = append(fileNames, fileName)
+	}
+	sort.Strings(fileNames)
+	for _, fileName := range fileNames {
+		file := files[fileName]
 		var argMap = map[string]*CallArgument{}
 		var calleeMap = map[string]*CallGraphEdge{}
 
