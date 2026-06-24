@@ -540,6 +540,56 @@ func requestIsConcrete(r *RequestInfo) bool {
 	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
 }
 
+// preferResponseInfo deterministically picks between two responses competing
+// for the same status slot — used for the "default" collapse, where several
+// unresolved-status bodies (a success type and a framework error map) land
+// together. A concrete schema (named-type $ref, object with properties, allOf,
+// or array) beats a generic {type: object}; among equally concrete bodies a
+// success type beats an error-named DTO; finally a stable BodyType tie-break
+// keeps runs in agreement regardless of visitation order.
+func preferResponseInfo(cur, next *ResponseInfo) *ResponseInfo {
+	if cur == nil {
+		return next
+	}
+	if next == nil {
+		return cur
+	}
+	curConcrete, nextConcrete := responseIsConcrete(cur), responseIsConcrete(next)
+	if nextConcrete != curConcrete {
+		if nextConcrete {
+			return next
+		}
+		return cur
+	}
+	curErr, nextErr := isErrorBodyType(cur.BodyType), isErrorBodyType(next.BodyType)
+	if curErr != nextErr {
+		if nextErr {
+			return cur
+		}
+		return next
+	}
+	if next.BodyType < cur.BodyType {
+		return next
+	}
+	return cur
+}
+
+// responseIsConcrete reports whether a response carries a resolved type rather
+// than a generic `object` fallback.
+func responseIsConcrete(r *ResponseInfo) bool {
+	if r == nil || r.Schema == nil {
+		return false
+	}
+	s := r.Schema
+	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
+}
+
+// isErrorBodyType reports whether a body type name looks like an error DTO
+// (e.g. ErrorResponse, APIError). Used only as a tie-break for the default slot.
+func isErrorBodyType(bodyType string) bool {
+	return strings.Contains(strings.ToLower(bodyType), "error")
+}
+
 // extractRequestFromNode extracts request information from a node
 func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *RouteInfo) *RequestInfo {
 	for _, matcher := range e.requestMatchers {

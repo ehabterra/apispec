@@ -368,14 +368,35 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 		return responses
 	}
 
-	// Add success response
-	for statusCode, resp := range respInfo {
+	// Choose one ResponseInfo per OpenAPI status key. Iterate sorted so the
+	// outcome never depends on map order. Several unresolved-status bodies
+	// (StatusCode < 0) collapse onto "default" — a handler returning its
+	// success type plus a framework error map; reconcile those with
+	// preferResponseInfo (concrete beats generic, success beats error, stable
+	// tie-break) so the winner is deterministic. Resolved statuses keep
+	// last-in-sorted-order to preserve prior behaviour (no concrete-preference
+	// that could let a mis-paired body displace an intentional one).
+	keys := make([]string, 0, len(respInfo))
+	for k := range respInfo {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	chosen := make(map[string]*ResponseInfo)
+	for _, k := range keys {
+		resp := respInfo[k]
+		statusCode := k
 		// if status less than 0, use "default" to indicate unknown/invalid status
 		// OpenAPI only accepts status codes 100-599, "default", or vendor extensions
 		if resp.StatusCode < 0 {
 			statusCode = "default"
+			chosen[statusCode] = preferResponseInfo(chosen[statusCode], resp)
+			continue
 		}
+		chosen[statusCode] = resp
+	}
 
+	for statusCode, resp := range chosen {
 		description := http.StatusText(resp.StatusCode)
 		if resp.StatusCode < 0 || description == "" {
 			description = "Status code could not be determined"
