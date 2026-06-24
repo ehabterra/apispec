@@ -380,6 +380,38 @@ func (e *Extractor) callerKey(node TrackerNodeInterface) string {
 	return e.contextProvider.GetString(edge.Caller.Name) + "|" + e.contextProvider.GetString(edge.Caller.Pkg)
 }
 
+// collectChainSecurity walks the route's chain-parent edges (e.g. the With in
+// r.With(mw).Get(...)) and collects route-scope middleware declared on them.
+// Because the chain links a route to exactly the calls it is chained on, this
+// guards only that route — no leakage to sibling routes.
+func (e *Extractor) collectChainSecurity(node TrackerNodeInterface) []MiddlewareRef {
+	if node == nil || len(e.securityMatchers) == 0 {
+		return nil
+	}
+	edge := node.GetEdge()
+	if edge == nil {
+		return nil
+	}
+	var refs []MiddlewareRef
+	for parent := edge.ChainParent; parent != nil; parent = parent.ChainParent {
+		var bestPriority int
+		var bestRefs []MiddlewareRef
+		var found bool
+		for _, m := range e.securityMatchers {
+			if m.Scope() != SecurityScopeRoute || !m.MatchEdge(parent) {
+				continue
+			}
+			if p := m.GetPriority(); !found || p > bestPriority {
+				bestRefs = m.ExtractMiddlewareFromEdge(parent)
+				bestPriority = p
+				found = true
+			}
+		}
+		refs = append(refs, bestRefs...)
+	}
+	return refs
+}
+
 // collectRouterSecurityByCaller gathers router-scope middleware (e.g. `Use`)
 // from a set of sibling nodes, grouped by their caller, so each sibling only
 // inherits middleware declared in its own enclosing scope. This is an
@@ -486,6 +518,10 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 			speculative = append(speculative, refs...)
 		}
 	}
+
+	// Chained-call middleware (e.g. chi r.With(mw).Get(...)): the middleware is
+	// on the route's chain-parent edge, which guards only this route.
+	definite = append(definite, e.collectChainSecurity(node)...)
 
 	var reqs []SecurityRequirement
 	public := false

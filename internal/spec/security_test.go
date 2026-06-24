@@ -140,6 +140,50 @@ func TestExpandMiddlewareRefs_NoMatchKeepsOriginal(t *testing.T) {
 	}
 }
 
+// TestCollectChainSecurity verifies chi-style With-chain resolution: the
+// middleware on r.With(mw).Get(...) is found via the route edge's ChainParent
+// and guards only that route.
+func TestCollectChainSecurity(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
+		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
+	}, nil)
+
+	// With(authmw) edge: callee With on *R, middleware arg = ident authmw.
+	withEdge := &metadata.CallGraphEdge{
+		Callee: metadata.Call{
+			Name:     meta.StringPool.Get("With"),
+			Pkg:      meta.StringPool.Get("app"),
+			RecvType: meta.StringPool.Get("R"),
+		},
+		Args: []*metadata.CallArgument{mkIdentPkg(meta, "authmw", "app")},
+	}
+	// The route (Get) edge chains off the With edge.
+	routeEdge := &metadata.CallGraphEdge{ChainParent: withEdge}
+
+	cfg := &APISpecConfig{
+		Framework: FrameworkConfig{SecurityPatterns: []SecurityPattern{
+			{CallRegex: `^With$`, Scope: SecurityScopeRoute, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: `R$`},
+		}},
+	}
+	e := NewExtractor(tree, cfg)
+
+	t.Run("chained route picks up With middleware", func(t *testing.T) {
+		got := e.collectChainSecurity(&fakeNode{edge: routeEdge})
+		if len(got) != 1 || got[0].FunctionName != "authmw" {
+			t.Fatalf("expected [authmw] from chain parent, got %+v", got)
+		}
+	})
+
+	t.Run("sibling route with no chain parent gets nothing", func(t *testing.T) {
+		got := e.collectChainSecurity(&fakeNode{edge: &metadata.CallGraphEdge{}})
+		if len(got) != 0 {
+			t.Errorf("expected no middleware for non-chained route, got %+v", got)
+		}
+	})
+}
+
 func TestSecurityMappingMatches(t *testing.T) {
 	ref := MiddlewareRef{FunctionName: "authMiddleware", Pkg: "app/handler", RecvType: "Handler"}
 

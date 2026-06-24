@@ -43,6 +43,12 @@ type SecurityPatternMatcher interface {
 	// ExtractMiddleware returns the resolved identity of each middleware value
 	// applied by the matched call.
 	ExtractMiddleware(node TrackerNodeInterface) []MiddlewareRef
+
+	// MatchEdge / ExtractMiddlewareFromEdge are the edge-level equivalents, used
+	// to inspect chain-parent edges (e.g. the With in r.With(mw).Get(...)) that
+	// are not themselves tracker nodes.
+	MatchEdge(edge *metadata.CallGraphEdge) bool
+	ExtractMiddlewareFromEdge(edge *metadata.CallGraphEdge) []MiddlewareRef
 }
 
 // RequestPatternMatcher matches request body patterns

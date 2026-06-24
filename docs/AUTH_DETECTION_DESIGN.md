@@ -340,8 +340,7 @@ paths:
    (`reconcileSecuritySchemes`): user schemes always emitted, preset schemes only
    when referenced, dangling refs warned. Unresolved-middleware warning gated on
    mappings existing (no noise for non-auth projects). net/http handler-wrap
-   chi `With` deferred (chained-call
-   ambiguity). Output unchanged for projects
+   Output unchanged for projects
    without auth libs (verified vs v51 snapshots). Tested: config_security_test.go
    (detector + reconciliation) + existing e2e.
 6b. ✓ DONE — Wrapper look-through (resolves the common real-world case where a
@@ -368,6 +367,16 @@ paths:
    echojwt via Use) and the fiber recipe; Go-Clean correctly leaves custom
    session middleware for manual mapping. Only token *validation* is mapped (not
    issuance), so login handlers that mint tokens aren't marked protected.
+6d. ✓ DONE — chi `With` chains, via the call graph's existing chain tracking. A
+   route registered as r.With(mw).Get(...) has its Get edge linked to the With
+   edge through CallGraphEdge.ChainParent (populated when a method call's
+   receiver is itself a call expression). collectChainSecurity walks the route's
+   ChainParent edges and collects route-scope middleware from any matching
+   pattern, so With guards exactly the chained route and never leaks to sibling
+   routes. Added an edge-level matcher API (MatchEdge /
+   ExtractMiddlewareFromEdge) and a chi `With` security pattern. Unit-tested in
+   security_test.go (chained route protected; non-chained sibling untouched).
+   Nothing remains deferred in scope detection.
 7. UI: surface detected schemes; interactive picker to map unresolved
    middleware → scheme, persisted into the generated config.
 

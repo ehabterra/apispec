@@ -531,11 +531,18 @@ func NewSecurityPatternMatcher(pattern SecurityPattern, cfg *APISpecConfig, cont
 
 // MatchNode checks if a node matches the security middleware pattern.
 func (s *SecurityPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
-	if node == nil || node.GetEdge() == nil {
+	if node == nil {
+		return false
+	}
+	return s.MatchEdge(node.GetEdge())
+}
+
+// MatchEdge checks if a call-graph edge matches the security middleware pattern.
+func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) bool {
+	if edge == nil {
 		return false
 	}
 
-	edge := node.GetEdge()
 	callName := s.contextProvider.GetString(edge.Callee.Name)
 	recvType := s.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := s.contextProvider.GetString(edge.Callee.Pkg)
@@ -605,10 +612,17 @@ func (s *SecurityPatternMatcherImpl) Scope() string {
 // taken from the call's args starting at MiddlewareArgIndex (a single arg, or
 // all remaining args when MiddlewareVariadic is set).
 func (s *SecurityPatternMatcherImpl) ExtractMiddleware(node TrackerNodeInterface) []MiddlewareRef {
-	if node == nil || node.GetEdge() == nil {
+	if node == nil {
 		return nil
 	}
-	edge := node.GetEdge()
+	return s.ExtractMiddlewareFromEdge(node.GetEdge())
+}
+
+// ExtractMiddlewareFromEdge is the edge-level form of ExtractMiddleware.
+func (s *SecurityPatternMatcherImpl) ExtractMiddlewareFromEdge(edge *metadata.CallGraphEdge) []MiddlewareRef {
+	if edge == nil {
+		return nil
+	}
 	var refs []MiddlewareRef
 
 	if s.pattern.Scope == SecurityScopeWrapper {

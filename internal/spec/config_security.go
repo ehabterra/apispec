@@ -20,14 +20,13 @@ import "github.com/ehabterra/apispec/internal/metadata"
 // chiSecurityPatterns: chi attaches middleware via r.Use(mw...) on a Router/Mux,
 // including inside Group(func(r){...}) closures.
 func chiSecurityPatterns() []SecurityPattern {
+	recv := `^github\.com/go-chi/chi(/v\d)?\.\*?(Router|Mux)$`
 	return []SecurityPattern{
-		{
-			CallRegex:          `^Use$`,
-			Scope:              SecurityScopeRouter,
-			MiddlewareArgIndex: 0,
-			MiddlewareVariadic: true,
-			RecvTypeRegex:      `^github\.com/go-chi/chi(/v\d)?\.\*?(Router|Mux)$`,
-		},
+		{CallRegex: `^Use$`, Scope: SecurityScopeRouter, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: recv},
+		// r.With(mw...).Get(...): With returns an inline router carrying the
+		// middleware; it is resolved via the route's chain parent, so it guards
+		// only the chained route (route scope).
+		{CallRegex: `^With$`, Scope: SecurityScopeRoute, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: recv},
 	}
 }
 
