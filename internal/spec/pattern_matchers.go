@@ -632,6 +632,11 @@ func (s *SecurityPatternMatcherImpl) ExtractMiddleware(node TrackerNodeInterface
 	end := start + 1
 	if s.pattern.MiddlewareVariadic {
 		end = len(edge.Args)
+		// gin/fiber put the handler as the final variadic arg; exclude it so it
+		// is not mistaken for middleware.
+		if s.pattern.MiddlewareExcludeLast && end > start {
+			end--
+		}
 	}
 	for i := start; i < end && i < len(edge.Args); i++ {
 		if ref, ok := middlewareRefFromArg(edge.Args[i]); ok {

@@ -50,6 +50,9 @@ func ginSecurityPatterns() []SecurityPattern {
 	return []SecurityPattern{
 		{CallRegex: `^Use$`, Scope: SecurityScopeRouter, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: recv},
 		{CallRegex: `^Group$`, Scope: SecurityScopeSubtree, MiddlewareArgIndex: 1, MiddlewareVariadic: true, RecvTypeRegex: recv},
+		// r.GET("/x", mw..., handler): middleware are the args between the path
+		// and the final handler arg.
+		{CallRegex: `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD|Handle)$`, Scope: SecurityScopeRoute, MiddlewareArgIndex: 1, MiddlewareVariadic: true, MiddlewareExcludeLast: true, RecvTypeRegex: recv},
 	}
 }
 
@@ -61,6 +64,9 @@ func fiberSecurityPatterns() []SecurityPattern {
 	return []SecurityPattern{
 		{CallRegex: `^Use$`, Scope: SecurityScopeRouter, MiddlewareArgIndex: 0, MiddlewareVariadic: true, RecvTypeRegex: recv},
 		{CallRegex: `^Group$`, Scope: SecurityScopeSubtree, MiddlewareArgIndex: 1, MiddlewareVariadic: true, RecvTypeRegex: recv},
+		// app.Get("/x", mw..., handler): middleware between the path and the
+		// final handler arg.
+		{CallRegex: `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD|All|Add)$`, Scope: SecurityScopeRoute, MiddlewareArgIndex: 1, MiddlewareVariadic: true, MiddlewareExcludeLast: true, RecvTypeRegex: recv},
 	}
 }
 

@@ -475,6 +475,12 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 		return
 	}
 
+	// Look through custom wrapper middleware: a project-defined function like
+	// middleware.Protected() that itself calls a library middleware constructor
+	// (jwtware.New, echo middleware.JWT, ...) resolves to that library's scheme
+	// by following the call graph.
+	allMW = e.expandMiddlewareRefs(allMW)
+
 	reqs, public, unresolved := resolveSecurity(allMW, e.cfg.SecurityMappings)
 	e.recordUnresolved(unresolved)
 
@@ -484,6 +490,79 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 		routeInfo.Security = []SecurityRequirement{}
 	case len(reqs) > 0:
 		routeInfo.Security = reqs
+	}
+}
+
+// maxWrapperLookThroughDepth bounds how deep wrapper look-through follows the
+// call graph (custom mw -> wrapper -> ... -> library constructor).
+const maxWrapperLookThroughDepth = 6
+
+// expandMiddlewareRefs replaces custom-wrapper middleware with the library
+// middleware it transitively calls, so a project-defined wrapper resolves to the
+// underlying scheme. Refs that already match a mapping, or that can't be looked
+// through (external/no body, or nothing matching found), are kept unchanged so
+// genuinely-unmapped middleware is still reported.
+func (e *Extractor) expandMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
+	if len(e.cfg.SecurityMappings) == 0 {
+		return refs
+	}
+	meta := e.tree.GetMetadata()
+	if meta == nil || meta.Callers == nil {
+		return refs
+	}
+	var out []MiddlewareRef
+	for _, ref := range refs {
+		out = append(out, e.lookThroughMiddleware(ref, meta, make(map[string]bool), 0)...)
+	}
+	return dedupMiddlewareRefs(out)
+}
+
+// lookThroughMiddleware resolves a single middleware ref, following the call
+// graph through wrapper functions until a mapping matches.
+func (e *Extractor) lookThroughMiddleware(ref MiddlewareRef, meta *metadata.Metadata, visited map[string]bool, depth int) []MiddlewareRef {
+	if anyMappingMatches(ref, e.cfg.SecurityMappings) {
+		return []MiddlewareRef{ref}
+	}
+	if depth >= maxWrapperLookThroughDepth {
+		return []MiddlewareRef{ref}
+	}
+	key := middlewareBaseID(ref)
+	if key == "" || visited[key] {
+		return []MiddlewareRef{ref}
+	}
+	visited[key] = true
+
+	edges := meta.Callers[key]
+	if len(edges) == 0 {
+		return []MiddlewareRef{ref} // external / no analyzable body
+	}
+	var found []MiddlewareRef
+	for _, edge := range edges {
+		callee := e.calleeMiddlewareRef(edge)
+		if callee.empty() {
+			continue
+		}
+		for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
+			if anyMappingMatches(r, e.cfg.SecurityMappings) {
+				found = append(found, r)
+			}
+		}
+	}
+	if len(found) > 0 {
+		return found
+	}
+	return []MiddlewareRef{ref} // nothing matched downstream; keep for diagnostics
+}
+
+// calleeMiddlewareRef builds a MiddlewareRef from a call edge's callee.
+func (e *Extractor) calleeMiddlewareRef(edge *metadata.CallGraphEdge) MiddlewareRef {
+	if edge == nil {
+		return MiddlewareRef{}
+	}
+	return MiddlewareRef{
+		FunctionName: e.contextProvider.GetString(edge.Callee.Name),
+		Pkg:          e.contextProvider.GetString(edge.Callee.Pkg),
+		RecvType:     strings.TrimPrefix(e.contextProvider.GetString(edge.Callee.RecvType), "*"),
 	}
 }
 

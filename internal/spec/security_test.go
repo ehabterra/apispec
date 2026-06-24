@@ -73,6 +73,73 @@ func TestMiddlewareRefFromArg(t *testing.T) {
 	})
 }
 
+// TestExpandMiddlewareRefs_WrapperLookThrough verifies a custom wrapper resolves
+// to the library scheme by following the call graph: middleware.Protected()
+// (no direct mapping) -> jwtware.New (mapped to bearerAuth).
+func TestExpandMiddlewareRefs_WrapperLookThrough(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
+		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
+	}, nil)
+
+	// Synthetic call graph: app/mw.Protected's body calls jwtware.New.
+	calleeNew := metadata.Call{
+		Name: meta.StringPool.Get("New"),
+		Pkg:  meta.StringPool.Get("github.com/gofiber/contrib/jwt"),
+	}
+	calleeNew.RecvType = -1
+	edge := &metadata.CallGraphEdge{Callee: calleeNew}
+	meta.Callers = map[string][]*metadata.CallGraphEdge{
+		"app/mw.Protected": {edge},
+	}
+
+	cfg := &APISpecConfig{
+		SecurityMappings: []SecurityMapping{
+			{FunctionNameRegex: `^New$`, PkgRegex: `gofiber/contrib/jwt`, Schemes: []SecurityRequirement{{"bearerAuth": {}}}},
+		},
+	}
+	e := NewExtractor(tree, cfg)
+
+	got := e.expandMiddlewareRefs([]MiddlewareRef{{FunctionName: "Protected", Pkg: "app/mw"}})
+
+	// The wrapper should have been replaced by the library ref that maps.
+	reqs, _, unresolved := resolveSecurity(got, cfg.SecurityMappings)
+	if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+		t.Errorf("wrapper did not resolve to bearerAuth via look-through: got refs=%+v reqs=%+v", got, reqs)
+	}
+	if len(unresolved) != 0 {
+		t.Errorf("expected no unresolved after look-through, got %+v", unresolved)
+	}
+}
+
+// TestExpandMiddlewareRefs_NoMatchKeepsOriginal verifies a wrapper that calls no
+// known library is left intact (and thus reported unresolved).
+func TestExpandMiddlewareRefs_NoMatchKeepsOriginal(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
+		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
+	}, nil)
+	calleeLog := metadata.Call{Name: meta.StringPool.Get("Println"), Pkg: meta.StringPool.Get("log")}
+	calleeLog.RecvType = -1
+	meta.Callers = map[string][]*metadata.CallGraphEdge{
+		"app/mw.CustomAuth": {{Callee: calleeLog}},
+	}
+	cfg := &APISpecConfig{
+		SecurityMappings: []SecurityMapping{
+			{FunctionNameRegex: `^New$`, PkgRegex: `gofiber/contrib/jwt`, Schemes: []SecurityRequirement{{"bearerAuth": {}}}},
+		},
+	}
+	e := NewExtractor(tree, cfg)
+
+	in := []MiddlewareRef{{FunctionName: "CustomAuth", Pkg: "app/mw"}}
+	got := e.expandMiddlewareRefs(in)
+	if len(got) != 1 || got[0].FunctionName != "CustomAuth" {
+		t.Errorf("expected original ref kept when nothing maps, got %+v", got)
+	}
+}
+
 func TestSecurityMappingMatches(t *testing.T) {
 	ref := MiddlewareRef{FunctionName: "authMiddleware", Pkg: "app/handler", RecvType: "Handler"}
 

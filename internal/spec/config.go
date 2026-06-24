@@ -256,7 +256,7 @@ const (
 // SecurityMapping so the engine never hardcodes a framework or library.
 type SecurityPattern struct {
 	// Function call patterns to match (same matcher fields as other patterns).
-	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`                 // e.g. '^Use$', '^With$', '^Group$'
+	CallRegex         string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"` // e.g. '^Use$', '^With$', '^Group$'
 	FunctionNameRegex string `yaml:"functionNameRegex,omitempty" json:"functionNameRegex,omitempty"`
 	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
 	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"` // e.g. chi.*Mux / echo.*(Echo|Group)
@@ -266,10 +266,11 @@ type SecurityPattern struct {
 	Scope string `yaml:"scope,omitempty" json:"scope,omitempty"`
 
 	// Argument extraction hints — where the middleware value(s) live on the call.
-	MiddlewareArgIndex int  `yaml:"middlewareArgIndex,omitempty" json:"middlewareArgIndex,omitempty"` // index of the first middleware arg
-	MiddlewareVariadic bool `yaml:"middlewareVariadic,omitempty" json:"middlewareVariadic,omitempty"` // collect args from MiddlewareArgIndex..end
-	MiddlewareFromRecv bool `yaml:"middlewareFromRecv,omitempty" json:"middlewareFromRecv,omitempty"` // the middleware value is the receiver (rare)
-	HandlerArgIndex    int  `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"`       // wrapped/guarded handler arg (scope=wrapper/route)
+	MiddlewareArgIndex    int  `yaml:"middlewareArgIndex,omitempty" json:"middlewareArgIndex,omitempty"`       // index of the first middleware arg
+	MiddlewareVariadic    bool `yaml:"middlewareVariadic,omitempty" json:"middlewareVariadic,omitempty"`       // collect args from MiddlewareArgIndex..end
+	MiddlewareExcludeLast bool `yaml:"middlewareExcludeLast,omitempty" json:"middlewareExcludeLast,omitempty"` // with variadic: skip the final arg (the handler), for gin/fiber per-route mw
+	MiddlewareFromRecv    bool `yaml:"middlewareFromRecv,omitempty" json:"middlewareFromRecv,omitempty"`       // the middleware value is the receiver (rare)
+	HandlerArgIndex       int  `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"`             // wrapped/guarded handler arg (scope=wrapper/route)
 
 	// Package/type filtering.
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
@@ -566,8 +567,8 @@ type APISpecConfig struct {
 	// only when actually referenced by a resolved operation, so unused presets
 	// don't bloat the spec. Not serialized.
 	presetSchemes map[string]SecurityScheme `yaml:"-" json:"-"`
-	Tags            []Tag                     `yaml:"tags" json:"tags,omitempty"`
-	ExternalDocs    *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
+	Tags          []Tag                     `yaml:"tags" json:"tags,omitempty"`
+	ExternalDocs  *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters

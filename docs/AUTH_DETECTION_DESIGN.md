@@ -340,12 +340,20 @@ paths:
    (`reconcileSecuritySchemes`): user schemes always emitted, preset schemes only
    when referenced, dangling refs warned. Unresolved-middleware warning gated on
    mappings existing (no noise for non-auth projects). net/http handler-wrap
-   preset deferred (too ambiguous); per-route middleware for gin/chi-With
-   deferred (handler-position ambiguity). Real-world note: projects usually wrap
-   library middleware in custom helpers, so the common path is detect→warn→map
-   (the detector still fires to open the gate). Output unchanged for projects
+   preset deferred (too ambiguous); chi `With` deferred (chained-call
+   ambiguity). Output unchanged for projects
    without auth libs (verified vs v51 snapshots). Tested: config_security_test.go
    (detector + reconciliation) + existing e2e.
+6b. ✓ DONE — Wrapper look-through (resolves the common real-world case where a
+   project wraps library middleware in its own helper). When a detected
+   middleware ref doesn't directly match a mapping, the resolver follows the call
+   graph (Metadata.Callers) into the wrapper's body to find a library middleware
+   it calls, and resolves to that scheme (Extractor.expandMiddlewareRefs /
+   lookThroughMiddleware, depth-bounded, cycle-guarded). Added
+   MiddlewareExcludeLast + gin/fiber per-route patterns (handler is the final
+   variadic arg). Verified zero-config end-to-end on the gofiber auth-jwt recipe:
+   middleware.Protected() -> jwtware.New -> bearerAuth on exactly the guarded
+   routes. Unit-tested in security_test.go.
 7. UI: surface detected schemes; interactive picker to map unresolved
    middleware → scheme, persisted into the generated config.
 

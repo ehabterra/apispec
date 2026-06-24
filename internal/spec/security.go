@@ -106,6 +106,29 @@ func middlewareRefFromArg(arg *metadata.CallArgument) (MiddlewareRef, bool) {
 	return ref, true
 }
 
+// anyMappingMatches reports whether any mapping resolves the ref to a scheme.
+func anyMappingMatches(ref MiddlewareRef, mappings []SecurityMapping) bool {
+	for _, m := range mappings {
+		if m.matches(ref) {
+			return true
+		}
+	}
+	return false
+}
+
+// middlewareBaseID renders the call-graph BaseID for a middleware identity, used
+// to look up the function's body edges in Metadata.Callers ("pkg.name" or
+// "pkg.RecvType.name"). Returns "" when the identity is incomplete.
+func middlewareBaseID(ref MiddlewareRef) string {
+	if ref.Pkg == "" || ref.FunctionName == "" {
+		return ""
+	}
+	if ref.RecvType != "" {
+		return ref.Pkg + "." + strings.TrimPrefix(ref.RecvType, "*") + "." + ref.FunctionName
+	}
+	return ref.Pkg + "." + ref.FunctionName
+}
+
 // matches reports whether the mapping's identity matchers all match the ref.
 // Empty matcher fields are ignored; a mapping with no matchers never reaches
 // here (validateSecurityConfig rejects it).
