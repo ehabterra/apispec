@@ -1,0 +1,165 @@
+package spec
+
+import (
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
+
+// mkIdentPkg builds an ident CallArgument with a name and package.
+func mkIdentPkg(meta *metadata.Metadata, name, pkg string) *metadata.CallArgument {
+	a := mkIdent(meta, name, "")
+	if pkg != "" {
+		a.Pkg = meta.StringPool.Get(pkg)
+	}
+	return a
+}
+
+func TestMiddlewareRefFromArg(t *testing.T) {
+	meta := newTestMeta()
+
+	t.Run("ident", func(t *testing.T) {
+		arg := mkIdentPkg(meta, "customMiddleware", "complex-chi-router")
+		ref, ok := middlewareRefFromArg(arg)
+		if !ok {
+			t.Fatal("expected ok")
+		}
+		if ref.FunctionName != "customMiddleware" || ref.Pkg != "complex-chi-router" || ref.RecvType != "" {
+			t.Errorf("got %+v", ref)
+		}
+	})
+
+	t.Run("selector method value", func(t *testing.T) {
+		// h.authMiddleware where h has type Handler in pkg .../handler.
+		x := mkIdent(meta, "h", "")
+		sel := mkIdentPkg(meta, "authMiddleware", "complex-chi-router/handler")
+		arg := mkSelector(meta, x, sel)
+		arg.ReceiverType = mkIdent(meta, "Handler", "")
+
+		ref, ok := middlewareRefFromArg(arg)
+		if !ok {
+			t.Fatal("expected ok")
+		}
+		if ref.FunctionName != "authMiddleware" || ref.Pkg != "complex-chi-router/handler" || ref.RecvType != "Handler" {
+			t.Errorf("got %+v", ref)
+		}
+	})
+
+	t.Run("constructor call", func(t *testing.T) {
+		// middleware.Timeout(...) -> Fun is selector(middleware, Timeout).
+		x := mkIdent(meta, "middleware", "")
+		fnSel := mkIdentPkg(meta, "Timeout", "github.com/go-chi/chi/v5/middleware")
+		call := mkMethodCall(meta, x, fnSel)
+
+		ref, ok := middlewareRefFromArg(call)
+		if !ok {
+			t.Fatal("expected ok")
+		}
+		if ref.FunctionName != "Timeout" || ref.Pkg != "github.com/go-chi/chi/v5/middleware" {
+			t.Errorf("got %+v", ref)
+		}
+	})
+
+	t.Run("nil arg", func(t *testing.T) {
+		if _, ok := middlewareRefFromArg(nil); ok {
+			t.Error("expected not ok for nil")
+		}
+	})
+
+	t.Run("empty ident", func(t *testing.T) {
+		if _, ok := middlewareRefFromArg(mkIdent(meta, "", "")); ok {
+			t.Error("expected not ok for empty ident")
+		}
+	})
+}
+
+func TestSecurityMappingMatches(t *testing.T) {
+	ref := MiddlewareRef{FunctionName: "authMiddleware", Pkg: "app/handler", RecvType: "Handler"}
+
+	tests := []struct {
+		name string
+		m    SecurityMapping
+		want bool
+	}{
+		{"function match", SecurityMapping{FunctionNameRegex: "^authMiddleware$"}, true},
+		{"function mismatch", SecurityMapping{FunctionNameRegex: "^other$"}, false},
+		{"pkg match", SecurityMapping{PkgRegex: "app/.*"}, true},
+		{"pkg mismatch", SecurityMapping{PkgRegex: "vendor/.*"}, false},
+		{"recv match", SecurityMapping{RecvTypeRegex: "Handler"}, true},
+		{"recv mismatch", SecurityMapping{RecvTypeRegex: "Service"}, false},
+		{"all three match", SecurityMapping{FunctionNameRegex: "auth", PkgRegex: "app", RecvTypeRegex: "Handler"}, true},
+		{"one of three fails", SecurityMapping{FunctionNameRegex: "auth", PkgRegex: "app", RecvTypeRegex: "Service"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.matches(ref); got != tt.want {
+				t.Errorf("matches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveSecurity(t *testing.T) {
+	bearer := SecurityMapping{FunctionNameRegex: "^authMiddleware$", Schemes: []SecurityRequirement{{"bearerAuth": {}}}}
+	apiKey := SecurityMapping{FunctionNameRegex: "^apiKeyAuth$", Schemes: []SecurityRequirement{{"apiKeyAuth": {}}}}
+	public := SecurityMapping{FunctionNameRegex: "^AllowPublic$", Public: true}
+	orMap := SecurityMapping{
+		FunctionNameRegex: "^eitherAuth$",
+		SchemesAnyOf:      [][]SecurityRequirement{{{"bearerAuth": {}}}, {{"apiKeyAuth": {}}}},
+	}
+	mappings := []SecurityMapping{bearer, apiKey, public, orMap}
+
+	t.Run("single scheme", func(t *testing.T) {
+		reqs, pub, unresolved := resolveSecurity([]MiddlewareRef{{FunctionName: "authMiddleware"}}, mappings)
+		if pub || len(unresolved) != 0 {
+			t.Fatalf("pub=%v unresolved=%v", pub, unresolved)
+		}
+		if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+			t.Fatalf("got %+v", reqs)
+		}
+	})
+
+	t.Run("AND merge across two middleware", func(t *testing.T) {
+		reqs, _, _ := resolveSecurity([]MiddlewareRef{{FunctionName: "authMiddleware"}, {FunctionName: "apiKeyAuth"}}, mappings)
+		if len(reqs) != 1 {
+			t.Fatalf("expected one merged requirement object, got %+v", reqs)
+		}
+		if _, ok := reqs[0]["bearerAuth"]; !ok {
+			t.Errorf("missing bearerAuth in %+v", reqs[0])
+		}
+		if _, ok := reqs[0]["apiKeyAuth"]; !ok {
+			t.Errorf("missing apiKeyAuth in %+v", reqs[0])
+		}
+	})
+
+	t.Run("OR alternatives", func(t *testing.T) {
+		reqs, _, _ := resolveSecurity([]MiddlewareRef{{FunctionName: "eitherAuth"}}, mappings)
+		if len(reqs) != 2 {
+			t.Fatalf("expected two alternative requirement objects, got %+v", reqs)
+		}
+	})
+
+	t.Run("public", func(t *testing.T) {
+		_, pub, _ := resolveSecurity([]MiddlewareRef{{FunctionName: "AllowPublic"}}, mappings)
+		if !pub {
+			t.Error("expected public")
+		}
+	})
+
+	t.Run("unresolved", func(t *testing.T) {
+		reqs, _, unresolved := resolveSecurity([]MiddlewareRef{{FunctionName: "mysteryMW", Pkg: "app"}}, mappings)
+		if len(reqs) != 0 {
+			t.Errorf("expected no reqs, got %+v", reqs)
+		}
+		if len(unresolved) != 1 || unresolved[0].FunctionName != "mysteryMW" {
+			t.Fatalf("expected one unresolved, got %+v", unresolved)
+		}
+	})
+
+	t.Run("dedup identical requirements", func(t *testing.T) {
+		reqs, _, _ := resolveSecurity([]MiddlewareRef{{FunctionName: "authMiddleware"}, {FunctionName: "authMiddleware"}}, mappings)
+		if len(reqs) != 1 {
+			t.Errorf("expected dedup to one, got %+v", reqs)
+		}
+	})
+}

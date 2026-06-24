@@ -32,6 +32,19 @@ type MountPatternMatcher interface {
 	ExtractMount(node TrackerNodeInterface) MountInfo
 }
 
+// SecurityPatternMatcher matches auth/security middleware-application patterns.
+type SecurityPatternMatcher interface {
+	PatternMatcher
+
+	// Scope returns the SecurityScope* the matched middleware applies over
+	// (router|subtree|route|wrapper).
+	Scope() string
+
+	// ExtractMiddleware returns the resolved identity of each middleware value
+	// applied by the matched call.
+	ExtractMiddleware(node TrackerNodeInterface) []MiddlewareRef
+}
+
 // RequestPatternMatcher matches request body patterns
 type RequestPatternMatcher interface {
 	PatternMatcher

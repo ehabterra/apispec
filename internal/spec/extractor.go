@@ -93,6 +93,7 @@ type Extractor struct {
 	// Pattern matchers
 	routeMatchers    []RoutePatternMatcher
 	mountMatchers    []MountPatternMatcher
+	securityMatchers []SecurityPatternMatcher
 	requestMatchers  []RequestPatternMatcher
 	responseMatchers []ResponsePatternMatcher
 	paramMatchers    []ParamPatternMatcher
@@ -132,6 +133,12 @@ func (e *Extractor) initializePatternMatchers() {
 	for _, pattern := range e.cfg.Framework.MountPatterns {
 		matcher := NewMountPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
 		e.mountMatchers = append(e.mountMatchers, matcher)
+	}
+
+	// Initialize security matchers
+	for _, pattern := range e.cfg.Framework.SecurityPatterns {
+		matcher := NewSecurityPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		e.securityMatchers = append(e.securityMatchers, matcher)
 	}
 
 	// Initialize request matchers

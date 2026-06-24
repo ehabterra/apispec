@@ -310,7 +310,13 @@ paths:
    `APISpecConfig.SecurityMappings`, with `validateSecurityConfig()` enforced in
    `LoadAPISpecConfig` and YAML round-trip + validation unit tests
    (`internal/spec/security_config_test.go`). Inert until phase 3.
-3. `SecurityPatternMatcher` + identity resolver (`resolveSecurity`).
+3. ✓ DONE — `SecurityPatternMatcher` (`SecurityPatternMatcherImpl` in
+   pattern_matchers.go: MatchNode/GetPriority/Scope/ExtractMiddleware, wired as
+   `Extractor.securityMatchers`) + identity resolver in security.go
+   (`MiddlewareRef`, `middlewareRefFromArg` for ident/selector/call,
+   `SecurityMapping.matches`, `resolveSecurity` with AND-merge / OR-alternatives
+   / public / unresolved + dedup). Unit-tested in security_test.go. Not yet
+   called from traversal (phase 4).
 4. Traversal propagation (`mountSecurity`) + `RouteInfo.Security`.
 5. Mapper: populate `Operation.Security`, reconcile catalog, diagnostics.
 6. Default presets per framework + import-based library detector/mappings.
