@@ -224,8 +224,9 @@ Security []SecurityRequirement // nil => inherit global; []{} => explicitly publ
 
 `handleRouteNode` sets `routeInfo.Security = merge(mountSecurity, routeLevel…)`.
 
-In `mapper.go::buildPathsFromRoutes`, set `op.Security = route.Security` when
-non-nil. Semantics:
+In `mapper.go::buildPathsFromRoutes`, set `op.Security` from `route.Security`
+when non-nil. `Operation.Security` is a `*[]SecurityRequirement` so the three
+states survive marshalling (a plain slice + omitempty can't tell nil from empty):
 - `nil` → omit (operation inherits the document-level `security`).
 - empty non-nil (`[]`) → emit `security: []` (explicitly public, overrides global).
 - non-empty → emit the requirements.
@@ -326,10 +327,12 @@ paths:
    subtree; route/wrapper scope resolves on the route node. `public` →
    `security: []`. Unresolved middleware collected on the Extractor
    (`UnresolvedSecurity`). No-op (output unchanged) when no security configured.
-5. ✓ DONE (partial) — Mapper sets `Operation.Security` from `route.Security`
+5. ✓ DONE — Mapper sets `Operation.Security` from `route.Security`
    (nil = inherit) and logs a `[security]` warning listing unresolved
-   middleware. Catalog reconciliation (auto-adding preset scheme definitions)
-   and the `security: []` literal-empty rendering remain for phase 5/6.
+   middleware. Catalog reconciliation auto-adds referenced preset scheme
+   definitions (phase 6). `Operation.Security` is a `*[]SecurityRequirement` so
+   an explicitly-public route renders `security: []` (was previously omitted by
+   omitempty); covered by TestOperationSecurityRendering.
    Verified end-to-end on complex_chi_router (generator/security_test.go): only
    the authMiddleware-group routes get `bearerAuth`; /auth and /health do not.
 6. ✓ DONE — Framework scope presets (config_security.go: chi/echo/gin/fiber/mux
@@ -402,8 +405,10 @@ paths:
   `auth_mux_subrouter` (gorilla/mux Subrouter Use → golang-jwt), `auth_nethttp_wrap`
   (net/http handler-wrap → golang-jwt closure look-through). Each protects
   exactly the intended route and leaves the open one untouched. (No
-  public-override fixture: `security: []` currently renders as omitted, so it is
-  not observable yet — see §5 omitempty note.)
+  public-override testdata fixture because a Public mapping is config-only — no
+  zero-config library maps to "public" — and a -c config replaces the framework
+  defaults; the `security: []` rendering itself is covered by a unit test
+  (TestOperationSecurityRendering).)
 - Snapshot each with `scripts/compare-spec.sh --generate -v <N>`, then guard with
   `scripts/compare-spec.sh -v <N>` (auto-discovery picks up new `testdata/*`
   dirs; snapshots are git-ignored, regenerated locally).

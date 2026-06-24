@@ -1,9 +1,11 @@
 package spec
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"gopkg.in/yaml.v3"
 )
 
 // mkIdentPkg builds an ident CallArgument with a name and package.
@@ -273,4 +275,40 @@ func TestResolveSecurity(t *testing.T) {
 			t.Errorf("expected dedup to one, got %+v", reqs)
 		}
 	})
+}
+
+// TestOperationSecurityRendering pins the three render states of per-operation
+// security: nil omits the field (inherit global), a non-nil empty slice renders
+// `security: []` (explicit public), and a non-empty slice renders the list.
+func TestOperationSecurityRendering(t *testing.T) {
+	routes := []*RouteInfo{
+		{Path: "/inherit", Method: "GET", Function: "a", Security: nil},
+		{Path: "/public", Method: "GET", Function: "b", Security: []SecurityRequirement{}},
+		{Path: "/protected", Method: "GET", Function: "c", Security: []SecurityRequirement{{"bearerAuth": {}}}},
+	}
+	paths := buildPathsFromRoutes(routes)
+	out, err := yaml.Marshal(paths)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(out)
+
+	// /inherit: no security key under its GET.
+	if i := strings.Index(got, "/inherit"); i >= 0 {
+		seg := got[i:]
+		if j := strings.Index(seg, "/p"); j >= 0 { // up to the next path
+			seg = seg[:j]
+		}
+		if strings.Contains(seg, "security:") {
+			t.Errorf("/inherit should omit security; got:\n%s", seg)
+		}
+	}
+	// /public: explicit empty array.
+	if !strings.Contains(got, "security: []") {
+		t.Errorf("/public should render `security: []`; got:\n%s", got)
+	}
+	// /protected: the scheme listed.
+	if !strings.Contains(got, "bearerAuth: []") {
+		t.Errorf("/protected should list bearerAuth; got:\n%s", got)
+	}
 }

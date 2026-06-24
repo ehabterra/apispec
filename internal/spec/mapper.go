@@ -284,13 +284,13 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		operation.Responses = buildResponses(route.Response)
 
 		// Per-operation security resolved from detected auth middleware.
-		// nil => inherit the document-level security (field omitted).
-		// non-nil (incl. explicitly-public empty) => set on the operation.
-		// NOTE: Operation.Security has `omitempty`, so an explicitly-public
-		// empty slice currently renders as "inherit" rather than `security: []`;
-		// emitting a literal empty array is a follow-up (see design doc §5).
+		// route.Security: nil => inherit the document-level security (field
+		// omitted); non-nil empty => explicitly public (`security: []`);
+		// non-empty => the operation's requirements. The pointer field preserves
+		// that distinction (a non-nil pointer is never dropped by omitempty).
 		if route.Security != nil {
-			operation.Security = route.Security
+			sec := route.Security
+			operation.Security = &sec
 		}
 
 		// Set operation on path item
