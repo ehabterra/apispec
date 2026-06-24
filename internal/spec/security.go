@@ -12,10 +12,10 @@ import (
 // It is what SecurityMapping matches against, and what the diagnostics list
 // reports for unresolved middleware.
 type MiddlewareRef struct {
-	FunctionName string // e.g. "authMiddleware", "New", "Timeout", "customMiddleware"
-	Pkg          string // e.g. "complex-chi-router/handler", "github.com/golang-jwt/..."
-	RecvType     string // receiver type for method values (e.g. "Handler"); empty otherwise
-	Position     string // source position, for diagnostics
+	FunctionName string `json:"functionName"` // e.g. "authMiddleware", "New", "Timeout"
+	Pkg          string `json:"pkg"`          // e.g. "app/handler", "github.com/golang-jwt/..."
+	RecvType     string `json:"recvType"`     // receiver type for method values (e.g. "Handler"); empty otherwise
+	Position     string `json:"position"`     // source position, for diagnostics
 }
 
 // String renders a human-readable identity for logs / the UI diagnostics list.
@@ -183,14 +183,16 @@ func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []S
 			}
 			for _, reqObj := range m.Schemes {
 				for k, v := range reqObj {
-					combined[k] = append([]string(nil), v...)
+					// Non-nil empty slice so it renders as `[]` (OpenAPI requires
+					// an array of scopes), not null.
+					combined[k] = append([]string{}, v...)
 				}
 			}
 			for _, grp := range m.SchemesAnyOf {
 				alt := SecurityRequirement{}
 				for _, reqObj := range grp {
 					for k, v := range reqObj {
-						alt[k] = append([]string(nil), v...)
+						alt[k] = append([]string{}, v...)
 					}
 				}
 				if len(alt) > 0 {

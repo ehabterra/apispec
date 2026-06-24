@@ -12,6 +12,7 @@ type SecurityRequirement = intspec.SecurityRequirement
 type SecurityScheme = intspec.SecurityScheme
 type SecurityPattern = intspec.SecurityPattern
 type SecurityMapping = intspec.SecurityMapping
+type MiddlewareRef = intspec.MiddlewareRef
 type FrameworkConfig = intspec.FrameworkConfig
 type Tag = intspec.Tag
 

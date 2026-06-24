@@ -4,8 +4,8 @@
 // / parameters / mounts / request context). Everything is bound to the
 // store and sent (structured) to /api/generate — no legacy editor.
 import { html, useState, useEffect, createContext, useContext } from "/assets/js/preact.js";
-import { useStore, setConfig, setState } from "/assets/js/store.js";
-import { openLoadConfig, openSaveConfig, resetFrameworkDefaults } from "/assets/js/actions.js";
+import { useStore, setConfig, setState, getState } from "/assets/js/store.js";
+import { openLoadConfig, openSaveConfig, resetFrameworkDefaults, generate } from "/assets/js/actions.js";
 import { Info } from "/assets/js/components/charts.js";
 
 // Shares the config toolbar's filter query and expand/collapse signal with
@@ -430,6 +430,11 @@ export function ConfigMode() {
             <${SecuritySchemes} c=${c} />
           <//>
 
+          <${Section} title="Security mappings" help="Map auth middleware to a security scheme so apispec can mark the routes it guards as protected. Each mapping matches the middleware by function name / package / receiver-type regex and applies the chosen scheme. Most well-known libraries (echo-jwt, gin-jwt, gofiber/contrib/jwt, golang-jwt, …) and custom wrappers around them are detected automatically; use these mappings for project-specific middleware that apispec couldn't resolve (see 'Unresolved auth middleware' after generating)." hint=${`${(c.securityMappings || []).length}`}>
+            <${UnresolvedMiddleware} c=${c} />
+            <${SecurityMappings} c=${c} />
+          <//>
+
           <div class="section-group">Detection — how routes &amp; types are discovered</div>
 
           <${Section} title="Routes" help="How route registrations are recognised, and where the method, path and handler are read from. Each pattern matches a call by the called name (Call regex) and its receiver type (Receiver type regex). Example (Gin): r.GET('/users/{id}', h) — Call regex ^(?i)(GET|POST|PUT|DELETE|PATCH)$, receiver ^.*gin\\.\\*(Engine|RouterGroup)$, method from the call name, path from arg 0, handler from arg 1." hint=${`${(fc.routePatterns || []).length}`}>
@@ -618,5 +623,114 @@ function SecuritySchemes({ c }) {
       `,
     )}
     <button class="btn secondary sm" onClick=${add}>+ Add scheme</button>
+  `;
+}
+
+// escapeRe escapes regex metacharacters so an identity string (pkg path,
+// function name) can be used as an anchored exact-match regex.
+function escapeRe(s) {
+  return (s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// defaultSchemeFor returns a sensible securityScheme definition for a well-known
+// scheme name, so picking it auto-creates a usable scheme.
+function defaultSchemeFor(name) {
+  switch (name) {
+    case "basicAuth":
+      return { type: "http", scheme: "basic" };
+    case "apiKeyAuth":
+      return { type: "apiKey", in: "header", name: "Authorization" };
+    default:
+      return { type: "http", scheme: "bearer", bearerFormat: "JWT" };
+  }
+}
+
+// firstSchemeName extracts the scheme name from a mapping's first requirement.
+function firstSchemeName(m) {
+  const req = (m.schemes && m.schemes[0]) || {};
+  return Object.keys(req)[0] || "";
+}
+
+// SecurityMappings edits the middleware-identity -> scheme mappings.
+function SecurityMappings({ c }) {
+  const maps = c.securityMappings || [];
+  const set = (arr) => setConfig({ securityMappings: arr });
+  const upd = (i, patch) => set(maps.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const del = (i) => set(maps.filter((_, j) => j !== i));
+  const setScheme = (i, name) => upd(i, { schemes: [{ [name]: [] }] });
+  const add = () =>
+    set([...maps, { functionNameRegex: "", pkgRegex: "", recvTypeRegex: "", schemes: [{ bearerAuth: [] }] }]);
+  const schemeNames = Object.keys(c.securitySchemes || {});
+  return html`
+    ${maps.map(
+      (m, i) => html`
+        <div class="card">
+          <div class="row">
+            <strong style="font-size:var(--fs-sm)">Mapping ${i + 1}</strong>
+            <span class="spacer"></span>${RowDelete(() => del(i))}
+          </div>
+          ${txt("Function name regex", m.functionNameRegex, (e) => upd(i, { functionNameRegex: e.target.value }), "^authMiddleware$")}
+          <div class="row">
+            ${txt("Package regex", m.pkgRegex, (e) => upd(i, { pkgRegex: e.target.value }), "github\\.com/me/.*")}
+            ${txt("Receiver type regex", m.recvTypeRegex, (e) => upd(i, { recvTypeRegex: e.target.value }), "Handler")}
+          </div>
+          <label class="lbl">Scheme</label>
+          <input class="input" list="known-schemes" value=${firstSchemeName(m)} onChange=${(e) => setScheme(i, e.target.value.trim())} placeholder="bearerAuth" />
+        </div>
+      `,
+    )}
+    <datalist id="known-schemes">
+      ${[...new Set([...schemeNames, "bearerAuth", "basicAuth", "apiKeyAuth"])].map((n) => html`<option value=${n}></option>`)}
+    </datalist>
+    <button class="btn secondary sm" onClick=${add}>+ Add mapping</button>
+  `;
+}
+
+// UnresolvedMiddleware lists auth middleware that the last generation detected
+// but could not map to a scheme, with a one-click picker to map each.
+function UnresolvedMiddleware({ c }) {
+  const s = useStore();
+  const items = s.unresolvedSecurity || [];
+  if (!items.length) return null;
+
+  const mapOne = (mw, schemeName) => {
+    schemeName = (schemeName || "bearerAuth").trim();
+    // Ensure the scheme exists.
+    const schemes = { ...(c.securitySchemes || {}) };
+    if (!schemes[schemeName]) schemes[schemeName] = defaultSchemeFor(schemeName);
+    // Build an anchored mapping from the middleware identity.
+    const m = { schemes: [{ [schemeName]: [] }] };
+    if (mw.functionName) m.functionNameRegex = "^" + escapeRe(mw.functionName) + "$";
+    if (mw.pkg) m.pkgRegex = "^" + escapeRe(mw.pkg) + "$";
+    if (mw.recvType) m.recvTypeRegex = "^" + escapeRe(mw.recvType) + "$";
+    setConfig({ securitySchemes: schemes, securityMappings: [...(c.securityMappings || []), m] });
+    // Drop it from the pending list immediately; a regenerate refreshes the rest.
+    const key = (x) => `${x.pkg}.${x.recvType}.${x.functionName}`;
+    setState({ unresolvedSecurity: items.filter((x) => key(x) !== key(mw)) });
+  };
+
+  const label = (mw) =>
+    (mw.pkg ? mw.pkg + "." : "") + (mw.recvType ? "(" + mw.recvType + ")." : "") + (mw.functionName || "?");
+
+  return html`
+    <div class="card" style="border-color:var(--warn,#b80)">
+      <div class="row">
+        <strong style="font-size:var(--fs-sm)">Unresolved auth middleware (${items.length})</strong>
+      </div>
+      <div class="muted" style="font-size:var(--fs-sm);margin:4px 0 8px">
+        Detected on routes but not matched to a scheme. Pick a scheme to map each, then re-generate.
+      </div>
+      ${items.map(
+        (mw) => html`
+          <div class="row" style="align-items:center;gap:8px;margin-bottom:6px">
+            <code style="flex:1;overflow:auto">${label(mw)}</code>
+            <input class="input" style="max-width:140px" list="known-schemes" placeholder="bearerAuth"
+              onKeyDown=${(e) => { if (e.key === "Enter") mapOne(mw, e.target.value); }} />
+            <button class="btn secondary sm" onClick=${(e) => mapOne(mw, e.target.previousElementSibling.value)}>Map</button>
+          </div>
+        `,
+      )}
+      <button class="btn sm" onClick=${() => generate()}>Re-generate with mappings</button>
+    </div>
   `;
 }

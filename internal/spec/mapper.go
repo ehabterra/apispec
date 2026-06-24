@@ -97,8 +97,22 @@ func DefaultAPISpecConfig() *APISpecConfig {
 	return &APISpecConfig{}
 }
 
-// MapMetadataToOpenAPI maps metadata to OpenAPI specification
+// SecurityDiagnostics carries non-fatal findings from security extraction.
+type SecurityDiagnostics struct {
+	// UnresolvedMiddleware lists detected auth middleware that matched no
+	// SecurityMapping (deduped). The UI uses this to offer interactive mapping.
+	UnresolvedMiddleware []MiddlewareRef
+}
+
+// MapMetadataToOpenAPI maps metadata to OpenAPI specification.
 func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, error) {
+	spec, _, err := MapMetadataToOpenAPIWithDiagnostics(tree, cfg, genCfg)
+	return spec, err
+}
+
+// MapMetadataToOpenAPIWithDiagnostics is MapMetadataToOpenAPI plus the security
+// diagnostics gathered during extraction (e.g. unresolved middleware).
+func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg GeneratorConfig) (*OpenAPISpec, *SecurityDiagnostics, error) {
 	// Create extractor
 	extractor := NewExtractor(tree, cfg)
 
@@ -168,7 +182,8 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 		spec.Components.SecuritySchemes = schemes
 	}
 
-	return spec, nil
+	diag := &SecurityDiagnostics{UnresolvedMiddleware: extractor.UnresolvedSecurity()}
+	return spec, diag, nil
 }
 
 // reconcileSecuritySchemes returns the securityScheme catalog to emit: all

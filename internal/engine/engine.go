@@ -220,6 +220,11 @@ type Engine struct {
 	// can warn that the spec may be incomplete. Keyed by package path → first
 	// error message.
 	skipped []SkippedPackage
+
+	// unresolvedSecurity lists auth middleware detected during the last
+	// generation that matched no SecurityMapping. Surfaced to callers (the UI)
+	// so the user can map it to a scheme.
+	unresolvedSecurity []intspec.MiddlewareRef
 }
 
 // SkippedPackage is a package excluded from analysis due to compile/type
@@ -587,9 +592,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 
 	// Generate OpenAPI spec
 	tSpec := time.Now()
-	openAPISpec, err := intspec.MapMetadataToOpenAPI(tree, apispecConfig, generatorConfig)
+	openAPISpec, secDiag, err := intspec.MapMetadataToOpenAPIWithDiagnostics(tree, apispecConfig, generatorConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
+	}
+	if secDiag != nil {
+		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
@@ -936,6 +944,12 @@ func (e *Engine) loadFilteredPackages(cfg *packages.Config) ([]*packages.Package
 // GetMetadata returns the current metadata
 func (e *Engine) GetMetadata() *metadata.Metadata {
 	return e.metadata
+}
+
+// GetUnresolvedSecurity returns auth middleware detected during the most recent
+// generation that matched no SecurityMapping (deduped). Empty when none.
+func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
+	return e.unresolvedSecurity
 }
 
 // SkippedPackages returns the in-module packages excluded from the most recent

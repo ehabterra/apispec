@@ -377,8 +377,20 @@ paths:
    ExtractMiddlewareFromEdge) and a chi `With` security pattern. Unit-tested in
    security_test.go (chained route protected; non-chained sibling untouched).
    Nothing remains deferred in scope detection.
-7. UI: surface detected schemes; interactive picker to map unresolved
-   middleware → scheme, persisted into the generated config.
+7. ✓ DONE — UI picker for unresolved middleware. The engine surfaces detected-
+   but-unmapped middleware: MapMetadataToOpenAPIWithDiagnostics returns a
+   SecurityDiagnostics{UnresolvedMiddleware}, the engine stores it
+   (GetUnresolvedSecurity), and /api/generate returns it as
+   GenerateResponse.unresolvedSecurity. The config form gained a Security
+   mappings section: a SecurityMappings editor (function/pkg/recvType regex ->
+   scheme) plus an "Unresolved auth middleware" panel listing each detected item
+   with a scheme picker; choosing one appends an anchored SecurityMapping (and
+   auto-creates a known scheme) to the config and re-generates. GenerateRequest /
+   DetectResponse carry securityMappings so the mapping round-trips and persists
+   via save/render-config. Also fixed empty scope lists to render as `[]` (not
+   null). Verified end-to-end through the API on Go-Clean: submitting an
+   AuthSessionMiddleware -> cookieAuth mapping protects 17 routes and drops the
+   item from the unresolved list.
 
 ## 10. Testing
 

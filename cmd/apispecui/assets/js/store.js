@@ -18,6 +18,7 @@ const state = {
     servers: [],
     security: [],
     securitySchemes: {},
+    securityMappings: [], // [{functionNameRegex,pkgRegex,recvTypeRegex,schemes:[{name:[]}]}]
     tags: [],
     externalDocs: null,
     defaults: {},
@@ -39,6 +40,7 @@ const state = {
   hasSpec: false,
   lastPaths: 0,
   skipped: [], // [{package, reason}] dropped due to type errors (project didn't build)
+  unresolvedSecurity: [], // [{functionName,pkg,recvType,position}] auth middleware not mapped to a scheme
   specView: "swagger", // swagger | redoc | scalar
   panelCollapsed: false,
 };

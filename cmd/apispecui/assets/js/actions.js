@@ -39,6 +39,7 @@ function applyConfigSections(o) {
     servers: o.servers || [],
     security: o.security || [],
     securitySchemes: o.securitySchemes || {},
+    securityMappings: o.securityMappings || [],
     tags: o.tags || [],
     externalDocs: o.externalDocs || null,
     defaults: o.defaults || {},
@@ -114,6 +115,7 @@ function fullGenerateRequest() {
     servers: c.servers,
     security: c.security,
     securitySchemes: c.securitySchemes,
+    securityMappings: c.securityMappings,
     tags: c.tags,
     externalDocs: c.externalDocs,
     defaults: c.defaults,
@@ -157,6 +159,7 @@ export async function generate() {
         mode: "start",
         specView: "swagger",
         skipped,
+        unresolvedSecurity: res.unresolvedSecurity || [],
       });
       if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
