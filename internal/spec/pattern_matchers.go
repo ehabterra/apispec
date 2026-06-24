@@ -652,8 +652,19 @@ func (s *SecurityPatternMatcherImpl) ExtractMiddlewareFromEdge(edge *metadata.Ca
 			end--
 		}
 	}
+	var meta *metadata.Metadata
+	if ctxImpl, ok := s.contextProvider.(*ContextProviderImpl); ok {
+		meta = ctxImpl.meta
+	}
 	for i := start; i < end && i < len(edge.Args); i++ {
-		if ref, ok := middlewareRefFromArg(edge.Args[i]); ok {
+		arg := edge.Args[i]
+		// A middleware passed as a local variable (mw := pkg.New(...)) resolves to
+		// the underlying constructor so look-through / mappings can match it.
+		if ref, ok := resolveMiddlewareIdentRef(edge, arg, meta); ok {
+			refs = append(refs, ref)
+			continue
+		}
+		if ref, ok := middlewareRefFromArg(arg); ok {
 			refs = append(refs, ref)
 		}
 	}

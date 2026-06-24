@@ -106,6 +106,115 @@ func middlewareRefFromArg(arg *metadata.CallArgument) (MiddlewareRef, bool) {
 	return ref, true
 }
 
+// resolveMiddlewareIdentRef follows a local variable assignment so middleware
+// passed as a variable (e.g. `mw := pkg.New(...); r.Use(mw)` or
+// `jwtMiddleware := middleware.JWT(secret); g := v1.Group("/x", jwtMiddleware)`)
+// resolves to the underlying constructor/function identity rather than the
+// opaque variable name. Without this the ref is the variable (which matches no
+// mapping and has no analyzable body), so look-through has nothing to follow.
+//
+// The assignment is looked up on the caller function's AssignmentMap (the
+// tracker copies edges without it, so edge.AssignmentMap is usually empty here).
+// Returns ok=false when the arg is not an ident, has no recorded assignment, or
+// the assignment yields no call identity (e.g. a plain package-level function
+// value, which is left as-is so it can still match a mapping by name).
+func resolveMiddlewareIdentRef(edge *metadata.CallGraphEdge, arg *metadata.CallArgument, meta *metadata.Metadata) (MiddlewareRef, bool) {
+	if edge == nil || arg == nil || arg.GetKind() != metadata.KindIdent {
+		return MiddlewareRef{}, false
+	}
+	assigns := lookupAssignments(edge, arg.GetName(), meta)
+	if len(assigns) == 0 {
+		return MiddlewareRef{}, false
+	}
+	// Latest-wins: the variable's final assignment is the one in effect.
+	assign := assigns[len(assigns)-1]
+
+	// Assignment from a function call records the callee identity directly.
+	if assign.CalleeFunc != "" {
+		return MiddlewareRef{
+			FunctionName: assign.CalleeFunc,
+			Pkg:          assign.CalleePkg,
+			Position:     arg.GetPosition(),
+		}, true
+	}
+	// Otherwise try to read the identity off the RHS expression (selector/call).
+	switch assign.Value.GetKind() {
+	case metadata.KindCall, metadata.KindSelector:
+		if ref, ok := middlewareRefFromArg(&assign.Value); ok {
+			return ref, true
+		}
+	}
+	return MiddlewareRef{}, false
+}
+
+// lookupAssignments finds the assignment records for a variable name in the
+// scope of the matched call. It prefers the edge's own AssignmentMap (when
+// present) and falls back to the caller function's AssignmentMap, which is where
+// assignments survive after the tracker copies edges.
+func lookupAssignments(edge *metadata.CallGraphEdge, name string, meta *metadata.Metadata) []metadata.Assignment {
+	if assigns, ok := edge.AssignmentMap[name]; ok && len(assigns) > 0 {
+		return assigns
+	}
+	if meta == nil {
+		return nil
+	}
+	callerName := meta.StringPool.GetString(edge.Caller.Name)
+	callerPkg := meta.StringPool.GetString(edge.Caller.Pkg)
+	if callerName == "" || callerPkg == "" {
+		return nil
+	}
+	pkg, ok := meta.Packages[callerPkg]
+	if !ok || pkg == nil {
+		return nil
+	}
+	callerRecv := strings.TrimPrefix(meta.StringPool.GetString(edge.Caller.RecvType), "*")
+
+	// Iterate files in sorted order so resolution is deterministic regardless of
+	// map ordering (consistent with the rest of the generator).
+	fileNames := make([]string, 0, len(pkg.Files))
+	for fn := range pkg.Files {
+		fileNames = append(fileNames, fn)
+	}
+	sort.Strings(fileNames)
+
+	for _, fname := range fileNames {
+		file := pkg.Files[fname]
+		if file == nil {
+			continue
+		}
+		// Plain functions.
+		if fn, ok := file.Functions[callerName]; ok && fn != nil {
+			if assigns, ok := fn.AssignmentMap[name]; ok && len(assigns) > 0 {
+				return assigns
+			}
+		}
+		// Methods live under their receiver type (e.g. (h *Handler) Register).
+		for _, t := range file.Types {
+			if t == nil {
+				continue
+			}
+			for i := range t.Methods {
+				m := &t.Methods[i]
+				if meta.StringPool.GetString(m.Name) != callerName {
+					continue
+				}
+				// When the caller's receiver type is known, require it to match so
+				// same-named methods on different types don't collide.
+				if callerRecv != "" {
+					mRecv := strings.TrimPrefix(meta.StringPool.GetString(m.Receiver), "*")
+					if mRecv != "" && mRecv != callerRecv {
+						continue
+					}
+				}
+				if assigns, ok := m.AssignmentMap[name]; ok && len(assigns) > 0 {
+					return assigns
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // anyMappingMatches reports whether any mapping resolves the ref to a scheme.
 func anyMappingMatches(ref MiddlewareRef, mappings []SecurityMapping) bool {
 	for _, m := range mappings {
