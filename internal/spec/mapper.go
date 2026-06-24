@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"go/types"
+	"log"
 	"maps"
 	"net/http"
 	"os"
@@ -103,6 +104,18 @@ func MapMetadataToOpenAPI(tree TrackerTreeInterface, cfg *APISpecConfig, genCfg 
 
 	// Extract routes
 	routes := extractor.ExtractRoutes()
+
+	// Warn about auth middleware that was detected but matched no
+	// SecurityMapping, so the user knows what to map. apispecui surfaces the
+	// same list for interactive assignment (see design doc §5).
+	if unresolved := extractor.UnresolvedSecurity(); len(unresolved) > 0 {
+		names := make([]string, len(unresolved))
+		for i, r := range unresolved {
+			names[i] = r.String()
+		}
+		log.Printf("[security] %d auth middleware not mapped to a security scheme "+
+			"(add securityMappings to resolve): %s", len(unresolved), strings.Join(names, ", "))
+	}
 
 	// Build paths
 	paths := buildPathsFromRoutes(routes)
@@ -206,6 +219,16 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 
 		// Add responses
 		operation.Responses = buildResponses(route.Response)
+
+		// Per-operation security resolved from detected auth middleware.
+		// nil => inherit the document-level security (field omitted).
+		// non-nil (incl. explicitly-public empty) => set on the operation.
+		// NOTE: Operation.Security has `omitempty`, so an explicitly-public
+		// empty slice currently renders as "inherit" rather than `security: []`;
+		// emitting a literal empty array is a follow-up (see design doc §5).
+		if route.Security != nil {
+			operation.Security = route.Security
+		}
 
 		// Set operation on path item
 		setOperationOnPathItem(&pathItem, route.Method, operation)

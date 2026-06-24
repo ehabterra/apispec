@@ -317,8 +317,21 @@ paths:
    `SecurityMapping.matches`, `resolveSecurity` with AND-merge / OR-alternatives
    / public / unresolved + dedup). Unit-tested in security_test.go. Not yet
    called from traversal (phase 4).
-4. Traversal propagation (`mountSecurity`) + `RouteInfo.Security`.
-5. Mapper: populate `Operation.Security`, reconcile catalog, diagnostics.
+4. ✓ DONE — Traversal propagation + `RouteInfo.Security`. Threads accumulated
+   `[]MiddlewareRef` (not resolved reqs) through the traversal and resolves once
+   per route via `applyRouteSecurity`. Router-scope (`Use`) is correlated to
+   siblings **by caller** (`callerKey`) so a `Use` inside a chi
+   `Group(func(rg){…})` closure protects only the group's routes, not siblings
+   on the outer router; subtree-scope (`Group(mw…)`) folds into the whole
+   subtree; route/wrapper scope resolves on the route node. `public` →
+   `security: []`. Unresolved middleware collected on the Extractor
+   (`UnresolvedSecurity`). No-op (output unchanged) when no security configured.
+5. ✓ DONE (partial) — Mapper sets `Operation.Security` from `route.Security`
+   (nil = inherit) and logs a `[security]` warning listing unresolved
+   middleware. Catalog reconciliation (auto-adding preset scheme definitions)
+   and the `security: []` literal-empty rendering remain for phase 5/6.
+   Verified end-to-end on complex_chi_router (generator/security_test.go): only
+   the authMiddleware-group routes get `bearerAuth`; /auth and /health do not.
 6. Default presets per framework + import-based library detector/mappings.
 7. UI: surface detected schemes; interactive picker to map unresolved
    middleware → scheme, persisted into the generated config.
