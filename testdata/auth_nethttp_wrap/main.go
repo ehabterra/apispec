@@ -26,6 +26,6 @@ func health(w http.ResponseWriter, r *http.Request)  {}
 func main() {
 	mux := http.NewServeMux()
 	mux.Handle("GET /users/{id}", jwtAuth(http.HandlerFunc(getUser))) // protected
-	mux.HandleFunc("GET /health", health)                            // open
+	mux.HandleFunc("GET /health", health)                             // open
 	_ = http.ListenAndServe(":8080", mux)
 }

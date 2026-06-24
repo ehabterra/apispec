@@ -351,7 +351,16 @@ func (m *Metadata) traverseCallerChildrenHelper(edge *CallGraphEdge, action func
 // once and cached. Used by lookups that must pick a deterministic match when a
 // bare name exists in multiple packages, without re-sorting on every call.
 func (m *Metadata) SortedPackageNames() []string {
-	if m.sortedPkgNames != nil {
+	m.cacheMutex.RLock()
+	cached := m.sortedPkgNames
+	m.cacheMutex.RUnlock()
+	if cached != nil {
+		return cached
+	}
+
+	m.cacheMutex.Lock()
+	defer m.cacheMutex.Unlock()
+	if m.sortedPkgNames != nil { // another goroutine won the race
 		return m.sortedPkgNames
 	}
 	names := make([]string, 0, len(m.Packages))

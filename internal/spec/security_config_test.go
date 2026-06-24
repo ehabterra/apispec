@@ -149,6 +149,20 @@ func TestValidateSecurityConfig(t *testing.T) {
 			}},
 			wantErr: true,
 		},
+		{
+			name: "mapping with blank scheme key",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^auth$", Schemes: []SecurityRequirement{{"  ": {}}}},
+			}},
+			wantErr: true,
+		},
+		{
+			name: "mapping with blank scheme key in schemesAnyOf",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^auth$", SchemesAnyOf: [][]SecurityRequirement{{{"": {}}}}},
+			}},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

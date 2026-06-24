@@ -199,9 +199,10 @@ func ApplySecurityPresets(cfg *APISpecConfig, meta *metadata.Metadata) {
 	if cfg == nil || cfg.presetsApplied {
 		return
 	}
-	cfg.presetsApplied = true
 	imports := collectImports(meta)
 	if len(imports) == 0 {
+		// No imports yet (e.g. called before metadata is ready) — don't latch
+		// presetsApplied, so a later run with real imports can still apply.
 		return
 	}
 
@@ -219,6 +220,9 @@ func ApplySecurityPresets(cfg *APISpecConfig, meta *metadata.Metadata) {
 			}
 		}
 	}
+	// Latch only once imports have been seen, so reuse doesn't duplicate the
+	// merged preset mappings.
+	cfg.presetsApplied = true
 }
 
 // collectImports returns the unique set of import paths referenced anywhere in

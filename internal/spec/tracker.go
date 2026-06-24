@@ -1713,7 +1713,14 @@ func (t *TrackerTree) GetFunctionContext(functionName string) (*metadata.Functio
 		}
 		sort.Strings(fileNames)
 		for _, fileName := range fileNames {
-			for _, fn := range pkg.Files[fileName].Functions {
+			fns := pkg.Files[fileName].Functions
+			fnKeys := make([]string, 0, len(fns))
+			for key := range fns {
+				fnKeys = append(fnKeys, key)
+			}
+			sort.Strings(fnKeys)
+			for _, key := range fnKeys {
+				fn := fns[key]
 				if t.meta.StringPool.GetString(fn.Name) == functionName {
 					return fn, pkgName, fileName
 				}

@@ -14,7 +14,7 @@ func main() {
 	app := fiber.New()
 	api := app.Group("/api")
 	api.Use(jwtware.New(jwtware.Config{SigningKey: jwtware.SigningKey{Key: []byte("secret")}}))
-	api.Get("/me", me)        // protected
+	api.Get("/me", me)         // protected
 	app.Get("/health", health) // open
 	_ = app.Listen(":8080")
 }

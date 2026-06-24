@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/ehabterra/apispec/pkg/patterns"
 )
@@ -349,12 +350,37 @@ func (c *APISpecConfig) ValidateSecurity() error {
 		if !m.Public && len(m.Schemes) == 0 && len(m.SchemesAnyOf) == 0 {
 			return fmt.Errorf("securityMappings[%d]: needs schemes, schemesAnyOf, or public:true", i)
 		}
+		// Reject blank scheme keys: `schemes: [{"": []}]` would emit an invalid
+		// OpenAPI security requirement.
+		for j, req := range m.Schemes {
+			if err := checkSchemeKeys(fmt.Sprintf("securityMappings[%d].schemes[%d]", i, j), req); err != nil {
+				return err
+			}
+		}
+		for j, grp := range m.SchemesAnyOf {
+			for k, req := range grp {
+				if err := checkSchemeKeys(fmt.Sprintf("securityMappings[%d].schemesAnyOf[%d][%d]", i, j, k), req); err != nil {
+					return err
+				}
+			}
+		}
 		for _, f := range []struct{ name, expr string }{
 			{"functionNameRegex", m.FunctionNameRegex}, {"pkgRegex", m.PkgRegex}, {"recvTypeRegex", m.RecvTypeRegex},
 		} {
 			if err := compile(fmt.Sprintf("securityMappings[%d].%s", i, f.name), f.expr); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// checkSchemeKeys rejects blank/whitespace-only scheme names in a security
+// requirement object.
+func checkSchemeKeys(where string, req SecurityRequirement) error {
+	for name := range req {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s: blank security scheme name", where)
 		}
 	}
 	return nil

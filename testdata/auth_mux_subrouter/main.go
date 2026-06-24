@@ -25,8 +25,8 @@ func health(w http.ResponseWriter, r *http.Request)  {}
 func main() {
 	r := mux.NewRouter()
 	api := r.PathPrefix("/api").Subrouter()
-	api.Use(jwtMiddleware)             // guards the subrouter
-	api.HandleFunc("/me", getUser)     // protected
-	r.HandleFunc("/health", health)    // open
+	api.Use(jwtMiddleware)          // guards the subrouter
+	api.HandleFunc("/me", getUser)  // protected
+	r.HandleFunc("/health", health) // open
 	_ = http.ListenAndServe(":8080", r)
 }
