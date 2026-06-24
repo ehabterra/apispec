@@ -107,7 +107,7 @@ func TestExpandMiddlewareRefs_WrapperLookThrough(t *testing.T) {
 
 	// The wrapper should have been replaced by the library ref that maps.
 	reqs, _, unresolved := resolveSecurity(got, cfg.SecurityMappings)
-	if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+	if !reqHasScheme(reqs, "bearerAuth") {
 		t.Errorf("wrapper did not resolve to bearerAuth via look-through: got refs=%+v reqs=%+v", got, reqs)
 	}
 	if len(unresolved) != 0 {
@@ -227,7 +227,7 @@ func TestResolveSecurity(t *testing.T) {
 		if pub || len(unresolved) != 0 {
 			t.Fatalf("pub=%v unresolved=%v", pub, unresolved)
 		}
-		if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+		if len(reqs) != 1 || !reqHasScheme(reqs, "bearerAuth") {
 			t.Fatalf("got %+v", reqs)
 		}
 	})

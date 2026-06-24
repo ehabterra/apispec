@@ -85,7 +85,7 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 		return nil, err
 	}
 
-	if err := config.validateSecurityConfig(); err != nil {
+	if err := config.ValidateSecurity(); err != nil {
 		return nil, err
 	}
 

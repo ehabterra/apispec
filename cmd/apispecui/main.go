@@ -1187,6 +1187,9 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		if err := yaml.Unmarshal([]byte(req.RawConfig), cfg); err != nil {
 			return nil, fmt.Errorf("invalid YAML in rawConfig: %w", err)
 		}
+		if err := cfg.ValidateSecurity(); err != nil {
+			return nil, err
+		}
 		return cfg, nil
 	}
 
@@ -1246,6 +1249,11 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		if len(fc.RequestContext.TypeRegexes) > 0 || len(fc.RequestContext.BodyAccessors) > 0 {
 			cfg.Framework.RequestContext = fc.RequestContext
 		}
+	}
+	// Enforce the same security-config checks LoadAPISpecConfig applies, so
+	// structured securityMappings from the UI can't bypass validation.
+	if err := cfg.ValidateSecurity(); err != nil {
+		return nil, err
 	}
 	return cfg, nil
 }

@@ -164,9 +164,11 @@ if ! [[ "$VERSION" =~ ^[0-9]+$ ]]; then
 fi
 SNAPSHOT="openapi-7.${VERSION}.yaml"
 
-# Build apispec once unless a binary was supplied.
+# Build apispec once unless a binary was supplied. Remove the self-built binary
+# on exit so it doesn't accumulate in $TMPDIR (a supplied --bin is left alone).
 if [[ -z "$APISPEC_BIN" ]]; then
   APISPEC_BIN="$(mktemp -t apispec.XXXXXX)"
+  trap 'rm -f "$APISPEC_BIN"' EXIT
   echo ">> Building apispec ..." >&2
   ( cd "$REPO_ROOT" && go build -o "$APISPEC_BIN" ./cmd/apispec )
 fi

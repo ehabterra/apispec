@@ -67,8 +67,10 @@ func TestSecurityConfigYAMLRoundTrip(t *testing.T) {
 	if got := len(out.SecurityMappings); got != 3 {
 		t.Fatalf("securityMappings: got %d, want 3", got)
 	}
-	if m := out.SecurityMappings[0]; len(m.Schemes) != 1 || len(m.Schemes[0]["bearerAuth"]) != 0 {
+	if m := out.SecurityMappings[0]; len(m.Schemes) != 1 {
 		t.Errorf("mapping[0] schemes round-trip mismatch: %+v", m)
+	} else if _, ok := m.Schemes[0]["bearerAuth"]; !ok {
+		t.Errorf("mapping[0] lost the bearerAuth scheme key: %+v", m.Schemes[0])
 	}
 	if m := out.SecurityMappings[1]; len(m.SchemesAnyOf) != 2 {
 		t.Errorf("mapping[1] schemesAnyOf round-trip mismatch: %+v", m)
@@ -151,7 +153,7 @@ func TestValidateSecurityConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.validateSecurityConfig()
+			err := tt.cfg.ValidateSecurity()
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validateSecurityConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}

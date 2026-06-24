@@ -196,9 +196,10 @@ func securityLibraryBundles() []securityLibraryBundle {
 // them and matched in order. Scheme definitions go into cfg.presetSchemes and
 // are emitted only when referenced (see the mapper's reconciliation).
 func ApplySecurityPresets(cfg *APISpecConfig, meta *metadata.Metadata) {
-	if cfg == nil {
+	if cfg == nil || cfg.presetsApplied {
 		return
 	}
+	cfg.presetsApplied = true
 	imports := collectImports(meta)
 	if len(imports) == 0 {
 		return

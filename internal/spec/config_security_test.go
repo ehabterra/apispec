@@ -33,7 +33,7 @@ func TestApplySecurityPresets(t *testing.T) {
 			[]MiddlewareRef{{FunctionName: "JWT", Pkg: "github.com/labstack/echo/v4/middleware"}},
 			cfg.SecurityMappings,
 		)
-		if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+		if !reqHasScheme(reqs, "bearerAuth") {
 			t.Errorf("echo middleware.JWT did not resolve to bearerAuth: %+v", reqs)
 		}
 		if _, ok := cfg.presetSchemes["bearerAuth"]; !ok {
@@ -52,20 +52,31 @@ func TestApplySecurityPresets(t *testing.T) {
 		}
 	})
 
-	t.Run("user mappings take precedence (matched first)", func(t *testing.T) {
+	t.Run("user mapping is placed before presets and contributes", func(t *testing.T) {
 		cfg := &APISpecConfig{
 			SecurityMappings: []SecurityMapping{
 				{FunctionNameRegex: "^JWT$", PkgRegex: "labstack/echo", Schemes: []SecurityRequirement{{"myScheme": {}}}},
 			},
 		}
 		ApplySecurityPresets(cfg, metaWithImports("github.com/labstack/echo/v4/middleware"))
+		// User mappings must come before the appended presets.
+		if len(cfg.SecurityMappings) == 0 || len(cfg.SecurityMappings[0].Schemes) == 0 {
+			t.Fatalf("expected user mapping first; got %+v", cfg.SecurityMappings)
+		}
+		if _, ok := cfg.SecurityMappings[0].Schemes[0]["myScheme"]; !ok {
+			t.Errorf("user mapping is not first: %+v", cfg.SecurityMappings[0])
+		}
+		// resolveSecurity merges every match, so when the same middleware matches
+		// both the user mapping and a preset, both schemes are present.
 		reqs, _, _ := resolveSecurity(
 			[]MiddlewareRef{{FunctionName: "JWT", Pkg: "github.com/labstack/echo/v4/middleware"}},
 			cfg.SecurityMappings,
 		)
-		// Both user and preset mappings match; user's first entry must contribute.
-		if _, ok := reqs[0]["myScheme"]; !ok {
-			t.Errorf("user mapping did not take precedence: %+v", reqs)
+		if !reqHasScheme(reqs, "myScheme") {
+			t.Errorf("user mapping did not contribute myScheme: %+v", reqs)
+		}
+		if !reqHasScheme(reqs, "bearerAuth") {
+			t.Errorf("preset mapping did not contribute bearerAuth: %+v", reqs)
 		}
 	})
 
@@ -76,10 +87,22 @@ func TestApplySecurityPresets(t *testing.T) {
 			[]MiddlewareRef{{FunctionName: "New", Pkg: "github.com/gofiber/contrib/jwt"}},
 			cfg.SecurityMappings,
 		)
-		if len(reqs) != 1 || len(reqs[0]["bearerAuth"]) != 0 {
+		if !reqHasScheme(reqs, "bearerAuth") {
 			t.Errorf("fiber jwt New did not resolve to bearerAuth: %+v", reqs)
 		}
 	})
+}
+
+// reqHasScheme reports whether any requirement object contains the named scheme
+// key. Used instead of len(reqs[0][name]) == 0, which also passes when the key
+// is absent (nil slice has length 0).
+func reqHasScheme(reqs []SecurityRequirement, name string) bool {
+	for _, r := range reqs {
+		if _, ok := r[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func TestReconcileSecuritySchemes(t *testing.T) {

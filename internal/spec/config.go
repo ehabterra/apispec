@@ -309,12 +309,13 @@ var validSecurityScopes = map[string]bool{
 	SecurityScopeWrapper: true,
 }
 
-// validateSecurityConfig checks the auth/security patterns and mappings for
-// obvious mistakes: unknown scopes, patterns/mappings that can never match, and
-// regexes that do not compile. It returns the first error encountered. It is a
-// no-op when no security patterns/mappings are configured, so existing configs
-// are unaffected.
-func (c *APISpecConfig) validateSecurityConfig() error {
+// ValidateSecurity checks the auth/security patterns and mappings for obvious
+// mistakes: unknown scopes, patterns/mappings that can never match, and regexes
+// that do not compile. It returns the first error encountered. It is a no-op
+// when no security patterns/mappings are configured, so existing configs are
+// unaffected. Call it on any config built outside LoadAPISpecConfig (e.g. the
+// UI's structured/raw paths) to enforce the same checks.
+func (c *APISpecConfig) ValidateSecurity() error {
 	compile := func(field, expr string) error {
 		if expr == "" {
 			return nil
@@ -567,8 +568,12 @@ type APISpecConfig struct {
 	// only when actually referenced by a resolved operation, so unused presets
 	// don't bloat the spec. Not serialized.
 	presetSchemes map[string]SecurityScheme `yaml:"-" json:"-"`
-	Tags          []Tag                     `yaml:"tags" json:"tags,omitempty"`
-	ExternalDocs  *ExternalDocumentation    `yaml:"externalDocs" json:"externalDocs,omitempty"`
+
+	// presetsApplied guards ApplySecurityPresets against appending the same
+	// library mappings twice when a config is reused across runs. Not serialized.
+	presetsApplied bool                   `yaml:"-" json:"-"`
+	Tags           []Tag                  `yaml:"tags" json:"tags,omitempty"`
+	ExternalDocs   *ExternalDocumentation `yaml:"externalDocs" json:"externalDocs,omitempty"`
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters

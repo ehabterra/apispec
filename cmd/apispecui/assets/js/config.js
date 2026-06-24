@@ -694,7 +694,7 @@ function UnresolvedMiddleware({ c }) {
   if (!items.length) return null;
 
   const mapOne = (mw, schemeName) => {
-    schemeName = (schemeName || "bearerAuth").trim();
+    schemeName = (schemeName || "bearerAuth").trim() || "bearerAuth";
     // Ensure the scheme exists.
     const schemes = { ...(c.securitySchemes || {}) };
     if (!schemes[schemeName]) schemes[schemeName] = defaultSchemeFor(schemeName);
