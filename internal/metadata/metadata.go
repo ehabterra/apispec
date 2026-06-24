@@ -1050,17 +1050,48 @@ func hasZeroArgMethodOnPtr(ptr *types.Pointer, name string) bool {
 }
 
 // marshalerKind classifies how a named type encodes itself to JSON.
-// TextMarshaler is checked first because it is exact (encoding/json always
-// emits a JSON string for it); MarshalJSON is a weaker, low-confidence signal.
+// encoding/json calls MarshalJSON in preference to MarshalText, so a type that
+// implements MarshalJSON controls its own (possibly non-string) output and is
+// the weaker, low-confidence signal — it must be checked first. Only a type
+// with MarshalText but no MarshalJSON is guaranteed to encode as a JSON string.
 func marshalerKind(n *types.Named) MarshalerKind {
-	ptr := types.NewPointer(n)
-	if hasZeroArgMethod(n, "MarshalText") || hasZeroArgMethodOnPtr(ptr, "MarshalText") {
-		return MarshalerText
-	}
-	if hasZeroArgMethod(n, "MarshalJSON") || hasZeroArgMethodOnPtr(ptr, "MarshalJSON") {
+	if hasMarshalerMethod(n, "MarshalJSON") {
 		return MarshalerJSON
 	}
+	if hasMarshalerMethod(n, "MarshalText") {
+		return MarshalerText
+	}
 	return MarshalerNone
+}
+
+// hasMarshalerMethod reports whether the named type (via its pointer method set,
+// which includes value-receiver methods) has a method `name` with the exact
+// marshaler signature `func() ([]byte, error)`. Validating the full signature —
+// not just a zero-arg method of the right name — avoids misclassifying an
+// unrelated method that merely shares the name.
+func hasMarshalerMethod(n *types.Named, name string) bool {
+	ms := types.NewMethodSet(types.NewPointer(n))
+	for i := 0; i < ms.Len(); i++ {
+		m := ms.At(i)
+		if m.Obj().Name() != name {
+			continue
+		}
+		if sig, ok := m.Obj().Type().(*types.Signature); ok && isMarshalerSignature(sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// isMarshalerSignature reports whether sig is `func() ([]byte, error)`.
+func isMarshalerSignature(sig *types.Signature) bool {
+	if sig.Params().Len() != 0 || sig.Results().Len() != 2 {
+		return false
+	}
+	byteSlice := types.NewSlice(types.Typ[types.Byte])
+	errType := types.Universe.Lookup("error").Type()
+	return types.Identical(sig.Results().At(0).Type(), byteSlice) &&
+		types.Identical(sig.Results().At(1).Type(), errType)
 }
 
 // recordExternalTypeFacts walks t and records an ExternalTypeFact for every
@@ -1070,6 +1101,13 @@ func marshalerKind(n *types.Named) MarshalerKind {
 // the full import path (github.com/google/uuid.UUID) and the short
 // pkg-qualified name (uuid.UUID) so either lookup form resolves later.
 func recordExternalTypeFacts(t types.Type, meta *Metadata) {
+	recordExternalTypeFactsVisited(t, meta, make(map[*types.TypeName]struct{}))
+}
+
+// recordExternalTypeFactsVisited is the cycle-guarded worker. Recursive type
+// definitions like `type T []T` would otherwise recurse forever (T → []T → T …);
+// each external named type is tracked by its *types.TypeName before recursing.
+func recordExternalTypeFactsVisited(t types.Type, meta *Metadata, visited map[*types.TypeName]struct{}) {
 	switch tt := t.(type) {
 	case *types.Named:
 		obj := tt.Obj()
@@ -1079,6 +1117,10 @@ func recordExternalTypeFacts(t types.Type, meta *Metadata) {
 		if !isExternalPackage(obj.Pkg().Path(), meta.CurrentModulePath) {
 			return // internal type: it renders as its own component
 		}
+		if _, seen := visited[obj]; seen {
+			return // already walked this named type — break the cycle
+		}
+		visited[obj] = struct{}{}
 		if meta.ExternalTypes == nil {
 			meta.ExternalTypes = make(map[string]ExternalTypeFact)
 		}
@@ -1090,18 +1132,18 @@ func recordExternalTypeFacts(t types.Type, meta *Metadata) {
 		meta.ExternalTypes[obj.Pkg().Name()+"."+obj.Name()] = fact // short pkg.Type
 		// Recurse the underlying so e.g. external `type Foo []Bar` also records
 		// Bar when it too is external.
-		recordExternalTypeFacts(tt.Underlying(), meta)
+		recordExternalTypeFactsVisited(tt.Underlying(), meta, visited)
 	case *types.Pointer:
-		recordExternalTypeFacts(tt.Elem(), meta)
+		recordExternalTypeFactsVisited(tt.Elem(), meta, visited)
 	case *types.Slice:
-		recordExternalTypeFacts(tt.Elem(), meta)
+		recordExternalTypeFactsVisited(tt.Elem(), meta, visited)
 	case *types.Array:
-		recordExternalTypeFacts(tt.Elem(), meta)
+		recordExternalTypeFactsVisited(tt.Elem(), meta, visited)
 	case *types.Map:
-		recordExternalTypeFacts(tt.Key(), meta)
-		recordExternalTypeFacts(tt.Elem(), meta)
+		recordExternalTypeFactsVisited(tt.Key(), meta, visited)
+		recordExternalTypeFactsVisited(tt.Elem(), meta, visited)
 	case *types.Chan:
-		recordExternalTypeFacts(tt.Elem(), meta)
+		recordExternalTypeFactsVisited(tt.Elem(), meta, visited)
 	}
 }
 

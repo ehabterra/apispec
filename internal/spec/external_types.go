@@ -23,32 +23,25 @@ import (
 // import path and the short pkg-qualified name; resolveExternalType also falls
 // back to the short form, so listing both is belt-and-suspenders.
 var wellKnownExternalSchemas = map[string]*Schema{
-	// UUID / ULID libraries — RFC-4122-style strings.
+	// UUID libraries — RFC-4122 canonical strings, validated by `format: uuid`.
+	// (ULIDs are intentionally NOT here: they are Crockford Base32, not UUIDs,
+	// so `format: uuid` would reject them. With no registry entry they resolve
+	// to a plain string via their TextMarshaler, which is correct.)
 	"github.com/google/uuid.UUID":    {Type: "string", Format: "uuid"},
 	"github.com/gofrs/uuid.UUID":     {Type: "string", Format: "uuid"},
 	"github.com/satori/go.uuid.UUID": {Type: "string", Format: "uuid"},
-	"github.com/oklog/ulid.ULID":     {Type: "string", Format: "uuid"},
-	"github.com/oklog/ulid/v2.ULID":  {Type: "string", Format: "uuid"},
 	"uuid.UUID":                      {Type: "string", Format: "uuid"},
-	"ulid.ULID":                      {Type: "string", Format: "uuid"},
 
-	// Decimal / big-number libraries — string-encoded to preserve precision.
+	// Decimal libraries serialize as a precision-preserving string. `decimal`
+	// is a non-standard (annotative) format, so validators ignore it.
 	"github.com/shopspring/decimal.Decimal": {Type: "string", Format: "decimal"},
 	"decimal.Decimal":                       {Type: "string", Format: "decimal"},
 
-	// database/sql nullable scalars marshal as the bare value or null.
-	"database/sql.NullString":  {Type: "string"},
-	"sql.NullString":           {Type: "string"},
-	"database/sql.NullBool":    {Type: "boolean"},
-	"sql.NullBool":             {Type: "boolean"},
-	"database/sql.NullInt32":   {Type: "integer", Format: "int32"},
-	"sql.NullInt32":            {Type: "integer", Format: "int32"},
-	"database/sql.NullInt64":   {Type: "integer", Format: "int64"},
-	"sql.NullInt64":            {Type: "integer", Format: "int64"},
-	"database/sql.NullFloat64": {Type: "number", Format: "double"},
-	"sql.NullFloat64":          {Type: "number", Format: "double"},
-	"database/sql.NullTime":    {Type: "string", Format: "date-time"},
-	"sql.NullTime":             {Type: "string", Format: "date-time"},
+	// NOTE: database/sql.Null* deliberately omitted. They have no custom JSON
+	// marshaler, so encoding/json emits the struct ({"String":"…","Valid":…}).
+	// Without a registry entry they resolve to that struct component, which is
+	// the truthful shape; users wanting bare-scalar/nullable semantics add a
+	// typeMapping for their wrapper type.
 }
 
 // shortTypeName reduces a full import-path-qualified name
@@ -61,19 +54,39 @@ func shortTypeName(s string) string {
 	return s
 }
 
-// lookupConfigSchema returns the user-configured typeMapping schema for goType,
-// matching both the full import path and the short pkg-qualified name on either
-// side so a config entry written as "uuid.UUID" still matches a field typed as
-// "github.com/google/uuid.UUID" and vice-versa. Returns nil when no entry
-// matches. (externalTypes is handled separately — it produces a named
-// component + $ref rather than an inline schema — see configHasExternalType.)
+// isBareTypeName reports whether s is a bare named type rather than a wrapped
+// form ([]T, *T, map[K]V). Short-name matching must not be applied to wrapped
+// types: shortTypeName("[]pkg/x.T") would yield "x.T", wrongly matching a
+// scalar mapping for the element type instead of letting the slice branch build
+// array<T>.
+func isBareTypeName(s string) bool {
+	return !strings.HasPrefix(s, "[") && !strings.HasPrefix(s, "*") && !strings.HasPrefix(s, "map[")
+}
+
+// typeNamesMatch reports whether a config entry name matches goType — always by
+// exact string, and additionally by short pkg-qualified name when BOTH are bare
+// named types (so "uuid.UUID" matches "github.com/google/uuid.UUID", but a
+// scalar "uuid.UUID" entry never matches "[]github.com/google/uuid.UUID").
+func typeNamesMatch(entryName, goType string) bool {
+	if entryName == goType {
+		return true
+	}
+	if isBareTypeName(entryName) && isBareTypeName(goType) {
+		return shortTypeName(entryName) == shortTypeName(goType)
+	}
+	return false
+}
+
+// lookupConfigSchema returns the user-configured typeMapping schema for goType.
+// Returns nil when no entry matches. (externalTypes is handled separately — it
+// produces a named component + $ref rather than an inline schema — see
+// configHasExternalType.)
 func lookupConfigSchema(cfg *APISpecConfig, goType string) *Schema {
 	if cfg == nil {
 		return nil
 	}
-	want := shortTypeName(goType)
 	for _, m := range cfg.TypeMapping {
-		if m.GoType == goType || shortTypeName(m.GoType) == want {
+		if typeNamesMatch(m.GoType, goType) {
 			return m.OpenAPIType
 		}
 	}
@@ -81,16 +94,14 @@ func lookupConfigSchema(cfg *APISpecConfig, goType string) *Schema {
 }
 
 // configHasExternalType reports whether goType matches a user externalTypes
-// entry (by full or short name). Such types are emitted as named components by
-// the existing externalTypes path, so the built-in registry must not pre-empt
-// them.
+// entry. Such types are emitted as named components by the existing
+// externalTypes path, so the built-in registry must not pre-empt them.
 func configHasExternalType(cfg *APISpecConfig, goType string) bool {
 	if cfg == nil {
 		return false
 	}
-	want := shortTypeName(goType)
 	for _, e := range cfg.ExternalTypes {
-		if e.Name == goType || shortTypeName(e.Name) == want {
+		if typeNamesMatch(e.Name, goType) {
 			return true
 		}
 	}

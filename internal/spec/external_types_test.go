@@ -22,7 +22,6 @@ func TestResolveExternalType_Registry(t *testing.T) {
 		{"uuid full path", "github.com/google/uuid.UUID", "string", "uuid"},
 		{"uuid short", "uuid.UUID", "string", "uuid"},
 		{"decimal", "github.com/shopspring/decimal.Decimal", "string", "decimal"},
-		{"sql.NullInt64", "database/sql.NullInt64", "integer", "int64"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,6 +116,35 @@ func TestLookupConfigSchema_ShortAndFullName(t *testing.T) {
 	// Config written short must match a field typed by full path.
 	if s := lookupConfigSchema(cfg, "github.com/google/uuid.UUID"); s == nil || s.Format != "uuid" {
 		t.Fatalf("short config entry should match full-path type, got %+v", s)
+	}
+	// A scalar mapping for the element type must NOT short-match a wrapped type
+	// (otherwise []uuid.UUID would resolve to a bare uuid instead of array<uuid>).
+	if s := lookupConfigSchema(cfg, "[]github.com/google/uuid.UUID"); s != nil {
+		t.Fatalf("scalar uuid mapping must not match a slice type, got %+v", s)
+	}
+	if s := lookupConfigSchema(cfg, "*github.com/google/uuid.UUID"); s != nil {
+		t.Fatalf("scalar uuid mapping must not match a pointer type, got %+v", s)
+	}
+	// An explicit wrapper mapping still matches exactly.
+	cfg2 := &APISpecConfig{TypeMapping: []TypeMapping{
+		{GoType: "[]uuid.UUID", OpenAPIType: &Schema{Type: "array"}},
+	}}
+	if s := lookupConfigSchema(cfg2, "[]uuid.UUID"); s == nil || s.Type != "array" {
+		t.Fatalf("explicit wrapper mapping should match exactly, got %+v", s)
+	}
+}
+
+func TestResolveExternalType_RegistryOmissions(t *testing.T) {
+	// ULID (Crockford Base32, not a UUID) and database/sql.Null* (marshal as
+	// structs) are intentionally NOT in the registry. With no facts/config they
+	// must fall through (handled=false) to the general resolution path.
+	for _, name := range []string{
+		"github.com/oklog/ulid/v2.ULID", "ulid.ULID",
+		"database/sql.NullString", "database/sql.NullInt64", "sql.NullTime",
+	} {
+		if _, _, ok := resolveExternalType(name, nil, nil, map[string]*Schema{}, map[string]bool{}); ok {
+			t.Errorf("%s must not be registry-handled", name)
+		}
 	}
 }
 

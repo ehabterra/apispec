@@ -1625,9 +1625,14 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 
 	// Check user typeMapping first, matched by both the full import path and
 	// the short pkg-qualified name so a config entry for "uuid.UUID" matches a
-	// field typed "github.com/google/uuid.UUID".
+	// field typed "github.com/google/uuid.UUID". Primitive-shaped mappings are
+	// inlined at every use site and have no component, so they must NOT be
+	// marked used — otherwise a second occurrence hits the usedTypes guard and
+	// emits a $ref to a component generateSchemas never produces.
 	if s := lookupConfigSchema(cfg, goType); s != nil {
-		markUsedType(usedTypes, goType, s)
+		if !isPrimitiveShapedSchema(s) {
+			markUsedType(usedTypes, goType, s)
+		}
 		return s, schemas
 	}
 
