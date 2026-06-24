@@ -46,4 +46,16 @@ func TestBuildResponses_UninformativeDefaultDropped(t *testing.T) {
 			t.Error("a sole default must be kept")
 		}
 	})
+
+	t.Run("distinct bodies sharing an empty BodyType are not conflated", func(t *testing.T) {
+		// Both have empty BodyType but different rendered schemas; matching on
+		// BodyType alone would wrongly drop the distinct default.
+		r := buildResponses(map[string]*ResponseInfo{
+			"200": {StatusCode: 200, ContentType: "application/json", BodyType: "", Schema: ref("User")},
+			"-1":  {StatusCode: -1, ContentType: "application/json", BodyType: "", Schema: ref("Account")},
+		})
+		if _, ok := r["default"]; !ok {
+			t.Error("default with a distinct body must be kept even when BodyType matches")
+		}
+	})
 }

@@ -361,11 +361,23 @@ func uninformativeDefault(def *ResponseInfo, chosen map[string]*ResponseInfo) bo
 		return true
 	}
 	for status, r := range chosen {
-		if status != "default" && r.BodyType == def.BodyType {
+		if status != "default" && sameRenderedBody(r.Schema, def.Schema) {
 			return true
 		}
 	}
 	return false
+}
+
+// sameRenderedBody compares the actual schemas the spec will render, not the Go
+// BodyType label: two responses can share an (often empty) BodyType yet render
+// different bodies, so matching on BodyType could prune a distinct fallback.
+func sameRenderedBody(a, b *Schema) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ab, _ := yaml.Marshal(a)
+	bb, _ := yaml.Marshal(b)
+	return string(ab) == string(bb)
 }
 
 // isGenericObjectResponse reports whether a response body is the featureless
