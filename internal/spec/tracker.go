@@ -78,6 +78,7 @@ func (at ArgumentType) String() string {
 // TrackerNode represents a node in the call graph tree.
 type TrackerNode struct {
 	key      string
+	keyReady bool // key has been computed + normalized (deref-trimmed)
 	Parent   *TrackerNode
 	Children []*TrackerNode
 	*metadata.CallGraphEdge
@@ -95,16 +96,22 @@ type TrackerNode struct {
 }
 
 func (nd *TrackerNode) Key() string {
-	switch {
-	case nd.key != "":
-	case nd.CallArgument != nil:
-		nd.key = nd.ID()
-	case nd.CallGraphEdge != nil:
-		nd.key = nd.Callee.ID()
+	// Compute + normalize once. Key() is called per-node inside the hot
+	// traverseTree passes, so doing the TrimPrefix on every call (even when the
+	// key is already cached) showed up in profiles — cache the final value.
+	if nd.keyReady {
+		return nd.key
 	}
-
+	if nd.key == "" {
+		switch {
+		case nd.CallArgument != nil:
+			nd.key = nd.ID()
+		case nd.CallGraphEdge != nil:
+			nd.key = nd.Callee.ID()
+		}
+	}
 	nd.key = strings.TrimPrefix(nd.key, "*")
-
+	nd.keyReady = true
 	return nd.key
 }
 
@@ -687,46 +694,61 @@ func (t *TrackerTree) findNodeInSubtreeWithVisited(node *TrackerNode, edgeID str
 
 type assignmentNodes struct {
 	assignmentIndex assigmentIndexMap
+	sorted          []*TrackerNode // cached stable order, built once on first Assign
 }
 
 func (a *assignmentNodes) Assign(f func(*TrackerNode) bool) {
 	// Stable order: this map is walked against the tree to attach assignment
 	// nodes, so a random order would attach ambiguous matches differently each
 	// run (flipping which route claims a shared node, and the final spec).
-	nds := make([]*TrackerNode, 0, len(a.assignmentIndex))
-	for _, nd := range a.assignmentIndex {
-		nds = append(nds, nd)
+	//
+	// traverseTree calls Assign once per visited node, but the map is immutable
+	// for the whole traversal — so sort once and reuse the slice instead of
+	// re-sorting (and re-allocating) on every node, which is O(nodes·N·logN).
+	if a.sorted == nil {
+		a.sorted = make([]*TrackerNode, 0, len(a.assignmentIndex))
+		for _, nd := range a.assignmentIndex {
+			a.sorted = append(a.sorted, nd)
+		}
+		sort.Slice(a.sorted, func(i, j int) bool { return a.sorted[i].Key() < a.sorted[j].Key() })
 	}
-	sort.Slice(nds, func(i, j int) bool { return nds[i].Key() < nds[j].Key() })
-	for _, nd := range nds {
+	for _, nd := range a.sorted {
 		f(nd)
 	}
 }
 
 type variableNodes struct {
 	variables map[paramKey][]*TrackerNode
+	sorted    []*TrackerNode // cached first-of-each-key in stable order
 }
 
 func (v *variableNodes) Assign(f func(*TrackerNode) bool) {
-	// Stable order (see assignmentNodes.Assign): iterate the map's keys sorted.
-	keys := make([]paramKey, 0, len(v.variables))
-	for k := range v.variables {
-		keys = append(keys, k)
+	// Stable order (see assignmentNodes.Assign): build the sorted first-nodes
+	// once and reuse across every traverseTree visit (the map doesn't change).
+	if v.sorted == nil {
+		keys := make([]paramKey, 0, len(v.variables))
+		for k := range v.variables {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			a, b := keys[i], keys[j]
+			if a.Name != b.Name {
+				return a.Name < b.Name
+			}
+			if a.Pkg != b.Pkg {
+				return a.Pkg < b.Pkg
+			}
+			return a.Container < b.Container
+		})
+		v.sorted = make([]*TrackerNode, 0, len(keys))
+		for _, k := range keys {
+			if nds := v.variables[k]; len(nds) > 0 {
+				v.sorted = append(v.sorted, nds[0])
+			}
+		}
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		a, b := keys[i], keys[j]
-		if a.Name != b.Name {
-			return a.Name < b.Name
-		}
-		if a.Pkg != b.Pkg {
-			return a.Pkg < b.Pkg
-		}
-		return a.Container < b.Container
-	})
-	for _, k := range keys {
-		if nds := v.variables[k]; len(nds) > 0 {
-			f(nds[0])
-		}
+	for _, nd := range v.sorted {
+		f(nd)
 	}
 }
 
