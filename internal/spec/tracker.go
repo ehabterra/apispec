@@ -697,7 +697,7 @@ type assignmentNodes struct {
 	sorted          []*TrackerNode // cached stable order, built once on first Assign
 }
 
-func (a *assignmentNodes) Assign(f func(*TrackerNode) bool) {
+func (a *assignmentNodes) Assign(f func(*TrackerNode)) {
 	// Stable order: this map is walked against the tree to attach assignment
 	// nodes, so a random order would attach ambiguous matches differently each
 	// run (flipping which route claims a shared node, and the final spec).
@@ -722,7 +722,7 @@ type variableNodes struct {
 	sorted    []*TrackerNode // cached first-of-each-key in stable order
 }
 
-func (v *variableNodes) Assign(f func(*TrackerNode) bool) {
+func (v *variableNodes) Assign(f func(*TrackerNode)) {
 	// Stable order (see assignmentNodes.Assign): build the sorted first-nodes
 	// once and reuse across every traverseTree visit (the map doesn't change).
 	if v.sorted == nil {
@@ -752,7 +752,7 @@ func (v *variableNodes) Assign(f func(*TrackerNode) bool) {
 	}
 }
 
-func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*TrackerNode) bool) }, limit int, nodeCount map[string]int) bool {
+func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*TrackerNode)) }, limit int, nodeCount map[string]int) bool {
 	if nodeCount == nil {
 		nodeCount = map[string]int{}
 	}
@@ -773,7 +773,7 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 			}
 		}
 
-		mapObject.Assign(func(tn *TrackerNode) bool {
+		mapObject.Assign(func(tn *TrackerNode) {
 			if nodeKey != "" && nodeKey == tn.Key() {
 				nodeTypeParams := node.TypeParams()
 				nodeCount[nodeKey]++
@@ -787,7 +787,6 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 					} else {
 						node.AddChildren(tn.Children)
 					}
-					return true
 				} else if tn.Parent != nil {
 					if len(nodeTypeParams) > 0 {
 						// Filter out parent that have type parameters that are not in the node type parameters
@@ -797,10 +796,8 @@ func traverseTree(nodes []*TrackerNode, mapObject interface{ Assign(func(*Tracke
 					} else {
 						tn.Parent.AddChild(node)
 					}
-					return true
 				}
 			}
-			return false
 		})
 
 		if traverseTree(node.Children, mapObject, limit, nodeCount) {
