@@ -107,6 +107,23 @@ function Rail({ s }) {
   `;
 }
 
+// UnresolvedBanner points the user at the security-mapping picker after a
+// generation that detected middleware it couldn't map to a scheme. Without it
+// the picker is buried in a collapsed config section and easy to miss.
+function UnresolvedBanner({ s }) {
+  const n = (s.unresolvedSecurity || []).length;
+  if (s.generating || n === 0 || s.mode === "configure") return "";
+  return html`
+    <div
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--warn-bg,#3a2c00);border-bottom:1px solid var(--warn,#b80);font-size:var(--fs-sm)"
+    >
+      <span>⚠ ${n} middleware detected on routes but not mapped to a security scheme — protected routes won't show as secured.</span>
+      <span style="flex:1"></span>
+      <button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>
+    </div>
+  `;
+}
+
 function Main({ s }) {
   switch (s.mode) {
     case "configure":
@@ -131,7 +148,12 @@ function App() {
     <div class="shell">
       <${TopBar} s=${s} />
       <${Rail} s=${s} />
-      <main class="shell-main"><${Main} s=${s} /></main>
+      <main class="shell-main">
+        <div style="display:flex;flex-direction:column;flex:1 1 auto;min-width:0;min-height:0">
+          <${UnresolvedBanner} s=${s} />
+          <${Main} s=${s} />
+        </div>
+      </main>
       <${BrowseDialog}
         open=${b.open}
         mode=${b.mode}
