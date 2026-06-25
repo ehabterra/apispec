@@ -218,9 +218,17 @@ type UIServer struct {
 	// Routes are mounted under /diagram (UI) and /api/diagram/* (API).
 	diag *diagserver.Server
 
-	// genMu serializes Generate requests so a frantic double-click doesn't
-	// stack two parallel analyses (each consuming a full CPU+RAM hit).
-	genMu sync.Mutex
+	// genRunning marks that an engine run is in flight (or still winding down
+	// after a Stop). genEpoch tags each run so a stale/abandoned run can't
+	// clobber a newer one's results or state — this is what lets a Force start
+	// a fresh run even when the previous one is stuck in a phase that doesn't
+	// honour cancellation promptly. genStopping/genStopAt record a Stop the
+	// engine hasn't acted on yet so the UI can show "stopping… Ns" and offer a
+	// Force. All guarded by mu.
+	genRunning  bool
+	genEpoch    uint64
+	genStopping bool
+	genStopAt   time.Time
 
 	// genCancel cancels the in-flight generation, if any. Guarded by mu.
 	genCancel context.CancelFunc
@@ -617,16 +625,10 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serialize generates. A second request that arrives while one is in
-	// flight (or while a stopped run is still winding down) gets a clear
-	// 409 instead of stacking another full engine run on top of the first.
-	// NOTE: the lock is released manually — on a Stop we return to the
-	// client immediately but keep the lock until the engine goroutine
-	// actually exits, so a rerun can't start a second concurrent analysis.
-	if !s.genMu.TryLock() {
-		writeError(w, http.StatusConflict, "a generation is in progress (or stopping) — try again in a moment")
-		return
-	}
+	// force=1 supersedes an in-flight (or stuck-stopping) run — see the gate
+	// below. Read it before parsing the body so a malformed body still reports
+	// a body error rather than silently blocking.
+	force := r.URL.Query().Get("force") == "1" || r.URL.Query().Get("force") == "true"
 
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -661,14 +663,46 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize generates. A second request that arrives while one is in
+	// flight (or while a stopped run is still winding down) gets a clear 409
+	// instead of stacking another full engine run — UNLESS it passes ?force=1,
+	// which cancels and abandons the in-flight run (its results are discarded
+	// via the epoch check) and starts fresh. Force is the escape hatch when the
+	// engine is wedged in a phase that doesn't honour cancellation promptly.
+	// The gate sits after request parsing/validation so a bad request never
+	// claims the run slot.
 	start := time.Now()
-
-	// Reset progress at the start of each generate so stale phase strings
-	// from a previous run don't leak into the new one.
-	// Cancellable context so the UI can stop this run via
-	// /api/generate/cancel. Stored under mu and cleared when done.
 	genCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
+	if s.genRunning {
+		if !force {
+			stopping := s.genStopping
+			var sinceMs int64
+			if stopping && !s.genStopAt.IsZero() {
+				sinceMs = time.Since(s.genStopAt).Milliseconds()
+			}
+			s.mu.Unlock()
+			cancel()
+			writeJSON(w, http.StatusConflict, map[string]interface{}{
+				"error":    "a generation is in progress (or stopping) — try again in a moment",
+				"stopping": stopping,
+				"sinceMs":  sinceMs,
+				"canForce": true,
+			})
+			return
+		}
+		// Force: cancel and abandon the in-flight run. We do NOT wait for it —
+		// the epoch bump below makes its eventual result a no-op.
+		if s.genCancel != nil {
+			s.genCancel()
+		}
+	}
+	s.genEpoch++
+	epoch := s.genEpoch
+	s.genRunning = true
+	s.genStopping = false
+	s.genStopAt = time.Time{}
+	// Reset progress so stale phase strings from a previous run don't leak in.
 	s.genPhase = "loading packages…"
 	s.genPhaseAt = time.Now()
 	s.genCancel = cancel
@@ -717,12 +751,31 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Run the engine in a goroutine so a Stop can unblock the request
 	// immediately. The engine still honours genCtx and exits at its next
-	// checkpoint; until it does we keep genMu held (in the drain below) so
-	// a rerun can't start a second concurrent analysis.
+	// checkpoint. finishRun clears the run slot only if this run is still the
+	// current epoch — a Force may have superseded it, in which case the stale
+	// run must touch nothing.
 	type genResult struct {
 		out  *pubspec.OpenAPISpec
 		meta *metadata.Metadata
 		err  error
+	}
+	finishRun := func() {
+		s.mu.Lock()
+		if s.genEpoch == epoch {
+			s.genRunning = false
+			s.genStopping = false
+			s.genStopAt = time.Time{}
+			s.genCancel = nil
+			s.genPhase = ""
+		}
+		s.mu.Unlock()
+	}
+	// superseded reports whether a Force has started a newer run, making this
+	// one's results stale.
+	superseded := func() bool {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return s.genEpoch != epoch
 	}
 	done := make(chan genResult, 1)
 	go func() {
@@ -736,29 +789,33 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-genCtx.Done():
-		// User pressed Stop — respond now; release the lock only once the
-		// engine goroutine has actually wound down.
+		// Stop requested (or this run was superseded by a Force). Respond now;
+		// drain the engine goroutine in the background and clear the run slot
+		// when it actually exits.
 		s.mu.Lock()
-		s.genPhase = "stopping…"
+		if s.genEpoch == epoch {
+			s.genStopping = true
+			s.genStopAt = time.Now()
+			s.genPhase = "stopping…"
+		}
 		s.mu.Unlock()
 		go func() {
 			<-done
 			cancel()
-			s.mu.Lock()
-			s.genCancel = nil
-			s.genPhase = ""
-			s.mu.Unlock()
-			s.genMu.Unlock()
+			finishRun()
 		}()
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
 		return
 
 	case res := <-done:
 		cancel()
-		s.mu.Lock()
-		s.genCancel = nil
-		s.mu.Unlock()
-		defer s.genMu.Unlock()
+		// If a Force superseded this run, discard its results untouched — the
+		// newer run owns the shared state and the client reply.
+		if superseded() {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "superseded by a newer generation"})
+			return
+		}
+		defer finishRun()
 
 		if res.err != nil {
 			s.mu.Lock()
@@ -826,26 +883,28 @@ func (s *UIServer) handleGenerateProgress(w http.ResponseWriter, r *http.Request
 	s.mu.RLock()
 	phase := s.genPhase
 	at := s.genPhaseAt
+	inFlight := s.genRunning
+	stopping := s.genStopping
+	stopAt := s.genStopAt
 	s.mu.RUnlock()
-
-	// Probe the generate mutex without blocking. If we can acquire it, no
-	// generate is running — release immediately. If not, a generate is in
-	// flight.
-	inFlight := true
-	if s.genMu.TryLock() {
-		inFlight = false
-		s.genMu.Unlock()
-	}
 
 	var sinceMs int64
 	if !at.IsZero() {
 		sinceMs = time.Since(at).Milliseconds()
 	}
+	// How long a Stop has been pending without the engine honouring it — the UI
+	// uses this to escalate from "stopping…" to offering a Force.
+	var stoppingMs int64
+	if stopping && !stopAt.IsZero() {
+		stoppingMs = time.Since(stopAt).Milliseconds()
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"phase":    phase,
-		"sinceMs":  sinceMs,
-		"inFlight": inFlight,
+		"phase":      phase,
+		"sinceMs":    sinceMs,
+		"inFlight":   inFlight,
+		"stopping":   stopping,
+		"stoppingMs": stoppingMs,
 	})
 }
 

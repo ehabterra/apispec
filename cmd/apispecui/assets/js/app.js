@@ -5,6 +5,7 @@ import { useStore, setState } from "/assets/js/store.js";
 import {
   detectInitial,
   generate,
+  forceGenerate,
   stopGenerate,
   openCallGraph,
   openProject,
@@ -81,6 +82,16 @@ function TopBar({ s }) {
           : "Generate ▸"}
       </button>
       ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
+      ${(s.genBlocked || s.genStuckStopping) && !s.generating && s.project
+        ? html`<button
+            class="btn"
+            style="background:var(--warn,#b80);border-color:var(--warn,#b80);color:#1a1300"
+            onClick=${forceGenerate}
+            title="Cancel the run that's still in flight / stuck stopping and start a fresh generation now"
+          >
+            ⚡ Force restart
+          </button>`
+        : ""}
       <span class="spacer"></span>
       ${s.status.text &&
       html`<span class=${"badge " + (s.status.kind === "err" ? "err" : s.status.kind === "ok" ? "ok" : s.status.kind === "warn" ? "warn" : "")}>

@@ -37,6 +37,8 @@ const state = {
   generating: false,
   genPhase: "",
   genElapsed: 0, // ms since the current generation started (live ticker)
+  genBlocked: false, // last generate hit a 409 (a prior run is in flight / stuck stopping) — offer Force
+  genStuckStopping: false, // a Stop the engine hasn't honoured for a while — escalate to Force
   hasSpec: false,
   lastPaths: 0,
   skipped: [], // [{package, reason}] dropped due to type errors (project didn't build)

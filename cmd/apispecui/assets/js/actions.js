@@ -130,12 +130,17 @@ function fullGenerateRequest() {
   };
 }
 
-export async function generate() {
+// THRESHOLD after which a pending Stop the engine hasn't honoured escalates to
+// offering a Force restart in the UI.
+const STUCK_STOP_MS = 4000;
+
+export async function generate(opts = {}) {
   const s = getState();
   if (!s.project || s.generating) return;
+  const force = !!opts.force;
   const start = Date.now();
-  setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [] });
-  setStatus("generating…");
+  setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [], genBlocked: false, genStuckStopping: false });
+  setStatus(force ? "force-restarting…" : "generating…");
   // Live elapsed ticker — reassures the run is alive and makes a stall obvious
   // (a counter climbing on one phase reads as "stuck" where a static label hides it).
   const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
@@ -143,12 +148,14 @@ export async function generate() {
     try {
       const p = await api.progress();
       if (p && p.phase) setState({ genPhase: p.phase });
+      // A Stop the engine hasn't acted on yet — let the UI escalate to Force.
+      if (p) setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
     } catch {
       /* ignore */
     }
   }, 600);
   try {
-    const res = await api.generate(fullGenerateRequest());
+    const res = await api.generate(fullGenerateRequest(), { force });
     if (res && res.cancelled) {
       setStatus(`generation stopped · ${fmtDur(Date.now() - start)}`, "warn");
     } else {
@@ -162,6 +169,7 @@ export async function generate() {
         specView: "swagger",
         skipped,
         unresolvedSecurity: res.unresolvedSecurity || [],
+        genBlocked: false,
       });
       if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
@@ -170,17 +178,44 @@ export async function generate() {
       }
     }
   } catch (e) {
-    // A rerun attempted while a stopped run is still winding down returns
-    // 409 ("in progress / stopping") — surface that as a soft warning.
-    if (/in progress|stopping/i.test(e.message)) {
-      setStatus(e.message, "warn");
+    // A rerun attempted while a prior run is in flight (or a stopped run is
+    // still winding down) returns 409 with {error, stopping, canForce}. Show a
+    // friendly message and flag genBlocked so the UI offers a Force restart —
+    // instead of dumping the raw JSON body the user used to see.
+    const info = parseErrBody(e.message);
+    if (info && info.canForce) {
+      setState({ genBlocked: true });
+      setStatus(
+        info.stopping
+          ? "the previous run is still stopping — use Force restart to start now"
+          : "a generation is already running — use Force restart to replace it",
+        "warn",
+      );
     } else {
-      setStatus("generation failed: " + e.message, "err");
+      setStatus("generation failed: " + ((info && info.error) || e.message), "err");
     }
   } finally {
     clearInterval(tick);
     clearInterval(poll);
     setState({ generating: false, genPhase: "", genElapsed: 0 });
+  }
+}
+
+// forceGenerate supersedes an in-flight or stuck-stopping run and starts fresh.
+export function forceGenerate() {
+  return generate({ force: true });
+}
+
+// parseErrBody best-effort parses a thrown error message that may be a JSON
+// error body ({error, stopping, canForce}). Returns null when it isn't JSON.
+function parseErrBody(msg) {
+  if (!msg || typeof msg !== "string") return null;
+  const t = msg.trim();
+  if (t[0] !== "{") return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
   }
 }
 
