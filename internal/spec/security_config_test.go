@@ -163,6 +163,13 @@ func TestValidateSecurityConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "skip is mutually exclusive with schemesAnyOf",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^Logger$", Skip: true, SchemesAnyOf: [][]SecurityRequirement{{{"bearerAuth": {}}}}},
+			}},
+			wantErr: true,
+		},
+		{
 			name: "mapping with bad regex",
 			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
 				{PkgRegex: "[", Schemes: []SecurityRequirement{{"bearerAuth": {}}}},

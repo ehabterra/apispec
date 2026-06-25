@@ -509,7 +509,7 @@ securityMappings:
     public: true
   # Mark a middleware as known non-auth so it's not reported as unresolved
   # (logging, CORS, recovery, request-id, …). Emits no scheme, changes no
-  # security — just silences the warning. Mutually exclusive with schemes/public:
+  # security — just silences the warning. Mutually exclusive with schemes, schemesAnyOf, and public:
   - functionNameRegex: ^(Logger|Recoverer|RequestID)$
     pkgRegex: github\.com/go-chi/chi/v5/middleware
     skip: true
