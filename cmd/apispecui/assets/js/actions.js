@@ -137,6 +137,10 @@ async function attachRun() {
     setState({ genElapsed: Date.now() - start });
   }, 200);
   try {
+    // Don't let a flaky progress endpoint strand the UI in "reconnecting…":
+    // on each progress failure fall back to /api/status, and give up after a
+    // few consecutive failures so the finally clause can clear the run.
+    let progressErrors = 0;
     await new Promise((resolve) => {
       const poll = setInterval(async () => {
         // Superseded (e.g. a Force restart took over) — stop tracking.
@@ -149,8 +153,23 @@ async function attachRun() {
         try {
           p = await api.progress();
         } catch {
+          progressErrors += 1;
+          try {
+            const st = await api.status();
+            progressErrors = 0;
+            if (!st || !st.running) {
+              clearInterval(poll);
+              resolve();
+            }
+          } catch {
+            if (progressErrors >= 3) {
+              clearInterval(poll);
+              resolve();
+            }
+          }
           return;
         }
+        progressErrors = 0;
         if (myRun !== activeRun || !p) return;
         if (p.phase) setState({ genPhase: p.phase });
         setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
