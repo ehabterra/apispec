@@ -135,6 +135,11 @@ type DetectResponse struct {
 	// param/mount patterns) for the detected framework — pre-filled so the UI
 	// can render every pattern editor.
 	Framework spec.FrameworkConfig `json:"frameworkConfig"`
+
+	// SuggestedConfigPath is the path to an apispec.yaml-style config file found
+	// in the project that parses as a real config. Empty when none is found or a
+	// --config was already supplied. The UI suggests (but does not auto-apply) it.
+	SuggestedConfigPath string `json:"suggestedConfigPath,omitempty"`
 }
 
 // ProjectRequest is what POST /api/project accepts.
@@ -214,6 +219,11 @@ type UIServer struct {
 	// metaCache is keyed by absolute input dir. Cleared on project switch.
 	metaCache map[string]*MetadataSummary
 
+	// lastResult is the response of the most recent successful generation,
+	// retained so a page refresh can restore the result (path count, unresolved
+	// security, skipped packages) via /api/status without re-running anything.
+	lastResult *GenerateResponse
+
 	// diag serves the embedded call-graph / tracker-tree visualization.
 	// Routes are mounted under /diagram (UI) and /api/diagram/* (API).
 	diag *diagserver.Server
@@ -248,8 +258,19 @@ func (s *UIServer) currentDir() string {
 
 func (s *UIServer) setDir(d string) {
 	s.mu.Lock()
+	changed := s.inputDir != d
 	s.inputDir = d
 	s.metaCache = nil // invalidate metadata cache
+	if changed {
+		// Switching projects: the previous spec/result no longer applies, so a
+		// refresh shouldn't restore another project's output.
+		s.currentSpec = nil
+		s.currentMeta = nil
+		s.currentCfg = nil
+		s.lastResult = nil
+		s.lastGen = time.Time{}
+		s.lastErr = ""
+	}
 	diag := s.diag
 	s.mu.Unlock()
 
@@ -295,6 +316,7 @@ func main() {
 	mux.HandleFunc("/api/generate", srv.handleGenerate)
 	mux.HandleFunc("/api/generate/progress", srv.handleGenerateProgress)
 	mux.HandleFunc("/api/generate/cancel", srv.handleGenerateCancel)
+	mux.HandleFunc("/api/status", srv.handleStatus)
 	mux.HandleFunc("/api/spec.json", srv.handleSpecJSON)
 	mux.HandleFunc("/api/spec.yaml", srv.handleSpecYAML)
 	mux.HandleFunc("/api/config.yaml", srv.handleConfigYAML)
@@ -549,6 +571,13 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		}
 	}
 
+	// Suggest an apispec.yaml-style config found in the project — but only when
+	// the operator didn't already pass one via --config.
+	suggested := ""
+	if s.cfg.ConfigFile == "" {
+		suggested = findSuggestedConfig(dir, root)
+	}
+
 	return DetectResponse{
 		InputDir:            dir,
 		ModuleRoot:          root,
@@ -570,7 +599,56 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		Include:             base.Include,
 		Exclude:             base.Exclude,
 		Framework:           base.Framework,
+		SuggestedConfigPath: suggested,
 	}
+}
+
+// suggestedConfigNames are the conventional apispec config filenames, in
+// priority order, looked up in the project dir and the module root.
+var suggestedConfigNames = []string{"apispec.yaml", "apispec.yml", ".apispec.yaml", ".apispec.yml"}
+
+// findSuggestedConfig returns the first conventional config file under dir or
+// the module root that parses as a real apispec config, or "" if none.
+func findSuggestedConfig(dir, root string) string {
+	seen := map[string]bool{}
+	for _, base := range []string{dir, root} {
+		if base == "" || seen[base] {
+			continue
+		}
+		seen[base] = true
+		for _, name := range suggestedConfigNames {
+			path := filepath.Join(base, name)
+			if st, err := os.Stat(path); err != nil || st.IsDir() {
+				continue
+			}
+			if looksLikeAPISpecConfig(path) {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// looksLikeAPISpecConfig reports whether path loads as an apispec config and
+// carries at least one meaningful section — so a stray empty/unrelated YAML
+// isn't suggested.
+func looksLikeAPISpecConfig(path string) bool {
+	cfg, err := spec.LoadAPISpecConfig(path)
+	if err != nil || cfg == nil {
+		return false
+	}
+	fw := cfg.Framework
+	return cfg.Info.Title != "" ||
+		len(fw.RoutePatterns) > 0 ||
+		len(fw.RequestBodyPatterns) > 0 ||
+		len(fw.ResponsePatterns) > 0 ||
+		len(fw.ParamPatterns) > 0 ||
+		len(fw.MountPatterns) > 0 ||
+		len(fw.SecurityPatterns) > 0 ||
+		len(cfg.SecurityMappings) > 0 ||
+		len(cfg.TypeMapping) > 0 ||
+		len(cfg.ExternalTypes) > 0 ||
+		len(cfg.Overrides) > 0
 }
 
 func (s *UIServer) handleDetect(w http.ResponseWriter, r *http.Request) {
@@ -861,7 +939,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if len(skipped) > 0 {
 			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
 		}
-		writeJSON(w, http.StatusOK, GenerateResponse{
+		resp := GenerateResponse{
 			OK:                 true,
 			Framework:          req.Framework,
 			PathCount:          len(out.Paths),
@@ -870,7 +948,12 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			Message:            msg,
 			SkippedPackages:    skipped,
 			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
-		})
+		}
+		// Retain for /api/status so a page refresh can restore this result.
+		s.mu.Lock()
+		s.lastResult = &resp
+		s.mu.Unlock()
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 }
@@ -905,6 +988,46 @@ func (s *UIServer) handleGenerateProgress(w http.ResponseWriter, r *http.Request
 		"inFlight":   inFlight,
 		"stopping":   stopping,
 		"stoppingMs": stoppingMs,
+	})
+}
+
+// handleStatus returns the full server-side generation state so a freshly
+// loaded (or refreshed) page can reattach to a run still in flight and restore
+// the last result without re-running anything. The engine runs detached from
+// the originating request, so a refresh never interrupts it.
+func (s *UIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	phase := s.genPhase
+	at := s.genPhaseAt
+	running := s.genRunning
+	stopping := s.genStopping
+	stopAt := s.genStopAt
+	hasSpec := s.currentSpec != nil
+	lastGen := s.lastGen
+	lastErr := s.lastErr
+	dir := s.inputDir
+	result := s.lastResult
+	s.mu.RUnlock()
+
+	var sinceMs, stoppingMs int64
+	if !at.IsZero() {
+		sinceMs = time.Since(at).Milliseconds()
+	}
+	if stopping && !stopAt.IsZero() {
+		stoppingMs = time.Since(stopAt).Milliseconds()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"running":    running,
+		"stopping":   stopping,
+		"phase":      phase,
+		"sinceMs":    sinceMs,
+		"stoppingMs": stoppingMs,
+		"hasSpec":    hasSpec,
+		"lastGenAt":  lastGen,
+		"lastError":  lastErr,
+		"projectDir": dir,
+		"result":     result, // nil until the first successful generation
 	})
 }
 

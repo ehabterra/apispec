@@ -12,6 +12,8 @@ import {
   closeBrowse,
   getBrowse,
   fmtDur,
+  useSuggestedConfig,
+  dismissSuggestedConfig,
 } from "/assets/js/actions.js";
 import { BrowseDialog } from "/assets/js/browse.js";
 import { SpecMode } from "/assets/js/spec.js";
@@ -135,6 +137,24 @@ function UnresolvedBanner({ s }) {
   `;
 }
 
+// SuggestedConfigBanner offers to load an apispec.yaml found in the project.
+// It's a suggestion only — nothing is applied until the user clicks Use.
+function SuggestedConfigBanner({ s }) {
+  if (!s.suggestedConfigPath) return "";
+  const name = s.suggestedConfigPath.split("/").pop();
+  return html`
+    <div
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--info-bg,#06283a);border-bottom:1px solid var(--info,#2a7fb8);font-size:var(--fs-sm)"
+    >
+      <span>🛈 Found <code>${name}</code> in this project — use it as the config?</span>
+      <span class="muted" title=${s.suggestedConfigPath} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%">${s.suggestedConfigPath}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm" onClick=${useSuggestedConfig}>Use it</button>
+      <button class="btn ghost sm" onClick=${dismissSuggestedConfig}>Dismiss</button>
+    </div>
+  `;
+}
+
 function Main({ s }) {
   switch (s.mode) {
     case "configure":
@@ -161,6 +181,7 @@ function App() {
       <${Rail} s=${s} />
       <main class="shell-main">
         <div style="display:flex;flex-direction:column;flex:1 1 auto;min-width:0;min-height:0">
+          <${SuggestedConfigBanner} s=${s} />
           <${UnresolvedBanner} s=${s} />
           <${Main} s=${s} />
         </div>

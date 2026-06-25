@@ -64,6 +64,7 @@ export function applyDetect(d) {
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,
     detected: d,
+    suggestedConfigPath: d.suggestedConfigPath || "",
     ready: true,
   });
   applyConfigSections(d);
@@ -79,10 +80,92 @@ export async function detectInitial() {
         apispecCommit: health.commit || "",
         apispecBuildTime: health.buildTime || "",
       });
-    setStatus("ready", "ok");
+    // Reconnect to whatever the server already has: a run still in flight, or
+    // the last completed spec/result. A refresh shouldn't lose progress.
+    await restoreFromServer();
+    if (!getState().generating) {
+      setStatus(getState().hasSpec ? "restored last generation" : "ready", "ok");
+    }
   } catch (e) {
     setStatus(e.message, "err");
     setState({ ready: true });
+  }
+}
+
+// applyStatusResult restores the last completed generation's result into the
+// store (so the spec viewer / insight / banners come back after a refresh).
+function applyStatusResult(st) {
+  const r = st && st.result;
+  if (r && r.ok) {
+    setState({
+      hasSpec: true,
+      lastPaths: r.pathCount || 0,
+      skipped: r.skippedPackages || [],
+      unresolvedSecurity: r.unresolvedSecurity || [],
+      lastGenTick: Date.now(),
+    });
+  } else if (st && st.hasSpec) {
+    setState({ hasSpec: true, lastGenTick: Date.now() });
+  }
+}
+
+// restoreFromServer pulls the server-side generation state and reattaches the
+// UI to it: restores the last result, and resumes live tracking if a run is
+// still in flight (the engine keeps running across a page refresh).
+export async function restoreFromServer() {
+  let st;
+  try {
+    st = await api.status();
+  } catch {
+    return;
+  }
+  if (!st) return;
+  applyStatusResult(st);
+  if (st.running) attachRun(); // fire-and-forget; updates state as it polls
+}
+
+// attachRun resumes live progress tracking for a generation already running on
+// the server (e.g. after a refresh), then restores its result when it finishes.
+async function attachRun() {
+  if (getState().generating) return; // already tracking
+  setState({ generating: true, genPhase: "reconnecting…", genElapsed: 0, genBlocked: false });
+  setStatus("reconnecting to a running generation…", "warn");
+  const start = Date.now();
+  const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
+  try {
+    await new Promise((resolve) => {
+      const poll = setInterval(async () => {
+        let p;
+        try {
+          p = await api.progress();
+        } catch {
+          return;
+        }
+        if (!p) return;
+        if (p.phase) setState({ genPhase: p.phase });
+        setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
+        if (!p.inFlight) {
+          clearInterval(poll);
+          resolve();
+        }
+      }, 600);
+    });
+    let st;
+    try {
+      st = await api.status();
+    } catch {
+      st = null;
+    }
+    if (st) {
+      applyStatusResult(st);
+      const r = st.result;
+      if (r && r.ok) setStatus(`generated ${r.pathCount || 0} paths`, "ok");
+      else if (st.lastError) setStatus("generation failed: " + st.lastError, "err");
+      else setStatus("generation stopped", "warn");
+    }
+  } finally {
+    clearInterval(tick);
+    setState({ generating: false, genPhase: "", genElapsed: 0 });
   }
 }
 
@@ -98,7 +181,11 @@ export async function pickProject(dir) {
   setStatus("loading project…");
   try {
     applyDetect(await api.project(dir));
-    setStatus("project loaded", "ok");
+    // The server drops the previous project's spec on switch; clear the UI's
+    // copy too, then reconnect in case the new project already has output.
+    setState({ hasSpec: false, lastPaths: 0, skipped: [] });
+    await restoreFromServer();
+    if (!getState().generating) setStatus("project loaded", "ok");
   } catch (e) {
     setStatus(e.message, "err");
   }
@@ -297,6 +384,19 @@ async function saveConfigFile(path) {
   closeBrowse();
   if (!path) return;
   await doSave(path, false);
+}
+
+// useSuggestedConfig loads the apispec.yaml the server found in the project and
+// clears the suggestion. dismissSuggestedConfig just hides it for the session.
+export async function useSuggestedConfig() {
+  const path = getState().suggestedConfigPath;
+  if (!path) return;
+  await loadConfigFile(path);
+  setState({ suggestedConfigPath: "" });
+}
+
+export function dismissSuggestedConfig() {
+  setState({ suggestedConfigPath: "" });
 }
 
 async function doSave(path, overwrite) {

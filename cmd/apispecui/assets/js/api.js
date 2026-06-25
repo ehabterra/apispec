@@ -40,4 +40,5 @@ export const api = {
   browse: (path, files) => getJSON("/api/browse" + qs({ path, files })),
   generate: (body, opts) => postJSON("/api/generate" + (opts && opts.force ? "?force=1" : ""), body),
   progress: () => getJSON("/api/generate/progress"),
+  status: () => getJSON("/api/status"),
 };
