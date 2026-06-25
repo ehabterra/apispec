@@ -638,6 +638,9 @@ func looksLikeAPISpecConfig(path string) bool {
 		return false
 	}
 	fw := cfg.Framework
+	ie := func(x spec.IncludeExclude) bool {
+		return len(x.Files) > 0 || len(x.Packages) > 0 || len(x.Functions) > 0 || len(x.Types) > 0
+	}
 	return cfg.Info.Title != "" ||
 		len(fw.RoutePatterns) > 0 ||
 		len(fw.RequestBodyPatterns) > 0 ||
@@ -648,7 +651,17 @@ func looksLikeAPISpecConfig(path string) bool {
 		len(cfg.SecurityMappings) > 0 ||
 		len(cfg.TypeMapping) > 0 ||
 		len(cfg.ExternalTypes) > 0 ||
-		len(cfg.Overrides) > 0
+		len(cfg.Overrides) > 0 ||
+		// Sections the UI also surfaces in DetectResponse — a config that only
+		// sets these is still meaningful and worth suggesting.
+		len(cfg.Servers) > 0 ||
+		len(cfg.Security) > 0 ||
+		len(cfg.SecuritySchemes) > 0 ||
+		len(cfg.Tags) > 0 ||
+		cfg.ExternalDocs != nil ||
+		cfg.Defaults != (spec.Defaults{}) ||
+		ie(cfg.Include) ||
+		ie(cfg.Exclude)
 }
 
 func (s *UIServer) handleDetect(w http.ResponseWriter, r *http.Request) {

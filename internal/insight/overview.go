@@ -243,6 +243,20 @@ func securityStats(s *spec.OpenAPISpec) SecurityStats {
 				st.Unsecured++
 				continue
 			}
+			// An empty requirement object {} inside the array permits anonymous
+			// access (optional auth), so the operation is effectively public —
+			// not protected — regardless of any sibling requirements.
+			anonymous := false
+			for _, req := range eff {
+				if len(req) == 0 {
+					anonymous = true
+					break
+				}
+			}
+			if anonymous {
+				st.Public++
+				continue
+			}
 			st.Protected++
 			seen := map[string]bool{}
 			for _, req := range eff {

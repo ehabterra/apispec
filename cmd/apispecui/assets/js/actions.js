@@ -128,20 +128,30 @@ export async function restoreFromServer() {
 // the server (e.g. after a refresh), then restores its result when it finishes.
 async function attachRun() {
   if (getState().generating) return; // already tracking
+  const myRun = ++activeRun;
   setState({ generating: true, genPhase: "reconnecting…", genElapsed: 0, genBlocked: false });
   setStatus("reconnecting to a running generation…", "warn");
   const start = Date.now();
-  const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
+  const tick = setInterval(() => {
+    if (myRun !== activeRun) return;
+    setState({ genElapsed: Date.now() - start });
+  }, 200);
   try {
     await new Promise((resolve) => {
       const poll = setInterval(async () => {
+        // Superseded (e.g. a Force restart took over) — stop tracking.
+        if (myRun !== activeRun) {
+          clearInterval(poll);
+          resolve();
+          return;
+        }
         let p;
         try {
           p = await api.progress();
         } catch {
           return;
         }
-        if (!p) return;
+        if (myRun !== activeRun || !p) return;
         if (p.phase) setState({ genPhase: p.phase });
         setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
         if (!p.inFlight) {
@@ -150,12 +160,14 @@ async function attachRun() {
         }
       }, 600);
     });
+    if (myRun !== activeRun) return; // a newer run owns the state now
     let st;
     try {
       st = await api.status();
     } catch {
       st = null;
     }
+    if (myRun !== activeRun) return;
     if (st) {
       applyStatusResult(st);
       const r = st.result;
@@ -165,7 +177,7 @@ async function attachRun() {
     }
   } finally {
     clearInterval(tick);
-    setState({ generating: false, genPhase: "", genElapsed: 0 });
+    if (myRun === activeRun) setState({ generating: false, genPhase: "", genElapsed: 0 });
   }
 }
 
@@ -221,19 +233,36 @@ function fullGenerateRequest() {
 // offering a Force restart in the UI.
 const STUCK_STOP_MS = 4000;
 
+// activeRun tags the currently-tracked generation on the client. A new run
+// (including a Force restart) bumps it; older trackers (generate/attachRun) see
+// the mismatch and bow out without clobbering the newer run's state. This is
+// what lets Force supersede an attached, stuck-stopping run cleanly.
+let activeRun = 0;
+
 export async function generate(opts = {}) {
   const s = getState();
-  if (!s.project || s.generating) return;
   const force = !!opts.force;
+  // Force bypasses the in-progress guard so it can supersede a run that's
+  // already being tracked (e.g. a stuck-stopping attached run).
+  if (!s.project || (s.generating && !force)) return;
+  const myRun = ++activeRun;
   const start = Date.now();
   setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [], genBlocked: false, genStuckStopping: false });
   setStatus(force ? "force-restarting…" : "generating…");
   // Live elapsed ticker — reassures the run is alive and makes a stall obvious
   // (a counter climbing on one phase reads as "stuck" where a static label hides it).
-  const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
+  const tick = setInterval(() => {
+    if (myRun !== activeRun) return;
+    setState({ genElapsed: Date.now() - start });
+  }, 200);
   const poll = setInterval(async () => {
+    if (myRun !== activeRun) {
+      clearInterval(poll);
+      return;
+    }
     try {
       const p = await api.progress();
+      if (myRun !== activeRun) return;
       if (p && p.phase) setState({ genPhase: p.phase });
       // A Stop the engine hasn't acted on yet — let the UI escalate to Force.
       if (p) setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
@@ -243,6 +272,7 @@ export async function generate(opts = {}) {
   }, 600);
   try {
     const res = await api.generate(fullGenerateRequest(), { force });
+    if (myRun !== activeRun) return; // superseded by a newer run — drop this result
     if (res && res.cancelled) {
       setStatus(`generation stopped · ${fmtDur(Date.now() - start)}`, "warn");
     } else {
@@ -265,6 +295,7 @@ export async function generate(opts = {}) {
       }
     }
   } catch (e) {
+    if (myRun !== activeRun) return;
     // A rerun attempted while a prior run is in flight (or a stopped run is
     // still winding down) returns 409 with {error, stopping, canForce}. Show a
     // friendly message and flag genBlocked so the UI offers a Force restart —
@@ -284,7 +315,7 @@ export async function generate(opts = {}) {
   } finally {
     clearInterval(tick);
     clearInterval(poll);
-    setState({ generating: false, genPhase: "", genElapsed: 0 });
+    if (myRun === activeRun) setState({ generating: false, genPhase: "", genElapsed: 0 });
   }
 }
 

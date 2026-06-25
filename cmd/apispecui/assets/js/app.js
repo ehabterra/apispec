@@ -84,7 +84,7 @@ function TopBar({ s }) {
           : "Generate ▸"}
       </button>
       ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
-      ${(s.genBlocked || s.genStuckStopping) && !s.generating && s.project
+      ${(s.genBlocked || s.genStuckStopping) && s.project
         ? html`<button
             class="btn"
             style="background:var(--warn,#b80);border-color:var(--warn,#b80);color:#1a1300"
