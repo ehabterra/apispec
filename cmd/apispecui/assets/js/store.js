@@ -37,13 +37,45 @@ const state = {
   generating: false,
   genPhase: "",
   genElapsed: 0, // ms since the current generation started (live ticker)
+  genBlocked: false, // last generate hit a 409 (a prior run is in flight / stuck stopping) — offer Force
+  genStuckStopping: false, // a Stop the engine hasn't honoured for a while — escalate to Force
   hasSpec: false,
   lastPaths: 0,
   skipped: [], // [{package, reason}] dropped due to type errors (project didn't build)
   unresolvedSecurity: [], // [{functionName,pkg,recvType,position}] auth middleware not mapped to a scheme
   specView: "swagger", // swagger | redoc | scalar
   panelCollapsed: false,
+  suggestedConfigPath: "", // apispec.yaml found in the project — offer to load it
 };
+
+// View prefs persisted across refreshes so a reload lands the user back where
+// they were (which tab, which spec viewer, panel layout).
+const PERSIST_KEYS = ["mode", "specView", "panelCollapsed"];
+const PERSIST_LS_KEY = "apispecui.view";
+
+function loadPersistedView() {
+  try {
+    const raw = localStorage.getItem(PERSIST_LS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    for (const k of PERSIST_KEYS) {
+      if (saved[k] !== undefined) state[k] = saved[k];
+    }
+  } catch {
+    /* ignore malformed / unavailable storage */
+  }
+}
+loadPersistedView();
+
+function persistView() {
+  try {
+    const out = {};
+    for (const k of PERSIST_KEYS) out[k] = state[k];
+    localStorage.setItem(PERSIST_LS_KEY, JSON.stringify(out));
+  } catch {
+    /* ignore */
+  }
+}
 
 const listeners = new Set();
 
@@ -53,6 +85,13 @@ export function getState() {
 
 export function setState(patch) {
   Object.assign(state, patch);
+  // Persist view prefs only when one of them changed (setState runs often).
+  for (const k of PERSIST_KEYS) {
+    if (k in patch) {
+      persistView();
+      break;
+    }
+  }
   listeners.forEach((fn) => fn());
 }
 

@@ -64,6 +64,7 @@ export function applyDetect(d) {
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,
     detected: d,
+    suggestedConfigPath: d.suggestedConfigPath || "",
     ready: true,
   });
   applyConfigSections(d);
@@ -79,10 +80,123 @@ export async function detectInitial() {
         apispecCommit: health.commit || "",
         apispecBuildTime: health.buildTime || "",
       });
-    setStatus("ready", "ok");
+    // Reconnect to whatever the server already has: a run still in flight, or
+    // the last completed spec/result. A refresh shouldn't lose progress.
+    await restoreFromServer();
+    if (!getState().generating) {
+      setStatus(getState().hasSpec ? "restored last generation" : "ready", "ok");
+    }
   } catch (e) {
     setStatus(e.message, "err");
     setState({ ready: true });
+  }
+}
+
+// applyStatusResult restores the last completed generation's result into the
+// store (so the spec viewer / insight / banners come back after a refresh).
+function applyStatusResult(st) {
+  const r = st && st.result;
+  if (r && r.ok) {
+    setState({
+      hasSpec: true,
+      lastPaths: r.pathCount || 0,
+      skipped: r.skippedPackages || [],
+      unresolvedSecurity: r.unresolvedSecurity || [],
+      lastGenTick: Date.now(),
+    });
+  } else if (st && st.hasSpec) {
+    setState({ hasSpec: true, lastGenTick: Date.now() });
+  }
+}
+
+// restoreFromServer pulls the server-side generation state and reattaches the
+// UI to it: restores the last result, and resumes live tracking if a run is
+// still in flight (the engine keeps running across a page refresh).
+export async function restoreFromServer() {
+  let st;
+  try {
+    st = await api.status();
+  } catch {
+    return;
+  }
+  if (!st) return;
+  applyStatusResult(st);
+  if (st.running) attachRun(); // fire-and-forget; updates state as it polls
+}
+
+// attachRun resumes live progress tracking for a generation already running on
+// the server (e.g. after a refresh), then restores its result when it finishes.
+async function attachRun() {
+  if (getState().generating) return; // already tracking
+  const myRun = ++activeRun;
+  setState({ generating: true, genPhase: "reconnecting…", genElapsed: 0, genBlocked: false });
+  setStatus("reconnecting to a running generation…", "warn");
+  const start = Date.now();
+  const tick = setInterval(() => {
+    if (myRun !== activeRun) return;
+    setState({ genElapsed: Date.now() - start });
+  }, 200);
+  try {
+    // Don't let a flaky progress endpoint strand the UI in "reconnecting…":
+    // on each progress failure fall back to /api/status, and give up after a
+    // few consecutive failures so the finally clause can clear the run.
+    let progressErrors = 0;
+    await new Promise((resolve) => {
+      const poll = setInterval(async () => {
+        // Superseded (e.g. a Force restart took over) — stop tracking.
+        if (myRun !== activeRun) {
+          clearInterval(poll);
+          resolve();
+          return;
+        }
+        let p;
+        try {
+          p = await api.progress();
+        } catch {
+          progressErrors += 1;
+          try {
+            const st = await api.status();
+            progressErrors = 0;
+            if (!st || !st.running) {
+              clearInterval(poll);
+              resolve();
+            }
+          } catch {
+            if (progressErrors >= 3) {
+              clearInterval(poll);
+              resolve();
+            }
+          }
+          return;
+        }
+        progressErrors = 0;
+        if (myRun !== activeRun || !p) return;
+        if (p.phase) setState({ genPhase: p.phase });
+        setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
+        if (!p.inFlight) {
+          clearInterval(poll);
+          resolve();
+        }
+      }, 600);
+    });
+    if (myRun !== activeRun) return; // a newer run owns the state now
+    let st;
+    try {
+      st = await api.status();
+    } catch {
+      st = null;
+    }
+    if (myRun !== activeRun) return;
+    if (st) {
+      applyStatusResult(st);
+      const r = st.result;
+      if (r && r.ok) setStatus(`generated ${r.pathCount || 0} paths`, "ok");
+      else if (st.lastError) setStatus("generation failed: " + st.lastError, "err");
+      else setStatus("generation stopped", "warn");
+    }
+  } finally {
+    clearInterval(tick);
+    if (myRun === activeRun) setState({ generating: false, genPhase: "", genElapsed: 0 });
   }
 }
 
@@ -98,7 +212,11 @@ export async function pickProject(dir) {
   setStatus("loading project…");
   try {
     applyDetect(await api.project(dir));
-    setStatus("project loaded", "ok");
+    // The server drops the previous project's spec on switch; clear the UI's
+    // copy too, then reconnect in case the new project already has output.
+    setState({ hasSpec: false, lastPaths: 0, skipped: [] });
+    await restoreFromServer();
+    if (!getState().generating) setStatus("project loaded", "ok");
   } catch (e) {
     setStatus(e.message, "err");
   }
@@ -130,25 +248,50 @@ function fullGenerateRequest() {
   };
 }
 
-export async function generate() {
+// THRESHOLD after which a pending Stop the engine hasn't honoured escalates to
+// offering a Force restart in the UI.
+const STUCK_STOP_MS = 4000;
+
+// activeRun tags the currently-tracked generation on the client. A new run
+// (including a Force restart) bumps it; older trackers (generate/attachRun) see
+// the mismatch and bow out without clobbering the newer run's state. This is
+// what lets Force supersede an attached, stuck-stopping run cleanly.
+let activeRun = 0;
+
+export async function generate(opts = {}) {
   const s = getState();
-  if (!s.project || s.generating) return;
+  const force = !!opts.force;
+  // Force bypasses the in-progress guard so it can supersede a run that's
+  // already being tracked (e.g. a stuck-stopping attached run).
+  if (!s.project || (s.generating && !force)) return;
+  const myRun = ++activeRun;
   const start = Date.now();
-  setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [] });
-  setStatus("generating…");
+  setState({ generating: true, genPhase: "starting…", genElapsed: 0, unresolvedSecurity: [], genBlocked: false, genStuckStopping: false });
+  setStatus(force ? "force-restarting…" : "generating…");
   // Live elapsed ticker — reassures the run is alive and makes a stall obvious
   // (a counter climbing on one phase reads as "stuck" where a static label hides it).
-  const tick = setInterval(() => setState({ genElapsed: Date.now() - start }), 200);
+  const tick = setInterval(() => {
+    if (myRun !== activeRun) return;
+    setState({ genElapsed: Date.now() - start });
+  }, 200);
   const poll = setInterval(async () => {
+    if (myRun !== activeRun) {
+      clearInterval(poll);
+      return;
+    }
     try {
       const p = await api.progress();
+      if (myRun !== activeRun) return;
       if (p && p.phase) setState({ genPhase: p.phase });
+      // A Stop the engine hasn't acted on yet — let the UI escalate to Force.
+      if (p) setState({ genStuckStopping: !!p.stopping && (p.stoppingMs || 0) > STUCK_STOP_MS });
     } catch {
       /* ignore */
     }
   }, 600);
   try {
-    const res = await api.generate(fullGenerateRequest());
+    const res = await api.generate(fullGenerateRequest(), { force });
+    if (myRun !== activeRun) return; // superseded by a newer run — drop this result
     if (res && res.cancelled) {
       setStatus(`generation stopped · ${fmtDur(Date.now() - start)}`, "warn");
     } else {
@@ -162,6 +305,7 @@ export async function generate() {
         specView: "swagger",
         skipped,
         unresolvedSecurity: res.unresolvedSecurity || [],
+        genBlocked: false,
       });
       if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
@@ -170,17 +314,45 @@ export async function generate() {
       }
     }
   } catch (e) {
-    // A rerun attempted while a stopped run is still winding down returns
-    // 409 ("in progress / stopping") — surface that as a soft warning.
-    if (/in progress|stopping/i.test(e.message)) {
-      setStatus(e.message, "warn");
+    if (myRun !== activeRun) return;
+    // A rerun attempted while a prior run is in flight (or a stopped run is
+    // still winding down) returns 409 with {error, stopping, canForce}. Show a
+    // friendly message and flag genBlocked so the UI offers a Force restart —
+    // instead of dumping the raw JSON body the user used to see.
+    const info = parseErrBody(e.message);
+    if (info && info.canForce) {
+      setState({ genBlocked: true });
+      setStatus(
+        info.stopping
+          ? "the previous run is still stopping — use Force restart to start now"
+          : "a generation is already running — use Force restart to replace it",
+        "warn",
+      );
     } else {
-      setStatus("generation failed: " + e.message, "err");
+      setStatus("generation failed: " + ((info && info.error) || e.message), "err");
     }
   } finally {
     clearInterval(tick);
     clearInterval(poll);
-    setState({ generating: false, genPhase: "", genElapsed: 0 });
+    if (myRun === activeRun) setState({ generating: false, genPhase: "", genElapsed: 0 });
+  }
+}
+
+// forceGenerate supersedes an in-flight or stuck-stopping run and starts fresh.
+export function forceGenerate() {
+  return generate({ force: true });
+}
+
+// parseErrBody best-effort parses a thrown error message that may be a JSON
+// error body ({error, stopping, canForce}). Returns null when it isn't JSON.
+function parseErrBody(msg) {
+  if (!msg || typeof msg !== "string") return null;
+  const t = msg.trim();
+  if (t[0] !== "{") return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return null;
   }
 }
 
@@ -262,6 +434,19 @@ async function saveConfigFile(path) {
   closeBrowse();
   if (!path) return;
   await doSave(path, false);
+}
+
+// useSuggestedConfig loads the apispec.yaml the server found in the project and
+// clears the suggestion. dismissSuggestedConfig just hides it for the session.
+export async function useSuggestedConfig() {
+  const path = getState().suggestedConfigPath;
+  if (!path) return;
+  await loadConfigFile(path);
+  setState({ suggestedConfigPath: "" });
+}
+
+export function dismissSuggestedConfig() {
+  setState({ suggestedConfigPath: "" });
 }
 
 async function doSave(path, overwrite) {

@@ -135,6 +135,11 @@ type DetectResponse struct {
 	// param/mount patterns) for the detected framework — pre-filled so the UI
 	// can render every pattern editor.
 	Framework spec.FrameworkConfig `json:"frameworkConfig"`
+
+	// SuggestedConfigPath is the path to an apispec.yaml-style config file found
+	// in the project that parses as a real config. Empty when none is found or a
+	// --config was already supplied. The UI suggests (but does not auto-apply) it.
+	SuggestedConfigPath string `json:"suggestedConfigPath,omitempty"`
 }
 
 // ProjectRequest is what POST /api/project accepts.
@@ -214,13 +219,26 @@ type UIServer struct {
 	// metaCache is keyed by absolute input dir. Cleared on project switch.
 	metaCache map[string]*MetadataSummary
 
+	// lastResult is the response of the most recent successful generation,
+	// retained so a page refresh can restore the result (path count, unresolved
+	// security, skipped packages) via /api/status without re-running anything.
+	lastResult *GenerateResponse
+
 	// diag serves the embedded call-graph / tracker-tree visualization.
 	// Routes are mounted under /diagram (UI) and /api/diagram/* (API).
 	diag *diagserver.Server
 
-	// genMu serializes Generate requests so a frantic double-click doesn't
-	// stack two parallel analyses (each consuming a full CPU+RAM hit).
-	genMu sync.Mutex
+	// genRunning marks that an engine run is in flight (or still winding down
+	// after a Stop). genEpoch tags each run so a stale/abandoned run can't
+	// clobber a newer one's results or state — this is what lets a Force start
+	// a fresh run even when the previous one is stuck in a phase that doesn't
+	// honour cancellation promptly. genStopping/genStopAt record a Stop the
+	// engine hasn't acted on yet so the UI can show "stopping… Ns" and offer a
+	// Force. All guarded by mu.
+	genRunning  bool
+	genEpoch    uint64
+	genStopping bool
+	genStopAt   time.Time
 
 	// genCancel cancels the in-flight generation, if any. Guarded by mu.
 	genCancel context.CancelFunc
@@ -240,8 +258,19 @@ func (s *UIServer) currentDir() string {
 
 func (s *UIServer) setDir(d string) {
 	s.mu.Lock()
+	changed := s.inputDir != d
 	s.inputDir = d
 	s.metaCache = nil // invalidate metadata cache
+	if changed {
+		// Switching projects: the previous spec/result no longer applies, so a
+		// refresh shouldn't restore another project's output.
+		s.currentSpec = nil
+		s.currentMeta = nil
+		s.currentCfg = nil
+		s.lastResult = nil
+		s.lastGen = time.Time{}
+		s.lastErr = ""
+	}
 	diag := s.diag
 	s.mu.Unlock()
 
@@ -287,6 +316,7 @@ func main() {
 	mux.HandleFunc("/api/generate", srv.handleGenerate)
 	mux.HandleFunc("/api/generate/progress", srv.handleGenerateProgress)
 	mux.HandleFunc("/api/generate/cancel", srv.handleGenerateCancel)
+	mux.HandleFunc("/api/status", srv.handleStatus)
 	mux.HandleFunc("/api/spec.json", srv.handleSpecJSON)
 	mux.HandleFunc("/api/spec.yaml", srv.handleSpecYAML)
 	mux.HandleFunc("/api/config.yaml", srv.handleConfigYAML)
@@ -541,6 +571,13 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		}
 	}
 
+	// Suggest an apispec.yaml-style config found in the project — but only when
+	// the operator didn't already pass one via --config.
+	suggested := ""
+	if s.cfg.ConfigFile == "" {
+		suggested = findSuggestedConfig(dir, root)
+	}
+
 	return DetectResponse{
 		InputDir:            dir,
 		ModuleRoot:          root,
@@ -562,7 +599,69 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		Include:             base.Include,
 		Exclude:             base.Exclude,
 		Framework:           base.Framework,
+		SuggestedConfigPath: suggested,
 	}
+}
+
+// suggestedConfigNames are the conventional apispec config filenames, in
+// priority order, looked up in the project dir and the module root.
+var suggestedConfigNames = []string{"apispec.yaml", "apispec.yml", ".apispec.yaml", ".apispec.yml"}
+
+// findSuggestedConfig returns the first conventional config file under dir or
+// the module root that parses as a real apispec config, or "" if none.
+func findSuggestedConfig(dir, root string) string {
+	seen := map[string]bool{}
+	for _, base := range []string{dir, root} {
+		if base == "" || seen[base] {
+			continue
+		}
+		seen[base] = true
+		for _, name := range suggestedConfigNames {
+			path := filepath.Join(base, name)
+			if st, err := os.Stat(path); err != nil || st.IsDir() {
+				continue
+			}
+			if looksLikeAPISpecConfig(path) {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// looksLikeAPISpecConfig reports whether path loads as an apispec config and
+// carries at least one meaningful section — so a stray empty/unrelated YAML
+// isn't suggested.
+func looksLikeAPISpecConfig(path string) bool {
+	cfg, err := spec.LoadAPISpecConfig(path)
+	if err != nil || cfg == nil {
+		return false
+	}
+	fw := cfg.Framework
+	ie := func(x spec.IncludeExclude) bool {
+		return len(x.Files) > 0 || len(x.Packages) > 0 || len(x.Functions) > 0 || len(x.Types) > 0
+	}
+	return cfg.Info.Title != "" ||
+		len(fw.RoutePatterns) > 0 ||
+		len(fw.RequestBodyPatterns) > 0 ||
+		len(fw.ResponsePatterns) > 0 ||
+		len(fw.ParamPatterns) > 0 ||
+		len(fw.MountPatterns) > 0 ||
+		len(fw.SecurityPatterns) > 0 ||
+		len(cfg.SecurityMappings) > 0 ||
+		len(cfg.TypeMapping) > 0 ||
+		len(cfg.ExternalTypes) > 0 ||
+		len(cfg.Overrides) > 0 ||
+		// Sections the UI also surfaces in DetectResponse — a config that only
+		// sets these is still meaningful and worth suggesting.
+		len(cfg.Servers) > 0 ||
+		len(cfg.Security) > 0 ||
+		len(cfg.SecuritySchemes) > 0 ||
+		len(cfg.Tags) > 0 ||
+		cfg.ExternalDocs != nil ||
+		cfg.Defaults != (spec.Defaults{}) ||
+		ie(cfg.Include) ||
+		ie(cfg.Exclude)
 }
 
 func (s *UIServer) handleDetect(w http.ResponseWriter, r *http.Request) {
@@ -617,16 +716,10 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serialize generates. A second request that arrives while one is in
-	// flight (or while a stopped run is still winding down) gets a clear
-	// 409 instead of stacking another full engine run on top of the first.
-	// NOTE: the lock is released manually — on a Stop we return to the
-	// client immediately but keep the lock until the engine goroutine
-	// actually exits, so a rerun can't start a second concurrent analysis.
-	if !s.genMu.TryLock() {
-		writeError(w, http.StatusConflict, "a generation is in progress (or stopping) — try again in a moment")
-		return
-	}
+	// force=1 supersedes an in-flight (or stuck-stopping) run — see the gate
+	// below. Read it before parsing the body so a malformed body still reports
+	// a body error rather than silently blocking.
+	force := r.URL.Query().Get("force") == "1" || r.URL.Query().Get("force") == "true"
 
 	var req GenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -661,14 +754,46 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize generates. A second request that arrives while one is in
+	// flight (or while a stopped run is still winding down) gets a clear 409
+	// instead of stacking another full engine run — UNLESS it passes ?force=1,
+	// which cancels and abandons the in-flight run (its results are discarded
+	// via the epoch check) and starts fresh. Force is the escape hatch when the
+	// engine is wedged in a phase that doesn't honour cancellation promptly.
+	// The gate sits after request parsing/validation so a bad request never
+	// claims the run slot.
 	start := time.Now()
-
-	// Reset progress at the start of each generate so stale phase strings
-	// from a previous run don't leak into the new one.
-	// Cancellable context so the UI can stop this run via
-	// /api/generate/cancel. Stored under mu and cleared when done.
 	genCtx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
+	if s.genRunning {
+		if !force {
+			stopping := s.genStopping
+			var sinceMs int64
+			if stopping && !s.genStopAt.IsZero() {
+				sinceMs = time.Since(s.genStopAt).Milliseconds()
+			}
+			s.mu.Unlock()
+			cancel()
+			writeJSON(w, http.StatusConflict, map[string]interface{}{
+				"error":    "a generation is in progress (or stopping) — try again in a moment",
+				"stopping": stopping,
+				"sinceMs":  sinceMs,
+				"canForce": true,
+			})
+			return
+		}
+		// Force: cancel and abandon the in-flight run. We do NOT wait for it —
+		// the epoch bump below makes its eventual result a no-op.
+		if s.genCancel != nil {
+			s.genCancel()
+		}
+	}
+	s.genEpoch++
+	epoch := s.genEpoch
+	s.genRunning = true
+	s.genStopping = false
+	s.genStopAt = time.Time{}
+	// Reset progress so stale phase strings from a previous run don't leak in.
 	s.genPhase = "loading packages…"
 	s.genPhaseAt = time.Now()
 	s.genCancel = cancel
@@ -717,12 +842,31 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Run the engine in a goroutine so a Stop can unblock the request
 	// immediately. The engine still honours genCtx and exits at its next
-	// checkpoint; until it does we keep genMu held (in the drain below) so
-	// a rerun can't start a second concurrent analysis.
+	// checkpoint. finishRun clears the run slot only if this run is still the
+	// current epoch — a Force may have superseded it, in which case the stale
+	// run must touch nothing.
 	type genResult struct {
 		out  *pubspec.OpenAPISpec
 		meta *metadata.Metadata
 		err  error
+	}
+	finishRun := func() {
+		s.mu.Lock()
+		if s.genEpoch == epoch {
+			s.genRunning = false
+			s.genStopping = false
+			s.genStopAt = time.Time{}
+			s.genCancel = nil
+			s.genPhase = ""
+		}
+		s.mu.Unlock()
+	}
+	// superseded reports whether a Force has started a newer run, making this
+	// one's results stale.
+	superseded := func() bool {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return s.genEpoch != epoch
 	}
 	done := make(chan genResult, 1)
 	go func() {
@@ -736,29 +880,33 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-genCtx.Done():
-		// User pressed Stop — respond now; release the lock only once the
-		// engine goroutine has actually wound down.
+		// Stop requested (or this run was superseded by a Force). Respond now;
+		// drain the engine goroutine in the background and clear the run slot
+		// when it actually exits.
 		s.mu.Lock()
-		s.genPhase = "stopping…"
+		if s.genEpoch == epoch {
+			s.genStopping = true
+			s.genStopAt = time.Now()
+			s.genPhase = "stopping…"
+		}
 		s.mu.Unlock()
 		go func() {
 			<-done
 			cancel()
-			s.mu.Lock()
-			s.genCancel = nil
-			s.genPhase = ""
-			s.mu.Unlock()
-			s.genMu.Unlock()
+			finishRun()
 		}()
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
 		return
 
 	case res := <-done:
 		cancel()
-		s.mu.Lock()
-		s.genCancel = nil
-		s.mu.Unlock()
-		defer s.genMu.Unlock()
+		// If a Force superseded this run, discard its results untouched — the
+		// newer run owns the shared state and the client reply.
+		if superseded() {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "superseded by a newer generation"})
+			return
+		}
+		defer finishRun()
 
 		if res.err != nil {
 			s.mu.Lock()
@@ -804,7 +952,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if len(skipped) > 0 {
 			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
 		}
-		writeJSON(w, http.StatusOK, GenerateResponse{
+		resp := GenerateResponse{
 			OK:                 true,
 			Framework:          req.Framework,
 			PathCount:          len(out.Paths),
@@ -813,7 +961,12 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			Message:            msg,
 			SkippedPackages:    skipped,
 			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
-		})
+		}
+		// Retain for /api/status so a page refresh can restore this result.
+		s.mu.Lock()
+		s.lastResult = &resp
+		s.mu.Unlock()
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 }
@@ -826,26 +979,68 @@ func (s *UIServer) handleGenerateProgress(w http.ResponseWriter, r *http.Request
 	s.mu.RLock()
 	phase := s.genPhase
 	at := s.genPhaseAt
+	inFlight := s.genRunning
+	stopping := s.genStopping
+	stopAt := s.genStopAt
 	s.mu.RUnlock()
-
-	// Probe the generate mutex without blocking. If we can acquire it, no
-	// generate is running — release immediately. If not, a generate is in
-	// flight.
-	inFlight := true
-	if s.genMu.TryLock() {
-		inFlight = false
-		s.genMu.Unlock()
-	}
 
 	var sinceMs int64
 	if !at.IsZero() {
 		sinceMs = time.Since(at).Milliseconds()
 	}
+	// How long a Stop has been pending without the engine honouring it — the UI
+	// uses this to escalate from "stopping…" to offering a Force.
+	var stoppingMs int64
+	if stopping && !stopAt.IsZero() {
+		stoppingMs = time.Since(stopAt).Milliseconds()
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"phase":    phase,
-		"sinceMs":  sinceMs,
-		"inFlight": inFlight,
+		"phase":      phase,
+		"sinceMs":    sinceMs,
+		"inFlight":   inFlight,
+		"stopping":   stopping,
+		"stoppingMs": stoppingMs,
+	})
+}
+
+// handleStatus returns the full server-side generation state so a freshly
+// loaded (or refreshed) page can reattach to a run still in flight and restore
+// the last result without re-running anything. The engine runs detached from
+// the originating request, so a refresh never interrupts it.
+func (s *UIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	phase := s.genPhase
+	at := s.genPhaseAt
+	running := s.genRunning
+	stopping := s.genStopping
+	stopAt := s.genStopAt
+	hasSpec := s.currentSpec != nil
+	lastGen := s.lastGen
+	lastErr := s.lastErr
+	dir := s.inputDir
+	result := s.lastResult
+	s.mu.RUnlock()
+
+	var sinceMs, stoppingMs int64
+	if !at.IsZero() {
+		sinceMs = time.Since(at).Milliseconds()
+	}
+	if stopping && !stopAt.IsZero() {
+		stoppingMs = time.Since(stopAt).Milliseconds()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"running":    running,
+		"stopping":   stopping,
+		"phase":      phase,
+		"sinceMs":    sinceMs,
+		"stoppingMs": stoppingMs,
+		"hasSpec":    hasSpec,
+		"lastGenAt":  lastGen,
+		"lastError":  lastErr,
+		"projectDir": dir,
+		"result":     result, // nil until the first successful generation
 	})
 }
 

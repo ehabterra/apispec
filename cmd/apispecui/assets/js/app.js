@@ -5,12 +5,15 @@ import { useStore, setState } from "/assets/js/store.js";
 import {
   detectInitial,
   generate,
+  forceGenerate,
   stopGenerate,
   openCallGraph,
   openProject,
   closeBrowse,
   getBrowse,
   fmtDur,
+  useSuggestedConfig,
+  dismissSuggestedConfig,
 } from "/assets/js/actions.js";
 import { BrowseDialog } from "/assets/js/browse.js";
 import { SpecMode } from "/assets/js/spec.js";
@@ -81,6 +84,16 @@ function TopBar({ s }) {
           : "Generate ▸"}
       </button>
       ${s.generating ? html`<button class="btn danger" onClick=${stopGenerate} title="Stop the running engine">■ Stop</button>` : ""}
+      ${(s.genBlocked || s.genStuckStopping) && s.project
+        ? html`<button
+            class="btn"
+            style="background:var(--warn,#b80);border-color:var(--warn,#b80);color:#1a1300"
+            onClick=${forceGenerate}
+            title="Cancel the run that's still in flight / stuck stopping and start a fresh generation now"
+          >
+            ⚡ Force restart
+          </button>`
+        : ""}
       <span class="spacer"></span>
       ${s.status.text &&
       html`<span class=${"badge " + (s.status.kind === "err" ? "err" : s.status.kind === "ok" ? "ok" : s.status.kind === "warn" ? "warn" : "")}>
@@ -104,6 +117,41 @@ function Rail({ s }) {
         `,
       )}
     </nav>
+  `;
+}
+
+// UnresolvedBanner points the user at the security-mapping picker after a
+// generation that detected middleware it couldn't map to a scheme. Without it
+// the picker is buried in a collapsed config section and easy to miss.
+function UnresolvedBanner({ s }) {
+  const n = (s.unresolvedSecurity || []).length;
+  if (s.generating || n === 0 || s.mode === "configure") return "";
+  return html`
+    <div
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--warn-bg,#3a2c00);border-bottom:1px solid var(--warn,#b80);font-size:var(--fs-sm)"
+    >
+      <span>⚠ ${n} middleware detected on routes but not mapped to a security scheme — protected routes won't show as secured.</span>
+      <span style="flex:1"></span>
+      <button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>
+    </div>
+  `;
+}
+
+// SuggestedConfigBanner offers to load an apispec.yaml found in the project.
+// It's a suggestion only — nothing is applied until the user clicks Use.
+function SuggestedConfigBanner({ s }) {
+  if (!s.suggestedConfigPath) return "";
+  const name = s.suggestedConfigPath.split("/").pop();
+  return html`
+    <div
+      style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--info-bg,#06283a);border-bottom:1px solid var(--info,#2a7fb8);font-size:var(--fs-sm)"
+    >
+      <span>🛈 Found <code>${name}</code> in this project — use it as the config?</span>
+      <span class="muted" title=${s.suggestedConfigPath} style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%">${s.suggestedConfigPath}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm" onClick=${useSuggestedConfig}>Use it</button>
+      <button class="btn ghost sm" onClick=${dismissSuggestedConfig}>Dismiss</button>
+    </div>
   `;
 }
 
@@ -131,7 +179,13 @@ function App() {
     <div class="shell">
       <${TopBar} s=${s} />
       <${Rail} s=${s} />
-      <main class="shell-main"><${Main} s=${s} /></main>
+      <main class="shell-main">
+        <div style="display:flex;flex-direction:column;flex:1 1 auto;min-width:0;min-height:0">
+          <${SuggestedConfigBanner} s=${s} />
+          <${UnresolvedBanner} s=${s} />
+          <${Main} s=${s} />
+        </div>
+      </main>
       <${BrowseDialog}
         open=${b.open}
         mode=${b.mode}

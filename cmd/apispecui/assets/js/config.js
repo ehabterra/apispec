@@ -430,7 +430,7 @@ export function ConfigMode() {
             <${SecuritySchemes} c=${c} />
           <//>
 
-          <${Section} title="Security mappings" help="Map auth middleware to a security scheme so apispec can mark the routes it guards as protected. Each mapping matches the middleware by function name / package / receiver-type regex and applies the chosen scheme. Most well-known libraries (echo-jwt, gin-jwt, gofiber/contrib/jwt, golang-jwt, …) and custom wrappers around them are detected automatically; use these mappings for project-specific middleware that apispec couldn't resolve (see 'Unresolved auth middleware' after generating)." hint=${`${(c.securityMappings || []).length}`}>
+          <${Section} title="Security mappings" openDefault=${(s.unresolvedSecurity || []).length > 0} help="Map auth middleware to a security scheme so apispec can mark the routes it guards as protected. Each mapping matches the middleware by function name / package / receiver-type regex and applies the chosen scheme. Most well-known libraries (echo-jwt, gin-jwt, gofiber/contrib/jwt, golang-jwt, …) and custom wrappers around them are detected automatically; use these mappings for project-specific middleware that apispec couldn't resolve (see 'Unresolved auth middleware' after generating)." hint=${`${(c.securityMappings || []).length}`}>
             <${UnresolvedMiddleware} c=${c} />
             <${SecurityMappings} c=${c} />
           <//>

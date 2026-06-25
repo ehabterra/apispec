@@ -38,6 +38,7 @@ export const api = {
   project: (dir) => postJSON("/api/project", { dir }),
   health: () => getJSON("/api/health"),
   browse: (path, files) => getJSON("/api/browse" + qs({ path, files })),
-  generate: (body) => postJSON("/api/generate", body),
+  generate: (body, opts) => postJSON("/api/generate" + (opts && opts.force ? "?force=1" : ""), body),
   progress: () => getJSON("/api/generate/progress"),
+  status: () => getJSON("/api/status"),
 };
