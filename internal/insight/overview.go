@@ -64,6 +64,17 @@ type RouteRef struct {
 	Tags   []string `json:"tags"`
 }
 
+// SecurityStats summarises how authentication is applied across the API.
+type SecurityStats struct {
+	SchemesDefined int      `json:"schemesDefined"` // count of components.securitySchemes
+	Schemes        []string `json:"schemes"`        // their names (sorted)
+	GlobalSecurity bool     `json:"globalSecurity"` // a document-level security requirement is set
+	Protected      int      `json:"protected"`      // operations that require auth (explicit or inherited)
+	Public         int      `json:"public"`         // operations explicitly opted out (security: [])
+	Unsecured      int      `json:"unsecured"`      // operations with no security at all (no auth)
+	BySchemeUsage  []Count  `json:"bySchemeUsage"`  // operations requiring each scheme
+}
+
 // OverviewReport is the whole-API insight payload.
 type OverviewReport struct {
 	Routes        int            `json:"routes"`     // distinct path templates
@@ -76,6 +87,7 @@ type OverviewReport struct {
 	Components    int            `json:"components"`
 	TopTypes      []Count        `json:"topTypes"`
 	Health        Health         `json:"health"`
+	Security      SecurityStats  `json:"security"`
 	Issues        []Issue        `json:"issues"`
 	CallGraph     CallGraphStats `json:"callGraph"`
 }
@@ -190,8 +202,61 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 		rep.Issues = []Issue{}
 	}
 
+	rep.Security = securityStats(s)
 	rep.CallGraph = callGraphStats(meta)
 	return rep
+}
+
+// securityStats classifies every operation as protected / public / unsecured,
+// honouring OpenAPI inheritance: an operation with no `security` field inherits
+// the document-level requirement, an explicit empty `security: []` opts out
+// (public), and a non-empty requirement (own or inherited) means protected.
+func securityStats(s *spec.OpenAPISpec) SecurityStats {
+	st := SecurityStats{Schemes: []string{}, BySchemeUsage: []Count{}}
+	if s == nil {
+		return st
+	}
+	if s.Components != nil {
+		for name := range s.Components.SecuritySchemes {
+			st.Schemes = append(st.Schemes, name)
+		}
+		sort.Strings(st.Schemes)
+		st.SchemesDefined = len(st.Schemes)
+	}
+	st.GlobalSecurity = len(s.Security) > 0
+
+	usage := map[string]int{}
+	for _, p := range s.Paths {
+		for _, mo := range operationsOf(p) {
+			// Resolve the effective requirement for this operation.
+			var eff []spec.SecurityRequirement
+			if mo.Op.Security != nil {
+				if len(*mo.Op.Security) == 0 {
+					st.Public++ // explicit security: []
+					continue
+				}
+				eff = *mo.Op.Security
+			} else {
+				eff = s.Security // inherit document-level
+			}
+			if len(eff) == 0 {
+				st.Unsecured++
+				continue
+			}
+			st.Protected++
+			seen := map[string]bool{}
+			for _, req := range eff {
+				for name := range req {
+					if !seen[name] {
+						seen[name] = true
+						usage[name]++
+					}
+				}
+			}
+		}
+	}
+	st.BySchemeUsage = sortedCounts(usage, true)
+	return st
 }
 
 func collectOperationIssues(method, path string, op *spec.Operation, comps map[string]*spec.Schema, statusC, ctC, typeC map[string]int) []Issue {

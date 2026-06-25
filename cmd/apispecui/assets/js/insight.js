@@ -2,7 +2,7 @@
 // view. Uses diverse SVG visualizations (gauge, donuts, layered call
 // graph) and ⓘ info tooltips on every metric.
 import { html, useState, useEffect } from "/assets/js/preact.js";
-import { useStore } from "/assets/js/store.js";
+import { useStore, setState } from "/assets/js/store.js";
 import { getJSON } from "/assets/js/api.js";
 import { Donut, Gauge, Info, TraceDiagram } from "/assets/js/components/charts.js";
 
@@ -15,6 +15,7 @@ function normalizeReport(d) {
   }
   d.health = d.health || { score: 0, cleanRoutes: 0, totalRoutes: 0 };
   d.callGraph = d.callGraph || { packages: 0, functions: 0, edges: 0 };
+  d.security = d.security || { schemesDefined: 0, schemes: [], protected: 0, public: 0, unsecured: 0, bySchemeUsage: [] };
   return d;
 }
 
@@ -55,6 +56,11 @@ const INFO = {
   ctype: "Request/response content types declared across the API.",
   tags: "OpenAPI tags grouping the routes.",
   toptypes: "Schemas referenced most often across request/response bodies.",
+  security:
+    "How authentication is applied across the API: how many operations require auth, are explicitly public, or have no security at all — plus the declared schemes and any middleware apispec couldn't map to a scheme.",
+  secops:
+    "Each operation by its effective security: protected (a requirement applies — its own or inherited from the document), public (an explicit security: [] opt-out), or no auth (no requirement at all).",
+  secschemes: "Security schemes declared under components.securitySchemes, and how many operations require each.",
   callgraph: "Coarse size of the analysed call graph backing the spec.",
   fanout:
     "How many distinct functions each function directly calls, within this endpoint's call subtree (Go builtins like len/append and standard-library calls like fmt/net/http are excluded, so only your code + frameworks count). Average = total direct calls ÷ functions that make at least one call — leaf functions (0 calls) are left out of the divisor, so it reflects the branching factor among branching functions rather than being diluted toward 0 by leaves. Max = the single most-branching function. Example: handler calls 3, A calls 2, B calls 0 → avg (3+2)/2 = 2.5, max 3. Higher = more branching.",
@@ -169,6 +175,8 @@ function Overview({ rep, onTag }) {
         : ""}
     </div>
 
+    <${SecurityCard} rep=${rep} />
+
     <div class="card" style="margin-bottom:var(--sp-3)">
       <div class="row">
         <h3>Needs attention</h3><span class="spacer"></span>
@@ -211,6 +219,62 @@ function Overview({ rep, onTag }) {
 
     <${CallGraphCard} cg=${rep.callGraph} />
     <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} scope="all" />
+  `;
+}
+
+// SecurityCard visualises how auth is applied across the API (protected /
+// public / no-auth operations, declared schemes, per-scheme usage) and surfaces
+// any middleware apispec detected but couldn't map to a scheme.
+function SecurityCard({ rep }) {
+  const s = useStore();
+  const sec = rep.security || {};
+  const unresolved = (s.unresolvedSecurity || []).length;
+  const total = (sec.protected || 0) + (sec.public || 0) + (sec.unsecured || 0);
+  const donut = [
+    { name: "protected", count: sec.protected || 0, color: "var(--accent-2)" },
+    { name: "public", count: sec.public || 0, color: "var(--info)" },
+    { name: "no auth", count: sec.unsecured || 0, color: "var(--warn)" },
+  ].filter((d) => d.count > 0);
+  const usage = (sec.bySchemeUsage || []).map((d) => ({ name: d.name, count: d.count }));
+  const noAuth = !(sec.schemesDefined || sec.protected || unresolved);
+
+  return html`
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      ${Title("Security", INFO.security)}
+      ${noAuth
+        ? html`<p class="muted">No authentication detected — no security schemes, and every operation is open. If routes are auth-guarded by a custom middleware, map it under Configure ▸ Security mappings.</p>`
+        : html`<div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:var(--sp-4)">
+            <div>
+              <div class="shape-h">Operations <${Info} text=${INFO.secops} /></div>
+              ${donut.length
+                ? html`<${Donut} data=${donut} size=${120} thickness=${18} centerLabel=${total} centerSub="ops" />`
+                : html`<span class="muted">none</span>`}
+              <div class="row wrap" style="gap:var(--sp-3);margin-top:var(--sp-2);font-size:var(--fs-sm)">
+                <span><span class="dot" style="background:var(--accent-2)"></span> ${sec.protected || 0} protected</span>
+                <span><span class="dot" style="background:var(--info)"></span> ${sec.public || 0} public</span>
+                <span><span class="dot" style="background:var(--warn)"></span> ${sec.unsecured || 0} no auth</span>
+              </div>
+            </div>
+            <div>
+              <div class="shape-h">Schemes <${Info} text=${INFO.secschemes} /></div>
+              ${(sec.schemes || []).length
+                ? html`<div class="chips">${sec.schemes.map((n) => html`<span class="chip">${n}</span>`)}</div>`
+                : html`<span class="muted">none defined</span>`}
+              ${usage.length ? html`<div style="margin-top:var(--sp-2)"><${Bars} data=${usage} color="var(--accent-2)" /></div>` : ""}
+              ${sec.globalSecurity
+                ? html`<p class="muted" style="font-size:var(--fs-xs);margin-top:var(--sp-2)">A document-level security requirement applies by default.</p>`
+                : ""}
+            </div>
+          </div>`}
+      ${unresolved
+        ? html`<div class="row" style="margin-top:var(--sp-3);gap:var(--sp-2);align-items:center;flex-wrap:wrap">
+            <span class="badge err"><span class="dot"></span>${unresolved} unresolved</span>
+            <span class="muted" style="font-size:var(--fs-sm)">middleware detected on routes but not mapped to a scheme</span>
+            <span class="spacer"></span>
+            <button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>
+          </div>`
+        : ""}
+    </div>
   `;
 }
 
