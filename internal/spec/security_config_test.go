@@ -143,6 +143,26 @@ func TestValidateSecurityConfig(t *testing.T) {
 			}},
 		},
 		{
+			name: "skip mapping needs no schemes",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^Logger$", Skip: true},
+			}},
+		},
+		{
+			name: "skip is mutually exclusive with schemes",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^Logger$", Skip: true, Schemes: []SecurityRequirement{{"bearerAuth": {}}}},
+			}},
+			wantErr: true,
+		},
+		{
+			name: "skip is mutually exclusive with public",
+			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
+				{FunctionNameRegex: "^Logger$", Skip: true, Public: true},
+			}},
+			wantErr: true,
+		},
+		{
 			name: "mapping with bad regex",
 			cfg: APISpecConfig{SecurityMappings: []SecurityMapping{
 				{PkgRegex: "[", Schemes: []SecurityRequirement{{"bearerAuth": {}}}},

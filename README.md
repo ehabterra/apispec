@@ -507,7 +507,15 @@ securityMappings:
   # Mark a middleware as making routes explicitly public:
   - functionNameRegex: ^AllowPublic$
     public: true
+  # Mark a middleware as known non-auth so it's not reported as unresolved
+  # (logging, CORS, recovery, request-id, …). Emits no scheme, changes no
+  # security — just silences the warning. Mutually exclusive with schemes/public:
+  - functionNameRegex: ^(Logger|Recoverer|RequestID)$
+    pkgRegex: github\.com/go-chi/chi/v5/middleware
+    skip: true
 ```
+
+Well-known non-auth middleware from the major frameworks' own middleware packages (chi, echo, gin/gin-contrib, fiber, gorilla/handlers) is **skipped automatically** by import-gated presets, so the unresolved list stays focused on middleware that's genuinely yours to map. In `apispecui`, each item in the unresolved list also has a one-click **Skip** button.
 
 See `testdata/auth_*` for worked fixtures across chi (`With`), echo groups, gin per-route, fiber groups, mux subrouters, and `net/http` wrappers.
 

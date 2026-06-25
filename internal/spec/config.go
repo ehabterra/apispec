@@ -300,6 +300,14 @@ type SecurityMapping struct {
 	// inherited security for the affected route(s)/subtree (e.g. a skipper or
 	// AllowUnauthenticated middleware), yielding `security: []`.
 	Public bool `yaml:"public,omitempty" json:"public,omitempty"`
+
+	// Skip marks the matched middleware as known non-security (e.g. logging,
+	// CORS, recovery, request-id, compression). It is treated as resolved so it
+	// emits no scheme, does not affect inherited security, and — unlike a plain
+	// unmapped middleware — is NOT reported in the unresolved diagnostics. Use it
+	// to silence noise from utility middleware that share a router's Use/Group
+	// slot with real auth middleware. Mutually exclusive with schemes/public.
+	Skip bool `yaml:"skip,omitempty" json:"skip,omitempty"`
 }
 
 // validSecurityScopes is the set of accepted SecurityPattern.Scope values.
@@ -347,8 +355,11 @@ func (c *APISpecConfig) ValidateSecurity() error {
 		if m.FunctionNameRegex == "" && m.PkgRegex == "" && m.RecvTypeRegex == "" {
 			return fmt.Errorf("securityMappings[%d]: needs at least one identity matcher (functionNameRegex/pkgRegex/recvTypeRegex)", i)
 		}
-		if !m.Public && len(m.Schemes) == 0 && len(m.SchemesAnyOf) == 0 {
-			return fmt.Errorf("securityMappings[%d]: needs schemes, schemesAnyOf, or public:true", i)
+		if m.Skip && (m.Public || len(m.Schemes) > 0 || len(m.SchemesAnyOf) > 0) {
+			return fmt.Errorf("securityMappings[%d]: skip:true is mutually exclusive with schemes/schemesAnyOf/public", i)
+		}
+		if !m.Skip && !m.Public && len(m.Schemes) == 0 && len(m.SchemesAnyOf) == 0 {
+			return fmt.Errorf("securityMappings[%d]: needs schemes, schemesAnyOf, public:true, or skip:true", i)
 		}
 		// Reject blank scheme keys: `schemes: [{"": []}]` would emit an invalid
 		// OpenAPI security requirement.
