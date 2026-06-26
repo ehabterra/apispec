@@ -65,4 +65,8 @@ playground*.go
 
 # Demo video & video-kit
 apispecui-demo.mp4
+apispecui-short.mp4
 video-kit/parts/
+
+# test yaml files
+internal/spec/tests

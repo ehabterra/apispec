@@ -189,6 +189,57 @@ func securityLibraryBundles() []securityLibraryBundle {
 	}
 }
 
+// ---- Non-auth middleware skip presets ----------------------------------------
+
+// securitySkipBundles returns import-gated mappings that mark well-known
+// NON-auth middleware (logging, recovery, CORS, compression, request-id, …) as
+// skip:true, so they are not reported as unresolved when they share a router's
+// Use/Group slot with real auth middleware. Each bundle targets a framework's
+// own middleware package and deliberately excludes that package's auth
+// middleware (JWT/BasicAuth/KeyAuth), which the library bundles map to schemes.
+func securitySkipBundles() []securityLibraryBundle {
+	skip := func(fn, pkg string) SecurityMapping {
+		return SecurityMapping{FunctionNameRegex: fn, PkgRegex: pkg, Skip: true}
+	}
+	return []securityLibraryBundle{
+		// chi middleware (BasicAuth excluded).
+		{
+			ImportRegexes: []string{`^github\.com/go-chi/chi(/v\d+)?/middleware$`},
+			Mappings: []SecurityMapping{skip(
+				`^(Logger|Recoverer|RequestID|RealIP|Compress|Timeout|Heartbeat|StripSlashes|RedirectSlashes|NoCache|GetHead|CleanPath|AllowContentType|AllowContentEncoding|SetHeader|Throttle|ThrottleBacklog|Sunset|ContentCharset|URLFormat|RouteHeaders|Profiler|WithValue)$`,
+				`^github\.com/go-chi/chi(/v\d+)?/middleware$`)},
+		},
+		// echo middleware (JWT/BasicAuth/KeyAuth excluded).
+		{
+			ImportRegexes: []string{`^github\.com/labstack/echo(/v\d+)?/middleware$`},
+			Mappings: []SecurityMapping{skip(
+				`^(Logger|Recover|CORS|Gzip|RequestID|Secure|BodyLimit|BodyDump|RateLimiter|Decompress|Timeout|CSRF|Static|Rewrite|AddTrailingSlash|RemoveTrailingSlash|MethodOverride|ContextTimeout|Proxy|RequestLogger)(WithConfig)?$`,
+				`^github\.com/labstack/echo(/v\d+)?/middleware$`)},
+		},
+		// gin built-in + gin-contrib (BasicAuth excluded).
+		{
+			ImportRegexes: []string{`^github\.com/gin-gonic/gin$`, `^github\.com/gin-contrib/.*$`},
+			Mappings: []SecurityMapping{
+				skip(`^(Logger|LoggerWithConfig|LoggerWithFormatter|LoggerWithWriter|Recovery|RecoveryWithWriter|CustomRecovery|ErrorLogger)$`, `^github\.com/gin-gonic/gin$`),
+				skip(`^(New|Default)$`, `^github\.com/gin-contrib/.*$`),
+			},
+		},
+		// fiber middleware packages (basicauth/keyauth/jwt excluded by path).
+		{
+			ImportRegexes: []string{`^github\.com/gofiber/fiber(/v\d+)?/middleware/(logger|recover|cors|compress|requestid|limiter|etag|favicon|helmet|csrf|cache|pprof|timeout|encryptcookie|earlydata|idempotency|skip)$`},
+			Mappings: []SecurityMapping{skip(`^New$`,
+				`^github\.com/gofiber/fiber(/v\d+)?/middleware/(logger|recover|cors|compress|requestid|limiter|etag|favicon|helmet|csrf|cache|pprof|timeout|encryptcookie|earlydata|idempotency|skip)$`)},
+		},
+		// gorilla handlers (utility middleware; no auth in this package).
+		{
+			ImportRegexes: []string{`^github\.com/gorilla/handlers$`},
+			Mappings: []SecurityMapping{skip(
+				`^(CORS|LoggingHandler|CombinedLoggingHandler|CompressHandler|CompressHandlerLevel|RecoveryHandler|ProxyHeaders|ContentTypeHandler|HTTPMethodOverrideHandler)$`,
+				`^github\.com/gorilla/handlers$`)},
+		},
+	}
+}
+
 // ApplySecurityPresets merges built-in library presets into cfg based on the
 // project's imports (from meta). It only adds mappings/schemes for libraries the
 // project actually imports, keeping the engine agnostic and the spec lean.
@@ -206,7 +257,11 @@ func ApplySecurityPresets(cfg *APISpecConfig, meta *metadata.Metadata) {
 		return
 	}
 
-	for _, bundle := range securityLibraryBundles() {
+	// Library identity bundles first, then non-auth skip bundles. Both are
+	// appended after any user mappings (which keep precedence). Skip bundles add
+	// no schemes.
+	bundles := append(securityLibraryBundles(), securitySkipBundles()...)
+	for _, bundle := range bundles {
 		if !anyImportMatches(imports, bundle.ImportRegexes) {
 			continue
 		}

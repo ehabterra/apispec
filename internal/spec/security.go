@@ -287,6 +287,11 @@ func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []S
 				continue
 			}
 			matched = true
+			// Skip: known non-security middleware. Counts as matched (so it is not
+			// reported unresolved) but contributes no scheme and is never public.
+			if m.Skip {
+				continue
+			}
 			if m.Public {
 				public = true
 			}

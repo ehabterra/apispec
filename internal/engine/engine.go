@@ -81,9 +81,9 @@ const (
 	DefaultMaxNestedArgsDepth = 100
 	DefaultMaxRecursionDepth  = 10
 	DefaultMetadataFile       = "metadata.yaml"
-	CopyrightNotice           = "apispec - Copyright 2025 Ehab Terra"
+	CopyrightNotice           = "apispec - Copyright 2026 Ehab Terra"
 	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
-	FullLicenseNotice         = "\n\nCopyright 2025 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+	FullLicenseNotice         = "\n\nCopyright 2026 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 )
 
 // EngineConfig holds configuration for the OpenAPI generation engine
