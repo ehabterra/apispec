@@ -65,3 +65,27 @@ func TestAnonStructLiteralInlined(t *testing.T) {
 		})
 	}
 }
+
+// TestAnonStructLiteralSkipsNonSerializedFields verifies that fields which
+// encoding/json never serializes — a `json:"-"` tag and unexported fields —
+// are omitted from the inlined object schema.
+func TestAnonStructLiteralSkipsNonSerializedFields(t *testing.T) {
+	const lit = `struct{Name string "json:\"name\""; Secret string "json:\"-\""; internal int}`
+
+	schema, _ := mapGoTypeToOpenAPISchema(map[string]*Schema{}, lit, nil, &APISpecConfig{}, nil)
+	if schema == nil || schema.Type != "object" {
+		t.Fatalf("expected object schema, got %+v", schema)
+	}
+	if schema.Properties["name"] == nil {
+		t.Errorf("serialized field 'name' is missing: %+v", schema.Properties)
+	}
+	if _, ok := schema.Properties["Secret"]; ok {
+		t.Errorf(`json:"-" field 'Secret' must be skipped: %+v`, schema.Properties)
+	}
+	if _, ok := schema.Properties["internal"]; ok {
+		t.Errorf("unexported field 'internal' must be skipped: %+v", schema.Properties)
+	}
+	if len(schema.Properties) != 1 {
+		t.Errorf("expected exactly 1 property, got %d: %+v", len(schema.Properties), schema.Properties)
+	}
+}

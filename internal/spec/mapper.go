@@ -930,6 +930,13 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		fieldName := getStringFromPool(meta, field.Name)
 		fieldType := getStringFromPool(meta, field.Type)
 
+		// Skip fields that encoding/json never serializes: a `json:"-"` tag,
+		// or an unexported field. Mirrors the anonymous-struct path so both
+		// stay consistent.
+		if jsonFieldOmitted(getStringFromPool(meta, field.Tag)) || !ast.IsExported(fieldName) {
+			continue
+		}
+
 		if genericType, ok := genericTypes[fieldType]; ok {
 			fieldType = genericType
 		}
@@ -1173,6 +1180,18 @@ func getStringFromPool(meta *metadata.Metadata, idx int) string {
 }
 
 // extractJSONName extracts JSON name from a struct tag
+// jsonFieldOmitted reports whether a struct field with the given tag is
+// excluded from JSON serialization entirely via a `json:"-"` tag. Note the
+// `json:"-,"` form names a field literally "-" and is NOT omitted.
+func jsonFieldOmitted(tag string) bool {
+	if !strings.Contains(tag, "json:") {
+		return false
+	}
+	parts := strings.SplitN(tag, "json:", 2)
+	jsonPart := strings.Trim(strings.Split(parts[1], " ")[0], "\"")
+	return jsonPart == "-"
+}
+
 func extractJSONName(tag string) string {
 	if tag == "" {
 		return ""
@@ -2236,20 +2255,41 @@ func schemaFromAnonStructLiteral(usedTypes map[string]*Schema, goType string, me
 			continue
 		}
 
-		fieldTypeStr := types.ExprString(field.Type)
-
 		var tag string
 		if field.Tag != nil {
 			if unq, uErr := strconv.Unquote(field.Tag.Value); uErr == nil {
 				tag = unq
 			}
 		}
+		// A `json:"-"` tag removes the field from serialization entirely.
+		if jsonFieldOmitted(tag) {
+			continue
+		}
+
+		// Unexported fields are never serialized by encoding/json. Skip the
+		// whole field when none of its names are exported (avoids registering
+		// orphan component schemas for their types too).
+		hasExported := false
+		for _, n := range field.Names {
+			if n.IsExported() {
+				hasExported = true
+				break
+			}
+		}
+		if !hasExported {
+			continue
+		}
+
 		jsonName := extractJSONName(tag)
 
+		fieldTypeStr := types.ExprString(field.Type)
 		fieldSchema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, fieldTypeStr, meta, cfg, visitedTypes)
 		maps.Copy(schemas, newSchemas)
 
 		for _, n := range field.Names {
+			if !n.IsExported() {
+				continue
+			}
 			propName := n.Name
 			if jsonName != "" {
 				propName = jsonName
