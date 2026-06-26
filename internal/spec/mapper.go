@@ -3,12 +3,12 @@ package spec
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/types"
 	"log"
 	"maps"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1181,15 +1181,13 @@ func getStringFromPool(meta *metadata.Metadata, idx int) string {
 
 // extractJSONName extracts JSON name from a struct tag
 // jsonFieldOmitted reports whether a struct field with the given tag is
-// excluded from JSON serialization entirely via a `json:"-"` tag. Note the
-// `json:"-,"` form names a field literally "-" and is NOT omitted.
+// excluded from JSON serialization entirely via a `json:"-"` tag. It uses an
+// exact key lookup (reflect.StructTag) so an unrelated key like `myjson:"-"`
+// is not mistaken for the json tag. Note the `json:"-,"` form names a field
+// literally "-" and is NOT omitted.
 func jsonFieldOmitted(tag string) bool {
-	if !strings.Contains(tag, "json:") {
-		return false
-	}
-	parts := strings.SplitN(tag, "json:", 2)
-	jsonPart := strings.Trim(strings.Split(parts[1], " ")[0], "\"")
-	return jsonPart == "-"
+	v, ok := reflect.StructTag(tag).Lookup("json")
+	return ok && v == "-"
 }
 
 func extractJSONName(tag string) string {
@@ -2227,80 +2225,179 @@ func isAnonStructLiteral(goType string) bool {
 	return strings.Contains(goType, "struct{")
 }
 
-// schemaFromAnonStructLiteral parses a Go-syntax anonymous-struct string into
-// an inline object schema, honoring json tags. The literal is parsed from the
-// "struct{" token, so any leading package path is ignored. Returns nil when
-// the literal can't be parsed, letting callers fall back to a generic object.
+// schemaFromAnonStructLiteral converts a Go anonymous-struct string into an
+// inline object schema, honoring json tags. The body is parsed from the
+// "struct{" token (any leading package path is ignored). It does NOT use
+// go/parser: go/types renders field types with full import paths (e.g.
+// "github.com/google/uuid.UUID"), which are not valid Go expressions, so
+// parser.ParseExpr would reject the whole struct and drop every field. Instead
+// it splits fields itself and hands each field-type string straight to
+// mapGoTypeToOpenAPISchema, which already resolves import-qualified names,
+// slices, maps, pointers, and nested anonymous structs.
 func schemaFromAnonStructLiteral(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
-	idx := strings.Index(goType, "struct{")
-	if idx < 0 {
-		return nil, schemas
-	}
-	expr, err := parser.ParseExpr(goType[idx:])
-	if err != nil {
-		return nil, schemas
-	}
-	st, ok := expr.(*ast.StructType)
-	if !ok || st.Fields == nil {
+	body, ok := anonStructBody(goType)
+	if !ok {
 		return nil, schemas
 	}
 
 	schema := &Schema{Type: "object"}
-	for _, field := range st.Fields.List {
-		// Embedded fields have no name to key a property on; skip them, as
-		// the named-struct path does for unnamed members.
-		if len(field.Names) == 0 {
+	for _, raw := range splitTopLevel(body, ';') {
+		name, fieldType, tag, ok := parseAnonField(raw)
+		if !ok {
+			// Embedded field (no name) — nothing to key a property on, as the
+			// named-struct path also skips unnamed members.
+			continue
+		}
+		// Mirror encoding/json: a `json:"-"` tag or an unexported field is
+		// never serialized, so it must not appear as a property.
+		if jsonFieldOmitted(tag) || !ast.IsExported(name) {
 			continue
 		}
 
-		var tag string
-		if field.Tag != nil {
-			if unq, uErr := strconv.Unquote(field.Tag.Value); uErr == nil {
-				tag = unq
-			}
-		}
-		// A `json:"-"` tag removes the field from serialization entirely.
-		if jsonFieldOmitted(tag) {
-			continue
-		}
-
-		// Unexported fields are never serialized by encoding/json. Skip the
-		// whole field when none of its names are exported (avoids registering
-		// orphan component schemas for their types too).
-		hasExported := false
-		for _, n := range field.Names {
-			if n.IsExported() {
-				hasExported = true
-				break
-			}
-		}
-		if !hasExported {
-			continue
-		}
-
-		jsonName := extractJSONName(tag)
-
-		fieldTypeStr := types.ExprString(field.Type)
-		fieldSchema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, fieldTypeStr, meta, cfg, visitedTypes)
+		fieldSchema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, fieldType, meta, cfg, visitedTypes)
 		maps.Copy(schemas, newSchemas)
 
-		for _, n := range field.Names {
-			if !n.IsExported() {
-				continue
-			}
-			propName := n.Name
-			if jsonName != "" {
-				propName = jsonName
-			}
-			if schema.Properties == nil {
-				schema.Properties = map[string]*Schema{}
-			}
-			schema.Properties[propName] = fieldSchema
+		propName := name
+		if jsonName := extractJSONName(tag); jsonName != "" {
+			propName = jsonName
 		}
+		if schema.Properties == nil {
+			schema.Properties = map[string]*Schema{}
+		}
+		schema.Properties[propName] = fieldSchema
 	}
 	return schema, schemas
+}
+
+// anonStructBody returns the field list inside the first "struct{...}" found in
+// s (the text between the braces), tracking brace depth so nested structs don't
+// terminate the scan early. ok is false when there is no balanced struct body.
+func anonStructBody(s string) (string, bool) {
+	idx := strings.Index(s, "struct{")
+	if idx < 0 {
+		return "", false
+	}
+	open := idx + len("struct{") - 1 // position of '{'
+	depth, inQuote, escaped := 0, false, false
+	for i := open; i < len(s); i++ {
+		c := s[i]
+		if inQuote {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inQuote = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inQuote = true
+		case '{', '[', '(':
+			depth++
+		case '}', ']', ')':
+			depth--
+			if c == '}' && depth == 0 {
+				return s[open+1 : i], true
+			}
+		}
+	}
+	return "", false
+}
+
+// splitTopLevel splits s on sep, but only at bracket depth 0 and never inside a
+// double-quoted string (struct tags). This keeps nested "struct{a int; b int}"
+// field types and "func(a, b int)" signatures intact.
+func splitTopLevel(s string, sep byte) []string {
+	var parts []string
+	depth, inQuote, escaped, start := 0, false, false, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inQuote {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inQuote = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inQuote = true
+		case '{', '[', '(':
+			depth++
+		case '}', ']', ')':
+			depth--
+		case sep:
+			if depth == 0 {
+				parts = append(parts, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, strings.TrimSpace(s[start:]))
+	return parts
+}
+
+// parseAnonField splits one go/types-rendered struct field ("Name Type" or
+// "Name Type \"tag\"", or a bare "Type"/"Type \"tag\"" for embedded fields)
+// into its name, type string, and unquoted tag. ok is false for embedded
+// fields (no field name).
+//
+// The struct tag, when present, is a quoted string at brace depth 0 — but the
+// field TYPE may itself contain quoted strings (a nested struct's own tags) at
+// depth > 0, so the tag is the first quote seen at depth 0, not the first quote
+// overall. Once the tag is stripped, the name is the leading identifier up to
+// its following space (always at depth 0, since names carry no brackets).
+func parseAnonField(field string) (name, fieldType, tag string, ok bool) {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return "", "", "", false
+	}
+
+	depth := 0
+	for i := 0; i < len(field); i++ {
+		c := field[i]
+		switch c {
+		case '{', '[', '(':
+			depth++
+		case '}', ']', ')':
+			depth--
+		case '"':
+			if depth == 0 {
+				if unq, err := strconv.Unquote(field[i:]); err == nil {
+					tag = unq
+				}
+				field = strings.TrimSpace(field[:i])
+				i = len(field) // done scanning
+				continue
+			}
+			// A quoted string nested inside the type (e.g. a nested struct's
+			// tag). Skip to its closing quote so its spaces/braces are ignored.
+			for i++; i < len(field); i++ {
+				if field[i] == '\\' {
+					i++
+					continue
+				}
+				if field[i] == '"' {
+					break
+				}
+			}
+		}
+	}
+
+	sp := strings.IndexByte(field, ' ')
+	if sp < 0 {
+		return "", field, tag, false
+	}
+	return field[:sp], strings.TrimSpace(field[sp+1:]), tag, true
 }
 
 // isPrimitiveShapedSchema reports whether a schema carries only scalar/array

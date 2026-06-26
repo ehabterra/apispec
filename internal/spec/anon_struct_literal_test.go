@@ -89,3 +89,57 @@ func TestAnonStructLiteralSkipsNonSerializedFields(t *testing.T) {
 		t.Errorf("expected exactly 1 property, got %d: %+v", len(schema.Properties), schema.Properties)
 	}
 }
+
+// TestAnonStructLiteralImportQualifiedFields verifies that fields whose types
+// carry a full import path (the go/types String() form, e.g.
+// "github.com/google/uuid.UUID") are still picked up. parser.ParseExpr cannot
+// parse those, so the manual splitter must handle them — otherwise every field
+// would be dropped and the struct would collapse to a bare object.
+func TestAnonStructLiteralImportQualifiedFields(t *testing.T) {
+	lit := `struct{` +
+		`ID github.com/google/uuid.UUID "json:\"id\"";` +
+		` Tags []string "json:\"tags\"";` +
+		` Nested struct{Inner int "json:\"inner\""} "json:\"nested\""` +
+		`}`
+
+	schema, _ := mapGoTypeToOpenAPISchema(map[string]*Schema{}, lit, nil, &APISpecConfig{}, nil)
+	if schema == nil || schema.Type != "object" {
+		t.Fatalf("expected object schema, got %+v", schema)
+	}
+	if len(schema.Properties) != 3 {
+		t.Fatalf("expected 3 properties, got %d: %+v", len(schema.Properties), schema.Properties)
+	}
+	if p := schema.Properties["id"]; p == nil || (p.Type != "string" && p.Ref == "") {
+		t.Errorf("uuid field not resolved: %+v", p)
+	}
+	if p := schema.Properties["tags"]; p == nil || p.Type != "array" || p.Items == nil || p.Items.Type != "string" {
+		t.Errorf("tags field not resolved as []string: %+v", p)
+	}
+	// The nested anonymous struct must itself be inlined with its property.
+	if p := schema.Properties["nested"]; p == nil || p.Type != "object" || p.Properties["inner"] == nil {
+		t.Errorf("nested anonymous struct not inlined: %+v", p)
+	}
+}
+
+// TestJSONFieldOmitted checks the exact-key behavior: only a real json:"-"
+// drops the field; a json:"-," (field literally named "-") and unrelated keys
+// like myjson:"-" do not.
+func TestJSONFieldOmitted(t *testing.T) {
+	cases := []struct {
+		tag  string
+		want bool
+	}{
+		{`json:"-"`, true},
+		{`json:"name"`, false},
+		{`json:"-,"`, false},  // names a field "-", not omitted
+		{`myjson:"-"`, false}, // unrelated key must not match
+		{`xjson:"-" json:"x"`, false},
+		{`validate:"required" json:"-"`, true},
+		{``, false},
+	}
+	for _, c := range cases {
+		if got := jsonFieldOmitted(c.tag); got != c.want {
+			t.Errorf("jsonFieldOmitted(%q) = %v, want %v", c.tag, got, c.want)
+		}
+	}
+}
