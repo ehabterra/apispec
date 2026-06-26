@@ -2,6 +2,8 @@ package spec
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/types"
 	"log"
 	"maps"
@@ -2087,6 +2089,20 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return schema, schemas
 	}
 
+	// Anonymous struct literal (a "struct{...}" form, possibly with a
+	// package path glued on by generateStructSchema). It has no name, so it
+	// must be inlined — turning it into a $ref dangles with an invalid
+	// braced component name (Redoc "Invalid reference token"). Pointer,
+	// slice, array and map wrappers were already peeled above, so what
+	// reaches here is the scalar element.
+	if isAnonStructLiteral(goType) {
+		if s, extra := schemaFromAnonStructLiteral(usedTypes, goType, meta, cfg, visitedTypes); s != nil {
+			maps.Copy(schemas, extra)
+			return s, schemas
+		}
+		return &Schema{Type: "object"}, schemas
+	}
+
 	// Default mappings
 	switch goType {
 	case "string":
@@ -2171,8 +2187,80 @@ func canAddRefSchemaForType(key string) bool {
 		return false
 	}
 
+	// Some anonymous structs reach the spec layer as their raw go/types
+	// String() form (e.g. a "[]struct{...}" field type, optionally with a
+	// package path glued on). They are nameless too — a $ref would dangle
+	// with an invalid braced component name (Redoc "Invalid reference
+	// token"). Inline them rather than referencing them.
+	if isAnonStructLiteral(key) {
+		return false
+	}
+
 	// Allow reference schemas for custom types
 	return true
+}
+
+// isAnonStructLiteral reports whether a Go type string carries an inline
+// anonymous-struct literal ("struct{...}"). Such literals arrive as their
+// go/types String() form, sometimes with a leading package path glued on by
+// generateStructSchema (e.g. "pkg.struct{Field string ...}").
+func isAnonStructLiteral(goType string) bool {
+	return strings.Contains(goType, "struct{")
+}
+
+// schemaFromAnonStructLiteral parses a Go-syntax anonymous-struct string into
+// an inline object schema, honoring json tags. The literal is parsed from the
+// "struct{" token, so any leading package path is ignored. Returns nil when
+// the literal can't be parsed, letting callers fall back to a generic object.
+func schemaFromAnonStructLiteral(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
+	schemas := map[string]*Schema{}
+
+	idx := strings.Index(goType, "struct{")
+	if idx < 0 {
+		return nil, schemas
+	}
+	expr, err := parser.ParseExpr(goType[idx:])
+	if err != nil {
+		return nil, schemas
+	}
+	st, ok := expr.(*ast.StructType)
+	if !ok || st.Fields == nil {
+		return nil, schemas
+	}
+
+	schema := &Schema{Type: "object"}
+	for _, field := range st.Fields.List {
+		// Embedded fields have no name to key a property on; skip them, as
+		// the named-struct path does for unnamed members.
+		if len(field.Names) == 0 {
+			continue
+		}
+
+		fieldTypeStr := types.ExprString(field.Type)
+
+		var tag string
+		if field.Tag != nil {
+			if unq, uErr := strconv.Unquote(field.Tag.Value); uErr == nil {
+				tag = unq
+			}
+		}
+		jsonName := extractJSONName(tag)
+
+		fieldSchema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, fieldTypeStr, meta, cfg, visitedTypes)
+		maps.Copy(schemas, newSchemas)
+
+		for _, n := range field.Names {
+			propName := n.Name
+			if jsonName != "" {
+				propName = jsonName
+			}
+			if schema.Properties == nil {
+				schema.Properties = map[string]*Schema{}
+			}
+			schema.Properties[propName] = fieldSchema
+		}
+	}
+	return schema, schemas
 }
 
 // isPrimitiveShapedSchema reports whether a schema carries only scalar/array
