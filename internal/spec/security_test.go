@@ -275,6 +275,26 @@ func TestResolveSecurity(t *testing.T) {
 			t.Errorf("expected dedup to one, got %+v", reqs)
 		}
 	})
+
+	t.Run("skip is resolved without scheme or unresolved", func(t *testing.T) {
+		skip := SecurityMapping{FunctionNameRegex: "^Logger$", Skip: true}
+		ms := []SecurityMapping{bearer, skip}
+		reqs, pub, unresolved := resolveSecurity(
+			[]MiddlewareRef{{FunctionName: "Logger"}, {FunctionName: "authMiddleware"}}, ms)
+		if pub {
+			t.Error("skip must not make the scope public")
+		}
+		if len(unresolved) != 0 {
+			t.Fatalf("skip must not be reported unresolved, got %+v", unresolved)
+		}
+		// Only the bearer middleware contributes a scheme; Logger emits nothing.
+		if len(reqs) != 1 || !reqHasScheme(reqs, "bearerAuth") {
+			t.Fatalf("got %+v", reqs)
+		}
+		if reqHasScheme(reqs, "Logger") {
+			t.Error("skip middleware must not emit a scheme")
+		}
+	})
 }
 
 // TestOperationSecurityRendering pins the three render states of per-operation

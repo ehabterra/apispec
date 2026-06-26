@@ -1,6 +1,6 @@
 # apispec
 
-**License:** This project is licensed under the Apache License 2.0, Copyright 2025 Ehab Terra. See the [LICENSE](./LICENSE) and [NOTICE](./NOTICE) files for details.
+**License:** This project is licensed under the Apache License 2.0, Copyright 2026 Ehab Terra. See the [LICENSE](./LICENSE) and [NOTICE](./NOTICE) files for details.
 
 # Cytoscape.js Call Tree Diagram
 

@@ -658,6 +658,12 @@ function SecurityMappings({ c }) {
   const upd = (i, patch) => set(maps.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const del = (i) => set(maps.filter((_, j) => j !== i));
   const setScheme = (i, name) => upd(i, { schemes: [{ [name]: [] }] });
+  // toggleSkip flips a mapping between "map to scheme" and "skip (non-auth)".
+  // Skip is mutually exclusive with schemes/public, so set one and clear the other.
+  const toggleSkip = (i, on) =>
+    on
+      ? set(maps.map((m, j) => (j === i ? { functionNameRegex: m.functionNameRegex, pkgRegex: m.pkgRegex, recvTypeRegex: m.recvTypeRegex, skip: true } : m)))
+      : set(maps.map((m, j) => (j === i ? { functionNameRegex: m.functionNameRegex, pkgRegex: m.pkgRegex, recvTypeRegex: m.recvTypeRegex, schemes: [{ bearerAuth: [] }] } : m)));
   const add = () =>
     set([...maps, { functionNameRegex: "", pkgRegex: "", recvTypeRegex: "", schemes: [{ bearerAuth: [] }] }]);
   const schemeNames = Object.keys(c.securitySchemes || {});
@@ -674,8 +680,14 @@ function SecurityMappings({ c }) {
             ${txt("Package regex", m.pkgRegex, (e) => upd(i, { pkgRegex: e.target.value }), "github\\.com/me/.*")}
             ${txt("Receiver type regex", m.recvTypeRegex, (e) => upd(i, { recvTypeRegex: e.target.value }), "Handler")}
           </div>
-          <label class="lbl">Scheme</label>
-          <input class="input" list="known-schemes" value=${firstSchemeName(m)} onChange=${(e) => setScheme(i, e.target.value.trim())} placeholder="bearerAuth" />
+          <label class="row" style="gap:6px;align-items:center;margin-top:6px;font-size:var(--fs-sm)">
+            <input type="checkbox" checked=${!!m.skip} onChange=${(e) => toggleSkip(i, e.target.checked)} />
+            Skip (non-auth middleware — emits no scheme, silences the warning)
+          </label>
+          ${!m.skip && html`
+            <label class="lbl">Scheme</label>
+            <input class="input" list="known-schemes" value=${firstSchemeName(m)} onChange=${(e) => setScheme(i, e.target.value.trim())} placeholder="bearerAuth" />
+          `}
         </div>
       `,
     )}
@@ -704,7 +716,22 @@ function UnresolvedMiddleware({ c }) {
     if (mw.pkg) m.pkgRegex = "^" + escapeRe(mw.pkg) + "$";
     if (mw.recvType) m.recvTypeRegex = "^" + escapeRe(mw.recvType) + "$";
     setConfig({ securitySchemes: schemes, securityMappings: [...(c.securityMappings || []), m] });
-    // Drop it from the pending list immediately; a regenerate refreshes the rest.
+    drop(mw);
+  };
+
+  // skipOne marks the middleware as known non-auth: a skip:true mapping so it is
+  // no longer reported as unresolved, without assigning any scheme.
+  const skipOne = (mw) => {
+    const m = { skip: true };
+    if (mw.functionName) m.functionNameRegex = "^" + escapeRe(mw.functionName) + "$";
+    if (mw.pkg) m.pkgRegex = "^" + escapeRe(mw.pkg) + "$";
+    if (mw.recvType) m.recvTypeRegex = "^" + escapeRe(mw.recvType) + "$";
+    setConfig({ securityMappings: [...(c.securityMappings || []), m] });
+    drop(mw);
+  };
+
+  // drop removes a middleware from the pending list; a regenerate refreshes the rest.
+  const drop = (mw) => {
     const key = (x) => `${x.pkg}.${x.recvType}.${x.functionName}`;
     setState({ unresolvedSecurity: items.filter((x) => key(x) !== key(mw)) });
   };
@@ -718,7 +745,8 @@ function UnresolvedMiddleware({ c }) {
         <strong style="font-size:var(--fs-sm)">Unresolved auth middleware (${items.length})</strong>
       </div>
       <div class="muted" style="font-size:var(--fs-sm);margin:4px 0 8px">
-        Detected on routes but not matched to a scheme. Pick a scheme to map each, then re-generate.
+        Detected on routes but not matched to a scheme. Pick a scheme to map each — or
+        <strong>Skip</strong> the ones that aren't auth (logging, CORS, recovery, …) — then re-generate.
       </div>
       ${items.map(
         (mw) => html`
@@ -727,6 +755,7 @@ function UnresolvedMiddleware({ c }) {
             <input class="input" style="max-width:140px" list="known-schemes" placeholder="bearerAuth"
               onKeyDown=${(e) => { if (e.key === "Enter") mapOne(mw, e.target.value); }} />
             <button class="btn secondary sm" onClick=${(e) => mapOne(mw, e.target.previousElementSibling.value)}>Map</button>
+            <button class="btn ghost sm" title="Mark as non-auth middleware (skip)" onClick=${() => skipOne(mw)}>Skip</button>
           </div>
         `,
       )}

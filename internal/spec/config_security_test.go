@@ -80,6 +80,27 @@ func TestApplySecurityPresets(t *testing.T) {
 		}
 	})
 
+	t.Run("echo middleware skip preset silences non-auth middleware", func(t *testing.T) {
+		cfg := &APISpecConfig{}
+		ApplySecurityPresets(cfg, metaWithImports("github.com/labstack/echo/v4/middleware"))
+		pkg := "github.com/labstack/echo/v4/middleware"
+		// Logger/Recover/CORS are resolved (matched skip) — not unresolved, no scheme.
+		reqs, pub, unresolved := resolveSecurity([]MiddlewareRef{
+			{FunctionName: "Logger", Pkg: pkg},
+			{FunctionName: "Recover", Pkg: pkg},
+			{FunctionName: "CORSWithConfig", Pkg: pkg},
+		}, cfg.SecurityMappings)
+		if pub || len(reqs) != 0 || len(unresolved) != 0 {
+			t.Fatalf("skip preset should resolve to nothing: reqs=%+v pub=%v unresolved=%+v", reqs, pub, unresolved)
+		}
+		// JWT is excluded from the skip list and still resolves to a scheme.
+		jwt, _, jwtUnresolved := resolveSecurity(
+			[]MiddlewareRef{{FunctionName: "JWT", Pkg: pkg}}, cfg.SecurityMappings)
+		if !reqHasScheme(jwt, "bearerAuth") || len(jwtUnresolved) != 0 {
+			t.Errorf("JWT must still resolve to bearerAuth: %+v unresolved=%+v", jwt, jwtUnresolved)
+		}
+	})
+
 	t.Run("fiber jwt contrib import", func(t *testing.T) {
 		cfg := &APISpecConfig{}
 		ApplySecurityPresets(cfg, metaWithImports("github.com/gofiber/contrib/jwt"))
