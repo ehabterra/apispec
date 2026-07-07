@@ -2008,15 +2008,20 @@ func astFileFromFn(pkgName, fnName, recvType string, pkgs map[string]map[string]
 	}
 	recvType = strings.TrimPrefix(recvType, "*")
 
-	var fallback *ast.File
+	// Track method and function candidates separately: for a receiver lookup
+	// (recvType != "") a same-named method on another type is a far better
+	// guess than a same-named top-level function, and the file returned here
+	// feeds fileToInfo/processAssignment — the wrong AST/info pair silently
+	// corrupts the extracted assignments.
+	var funcFallback, methodFallback *ast.File
 	for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
 		f := pkg.Files[fileName]
 		if _, ok := f.Functions[fnName]; ok {
 			if recvType == "" {
 				return pkgs[pkgName][fileName]
 			}
-			if fallback == nil {
-				fallback = pkgs[pkgName][fileName]
+			if funcFallback == nil {
+				funcFallback = pkgs[pkgName][fileName]
 			}
 		}
 		for _, typeName := range slices.Sorted(maps.Keys(f.Types)) {
@@ -2028,14 +2033,17 @@ func astFileFromFn(pkgName, fnName, recvType string, pkgs map[string]map[string]
 				if recvType != "" && strings.TrimPrefix(metadata.StringPool.GetString(method.Receiver), "*") == recvType {
 					return methodFile
 				}
-				if fallback == nil {
-					fallback = methodFile
+				if methodFallback == nil {
+					methodFallback = methodFile
 				}
 			}
 		}
 	}
 
-	return fallback
+	if methodFallback != nil {
+		return methodFallback
+	}
+	return funcFallback
 }
 
 // extractRootVariable recursively extracts the root variable from a chained expression
