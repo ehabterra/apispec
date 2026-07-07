@@ -1,0 +1,3 @@
+# Golden fixtures are byte-compared by TestGenerateMetadata; a CRLF checkout
+# (e.g. core.autocrlf=true on Windows) must not alter them.
+internal/spec/tests/*.yaml text eol=lf

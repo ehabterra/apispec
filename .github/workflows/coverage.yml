@@ -39,7 +39,6 @@ jobs:
         
         # Add changes
         git add README.md
-        git restore internal/spec/tests/
         
         # Check if there are changes to commit
         if git diff --quiet && git diff --staged --quiet; then

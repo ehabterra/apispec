@@ -3,110 +3,110 @@ string_pool:
   - c
   - generic
   - '*generic.Container[T]'
-  - claude-501/001/generic/generic.go:8:9
+  - generic/generic.go:8:9
   - Value
   - T
-  - claude-501/001/generic/generic.go:8:11
+  - generic/generic.go:8:11
   - selector
   - Get
   - '*Container[T]'
-  - claude-501/001/generic/generic.go:7:30
+  - generic/generic.go:7:30
   - func_type
   - func_results
-  - claude-501/001/generic/generic.go:7:1
+  - generic/generic.go:7:1
   - exported
-  - claude-501/001/generic/generic.go
+  - generic/generic.go
   - func() T
-  - claude-501/001/generic/generic.go:11:34
+  - generic/generic.go:11:34
   - value
-  - claude-501/001/generic/generic.go:12:2
-  - claude-501/001/generic/generic.go:12:4
+  - generic/generic.go:12:2
+  - generic/generic.go:12:4
   - generic.Container[T].Value
-  - claude-501/001/generic/generic.go:12:12
+  - generic/generic.go:12:12
   - Set
-  - claude-501/001/generic/generic.go:11:1
+  - generic/generic.go:11:1
   - 'func(T) '
   - Container
   - struct
   - interface
   - Container[T any]
-  - claude-501/001/generic/generic.go:16:10
-  - claude-501/001/generic/generic.go:16:20
+  - generic/generic.go:16:10
+  - generic/generic.go:16:20
   - index
-  - claude-501/001/generic/generic.go:16:23
-  - claude-501/001/generic/generic.go:16:30
+  - generic/generic.go:16:23
+  - generic/generic.go:16:30
   - key_value
   - composite_lit
   - unary
   - '&'
-  - claude-501/001/generic/generic.go:16:9
+  - generic/generic.go:16:9
   - NewContainer
-  - claude-501/001/generic/generic.go:15:32
+  - generic/generic.go:15:32
   - any
-  - claude-501/001/generic/generic.go:15:21
-  - claude-501/001/generic/generic.go:15:36
-  - claude-501/001/generic/generic.go:15:46
+  - generic/generic.go:15:21
+  - generic/generic.go:15:36
+  - generic/generic.go:15:46
   - star
-  - claude-501/001/generic/generic.go:15:35
-  - claude-501/001/generic/generic.go:15:1
+  - generic/generic.go:15:35
+  - generic/generic.go:15:1
   - func[T any](T) *Container[T any][T]
   - zero
-  - claude-501/001/generic/generic.go:22:10
+  - generic/generic.go:22:10
   - Process
-  - claude-501/001/generic/generic.go:19:36
+  - generic/generic.go:19:36
   - array_type
-  - claude-501/001/generic/generic.go:19:34
+  - generic/generic.go:19:34
   - items
   - comparable
-  - claude-501/001/generic/generic.go:19:16
-  - claude-501/001/generic/generic.go:19:39
-  - claude-501/001/generic/generic.go:19:1
+  - generic/generic.go:19:16
+  - generic/generic.go:19:39
+  - generic/generic.go:19:1
   - func[T comparable]([]T) T
   - literal
   - "42"
   - func[T any](value T) *generic.Container[T]
-  - claude-501/001/generic/generic.go:28:7
+  - generic/generic.go:28:7
   - int
-  - claude-501/001/generic/generic.go:28:20
+  - generic/generic.go:28:20
   - call
   - '*generic.Container[int]'
-  - claude-501/001/generic/generic.go:28:2
+  - generic/generic.go:28:2
   - unexported
   - main
-  - claude-501/001/generic/generic.go:29:9
+  - generic/generic.go:29:9
   - func() int
-  - claude-501/001/generic/generic.go:29:11
+  - generic/generic.go:29:11
   - Container[int]
   - val
-  - claude-501/001/generic/generic.go:29:2
+  - generic/generic.go:29:2
   - string
-  - claude-501/001/generic/generic.go:32:30
-  - claude-501/001/generic/generic.go:32:28
+  - generic/generic.go:32:30
+  - generic/generic.go:32:28
   - '"hello"'
   - '"world"'
   - func[T comparable](items []T) T
-  - claude-501/001/generic/generic.go:32:12
-  - claude-501/001/generic/generic.go:32:20
+  - generic/generic.go:32:12
+  - generic/generic.go:32:20
   - result
-  - claude-501/001/generic/generic.go:32:2
-  - claude-501/001/generic/generic.go:27:1
+  - generic/generic.go:32:2
+  - generic/generic.go:27:1
   - 'func() '
   - Container[T]
   - '[]string'
   - '[]T'
-  - claude-501/001/generic/generic.go:21:9
-  - claude-501/001/generic/generic.go:21:5
+  - generic/generic.go:21:9
+  - generic/generic.go:21:5
   - len
   - func([]T) int
   - '*Container'
   - "100"
-  - claude-501/001/generic/generic.go:30:2
+  - generic/generic.go:30:2
   - func(value int)
   - '*'
 packages:
   generic:
     files:
-      claude-501/001/generic/generic.go:
+      generic/generic.go:
         types:
           Container:
             name: 27
