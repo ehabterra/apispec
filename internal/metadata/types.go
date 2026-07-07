@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1152,16 +1153,22 @@ type TrackerLimits struct {
 // ProcessFunctionReturnTypes processes all functions and methods in the metadata
 // to fill their ResolvedType based on their ReturnVars, assuming the first return value is the target type
 func (m *Metadata) ProcessFunctionReturnTypes() {
-	for _, pkg := range m.Packages {
-		for _, file := range pkg.Files {
+	// Walk in sorted order: resolution can intern new strings into the pool,
+	// so map-range order here would leak into the serialized metadata.
+	for _, pkgName := range m.SortedPackageNames() {
+		pkg := m.Packages[pkgName]
+		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+			file := pkg.Files[fileName]
 			// Process functions
-			for funcName, fn := range file.Functions {
+			for _, funcName := range slices.Sorted(maps.Keys(file.Functions)) {
+				fn := file.Functions[funcName]
 				m.processFunctionReturnType(fn)
 				file.Functions[funcName] = fn
 			}
 
 			// Process methods in types
-			for typeName, typ := range file.Types {
+			for _, typeName := range slices.Sorted(maps.Keys(file.Types)) {
+				typ := file.Types[typeName]
 				for i := range typ.Methods {
 					m.processMethodReturnType(&typ.Methods[i])
 				}
@@ -1381,26 +1388,37 @@ func (m *Metadata) resolveSelectorReturnType(returnVar *CallArgument, pkgName st
 	baseType := m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 	fieldName := returnVar.Sel.GetName()
 
-	// Try to find the field type in metadata
-	for pkgName, pkg := range m.Packages {
-		for _, file := range pkg.Files {
-			// Try both with and without package prefix
+	if fieldType, ok := m.FindFieldType(baseType, fieldName); ok {
+		return fieldType
+	}
+
+	// Fallback to concatenated form
+	return baseType + "." + fieldName
+}
+
+// FindFieldType resolves the type of field fieldName on the type named
+// baseType by scanning the metadata. First match wins, so packages and files
+// are walked in sorted order — otherwise the resolved type can flip between
+// runs when the same bare name exists in several packages. The type name is
+// tried both bare and package-prefixed.
+func (m *Metadata) FindFieldType(baseType, fieldName string) (string, bool) {
+	for _, pkgName := range m.SortedPackageNames() {
+		pkg := m.Packages[pkgName]
+		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+			file := pkg.Files[fileName]
 			typeNames := []string{baseType, pkgName + "." + baseType}
 			for _, typeName := range typeNames {
 				if typ, exists := file.Types[typeName]; exists {
-					// Find the field
 					for _, field := range typ.Fields {
 						if m.StringPool.GetString(field.Name) == fieldName {
-							return m.StringPool.GetString(field.Type)
+							return m.StringPool.GetString(field.Type), true
 						}
 					}
 				}
 			}
 		}
 	}
-
-	// Fallback to concatenated form
-	return baseType + "." + fieldName
+	return "", false
 }
 
 // resolveCallReturnType resolves the type of a function call return value

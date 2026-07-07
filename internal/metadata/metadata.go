@@ -5,7 +5,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"hash/fnv"
 	"maps"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -164,9 +166,12 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	currentModulePath := modulePath
 	var packagePaths []string
 
-	// Collect all unique package paths
+	// Collect all unique package paths in stable order: importPaths is a map,
+	// so ranging it directly would make the fallback module-path inference
+	// below depend on iteration order.
 	pathSet := make(map[string]bool)
-	for _, importPath := range importPaths {
+	for _, fileName := range slices.Sorted(maps.Keys(importPaths)) {
+		importPath := importPaths[fileName]
 		if !pathSet[importPath] {
 			pathSet[importPath] = true
 			packagePaths = append(packagePaths, importPath)
@@ -231,7 +236,13 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		ExternalTypes: make(map[string]ExternalTypeFact),
 	}
 
-	for pkgName, files := range pkgs {
+	// Process packages and files in sorted order: both maps' iteration order
+	// would otherwise decide string-pool interning order (and therefore the
+	// entire serialized metadata) per run.
+	sortedPkgNames := slices.Sorted(maps.Keys(pkgs))
+	for _, pkgName := range sortedPkgNames {
+		files := pkgs[pkgName]
+		sortedFileNames := slices.Sorted(maps.Keys(files))
 		pkg := &Package{
 			Files: make(map[string]*File),
 		}
@@ -241,7 +252,8 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		allTypes := make(map[string]*Type)
 
 		// First pass: collect all methods
-		for fileName, file := range files {
+		for _, fileName := range sortedFileNames {
+			file := files[fileName]
 			info := fileToInfo[file]
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
@@ -322,7 +334,8 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		}
 
 		// Second pass: process each file
-		for fileName, file := range files {
+		for _, fileName := range sortedFileNames {
+			file := files[fileName]
 			info := fileToInfo[file]
 			fullPath := buildFullPath(importPaths[pkgName], fileName)
 
@@ -346,7 +359,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 			// Register synthetic types for inline anonymous-struct local
 			// vars before any expression walk runs handleIdent — otherwise
 			// the synthetic key handleIdent emits would point at nothing.
-			processLocalAnonymousStructs(file, info, pkgName, f, metadata)
+			processLocalAnonymousStructs(file, info, pkgName, fset, f, metadata)
 
 			// Process functions
 			processFunctions(file, info, pkgName, fset, f, fileToInfo, funcMap, metadata)
@@ -376,12 +389,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	// Build the call graph in a stable package order: pkgs is a map, so ranging
 	// it directly makes the CallGraph edge order (and therefore roots, traversal
 	// order, and the whole generated spec) differ between runs.
-	cgPkgNames := make([]string, 0, len(pkgs))
-	for pkgName := range pkgs {
-		cgPkgNames = append(cgPkgNames, pkgName)
-	}
-	sort.Strings(cgPkgNames)
-	for _, pkgName := range cgPkgNames {
+	for _, pkgName := range sortedPkgNames {
 		// Build call graph
 		buildCallGraph(pkgs[pkgName], pkgs, pkgName, fileToInfo, fset, funcMap, metadata)
 	}
@@ -677,10 +685,14 @@ func (m *Metadata) GetCallPath(fromFunc, toFunc string) []*CallGraphEdge {
 }
 
 // BuildFuncMap creates a map of function names to their declarations.
+// Method keys carry no package prefix, so cross-package collisions are
+// last-writer-wins — iterate in sorted order so the winner is stable per run.
 func BuildFuncMap(pkgs map[string]map[string]*ast.File) map[string]*ast.FuncDecl {
 	funcMap := make(map[string]*ast.FuncDecl)
-	for pkgPath, files := range pkgs {
-		for _, file := range files {
+	for _, pkgPath := range slices.Sorted(maps.Keys(pkgs)) {
+		files := pkgs[pkgPath]
+		for _, fileName := range slices.Sorted(maps.Keys(files)) {
+			file := files[fileName]
 			pkgName := ""
 			if file.Name != nil {
 				pkgName = file.Name.Name
@@ -1182,14 +1194,40 @@ func isExternalPackage(pkgPath, currentModulePath string) bool {
 const AnonStructTypePrefix = "_apispec_anonstruct_"
 
 // AnonStructKey returns the stable synthetic key used to register and
-// later look up an inline anonymous-struct type. The token.Pos is
-// unique within a given build, so two distinct `var x struct{...}`
-// declarations never collide.
-func AnonStructKey(pos token.Pos) string {
-	if pos == token.NoPos {
+// later look up an inline anonymous-struct type. The key is built from the
+// declaring package path plus the declaration's base filename, line, and
+// column, so two distinct `var x struct{...}` declarations never collide
+// (base filenames are unique within a package's directory). A raw token.Pos
+// offset must NOT be used here: fset base offsets depend on the order
+// packages.Load registered files, which varies between runs, so offset-based
+// keys made the serialized metadata nondeterministic. The key is sanitized to
+// [A-Za-z0-9_] so no downstream pkg.Type-splitting path (TypeParts and
+// friends) can mangle it, and so it carries no machine-specific directory.
+// Sanitizing can collapse distinct inputs ("a-b" and "a_b" both become
+// "a_b"), so an FNV hash of the raw pkg path and base filename is appended
+// to keep colliding locations distinct.
+func AnonStructKey(pos token.Pos, fset *token.FileSet, pkgPath string) string {
+	if pos == token.NoPos || fset == nil {
 		return ""
 	}
-	return fmt.Sprintf("%s%d", AnonStructTypePrefix, int(pos))
+	p := fset.Position(pos)
+	if !p.IsValid() {
+		return ""
+	}
+	base := filepath.Base(p.Filename)
+	sanitize := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+				return r
+			}
+			return '_'
+		}, s)
+	}
+	h := fnv.New32a()
+	h.Write([]byte(pkgPath))
+	h.Write([]byte{0})
+	h.Write([]byte(base))
+	return fmt.Sprintf("%s%s_%s_%d_%d_%08x", AnonStructTypePrefix, sanitize(pkgPath), sanitize(base), p.Line, p.Column, h.Sum32())
 }
 
 // IsAnonStructTypeName reports whether name is one of the synthetic
@@ -1204,10 +1242,19 @@ func IsAnonStructTypeName(name string) bool {
 // lets every downstream consumer (findTypesInMetadata,
 // generateStructSchema, ...) treat them like any other struct type,
 // without trying to round-trip the Go-syntax form through go/parser.
-func processLocalAnonymousStructs(file *ast.File, info *types.Info, pkgName string, f *File, metadata *Metadata) {
+func processLocalAnonymousStructs(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, f *File, metadata *Metadata) {
 	if info == nil {
 		return
 	}
+	// info.Defs is a map, so collect matches first and register them sorted
+	// by their position-string key — otherwise string-pool interning order
+	// flips per run. (Raw token.Pos is not a valid sort key across runs; see
+	// AnonStructKey.)
+	type anonVar struct {
+		st  *types.Struct
+		key string
+	}
+	var vars []anonVar
 	for ident, obj := range info.Defs {
 		if obj == nil || ident == nil {
 			continue
@@ -1220,14 +1267,18 @@ func processLocalAnonymousStructs(file *ast.File, info *types.Info, pkgName stri
 		if !ok {
 			continue
 		}
-		key := AnonStructKey(v.Pos())
+		key := AnonStructKey(v.Pos(), fset, pkgName)
 		if key == "" {
 			continue
 		}
-		if _, exists := f.Types[key]; exists {
+		vars = append(vars, anonVar{st: st, key: key})
+	}
+	slices.SortFunc(vars, func(a, b anonVar) int { return strings.Compare(a.key, b.key) })
+	for _, v := range vars {
+		if _, exists := f.Types[v.key]; exists {
 			continue
 		}
-		f.Types[key] = buildAnonStructType(st, key, pkgName, metadata)
+		f.Types[v.key] = buildAnonStructType(v.st, v.key, pkgName, metadata)
 	}
 }
 
@@ -2144,11 +2195,23 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []*Ca
 	}
 }
 
-// analyzeInterfaceImplementations analyzes which structs implement which interfaces
+// analyzeInterfaceImplementations analyzes which structs implement which interfaces.
+// All four loops range over maps, so iterate keys in sorted order — the append
+// order of Implements/ImplementedBy (and pool interning) must not vary per run.
 func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool) {
 	sigMemo := make(map[int]string) // normalized signature by string-pool index
-	for pkgName, pkg := range pkgs {
-		for structName, stct := range pkg.Types {
+	pkgNames := slices.Sorted(maps.Keys(pkgs))
+	// Pre-sort each package's type names once — the interface scan below runs
+	// per struct, so sorting inside that loop would redo the same work
+	// O(structs × packages) times.
+	sortedTypeNames := make(map[string][]string, len(pkgs))
+	for _, pkgName := range pkgNames {
+		sortedTypeNames[pkgName] = slices.Sorted(maps.Keys(pkgs[pkgName].Types))
+	}
+	for _, pkgName := range pkgNames {
+		pkg := pkgs[pkgName]
+		for _, structName := range sortedTypeNames[pkgName] {
+			stct := pkg.Types[structName]
 			if stct.Kind != pool.Get("struct") {
 				continue
 			}
@@ -2158,8 +2221,10 @@ func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool)
 				structMethods[method.Name] = method.SignatureStr
 			}
 
-			for interfacePkgName, interfacePkg := range pkgs {
-				for interfaceName, intrf := range interfacePkg.Types {
+			for _, interfacePkgName := range pkgNames {
+				interfacePkg := pkgs[interfacePkgName]
+				for _, interfaceName := range sortedTypeNames[interfacePkgName] {
+					intrf := interfacePkg.Types[interfaceName]
 					if intrf.Kind != pool.Get("interface") {
 						continue
 					}

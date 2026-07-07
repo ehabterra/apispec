@@ -126,7 +126,7 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 				// and not always reparseable (module names with dashes).
 				if obj.Type() != nil {
 					if _, isStruct := obj.Type().(*types.Struct); isStruct {
-						typeStr = AnonStructKey(obj.Pos())
+						typeStr = AnonStructKey(obj.Pos(), fset, pkg)
 					}
 				}
 				if typeStr == "" {
