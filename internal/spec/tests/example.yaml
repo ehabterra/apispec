@@ -3,30 +3,30 @@ string_pool:
   - u
   - example
   - '*example.User'
-  - claude-501/001/example/types.go:21:9
+  - example/types.go:21:9
   - Name
   - string
-  - claude-501/001/example/types.go:21:11
+  - example/types.go:21:11
   - selector
   - GetName
   - '*User'
-  - claude-501/001/example/types.go:20:26
+  - example/types.go:20:26
   - func_type
   - func_results
-  - claude-501/001/example/types.go:20:1
+  - example/types.go:20:1
   - exported
-  - claude-501/001/example/types.go
+  - example/types.go
   - func() string
   - int
-  - claude-501/001/example/types.go:24:27
+  - example/types.go:24:27
   - age
-  - claude-501/001/example/types.go:25:2
+  - example/types.go:25:2
   - Age
-  - claude-501/001/example/types.go:25:4
+  - example/types.go:25:4
   - example.User.Age
-  - claude-501/001/example/types.go:25:10
+  - example/types.go:25:10
   - SetAge
-  - claude-501/001/example/types.go:24:1
+  - example/types.go:24:1
   - 'func(int) '
   - User
   - struct
@@ -34,61 +34,61 @@ string_pool:
   - json:"age"
   - interface
   - Namer
-  - claude-501/001/example/types.go:9:12
+  - example/types.go:9:12
   - Ager
-  - claude-501/001/example/types.go:13:13
+  - example/types.go:13:13
   - Phoner
   - SetPhone
-  - claude-501/001/example/types.go:17:16
+  - example/types.go:17:16
   - numb
   - 'func(string) '
-  - claude-501/001/example/types.go:36:9
-  - claude-501/001/example/types.go:28:19
+  - example/types.go:36:9
+  - example/types.go:28:19
   - name
-  - claude-501/001/example/types.go:28:31
-  - claude-501/001/example/types.go:28:37
+  - example/types.go:28:31
+  - example/types.go:28:37
   - star
-  - claude-501/001/example/types.go:28:36
-  - claude-501/001/example/types.go:29:8
-  - claude-501/001/example/types.go:30:3
-  - claude-501/001/example/types.go:30:9
+  - example/types.go:28:36
+  - example/types.go:29:8
+  - example/types.go:30:3
+  - example/types.go:30:9
   - key_value
-  - claude-501/001/example/types.go:31:3
-  - claude-501/001/example/types.go:31:9
+  - example/types.go:31:3
+  - example/types.go:31:9
   - composite_lit
   - unary
   - '&'
-  - claude-501/001/example/types.go:29:7
-  - claude-501/001/example/types.go:29:2
+  - example/types.go:29:7
+  - example/types.go:29:2
   - unexported
   - NewUser
-  - claude-501/001/example/types.go:28:1
+  - example/types.go:28:1
   - func(string, int) *User
   - literal
   - '"User Name"'
   - "40"
   - func(name string, age int) *example.User
-  - claude-501/001/example/types.go:40:10
+  - example/types.go:40:10
   - call
   - user
-  - claude-501/001/example/types.go:40:2
+  - example/types.go:40:2
   - main
-  - claude-501/001/example/types.go:39:1
+  - example/types.go:39:1
   - 'func() '
-  - example.Namer
-  - example.User
   - example.Ager
-  - claude-501/001/example/types.go:34:11
-  - claude-501/001/example/types.go:34:2
+  - example.User
+  - example.Namer
+  - example/types.go:34:11
+  - example/types.go:34:2
   - func(age int)
-  - claude-501/001/example/types.go:41:15
-  - claude-501/001/example/types.go:41:14
-  - claude-501/001/example/types.go:41:2
+  - example/types.go:41:15
+  - example/types.go:41:14
+  - example/types.go:41:2
   - Println
 packages:
   example:
     files:
-      claude-501/001/example/types.go:
+      example/types.go:
         types:
           Ager:
             name: 36

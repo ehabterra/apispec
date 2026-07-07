@@ -1,6 +1,8 @@
 package metadata_test
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -13,7 +15,14 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/tools/go/packages"
+	"gopkg.in/yaml.v3"
 )
+
+// updateGolden rewrites the golden metadata fixtures under
+// internal/spec/tests instead of comparing against them:
+//
+//	go test ./internal/metadata/ -run TestGenerateMetadata -update
+var updateGolden = flag.Bool("update", false, "rewrite golden files under internal/spec/tests")
 
 // testModule describes a module to materialize on disk for a test.
 type testModule struct {
@@ -794,13 +803,25 @@ var DefaultFormat = "uppercase"`,
 
 			meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
 
-			// sanitizeMetadataForTest removes temporary directory paths from metadata to ensure consistent test output
-			sanitizedMeta := sanitizeMetadataForTest(meta)
+			// sanitizeMetadataForTest strips the per-test temp root (and any
+			// leftover machine-specific path parts) so the serialized form is
+			// stable across machines and runs.
+			sanitizedMeta := sanitizeMetadataForTest(meta, tempRoots(t, cfg.Dir)...)
 
-			// Only write metadata files during development/testing, not during CI/CD
-			// This prevents temporary directory paths from being committed to git
-			if err := metadata.WriteMetadata(sanitizedMeta, fmt.Sprintf("../spec/tests/%s.yaml", tc.src[0].Name)); err != nil {
-				t.Errorf("Failed to write metadata.yaml: %v", err)
+			// Golden comparison: generation is deterministic, so the sanitized
+			// metadata must match internal/spec/tests/<name>.yaml byte-for-byte.
+			// Regenerate with -update after intentional changes.
+			goldenPath := filepath.Join("..", "spec", "tests", tc.src[0].Name+".yaml")
+			got := marshalMetadataYAML(t, sanitizedMeta)
+			if *updateGolden {
+				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+					t.Fatalf("failed to update golden %s: %v", goldenPath, err)
+				}
+			} else if want, err := os.ReadFile(goldenPath); err != nil {
+				t.Errorf("failed to read golden %s (run with -update to create it): %v", goldenPath, err)
+			} else if !bytes.Equal(want, got) {
+				t.Errorf("sanitized metadata differs from golden %s (run with -update to regenerate):\n%s",
+					goldenPath, firstDiff(string(want), string(got)))
 			}
 
 			// Validate packages
@@ -1391,17 +1412,17 @@ func main() {
 	t.Logf("Total call graph edges: %d", len(meta.CallGraph))
 	t.Logf("Package count: %d", len(meta.Packages))
 } // sanitizeMetadataForTest removes temporary directory paths from metadata to ensure consistent test output.
-func sanitizeMetadataForTest(meta *metadata.Metadata) *metadata.Metadata {
+func sanitizeMetadataForTest(meta *metadata.Metadata, roots ...string) *metadata.Metadata {
 	// Create a copy to avoid mutating the original
 	sanitized := &metadata.Metadata{
-		StringPool: sanitizeStringPool(meta.StringPool),
+		StringPool: sanitizeStringPool(meta.StringPool, roots),
 		CallGraph:  meta.CallGraph,
 		Packages:   make(map[string]*metadata.Package),
 	}
 
 	for pkgPath, pkg := range meta.Packages {
 		// Normalize package path by removing temp directories and test suffixes
-		sanitizedPath := sanitizeFilePath(pkgPath)
+		sanitizedPath := sanitizeFilePath(pkgPath, roots)
 
 		// Copy package with sanitized file paths
 		sanitizedPkg := &metadata.Package{}
@@ -1409,7 +1430,7 @@ func sanitizeMetadataForTest(meta *metadata.Metadata) *metadata.Metadata {
 		sanitizedPkg.Files = make(map[string]*metadata.File)
 
 		for filePath, file := range pkg.Files {
-			cleanPath := sanitizeFilePath(filePath)
+			cleanPath := sanitizeFilePath(filePath, roots)
 			sanitizedPkg.Files[cleanPath] = file
 		}
 
@@ -1419,8 +1440,53 @@ func sanitizeMetadataForTest(meta *metadata.Metadata) *metadata.Metadata {
 	return sanitized
 }
 
+// tempRoots returns the per-test temp directory that moduleDir lives in, plus
+// its symlink-resolved form (macOS surfaces t.TempDir() as /var/folders/…
+// while go/token positions may carry the resolved /private/var/folders/…).
+// Stripping these exact prefixes is what makes the sanitized output
+// machine-independent; the heuristic in sanitizeFilePath is only a backstop.
+func tempRoots(t *testing.T, moduleDir string) []string {
+	t.Helper()
+	root := filepath.Dir(moduleDir)
+	roots := []string{root}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil && resolved != root {
+		roots = append(roots, resolved)
+	}
+	return roots
+}
+
+// stripRoots removes a leading temp-root prefix (if any) from s, turning an
+// absolute per-run path into a stable module-relative one.
+func stripRoots(s string, roots []string) string {
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(s, root+string(filepath.Separator)); ok {
+			return rest
+		}
+	}
+	return s
+}
+
+// marshalMetadataYAML serializes metadata with the same encoder settings as
+// metadata.WriteMetadata, so golden files keep their historical formatting.
+func marshalMetadataYAML(t *testing.T, meta *metadata.Metadata) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(meta); err != nil {
+		t.Fatalf("failed to marshal metadata: %v", err)
+	}
+	if err := enc.Close(); err != nil {
+		t.Fatalf("failed to flush metadata encoder: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // sanitizeStringPool removes temporary directory paths from string pool entries.
-func sanitizeStringPool(pool *metadata.StringPool) *metadata.StringPool {
+func sanitizeStringPool(pool *metadata.StringPool, roots []string) *metadata.StringPool {
 	if pool == nil {
 		return nil
 	}
@@ -1430,7 +1496,7 @@ func sanitizeStringPool(pool *metadata.StringPool) *metadata.StringPool {
 
 	for i := 0; i < pool.GetSize(); i++ {
 		orig := pool.GetString(i)
-		clean := sanitizeString(orig)
+		clean := sanitizeString(orig, roots)
 		stringMap[orig] = clean
 	}
 
@@ -1441,21 +1507,24 @@ func sanitizeStringPool(pool *metadata.StringPool) *metadata.StringPool {
 	return sanitized
 }
 
-// sanitizeString detects file-like strings and normalizes their paths.
-func sanitizeString(s string) string {
+// sanitizeString strips the exact temp roots first, then falls back to the
+// heuristic path cleanup for any file-like string it still recognizes.
+func sanitizeString(s string, roots []string) string {
+	s = stripRoots(s, roots)
 	if strings.Contains(s, "/") &&
 		(strings.HasSuffix(s, ".go") ||
 			strings.Contains(s, ".go:") ||
 			strings.Contains(s, "/var/") ||
 			strings.Contains(s, "/tmp/") ||
 			strings.Contains(s, "TestGenerateMetadata")) {
-		return sanitizeFilePath(s)
+		return sanitizeFilePath(s, roots)
 	}
 	return s
 }
 
 // sanitizeFilePath strips system temp paths, random test IDs, and keeps a meaningful structure.
-func sanitizeFilePath(path string) string {
+func sanitizeFilePath(path string, roots []string) string {
+	path = stripRoots(path, roots)
 	parts := strings.Split(path, string(filepath.Separator))
 	var meaningful []string
 

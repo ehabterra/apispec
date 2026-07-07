@@ -3,115 +3,115 @@ string_pool:
   - s
   - complex
   - '*complex.Service'
-  - claude-501/001/complex/service.go:10:9
+  - complex/service.go:10:9
   - name
   - string
-  - claude-501/001/complex/service.go:10:11
+  - complex/service.go:10:11
   - selector
   - GetName
   - '*Service'
-  - claude-501/001/complex/service.go:9:29
+  - complex/service.go:9:29
   - func_type
   - func_results
-  - claude-501/001/complex/service.go:9:1
+  - complex/service.go:9:1
   - exported
-  - claude-501/001/complex/service.go
+  - complex/service.go
   - func() string
   - result
-  - claude-501/001/complex/service.go:15:9
-  - claude-501/001/complex/service.go:13:32
+  - complex/service.go:15:9
+  - complex/service.go:13:32
   - data
-  - claude-501/001/complex/service.go:13:40
+  - complex/service.go:13:40
   - literal
   - '"Processing: %s"'
-  - claude-501/001/complex/service.go:14:42
+  - complex/service.go:14:42
   - fmt
-  - claude-501/001/complex/service.go:14:12
+  - complex/service.go:14:12
   - Sprintf
   - func(format string, a ...any) string
-  - claude-501/001/complex/service.go:14:16
+  - complex/service.go:14:16
   - call
-  - claude-501/001/complex/service.go:14:2
+  - complex/service.go:14:2
   - unexported
   - Process
-  - claude-501/001/complex/service.go:13:1
+  - complex/service.go:13:1
   - func(string) string
-  - claude-501/001/complex/service.go:22:32
+  - complex/service.go:22:32
   - input
   - h
   - '*complex.Handler'
-  - claude-501/001/complex/service.go:23:10
+  - complex/service.go:23:10
   - service
-  - claude-501/001/complex/service.go:23:12
-  - claude-501/001/complex/service.go:23:20
+  - complex/service.go:23:12
+  - complex/service.go:23:20
   - Service
-  - claude-501/001/complex/service.go:23:2
+  - complex/service.go:23:2
   - Handle
-  - claude-501/001/complex/service.go:24:33
-  - claude-501/001/complex/service.go:24:15
-  - claude-501/001/complex/service.go:24:17
+  - complex/service.go:24:33
+  - complex/service.go:24:15
+  - complex/service.go:24:17
   - func(data string) string
-  - claude-501/001/complex/service.go:24:25
+  - complex/service.go:24:25
   - processed
-  - claude-501/001/complex/service.go:24:2
+  - complex/service.go:24:2
   - '*Handler'
-  - claude-501/001/complex/service.go:22:1
+  - complex/service.go:22:1
   - 'func(string) '
   - struct
   - interface
   - Handler
-  - claude-501/001/complex/service.go:29:10
-  - claude-501/001/complex/service.go:29:18
-  - claude-501/001/complex/service.go:29:24
+  - complex/service.go:29:10
+  - complex/service.go:29:18
+  - complex/service.go:29:24
   - key_value
   - composite_lit
   - unary
   - '&'
-  - claude-501/001/complex/service.go:29:9
+  - complex/service.go:29:9
   - NewService
-  - claude-501/001/complex/service.go:28:22
-  - claude-501/001/complex/service.go:28:31
+  - complex/service.go:28:22
+  - complex/service.go:28:31
   - star
-  - claude-501/001/complex/service.go:28:30
-  - claude-501/001/complex/service.go:28:1
+  - complex/service.go:28:30
+  - complex/service.go:28:1
   - func(string) *Service
-  - claude-501/001/complex/service.go:33:10
-  - claude-501/001/complex/service.go:33:18
+  - complex/service.go:33:10
+  - complex/service.go:33:18
   - svc
-  - claude-501/001/complex/service.go:33:27
-  - claude-501/001/complex/service.go:33:9
+  - complex/service.go:33:27
+  - complex/service.go:33:9
   - NewHandler
-  - claude-501/001/complex/service.go:32:22
-  - claude-501/001/complex/service.go:32:21
-  - claude-501/001/complex/service.go:32:32
-  - claude-501/001/complex/service.go:32:31
-  - claude-501/001/complex/service.go:32:1
+  - complex/service.go:32:22
+  - complex/service.go:32:21
+  - complex/service.go:32:32
+  - complex/service.go:32:31
+  - complex/service.go:32:1
   - func(*Service) *Handler
   - '"test-service"'
   - func(name string) *complex.Service
-  - claude-501/001/complex/service.go:37:9
-  - claude-501/001/complex/service.go:37:2
+  - complex/service.go:37:9
+  - complex/service.go:37:2
   - main
-  - claude-501/001/complex/service.go:38:24
+  - complex/service.go:38:24
   - func(svc *complex.Service) *complex.Handler
-  - claude-501/001/complex/service.go:38:13
+  - complex/service.go:38:13
   - handler
-  - claude-501/001/complex/service.go:38:2
-  - claude-501/001/complex/service.go:36:1
+  - complex/service.go:38:2
+  - complex/service.go:36:1
   - 'func() '
   - '"Handler %s: %s\n"'
-  - claude-501/001/complex/service.go:25:33
-  - claude-501/001/complex/service.go:25:39
-  - claude-501/001/complex/service.go:25:2
+  - complex/service.go:25:33
+  - complex/service.go:25:39
+  - complex/service.go:25:2
   - Printf
   - func(format string, a ...any) (n int, err error)
   - '"test-data"'
-  - claude-501/001/complex/service.go:39:2
+  - complex/service.go:39:2
   - func(input string)
 packages:
   complex:
     files:
-      claude-501/001/complex/service.go:
+      complex/service.go:
         types:
           Handler:
             name: 60

@@ -10,41 +10,41 @@ string_pool:
   - string
   - Message
   - constants
-  - claude-501/001/constants/const.go:15:2
+  - constants/const.go:15:2
   - exported
   - init
-  - claude-501/001/constants/const.go:14:1
+  - constants/const.go:14:1
   - unexported
   - 'func() '
   - MaxSize
   - untyped int
-  - claude-501/001/constants/const.go:19:10
+  - constants/const.go:19:10
   - int
   - size
-  - claude-501/001/constants/const.go:19:2
+  - constants/const.go:19:2
   - UseConstants
   - Name
   - untyped string
-  - claude-501/001/constants/const.go:20:10
+  - constants/const.go:20:10
   - name
-  - claude-501/001/constants/const.go:20:2
-  - claude-501/001/constants/const.go:18:1
+  - constants/const.go:20:2
+  - constants/const.go:18:1
   - const
-  - claude-501/001/constants/const.go:4:2
-  - claude-501/001/constants/const.go:5:2
+  - constants/const.go:4:2
+  - constants/const.go:5:2
   - test
   - Pi
-  - claude-501/001/constants/const.go:6:2
+  - constants/const.go:6:2
   - untyped float
   - GlobalVar
   - var
-  - claude-501/001/constants/const.go:10:2
+  - constants/const.go:10:2
   - "42"
-  - claude-501/001/constants/const.go:11:2
+  - constants/const.go:11:2
 packages:
   constants:
     files:
-      claude-501/001/constants/const.go:
+      constants/const.go:
         functions:
           UseConstants:
             name: 23
