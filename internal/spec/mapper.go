@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -611,7 +612,10 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, route
 }
 
 func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
-	for typeName := range usedTypes {
+	// Iterate in sorted order: generateSchemaFromType's recursion guard turns
+	// already-visited types into $refs, so map-range order would decide
+	// inline-vs-$ref per run.
+	for _, typeName := range slices.Sorted(maps.Keys(usedTypes)) {
 		// Synthetic anonymous-struct types (see metadata.AnonStructKey)
 		// are emitted inline at the use site, so they have no name to
 		// register under components/schemas.

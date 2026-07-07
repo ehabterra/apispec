@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -368,9 +370,39 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 	return allPackages
 }
 
+// frameworkDetectionOrder returns the order detectFrameworkType checks
+// FrameworkPatterns: known specific frameworks first, then any custom keys
+// (sorted), with the generic "http" bucket always last. Ranging the map
+// directly made the winner random per run for packages that import both a
+// framework and net/http (nearly all handler code does).
+func (fd *FrameworkDetector) frameworkDetectionOrder() []string {
+	known := []string{"gin", "echo", "fiber", "chi", "mux", "fasthttp"}
+	seen := map[string]bool{"http": true}
+	order := make([]string, 0, len(fd.config.FrameworkPatterns))
+	for _, k := range known {
+		if _, ok := fd.config.FrameworkPatterns[k]; ok {
+			order = append(order, k)
+			seen[k] = true
+		}
+	}
+	var extras []string
+	for k := range fd.config.FrameworkPatterns {
+		if !seen[k] {
+			extras = append(extras, k)
+		}
+	}
+	sort.Strings(extras)
+	order = append(order, extras...)
+	if _, ok := fd.config.FrameworkPatterns["http"]; ok {
+		order = append(order, "http")
+	}
+	return order
+}
+
 // detectFrameworkType detects which framework this package uses
 func (fd *FrameworkDetector) detectFrameworkType(pkg *packages.Package) string {
-	for frameworkType, patterns := range fd.config.FrameworkPatterns {
+	for _, frameworkType := range fd.frameworkDetectionOrder() {
+		patterns := fd.config.FrameworkPatterns[frameworkType]
 		if fd.config.DisabledFrameworks[frameworkType] {
 			continue
 		}
@@ -718,9 +750,12 @@ func (fd *FrameworkDetector) analyzePackageContents(
 	pkgsMetadata map[string]map[string]*ast.File,
 	fileToInfo map[*ast.File]*types.Info,
 ) {
-	// Get files for this package
+	// Get files for this package, in sorted order — dep.Files and the
+	// Functions/Types appended by analyzeFileContents are serialized with the
+	// metadata, so map-range order would flip them per run.
 	if files, ok := pkgsMetadata[pkg.PkgPath]; ok {
-		for fileName, file := range files {
+		for _, fileName := range slices.Sorted(maps.Keys(files)) {
+			file := files[fileName]
 			dep.Files = append(dep.Files, fileName)
 
 			// Analyze file contents

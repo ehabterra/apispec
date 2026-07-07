@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1152,16 +1153,22 @@ type TrackerLimits struct {
 // ProcessFunctionReturnTypes processes all functions and methods in the metadata
 // to fill their ResolvedType based on their ReturnVars, assuming the first return value is the target type
 func (m *Metadata) ProcessFunctionReturnTypes() {
-	for _, pkg := range m.Packages {
-		for _, file := range pkg.Files {
+	// Walk in sorted order: resolution can intern new strings into the pool,
+	// so map-range order here would leak into the serialized metadata.
+	for _, pkgName := range m.SortedPackageNames() {
+		pkg := m.Packages[pkgName]
+		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+			file := pkg.Files[fileName]
 			// Process functions
-			for funcName, fn := range file.Functions {
+			for _, funcName := range slices.Sorted(maps.Keys(file.Functions)) {
+				fn := file.Functions[funcName]
 				m.processFunctionReturnType(fn)
 				file.Functions[funcName] = fn
 			}
 
 			// Process methods in types
-			for typeName, typ := range file.Types {
+			for _, typeName := range slices.Sorted(maps.Keys(file.Types)) {
+				typ := file.Types[typeName]
 				for i := range typ.Methods {
 					m.processMethodReturnType(&typ.Methods[i])
 				}
@@ -1381,9 +1388,13 @@ func (m *Metadata) resolveSelectorReturnType(returnVar *CallArgument, pkgName st
 	baseType := m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 	fieldName := returnVar.Sel.GetName()
 
-	// Try to find the field type in metadata
-	for pkgName, pkg := range m.Packages {
-		for _, file := range pkg.Files {
+	// Try to find the field type in metadata. First match wins, so walk
+	// packages and files in sorted order or the resolved type can flip
+	// between runs when the same bare name exists in several packages.
+	for _, pkgName := range m.SortedPackageNames() {
+		pkg := m.Packages[pkgName]
+		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+			file := pkg.Files[fileName]
 			// Try both with and without package prefix
 			typeNames := []string{baseType, pkgName + "." + baseType}
 			for _, typeName := range typeNames {
