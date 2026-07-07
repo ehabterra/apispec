@@ -1896,7 +1896,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
 
-		calleeAstFile := astFileFromFn(calleePkg, calleeFunc, pkgs, metadata)
+		calleeAstFile := astFileFromFn(calleePkg, calleeFunc, calleeParts, pkgs, metadata)
 
 		if calleeAstFile != nil {
 			fnInfo := fileToInfo[calleeAstFile]
@@ -1994,29 +1994,48 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	}
 }
 
-func astFileFromFn(pkgName, fnName string, pkgs map[string]map[string]*ast.File, metadata *Metadata) *ast.File {
-	var astFile *ast.File
+// astFileFromFn locates the *ast.File declaring fnName in pkgName. recvType
+// (may be empty for plain functions) disambiguates methods: several types can
+// share a method name (e.g. Name()), and the previous name-only scan over the
+// unsorted Files map returned whichever match the map order surfaced last,
+// making the recorded callee assignments flip between runs. Files and types
+// are walked in sorted order so even the fallback (name match on a different
+// receiver) is deterministic.
+func astFileFromFn(pkgName, fnName, recvType string, pkgs map[string]map[string]*ast.File, metadata *Metadata) *ast.File {
+	pkg, pkgExists := metadata.Packages[pkgName]
+	if !pkgExists {
+		return nil
+	}
+	recvType = strings.TrimPrefix(recvType, "*")
 
-	if pkg, pkgExists := metadata.Packages[pkgName]; pkgExists {
-		for fileName, f := range pkg.Files {
-			if _, ok := f.Functions[fnName]; ok {
-				astFile = pkgs[pkgName][fileName]
-				break
+	var fallback *ast.File
+	for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+		f := pkg.Files[fileName]
+		if _, ok := f.Functions[fnName]; ok {
+			if recvType == "" {
+				return pkgs[pkgName][fileName]
 			}
-			for _, t := range f.Types {
-				for _, method := range t.Methods {
-					methodName := metadata.StringPool.GetString(method.Name)
-					if methodName == fnName {
-						astFile = pkgs[pkgName][metadata.StringPool.GetString(method.Filename)]
-						break
-					}
+			if fallback == nil {
+				fallback = pkgs[pkgName][fileName]
+			}
+		}
+		for _, typeName := range slices.Sorted(maps.Keys(f.Types)) {
+			for _, method := range f.Types[typeName].Methods {
+				if metadata.StringPool.GetString(method.Name) != fnName {
+					continue
+				}
+				methodFile := pkgs[pkgName][metadata.StringPool.GetString(method.Filename)]
+				if recvType != "" && strings.TrimPrefix(metadata.StringPool.GetString(method.Receiver), "*") == recvType {
+					return methodFile
+				}
+				if fallback == nil {
+					fallback = methodFile
 				}
 			}
-
 		}
 	}
 
-	return astFile
+	return fallback
 }
 
 // extractRootVariable recursively extracts the root variable from a chained expression
