@@ -1388,30 +1388,37 @@ func (m *Metadata) resolveSelectorReturnType(returnVar *CallArgument, pkgName st
 	baseType := m.determineResolvedTypeFromReturnVar(returnVar.X, pkgName, "")
 	fieldName := returnVar.Sel.GetName()
 
-	// Try to find the field type in metadata. First match wins, so walk
-	// packages and files in sorted order or the resolved type can flip
-	// between runs when the same bare name exists in several packages.
+	if fieldType, ok := m.FindFieldType(baseType, fieldName); ok {
+		return fieldType
+	}
+
+	// Fallback to concatenated form
+	return baseType + "." + fieldName
+}
+
+// FindFieldType resolves the type of field fieldName on the type named
+// baseType by scanning the metadata. First match wins, so packages and files
+// are walked in sorted order — otherwise the resolved type can flip between
+// runs when the same bare name exists in several packages. The type name is
+// tried both bare and package-prefixed.
+func (m *Metadata) FindFieldType(baseType, fieldName string) (string, bool) {
 	for _, pkgName := range m.SortedPackageNames() {
 		pkg := m.Packages[pkgName]
 		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
 			file := pkg.Files[fileName]
-			// Try both with and without package prefix
 			typeNames := []string{baseType, pkgName + "." + baseType}
 			for _, typeName := range typeNames {
 				if typ, exists := file.Types[typeName]; exists {
-					// Find the field
 					for _, field := range typ.Fields {
 						if m.StringPool.GetString(field.Name) == fieldName {
-							return m.StringPool.GetString(field.Type)
+							return m.StringPool.GetString(field.Type), true
 						}
 					}
 				}
 			}
 		}
 	}
-
-	// Fallback to concatenated form
-	return baseType + "." + fieldName
+	return "", false
 }
 
 // resolveCallReturnType resolves the type of a function call return value

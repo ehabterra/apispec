@@ -5,7 +5,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"hash/fnv"
 	"maps"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -1201,6 +1203,9 @@ const AnonStructTypePrefix = "_apispec_anonstruct_"
 // keys made the serialized metadata nondeterministic. The key is sanitized to
 // [A-Za-z0-9_] so no downstream pkg.Type-splitting path (TypeParts and
 // friends) can mangle it, and so it carries no machine-specific directory.
+// Sanitizing can collapse distinct inputs ("a-b" and "a_b" both become
+// "a_b"), so an FNV hash of the raw pkg path and base filename is appended
+// to keep colliding locations distinct.
 func AnonStructKey(pos token.Pos, fset *token.FileSet, pkgPath string) string {
 	if pos == token.NoPos || fset == nil {
 		return ""
@@ -1209,10 +1214,7 @@ func AnonStructKey(pos token.Pos, fset *token.FileSet, pkgPath string) string {
 	if !p.IsValid() {
 		return ""
 	}
-	base := p.Filename
-	if i := strings.LastIndexByte(base, '/'); i >= 0 {
-		base = base[i+1:]
-	}
+	base := filepath.Base(p.Filename)
 	sanitize := func(s string) string {
 		return strings.Map(func(r rune) rune {
 			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
@@ -1221,7 +1223,11 @@ func AnonStructKey(pos token.Pos, fset *token.FileSet, pkgPath string) string {
 			return '_'
 		}, s)
 	}
-	return fmt.Sprintf("%s%s_%s_%d_%d", AnonStructTypePrefix, sanitize(pkgPath), sanitize(base), p.Line, p.Column)
+	h := fnv.New32a()
+	h.Write([]byte(pkgPath))
+	h.Write([]byte{0})
+	h.Write([]byte(base))
+	return fmt.Sprintf("%s%s_%s_%d_%d_%08x", AnonStructTypePrefix, sanitize(pkgPath), sanitize(base), p.Line, p.Column, h.Sum32())
 }
 
 // IsAnonStructTypeName reports whether name is one of the synthetic
@@ -2195,9 +2201,16 @@ func extractParamsAndTypeParams(call *ast.CallExpr, info *types.Info, args []*Ca
 func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool) {
 	sigMemo := make(map[int]string) // normalized signature by string-pool index
 	pkgNames := slices.Sorted(maps.Keys(pkgs))
+	// Pre-sort each package's type names once — the interface scan below runs
+	// per struct, so sorting inside that loop would redo the same work
+	// O(structs × packages) times.
+	sortedTypeNames := make(map[string][]string, len(pkgs))
+	for _, pkgName := range pkgNames {
+		sortedTypeNames[pkgName] = slices.Sorted(maps.Keys(pkgs[pkgName].Types))
+	}
 	for _, pkgName := range pkgNames {
 		pkg := pkgs[pkgName]
-		for _, structName := range slices.Sorted(maps.Keys(pkg.Types)) {
+		for _, structName := range sortedTypeNames[pkgName] {
 			stct := pkg.Types[structName]
 			if stct.Kind != pool.Get("struct") {
 				continue
@@ -2210,7 +2223,7 @@ func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool)
 
 			for _, interfacePkgName := range pkgNames {
 				interfacePkg := pkgs[interfacePkgName]
-				for _, interfaceName := range slices.Sorted(maps.Keys(interfacePkg.Types)) {
+				for _, interfaceName := range sortedTypeNames[interfacePkgName] {
 					intrf := interfacePkg.Types[interfaceName]
 					if intrf.Kind != pool.Get("interface") {
 						continue

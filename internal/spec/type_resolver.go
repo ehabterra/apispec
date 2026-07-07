@@ -2,8 +2,6 @@ package spec
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -162,26 +160,9 @@ func (t *TypeResolverImpl) resolveSelectorType(arg metadata.CallArgument) string
 		return arg.Sel.GetName()
 	}
 
-	// For field access, try to find the field type in metadata. First match
-	// wins, so walk packages and files in sorted order or the resolved type
-	// can flip between runs when the same bare name exists in several packages.
-	for _, pkgName := range t.meta.SortedPackageNames() {
-		pkg := t.meta.Packages[pkgName]
-		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
-			file := pkg.Files[fileName]
-			// Try both with and without package prefix
-			typeNames := []string{baseType, pkgName + "." + baseType}
-			for _, typeName := range typeNames {
-				if typ, exists := file.Types[typeName]; exists {
-					// Find the field
-					for _, field := range typ.Fields {
-						if t.getString(field.Name) == arg.Sel.GetName() {
-							return t.getString(field.Type)
-						}
-					}
-				}
-			}
-		}
+	// For field access, try to find the field type in metadata.
+	if fieldType, ok := t.meta.FindFieldType(baseType, arg.Sel.GetName()); ok {
+		return fieldType
 	}
 
 	// Fallback to concatenated form
