@@ -181,3 +181,62 @@ func TestTestdata_MuxPathParams(t *testing.T) {
 		}
 	}
 }
+
+// TestTestdata_MuxAdvancedPathParams locks in the harder gorilla/mux path-param
+// cases beyond the direct `mux.Vars(r)["id"]` idiom:
+//   - /products/{sku:[a-z0-9-]+}: the regex constraint is stripped from the
+//     OpenAPI path ({sku}) and surfaced as a schema pattern; param is clean.
+//   - /orders/{id}: the handler reads the var through a helper (pathVar wraps
+//     mux.Vars), resolved via call-graph reachability; param is clean.
+//   - /items/{id}: the handler never reads the var, so it stays warned.
+func TestTestdata_MuxAdvancedPathParams(t *testing.T) {
+	out := loadTestdataWithFixtureConfig(t, "mux_path_params", spec.DefaultMuxConfig())
+
+	pathParam := func(t *testing.T, path string) *intspec.Parameter {
+		t.Helper()
+		item, ok := out.Paths[path]
+		if !ok {
+			t.Fatalf("%s missing; have %v", path, mapPathKeys(out.Paths))
+		}
+		if item.Get == nil {
+			t.Fatalf("GET %s missing", path)
+		}
+		var found []intspec.Parameter
+		for _, p := range item.Get.Parameters {
+			if p.In == "path" {
+				found = append(found, p)
+			}
+		}
+		if len(found) != 1 {
+			t.Fatalf("GET %s: want 1 path param, got %d: %+v", path, len(found), found)
+		}
+		return &found[0]
+	}
+
+	isWarned := func(p *intspec.Parameter) bool {
+		_, ok := p.Extensions["x-warning"]
+		return ok
+	}
+
+	// Regex-constrained param: path normalized, pattern captured, clean.
+	if _, ok := out.Paths["/products/{sku:[a-z0-9-]+}"]; ok {
+		t.Errorf("regex constraint leaked into the OpenAPI path; want /products/{sku}")
+	}
+	sku := pathParam(t, "/products/{sku}")
+	if sku.Name != "sku" || isWarned(sku) {
+		t.Errorf("/products/{sku}: want clean 'sku', got name=%q warned=%v", sku.Name, isWarned(sku))
+	}
+	if sku.Schema == nil || sku.Schema.Pattern != "[a-z0-9-]+" {
+		t.Errorf("/products/{sku}: want schema.pattern=[a-z0-9-]+, got %+v", sku.Schema)
+	}
+
+	// Helper indirection: clean via call-graph reachability.
+	if id := pathParam(t, "/orders/{id}"); id.Name != "id" || isWarned(id) {
+		t.Errorf("/orders/{id}: want clean 'id' (helper-wrapped mux.Vars), got name=%q warned=%v", id.Name, isWarned(id))
+	}
+
+	// Unread placeholder: stays warned.
+	if id := pathParam(t, "/items/{id}"); !isWarned(id) {
+		t.Errorf("/items/{id}: want warned (handler never reads the var), got clean")
+	}
+}

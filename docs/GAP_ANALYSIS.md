@@ -54,7 +54,11 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 
 > The support matrix is now fully green. Root cause: mux exposes path vars as a **map** (`vars := mux.Vars(r); id := vars["id"]`), so the name is a map key, not a call argument — the arg-index `ParamPattern` mechanism (which works for `chi.URLParam(r,"id")`, `c.Param("id")`, `r.PathValue("id")`) couldn't reach it. Two visible symptoms: a bogus `net/http.Request` path param (the `Vars` call's request arg misread as a name) and the real `{id}` left flagged *"present in path but not found in the code"*.
 >
-> Fix (config-driven, keeps the engine framework-agnostic): added a `ParamPattern.NameFromMapKey` flag and set it on mux's `Vars` pattern; when the accessor matches within a route's subtree, `extractMapKeyParams` emits one clean path parameter per `{placeholder}` in the route path (names are authoritative from the path template, which is robust to every access form — assignment, blank `_ =`, or inline `store.Delete(vars["id"])`). Routes whose handler never calls `Vars` still fall through to the warned synthesis, matching chi/gin/etc. Guarded by `TestTestdata_MuxPathParams`; other frameworks' path params verified unchanged.
+> Fix (config-driven, keeps the engine framework-agnostic): added a `ParamPattern.NameFromMapKey` flag and set it on mux's `Vars` pattern. Per route, `completeMapKeyPathParams` emits one clean path parameter per `{placeholder}` in the route path **when the handler reaches the accessor** — determined by call-graph reachability (`handlerReachesAccessor`, bounded depth), so direct, inline (`mux.Vars(r)["id"]`), and **helper-wrapped** access (`id := readParam(r, "id")` where `readParam` wraps `mux.Vars`) all resolve. Names are authoritative from the path template (robust to every access form — assignment, blank `_ =`, inline call arg, dynamic key in a helper). Routes whose handler never reaches `Vars` still fall through to the warned synthesis, matching chi/gin/etc.
+>
+> Two follow-on fixes landed with it:
+> - **Regex-constrained params** (`{id:[0-9]+}`, mux/chi): `convertPathToOpenAPI` now strips the regex to `{id}` (OpenAPI paths can't carry a regex — previously the param was dropped entirely and the path was invalid) and surfaces the constraint as a schema `pattern`.
+> - Guarded by `TestTestdata_MuxPathParams` (direct) and `TestTestdata_MuxAdvancedPathParams` (regex + helper indirection + unread-placeholder-stays-warned). Other frameworks' path params verified unchanged; no golden drift.
 
 ## 3. Testing gaps
 

@@ -735,6 +735,10 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	visitedEdges := make(map[string]bool)
 	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges)
 
+	// Add map-key path params (mux.Vars) for placeholders the handler reads via
+	// the accessor — including through helper wrappers the subtree walk misses.
+	e.completeMapKeyPathParams(routeInfo)
+
 	// Apply overrides
 	e.overrideApplier.ApplyOverrides(routeInfo)
 
@@ -1001,8 +1005,13 @@ func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *Rout
 		if !matcher.MatchNode(node) {
 			continue
 		}
+		// Map-key accessors (mux.Vars) carry the parameter name as a map key,
+		// not a call argument, so nothing is extracted from the node itself.
+		// Their path params are added once per route in completeMapKeyPathParams,
+		// which handles direct, inline, and helper-wrapped access uniformly via
+		// call-graph reachability.
 		if impl, ok := matcher.(*ParamPatternMatcherImpl); ok && impl.pattern.NameFromMapKey {
-			return e.extractMapKeyParams(node, route, impl.pattern)
+			return nil
 		}
 		if param := matcher.ExtractParam(node, route); param != nil {
 			return []Parameter{*param}
@@ -1012,50 +1021,165 @@ func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *Rout
 	return nil
 }
 
-// extractMapKeyParams recovers path parameters for frameworks whose path-var
+// completeMapKeyPathParams adds path parameters for frameworks whose path-var
 // accessor returns a map indexed by name — the gorilla/mux idiom
-// `mux.Vars(r)["id"]` — rather than taking the name as a call argument.
+// `mux.Vars(r)["id"]`. The name is a map key, not a call argument, so it can't
+// be pulled from the accessor call; instead, if the route's handler reaches the
+// accessor anywhere in its call graph (directly, inline, or through a helper
+// like `id := readParam(r, "id")`), the handler reads request path variables,
+// and every `{placeholder}` in the route path is a genuine path parameter.
 //
-// Reaching this function means the accessor call (e.g. mux.Vars) matched within
-// this route's subtree, i.e. the handler (or a helper it calls) reads request
-// path variables. Every `{placeholder}` in the route path is a path parameter
-// by definition, so we emit one clean parameter per placeholder. Taking the
-// names from the path template (rather than from the specific index keys) makes
-// this robust to every access form — `id := vars["id"]`, `_ = vars["id"]`, or an
-// inline `store.Delete(vars["id"])` — none of which are uniformly recoverable
-// from the metadata. Routes whose handler never calls the accessor don't reach
-// here, so their placeholders still fall through to ensureAllPathParams and keep
-// the "present in path but not found in the code" warning, matching how the
-// other frameworks behave.
-func (e *Extractor) extractMapKeyParams(_ TrackerNodeInterface, route *RouteInfo, pattern ParamPattern) []Parameter {
-	if route == nil {
-		return nil
+// Names come from the path template (authoritative for path params), which is
+// robust to every access form — assignment, blank `_ =`, inline call arg, or a
+// dynamic key inside a helper — none of which are uniformly recoverable from the
+// metadata. Routes whose handler never reaches the accessor are left untouched,
+// so their placeholders still fall through to ensureAllPathParams and keep the
+// "present in path but not found in the code" warning, matching the other
+// frameworks.
+func (e *Extractor) completeMapKeyPathParams(route *RouteInfo) {
+	if route == nil || route.Metadata == nil {
+		return
 	}
+	var accessor *ParamPattern
+	for i := range e.cfg.Framework.ParamPatterns {
+		if e.cfg.Framework.ParamPatterns[i].NameFromMapKey {
+			accessor = &e.cfg.Framework.ParamPatterns[i]
+			break
+		}
+	}
+	if accessor == nil {
+		return
+	}
+
 	placeholders := pathPlaceholders(route.Path)
 	if len(placeholders) == 0 {
-		return nil
+		return
 	}
-	params := make([]Parameter, 0, len(placeholders))
+	covered := make(map[string]bool)
+	for _, p := range route.Params {
+		if p.In == "path" {
+			covered[p.Name] = true
+		}
+	}
+	missing := false
 	for _, name := range placeholders {
-		params = append(params, Parameter{
+		if !covered[name] {
+			missing = true
+			break
+		}
+	}
+	if !missing {
+		return
+	}
+
+	if !e.handlerReachesAccessor(route, *accessor) {
+		return
+	}
+
+	patterns := pathParamPatterns(route.Path)
+	for _, name := range placeholders {
+		if covered[name] {
+			continue
+		}
+		schema := &Schema{Type: "string"}
+		if pat := patterns[name]; pat != "" {
+			schema.Pattern = pat
+		}
+		route.Params = append(route.Params, Parameter{
 			Name:     name,
-			In:       pattern.ParamIn,
-			Required: pattern.ParamIn == "path",
-			Schema:   &Schema{Type: "string"},
+			In:       accessor.ParamIn,
+			Required: accessor.ParamIn == "path",
+			Schema:   schema,
 		})
 	}
-	return params
 }
 
-// pathPlaceholders returns the `{name}` placeholder names in a route path, in
-// order of appearance.
-func pathPlaceholders(path string) []string {
-	re := mustCachedRegex(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
-	matches := re.FindAllStringSubmatch(path, -1)
-	names := make([]string, 0, len(matches))
-	for _, m := range matches {
-		names = append(names, m[1])
+// handlerReachesAccessor reports whether the route's handler transitively calls
+// the map-key accessor described by pattern, following the call graph through
+// helper functions up to maxWrapperLookThroughDepth. Seeds are the handler
+// function's call-graph base IDs (matched by name + package), so it works
+// regardless of the exact key format.
+func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPattern) bool {
+	meta := route.Metadata
+	if meta == nil || route.Function == "" {
+		return false
 	}
+	// route.Function is package-qualified ("pkg/path.Handler"); call-graph
+	// caller names are bare ("Handler"), so strip the package prefix to match.
+	bareFunc := route.Function
+	if route.Package != "" {
+		bareFunc = strings.TrimPrefix(route.Function, route.Package+".")
+	}
+	visited := make(map[string]bool)
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		if getString(meta, edge.Caller.Name) != bareFunc {
+			continue
+		}
+		if route.Package != "" && getString(meta, edge.Caller.Pkg) != route.Package {
+			continue
+		}
+		if e.reachesAccessor(meta, edge.Caller.BaseID(), pattern, visited, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// reachesAccessor walks meta.Callers from a function base ID, returning true if
+// any transitively-reachable call edge matches the accessor pattern.
+func (e *Extractor) reachesAccessor(meta *metadata.Metadata, key string, pattern ParamPattern, visited map[string]bool, depth int) bool {
+	if key == "" || visited[key] || depth > maxWrapperLookThroughDepth {
+		return false
+	}
+	visited[key] = true
+	for _, edge := range meta.Callers[key] {
+		if edgeMatchesAccessor(meta, edge, pattern) {
+			return true
+		}
+		if e.reachesAccessor(meta, edge.Callee.BaseID(), pattern, visited, depth+1) {
+			return true
+		}
+	}
+	return false
+}
+
+// edgeMatchesAccessor reports whether a call edge's callee matches a param
+// pattern's accessor identity (call-name regex + fully-qualified receiver/pkg
+// regex), mirroring ParamPatternMatcherImpl.MatchNode.
+func edgeMatchesAccessor(meta *metadata.Metadata, edge *metadata.CallGraphEdge, pattern ParamPattern) bool {
+	callName := getString(meta, edge.Callee.Name)
+	recvType := getString(meta, edge.Callee.RecvType)
+	recvPkg := getString(meta, edge.Callee.Pkg)
+	fq := recvPkg
+	if fq != "" && recvType != "" {
+		fq += "." + recvType
+	} else if recvType != "" {
+		fq = recvType
+	}
+	if pattern.CallRegex != "" {
+		if re, err := cachedRegex(pattern.CallRegex); err != nil || !re.MatchString(callName) {
+			return false
+		}
+	}
+	if pattern.RecvTypeRegex != "" {
+		if re, err := cachedRegex(pattern.RecvTypeRegex); err != nil || !re.MatchString(fq) {
+			return false
+		}
+	}
+	return true
+}
+
+// pathPlaceholders returns the placeholder names in a route path, in order of
+// appearance. It handles both plain `{name}` and constrained `{name:pattern}`
+// (mux/chi) placeholders.
+func pathPlaceholders(path string) []string {
+	var names []string
+	forEachPathParam(path, func(name, _ string) {
+		if name != "" {
+			names = append(names, name)
+		}
+	})
 	return names
 }
 

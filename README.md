@@ -228,7 +228,7 @@ See [`cmd/apidiag/README.md`](cmd/apidiag/README.md) for full documentation and 
 | **Echo**          | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
 | **Chi**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        | ✅   |
 | **Fiber**         | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
-| **Gorilla Mux**   | ✅               | ✅ (`mux.Vars(r)["id"]`) | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ | ✅ |
+| **Gorilla Mux**   | ✅               | ✅ (`mux.Vars(r)["id"]`, incl. helper-wrapped & `{id:regex}` → `pattern`) | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ | ✅ |
 | **`net/http`**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ | ✅ |
 
 Conditional registration (dynamic routes built at runtime) is generally not supported.

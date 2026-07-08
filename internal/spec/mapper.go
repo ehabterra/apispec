@@ -238,7 +238,8 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 
 	for _, route := range routes {
 		// Convert path to OpenAPI format
-		openAPIPath := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
+		rawPath := joinPaths(route.MountPath, route.Path)
+		openAPIPath := convertPathToOpenAPI(rawPath)
 
 		// Get or create path item
 		pathItem, exists := paths[openAPIPath]
@@ -281,7 +282,7 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		// fresh declaration. The matching {name} in the path is then
 		// considered "covered" by ensureAllPathParams below.
 		operation.Parameters = appendDynamicParamRefs(operation.Parameters, route.DynamicParams)
-		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters)
+		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters, pathParamPatterns(rawPath))
 
 		// Add responses
 		operation.Responses = buildResponses(route.Response)
@@ -304,8 +305,11 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 	return paths
 }
 
-// ensureAllPathParams ensures all path parameters in the path are present in the parameters slice
-func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
+// ensureAllPathParams ensures all path parameters in the path are present in
+// the parameters slice. openAPIPath is already normalised (regex constraints
+// stripped); patterns carries any `{name:pattern}` constraints recovered from
+// the raw path so synthesized params still surface them as a schema pattern.
+func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[string]string) []Parameter {
 	paramMap := make(map[string]bool)
 	for _, p := range params {
 		if p.In == "path" {
@@ -326,11 +330,15 @@ func ensureAllPathParams(openAPIPath string, params []Parameter) []Parameter {
 		name := match[1]
 		if !paramMap[name] {
 			// Add default path parameter with warning extension
+			schema := &Schema{Type: "string"}
+			if pat := patterns[name]; pat != "" {
+				schema.Pattern = pat
+			}
 			params = append(params, Parameter{
 				Name:     name,
 				In:       "path",
 				Required: true,
-				Schema:   &Schema{Type: "string"},
+				Schema:   schema,
 				Extensions: map[string]any{
 					"x-warning": "This parameter is present in the path but not found in the code.",
 				},
@@ -586,7 +594,13 @@ func setOperationOnPathItem(item *PathItem, method string, op *Operation) {
 
 // convertPathToOpenAPI converts a Go path to OpenAPI format
 func convertPathToOpenAPI(path string) string {
-	// Regular expression to match :param format
+	// Strip regex constraints from `{name:pattern}` placeholders (gorilla/mux
+	// and chi allow them, e.g. `/users/{id:[0-9]+}`). OpenAPI path templates
+	// cannot carry a regex, so the constraint is removed here and surfaced
+	// separately as a schema `pattern` on the parameter.
+	path = stripParamPatterns(path)
+
+	// Convert :param (gin/echo) -> {param}.
 	// This matches a colon followed by one or more word characters (letters, digits, underscore)
 	re := mustCachedRegex(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
 
@@ -594,6 +608,93 @@ func convertPathToOpenAPI(path string) string {
 	result := re.ReplaceAllString(path, "{$1}")
 
 	return result
+}
+
+// forEachPathParam scans a URL path and invokes fn once per `{...}` placeholder
+// with its name and optional regex pattern (the substring after the first ':').
+// Braces are matched with depth counting so patterns that themselves contain
+// braces — mux's `{id:[0-9]{3}}` — parse correctly. A malformed (unbalanced)
+// placeholder stops the scan.
+func forEachPathParam(path string, fn func(name, pattern string)) {
+	for i := 0; i < len(path); i++ {
+		if path[i] != '{' {
+			continue
+		}
+		depth, j := 1, i+1
+		for ; j < len(path) && depth > 0; j++ {
+			switch path[j] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+		if depth != 0 {
+			return // unbalanced — give up rather than emit garbage
+		}
+		inner := path[i+1 : j-1]
+		name, pattern := inner, ""
+		if c := strings.IndexByte(inner, ':'); c >= 0 {
+			name, pattern = inner[:c], inner[c+1:]
+		}
+		fn(name, pattern)
+		i = j - 1
+	}
+}
+
+// stripParamPatterns rewrites `{name:pattern}` placeholders to `{name}`, leaving
+// plain `{name}` and ordinary text untouched.
+func stripParamPatterns(path string) string {
+	if !strings.ContainsRune(path, '{') {
+		return path
+	}
+	var b strings.Builder
+	b.Grow(len(path))
+	for i := 0; i < len(path); i++ {
+		if path[i] != '{' {
+			b.WriteByte(path[i])
+			continue
+		}
+		depth, j := 1, i+1
+		for ; j < len(path) && depth > 0; j++ {
+			switch path[j] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+		if depth != 0 {
+			b.WriteString(path[i:]) // unbalanced — copy the remainder verbatim
+			return b.String()
+		}
+		inner := path[i+1 : j-1]
+		name := inner
+		if c := strings.IndexByte(inner, ':'); c >= 0 {
+			name = inner[:c]
+		}
+		b.WriteByte('{')
+		b.WriteString(name)
+		b.WriteByte('}')
+		i = j - 1
+	}
+	return b.String()
+}
+
+// pathParamPatterns returns the name->regex-pattern map for the constrained
+// `{name:pattern}` placeholders in a path (unconstrained `{name}` are omitted).
+func pathParamPatterns(path string) map[string]string {
+	var out map[string]string
+	forEachPathParam(path, func(name, pattern string) {
+		if name == "" || pattern == "" {
+			return
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[name] = pattern
+	})
+	return out
 }
 
 // generateComponentSchemas generates component schemas from metadata
