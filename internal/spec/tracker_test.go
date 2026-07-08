@@ -112,14 +112,14 @@ func TestTrackerWarnings(t *testing.T) {
 			MaxRecursionDepth: 10, // Set higher to avoid hitting this first
 		}
 
-		// Create a visited map that exceeds the limit
-		visited := make(map[string]int)
-		for i := 0; i < 5; i++ {
-			visited[fmt.Sprintf("node%d", i)] = 1
-		}
+		// The MaxNodesPerTree cap is cumulative on the tree (tree.nodesBuilt),
+		// not a function of the per-path visited stack. Simulate a tree that has
+		// already built its whole node budget so the next NewTrackerNode call
+		// truncates and warns.
+		tree := &TrackerTree{limits: limits, nodesBuilt: limits.MaxNodesPerTree}
 
 		// This should trigger the warning
-		NewTrackerNode(nil, meta, "parent", "test", nil, nil, visited, nil, limits)
+		NewTrackerNode(tree, meta, "parent", "test", nil, nil, make(map[string]int), nil, limits)
 
 		// Read the output
 		_ = w.Close()
@@ -337,12 +337,10 @@ func TestTrackerLimitsIntegration(t *testing.T) {
 	// Trigger MaxArgsPerFunction warning
 	processArguments(nil, meta, nil, edge, make(map[string]int), nil, limits)
 
-	// Trigger MaxNodesPerTree warning
-	visited := make(map[string]int)
-	for i := 0; i < 5; i++ {
-		visited[fmt.Sprintf("node%d", i)] = 1
-	}
-	NewTrackerNode(nil, meta, "parent", "test", nil, nil, visited, nil, limits)
+	// Trigger MaxNodesPerTree warning: the cap is cumulative on the tree, so
+	// simulate a tree that has already exhausted its node budget.
+	nodeCapTree := &TrackerTree{limits: limits, nodesBuilt: limits.MaxNodesPerTree}
+	NewTrackerNode(nodeCapTree, meta, "parent", "test", nil, nil, make(map[string]int), nil, limits)
 
 	// Trigger MaxChildrenPerNode warning
 	tree := &TrackerTree{

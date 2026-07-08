@@ -313,6 +313,15 @@ type TrackerTree struct {
 	// concrete-method key, so a method's returned closure is expanded at most
 	// once and re-entrant traversal can't fan it out repeatedly.
 	closureAttached map[string]bool
+
+	// nodesBuilt is the cumulative count of real tracker nodes created during
+	// this tree's construction. Unlike the per-path `visited` stack counter, it
+	// only ever increases, so it is the true measure of total traversal work.
+	// It backs the MaxNodesPerTree safety brake: a densely-connected (or cyclic)
+	// call graph re-expands shared callees along every distinct path, which is
+	// exponential in the worst case, and stack depth alone never reflects that.
+	// Capping the cumulative total bounds wall-clock time on such graphs.
+	nodesBuilt int
 }
 
 // warn forwards to the configured logger, defaulting to stderr when none
@@ -1342,10 +1351,25 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		return nil
 	}
 
-	// Limit total nodes to prevent memory explosion
-	if len(visited) > limits.MaxNodesPerTree {
-		tree.warnOnce("maxnodes:"+id,
-			"Warning: MaxNodesPerTree limit (%d) reached, truncating tree at node %s\n", limits.MaxNodesPerTree, id)
+	// Limit total nodes to prevent memory explosion AND unbounded wall-clock
+	// time. This gates on the cumulative count of nodes built for the whole
+	// tree (tree.nodesBuilt), not on len(visited): `visited` is a per-path
+	// recursion-stack counter (incremented on enter, decremented on exit), so
+	// its size is the current stack depth, never the total work. A dense or
+	// cyclic graph re-expands shared callees along exponentially many distinct
+	// paths while keeping stack depth small, so the old len(visited) check
+	// never fired and such graphs ran effectively forever. The cumulative
+	// counter bounds them. Once the cap is hit, every further call returns a
+	// leaf stub immediately, so the in-flight recursion unwinds cheaply.
+	// A MaxNodesPerTree of 0 means "no cap" (the engine always sets a real
+	// default; only some unit tests leave it zero). tree may be nil in a few
+	// synthetic tests that drive NewTrackerNode directly — the cumulative
+	// counter needs a tree, so it is simply disabled there.
+	if tree != nil && limits.MaxNodesPerTree > 0 && tree.nodesBuilt >= limits.MaxNodesPerTree {
+		// A single global key: once the cumulative cap is hit it is a tree-wide
+		// condition, so warn exactly once rather than once per truncated node.
+		tree.warnOnce("maxnodes",
+			"Warning: MaxNodesPerTree limit (%d) reached, truncating tree (call graph too dense to traverse fully)\n", limits.MaxNodesPerTree)
 		node := getTrackerNode()
 		node.CallGraphEdge = parentEdge
 		node.CallArgument = callArg
@@ -1357,6 +1381,9 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 	// Increment recursion depth (single map operation)
 	visited[recursionDepthKey]++
+	if tree != nil {
+		tree.nodesBuilt++
+	}
 
 	// Create new node using object pool
 	node := getTrackerNode()
