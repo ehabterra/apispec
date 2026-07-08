@@ -100,11 +100,16 @@ func DefaultAPISpecConfig() *APISpecConfig {
 	return &APISpecConfig{}
 }
 
-// SecurityDiagnostics carries non-fatal findings from security extraction.
+// SecurityDiagnostics carries non-fatal findings from extraction.
 type SecurityDiagnostics struct {
 	// UnresolvedMiddleware lists detected auth middleware that matched no
 	// SecurityMapping (deduped). The UI uses this to offer interactive mapping.
 	UnresolvedMiddleware []MiddlewareRef
+
+	// PathParamMismatches lists handlers that read a map-key path variable
+	// (mux.Vars(r)["userId"]) whose key matches no route placeholder — a likely
+	// typo, since the read is always empty.
+	PathParamMismatches []PathParamMismatch
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification.
@@ -134,6 +139,15 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		}
 		log.Printf("[security] %d auth middleware not mapped to a security scheme "+
 			"(add securityMappings to resolve): %s", len(unresolved), strings.Join(names, ", "))
+	}
+
+	// Warn about handlers that read a path variable by a key with no matching
+	// path placeholder (e.g. mux.Vars(r)["userId"] on a /users/{id} route) — a
+	// likely typo, since the read is always empty.
+	for _, m := range extractor.PathParamMismatches() {
+		log.Printf("[path-params] %s %s: handler %s reads path variable %q, "+
+			"but the path declares no such parameter (did you mean a different key or path segment?)",
+			m.Method, m.Path, m.Handler, m.Key)
 	}
 
 	// Build paths
@@ -185,7 +199,10 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		spec.Components.SecuritySchemes = schemes
 	}
 
-	diag := &SecurityDiagnostics{UnresolvedMiddleware: extractor.UnresolvedSecurity()}
+	diag := &SecurityDiagnostics{
+		UnresolvedMiddleware: extractor.UnresolvedSecurity(),
+		PathParamMismatches:  extractor.PathParamMismatches(),
+	}
 	return spec, diag, nil
 }
 

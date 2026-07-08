@@ -2,6 +2,8 @@ package spec
 
 import (
 	"fmt"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -113,6 +115,12 @@ type Extractor struct {
 	securityUnresolved    []MiddlewareRef
 	securityUnresolvedSet map[string]struct{}
 
+	// pathParamMismatches collects handlers that read a map-key path variable
+	// (e.g. mux.Vars(r)["userId"]) whose key is not declared as a `{placeholder}`
+	// in the route path — a likely typo, since the read will always be empty.
+	pathParamMismatches  []PathParamMismatch
+	pathParamMismatchSet map[string]struct{}
+
 	// parentFnIndex maps a function's BaseID to call edges made inside func
 	// literals lexically nested in it (keyed by ParentFunction). Lets wrapper
 	// look-through reach a library call that lives in the closure a middleware
@@ -187,7 +195,15 @@ func (e *Extractor) ExtractRoutes() []*RouteInfo {
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, nil, nil, &routes)
 	}
-	return dropSubsumedMountPrefixes(routes)
+	routes = dropSubsumedMountPrefixes(routes)
+
+	// Diagnose map-key path-variable reads whose key matches no path placeholder.
+	// Done over the finalised route set so method/path are settled (handleRouteNode
+	// runs on transient, pre-dedup route objects).
+	for _, r := range routes {
+		e.recordPathVarKeyMismatches(r)
+	}
+	return routes
 }
 
 // dropSubsumedMountPrefixes removes spurious partially-mounted duplicates of a
@@ -1092,6 +1108,201 @@ func (e *Extractor) completeMapKeyPathParams(route *RouteInfo) {
 			Schema:   schema,
 		})
 	}
+}
+
+// PathParamMismatch records a handler reading a map-key path variable whose key
+// has no matching `{placeholder}` in the route path — surfaced as a diagnostic.
+type PathParamMismatch struct {
+	Method  string // HTTP method
+	Path    string // OpenAPI path (regex constraints stripped)
+	Handler string // handler function (package-qualified)
+	Key     string // key read in code, e.g. mux.Vars(r)["userId"]
+}
+
+// PathParamMismatches returns the map-key path-variable diagnostics gathered
+// during extraction (keys read in code that no route placeholder declares).
+func (e *Extractor) PathParamMismatches() []PathParamMismatch {
+	return e.pathParamMismatches
+}
+
+// recordPathVarKeyMismatches recovers the literal keys the handler reads through
+// the map-key accessor (mux.Vars) and records a diagnostic for any key that is
+// not a `{placeholder}` in the route path. The recovery uses the assignment
+// tracker: a variable assigned from the accessor (`vars := mux.Vars(r)`, tagged
+// with CalleeFunc/CalleePkg on the assignment) is "accessor-derived", and any
+// `accessorVar["key"]` or inline `mux.Vars(r)["key"]` index yields that key.
+func (e *Extractor) recordPathVarKeyMismatches(route *RouteInfo) {
+	if route == nil || route.Metadata == nil || route.Function == "" {
+		return
+	}
+	accessor := e.mapKeyAccessor()
+	if accessor == nil {
+		return
+	}
+	keys := e.recoverAccessorKeys(route, *accessor)
+	if len(keys) == 0 {
+		return
+	}
+	placeholders := make(map[string]bool)
+	for _, n := range pathPlaceholders(route.Path) {
+		placeholders[n] = true
+	}
+	// Sorted iteration keeps the diagnostics list deterministic.
+	names := make([]string, 0, len(keys))
+	for k := range keys {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, key := range names {
+		if placeholders[key] {
+			continue
+		}
+		openAPIPath := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
+		dedup := route.Method + " " + openAPIPath + " " + key
+		if e.pathParamMismatchSet == nil {
+			e.pathParamMismatchSet = make(map[string]struct{})
+		}
+		if _, ok := e.pathParamMismatchSet[dedup]; ok {
+			continue
+		}
+		e.pathParamMismatchSet[dedup] = struct{}{}
+		e.pathParamMismatches = append(e.pathParamMismatches, PathParamMismatch{
+			Method:  route.Method,
+			Path:    openAPIPath,
+			Handler: route.Function,
+			Key:     key,
+		})
+	}
+}
+
+// mapKeyAccessor returns the first configured NameFromMapKey param pattern, or
+// nil when the framework has none (only gorilla/mux does by default).
+func (e *Extractor) mapKeyAccessor() *ParamPattern {
+	for i := range e.cfg.Framework.ParamPatterns {
+		if e.cfg.Framework.ParamPatterns[i].NameFromMapKey {
+			return &e.cfg.Framework.ParamPatterns[i]
+		}
+	}
+	return nil
+}
+
+// recoverAccessorKeys returns the set of literal keys the route's handler reads
+// through the map-key accessor (direct `vars["id"]` on an accessor-derived
+// variable, or inline `mux.Vars(r)["id"]`). Dynamic keys and keys passed into
+// helpers are not recovered — the diagnostic errs toward no false positives.
+func (e *Extractor) recoverAccessorKeys(route *RouteInfo, accessor ParamPattern) map[string]struct{} {
+	meta := route.Metadata
+	bareFunc := route.Function
+	if route.Package != "" {
+		bareFunc = strings.TrimPrefix(route.Function, route.Package+".")
+	}
+	fn := findFunctionByName(meta, route.Package, bareFunc)
+	if fn == nil {
+		return nil
+	}
+
+	callRe, err1 := cachedRegex(accessor.CallRegex)
+	recvRe, err2 := cachedRegex(accessor.RecvTypeRegex)
+	if (accessor.CallRegex != "" && err1 != nil) || (accessor.RecvTypeRegex != "" && err2 != nil) {
+		return nil
+	}
+
+	// Variables assigned directly from the accessor call (vars := mux.Vars(r)).
+	accessorVars := make(map[string]bool)
+	for name, asgns := range fn.AssignmentMap {
+		for i := range asgns {
+			a := &asgns[i]
+			if (callRe == nil || callRe.MatchString(a.CalleeFunc)) &&
+				(recvRe == nil || recvRe.MatchString(a.CalleePkg)) &&
+				a.CalleeFunc != "" {
+				accessorVars[name] = true
+			}
+		}
+	}
+
+	keys := make(map[string]struct{})
+	for _, asgns := range fn.AssignmentMap {
+		for i := range asgns {
+			collectAccessorKeys(&asgns[i].Value, accessorVars, callRe, recvRe, keys)
+		}
+	}
+	return keys
+}
+
+// collectAccessorKeys walks an expression tree, recording the literal key of any
+// `X["key"]` index where X is an accessor-derived variable or an inline accessor
+// call. Recurses so nested expressions (`"John " + vars["id"]`) are covered.
+func collectAccessorKeys(arg *metadata.CallArgument, accessorVars map[string]bool, callRe, recvRe *regexp.Regexp, out map[string]struct{}) {
+	if arg == nil {
+		return
+	}
+	if arg.GetKind() == metadata.KindIndex && arg.Fun != nil && arg.Fun.GetKind() == metadata.KindLiteral && arg.X != nil {
+		derived := false
+		switch {
+		case arg.X.GetKind() == metadata.KindIdent && accessorVars[arg.X.GetName()]:
+			derived = true
+		case isAccessorCall(arg.X, callRe, recvRe):
+			derived = true
+		}
+		if derived {
+			if key := strings.Trim(arg.Fun.GetValue(), "\"`"); key != "" {
+				out[key] = struct{}{}
+			}
+		}
+	}
+	collectAccessorKeys(arg.X, accessorVars, callRe, recvRe, out)
+	collectAccessorKeys(arg.Fun, accessorVars, callRe, recvRe, out)
+	collectAccessorKeys(arg.Sel, accessorVars, callRe, recvRe, out)
+	for i := range arg.Args {
+		collectAccessorKeys(arg.Args[i], accessorVars, callRe, recvRe, out)
+	}
+}
+
+// isAccessorCall reports whether a call-argument is a call to the accessor
+// (e.g. `mux.Vars(r)`), matching the call name and receiver/package regexes.
+func isAccessorCall(x *metadata.CallArgument, callRe, recvRe *regexp.Regexp) bool {
+	if x == nil || x.GetKind() != metadata.KindCall || x.Fun == nil {
+		return false
+	}
+	fun := x.Fun
+	name := fun.GetName()
+	pkg := fun.GetPkg()
+	if fun.GetKind() == metadata.KindSelector && fun.Sel != nil {
+		name = fun.Sel.GetName()
+		if pkg == "" {
+			pkg = fun.Sel.GetPkg()
+		}
+	}
+	if callRe != nil && !callRe.MatchString(name) {
+		return false
+	}
+	if recvRe != nil && !recvRe.MatchString(pkg) {
+		return false
+	}
+	return true
+}
+
+// findFunctionByName locates a function by package and (bare) name, preferring
+// the named package and falling back to any package declaring the name.
+func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Function {
+	if meta == nil || name == "" {
+		return nil
+	}
+	if p, ok := meta.Packages[pkg]; ok {
+		for _, file := range p.Files {
+			if fn, ok := file.Functions[name]; ok {
+				return fn
+			}
+		}
+	}
+	for _, p := range meta.Packages {
+		for _, file := range p.Files {
+			if fn, ok := file.Functions[name]; ok {
+				return fn
+			}
+		}
+	}
+	return nil
 }
 
 // handlerReachesAccessor reports whether the route's handler transitively calls

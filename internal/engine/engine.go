@@ -225,6 +225,10 @@ type Engine struct {
 	// generation that matched no SecurityMapping. Surfaced to callers (the UI)
 	// so the user can map it to a scheme.
 	unresolvedSecurity []intspec.MiddlewareRef
+
+	// pathParamMismatches lists map-key path-variable reads (mux.Vars(r)["x"])
+	// whose key matches no route placeholder, gathered during the last generation.
+	pathParamMismatches []intspec.PathParamMismatch
 }
 
 // SkippedPackage is a package excluded from analysis due to compile/type
@@ -598,6 +602,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 	if secDiag != nil {
 		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
+		e.pathParamMismatches = secDiag.PathParamMismatches
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
@@ -950,6 +955,13 @@ func (e *Engine) GetMetadata() *metadata.Metadata {
 // generation that matched no SecurityMapping (deduped). Empty when none.
 func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
+}
+
+// GetPathParamMismatches returns map-key path-variable reads (e.g.
+// mux.Vars(r)["userId"]) from the most recent generation whose key matches no
+// route placeholder — a likely typo. Empty when none.
+func (e *Engine) GetPathParamMismatches() []intspec.PathParamMismatch {
+	return e.pathParamMismatches
 }
 
 // SkippedPackages returns the in-module packages excluded from the most recent

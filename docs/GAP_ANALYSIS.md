@@ -58,7 +58,8 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 >
 > Two follow-on fixes landed with it:
 > - **Regex-constrained params** (`{id:[0-9]+}`, mux/chi): `convertPathToOpenAPI` now strips the regex to `{id}` (OpenAPI paths can't carry a regex — previously the param was dropped entirely and the path was invalid) and surfaces the constraint as a schema `pattern`.
-> - Guarded by `TestTestdata_MuxPathParams` (direct) and `TestTestdata_MuxAdvancedPathParams` (regex + helper indirection + unread-placeholder-stays-warned). Other frameworks' path params verified unchanged; no golden drift.
+> - **Key-mismatch diagnostic**: reachability wires `{id}` clean whenever the handler *reaches* `mux.Vars`, but it can't tell whether the code reads the *right* key. `recordPathVarKeyMismatches` recovers the literal keys actually read — via the assignment tracker (`vars := mux.Vars(r); vars["id"]`, tagged `CalleeFunc`/`CalleePkg`) and inline `mux.Vars(r)["id"]` — and reports any key with no matching placeholder (e.g. `mux.Vars(r)["userId"]` on `/users/{id}`, an always-empty read). Surfaced as a `[path-params]` CLI warning and programmatically via `Engine.GetPathParamMismatches()` / `Generator.PathParamMismatches()` (for the UI). Dynamic keys and keys passed into helpers aren't recovered — the diagnostic errs toward zero false positives.
+> - Guarded by `TestTestdata_MuxPathParams` (direct), `TestTestdata_MuxAdvancedPathParams` (regex + helper indirection + unread-placeholder-stays-warned), and `TestTestdata_MuxPathParamKeyMismatch` (typo key). Other frameworks' path params verified unchanged; no golden drift.
 
 ## 3. Testing gaps
 

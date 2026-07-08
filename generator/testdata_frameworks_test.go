@@ -3,6 +3,7 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	intspec "github.com/ehabterra/apispec/internal/spec"
@@ -238,5 +239,37 @@ func TestTestdata_MuxAdvancedPathParams(t *testing.T) {
 	// Unread placeholder: stays warned.
 	if id := pathParam(t, "/items/{id}"); !isWarned(id) {
 		t.Errorf("/items/{id}: want warned (handler never reads the var), got clean")
+	}
+}
+
+// TestTestdata_MuxPathParamKeyMismatch checks the map-key diagnostic: the fixture's
+// getTag handler reads mux.Vars(r)["tag"] on a /tags/{id} route — a typo the read
+// will silently return empty for. Reachability alone can't catch it (the handler
+// does reach mux.Vars, so {id} wires clean), but recovering the actual key does.
+// Every other route in the fixture reads a key that matches its placeholder, so
+// exactly one mismatch must be reported.
+func TestTestdata_MuxPathParamKeyMismatch(t *testing.T) {
+	dir := filepath.Join("..", "testdata", "mux_path_params")
+	g := NewGenerator(spec.DefaultMuxConfig())
+	if _, err := g.GenerateFromDirectory(dir); err != nil {
+		t.Fatalf("GenerateFromDirectory: %v", err)
+	}
+
+	got := g.PathParamMismatches()
+	if len(got) != 1 {
+		t.Fatalf("want exactly 1 path-param mismatch, got %d: %+v", len(got), got)
+	}
+	m := got[0]
+	if m.Key != "tag" {
+		t.Errorf("mismatch key = %q, want \"tag\"", m.Key)
+	}
+	if m.Path != "/tags/{id}" {
+		t.Errorf("mismatch path = %q, want \"/tags/{id}\"", m.Path)
+	}
+	if m.Method != "GET" {
+		t.Errorf("mismatch method = %q, want \"GET\"", m.Method)
+	}
+	if !strings.HasSuffix(m.Handler, "getTag") {
+		t.Errorf("mismatch handler = %q, want it to name getTag", m.Handler)
 	}
 }

@@ -44,10 +44,21 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 }
 
+// getTag has a key typo: the route declares {id} but the handler reads "tag" —
+// so the read is always empty. Reachability alone can't catch this (the handler
+// does reach mux.Vars), but recovering the actual key does: it surfaces a
+// path-param mismatch diagnostic.
+func getTag(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	tag := vars["tag"]
+	_ = json.NewEncoder(w).Encode(map[string]string{"tag": tag})
+}
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/products/{sku:[a-z0-9-]+}", getProduct).Methods("GET")
 	r.HandleFunc("/orders/{id}", getOrder).Methods("GET")
 	r.HandleFunc("/items/{id}", getItem).Methods("GET")
+	r.HandleFunc("/tags/{id}", getTag).Methods("GET")
 	_ = http.ListenAndServe(":8080", r)
 }
