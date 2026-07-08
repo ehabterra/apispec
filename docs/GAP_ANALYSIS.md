@@ -12,7 +12,7 @@
 | 4 | **Mux path params → handler params** | Only framework in the support matrix with a hole in a core column | Medium |
 | 5 | **Generic types (parametric structs)** | README-declared partial; generics are mainstream Go now | High |
 | 6 | **Interface-typed param resolution** | README-declared gap + `docs/INTERFACE_RESOLUTION.md` future-work list | High |
-| 7 | **Robustness regression fixtures for large/cyclic projects** (closed issues #10, #14, #20) | Worst historical failures (hang, stack overflow, truncated output) have no regression tests | Medium |
+| 7 | ~~**Robustness regression fixtures for large/cyclic projects**~~ ✅ DONE 2026-07-08 — #10/#14 (recursive_types) + #20 (dense_graph) fixtures added; one open limitation noted (see §4) | Worst historical failures (hang, stack overflow, truncated output) have no regression tests | Medium |
 
 ---
 
@@ -74,8 +74,9 @@ PRs get build (3 OSes) + `go test -race` + lint/vet/gofmt — good. But the only
 
 All 8 historical issues are closed and there are zero open issues/PRs, but the worst failure modes have no regression fixtures:
 
-- **#10 stack overflow** (cyclic struct → unbounded recursion in `generateStructSchema`) and **#14 truncated output** — same 12-package project. Add a fixture with self-referential / mutually-recursive types and a large synthetic call graph.
-- **#20 hang on scan** (Echo + swaggo, 23 endpoints, limits set) — the tracker's tree expansion is exponential in dense graphs; recursion is stack-counted now, but there's no test asserting bounded runtime on a dense-graph fixture. A timeout-guarded stress test would lock in the fix.
+- **#10 stack overflow** / **#14 truncated output** — ✅ DONE 2026-07-08. `testdata/recursive_types` + `TestTestdata_RecursiveTypes` (`generator/testdata_robustness_test.go`) exercises three cycle shapes: a directly self-referential `TreeNode` (via both `*T` and `[]*T`), a mutually-recursive `Category`↔`Product`, and a three-hop `Graph`→`Edge`→`Node`→`Graph`. Asserts every cycle closes as a `$ref` to a registered component (no infinite inline expansion, no dangling ref) — a stack-overflow/hang regression means the test never returns.
+- **#20 hang on scan** (Echo + swaggo, 23 endpoints, limits set) — ✅ DONE 2026-07-08 (realistic scale). `testdata/dense_graph` + `TestTestdata_DenseGraphBounded` models the shape (25 handlers fanning into a shared service→repo→leaf layer, dense fan-in, bounded depth) and asserts generation finishes within a generous 60s wall-clock budget (local: ~0.4s). A regression that reintroduces unbounded traversal for realistic graphs trips the timeout instead of hanging CI.
+  - ⚠️ **Still open — pathological dense *cyclic* graphs.** While building this fixture I confirmed the tracker still hangs (>45s, no limit warnings emitted) on synthetic graphs with many mutually-recursive back-edges (e.g. 12 functions each calling `f(i+1)`, `f(i+3)`, `f(i+7)` mod N). The stack-counted recursion guard prevents overflow but does **not** bound wall-clock time on these shapes, so they can't be encoded as passing fixtures. This matches the standing note to "cap recursion when opening new edges into dense graphs" — a real remaining improvement, not covered by the fix above.
 - **#34 debuggability** — a user couldn't tell *why* routes were missed in a real project. The insight report and diagnostics exist; a documented "my route is missing — how to debug" section (using `--write-metadata`, the diagram, insight output) would close the loop.
 
 ## 5. Housekeeping (quick wins)
@@ -89,6 +90,6 @@ All 8 historical issues are closed and there are zero open issues/PRs, but the w
 ## 6. Suggested sequencing
 
 1. **Now (this branch / next):** finish determinism (1.1) — it unblocks everything test-shaped; fixture hygiene (3.2) rides along.
-2. **Next:** ~~wire orphaned testdata scenarios into smoke tests (3.1)~~ ✅ DONE 2026-07-08 + robustness fixtures (4, still open) — locks in current behavior before feature work.
+2. **Next:** ~~wire orphaned testdata scenarios into smoke tests (3.1)~~ ✅ DONE 2026-07-08 + ~~robustness fixtures (4)~~ ✅ DONE 2026-07-08 (one open cyclic-graph limitation noted in §4) — locks in current behavior before feature work.
 3. **Then features by value:** mux path params → generic types → interface resolution → handler-factory part 2 → router-as-param → `dive`.
 4. **Continuous:** apispecui test baseline, PR-level coverage gate, housekeeping.
