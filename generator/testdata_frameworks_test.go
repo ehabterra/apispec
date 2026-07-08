@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/spec"
 )
 
@@ -125,5 +126,58 @@ func TestTestdata_Frameworks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestTestdata_MuxPathParams locks in gorilla/mux path-parameter wiring.
+// Mux exposes path vars as a map (`mux.Vars(r)["id"]`), so the parameter name
+// is a map key rather than a call argument. This previously produced a bogus
+// `net/http.Request` parameter (the Vars call's request arg misread as a name)
+// and left the real `{id}` flagged "present in path but not found in the code".
+// After the fix every /users/{id} operation must carry exactly one clean path
+// parameter named `id` (string, required) with no warning and no bogus entry.
+func TestTestdata_MuxPathParams(t *testing.T) {
+	out := loadTestdataWithFixtureConfig(t, "mux", spec.DefaultMuxConfig())
+
+	item, ok := out.Paths["/users/{id}"]
+	if !ok {
+		t.Fatalf("/users/{id} missing; have %v", mapPathKeys(out.Paths))
+	}
+
+	for _, tc := range []struct {
+		method string
+		op     *intspec.Operation
+	}{
+		{"GET", item.Get},
+		{"PUT", item.Put},
+		{"DELETE", item.Delete},
+	} {
+		if tc.op == nil {
+			t.Errorf("%s /users/{id} missing", tc.method)
+			continue
+		}
+		pathParams := make([]intspec.Parameter, 0, len(tc.op.Parameters))
+		for _, p := range tc.op.Parameters {
+			if p.In == "path" {
+				pathParams = append(pathParams, p)
+			}
+		}
+		if len(pathParams) != 1 {
+			t.Errorf("%s /users/{id}: want exactly 1 path param, got %d: %+v", tc.method, len(pathParams), pathParams)
+			continue
+		}
+		p := pathParams[0]
+		if p.Name != "id" {
+			t.Errorf("%s /users/{id}: path param name = %q, want \"id\" (no bogus request param)", tc.method, p.Name)
+		}
+		if !p.Required {
+			t.Errorf("%s /users/{id}: path param should be required", tc.method)
+		}
+		if p.Schema == nil || p.Schema.Type != "string" {
+			t.Errorf("%s /users/{id}: path param schema = %+v, want {type: string}", tc.method, p.Schema)
+		}
+		if _, warned := p.Extensions["x-warning"]; warned {
+			t.Errorf("%s /users/{id}: path param carries an x-warning; the handler reads it via mux.Vars so it should be clean", tc.method)
+		}
 	}
 }

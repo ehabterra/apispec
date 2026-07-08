@@ -9,7 +9,7 @@
 | 1 | **Deterministic output** (string pool, call-graph edge order, fiber/generic/operationId flips) | Blocks reliable golden testing, clean diffs, reproducible CI | Medium |
 | 2 | ~~**Wire existing `testdata/` scenarios into `go test`**~~ ✅ DONE 2026-07-08 — all 11 orphaned fixtures now covered (see §3.1) | Regressions in whole frameworks currently only caught by manual `compare-spec.sh` | Low–Medium |
 | 3 | **Fix `internal/spec/tests/*.yaml` fixture hygiene** (tracked-but-gitignored, mutated by every test run, embed absolute temp paths) | Constant dirty-tree noise; non-portable; hides real changes | Low |
-| 4 | **Mux path params → handler params** | Only framework in the support matrix with a hole in a core column | Medium |
+| 4 | ~~**Mux path params → handler params**~~ ✅ DONE 2026-07-08 — `mux.Vars(r)["id"]` now wired (see §2.1) | Only framework in the support matrix with a hole in a core column | Medium |
 | 5 | **Generic types (parametric structs)** | README-declared partial; generics are mainstream Go now | High |
 | 6 | **Interface-typed param resolution** | README-declared gap + `docs/INTERFACE_RESOLUTION.md` future-work list | High |
 | 7 | ~~**Robustness regression fixtures for large/cyclic projects**~~ ✅ DONE 2026-07-08 — #10/#14 (recursive_types) + #20 (dense_graph) fixtures added; one open limitation noted (see §4) | Worst historical failures (hang, stack overflow, truncated output) have no regression tests | Medium |
@@ -38,7 +38,7 @@
 
 Ordered by proposed value:
 
-1. **Gorilla Mux path params** detected but not wired into handler params (`config_mux.go:88`, README:231). Only remaining hole in the framework support matrix.
+1. ~~**Gorilla Mux path params** detected but not wired into handler params~~ ✅ **DONE 2026-07-08** (§2.1 below).
 2. **Generic types** (parametric structs) — partial. Function generics work; `Page[T]`-style response envelopes are common in real APIs.
 3. **Interface-typed parameters** not resolved to concrete types. `docs/INTERFACE_RESOLUTION.md` lists the future work: automatic discovery, cross-package resolution, generic interfaces.
 4. **Handler-factory pattern, part 2** — request-body-via-wrapper still pending (part 1, closure-returning routes, is done).
@@ -49,6 +49,12 @@ Ordered by proposed value:
 9. Conditional/dynamic runtime route registration — explicitly out of scope; keep it documented rather than attempt it.
 
 Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/security detection must stay framework-agnostic and config-driven** — every new detection feature should cover all six frameworks and all wiring styles (router-level, group, per-route, wrapper, var-assigned), not just the framework that prompted it.
+
+### 2.1 Gorilla Mux path params — ✅ DONE 2026-07-08
+
+> The support matrix is now fully green. Root cause: mux exposes path vars as a **map** (`vars := mux.Vars(r); id := vars["id"]`), so the name is a map key, not a call argument — the arg-index `ParamPattern` mechanism (which works for `chi.URLParam(r,"id")`, `c.Param("id")`, `r.PathValue("id")`) couldn't reach it. Two visible symptoms: a bogus `net/http.Request` path param (the `Vars` call's request arg misread as a name) and the real `{id}` left flagged *"present in path but not found in the code"*.
+>
+> Fix (config-driven, keeps the engine framework-agnostic): added a `ParamPattern.NameFromMapKey` flag and set it on mux's `Vars` pattern; when the accessor matches within a route's subtree, `extractMapKeyParams` emits one clean path parameter per `{placeholder}` in the route path (names are authoritative from the path template, which is robust to every access form — assignment, blank `_ =`, or inline `store.Delete(vars["id"])`). Routes whose handler never calls `Vars` still fall through to the warned synthesis, matching chi/gin/etc. Guarded by `TestTestdata_MuxPathParams`; other frameworks' path params verified unchanged.
 
 ## 3. Testing gaps
 

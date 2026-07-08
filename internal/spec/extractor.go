@@ -859,18 +859,14 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		}
 
 		// Extract parameters
-		if param := e.extractParamFromNode(child, route); param != nil {
-			route.Params = append(route.Params, *param)
-		}
+		route.Params = append(route.Params, e.extractParamsFromNode(child, route)...)
 
 		// Recursive extraction
 		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges)
 	}
 
 	// Extract parameters from the route node itself
-	if param := e.extractParamFromNode(routeNode, route); param != nil {
-		route.Params = append(route.Params, *param)
-	}
+	route.Params = append(route.Params, e.extractParamsFromNode(routeNode, route)...)
 }
 
 // preferRequestInfo chooses the more specific of two request bodies for the
@@ -996,14 +992,71 @@ func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *Ro
 	return nil
 }
 
-// extractParamFromNode extracts parameter information from a node
-func (e *Extractor) extractParamFromNode(node TrackerNodeInterface, route *RouteInfo) *Parameter {
+// extractParamsFromNode extracts parameter information from a node. Most
+// patterns yield at most one parameter (returned as a single-element slice),
+// but map-key patterns (gorilla/mux's `Vars(r)["id"]`) can yield several,
+// one per indexed key that matches a path placeholder.
+func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *RouteInfo) []Parameter {
 	for _, matcher := range e.paramMatchers {
-		if matcher.MatchNode(node) {
-			return matcher.ExtractParam(node, route)
+		if !matcher.MatchNode(node) {
+			continue
 		}
+		if impl, ok := matcher.(*ParamPatternMatcherImpl); ok && impl.pattern.NameFromMapKey {
+			return e.extractMapKeyParams(node, route, impl.pattern)
+		}
+		if param := matcher.ExtractParam(node, route); param != nil {
+			return []Parameter{*param}
+		}
+		return nil
 	}
 	return nil
+}
+
+// extractMapKeyParams recovers path parameters for frameworks whose path-var
+// accessor returns a map indexed by name — the gorilla/mux idiom
+// `mux.Vars(r)["id"]` — rather than taking the name as a call argument.
+//
+// Reaching this function means the accessor call (e.g. mux.Vars) matched within
+// this route's subtree, i.e. the handler (or a helper it calls) reads request
+// path variables. Every `{placeholder}` in the route path is a path parameter
+// by definition, so we emit one clean parameter per placeholder. Taking the
+// names from the path template (rather than from the specific index keys) makes
+// this robust to every access form — `id := vars["id"]`, `_ = vars["id"]`, or an
+// inline `store.Delete(vars["id"])` — none of which are uniformly recoverable
+// from the metadata. Routes whose handler never calls the accessor don't reach
+// here, so their placeholders still fall through to ensureAllPathParams and keep
+// the "present in path but not found in the code" warning, matching how the
+// other frameworks behave.
+func (e *Extractor) extractMapKeyParams(_ TrackerNodeInterface, route *RouteInfo, pattern ParamPattern) []Parameter {
+	if route == nil {
+		return nil
+	}
+	placeholders := pathPlaceholders(route.Path)
+	if len(placeholders) == 0 {
+		return nil
+	}
+	params := make([]Parameter, 0, len(placeholders))
+	for _, name := range placeholders {
+		params = append(params, Parameter{
+			Name:     name,
+			In:       pattern.ParamIn,
+			Required: pattern.ParamIn == "path",
+			Schema:   &Schema{Type: "string"},
+		})
+	}
+	return params
+}
+
+// pathPlaceholders returns the `{name}` placeholder names in a route path, in
+// order of appearance.
+func pathPlaceholders(path string) []string {
+	re := mustCachedRegex(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+	matches := re.FindAllStringSubmatch(path, -1)
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		names = append(names, m[1])
+	}
+	return names
 }
 
 // joinPaths joins two URL paths cleanly
