@@ -113,8 +113,44 @@ func TestTestdata_DenseGraphBounded(t *testing.T) {
 		t.Skip("skipping dense-graph stress test in -short mode")
 	}
 
-	const budget = 60 * time.Second
-	dir := filepath.Join("..", "testdata", "dense_graph")
+	out := generateWithinBudget(t, "dense_graph", 60*time.Second)
+	// All 25 endpoints must survive the dense traversal.
+	assertRoutes(t, out, 25)
+	noDanglingRefs(t, out)
+}
+
+// TestTestdata_CyclicGraphBounded is the regression fixture for issue #20's
+// worst case: a dense, strongly-connected (cyclic) call graph. Each web
+// function calls three others by modular index, forming many back-edges, so
+// shared callees are re-expanded along exponentially many cycle paths. Before
+// the cumulative MaxNodesPerTree cap (tracker.go: tree.nodesBuilt), the tracker
+// re-expanded these indefinitely — the old len(visited) check measured only the
+// live recursion-stack depth, which stays small, so it never fired and
+// generation ran effectively forever (>45s with no truncation). The cumulative
+// counter caps total nodes built and unwinds the recursion cheaply once hit.
+// This test asserts generation now completes within a wall-clock budget while
+// still recovering every route.
+func TestTestdata_CyclicGraphBounded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping cyclic-graph stress test in -short mode")
+	}
+
+	out := generateWithinBudget(t, "cyclic_graph", 60*time.Second)
+	// Route detection happens near the call-graph roots, above the dense web,
+	// so every handler must still be found even though the deep traversal is
+	// truncated.
+	assertRoutes(t, out, 12)
+	noDanglingRefs(t, out)
+}
+
+// generateWithinBudget runs GenerateFromDirectory for a testdata fixture in a
+// goroutine and fails the test if it does not finish within budget. It
+// deliberately does not wait for the goroutine on timeout: a truly unbounded
+// traversal would never return, and failing fast is the whole point of the
+// stress test.
+func generateWithinBudget(t *testing.T, name string, budget time.Duration) *spec.OpenAPISpec {
+	t.Helper()
+	dir := filepath.Join("..", "testdata", name)
 
 	type result struct {
 		out *spec.OpenAPISpec
@@ -128,23 +164,26 @@ func TestTestdata_DenseGraphBounded(t *testing.T) {
 
 	select {
 	case <-time.After(budget):
-		// Intentionally do not wait for the goroutine: a truly unbounded
-		// traversal would never return. Failing here is the whole point.
-		t.Fatalf("dense-graph generation exceeded %s budget — traversal is likely unbounded again", budget)
+		t.Fatalf("%s generation exceeded %s budget — traversal is likely unbounded again", name, budget)
+		return nil
 	case res := <-done:
 		if res.err != nil {
-			t.Fatalf("GenerateFromDirectory(dense_graph): %v", res.err)
+			t.Fatalf("GenerateFromDirectory(%s): %v", name, res.err)
 		}
 		if res.out == nil || res.out.Paths == nil {
-			t.Fatal("nil spec or paths for dense_graph")
+			t.Fatalf("nil spec or paths for %s", name)
 		}
-		// All 25 endpoints must survive the dense traversal.
-		for i := 0; i < 25; i++ {
-			p := "/route" + strconv.Itoa(i)
-			if !hasPath(res.out, p) {
-				t.Errorf("path %q missing; got %d paths", p, len(res.out.Paths))
-			}
+		return res.out
+	}
+}
+
+// assertRoutes checks that /route0../route(n-1) are all present.
+func assertRoutes(t *testing.T, out *spec.OpenAPISpec, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		p := "/route" + strconv.Itoa(i)
+		if !hasPath(out, p) {
+			t.Errorf("path %q missing; got %d paths", p, len(out.Paths))
 		}
-		noDanglingRefs(t, res.out)
 	}
 }
