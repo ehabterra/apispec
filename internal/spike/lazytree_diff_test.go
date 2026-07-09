@@ -1,17 +1,14 @@
 // LazyTree parity harness — docs/TRACKER_REDESIGN.md step 4.
 //
 // Runs the full metadata→OpenAPI mapping twice per fixture — once with the
-// eager TrackerTree, once with the LazyTree — and reports the diff. This is
-// the acceptance instrument for step 4: LazyTree replaces the eager tree
-// only when this harness reports parity across all fixtures. Report-only for
-// now (it logs, it does not fail), because the LazyTree deliberately does not
-// yet implement the mutation overlays (assignments/params/chains/interface
-// attachment).
+// eager TrackerTree, once with the LazyTree — and diffs the outputs.
+// Fixtures listed without a knownDiff reason MUST be byte-identical (this is
+// the regression guard for LazyTree work); the knownDiff entries document
+// the two remaining, understood divergences.
 package spike_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 	"testing"
 
@@ -23,21 +20,28 @@ import (
 
 func TestLazyTreeParity(t *testing.T) {
 	fixtures := []struct {
-		dir string
-		cfg func() *spec.APISpecConfig
+		dir       string
+		cfg       func() *spec.APISpecConfig
+		knownDiff string // empty = must be byte-identical
 	}{
-		{"../../testdata/mux_path_params", spec.DefaultMuxConfig},
-		{"../../testdata/mux", spec.DefaultMuxConfig},
-		{"../../testdata/chi", spec.DefaultChiConfig},
-		{"../../testdata/another_chi_router", spec.DefaultChiConfig},
-		{"../../testdata/complex_chi_router", spec.DefaultChiConfig},
-		{"../../testdata/gin", spec.DefaultGinConfig},
-		{"../../testdata/echo", spec.DefaultEchoConfig},
-		{"../../testdata/echo_handler_factory", spec.DefaultEchoConfig},
-		{"../../testdata/fiber", spec.DefaultFiberConfig},
-		{"../../testdata/servemux", spec.DefaultHTTPConfig},
-		{"../../testdata/wrapped_response", spec.DefaultHTTPConfig},
-		{"../../testdata/helper_response_body", spec.DefaultHTTPConfig},
+		{"../../testdata/mux_path_params", spec.DefaultMuxConfig, ""},
+		{"../../testdata/mux", spec.DefaultMuxConfig, ""},
+		{"../../testdata/chi", spec.DefaultChiConfig, ""},
+		{"../../testdata/gin", spec.DefaultGinConfig, ""},
+		{"../../testdata/echo", spec.DefaultEchoConfig, ""},
+		{"../../testdata/echo_handler_factory", spec.DefaultEchoConfig, ""},
+		{"../../testdata/fiber", spec.DefaultFiberConfig, ""},
+		{"../../testdata/servemux", spec.DefaultHTTPConfig, ""},
+		{"../../testdata/wrapped_response", spec.DefaultHTTPConfig, ""},
+		{"../../testdata/helper_response_body", spec.DefaultHTTPConfig, ""},
+
+		{"../../testdata/another_chi_router", spec.DefaultChiConfig,
+			"same sub-router mounted under two servers (goroutine closures both declare `r`); " +
+				"producer attribution is last-write-wins in both trees and they pick different winners " +
+				"(eager /api, lazy /ws/v1)"},
+		{"../../testdata/complex_chi_router", spec.DefaultChiConfig,
+			"LazyTree resolves MORE than eager: DELETE /api/user/{id} 400 carries the ErrorResponse " +
+				"schema that is plainly in the handler code; eager emits it schema-less"},
 	}
 
 	limits := metadata.TrackerLimits{
@@ -49,14 +53,7 @@ func TestLazyTreeParity(t *testing.T) {
 	}
 	genCfg := intspec.GeneratorConfig{OpenAPIVersion: "3.1.1", Title: "parity", APIVersion: "0.0.0"}
 
-	type result struct {
-		fixture               string
-		eagerPaths, lazyPaths int
-		missing, extra        []string
-		identical             bool
-	}
-	var results []result
-
+	identical := 0
 	for _, fx := range fixtures {
 		meta := fixtureMetadata(t, fx.dir)
 
@@ -74,43 +71,36 @@ func TestLazyTreeParity(t *testing.T) {
 
 		eb, _ := json.Marshal(eagerSpec)
 		lb, _ := json.Marshal(lazySpec)
+		same := string(eb) == string(lb)
 
-		r := result{
-			fixture:    fx.dir,
-			eagerPaths: len(eagerSpec.Paths),
-			lazyPaths:  len(lazySpec.Paths),
-			identical:  string(eb) == string(lb),
-		}
+		var missing, extra []string
 		for p := range eagerSpec.Paths {
 			if _, ok := lazySpec.Paths[p]; !ok {
-				r.missing = append(r.missing, p)
+				missing = append(missing, p)
 			}
 		}
 		for p := range lazySpec.Paths {
 			if _, ok := eagerSpec.Paths[p]; !ok {
-				r.extra = append(r.extra, p)
+				extra = append(extra, p)
 			}
 		}
-		sort.Strings(r.missing)
-		sort.Strings(r.extra)
-		results = append(results, r)
-	}
+		sort.Strings(missing)
+		sort.Strings(extra)
 
-	parity := 0
-	for _, r := range results {
-		status := "DIFF"
-		if r.identical {
-			status = "IDENTICAL"
-			parity++
+		switch {
+		case same && fx.knownDiff == "":
+			identical++
+			t.Logf("%-38s IDENTICAL paths=%d", fx.dir, len(eagerSpec.Paths))
+		case same && fx.knownDiff != "":
+			// A known diff converged: promote it to the must-match list.
+			t.Errorf("%s: now IDENTICAL — remove its knownDiff entry", fx.dir)
+		case !same && fx.knownDiff != "":
+			t.Logf("%-38s KNOWN-DIFF paths eager=%d lazy=%d missing=%v extra=%v — %s",
+				fx.dir, len(eagerSpec.Paths), len(lazySpec.Paths), missing, extra, fx.knownDiff)
+		default:
+			t.Errorf("%s: LazyTree output diverged from eager (paths eager=%d lazy=%d missing=%v extra=%v)",
+				fx.dir, len(eagerSpec.Paths), len(lazySpec.Paths), missing, extra)
 		}
-		line := fmt.Sprintf("%-38s %-9s paths eager=%d lazy=%d", r.fixture, status, r.eagerPaths, r.lazyPaths)
-		if len(r.missing) > 0 {
-			line += fmt.Sprintf(" missing=%v", r.missing)
-		}
-		if len(r.extra) > 0 {
-			line += fmt.Sprintf(" extra=%v", r.extra)
-		}
-		t.Log(line)
 	}
-	t.Logf("parity: %d/%d fixtures byte-identical", parity, len(results))
+	t.Logf("parity: %d/%d fixtures byte-identical", identical, len(fixtures))
 }

@@ -489,7 +489,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	baseKey := metadata.StripToBase(n.key)
 	childCount := 0
 	added := map[string]bool{}
-	appendCallee := func(edge *metadata.CallGraphEdge) {
+	appendCalleeUnder := func(edge *metadata.CallGraphEdge, parent *LazyNode) {
 		if childCount >= limits.MaxChildrenPerNode {
 			return
 		}
@@ -510,11 +510,12 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		n.children = append(n.children, &LazyNode{
 			tree:   n.tree,
 			key:    calleeID,
-			parent: n,
+			parent: parent,
 			edge:   edge,
 		})
 		childCount++
 	}
+	appendCallee := func(edge *metadata.CallGraphEdge) { appendCalleeUnder(edge, n) }
 	expandKey := func(key string) {
 		edges := n.tree.edgesFor(key)
 		for _, edge := range edges {
@@ -537,8 +538,18 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	for _, methodKey := range n.methodBaseKeys() {
 		expandKey(methodKey)
 	}
+	// Chain children are listed under the chain parent (so matchers see
+	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group), but
+	// their Parent pointer is the CALL-SITE scope — same rule as the eager
+	// tree's processChainRelationships: a chained call like
+	// `NewEncoder(w).Encode(v)` must trace `v` through the *enclosing call's*
+	// ParamArgMap, which lives on the call-site parent, not the chain parent.
+	chainParent := n.parent
+	if chainParent == nil {
+		chainParent = n
+	}
 	for _, edge := range n.tree.chainChildren[n.key] {
-		appendCallee(edge)
+		appendCalleeUnder(edge, chainParent)
 	}
 	for _, edge := range n.tree.receiverChildren[n.key] {
 		appendCallee(edge)
@@ -546,11 +557,24 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	return n.children
 }
 
-// methodBaseKeys resolves a method-value argument (h.GetUsers) to the base
-// ID of the method it references, so expansion can follow into its body.
+// methodBaseKeys resolves a method-referencing argument to the base ID(s) of
+// the method it points at, so expansion can follow into its body:
+//
+//   - method value:   g.GET("/", h.GetUsers)   — the arg IS a selector;
+//   - handler factory: g.POST("/x", h.Create()) — the arg is a CALL whose Fun
+//     is a selector; the body lives in the closure the method returns, which
+//     the ParentFunctions fallback in expandKey then reaches.
+//
+// Interface receivers fan out to their recorded implementers in either form.
 func (n *LazyNode) methodBaseKeys() []string {
 	arg := n.arg
-	if !n.isArgument || arg == nil || arg.GetKind() != metadata.KindSelector || arg.Sel == nil {
+	if !n.isArgument || arg == nil {
+		return nil
+	}
+	if arg.GetKind() == metadata.KindCall && arg.Fun != nil && arg.Fun.GetKind() == metadata.KindSelector {
+		arg = arg.Fun
+	}
+	if arg.GetKind() != metadata.KindSelector || arg.Sel == nil {
 		return nil
 	}
 	selName := arg.Sel.GetName()

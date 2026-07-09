@@ -542,17 +542,40 @@ next.
   method-value handler resolution (`h.GetUsers` → method base key),
   interface→implementer fan-out (`ImplementedBy`), and closure expansion
   via `ParentFunctions`.
-  **Parity (side-by-side full-mapper diff, `TestLazyTreeParity`): 7/12
-  fixtures byte-identical** — mux, mux_path_params, chi, gin, echo, fiber,
-  servemux. Remaining diffs and their causes: `another_chi_router` (same
-  sub-router mounted at two prefixes; eager and lazy pick different
-  winners — ordering semantics of last-write-wins linking),
-  `complex_chi_router`, `wrapped_response`, `helper_response_body`
-  (per-route response/body value tracing through assignment links — the
-  deep `traceArgViaParent` overlay), `echo_handler_factory` (factory
-  receiver resolution for returned closures, `attachReturnedClosureBody`
-  equivalent). LazyTree is NOT wired into production; the eager tree
-  remains the default until the harness reports full parity.
+  **Parity (side-by-side full-mapper diff, `TestLazyTreeParity`): 10/12
+  fixtures byte-identical** — mux, mux_path_params, chi, gin, echo,
+  echo_handler_factory, fiber, servemux, wrapped_response,
+  helper_response_body. The harness now ASSERTS identity for these (any
+  regression fails the test). Two knownDiff entries remain, both
+  understood:
+  - `another_chi_router`: the same sub-router is mounted under two
+    servers (goroutine closures both declare `r := chi.NewRouter()`);
+    producer attribution is last-write-wins in BOTH trees and they pick
+    different winners (eager `/api`, lazy `/ws/v1`). Converging means
+    replicating the eager pass ordering — or fixing both to emit both
+    mounts.
+  - `complex_chi_router`: **LazyTree resolves more than eager** — DELETE
+    `/api/user/{id}` 400 carries the `ErrorResponse` schema that is
+    plainly in the handler code; eager emits it schema-less. Byte-parity
+    here would mean reproducing an eager deficiency.
+
+  Key mechanisms that got the last five fixtures (worth knowing for
+  maintenance):
+  - handler-factory args (`h.Create()`): a call-arg whose `Fun` is a
+    selector resolves through the same method-key + implementer fan-out
+    as method values, then `ParentFunctions` reaches the returned
+    closure's body;
+  - **chain children carry the CALL-SITE parent** (`processChainRelationships`'s
+    rule, now explicit): `.Methods("GET")`/`.Use(mw)` stay visible under
+    the chain parent for matchers, but `NewEncoder(w).Encode(v)` traces
+    `v` through the enclosing call's `ParamArgMap` — parenting the chain
+    copy under the chain parent had stolen the 200 slot with an
+    untraceable body while the real body fell to `default`.
+
+  LazyTree is NOT wired into production; the eager tree remains the
+  default until the remaining two fixtures converge (or eager's
+  deficiencies are accepted as such and the goal flips to
+  golden-fixture regeneration).
 
 ### Interim rule (codify now, costs nothing)
 
