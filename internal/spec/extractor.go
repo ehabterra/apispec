@@ -126,6 +126,17 @@ type Extractor struct {
 	// look-through reach a library call that lives in the closure a middleware
 	// returns — the dominant net/http/echo idiom. Built lazily.
 	parentFnIndex map[string][]*metadata.CallGraphEdge
+
+	// scc is the call graph's SCC condensation, built lazily and shared by
+	// every reachability summary (docs/TRACKER_REDESIGN.md step 3).
+	scc *metadata.CallGraphSCC
+	// reachSets caches, per accessor pattern, which function BaseIDs
+	// transitively reach a matching call. See reachability.go.
+	reachSets map[string]map[string]bool
+	// mwResolved memoizes, per function BaseID, the mapping-matching
+	// middleware refs transitively reachable through it. See reachability.go.
+	mwResolved map[string][]MiddlewareRef
+	mwOnStack  map[string]bool
 }
 
 // NewExtractor creates a new refactored extractor
@@ -574,10 +585,6 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 	}
 }
 
-// maxWrapperLookThroughDepth bounds how deep wrapper look-through follows the
-// call graph (custom mw -> wrapper -> ... -> library constructor).
-const maxWrapperLookThroughDepth = 6
-
 // expandMiddlewareRefs replaces custom-wrapper middleware with the library
 // middleware it transitively calls, so a project-defined wrapper resolves to the
 // underlying scheme. Refs that already match a mapping, or that can't be looked
@@ -594,7 +601,20 @@ func (e *Extractor) expandMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
 	e.ensureParentFnIndex(meta)
 	var out []MiddlewareRef
 	for _, ref := range refs {
-		out = append(out, e.lookThroughMiddleware(ref, meta, make(map[string]bool), 0)...)
+		if anyMappingMatches(ref, e.cfg.SecurityMappings) {
+			out = append(out, ref)
+			continue
+		}
+		key := middlewareBaseID(ref)
+		if key == "" {
+			out = append(out, ref)
+			continue
+		}
+		if resolved := e.middlewareMatchesThrough(key, meta); len(resolved) > 0 {
+			out = append(out, resolved...)
+			continue
+		}
+		out = append(out, ref) // nothing matched downstream; keep for diagnostics
 	}
 	return dedupMiddlewareRefs(out)
 }
@@ -619,51 +639,6 @@ func (e *Extractor) ensureParentFnIndex(meta *metadata.Metadata) {
 		idx[key] = append(idx[key], edge)
 	}
 	e.parentFnIndex = idx
-}
-
-// lookThroughMiddleware resolves a single middleware ref, following the call
-// graph through wrapper functions until a mapping matches.
-func (e *Extractor) lookThroughMiddleware(ref MiddlewareRef, meta *metadata.Metadata, visited map[string]bool, depth int) []MiddlewareRef {
-	if anyMappingMatches(ref, e.cfg.SecurityMappings) {
-		return []MiddlewareRef{ref}
-	}
-	if depth >= maxWrapperLookThroughDepth {
-		return []MiddlewareRef{ref}
-	}
-	key := middlewareBaseID(ref)
-	if key == "" || visited[key] {
-		return []MiddlewareRef{ref}
-	}
-	visited[key] = true
-
-	// Calls made directly in the function's body, plus calls inside func
-	// literals it defines/returns (e.g. a middleware that validates a token in
-	// the http.Handler closure it returns).
-	direct := meta.Callers[key]
-	nested := e.parentFnIndex[key]
-	if len(direct) == 0 && len(nested) == 0 {
-		return []MiddlewareRef{ref} // external / no analyzable body
-	}
-	var found []MiddlewareRef
-	scan := func(edges []*metadata.CallGraphEdge) {
-		for _, edge := range edges {
-			callee := e.calleeMiddlewareRef(edge)
-			if callee.empty() {
-				continue
-			}
-			for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
-				if anyMappingMatches(r, e.cfg.SecurityMappings) {
-					found = append(found, r)
-				}
-			}
-		}
-	}
-	scan(direct)
-	scan(nested)
-	if len(found) > 0 {
-		return found
-	}
-	return []MiddlewareRef{ref} // nothing matched downstream; keep for diagnostics
 }
 
 // calleeMiddlewareRef builds a MiddlewareRef from a call edge's callee.
@@ -1315,22 +1290,26 @@ func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Fun
 }
 
 // handlerReachesAccessor reports whether the route's handler transitively calls
-// the map-key accessor described by pattern, following the call graph through
-// helper functions up to maxWrapperLookThroughDepth. Seeds are the handler
-// function's call-graph base IDs (matched by name + package), so it works
-// regardless of the exact key format.
+// the map-key accessor described by pattern. Reachability is a precomputed
+// summary (reachSet, one bottom-up pass over the SCC condensation) rather
+// than a per-route bounded walk, so helper indirection resolves at any depth.
+// Seeds are the handler function's call-graph base IDs (matched by name +
+// package), so it works regardless of the exact key format.
 func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPattern) bool {
 	meta := route.Metadata
 	if meta == nil || route.Function == "" {
 		return false
 	}
+	reach := e.reachSet(meta, "accessor:"+pattern.CallRegex+"\x00"+pattern.RecvTypeRegex,
+		func(edge *metadata.CallGraphEdge) bool {
+			return edgeMatchesAccessor(meta, edge, pattern)
+		})
 	// route.Function is package-qualified ("pkg/path.Handler"); call-graph
 	// caller names are bare ("Handler"), so strip the package prefix to match.
 	bareFunc := route.Function
 	if route.Package != "" {
 		bareFunc = strings.TrimPrefix(route.Function, route.Package+".")
 	}
-	visited := make(map[string]bool)
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 		if getString(meta, edge.Caller.Name) != bareFunc {
@@ -1339,25 +1318,7 @@ func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPatter
 		if route.Package != "" && getString(meta, edge.Caller.Pkg) != route.Package {
 			continue
 		}
-		if e.reachesAccessor(meta, edge.Caller.BaseID(), pattern, visited, 0) {
-			return true
-		}
-	}
-	return false
-}
-
-// reachesAccessor walks meta.Callers from a function base ID, returning true if
-// any transitively-reachable call edge matches the accessor pattern.
-func (e *Extractor) reachesAccessor(meta *metadata.Metadata, key string, pattern ParamPattern, visited map[string]bool, depth int) bool {
-	if key == "" || visited[key] || depth > maxWrapperLookThroughDepth {
-		return false
-	}
-	visited[key] = true
-	for _, edge := range meta.Callers[key] {
-		if edgeMatchesAccessor(meta, edge, pattern) {
-			return true
-		}
-		if e.reachesAccessor(meta, edge.Callee.BaseID(), pattern, visited, depth+1) {
+		if reach[edge.Caller.BaseID()] {
 			return true
 		}
 	}

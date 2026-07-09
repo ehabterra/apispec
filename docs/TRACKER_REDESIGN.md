@@ -510,6 +510,23 @@ next.
   bound. Wired behind `EngineConfig.ResolveCallGraph` (default off,
   exposed via `Engine.GetResolvedCallGraph`) — feeding nothing until
   step 3.
+- **Step 3 — DONE 2026-07-09, first behavior-affecting change**
+  (`internal/spec/reachability.go`): `maxWrapperLookThroughDepth` is
+  **deleted**. The mux accessor query (`handlerReachesAccessor`) now uses
+  `reachSet` — one bottom-up pass over the step-1 SCC condensation
+  computing, per pattern, every function that transitively reaches a
+  matching call; cached per pattern, no depth bound (first production
+  consumer of `BuildCallGraphSCC`). Wrapper middleware look-through
+  (`expandMiddlewareRefs`) now uses `middlewareMatchesThrough` — memoized
+  per function, unbounded, still following closure-internal edges via
+  `parentFnIndex` (which the call-graph SCC does not order — hence
+  demand-driven memoization there instead of the bottom-up pass).
+  Equivalence proven by the full golden-fixture suite; improvement locked
+  in by new tests (12-deep helper chain and a recursion cluster both
+  resolve; both were invisible under the old cap). NOTE: these summaries
+  still run over the *metadata* (syntactic) graph — switching them to the
+  resolved graph (step 2's) is deferred until the resolved graph is on by
+  default, since it changes which indirect calls resolve.
 
 ### Interim rule (codify now, costs nothing)
 
