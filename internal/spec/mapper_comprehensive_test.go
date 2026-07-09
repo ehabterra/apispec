@@ -617,6 +617,7 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 		name     string
 		path     string
 		params   []Parameter
+		patterns map[string]string
 		expected int // expected number of parameters
 	}{
 		{
@@ -624,6 +625,13 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 			path:     "/users",
 			params:   []Parameter{},
 			expected: 0,
+		},
+		{
+			name:     "missing_path_param_with_pattern",
+			path:     "/users/{id}",
+			params:   []Parameter{},
+			patterns: map[string]string{"id": "[0-9]+"},
+			expected: 1,
 		},
 		{
 			name:     "missing_path_param",
@@ -659,7 +667,7 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ensureAllPathParams(tt.path, tt.params, nil)
+			result := ensureAllPathParams(tt.path, tt.params, tt.patterns)
 			if len(result) != tt.expected {
 				t.Errorf("Expected %d parameters, got %d", tt.expected, len(result))
 			}
@@ -669,6 +677,12 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 			for _, p := range result {
 				if p.In == "path" {
 					pathParams[p.Name] = true
+				}
+				// A constrained placeholder must carry its pattern on the schema.
+				if p.In == "path" && tt.patterns[p.Name] != "" {
+					if p.Schema == nil || p.Schema.Pattern != tt.patterns[p.Name] {
+						t.Errorf("param %q: expected schema.pattern %q, got %+v", p.Name, tt.patterns[p.Name], p.Schema)
+					}
 				}
 			}
 

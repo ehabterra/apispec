@@ -1295,8 +1295,17 @@ func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Fun
 			}
 		}
 	}
-	for _, p := range meta.Packages {
-		for _, file := range p.Files {
+	// Fallback: any package declaring the name. Sort package keys so that when
+	// several packages declare the same bare name the result is stable across
+	// runs (map iteration order is random). Function names are unique within a
+	// package, so the inner file order doesn't affect the result.
+	pkgNames := make([]string, 0, len(meta.Packages))
+	for p := range meta.Packages {
+		pkgNames = append(pkgNames, p)
+	}
+	sort.Strings(pkgNames)
+	for _, p := range pkgNames {
+		for _, file := range meta.Packages[p].Files {
 			if fn, ok := file.Functions[name]; ok {
 				return fn
 			}
