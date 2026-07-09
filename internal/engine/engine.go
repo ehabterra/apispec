@@ -132,6 +132,11 @@ type EngineConfig struct {
 	// summary-based analyses consume it; enable to expose it via
 	// GetResolvedCallGraph.
 	ResolveCallGraph bool
+	// UseLegacyTracker generates the spec with the eager (materialized)
+	// tracker tree instead of the lazy tree that became the default at the
+	// step-4 parity milestone (docs/TRACKER_REDESIGN.md). Escape hatch only —
+	// slated for removal once the lazy tree has survived a release.
+	UseLegacyTracker bool
 	// SkipHTTPFramework excludes net/http from framework dependency analysis
 	SkipHTTPFramework bool
 	// Auto-exclude common test files and folders (e.g., *_test.go, tests/)
@@ -616,8 +621,18 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		return nil, err
 	}
 	tTree := time.Now()
-	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
-	e.reportPhase("tracker tree built", time.Since(tTree))
+	var tree intspec.TrackerTreeInterface
+	if e.config.UseLegacyTracker {
+		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
+		e.reportPhase("tracker tree built (legacy eager)", time.Since(tTree))
+	} else {
+		// Default since the step-4 parity milestone (docs/TRACKER_REDESIGN.md):
+		// the lazy tree expands on demand — no up-front unfolding, per-route
+		// isolation by construction — and resolves everything the eager tree
+		// does on the fixture suite (in one case more; see the parity harness).
+		tree = intspec.NewLazyTree(meta, limits)
+		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
+	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
 	}

@@ -572,10 +572,23 @@ next.
     copy under the chain parent had stolen the 200 slot with an
     untraceable body while the real body fell to `default`.
 
-  LazyTree is NOT wired into production; the eager tree remains the
-  default until the remaining two fixtures converge (or eager's
-  deficiencies are accepted as such and the goal flips to
-  golden-fixture regeneration).
+  **LazyTree became the production default on 2026-07-09** (user decision:
+  accept lazy's equal-or-better output rather than replicate eager's
+  winner-ordering quirks). `EngineConfig.UseLegacyTracker` is the escape
+  hatch, slated for removal after a release. Switching surfaced two gaps
+  outside the parity fixtures, both fixed:
+  - `cyclic_graph` timed out: the per-path cycle guard bounds each path,
+    but a dense cyclic graph has exponentially many acyclic paths — the
+    lazy tree now honors `MaxNodesPerTree` as a cumulative node budget
+    (60s timeout → 0.5s);
+  - `functional_options` lost its routes: dispatch on an interface VALUE
+    (`module.RegisterRoutes(...)` on a closure-captured param) was a dead
+    end — callee expansion now fans out to `ImplementedBy` implementers,
+    the lazy equivalent of the eager build's interface-method attachment.
+  Full suite green with lazy as default, including determinism tests
+  (complex_chi_router run-to-run stable). Insight metrics and the diagram
+  server still build the eager tree — they visualize tree structure
+  itself and are untouched by this switch.
 
 ### Interim rule (codify now, costs nothing)
 

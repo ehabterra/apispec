@@ -59,6 +59,18 @@ type LazyTree struct {
 	// the plain caller expansion.
 	claimed        map[*metadata.CallGraphEdge]bool
 	relationsBuilt bool
+
+	// nodesBuilt counts every LazyNode created. The per-path cycle guard
+	// bounds each path, but a dense cyclic graph still has exponentially many
+	// distinct acyclic paths — the same blow-up MaxNodesPerTree exists to
+	// stop in the eager tree. Once the budget is spent, expansion returns
+	// leaves.
+	nodesBuilt int
+}
+
+// budgetExhausted reports whether the cumulative node budget is spent.
+func (t *LazyTree) budgetExhausted() bool {
+	return t.limits.MaxNodesPerTree > 0 && t.nodesBuilt >= t.limits.MaxNodesPerTree
 }
 
 // buildRelations constructs the chain and receiver-variable indexes once.
@@ -431,6 +443,9 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	if n.expanded {
 		return n.children
 	}
+	if n.tree.budgetExhausted() {
+		return nil // budget spent: further expansion yields leaves (cheap unwind)
+	}
 	n.expanded = true
 
 	meta := n.tree.meta
@@ -478,6 +493,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 				argIndex:   i,
 				argContext: getString(meta, ownerEdge.Caller.Name) + "." + getString(meta, ownerEdge.Callee.Name),
 			}
+			n.tree.nodesBuilt++
 			n.children = append(n.children, child)
 		}
 	}
@@ -507,6 +523,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			return // cycle: this call is already on the current path
 		}
 		added[calleeID] = true
+		n.tree.nodesBuilt++
 		n.children = append(n.children, &LazyNode{
 			tree:   n.tree,
 			key:    calleeID,
@@ -531,6 +548,21 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		}
 	}
 	expandKey(baseKey)
+	// Interface-method callee (module.RegisterRoutes(...) where module is an
+	// interface): fan out into the concrete implementers' method bodies —
+	// the eager build's ImplementedBy attachment. Without this, dispatch on
+	// an interface value (e.g. captured by a functional-options closure) is
+	// a dead end, since the interface method itself has no body.
+	if n.edge != nil {
+		calleeRecv := strings.TrimPrefix(getString(meta, n.edge.Callee.RecvType), "*")
+		if calleeRecv != "" {
+			calleePkg := getString(meta, n.edge.Callee.Pkg)
+			calleeName := getString(meta, n.edge.Callee.Name)
+			for _, implKey := range n.tree.implementerKeys(calleePkg, calleeRecv, calleeName) {
+				expandKey(implKey)
+			}
+		}
+	}
 	// Method-value handler (g.GET("/", h.GetUsers)): the argument is a
 	// selector whose body lives under the method's own base ID
 	// (pkg.recvType.name), not under the argument's key — resolve it so the
