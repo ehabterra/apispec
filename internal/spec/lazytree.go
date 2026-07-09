@@ -85,19 +85,26 @@ type LazyTree struct {
 	// leaves.
 	nodesBuilt int
 
-	// instanceCount is the number of per-path copies created per callee ID.
-	// A node is (edge, parent), so a callee reached along many paths gets
-	// many copies — and business-layer diamonds make that exponential, which
-	// would drain the node budget before traversal reaches later router
-	// wiring. maxInstancesPerKey bounds the copies per callee.
+	// instanceCount counts node copies per (instance scope, callee ID) —
+	// see maxInstancesPerKey. A node is (edge, parent), so a callee reached
+	// along many paths gets many copies; business-layer diamonds make that
+	// exponential and would drain the node budget before traversal reaches
+	// later router wiring.
 	instanceCount map[string]int
+	// seenKeys backs the node budget: distinct callee IDs ever materialized,
+	// the same graph-sized unit as the eager tree's shared-node cap —
+	// deliberately NOT scoped, or many scopes would exhaust the budget with
+	// copies of the same graph.
+	seenKeys map[string]bool
 }
 
-// maxInstancesPerKey bounds per-path node copies of the same callee. Route
-// registrations have unique call-site IDs (never near the bound); only
-// heavily shared helpers and business-layer functions reach it — for those,
-// further paths stop descending, the role the eager tree's per-ID recursion
-// cap plays.
+// maxInstancesPerKey bounds node copies of the same callee WITHIN one
+// instance scope (the subtree of the nearest argument-node ancestor —
+// approximately "per handler"). Scoping matters: a response helper shared by
+// every handler legitimately needs one copy per route for per-route value
+// tracing, while call diamonds inside a single handler's business logic
+// multiply copies combinatorially and must be cut — the role the eager
+// tree's per-ID recursion cap plays.
 const maxInstancesPerKey = 10
 
 // budgetExhausted reports whether the cumulative node budget is spent.
@@ -510,6 +517,20 @@ func (n *LazyNode) GetTypeParamMap() map[string]string {
 
 // onPath reports whether key is already an ancestor of n (cycle guard: the
 // per-path state a lazy unfolding needs, in contrast to a global seen-set).
+// instanceScope identifies the counting scope for maxInstancesPerKey: the
+// key of the nearest argument-node ancestor (the handler/value subtree this
+// node belongs to), or "" at wiring level. Each scope gets its own copy
+// allowance, so shared helpers trace per route while intra-handler diamonds
+// stay bounded.
+func (n *LazyNode) instanceScope() string {
+	for cur := n; cur != nil; cur = cur.parent {
+		if cur.isArgument {
+			return cur.key
+		}
+	}
+	return ""
+}
+
 func (n *LazyNode) onPath(key string) bool {
 	for cur := n; cur != nil; cur = cur.parent {
 		if cur.key == key {
@@ -566,8 +587,9 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			if n.onPath(key) {
 				continue
 			}
-			if n.tree.instanceCount[key] >= maxInstancesPerKey {
-				continue // same per-key copy bound as callee children
+			scopedKey := n.instanceScope() + "\x00" + key
+			if n.tree.instanceCount[scopedKey] >= maxInstancesPerKey {
+				continue // same per-scope copy bound as callee children
 			}
 			argType := classifyArgument(arg)
 			argEdge := ownerEdge
@@ -588,9 +610,13 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			if n.tree.instanceCount == nil {
 				n.tree.instanceCount = map[string]int{}
 			}
-			n.tree.instanceCount[key]++
-			if n.tree.instanceCount[key] == 1 {
-				n.tree.nodesBuilt++ // budget counts DISTINCT keys, like the eager shared-node cap
+			n.tree.instanceCount[scopedKey]++
+			if n.tree.seenKeys == nil {
+				n.tree.seenKeys = map[string]bool{}
+			}
+			if !n.tree.seenKeys[key] {
+				n.tree.seenKeys[key] = true
+				n.tree.nodesBuilt++ // budget counts globally distinct keys, like the eager shared-node cap
 			}
 			n.children = append(n.children, child)
 		}
@@ -621,12 +647,13 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			return // cycle: this call is already on the current path
 		}
 		added[calleeID] = true
-		if n.tree.instanceCount[calleeID] >= maxInstancesPerKey {
-			// Heavily shared callee (business-layer diamond): stop
-			// materializing further per-path copies. Reusing the first
-			// instance instead would make the tree cyclic (consumers of the
-			// memoized subtree can reach themselves), so the bound is a skip
-			// — the same role the eager tree's per-ID recursion cap plays.
+		scopedKey := n.instanceScope() + "\x00" + calleeID
+		if n.tree.instanceCount[scopedKey] >= maxInstancesPerKey {
+			// Diamond inside this scope: stop materializing further copies.
+			// Reusing the first instance instead would make the tree cyclic
+			// (consumers of the memoized subtree can reach themselves), so
+			// the bound is a skip — the same role the eager tree's per-ID
+			// recursion cap plays.
 			return
 		}
 		child := &LazyNode{
@@ -638,9 +665,13 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if n.tree.instanceCount == nil {
 			n.tree.instanceCount = map[string]int{}
 		}
-		n.tree.instanceCount[calleeID]++
-		if n.tree.instanceCount[calleeID] == 1 {
-			n.tree.nodesBuilt++ // budget counts DISTINCT keys, like the eager shared-node cap
+		n.tree.instanceCount[scopedKey]++
+		if n.tree.seenKeys == nil {
+			n.tree.seenKeys = map[string]bool{}
+		}
+		if !n.tree.seenKeys[calleeID] {
+			n.tree.seenKeys[calleeID] = true
+			n.tree.nodesBuilt++ // budget counts globally distinct keys, like the eager shared-node cap
 		}
 		n.children = append(n.children, child)
 		childCount++
