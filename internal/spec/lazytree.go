@@ -60,6 +60,20 @@ type LazyTree struct {
 	claimed        map[*metadata.CallGraphEdge]bool
 	relationsBuilt bool
 
+	// assignIndex mirrors the eager tree's assignmentIndex byte-for-byte: the
+	// SAME assignmentKey composition (name, pkg, concrete type, container —
+	// with the selector-Lhs container override) mapping to the producing
+	// call's callee ID. Consumed at argument expansion with the same
+	// TraceVariableOrigin-composed lookups the eager processArguments uses,
+	// so variable and struct-field arguments resolve to their producers the
+	// same way (functional options, builder wiring, plain var mounts).
+	assignIndex map[assignmentKey]string
+	// producerArgs: producer callee ID (an option/builder call like
+	// WithCartRouter(x)) -> the producer IDs of its own arguments, so a
+	// field lookup that lands on the option call can step through to the
+	// value that was stored (CartAPIs(...) above).
+	producerArgs map[string][]string
+
 	// nodesBuilt counts every LazyNode created. The per-path cycle guard
 	// bounds each path, but a dense cyclic graph still has exponentially many
 	// distinct acyclic paths — the same blow-up MaxNodesPerTree exists to
@@ -129,6 +143,57 @@ func (t *LazyTree) buildRelations() {
 		t.receiverChildren[producerKey] = append(t.receiverChildren[producerKey], edges...)
 		for _, edge := range edges {
 			t.claimed[edge] = true
+		}
+	}
+
+	// assignIndex: the eager tree's assignmentIndex, byte-for-byte key
+	// composition (NewTrackerTree lines building akey, including the
+	// selector-Lhs container override). Last write wins over the same sorted
+	// order the eager build uses, so ambiguous keys pick the same winner.
+	t.assignIndex = map[assignmentKey]string{}
+	t.producerArgs = map[string][]string{}
+	for _, rel := range rels {
+		akey := assignmentKey{
+			Name:      getString(meta, rel.Assignment.VariableName),
+			Pkg:       getString(meta, rel.Assignment.Pkg),
+			Type:      getString(meta, rel.Assignment.ConcreteType),
+			Container: getString(meta, rel.Assignment.Func),
+		}
+		if rel.Assignment.Lhs.GetKind() == metadata.KindSelector &&
+			rel.Assignment.Lhs.X != nil && rel.Assignment.Lhs.X.Type != -1 {
+			akey.Container = getString(meta, rel.Assignment.Lhs.X.Type)
+		}
+		producerID := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")
+		t.assignIndex[akey] = producerID
+
+		// Step-through for option/builder producers: the values the producing
+		// call was given (WithCartRouter(cartRest.CartAPIs(app)) stores
+		// CartAPIs' result, not WithCartRouter's).
+		edge := rel.Edge
+		callerPkg := getString(meta, edge.Caller.Pkg)
+		callerFn := getString(meta, edge.Caller.Name)
+		for _, arg := range edge.Args {
+			if arg == nil {
+				continue
+			}
+			switch arg.GetKind() {
+			case metadata.KindIdent:
+				if p, ok := producerByVar[recvKey{name: arg.GetName(), pkg: callerPkg, fn: callerFn}]; ok {
+					t.producerArgs[producerID] = append(t.producerArgs[producerID], p)
+				}
+			case metadata.KindCall:
+				if arg.Edge != nil {
+					t.producerArgs[producerID] = append(t.producerArgs[producerID], strings.TrimPrefix(arg.Edge.Callee.ID(), "*"))
+				} else if arg.Fun != nil {
+					fun := arg.Fun
+					if fun.GetKind() == metadata.KindSelector && fun.Sel != nil {
+						fun = fun.Sel
+					}
+					if name, fpkg := fun.GetName(), fun.GetPkg(); name != "" && fpkg != "" {
+						t.producerArgs[producerID] = append(t.producerArgs[producerID], fpkg+"."+name)
+					}
+				}
+			}
 		}
 	}
 
@@ -570,6 +635,16 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	for _, methodKey := range n.methodBaseKeys() {
 		expandKey(methodKey)
 	}
+	// Variable/field argument (router.Mount("/cart", r.cartRouter) or
+	// Mount("/x", subRouter)): the producer subtree — the registrations
+	// claimed under the router that was stored into the variable/field —
+	// becomes this argument's children, so the mount prefix applies to them.
+	for _, producerID := range n.argProducerIDs() {
+		for _, edge := range n.tree.receiverChildren[producerID] {
+			appendCallee(edge)
+		}
+		expandKey(metadata.StripToBase(producerID))
+	}
 	// Chain children are listed under the chain parent (so matchers see
 	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group), but
 	// their Parent pointer is the CALL-SITE scope — same rule as the eager
@@ -631,6 +706,59 @@ func (n *LazyNode) methodBaseKeys() []string {
 	// the eager build's ImplementedBy attachment.
 	keys = append(keys, n.tree.implementerKeys(pkg, recv, selName)...)
 	return keys
+}
+
+// argProducerIDs resolves a variable or struct-field argument to the callee
+// IDs that produced its value, using the eager processArguments' exact key
+// composition (CallArgToString + TraceVariableOrigin + assignmentKey with
+// the parent-type container for selectors). This is what lets a mounted
+// router arrive through `r.Mount("/cart", r.cartRouter)` (field, functional
+// options) or `r.Mount("/x", subRouter)` (plain variable).
+func (n *LazyNode) argProducerIDs() []string {
+	arg := n.arg
+	if !n.isArgument || arg == nil || n.edge == nil {
+		return nil
+	}
+	meta := n.tree.meta
+	callerName := getString(meta, n.edge.Caller.Name)
+	callerPkg := getString(meta, n.edge.Caller.Pkg)
+
+	switch {
+	case n.argType == ArgTypeSelector && arg.X != nil:
+		varName := metadata.CallArgToString(arg)
+		baseVar, originPkg, _, _ := metadata.TraceVariableOrigin(varName, callerName, callerPkg, meta)
+		parentType := arg.X.GetType()
+		// Nested selector (obj.field.sub): the base variable's type wins —
+		// same rule as the eager selector branch.
+		if arg.X.GetKind() == metadata.KindSelector && arg.X.X != nil && arg.X.Sel != nil &&
+			arg.X.Sel.GetKind() == metadata.KindIdent {
+			parentType = arg.X.X.GetType()
+		}
+		akey := assignmentKey{Name: baseVar, Pkg: originPkg, Type: arg.GetType(), Container: callerName}
+		if parentType != "" {
+			akey.Container = parentType
+		}
+		return n.tree.producersFor(akey)
+
+	case n.argType == ArgTypeVariable:
+		varName := metadata.CallArgToString(arg)
+		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(varName, callerName, callerPkg, meta)
+		return n.tree.producersFor(assignmentKey{
+			Name: originVar, Pkg: originPkg, Type: arg.GetType(), Container: callerName,
+		})
+	}
+	return nil
+}
+
+// producersFor resolves an assignment key to its producer plus, when the
+// producer is an option/builder call, the producers of that call's own
+// arguments (the actually-stored values).
+func (t *LazyTree) producersFor(akey assignmentKey) []string {
+	producer, ok := t.assignIndex[akey]
+	if !ok {
+		return nil
+	}
+	return append([]string{producer}, t.producerArgs[producer]...)
 }
 
 // implementerKeys returns "implPkg.ImplType.method" for every recorded

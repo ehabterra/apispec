@@ -34,6 +34,10 @@ func TestLazyTreeParity(t *testing.T) {
 		{"../../testdata/servemux", spec.DefaultHTTPConfig, ""},
 		{"../../testdata/wrapped_response", spec.DefaultHTTPConfig, ""},
 		{"../../testdata/helper_response_body", spec.DefaultHTTPConfig, ""},
+		{"../../testdata/router_mount_options", spec.DefaultChiConfig, ""},
+
+		{"../../testdata/functional_options", spec.DefaultMuxConfig,
+			"paths identical (13/13, smoke test passes); operation content differs somewhere — uninvestigated"},
 
 		{"../../testdata/another_chi_router", spec.DefaultChiConfig,
 			"same sub-router mounted under two servers (goroutine closures both declare `r`); " +

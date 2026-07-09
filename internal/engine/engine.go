@@ -132,11 +132,14 @@ type EngineConfig struct {
 	// summary-based analyses consume it; enable to expose it via
 	// GetResolvedCallGraph.
 	ResolveCallGraph bool
-	// UseLegacyTracker generates the spec with the eager (materialized)
-	// tracker tree instead of the lazy tree that became the default at the
-	// step-4 parity milestone (docs/TRACKER_REDESIGN.md). Escape hatch only —
-	// slated for removal once the lazy tree has survived a release.
-	UseLegacyTracker bool
+	// UseLazyTracker generates the spec with the lazy tracker tree
+	// (docs/TRACKER_REDESIGN.md step 4). Opt-in: the lazy tree matches the
+	// eager tree on the fixture suite (10/12 byte-identical, 2 understood
+	// diffs) but does not yet cover every real-world wiring style (struct-
+	// field mounts via functional options, register-helper chains) — the
+	// eager tree stays the default until the real-world parity meter
+	// (internal/spike TestRealWorldParity) reads clean.
+	UseLazyTracker bool
 	// SkipHTTPFramework excludes net/http from framework dependency analysis
 	SkipHTTPFramework bool
 	// Auto-exclude common test files and folders (e.g., *_test.go, tests/)
@@ -622,16 +625,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 	tTree := time.Now()
 	var tree intspec.TrackerTreeInterface
-	if e.config.UseLegacyTracker {
-		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
-		e.reportPhase("tracker tree built (legacy eager)", time.Since(tTree))
-	} else {
-		// Default since the step-4 parity milestone (docs/TRACKER_REDESIGN.md):
-		// the lazy tree expands on demand — no up-front unfolding, per-route
-		// isolation by construction — and resolves everything the eager tree
-		// does on the fixture suite (in one case more; see the parity harness).
+	if e.config.UseLazyTracker {
 		tree = intspec.NewLazyTree(meta, limits)
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
+	} else {
+		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
+		e.reportPhase("tracker tree built", time.Since(tTree))
 	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err

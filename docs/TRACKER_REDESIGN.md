@@ -572,23 +572,60 @@ next.
     copy under the chain parent had stolen the 200 slot with an
     untraceable body while the real body fell to `default`.
 
-  **LazyTree became the production default on 2026-07-09** (user decision:
-  accept lazy's equal-or-better output rather than replicate eager's
-  winner-ordering quirks). `EngineConfig.UseLegacyTracker` is the escape
-  hatch, slated for removal after a release. Switching surfaced two gaps
-  outside the parity fixtures, both fixed:
-  - `cyclic_graph` timed out: the per-path cycle guard bounds each path,
-    but a dense cyclic graph has exponentially many acyclic paths — the
-    lazy tree now honors `MaxNodesPerTree` as a cumulative node budget
-    (60s timeout → 0.5s);
-  - `functional_options` lost its routes: dispatch on an interface VALUE
-    (`module.RegisterRoutes(...)` on a closure-captured param) was a dead
-    end — callee expansion now fans out to `ImplementedBy` implementers,
-    the lazy equivalent of the eager build's interface-method attachment.
-  Full suite green with lazy as default, including determinism tests
-  (complex_chi_router run-to-run stable). Insight metrics and the diagram
-  server still build the eager tree — they visualize tree structure
-  itself and are untouched by this switch.
+  **Default-tree status (2026-07-09, end of day): EAGER, lazy opt-in via
+  `EngineConfig.UseLazyTracker`.** The default was briefly switched to
+  lazy after the 10/12 fixture milestone, then real-world runs showed the
+  fixture suite under-represents production wiring: lmd-core 17/66 paths,
+  enigma/api 110/245. The acceptance bar (user directive): **lazy must
+  cover every wiring style the legacy tree supports.** Meters:
+  `TestLazyTreeParity` (fixtures, asserts identity) and
+  `TestRealWorldParity` (env-gated `APISPEC_REALWORLD=1`, diffs both trees
+  on the real projects).
+
+  Fixed along the way (all kept): `MaxNodesPerTree` as cumulative node
+  budget (cyclic_graph 60s→0.5s); interface-VALUE dispatch fan-out via
+  `ImplementedBy` (functional_options routes); `assignIndex` — a
+  byte-for-byte mirror of the eager `assignmentIndex` (same key
+  composition incl. the selector-Lhs container override) consumed with
+  eager-identical `TraceVariableOrigin` lookups at argument expansion,
+  plus `producerArgs` step-through for option calls → `router_mount_options`
+  now byte-identical (14-fixture harness: 11 identical, 3 knownDiff).
+
+  ### Systematic tracker.go → lazytree.go mechanism inventory
+
+  | # | eager mechanism | lazy status |
+  |---|---|---|
+  | 1 | roots (main) + RootAssignmentMap | ✅ |
+  | 2 | Callers expansion + skips + MaxChildren | ✅ |
+  | 3 | generics IsSubset filter | ✅ |
+  | 4 | recursion/node budgets | ✅ (cumulative budget) |
+  | 5 | arg classification + nested call-arg expansion | ✅ |
+  | 6 | chain relationships | ✅ (call-site parent rule) |
+  | 7 | CalleeVarName receiver linking | ✅ (receiverChildren + claimed) |
+  | 8 | variableNodes / ParamArgMap bindings | ✅ partial (param producers) |
+  | 9 | ParentFunctions closure fallback | ✅ |
+  | 10 | interface-method callee → ImplementedBy | ✅ |
+  | 11 | method-value / factory-call args | ✅ |
+  | 12 | attachReturnedClosureBody | ✅ (via 9+10) |
+  | 13 | assignmentIndex exact-key producer links | ✅ (assignIndex) |
+  | 14 | interfaceResolutionMap receiver resolution | ❌ not used in lazy |
+  | 15 | eager traverseTree merge passes (order semantics) | ❌ by design (another_chi winner差) |
+
+  ### Remaining real-world gaps (why eager is still default)
+
+  - **lmd-core**: `router.Mount("/cart", r.cartRouter)` — the field
+    selectors resolve in the minimal fixture (router_mount_options,
+    byte-identical) but NOT in lmd itself; the arg expansion for those
+    nodes never fires the selector branch there (0 akey lookups observed).
+    Something earlier in the lmd traversal shape differs — needs a fresh
+    debugging session with the real project (`TestRealWorldParity`).
+  - **enigma/api**: 129 of the 135 missing paths are `/api/admin/*` —
+    register-helper chains (`r.Route("/api", func(r chi.Router) {
+    registerAdminRoutes(r, deps) })`) where the callback param has no
+    assignment producer; the param-binding relation needs to treat
+    callback params as pass-through scopes.
+  - `functional_options` knownDiff: paths identical, operation content
+    differs — uninvestigated.
 
 ### Interim rule (codify now, costs nothing)
 
