@@ -493,6 +493,24 @@ next.
 | 4 | **`LazyTree` behind `TrackerTreeInterface`**, unfolding the resolved graph, memoized on `(edgeID, relevant bindings)`, validated by fixture diffing | `internal/spec` | Retires `MaxNodesPerTree` as a correctness hazard; per-route isolation for free; **no reordering anywhere** |
 | 5 | **Relations cleanup** (chain/assignment links as tables) | falls out of step 4 | Deletes `processChainRelationships` hack and the reverse-`Parent` TODO |
 
+### Progress
+
+- **Step 1 — DONE 2026-07-09** (`internal/metadata/scc.go`): iterative
+  Tarjan, callees-first `Components`, condensed `DAG`, `Recursive` flags;
+  deterministic. cyclic_graph: 116 edges → 21 components, one 14-function
+  recursion cluster. Not yet consumed by production code (step 3 is the
+  first consumer).
+- **Step 2 — DONE 2026-07-09** (`internal/callgraph` + engine wiring):
+  `callgraph.Build(pkgs)` runs SSA (`InstantiateGenerics`) + VTA over the
+  engine's own package load (mode extended with
+  `NeedCompiledGoFiles|NeedTypesSizes`). `FunctionID` formats functions
+  exactly like metadata `BaseID` (verified: every module-local metadata
+  caller joins), generic instances collapse to their origin, closures are
+  SSA-named (`pkg.parent$1`). `Reaches`/`ReachesID` walk with no depth
+  bound. Wired behind `EngineConfig.ResolveCallGraph` (default off,
+  exposed via `Engine.GetResolvedCallGraph`) — feeding nothing until
+  step 3.
+
 ### Interim rule (codify now, costs nothing)
 
 Until the redesign lands, route each query class to the right structure and
