@@ -15,15 +15,18 @@ package spec
 //   - traversals visit each function key once globally, so they are linear
 //     in the graph, not in its exponential unfolding.
 //
-// What this implementation intentionally does NOT yet reproduce from the
-// eager TrackerTree: the mutation overlays — assignment/param cross-links
-// (variableNodes / assignmentIndex), chain re-parenting, interface-method
-// attachment of concrete implementations, and handler-factory closure
-// attachment. Those move to relations consulted at query time (roadmap
-// step 5). Until then the eager tree remains the production default;
-// LazyTree's parity is tracked by the side-by-side fixture diff harness.
+// The eager tree's mutation overlays are represented here as query-time
+// relations built once in buildRelations: chain order, receiver-variable
+// and struct-field producer links (assignIndex, the eager assignmentKey
+// composition), param bindings, interface-implementer fan-out, and
+// handler-factory closure expansion. Parity is tracked by the fixture
+// harness (TestLazyTreeParity) and the per-codebase meter
+// (TestTreeParityDirs); the eager tree remains the production default
+// until operation content — not just path sets — matches.
 
 import (
+	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -59,6 +62,7 @@ type LazyTree struct {
 	// the plain caller expansion.
 	claimed        map[*metadata.CallGraphEdge]bool
 	relationsBuilt bool
+	budgetWarned   bool
 
 	// assignIndex mirrors the eager tree's assignmentIndex byte-for-byte: the
 	// SAME assignmentKey composition (name, pkg, concrete type, container —
@@ -80,7 +84,21 @@ type LazyTree struct {
 	// stop in the eager tree. Once the budget is spent, expansion returns
 	// leaves.
 	nodesBuilt int
+
+	// instanceCount is the number of per-path copies created per callee ID.
+	// A node is (edge, parent), so a callee reached along many paths gets
+	// many copies — and business-layer diamonds make that exponential, which
+	// would drain the node budget before traversal reaches later router
+	// wiring. maxInstancesPerKey bounds the copies per callee.
+	instanceCount map[string]int
 }
+
+// maxInstancesPerKey bounds per-path node copies of the same callee. Route
+// registrations have unique call-site IDs (never near the bound); only
+// heavily shared helpers and business-layer functions reach it — for those,
+// further paths stop descending, the role the eager tree's per-ID recursion
+// cap plays.
+const maxInstancesPerKey = 10
 
 // budgetExhausted reports whether the cumulative node budget is spent.
 func (t *LazyTree) budgetExhausted() bool {
@@ -509,6 +527,12 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		return n.children
 	}
 	if n.tree.budgetExhausted() {
+		if !n.tree.budgetWarned {
+			n.tree.budgetWarned = true
+			fmt.Fprintf(os.Stderr,
+				"Warning: MaxNodesPerTree limit (%d) reached, truncating lazy expansion (first at %s)\n",
+				n.tree.limits.MaxNodesPerTree, n.key)
+		}
 		return nil // budget spent: further expansion yields leaves (cheap unwind)
 	}
 	n.expanded = true
@@ -542,6 +566,9 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			if n.onPath(key) {
 				continue
 			}
+			if n.tree.instanceCount[key] >= maxInstancesPerKey {
+				continue // same per-key copy bound as callee children
+			}
 			argType := classifyArgument(arg)
 			argEdge := ownerEdge
 			if argType == ArgTypeFunctionCall && arg.Edge != nil {
@@ -558,7 +585,13 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 				argIndex:   i,
 				argContext: getString(meta, ownerEdge.Caller.Name) + "." + getString(meta, ownerEdge.Callee.Name),
 			}
-			n.tree.nodesBuilt++
+			if n.tree.instanceCount == nil {
+				n.tree.instanceCount = map[string]int{}
+			}
+			n.tree.instanceCount[key]++
+			if n.tree.instanceCount[key] == 1 {
+				n.tree.nodesBuilt++ // budget counts DISTINCT keys, like the eager shared-node cap
+			}
 			n.children = append(n.children, child)
 		}
 	}
@@ -588,13 +621,28 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			return // cycle: this call is already on the current path
 		}
 		added[calleeID] = true
-		n.tree.nodesBuilt++
-		n.children = append(n.children, &LazyNode{
+		if n.tree.instanceCount[calleeID] >= maxInstancesPerKey {
+			// Heavily shared callee (business-layer diamond): stop
+			// materializing further per-path copies. Reusing the first
+			// instance instead would make the tree cyclic (consumers of the
+			// memoized subtree can reach themselves), so the bound is a skip
+			// — the same role the eager tree's per-ID recursion cap plays.
+			return
+		}
+		child := &LazyNode{
 			tree:   n.tree,
 			key:    calleeID,
 			parent: parent,
 			edge:   edge,
-		})
+		}
+		if n.tree.instanceCount == nil {
+			n.tree.instanceCount = map[string]int{}
+		}
+		n.tree.instanceCount[calleeID]++
+		if n.tree.instanceCount[calleeID] == 1 {
+			n.tree.nodesBuilt++ // budget counts DISTINCT keys, like the eager shared-node cap
+		}
+		n.children = append(n.children, child)
 		childCount++
 	}
 	appendCallee := func(edge *metadata.CallGraphEdge) { appendCalleeUnder(edge, n) }

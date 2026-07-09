@@ -154,7 +154,7 @@ func TestCleanOverrideType(t *testing.T) {
 
 // specialiseWrapperSchema must register the payload type it references
 // from the `data` override so the $ref never dangles. This pins the fix
-// for the lmd-core ListTransactionResponse bug: when the payload type
+// for a real-world wrapped-payload specialisation bug: when the payload type
 // isn't present in the analysed metadata (an external/vendored type),
 // mapGoTypeToOpenAPISchema returns the $ref plus a placeholder in its
 // second return value — which the specialiser must fold into usedTypes

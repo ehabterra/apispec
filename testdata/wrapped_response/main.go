@@ -1,7 +1,7 @@
 // Package main exercises a common Go pattern: every handler routes its
 // response through an envelope helper that wraps the payload in a
 // shared {message, data, code} struct whose `data` field is declared
-// as interface{}. The shape lmd-core uses, faithfully reduced.
+// as interface{}. A shape seen in production codebases, faithfully reduced.
 //
 // Without field-provenance, every route's response would render as the
 // same Envelope schema with `data: object` and the per-route payload
@@ -36,7 +36,7 @@ func listCustomers(w http.ResponseWriter, r *http.Request) {
 	common.RespondWithSuccess(w, "ok", resp, http.StatusOK)
 }
 
-// listTransactions mirrors lmd-core's PaymentHandler.ListTransactionsByActionID:
+// listTransactions mirrors a production payment-handler list endpoint:
 // the payload is a `var`-declared DTO whose `[]any` field is populated by
 // appending, then passed by value to the envelope helper — not a composite
 // literal. The specialiser must recover transactions.ListTransactionResponse

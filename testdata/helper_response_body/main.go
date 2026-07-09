@@ -1,4 +1,4 @@
-// Package main reproduces a bug seen in real codebases (e.g. enigma):
+// Package main reproduces a bug seen in real codebases:
 // when two or more handlers write their response through the *same*
 // indirection helper — writeJSON(w, status, v any) — the per-route
 // parameter trace from the helper's `v` back to the caller's concrete

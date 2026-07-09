@@ -574,13 +574,13 @@ next.
 
   **Default-tree status (2026-07-09, end of day): EAGER, lazy opt-in via
   `EngineConfig.UseLazyTracker`.** The default was briefly switched to
-  lazy after the 10/12 fixture milestone, then real-world runs showed the
-  fixture suite under-represents production wiring: lmd-core 17/66 paths,
-  enigma/api 110/245. The acceptance bar (user directive): **lazy must
-  cover every wiring style the legacy tree supports.** Meters:
-  `TestLazyTreeParity` (fixtures, asserts identity) and
-  `TestRealWorldParity` (env-gated `APISPEC_REALWORLD=1`, diffs both trees
-  on the real projects).
+  lazy after the 10/12 fixture milestone, then runs against large
+  codebases showed the fixture suite under-represents production wiring
+  styles (such projects emitted only a fraction of their routes). The
+  acceptance bar: **lazy must cover every wiring style the legacy tree
+  supports.** Meters: `TestLazyTreeParity` (fixtures, asserts identity)
+  and `TestTreeParityDirs` (env-gated `APISPEC_PARITY_DIRS`, diffs both
+  trees on any local codebase).
 
   Fixed along the way (all kept): `MaxNodesPerTree` as cumulative node
   budget (cyclic_graph 60s→0.5s); interface-VALUE dispatch fan-out via
@@ -611,21 +611,33 @@ next.
   | 14 | interfaceResolutionMap receiver resolution | ❌ not used in lazy |
   | 15 | eager traverseTree merge passes (order semantics) | ❌ by design (another_chi winner差) |
 
-  ### Remaining real-world gaps (why eager is still default)
+  ### Root cause of the large-codebase path losses — FOUND AND FIXED
 
-  - **lmd-core**: `router.Mount("/cart", r.cartRouter)` — the field
-    selectors resolve in the minimal fixture (router_mount_options,
-    byte-identical) but NOT in lmd itself; the arg expansion for those
-    nodes never fires the selector branch there (0 akey lookups observed).
-    Something earlier in the lmd traversal shape differs — needs a fresh
-    debugging session with the real project (`TestRealWorldParity`).
-  - **enigma/api**: 129 of the 135 missing paths are `/api/admin/*` —
-    register-helper chains (`r.Route("/api", func(r chi.Router) {
-    registerAdminRoutes(r, deps) })`) where the callback param has no
-    assignment producer; the param-binding relation needs to treat
-    callback params as pass-through scopes.
-  - `functional_options` knownDiff: paths identical, operation content
-    differs — uninvestigated.
+  Both large-codebase failures had ONE root cause, not per-idiom gaps:
+  **per-path node copies exploded through business-layer call diamonds**,
+  draining `MaxNodesPerTree` before traversal reached later router wiring
+  (the budget-exhaustion warning fired deep inside entity-mapping code).
+  The eager tree never hits this because it shares node objects globally,
+  so its cap counts graph-sized work; the lazy tree was counting
+  path-sized work. Fix, mirroring eager semantics without shared mutable
+  nodes:
+
+  - `maxInstancesPerKey` (10): at most N per-path copies of the same
+    callee ID; beyond that, further paths stop descending — the role the
+    eager per-ID recursion cap plays. (Sharing the first instance instead
+    was tried and rejected: it makes the tree cyclic and the extractor's
+    recursion is unguarded.)
+  - The node budget now counts **distinct keys** (first instances), the
+    same unit as the eager shared-node cap.
+
+  Result: full **path parity on both large local codebases** (66/66 and
+  245/245, zero missing/extra). Remaining before lazy can be default:
+  **operation content parity** — most paths still differ at the
+  operation level (statuses/schemas), direction per case unknown (on
+  complex_chi_router the lazy output is the more correct one). The
+  content-level meter is `TestTreeParityDirs` (`APISPEC_PARITY_DIRS`),
+  which now reports missing/extra/content-diff counts per codebase.
+  Also open: `functional_options` and `another_chi_router` knownDiffs.
 
 ### Interim rule (codify now, costs nothing)
 
