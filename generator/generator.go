@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ehabterra/apispec/internal/engine"
+	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/spec"
 )
 
@@ -48,6 +49,18 @@ func (g *Generator) GenerateFromDirectory(dir string) (*spec.OpenAPISpec, error)
 
 	// Create a new engine instance for this generation
 	genEngine := engine.NewEngine(engineConfig)
+	g.engine = genEngine
 
 	return genEngine.GenerateOpenAPI()
+}
+
+// PathParamMismatches returns map-key path-variable reads (e.g.
+// mux.Vars(r)["userId"]) from the most recent GenerateFromDirectory whose key
+// matches no route placeholder — a likely typo. Empty when none or before any
+// generation.
+func (g *Generator) PathParamMismatches() []intspec.PathParamMismatch {
+	if g.engine == nil {
+		return nil
+	}
+	return g.engine.GetPathParamMismatches()
 }

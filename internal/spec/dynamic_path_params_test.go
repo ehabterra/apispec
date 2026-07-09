@@ -51,7 +51,7 @@ func TestAppendDynamicParamRefs_AddsAndDedupes(t *testing.T) {
 // $ref and an x-warning inline param for every dynamic placeholder.
 func TestEnsureAllPathParams_RecognisesRef(t *testing.T) {
 	params := []Parameter{{Ref: "#/components/parameters/MountPointParam"}}
-	got := ensureAllPathParams("/{mountPoint}/{id}", params)
+	got := ensureAllPathParams("/{mountPoint}/{id}", params, nil)
 
 	// Expect: original $ref kept, plus one inline for {id}. No duplicate for mountPoint.
 	if len(got) != 2 {

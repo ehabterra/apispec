@@ -200,6 +200,13 @@ type ParamPattern struct {
 	TypeFromArg bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"` // Extract type from argument
 	Deref       bool `yaml:"deref,omitempty" json:"deref,omitempty"`             // Dereference pointer types
 
+	// NameFromMapKey extracts parameter names from the string-literal keys used
+	// to index this call's map result inside the handler, rather than from a
+	// call argument. This is the gorilla/mux idiom `mux.Vars(r)["id"]`, where
+	// the parameter name is a map key, not an argument. Only keys that also
+	// appear as `{placeholder}` segments in the route path are emitted.
+	NameFromMapKey bool `yaml:"nameFromMapKey,omitempty" json:"nameFromMapKey,omitempty"`
+
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`

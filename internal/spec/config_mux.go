@@ -85,12 +85,17 @@ func DefaultMuxConfig() *APISpecConfig {
 				jsonMarshalPattern(),
 				jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 			),
-			ParamPatterns: []ParamPattern{ // @note: mux does not have a ParamPattern and it's not supported in this version
+			ParamPatterns: []ParamPattern{
+				// gorilla/mux exposes path variables as a map: `mux.Vars(r)["id"]`.
+				// The parameter name is a map key, not a call argument, so names
+				// are recovered from the string-literal index keys used on the
+				// Vars(...) result (intersected with the route's `{placeholder}`
+				// segments).
 				{
-					CallRegex:     `^Vars$`,
-					ParamIn:       "path",
-					ParamArgIndex: 0,
-					RecvTypeRegex: `^github\.com/gorilla/mux$`,
+					CallRegex:      `^Vars$`,
+					ParamIn:        "path",
+					NameFromMapKey: true,
+					RecvTypeRegex:  `^github\.com/gorilla/mux$`,
 				},
 			},
 			SecurityPatterns: muxSecurityPatterns(),
