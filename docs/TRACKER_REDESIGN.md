@@ -527,6 +527,32 @@ next.
   still run over the *metadata* (syntactic) graph — switching them to the
   resolved graph (step 2's) is deferred until the resolved graph is on by
   default, since it changes which indirect calls resolve.
+- **Step 4 — IN PROGRESS 2026-07-09** (`internal/spec/lazytree.go` +
+  `internal/spike/lazytree_diff_test.go`): `LazyTree`/`LazyNode` implement
+  `TrackerTreeInterface`/`TrackerNodeInterface` as an on-demand unfolding.
+  Nodes are per-path (one true parent, per-route isolation free); cycles
+  cut by an ancestor-key check on the node's own path; traversals visit
+  each key once globally (linear, not exponential); per-function edge
+  lists memoized. The mutation overlays became **query-time relations**
+  built once in `buildRelations`: `chainChildren` (chained calls),
+  `receiverChildren` (calls on a variable, listed under its producer —
+  with `claimed` edges removed from the plain caller expansion, mirroring
+  the eager detach), and **param bindings** (router-passed-to-helper:
+  callee's calls on the param hang under the argument's producer). Plus
+  method-value handler resolution (`h.GetUsers` → method base key),
+  interface→implementer fan-out (`ImplementedBy`), and closure expansion
+  via `ParentFunctions`.
+  **Parity (side-by-side full-mapper diff, `TestLazyTreeParity`): 7/12
+  fixtures byte-identical** — mux, mux_path_params, chi, gin, echo, fiber,
+  servemux. Remaining diffs and their causes: `another_chi_router` (same
+  sub-router mounted at two prefixes; eager and lazy pick different
+  winners — ordering semantics of last-write-wins linking),
+  `complex_chi_router`, `wrapped_response`, `helper_response_body`
+  (per-route response/body value tracing through assignment links — the
+  deep `traceArgViaParent` overlay), `echo_handler_factory` (factory
+  receiver resolution for returned closures, `attachReturnedClosureBody`
+  equivalent). LazyTree is NOT wired into production; the eager tree
+  remains the default until the harness reports full parity.
 
 ### Interim rule (codify now, costs nothing)
 
