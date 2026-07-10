@@ -631,13 +631,41 @@ next.
     same unit as the eager shared-node cap.
 
   Result: full **path parity on both large local codebases** (66/66 and
-  245/245, zero missing/extra). Remaining before lazy can be default:
-  **operation content parity** — most paths still differ at the
-  operation level (statuses/schemas), direction per case unknown (on
-  complex_chi_router the lazy output is the more correct one). The
-  content-level meter is `TestTreeParityDirs` (`APISPEC_PARITY_DIRS`),
-  which now reports missing/extra/content-diff counts per codebase.
-  Also open: `functional_options` and `another_chi_router` knownDiffs.
+  245/245, zero missing/extra).
+
+  **Content-level investigation (2026-07-10):** two more root causes
+  found and fixed —
+  - the `existsInArgs` child-skip used `meta.Args` (keyed by
+    position-stripped base ID), so one `foo(q.Get("x"))` anywhere
+    suppressed every `Values.Get` call site project-wide, losing query
+    params and response fragments; the lazy tree now indexes exact
+    argument instance IDs and skips only true duplicates;
+  - receiver-variable claiming was keyed by bare function name, colliding
+    same-named methods (ten `list` methods each with `q`); now keyed by
+    the caller's full BaseID.
+
+  After those, ALL remaining content diffs (5 + 10 across the two
+  codebases) are one class: the eager tree emits extra
+  "status could not be determined" default fragments (junk text/plain
+  strings, or request DTOs as response bodies) that the lazy tree
+  correctly omits or resolves to a consistent domain type — lazy
+  equal-or-better in every case, same category as complex_chi_router.
+
+  **Performance (2026-07-10):** lazy analysis on the larger fixture
+  codebase went 19.6s → 10.0s via three memoizations (TraceVariableOrigin
+  per (var, caller); ExtractGenericTypes per key; GetTypeParamMap per
+  node). Remaining gap vs eager (~2.4s) is the per-route subtree
+  re-expansion that per-route value tracing pays for; the second codebase
+  runs 2.1s lazy vs 0.7s eager. Profile-verified: the residual cost is
+  extractor descent + pattern matching, not tree construction (1ms).
+
+  **The lazy tree is now the production default**
+  (`DefaultEngineConfig.UseLazyTracker = true`); `UseLazyTracker: false`
+  selects the eager tree, and NewEngine deliberately does not merge this
+  bool (an unconditional merge had made the escape hatch dead). Meters:
+  `TestLazyTreeParity` (fixtures) and `TestTreeParityDirs`
+  (`APISPEC_PARITY_DIRS`, per-codebase missing/extra/content-diff).
+  Still open: `functional_options` and `another_chi_router` knownDiffs.
 
 ### Interim rule (codify now, costs nothing)
 

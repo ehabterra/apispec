@@ -91,6 +91,23 @@ type LazyTree struct {
 	// exponential and would drain the node budget before traversal reaches
 	// later router wiring.
 	instanceCount map[string]int
+	// argInstanceIDs holds the exact (position-qualified) IDs of every
+	// top-level call argument in the graph. Used by edgesFor to skip a
+	// callee edge only when THAT call site is already represented as an
+	// argument node — meta.Args is keyed by position-stripped base ID, so
+	// using it directly would let one `foo(q.Get("x"))` anywhere suppress
+	// every `Values.Get` call site in the project.
+	argInstanceIDs map[string]bool
+
+	// genericTypes memoizes metadata.ExtractGenericTypes (regexp-backed),
+	// which otherwise re-parses the same key for every node copy.
+	genericTypes map[string][]string
+
+	// traceCache memoizes metadata.TraceVariableOrigin, which dominates the
+	// CPU profile when re-run for every per-path node copy of the same
+	// argument (var, caller fn, caller pkg) -> (originVar, originPkg, originFunc).
+	traceCache map[string][3]string
+
 	// seenKeys backs the node budget: distinct callee IDs ever materialized,
 	// the same graph-sized unit as the eager tree's shared-node cap —
 	// deliberately NOT scoped, or many scopes would exhaust the budget with
@@ -112,6 +129,35 @@ func (t *LazyTree) budgetExhausted() bool {
 	return t.limits.MaxNodesPerTree > 0 && t.nodesBuilt >= t.limits.MaxNodesPerTree
 }
 
+// genericTypesOf is a memoized metadata.ExtractGenericTypes.
+func (t *LazyTree) genericTypesOf(key string) []string {
+	if types, ok := t.genericTypes[key]; ok {
+		return types
+	}
+	types := metadata.ExtractGenericTypes(key)
+	if t.genericTypes == nil {
+		t.genericTypes = map[string][]string{}
+	}
+	t.genericTypes[key] = types
+	return types
+}
+
+// traceOrigin is a memoized metadata.TraceVariableOrigin: the same
+// (variable, enclosing function) is traced once per tree instead of once per
+// node copy.
+func (t *LazyTree) traceOrigin(varName, callerName, callerPkg string) (string, string, string) {
+	key := varName + "\x00" + callerName + "\x00" + callerPkg
+	if r, ok := t.traceCache[key]; ok {
+		return r[0], r[1], r[2]
+	}
+	originVar, originPkg, _, originFunc := metadata.TraceVariableOrigin(varName, callerName, callerPkg, t.meta)
+	if t.traceCache == nil {
+		t.traceCache = map[string][3]string{}
+	}
+	t.traceCache[key] = [3]string{originVar, originPkg, originFunc}
+	return originVar, originPkg, originFunc
+}
+
 // buildRelations constructs the chain and receiver-variable indexes once.
 func (t *LazyTree) buildRelations() {
 	if t.relationsBuilt {
@@ -121,12 +167,32 @@ func (t *LazyTree) buildRelations() {
 	t.chainChildren = map[string][]*metadata.CallGraphEdge{}
 	t.receiverChildren = map[string][]*metadata.CallGraphEdge{}
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
+	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
 
-	// Edges grouped by the receiver variable they're invoked on:
-	// (varName, callerPkg, callerFunc) -> edges.
+	for i := range meta.CallGraph {
+		for _, arg := range meta.CallGraph[i].Args {
+			if arg == nil {
+				continue
+			}
+			if id := arg.ID(); id != "" {
+				t.argInstanceIDs[strings.TrimPrefix(id, "*")] = true
+			}
+		}
+	}
+
+	// Edges grouped by the receiver variable they're invoked on. Keyed by
+	// (varName, exact caller BaseID): the caller's full identity — package,
+	// receiver type, name — so `q := r.URL.Query()` in ten same-named
+	// methods (assetsHandler.list, catalogHandler.list, …) stays ten
+	// separate groups. A bare-name key collides them, piling every group's
+	// edges under one arbitrary producer and claiming them away from the
+	// other nine.
 	type recvKey struct{ name, pkg, fn string }
-	edgesByRecvVar := map[recvKey][]*metadata.CallGraphEdge{}
+	edgesByRecvVar := map[string][]*metadata.CallGraphEdge{}
+	recvEdgeKey := func(varName string, caller *metadata.Call) string {
+		return varName + "\x00" + caller.BaseID()
+	}
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 		if edge.ChainParent != nil {
@@ -134,11 +200,7 @@ func (t *LazyTree) buildRelations() {
 			t.chainChildren[parentKey] = append(t.chainChildren[parentKey], edge)
 		}
 		if edge.CalleeVarName != "" {
-			k := recvKey{
-				name: edge.CalleeVarName,
-				pkg:  getString(meta, edge.Caller.Pkg),
-				fn:   getString(meta, edge.Caller.Name),
-			}
+			k := recvEdgeKey(edge.CalleeVarName, &edge.Caller)
 			edgesByRecvVar[k] = append(edgesByRecvVar[k], edge)
 		}
 	}
@@ -154,14 +216,18 @@ func (t *LazyTree) buildRelations() {
 	})
 	producerByVar := map[recvKey]string{}
 	for _, rel := range rels {
-		k := recvKey{
+		producerKey := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")
+		// Bare-name key: consumed by TraceVariableOrigin-driven lookups
+		// (param bindings, option-arg step-through), which only have bare
+		// function names.
+		producerByVar[recvKey{
 			name: getString(meta, rel.Assignment.VariableName),
 			pkg:  getString(meta, rel.Assignment.Pkg),
 			fn:   getString(meta, rel.Assignment.Func),
-		}
-		producerKey := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")
-		producerByVar[k] = producerKey
-		edges := edgesByRecvVar[k]
+		}] = producerKey
+		// Claiming uses the exact-caller key: the assignment's producing edge
+		// carries the full identity of the function the assignment lives in.
+		edges := edgesByRecvVar[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)]
 		if len(edges) == 0 {
 			continue
 		}
@@ -242,19 +308,16 @@ func (t *LazyTree) buildRelations() {
 			if arg.GetKind() != metadata.KindIdent {
 				continue
 			}
-			paramEdges := edgesByRecvVar[recvKey{
-				name: param,
-				pkg:  getString(meta, edge.Callee.Pkg),
-				fn:   getString(meta, edge.Callee.Name),
-			}]
+			// The callee's calls on this param have Caller == the callee, so
+			// the exact-caller key is (param, callee BaseID).
+			paramEdges := edgesByRecvVar[recvEdgeKey(param, &edge.Callee)]
 			if len(paramEdges) == 0 {
 				continue
 			}
-			originVar, originPkg, _, originFunc := metadata.TraceVariableOrigin(
+			originVar, originPkg, originFunc := t.traceOrigin(
 				arg.GetName(),
 				getString(meta, edge.Caller.Name),
 				getString(meta, edge.Caller.Pkg),
-				meta,
 			)
 			producerKey, ok := producerByVar[recvKey{name: originVar, pkg: originPkg, fn: originFunc}]
 			if !ok {
@@ -330,8 +393,8 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 		if calleeID == edge.Caller.ID() || getString(t.meta, edge.Callee.Name) == "nil" {
 			continue
 		}
-		if _, inArgs := t.meta.Args[metadata.StripToBase(calleeID)]; inArgs {
-			continue
+		if t.argInstanceIDs[strings.TrimPrefix(calleeID, "*")] {
+			continue // this exact call site is represented as an argument node
 		}
 		out = append(out, edge)
 	}
@@ -456,6 +519,7 @@ type LazyNode struct {
 	argContext string
 
 	rootAssignments map[string][]metadata.Assignment
+	typeParams      map[string]string // GetTypeParamMap cache
 
 	children []TrackerNodeInterface // nil = not yet expanded
 	expanded bool
@@ -495,6 +559,9 @@ func (n *LazyNode) GetRootAssignmentMap() map[string][]metadata.Assignment {
 // GetTypeParamMap implements TrackerNodeInterface: bindings from this node's
 // edge/argument merged with its ancestors', nearest binding winning.
 func (n *LazyNode) GetTypeParamMap() map[string]string {
+	if n.typeParams != nil {
+		return n.typeParams
+	}
 	out := map[string]string{}
 	for cur := n; cur != nil; cur = cur.parent {
 		if cur.edge != nil {
@@ -512,6 +579,7 @@ func (n *LazyNode) GetTypeParamMap() map[string]string {
 			}
 		}
 	}
+	n.typeParams = out
 	return out
 }
 
@@ -639,8 +707,8 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		}
 		// Same generics-instance filter as the eager tree: skip instantiations
 		// whose type arguments aren't bound in this path's context.
-		calleeTypes := metadata.ExtractGenericTypes(calleeID)
-		if len(calleeTypes) > 0 && !metadata.IsSubset(metadata.ExtractGenericTypes(n.key), calleeTypes) {
+		calleeTypes := n.tree.genericTypesOf(calleeID)
+		if len(calleeTypes) > 0 && !metadata.IsSubset(n.tree.genericTypesOf(n.key), calleeTypes) {
 			return
 		}
 		if n.onPath(calleeID) {
@@ -805,7 +873,7 @@ func (n *LazyNode) argProducerIDs() []string {
 	switch {
 	case n.argType == ArgTypeSelector && arg.X != nil:
 		varName := metadata.CallArgToString(arg)
-		baseVar, originPkg, _, _ := metadata.TraceVariableOrigin(varName, callerName, callerPkg, meta)
+		baseVar, originPkg, _ := n.tree.traceOrigin(varName, callerName, callerPkg)
 		parentType := arg.X.GetType()
 		// Nested selector (obj.field.sub): the base variable's type wins —
 		// same rule as the eager selector branch.
@@ -821,7 +889,7 @@ func (n *LazyNode) argProducerIDs() []string {
 
 	case n.argType == ArgTypeVariable:
 		varName := metadata.CallArgToString(arg)
-		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(varName, callerName, callerPkg, meta)
+		originVar, originPkg, _ := n.tree.traceOrigin(varName, callerName, callerPkg)
 		return n.tree.producersFor(assignmentKey{
 			Name: originVar, Pkg: originPkg, Type: arg.GetType(), Container: callerName,
 		})
