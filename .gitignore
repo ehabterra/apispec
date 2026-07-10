@@ -67,3 +67,7 @@ playground*.go
 apispecui-demo.mp4
 apispecui-short.mp4
 video-kit/parts/
+# built binaries
+apispecui
+apispec
+apidiag
