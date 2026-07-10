@@ -52,13 +52,12 @@ func TestLazyTreeParity(t *testing.T) {
 			"LazyTree resolves MORE than eager: module handlers' response bodies (map[string]string via " +
 				"interface-dispatched Encode) resolve under lazy; eager emits 'no response found' placeholders"},
 
+		{"../../testdata/complex_chi_router", spec.DefaultChiConfig, "", ""},
+
 		{"../../testdata/another_chi_router", spec.DefaultChiConfig, "",
 			"the fixture genuinely mounts the same sub-router at BOTH / and /v1; eager only reaches the " +
 				"/ mount (/api/*), lazy reaches both and dropSubsumedMountPrefixes keeps the fuller chain " +
 				"(/api/v1/*) — each tree shows one of two real prefixes"},
-		{"../../testdata/complex_chi_router", spec.DefaultChiConfig, "",
-			"LazyTree resolves MORE than eager: DELETE /api/user/{id} 400 carries the ErrorResponse " +
-				"schema that is plainly in the handler code; eager emits it schema-less"},
 	}
 
 	limits := metadata.TrackerLimits{

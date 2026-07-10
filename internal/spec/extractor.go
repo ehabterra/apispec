@@ -745,7 +745,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 				(*routes)[i].MountPath == routeInfo.MountPath &&
 				(*routes)[i].Path == routeInfo.Path &&
 				(*routes)[i].Method == routeInfo.Method {
-				(*routes)[i] = routeInfo
+				mergeRouteExtraction((*routes)[i], routeInfo)
 				found = true
 				break
 			}
@@ -753,6 +753,28 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 		if !found {
 			*routes = append(*routes, routeInfo)
 		}
+	}
+}
+
+// mergeRouteExtraction folds a re-extraction of the same route (reached
+// through another traversal context) into the existing RouteInfo instead of
+// replacing it wholesale. Different contexts can each resolve fragments the
+// others miss — e.g. one context binds the success body to the default slot
+// while another loses it to an error status — so the union with
+// informative-wins slot competition keeps extraction order-independent.
+func mergeRouteExtraction(existing, next *RouteInfo) {
+	for slot, resp := range next.Response {
+		existing.Response[slot] = preferResponseInfo(existing.Response[slot], resp)
+	}
+	existing.Request = preferRequestInfo(existing.Request, next.Request)
+	if len(existing.Params) == 0 {
+		existing.Params = next.Params
+	}
+	if len(existing.Tags) == 0 {
+		existing.Tags = next.Tags
+	}
+	if len(existing.Security) == 0 {
+		existing.Security = next.Security
 	}
 }
 
@@ -846,11 +868,21 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 
 		// Extract responses (multiple if status fan-out applies — see
 		// ExtractResponse / issue #39). Each emitted ResponseInfo lands
-		// under its own status-keyed slot in route.Response.
+		// under its own status-keyed slot in route.Response. A bodyless
+		// fragment must not clobber an informative one already in the slot:
+		// the same status call can be re-extracted through another traversal
+		// context after the body was attached, and letting it reset the slot
+		// makes body attachment order-dependent (subsequent bodies then bind
+		// to the wrong status).
 		for _, resp := range e.extractResponseFromNode(child, route, visitedEdges, routeNode.GetKey()) {
-			if resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
-				route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
+			if resp == nil || (resp.BodyType == "" && resp.StatusCode == 0) {
+				continue
 			}
+			slot := fmt.Sprintf("%d", resp.StatusCode)
+			if existing := route.Response[slot]; existing != nil && existing.BodyType != "" && resp.BodyType == "" {
+				continue
+			}
+			route.Response[slot] = resp
 		}
 
 		// Extract parameters

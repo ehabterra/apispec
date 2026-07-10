@@ -665,6 +665,20 @@ next.
   bool (an unconditional merge had made the escape hatch dead). Meters:
   `TestLazyTreeParity` (fixtures) and `TestTreeParityDirs`
   (`APISPEC_PARITY_DIRS`, per-codebase missing/extra/content-diff).
+  **Extraction robustness fixes (2026-07-10, later):** chasing the last
+  content diffs surfaced two order-dependence bugs in the extractor
+  (affecting both trees): (a) a bodyless status fragment could clobber a
+  same-status slot that already carried a body; (b) a route re-extracted
+  through another traversal context REPLACED the previous extraction
+  wholesale — different contexts each resolve fragments the others miss.
+  Fixed with an informative-wins slot guard and mergeRouteExtraction
+  (slot-wise preferResponseInfo union). Result: `complex_chi_router`
+  CONVERGED to byte-identical (13/15 fixtures asserted), and the
+  cross-codebase meter dropped to 9 content-diffs total across three
+  projects (all in the ambiguous undetermined-status default class, e.g.
+  a fiber factory-closure success body where slot assignment still
+  differs by context order — tracked, low-stakes).
+
   The last two knownDiffs were investigated and resolved as
   understood-and-accepted (2026-07-10):
   - `functional_options`: **lazy resolves more** — module handlers'
