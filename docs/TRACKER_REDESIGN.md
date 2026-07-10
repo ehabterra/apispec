@@ -665,7 +665,30 @@ next.
   bool (an unconditional merge had made the escape hatch dead). Meters:
   `TestLazyTreeParity` (fixtures) and `TestTreeParityDirs`
   (`APISPEC_PARITY_DIRS`, per-codebase missing/extra/content-diff).
-  Still open: `functional_options` and `another_chi_router` knownDiffs.
+  The last two knownDiffs were investigated and resolved as
+  understood-and-accepted (2026-07-10):
+  - `functional_options`: **lazy resolves more** — module handlers'
+    response bodies (`map[string]string` behind interface-dispatched
+    `Encode`) resolve under lazy; eager emits "no response found"
+    placeholders.
+  - `another_chi_router`: the fixture genuinely mounts the same
+    sub-router at BOTH `/` and `/v1`. Eager only reaches the `/` mount
+    (`/api/*`); lazy reaches both and `dropSubsumedMountPrefixes` keeps
+    the fuller chain (`/api/v1/*`). Each tree shows one of two real
+    prefixes; emitting both would need the subsumption pass to
+    distinguish genuine dual mounts from partial-mount artifacts (open
+    enhancement, not a lazy defect).
+
+  **§7 memoized expansion implemented (2026-07-10):** each node's
+  expansion PLAN (argument specs + relation-resolved callee specs with
+  chain-parent flags) is memoized per content identity `(key, edge, arg)`
+  — relevant generic bindings are embedded in instance keys, so
+  binding-distinct instances get distinct plans. Only per-path guards
+  (cycle check, scoped instance caps, budget) and node allocation run
+  per copy. Together with a regex match-result cache in the matcher
+  layer (benefits both trees), lazy analysis went 19.6s → **6.5s** on
+  the larger codebase (eager: 2.4s; the residual is extractor descent,
+  which per-route value tracing inherently pays).
 
 ### Interim rule (codify now, costs nothing)
 

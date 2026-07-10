@@ -818,6 +818,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
 		Verbose:                      s.cfg.Verbose,
+		UseLazyTracker:               true,
 		OnPhase: func(phase string, elapsed time.Duration) {
 			// Pushed by the engine at each major phase boundary. The UI
 			// polls /api/generate/progress to surface this as the live

@@ -99,6 +99,12 @@ type LazyTree struct {
 	// every `Values.Get` call site in the project.
 	argInstanceIDs map[string]bool
 
+	// plans memoizes each node content-identity's expansion plan — the
+	// "(edgeID, relevant bindings)" memoization from the redesign doc §7:
+	// bindings are embedded in instance keys, so binding-distinct instances
+	// key distinct plans. Per-path work reduces to guards + allocation.
+	plans map[planKey][]childSpec
+
 	// genericTypes memoizes metadata.ExtractGenericTypes (regexp-backed),
 	// which otherwise re-parses the same key for every node copy.
 	genericTypes map[string][]string
@@ -611,6 +617,42 @@ func (n *LazyNode) onPath(key string) bool {
 // GetChildren implements TrackerNodeInterface, expanding on first access:
 // argument nodes for the node's own edge, then callee nodes from the
 // memoized edge list, generics-filtered like the eager tree.
+// childSpec is one planned child of a node: either an argument child (arg
+// set) or a callee child (arg nil). Specs carry everything needed to
+// materialize a LazyNode except the parent, which is per-path.
+type childSpec struct {
+	key string
+
+	// argument child
+	arg      *metadata.CallArgument
+	argEdge  *metadata.CallGraphEdge
+	argType  ArgumentType
+	argIndex int
+	argCtx   string
+
+	// callee child
+	edge *metadata.CallGraphEdge
+	// chainParented children are listed under this node but parented at the
+	// call-site scope (processChainRelationships' rule), so chained-call
+	// arguments trace through the enclosing call's ParamArgMap.
+	chainParented bool
+}
+
+// planKey is a node's content identity — everything except its parent. Two
+// per-path copies of the same call (same key, edge, argument) share one
+// expansion plan; relevant generic bindings are embedded in the instance key
+// itself ("fn[T=User]@pos"), so binding-distinct instances get distinct plans.
+type planKey struct {
+	key   string
+	edge  *metadata.CallGraphEdge
+	arg   *metadata.CallArgument
+	isArg bool
+}
+
+// GetChildren implements TrackerNodeInterface, expanding on first access.
+// The expansion PLAN (which children exist, structurally) is memoized per
+// content identity; only the per-path guards — cycle check, per-scope
+// instance caps, node budget — and node allocation run per copy.
 func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	if n.expanded {
 		return n.children
@@ -626,109 +668,41 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	}
 	n.expanded = true
 
-	meta := n.tree.meta
-	limits := n.tree.limits
-
-	// Argument nodes. For a call node, expand the arguments of the call that
-	// produced it (n.edge.Args). For an argument node, expand only through the
-	// argument's OWN edge (a function-call argument's nested call) — never the
-	// parent edge it carries for context, or a literal argument would re-expand
-	// its parent's args and reproduce itself forever.
-	ownerEdge := n.edge
-	if n.isArgument {
-		ownerEdge = nil
-		if n.argType == ArgTypeFunctionCall && n.arg != nil && n.arg.Edge != nil {
-			ownerEdge = n.arg.Edge
-		}
-	}
-	if ownerEdge != nil {
-		for i, arg := range ownerEdge.Args {
-			if i >= limits.MaxArgsPerFunction {
-				break
-			}
-			argID := arg.ID()
-			if argID == "" || arg.GetName() == "nil" ||
-				ownerEdge.Caller.ID() == metadata.StripToBase(argID) || ownerEdge.Callee.ID() == argID {
-				continue
-			}
-			key := strings.TrimPrefix(argID, "*")
-			if n.onPath(key) {
-				continue
-			}
-			scopedKey := n.instanceScope() + "\x00" + key
-			if n.tree.instanceCount[scopedKey] >= maxInstancesPerKey {
-				continue // same per-scope copy bound as callee children
-			}
-			argType := classifyArgument(arg)
-			argEdge := ownerEdge
-			if argType == ArgTypeFunctionCall && arg.Edge != nil {
-				argEdge = arg.Edge
-			}
-			child := &LazyNode{
-				tree:       n.tree,
-				key:        key,
-				parent:     n,
-				edge:       argEdge,
-				arg:        arg,
-				argType:    argType,
-				isArgument: true,
-				argIndex:   i,
-				argContext: getString(meta, ownerEdge.Caller.Name) + "." + getString(meta, ownerEdge.Callee.Name),
-			}
-			if n.tree.instanceCount == nil {
-				n.tree.instanceCount = map[string]int{}
-			}
-			n.tree.instanceCount[scopedKey]++
-			if n.tree.seenKeys == nil {
-				n.tree.seenKeys = map[string]bool{}
-			}
-			if !n.tree.seenKeys[key] {
-				n.tree.seenKeys[key] = true
-				n.tree.nodesBuilt++ // budget counts globally distinct keys, like the eager shared-node cap
-			}
-			n.children = append(n.children, child)
-		}
-	}
-
-	// Callee nodes: the function's own calls, then calls chained onto this
-	// node's result, then calls made on variables this node's result was
-	// assigned to — the latter two from the query-time relations.
-	n.tree.buildRelations()
-	baseKey := metadata.StripToBase(n.key)
+	scope := n.instanceScope()
 	childCount := 0
-	added := map[string]bool{}
-	appendCalleeUnder := func(edge *metadata.CallGraphEdge, parent *LazyNode) {
-		if childCount >= limits.MaxChildrenPerNode {
-			return
+	for _, spec := range n.tree.planFor(n) {
+		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
+			continue
 		}
-		calleeID := strings.TrimPrefix(edge.Callee.ID(), "*")
-		if added[calleeID] {
-			return
+		if n.onPath(spec.key) {
+			continue // cycle: this call is already on the current path
 		}
-		// Same generics-instance filter as the eager tree: skip instantiations
-		// whose type arguments aren't bound in this path's context.
-		calleeTypes := n.tree.genericTypesOf(calleeID)
-		if len(calleeTypes) > 0 && !metadata.IsSubset(n.tree.genericTypesOf(n.key), calleeTypes) {
-			return
-		}
-		if n.onPath(calleeID) {
-			return // cycle: this call is already on the current path
-		}
-		added[calleeID] = true
-		scopedKey := n.instanceScope() + "\x00" + calleeID
+		scopedKey := scope + "\x00" + spec.key
 		if n.tree.instanceCount[scopedKey] >= maxInstancesPerKey {
 			// Diamond inside this scope: stop materializing further copies.
-			// Reusing the first instance instead would make the tree cyclic
-			// (consumers of the memoized subtree can reach themselves), so
-			// the bound is a skip — the same role the eager tree's per-ID
-			// recursion cap plays.
-			return
+			// Reusing an existing instance instead would make the tree cyclic
+			// (consumers of a memoized subtree could reach themselves), so the
+			// bound is a skip — the role the eager per-ID recursion cap plays.
+			continue
 		}
 		child := &LazyNode{
 			tree:   n.tree,
-			key:    calleeID,
-			parent: parent,
-			edge:   edge,
+			key:    spec.key,
+			parent: n,
+			edge:   spec.edge,
+		}
+		if spec.arg != nil {
+			child.edge = spec.argEdge
+			child.arg = spec.arg
+			child.argType = spec.argType
+			child.isArgument = true
+			child.argIndex = spec.argIndex
+			child.argContext = spec.argCtx
+		} else {
+			if spec.chainParented && n.parent != nil {
+				child.parent = n.parent
+			}
+			childCount++
 		}
 		if n.tree.instanceCount == nil {
 			n.tree.instanceCount = map[string]int{}
@@ -737,29 +711,110 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if n.tree.seenKeys == nil {
 			n.tree.seenKeys = map[string]bool{}
 		}
-		if !n.tree.seenKeys[calleeID] {
-			n.tree.seenKeys[calleeID] = true
+		if !n.tree.seenKeys[spec.key] {
+			n.tree.seenKeys[spec.key] = true
 			n.tree.nodesBuilt++ // budget counts globally distinct keys, like the eager shared-node cap
 		}
 		n.children = append(n.children, child)
-		childCount++
 	}
-	appendCallee := func(edge *metadata.CallGraphEdge) { appendCalleeUnder(edge, n) }
+	return n.children
+}
+
+// planFor returns (building on first use) the memoized expansion plan for
+// the node's content identity.
+func (t *LazyTree) planFor(n *LazyNode) []childSpec {
+	pk := planKey{key: n.key, edge: n.edge, arg: n.arg, isArg: n.isArgument}
+	if plan, ok := t.plans[pk]; ok {
+		return plan
+	}
+	plan := t.buildPlan(n)
+	if t.plans == nil {
+		t.plans = map[planKey][]childSpec{}
+	}
+	t.plans[pk] = plan
+	return plan
+}
+
+// buildPlan computes a node's structural children: argument specs for the
+// call that produced it, then callee specs from the function's own calls and
+// every query-time relation (implementer fan-out, method-value and producer
+// resolution, chains, receiver claims). Nothing here may depend on the
+// node's parent — per-path concerns live in GetChildren.
+func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
+	t.buildRelations()
+	meta := t.meta
+	var plan []childSpec
+
+	// Argument children. For a call node, the arguments of the call that
+	// produced it (n.edge.Args); for an argument node, only the argument's
+	// OWN edge (a function-call argument's nested call) — never the parent
+	// edge it carries for context, or a literal argument would re-expand its
+	// parent's args and reproduce itself forever.
+	ownerEdge := n.edge
+	if n.isArgument {
+		ownerEdge = nil
+		if n.argType == ArgTypeFunctionCall && n.arg != nil && n.arg.Edge != nil {
+			ownerEdge = n.arg.Edge
+		}
+	}
+	if ownerEdge != nil {
+		argCtx := getString(meta, ownerEdge.Caller.Name) + "." + getString(meta, ownerEdge.Callee.Name)
+		for i, arg := range ownerEdge.Args {
+			if i >= t.limits.MaxArgsPerFunction {
+				break
+			}
+			argID := arg.ID()
+			if argID == "" || arg.GetName() == "nil" ||
+				ownerEdge.Caller.ID() == metadata.StripToBase(argID) || ownerEdge.Callee.ID() == argID {
+				continue
+			}
+			argType := classifyArgument(arg)
+			argEdge := ownerEdge
+			if argType == ArgTypeFunctionCall && arg.Edge != nil {
+				argEdge = arg.Edge
+			}
+			plan = append(plan, childSpec{
+				key:      strings.TrimPrefix(argID, "*"),
+				arg:      arg,
+				argEdge:  argEdge,
+				argType:  argType,
+				argIndex: i,
+				argCtx:   argCtx,
+			})
+		}
+	}
+
+	// Callee children: the function's own calls, then relation-derived ones.
+	added := map[string]bool{}
+	appendCallee := func(edge *metadata.CallGraphEdge, chainParented bool) {
+		calleeID := strings.TrimPrefix(edge.Callee.ID(), "*")
+		if added[calleeID] {
+			return
+		}
+		// Same generics-instance filter as the eager tree: skip instantiations
+		// whose type arguments aren't bound in this node's context.
+		calleeTypes := t.genericTypesOf(calleeID)
+		if len(calleeTypes) > 0 && !metadata.IsSubset(t.genericTypesOf(n.key), calleeTypes) {
+			return
+		}
+		added[calleeID] = true
+		plan = append(plan, childSpec{key: calleeID, edge: edge, chainParented: chainParented})
+	}
 	expandKey := func(key string) {
-		edges := n.tree.edgesFor(key)
+		edges := t.edgesFor(key)
 		for _, edge := range edges {
-			appendCallee(edge)
+			appendCallee(edge, false)
 		}
 		// No direct calls: follow into func literals defined in the function
 		// (a factory's returned closure) via ParentFunctions, mirroring the
 		// eager build's closure attachment.
 		if len(edges) == 0 {
 			for _, edge := range meta.ParentFunctions[key] {
-				appendCallee(edge)
+				appendCallee(edge, false)
 			}
 		}
 	}
-	expandKey(baseKey)
+	expandKey(metadata.StripToBase(n.key))
 	// Interface-method callee (module.RegisterRoutes(...) where module is an
 	// interface): fan out into the concrete implementers' method bodies —
 	// the eager build's ImplementedBy attachment. Without this, dispatch on
@@ -770,7 +825,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if calleeRecv != "" {
 			calleePkg := getString(meta, n.edge.Callee.Pkg)
 			calleeName := getString(meta, n.edge.Callee.Name)
-			for _, implKey := range n.tree.implementerKeys(calleePkg, calleeRecv, calleeName) {
+			for _, implKey := range t.implementerKeys(calleePkg, calleeRecv, calleeName) {
 				expandKey(implKey)
 			}
 		}
@@ -787,28 +842,21 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	// claimed under the router that was stored into the variable/field —
 	// becomes this argument's children, so the mount prefix applies to them.
 	for _, producerID := range n.argProducerIDs() {
-		for _, edge := range n.tree.receiverChildren[producerID] {
-			appendCallee(edge)
+		for _, edge := range t.receiverChildren[producerID] {
+			appendCallee(edge, false)
 		}
 		expandKey(metadata.StripToBase(producerID))
 	}
-	// Chain children are listed under the chain parent (so matchers see
-	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group), but
-	// their Parent pointer is the CALL-SITE scope — same rule as the eager
-	// tree's processChainRelationships: a chained call like
-	// `NewEncoder(w).Encode(v)` must trace `v` through the *enclosing call's*
-	// ParamArgMap, which lives on the call-site parent, not the chain parent.
-	chainParent := n.parent
-	if chainParent == nil {
-		chainParent = n
+	// Chain children are listed under this node (so matchers see
+	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group) but
+	// parented at the call-site scope — processChainRelationships' rule.
+	for _, edge := range t.chainChildren[n.key] {
+		appendCallee(edge, true)
 	}
-	for _, edge := range n.tree.chainChildren[n.key] {
-		appendCalleeUnder(edge, chainParent)
+	for _, edge := range t.receiverChildren[n.key] {
+		appendCallee(edge, false)
 	}
-	for _, edge := range n.tree.receiverChildren[n.key] {
-		appendCallee(edge)
-	}
-	return n.children
+	return plan
 }
 
 // methodBaseKeys resolves a method-referencing argument to the base ID(s) of

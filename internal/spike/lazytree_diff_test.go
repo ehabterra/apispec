@@ -37,12 +37,13 @@ func TestLazyTreeParity(t *testing.T) {
 		{"../../testdata/router_mount_options", spec.DefaultChiConfig, ""},
 
 		{"../../testdata/functional_options", spec.DefaultMuxConfig,
-			"paths identical (13/13, smoke test passes); operation content differs somewhere — uninvestigated"},
+			"LazyTree resolves MORE than eager: module handlers' response bodies (map[string]string via " +
+				"interface-dispatched Encode) resolve under lazy; eager emits 'no response found' placeholders"},
 
 		{"../../testdata/another_chi_router", spec.DefaultChiConfig,
-			"same sub-router mounted under two servers (goroutine closures both declare `r`); " +
-				"producer attribution is last-write-wins in both trees and they pick different winners " +
-				"(eager /api, lazy /ws/v1)"},
+			"the fixture genuinely mounts the same sub-router at BOTH / and /v1; eager only reaches the " +
+				"/ mount (/api/*), lazy reaches both and dropSubsumedMountPrefixes keeps the fuller chain " +
+				"(/api/v1/*) — each tree shows one of two real prefixes"},
 		{"../../testdata/complex_chi_router", spec.DefaultChiConfig,
 			"LazyTree resolves MORE than eager: DELETE /api/user/{id} 400 carries the ErrorResponse " +
 				"schema that is plainly in the handler code; eager emits it schema-less"},

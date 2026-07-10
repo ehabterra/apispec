@@ -854,11 +854,7 @@ func (b *BasePatternMatcher) matchPattern(pattern, value string) bool {
 	if pattern == "" {
 		return false
 	}
-	re, err := cachedRegex(pattern)
-	if err != nil {
-		return false
-	}
-	return re.MatchString(value)
+	return cachedMatch(pattern, value)
 }
 
 func (b *BasePatternMatcher) traceVariable(varName, funcName, pkgName string) (originVar, originPkg string, originType *metadata.CallArgument, originFunc string) {

@@ -305,10 +305,6 @@ func NewEngine(config *EngineConfig) *Engine {
 		if config.MaxNestedArgsDepth == 0 {
 			config.MaxNestedArgsDepth = defaultConfig.MaxNestedArgsDepth
 		}
-		// UseLazyTracker is intentionally NOT merged: a bool can't distinguish
-		// "explicitly false" from unset, and overwriting it would make the
-		// eager escape hatch impossible to select. Callers get the lazy
-		// default by starting from DefaultEngineConfig().
 	} else {
 		config = defaultConfig
 	}

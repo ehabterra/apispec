@@ -55,3 +55,34 @@ func mustCachedRegex(pattern string) *regexp.Regexp {
 	}
 	return re
 }
+
+// Match-result cache. Pattern matching runs for every (matcher, node) pair
+// during route extraction, and the same (pattern, value) pair recurs
+// constantly — patterns come from a fixed config and values from the
+// metadata string pool, so the key space is small and bounded. Results are
+// immutable, making this a pure memo.
+var (
+	matchCache   = make(map[string]bool)
+	matchCacheMu sync.RWMutex
+)
+
+// cachedMatch reports whether value matches the (cached) regex pattern,
+// memoizing the result per (pattern, value). Invalid patterns report false,
+// matching the previous inline behavior.
+func cachedMatch(pattern, value string) bool {
+	key := pattern + "\x00" + value
+	matchCacheMu.RLock()
+	if v, ok := matchCache[key]; ok {
+		matchCacheMu.RUnlock()
+		return v
+	}
+	matchCacheMu.RUnlock()
+
+	re, err := cachedRegex(pattern)
+	matched := err == nil && re.MatchString(value)
+
+	matchCacheMu.Lock()
+	matchCache[key] = matched
+	matchCacheMu.Unlock()
+	return matched
+}
