@@ -679,6 +679,42 @@ next.
   a fiber factory-closure success body where slot assignment still
   differs by context order — tracked, low-stakes).
 
+  ### The residual default-slot diffs: full mechanism + designed fix
+
+  The ~9 remaining cross-codebase content diffs are all
+  undetermined-status `default` slots. A deep instrumented investigation
+  (2026-07-10) established the complete mechanism:
+
+  1. `ExtractResponse` attaches a body without a resolvable status to the
+     "lowest bodyless status" in `route.Response` AT EXTRACTION TIME —
+     making the binding depend on extraction order.
+  2. Extraction order follows traversal order, which differs between the
+     trees (and between traversal contexts within one tree).
+  3. Duplicate visits of the same call site through redundant tree paths
+     re-extract and pollute the negative (default) slots; the
+     `preferResponseInfo` tie-break can then pick an error body for the
+     default slot, which `uninformativeDefault` drops as already-emitted
+     — silently deleting a real success response.
+
+  Two dedupe extremes were prototyped and measured:
+  - per-(traversal-parent, call site) — the historical scheme — allows
+    the pollution in (3);
+  - per-call-site alone converges one codebase byte-for-byte but breaks
+    the documented shared-error-helper case (`respondWithError(w,400)` /
+    `(w,500)` both reaching the same `WriteHeader` site) and regressed
+    another codebase to 55 diffs. Both were reverted.
+
+  **Designed fix (next piece of work, not a tweak):** response-fragment
+  pairing must be context-chain based. Collect fragments keyed by the
+  chain of enclosing helper CALL SITES from the route to the response
+  statement (exact instance IDs); dedupe identical (chain, site) pairs;
+  then pair status and body fragments within the same chain by source
+  order; only unpaired bodies fall to the default slot. That removes
+  extraction-order sensitivity entirely (both trees see identical chains
+  — path parity is already proven) and preserves per-branch statuses of
+  shared helpers. Until then, the ~9 diffs remain documented cosmetics
+  in fallback slots.
+
   The last two knownDiffs were investigated and resolved as
   understood-and-accepted (2026-07-10):
   - `functional_options`: **lazy resolves more** — module handlers'
