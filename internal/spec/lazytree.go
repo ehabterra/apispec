@@ -89,8 +89,9 @@ type LazyTree struct {
 	// see maxInstancesPerKey. A node is (edge, parent), so a callee reached
 	// along many paths gets many copies; business-layer diamonds make that
 	// exponential and would drain the node budget before traversal reaches
-	// later router wiring.
-	instanceCount map[string]int
+	// later router wiring. Nested by scope to avoid a key concatenation per
+	// child instantiation (visible in profiles).
+	instanceCount map[string]map[string]int
 	// argInstanceIDs holds the exact (position-qualified) IDs of every
 	// top-level call argument in the graph. Used by edgesFor to skip a
 	// callee edge only when THAT call site is already represented as an
@@ -669,6 +670,14 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	n.expanded = true
 
 	scope := n.instanceScope()
+	if n.tree.instanceCount == nil {
+		n.tree.instanceCount = map[string]map[string]int{}
+	}
+	scopeCounts := n.tree.instanceCount[scope]
+	if scopeCounts == nil {
+		scopeCounts = map[string]int{}
+		n.tree.instanceCount[scope] = scopeCounts
+	}
 	childCount := 0
 	for _, spec := range n.tree.planFor(n) {
 		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
@@ -677,8 +686,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if n.onPath(spec.key) {
 			continue // cycle: this call is already on the current path
 		}
-		scopedKey := scope + "\x00" + spec.key
-		if n.tree.instanceCount[scopedKey] >= maxInstancesPerKey {
+		if scopeCounts[spec.key] >= maxInstancesPerKey {
 			// Diamond inside this scope: stop materializing further copies.
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
@@ -704,10 +712,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			}
 			childCount++
 		}
-		if n.tree.instanceCount == nil {
-			n.tree.instanceCount = map[string]int{}
-		}
-		n.tree.instanceCount[scopedKey]++
+		scopeCounts[spec.key]++
 		if n.tree.seenKeys == nil {
 			n.tree.seenKeys = map[string]bool{}
 		}

@@ -139,6 +139,17 @@ type Extractor struct {
 	// re-visit of the same (function, mount, path, method) through another
 	// traversal context reproduces byte-identical results — skip the walk.
 	extractedRouteIDs map[string]bool
+
+	// Per-edge matcher-verdict memos. The MatchNode implementations of the
+	// response/request/param matcher families are pure functions of the call
+	// edge (callee name/receiver/package and caller name), and the lazy tree
+	// visits the same edge through many node copies — memoizing the FIRST
+	// matching matcher index per edge (-1 = none) removes the dominant
+	// repeated regex work from route-subtree walks. Extraction itself stays
+	// per-node: it depends on the node's ancestry.
+	respMatcherByEdge  map[*metadata.CallGraphEdge]int16
+	reqMatcherByEdge   map[*metadata.CallGraphEdge]int16
+	paramMatcherByEdge map[*metadata.CallGraphEdge]int16
 	// reachSets caches, per accessor pattern, which function BaseIDs
 	// transitively reach a matching call. See reachability.go.
 	reachSets map[string]map[string]bool
@@ -774,7 +785,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// order-insensitive pairing model.
 	visitedEdges := make(map[string]bool)
 	var respCandidates []responseCandidate
-	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, nil, &respCandidates)
+	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, nil, "", &respCandidates)
 	e.pairAndFillResponses(routeInfo, respCandidates)
 
 	// Add map-key path params (mux.Vars) for placeholders the handler reads via
@@ -936,7 +947,7 @@ func frameChainKey(chain []string, node TrackerNodeInterface) string {
 	return "" // route/handler frame
 }
 
-func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool, chain []string, respCandidates *[]responseCandidate) {
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool, chain []string, chainKey string, respCandidates *[]responseCandidate) {
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes
 		if isRoute := e.executeRoutePattern(child, route); isRoute {
@@ -957,13 +968,15 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		// Deduped per (chain, call site): the same statement reached again
 		// through the same frames is one candidate; the same statement in a
 		// different helper invocation is a separate one.
-		if child != nil && child.GetEdge() != nil {
-			candKey := strings.Join(chain, chainSep) + chainSep + child.GetEdge().Callee.ID()
+		// Match first (memoized per edge — cheap), and only then build the
+		// per-(chain, site) dedupe key: constructing the key for every child
+		// dominated the allocation profile, and non-matching children never
+		// need one.
+		if child != nil && child.GetEdge() != nil && e.matchesResponsePattern(child) {
+			candKey := chainKey + chainSep + child.GetEdge().Callee.ID()
 			if !visitedEdges[candKey] {
 				visitedEdges[candKey] = true
-				if e.matchesResponsePattern(child) {
-					*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(chain, child)})
-				}
+				*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(chain, child)})
 			}
 		}
 
@@ -972,11 +985,13 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 
 		// Recursive extraction. The chain grows only through CALL nodes —
 		// argument nodes reference values within the current frame.
-		childChain := chain
+		childChain, childChainKey := chain, chainKey
 		if child != nil && child.GetArgument() == nil && child.GetEdge() != nil {
-			childChain = append(chain[:len(chain):len(chain)], child.GetEdge().Callee.ID())
+			id := child.GetEdge().Callee.ID()
+			childChain = append(chain[:len(chain):len(chain)], id)
+			childChainKey = chainKey + chainSep + id
 		}
-		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, childChain, respCandidates)
+		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, childChain, childChainKey, respCandidates)
 	}
 
 	// Extract parameters from the route node itself
@@ -985,12 +1000,31 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 
 // matchesResponsePattern reports whether any response matcher accepts the node.
 func (e *Extractor) matchesResponsePattern(node TrackerNodeInterface) bool {
-	for _, matcher := range e.responseMatchers {
+	return e.responseMatcherIndex(node) >= 0
+}
+
+// responseMatcherIndex returns the first response matcher accepting the
+// node's edge, memoized per edge (see the memo fields for why this is sound).
+func (e *Extractor) responseMatcherIndex(node TrackerNodeInterface) int16 {
+	if node == nil || node.GetEdge() == nil {
+		return -1
+	}
+	edge := node.GetEdge()
+	if idx, ok := e.respMatcherByEdge[edge]; ok {
+		return idx
+	}
+	idx := int16(-1)
+	for i, matcher := range e.responseMatchers {
 		if matcher.MatchNode(node) {
-			return true
+			idx = int16(i)
+			break
 		}
 	}
-	return false
+	if e.respMatcherByEdge == nil {
+		e.respMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+	}
+	e.respMatcherByEdge[edge] = idx
+	return idx
 }
 
 // pairAndFillResponses resolves the collected response candidates and fills
@@ -1179,10 +1213,8 @@ func (e *Extractor) handlerCallDepths(route *RouteInfo) map[string]int {
 // extractResponsesMatched runs the first matching response matcher on a
 // previously-collected candidate node.
 func (e *Extractor) extractResponsesMatched(node TrackerNodeInterface, route *RouteInfo) []*ResponseInfo {
-	for _, matcher := range e.responseMatchers {
-		if matcher.MatchNode(node) {
-			return matcher.ExtractResponse(node, route)
-		}
+	if idx := e.responseMatcherIndex(node); idx >= 0 {
+		return e.responseMatchers[idx].ExtractResponse(node, route)
 	}
 	return nil
 }
@@ -1298,12 +1330,28 @@ func isErrorBodyType(bodyType string) bool {
 
 // extractRequestFromNode extracts request information from a node
 func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *RouteInfo) *RequestInfo {
-	for _, matcher := range e.requestMatchers {
-		if matcher.MatchNode(node) {
-			return matcher.ExtractRequest(node, route)
-		}
+	if node == nil || node.GetEdge() == nil {
+		return nil
 	}
-	return nil
+	edge := node.GetEdge()
+	idx, ok := e.reqMatcherByEdge[edge]
+	if !ok {
+		idx = -1
+		for i, matcher := range e.requestMatchers {
+			if matcher.MatchNode(node) {
+				idx = int16(i)
+				break
+			}
+		}
+		if e.reqMatcherByEdge == nil {
+			e.reqMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+		}
+		e.reqMatcherByEdge[edge] = idx
+	}
+	if idx < 0 {
+		return nil
+	}
+	return e.requestMatchers[idx].ExtractRequest(node, route)
 }
 
 // extractParamsFromNode extracts parameter information from a node. Most
@@ -1311,10 +1359,29 @@ func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *Rou
 // but map-key patterns (gorilla/mux's `Vars(r)["id"]`) can yield several,
 // one per indexed key that matches a path placeholder.
 func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *RouteInfo) []Parameter {
-	for _, matcher := range e.paramMatchers {
-		if !matcher.MatchNode(node) {
-			continue
+	if node == nil || node.GetEdge() == nil {
+		return nil
+	}
+	edge := node.GetEdge()
+	idx, ok := e.paramMatcherByEdge[edge]
+	if !ok {
+		idx = -1
+		for i, matcher := range e.paramMatchers {
+			if matcher.MatchNode(node) {
+				idx = int16(i)
+				break
+			}
 		}
+		if e.paramMatcherByEdge == nil {
+			e.paramMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+		}
+		e.paramMatcherByEdge[edge] = idx
+	}
+	if idx < 0 {
+		return nil
+	}
+	{
+		matcher := e.paramMatchers[idx]
 		// Map-key accessors (mux.Vars) carry the parameter name as a map key,
 		// not a call argument, so nothing is extracted from the node itself.
 		// Their path params are added once per route in completeMapKeyPathParams,
@@ -1328,7 +1395,6 @@ func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *Rout
 		}
 		return nil
 	}
-	return nil
 }
 
 // completeMapKeyPathParams adds path parameters for frameworks whose path-var
