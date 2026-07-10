@@ -130,6 +130,15 @@ type Extractor struct {
 	// scc is the call graph's SCC condensation, built lazily and shared by
 	// every reachability summary (docs/TRACKER_REDESIGN.md step 3).
 	scc *metadata.CallGraphSCC
+	// callDepthsByFn caches handlerCallDepths per handler function: the BFS
+	// is over the whole call graph and pairAndFillResponses runs once per
+	// route extraction context.
+	callDepthsByFn map[string]map[string]int
+	// extractedRouteIDs marks route identities whose subtree walk has
+	// already run in this extraction. Fragment extraction is pure, so a
+	// re-visit of the same (function, mount, path, method) through another
+	// traversal context reproduces byte-identical results — skip the walk.
+	extractedRouteIDs map[string]bool
 	// reachSets caches, per accessor pattern, which function BaseIDs
 	// transitively reach a matching call. See reachability.go.
 	reachSets map[string]map[string]bool
@@ -745,6 +754,20 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// any route-scope or handler-wrapper middleware on the route call itself.
 	e.applyRouteSecurity(node, routeInfo, mountMW)
 
+	// The same route identity reached again through another traversal
+	// context reproduces byte-identical extraction (fragments are pure and
+	// children expansions are memoized), so the expensive subtree walk runs
+	// once per identity. Distinct mount contexts have distinct identities
+	// and still run — their fragments merge below.
+	routeID := routeInfo.Function + "" + routeInfo.MountPath + "" + routeInfo.Path + "" + routeInfo.Method
+	if e.extractedRouteIDs[routeID] {
+		return
+	}
+	if e.extractedRouteIDs == nil {
+		e.extractedRouteIDs = map[string]bool{}
+	}
+	e.extractedRouteIDs[routeID] = true
+
 	// Extract route/request/response/params from children. Response
 	// candidates are collected with their call-site CHAIN during the walk
 	// and resolved afterwards by pairAndFillResponses — see there for the
@@ -1119,6 +1142,9 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 // over meta.Callers. Used to rank undetermined-status response fragments by
 // how close to the handler they were written.
 func (e *Extractor) handlerCallDepths(route *RouteInfo) map[string]int {
+	if cached, ok := e.callDepthsByFn[route.Function]; ok {
+		return cached
+	}
 	meta := route.Metadata
 	if meta == nil {
 		meta = e.tree.GetMetadata()
@@ -1143,6 +1169,10 @@ func (e *Extractor) handlerCallDepths(route *RouteInfo) map[string]int {
 			queue = append(queue, callee)
 		}
 	}
+	if e.callDepthsByFn == nil {
+		e.callDepthsByFn = map[string]map[string]int{}
+	}
+	e.callDepthsByFn[route.Function] = depths
 	return depths
 }
 

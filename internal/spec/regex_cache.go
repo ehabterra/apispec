@@ -62,7 +62,10 @@ func mustCachedRegex(pattern string) *regexp.Regexp {
 // metadata string pool, so the key space is small and bounded. Results are
 // immutable, making this a pure memo.
 var (
-	matchCache   = make(map[string]bool)
+	// Nested by pattern first: patterns are few and long-lived, and a
+	// two-level lookup avoids allocating a concatenated key per call —
+	// which showed up in profiles once the regex work itself was cached.
+	matchCache   = make(map[string]map[string]bool)
 	matchCacheMu sync.RWMutex
 )
 
@@ -70,11 +73,12 @@ var (
 // memoizing the result per (pattern, value). Invalid patterns report false,
 // matching the previous inline behavior.
 func cachedMatch(pattern, value string) bool {
-	key := pattern + "\x00" + value
 	matchCacheMu.RLock()
-	if v, ok := matchCache[key]; ok {
-		matchCacheMu.RUnlock()
-		return v
+	if inner, ok := matchCache[pattern]; ok {
+		if v, hit := inner[value]; hit {
+			matchCacheMu.RUnlock()
+			return v
+		}
 	}
 	matchCacheMu.RUnlock()
 
@@ -82,7 +86,12 @@ func cachedMatch(pattern, value string) bool {
 	matched := err == nil && re.MatchString(value)
 
 	matchCacheMu.Lock()
-	matchCache[key] = matched
+	inner := matchCache[pattern]
+	if inner == nil {
+		inner = make(map[string]bool)
+		matchCache[pattern] = inner
+	}
+	inner[value] = matched
 	matchCacheMu.Unlock()
 	return matched
 }
