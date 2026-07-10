@@ -704,16 +704,37 @@ next.
     `(w,500)` both reaching the same `WriteHeader` site) and regressed
     another codebase to 55 diffs. Both were reverted.
 
-  **Designed fix (next piece of work, not a tweak):** response-fragment
-  pairing must be context-chain based. Collect fragments keyed by the
-  chain of enclosing helper CALL SITES from the route to the response
-  statement (exact instance IDs); dedupe identical (chain, site) pairs;
-  then pair status and body fragments within the same chain by source
-  order; only unpaired bodies fall to the default slot. That removes
-  extraction-order sensitivity entirely (both trees see identical chains
-  — path parity is already proven) and preserves per-branch statuses of
-  shared helpers. Until then, the ~9 diffs remain documented cosmetics
-  in fallback slots.
+  **Context-chain pairing — IMPLEMENTED (2026-07-10):** response
+  extraction was rebuilt around the designed model
+  (`pairAndFillResponses` in extractor.go):
+  1. candidates collected during the walk with their call-site chain;
+     `frameChainKey` truncates the recursion chain at the invocation of
+     the statement's CALLER function (leaf-call detours like encoder or
+     `Status().JSON()` chains don't split a frame; two invocations of
+     the same helper stay distinct via the invocation prefix);
+  2. each candidate extracted as a PURE function (empty response map —
+     no slot peeking), so duplicates are byte-identical and deduped by
+     (site, status, body);
+  3. fragments sorted by SOURCE POSITION and paired per frame: a
+     bodyless status leaves its status pending on its frame, adopted by
+     the frame's next unknown-status body;
+  4. unpaired bodies become default-slot candidates, filtered to the
+     shallowest call-graph distance from the handler (deep unknown
+     bodies are outbound client payloads that merely resemble
+     responses);
+  5. partial-mount duplicates dropped by `dropSubsumedMountPrefixes`
+     are merged into their survivors first (safe now — no
+     order-dependent junk left to amplify).
+
+  Results: `clean-architecture` 0 content-diffs (was 1); the largest
+  codebase 55→10 with many per-route byte-convergences; second codebase
+  2; all fixtures green, 13/15 byte-identical. The residual ~12 diffs
+  are a final ambiguous class: default-slot picks where the trees see
+  DIFFERENT unknown pools — middleware-written error envelopes
+  (unreachable from the handler in the call graph) versus deep client
+  payloads — neither being a documented route response. Converging
+  those would mean replicating traversal accidents; they are accepted
+  as pool-selection cosmetics.
 
   The last two knownDiffs were investigated and resolved as
   understood-and-accepted (2026-07-10):
