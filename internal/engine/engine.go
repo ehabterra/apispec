@@ -305,6 +305,7 @@ func NewEngine(config *EngineConfig) *Engine {
 		if config.MaxNestedArgsDepth == 0 {
 			config.MaxNestedArgsDepth = defaultConfig.MaxNestedArgsDepth
 		}
+		config.UseLazyTracker = defaultConfig.UseLazyTracker
 	} else {
 		config = defaultConfig
 	}

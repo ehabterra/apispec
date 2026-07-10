@@ -786,19 +786,28 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 
 	// Callee children: the function's own calls, then relation-derived ones.
 	added := map[string]bool{}
-	appendCallee := func(edge *metadata.CallGraphEdge, chainParented bool) {
+	appendCalleeOpts := func(edge *metadata.CallGraphEdge, chainParented, genericFilter bool) {
 		calleeID := strings.TrimPrefix(edge.Callee.ID(), "*")
 		if added[calleeID] {
 			return
 		}
-		// Same generics-instance filter as the eager tree: skip instantiations
-		// whose type arguments aren't bound in this node's context.
-		calleeTypes := t.genericTypesOf(calleeID)
-		if len(calleeTypes) > 0 && !metadata.IsSubset(t.genericTypesOf(n.key), calleeTypes) {
-			return
+		// Same generics-instance filter as the eager tree's direct-callee
+		// loop: skip instantiations whose type arguments aren't bound in
+		// this node's context. ParentFunctions (closure-body) edges skip the
+		// filter — as in the eager build — because a generic factory's
+		// closure calls carry SYMBOLIC bindings (DecodeJSON[TData=TRequest])
+		// that resolve through the ancestor chain, not concrete ones.
+		if genericFilter {
+			calleeTypes := t.genericTypesOf(calleeID)
+			if len(calleeTypes) > 0 && !metadata.IsSubset(t.genericTypesOf(n.key), calleeTypes) {
+				return
+			}
 		}
 		added[calleeID] = true
 		plan = append(plan, childSpec{key: calleeID, edge: edge, chainParented: chainParented})
+	}
+	appendCallee := func(edge *metadata.CallGraphEdge, chainParented bool) {
+		appendCalleeOpts(edge, chainParented, true)
 	}
 	expandKey := func(key string) {
 		edges := t.edgesFor(key)
@@ -807,10 +816,10 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 		}
 		// No direct calls: follow into func literals defined in the function
 		// (a factory's returned closure) via ParentFunctions, mirroring the
-		// eager build's closure attachment.
+		// eager build's closure attachment (which applies no generics filter).
 		if len(edges) == 0 {
 			for _, edge := range meta.ParentFunctions[key] {
-				appendCallee(edge, false)
+				appendCalleeOpts(edge, false, false)
 			}
 		}
 	}
