@@ -11,6 +11,7 @@ const state = {
   framework: "net/http",
   supportedFrameworks: ["gin", "chi", "echo", "fiber", "mux", "net/http"],
   openapiVersion: "3.1.0",
+  legacyTracker: false, // analysis engine: false = lazy tracker (default), true = legacy eager
   // Full structured config edited by Configure mode. Seeded from
   // /api/detect and sent (structured) to /api/generate.
   config: {

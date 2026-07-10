@@ -183,6 +183,10 @@ type GenerateRequest struct {
 	// or for users that just want to author the full APISpecConfig directly.
 	UseRawConfig bool   `json:"useRawConfig"`
 	RawConfig    string `json:"rawConfig"`
+
+	// LegacyTracker switches spec generation to the legacy (eager) tracker
+	// tree; the default is the lazy tracker.
+	LegacyTracker bool `json:"legacyTracker"`
 }
 
 // GenerateResponse is the result of a successful generation.
@@ -818,7 +822,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
 		Verbose:                      s.cfg.Verbose,
-		UseLazyTracker:               true,
+		UseLazyTracker:               !req.LegacyTracker,
 		OnPhase: func(phase string, elapsed time.Duration) {
 			// Pushed by the engine at each major phase boundary. The UI
 			// polls /api/generate/progress to surface this as the live

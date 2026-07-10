@@ -352,6 +352,16 @@ export function ConfigMode() {
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
           <//>
 
+          <${Section} title="Analysis engine" help="Which tracker tree powers the analysis. The lazy tracker (default) expands the call tree on demand — it covers the same wiring styles as the legacy tree, resolves some responses/bodies the legacy tree misses, and is bounded on very dense call graphs. Choose Legacy (eager) only to compare against the previous engine's output.">
+            <div class="field">
+              <label>Tracker tree</label>
+              <select class="input" value=${s.legacyTracker ? "legacy" : "lazy"} onChange=${(e) => setState({ legacyTracker: e.target.value === "legacy" })}>
+                <option value="lazy">Lazy (default)</option>
+                <option value="legacy">Legacy (eager)</option>
+              </select>
+            </div>
+          <//>
+
           <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
 
             <div class="grid-cards" style="grid-template-columns:1fr 1fr">

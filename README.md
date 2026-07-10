@@ -147,6 +147,7 @@ apispec --output openapi.yaml --skip-cgo
 | `--max-args`                | `-ma`     | Max arguments per function                             | `100`                           |
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
 | `--max-recursion-depth`     | `-mrd`    | Max recursion depth (anti-loop)                        | `10`                            |
+| `--legacy-tracker`          |           | Use the legacy (eager) tracker tree instead of the default lazy tracker | `false`        |
 | `--skip-cgo`                |           | Skip CGO packages                                      | `true`                          |
 | `--include-file`            |           | Include files matching pattern (repeatable)            | `""`                            |
 | `--include-package`         |           | Include packages matching pattern (repeatable)         | `""`                            |

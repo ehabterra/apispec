@@ -133,12 +133,12 @@ type EngineConfig struct {
 	// GetResolvedCallGraph.
 	ResolveCallGraph bool
 	// UseLazyTracker generates the spec with the lazy tracker tree
-	// (docs/TRACKER_REDESIGN.md step 4). Opt-in: the lazy tree matches the
-	// eager tree on the fixture suite (10/12 byte-identical, 2 understood
-	// diffs) but does not yet cover every real-world wiring style (struct-
-	// field mounts via functional options, register-helper chains) — the
-	// eager tree stays the default until the real-world parity meter
-	// (internal/spike TestRealWorldParity) reads clean.
+	// (docs/TRACKER_REDESIGN.md step 4) — the default. It covers the wiring
+	// styles the legacy eager tree supports (verified by the fixture parity
+	// harness and the cross-codebase meter), resolves some responses/bodies
+	// the eager tree misses, and stays bounded on dense call graphs. Set to
+	// false (CLI --legacy-tracker, UI "Analysis engine") to generate with
+	// the legacy eager tree for comparison.
 	UseLazyTracker bool
 	// SkipHTTPFramework excludes net/http from framework dependency analysis
 	SkipHTTPFramework bool
@@ -305,7 +305,6 @@ func NewEngine(config *EngineConfig) *Engine {
 		if config.MaxNestedArgsDepth == 0 {
 			config.MaxNestedArgsDepth = defaultConfig.MaxNestedArgsDepth
 		}
-		config.UseLazyTracker = defaultConfig.UseLazyTracker
 	} else {
 		config = defaultConfig
 	}
