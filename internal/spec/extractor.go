@@ -765,19 +765,26 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// any route-scope or handler-wrapper middleware on the route call itself.
 	e.applyRouteSecurity(node, routeInfo, mountMW)
 
-	// The same route identity reached again through another traversal
+	// The same route CALL SITE reached again through another traversal
 	// context reproduces byte-identical extraction (fragments are pure and
 	// children expansions are memoized), so the expensive subtree walk runs
-	// once per identity. Distinct mount contexts have distinct identities
-	// and still run — their fragments merge below.
-	routeID := routeInfo.Function + "" + routeInfo.MountPath + "" + routeInfo.Path + "" + routeInfo.Method
-	if e.extractedRouteIDs[routeID] {
-		return
+	// once per site. The key must be the matched call site's identity, not
+	// the extracted fields: chain-style routes (Methods("GET").Path(...).
+	// HandlerFunc(...)) arrive here with Function/Path still empty — they
+	// resolve from chain children during extraction — so field-based keys
+	// would alias every such chain in the package onto one identity.
+	// Distinct mount contexts have distinct keys and still run — their
+	// fragments merge below.
+	if edge := node.GetEdge(); edge != nil {
+		routeID := routeInfo.MountPath + "" + edge.Callee.ID()
+		if e.extractedRouteIDs[routeID] {
+			return
+		}
+		if e.extractedRouteIDs == nil {
+			e.extractedRouteIDs = map[string]bool{}
+		}
+		e.extractedRouteIDs[routeID] = true
 	}
-	if e.extractedRouteIDs == nil {
-		e.extractedRouteIDs = map[string]bool{}
-	}
-	e.extractedRouteIDs[routeID] = true
 
 	// Extract route/request/response/params from children. Response
 	// candidates are collected with their call-site CHAIN during the walk
@@ -1036,9 +1043,12 @@ func (e *Extractor) responseMatcherIndex(node TrackerNodeInterface) int16 {
 //     response map, so no slot peeking): statuses resolve only from the
 //     pattern's own arguments (including parameter tracing) or its
 //     configured default; unresolved statuses come out as -1;
-//  2. fragments are deduped by (call site, status, body) — the same
-//     statement reached through shortcut relations yields byte-identical
-//     fragments;
+//  2. fragments are deduped by (frame chain, call site, status, body) —
+//     the same statement reached through shortcut relations within one
+//     frame yields byte-identical fragments; the same statement executed
+//     in DIFFERENT frames (a shared helper like respondWithError called
+//     from two branches) must keep one fragment per frame so each frame's
+//     pending status finds its body;
 //  3. fragments are ordered by SOURCE POSITION and paired: a bodyless
 //     status write leaves its status pending on its call-site chain, and
 //     the next unknown-status body on the same chain adopts it — exactly
@@ -1076,7 +1086,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				status = -1 // normalize "unknown"
 				resp.StatusCode = -1
 			}
-			dedupeKey := siteID + chainSep + strconv.Itoa(status) + chainSep + resp.BodyType
+			dedupeKey := cand.chain + chainSep + siteID + chainSep + strconv.Itoa(status) + chainSep + resp.BodyType
 			if seen[dedupeKey] {
 				continue
 			}

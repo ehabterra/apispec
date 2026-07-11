@@ -714,7 +714,11 @@ next.
      the same helper stay distinct via the invocation prefix);
   2. each candidate extracted as a PURE function (empty response map —
      no slot peeking), so duplicates are byte-identical and deduped by
-     (site, status, body);
+     (frame chain, site, status, body) — the frame chain must be in the
+     key: a shared helper (`respondWithError`) called from two branches
+     executes the same Encode statement in two frames, and each frame's
+     pending status needs its own body fragment (dropping the second
+     left the 500 branch bodyless while 400 got the schema);
   3. fragments sorted by SOURCE POSITION and paired per frame: a
      bodyless status leaves its status pending on its frame, adopted by
      the frame's next unknown-status body;
