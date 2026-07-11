@@ -314,6 +314,13 @@ type TrackerTree struct {
 	// once and re-entrant traversal can't fan it out repeatedly.
 	closureAttached map[string]bool
 
+	// traceCache memoizes metadata.TraceVariableOrigin per (variable, caller
+	// function, caller package). The build calls it for every edge parameter
+	// and argument, and the same triple recurs constantly — it dominated the
+	// CPU profile (≈36%% of a full run on a large project) before memoization.
+	// Sound because metadata is immutable during the build.
+	traceCache map[string]traceResult
+
 	// nodesBuilt is the cumulative count of real tracker nodes created during
 	// this tree's construction. Unlike the per-path `visited` stack counter, it
 	// only ever increases, so it is the true measure of total traversal work.
@@ -322,6 +329,28 @@ type TrackerTree struct {
 	// exponential in the worst case, and stack depth alone never reflects that.
 	// Capping the cumulative total bounds wall-clock time on such graphs.
 	nodesBuilt int
+}
+
+// traceResult is a memoized TraceVariableOrigin outcome.
+type traceResult struct {
+	originVar  string
+	originPkg  string
+	originType *metadata.CallArgument
+	originFunc string
+}
+
+// traceOrigin is a memoized metadata.TraceVariableOrigin (see traceCache).
+func (t *TrackerTree) traceOrigin(varName, callerName, callerPkg string) (string, string, *metadata.CallArgument, string) {
+	key := varName + "\x00" + callerName + "\x00" + callerPkg
+	if r, ok := t.traceCache[key]; ok {
+		return r.originVar, r.originPkg, r.originType, r.originFunc
+	}
+	v, p, a, fn := metadata.TraceVariableOrigin(varName, callerName, callerPkg, t.meta)
+	if t.traceCache == nil {
+		t.traceCache = map[string]traceResult{}
+	}
+	t.traceCache[key] = traceResult{originVar: v, originPkg: p, originType: a, originFunc: fn}
+	return v, p, a, fn
 }
 
 // warn forwards to the configured logger, defaulting to stderr when none
@@ -506,11 +535,10 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 
 			// Enhanced variable tracing and assignment linking
 			// Use caller context to trace where the argument came from
-			_, _, originArg, _ := metadata.TraceVariableOrigin(
+			_, _, originArg, _ := t.traceOrigin(
 				argVarName,
 				callerName, // Trace from caller's context
 				callerPkg,  // Trace from caller's context
-				meta,
 			)
 
 			if originArg == nil {
@@ -933,11 +961,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 
 				if selectorArg.Sel.GetKind() == metadata.KindIdent && strings.HasPrefix(selectorArg.Sel.GetType(), "func(") || strings.HasPrefix(selectorArg.Sel.GetType(), "func[") {
 					// Enhanced variable tracing and assignment linking
-					originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, _ := tree.traceOrigin(
 						varName,
 						getString(meta, edge.Caller.Name),
 						getString(meta, edge.Caller.Pkg),
-						meta,
 					)
 
 					// Link to assignment if exists
@@ -1036,11 +1063,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 		case ArgTypeVariable:
 			varName := metadata.CallArgToString(arg)
 			// Enhanced variable tracing and assignment linking
-			originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+			originVar, originPkg, _, _ := tree.traceOrigin(
 				varName,
 				getString(meta, edge.Caller.Name),
 				getString(meta, edge.Caller.Pkg),
-				meta,
 			)
 
 			// Link to assignment if exists
@@ -1100,11 +1126,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 				if arg.Sel.GetKind() == metadata.KindIdent && (strings.HasPrefix(arg.Sel.GetType(), "func(") || strings.HasPrefix(arg.Sel.GetType(), "func[")) {
 					varName := metadata.CallArgToString(arg.X)
 					// Enhanced variable tracing and assignment linking
-					originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, _ := tree.traceOrigin(
 						varName,
 						getString(meta, edge.Caller.Name),
 						getString(meta, edge.Caller.Pkg),
-						meta,
 					)
 
 					// Link to assignment if exists
@@ -1189,11 +1214,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 				}
 				varName := metadata.CallArgToString(arg)
 				// Trace the base object
-				baseVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+				baseVar, originPkg, _, _ := tree.traceOrigin(
 					varName,
 					getString(meta, edge.Caller.Name),
 					getString(meta, edge.Caller.Pkg),
-					meta,
 				)
 
 				var parentType = arg.X.GetType()
@@ -1251,11 +1275,10 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 			if arg.X != nil {
 				// Trace the operand
 				if arg.X.GetKind() == metadata.KindIdent {
-					originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, _ := tree.traceOrigin(
 						arg.X.GetName(),
 						getString(meta, edge.Caller.Name),
 						getString(meta, edge.Caller.Pkg),
-						meta,
 					)
 
 					if parent, ok := (*assignmentIndex)[assignmentKey{
@@ -1402,11 +1425,10 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 	if parentEdge != nil && parentEdge.CalleeVarName != "" {
 		// Enhanced variable tracing and assignment linking
-		originVar, originPkg, _, _ := metadata.TraceVariableOrigin(
+		originVar, originPkg, _, _ := tree.traceOrigin(
 			parentEdge.CalleeVarName,
 			getString(meta, parentEdge.Caller.Name),
 			getString(meta, parentEdge.Caller.Pkg),
-			meta,
 		)
 
 		// Link to assignment node if found
@@ -1539,11 +1561,10 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 					}
 
 					// Trace variable origin once and cache results
-					originVar, originPkg, _, originFunc := metadata.TraceVariableOrigin(
+					originVar, originPkg, _, originFunc := tree.traceOrigin(
 						edge.CalleeVarName,
 						funcName,
 						callerPkg,
-						meta,
 					)
 
 					// Link to assignment node if found
@@ -1812,11 +1833,10 @@ func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
 
 	// For variable arguments, trace back to assignment
 	if argNode.ArgType == ArgTypeVariable && argNode.CallArgument != nil {
-		originVar, originPkg, _, funName := metadata.TraceVariableOrigin(
+		originVar, originPkg, _, funName := t.traceOrigin(
 			argNode.GetName(),
 			argNode.ArgContext,
 			"", // Use empty string for package, will be determined by TraceVariableOrigin
-			t.meta,
 		)
 
 		// Look for the origin variable in variable nodes
