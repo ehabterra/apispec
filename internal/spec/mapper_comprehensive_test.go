@@ -1794,6 +1794,12 @@ func TestTypeParts_Comprehensive(t *testing.T) {
 		{"Container[T]", "", "Container[T]", nil},
 		{"Container[T, U]", "", "Container[T, U]", nil},
 		{"pkg-->Container[T]", "pkg", "Container", []string{"T"}},
+		// Multi-argument generics: the bracket contents must split per arg so
+		// each declared type parameter zips with its own concrete argument.
+		{"pkg-->Pair[K, V]", "pkg", "Pair", []string{"K", "V"}},
+		{"pkg-->Pair[User, Product]", "pkg", "Pair", []string{"User", "Product"}},
+		// Nested generics stay in a single argument (comma is inside brackets).
+		{"pkg-->Box[Page[User]]", "pkg", "Box", []string{"Page[User]"}},
 	}
 
 	for _, tt := range tests {

@@ -309,7 +309,10 @@ func (c *ContextProviderImpl) genericInstantiationName(base *metadata.CallArgume
 	if len(args) == 0 {
 		return baseStr
 	}
-	return baseStr + "[" + strings.Join(args, ",") + "]"
+	// Join with ", " (not a bare comma): the schema-name sanitizer maps ", " to
+	// "-", so a multi-argument instantiation (Pair[User, Product]) yields a
+	// valid component name (…Pair_User-Product) with no raw comma.
+	return baseStr + "[" + strings.Join(args, ", ") + "]"
 }
 
 // simpleGenericArgName reduces a rendered type-argument string to its simple

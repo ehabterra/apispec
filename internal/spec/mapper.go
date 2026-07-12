@@ -972,11 +972,14 @@ func TypeParts(typeName string) Parts {
 		parts.GenericTypes = typeParts[2:]
 	}
 
-	if len(typeParts) == 2 && strings.Contains(typeParts[1], "[") {
-		genericParts := strings.Split(typeParts[1], "[")
-		if len(genericParts) > 1 {
-			parts.TypeName = genericParts[0]
-			parts.GenericTypes = []string{genericParts[1][:len(genericParts[1])-1]}
+	if len(typeParts) == 2 {
+		if open := strings.Index(typeParts[1], "["); open >= 0 && strings.HasSuffix(typeParts[1], "]") {
+			parts.TypeName = typeParts[1][:open]
+			inner := typeParts[1][open+1 : len(typeParts[1])-1]
+			// Split multi-argument generics (Pair[K,V]) into separate args so
+			// each declared type parameter can be zipped with its own concrete
+			// argument. Nested brackets (Page[Box[User]]) stay in one arg.
+			parts.GenericTypes = splitGenericArgs(inner)
 		}
 	}
 
@@ -984,6 +987,41 @@ func TypeParts(typeName string) Parts {
 	parts.PkgName = strings.TrimPrefix(parts.PkgName, "[]")
 
 	return parts
+}
+
+// splitGenericArgs splits the contents of a generic bracket (`K,V` /
+// `T any, U comparable`) on top-level commas, keeping commas inside nested
+// brackets intact, and trims surrounding whitespace from each argument. An
+// empty input yields no arguments.
+func splitGenericArgs(s string) []string {
+	var (
+		result []string
+		cur    strings.Builder
+		depth  int
+	)
+	for _, ch := range s {
+		switch ch {
+		case '[':
+			depth++
+			cur.WriteRune(ch)
+		case ']':
+			depth--
+			cur.WriteRune(ch)
+		case ',':
+			if depth == 0 {
+				result = append(result, strings.TrimSpace(cur.String()))
+				cur.Reset()
+				continue
+			}
+			cur.WriteRune(ch)
+		default:
+			cur.WriteRune(ch)
+		}
+	}
+	if strings.TrimSpace(cur.String()) != "" {
+		result = append(result, strings.TrimSpace(cur.String()))
+	}
+	return result
 }
 
 const generateSchemaFromTypeKey = "generateSchemaFromType"

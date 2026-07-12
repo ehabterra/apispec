@@ -113,6 +113,7 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/users", []string{"POST"}},
 				{"/products", []string{"POST"}},
 				{"/user", []string{"POST"}},
+				{"/pair", []string{"POST"}},
 			},
 		},
 	}

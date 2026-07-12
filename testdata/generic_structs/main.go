@@ -27,6 +27,13 @@ type Envelope[T any] struct {
 	Message string `json:"message"`
 }
 
+// Pair is a two-parameter generic — each declared parameter must map to its
+// own concrete argument (K→User, V→Product), not collapse together.
+type Pair[K any, V any] struct {
+	First  K `json:"first"`
+	Second V `json:"second"`
+}
+
 type User struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
@@ -56,6 +63,12 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Envelope[User]{Data: users[0], Message: "ok"})
 }
 
+// getPair returns a two-parameter generic Pair[User, Product]: First→User,
+// Second→Product. Guards multi-argument type-parameter substitution.
+func getPair(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(Pair[User, Product]{First: users[0], Second: products[0]})
+}
+
 var users = []User{{ID: 1, Name: "Alice", Email: "alice@example.com"}}
 var products = []Product{{SKU: "A-1", Price: 9.99}}
 
@@ -63,5 +76,6 @@ func main() {
 	http.HandleFunc("/users", listUsers)
 	http.HandleFunc("/products", listProducts)
 	http.HandleFunc("/user", getUser)
+	http.HandleFunc("/pair", getPair)
 	http.ListenAndServe(":8080", nil)
 }

@@ -25,7 +25,7 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	for _, p := range []string{"/users", "/products", "/user"} {
+	for _, p := range []string{"/users", "/products", "/user", "/pair"} {
 		item, ok := out.Paths[p]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", p, mapPathKeys(out.Paths))
@@ -98,6 +98,19 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	}
 	if data := envUser.Properties["data"]; data == nil || !strings.HasSuffix(data.Ref, "_User") {
 		t.Errorf("Envelope_User.data = %+v, want a $ref to the User component", data)
+	}
+
+	// Pair[User, Product]: two type parameters must each map to their own
+	// concrete argument — First->User, Second->Product — not collapse together.
+	_, pair := findSchema("_structs_Pair_User-Product")
+	if pair == nil {
+		t.Fatalf("Pair_User-Product component missing; have %v", mapSchemaKeys(schemas))
+	}
+	if first := pair.Properties["first"]; first == nil || !strings.HasSuffix(first.Ref, "_User") {
+		t.Errorf("Pair.first = %+v, want a $ref to the User component", first)
+	}
+	if second := pair.Properties["second"]; second == nil || !strings.HasSuffix(second.Ref, "_Product") {
+		t.Errorf("Pair.second = %+v, want a $ref to the Product component", second)
 	}
 
 	// No lingering unsubstituted placeholder (the pre-fix Page_T-any / T-any).
