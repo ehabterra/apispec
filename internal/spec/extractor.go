@@ -2437,7 +2437,11 @@ func isInterfaceTypeName(typeName string, meta *metadata.Metadata) bool {
 	if typeName == "" || meta == nil {
 		return false
 	}
-	t := typeByName(TypeParts(typeName), meta)
+	core := typemodel.Parse(typeName).Core()
+	if core == nil {
+		return false
+	}
+	t := typeByName(core.Pkg, core.Name, meta)
 	return t != nil && getStringFromPool(meta, t.Kind) == "interface"
 }
 

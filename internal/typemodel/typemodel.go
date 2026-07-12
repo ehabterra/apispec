@@ -24,11 +24,13 @@
 //     target model. New code should build and consume TypeRef values and only
 //     render to a string at an output boundary (component naming,
 //     serialization).
-//   - Transitional string views (ParseParts, NormalizeInstance, SimplifyArg,
-//     SimpleName, ArgPackage, SplitArgs in legacy.go) — exact behavioral ports
-//     of the helpers that used to live in internal/spec, kept byte-compatible
-//     so consumers can migrate to the structured core one at a time with zero
-//     output drift. Each documents its quirks and its structured replacement.
+//   - Transitional string views (ParseParts and SplitArgs in legacy.go) —
+//     exact behavioral ports of the helpers that used to live in
+//     internal/spec, kept byte-compatible so consumers can migrate to the
+//     structured core one at a time with zero output drift. Each documents
+//     its quirks and its structured replacement; the views already migrated
+//     off (NormalizeInstance, SimplifyArg, SimpleName, ArgPackage) have been
+//     deleted.
 //
 // See docs/TYPE_MODEL.md for the migration plan.
 package typemodel

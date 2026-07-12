@@ -927,13 +927,13 @@ func TestTypeByName(t *testing.T) {
 	}
 
 	// Test finding type by name
-	typ := typeByName(Parts{PkgName: "main", TypeName: "User"}, meta)
+	typ := typeByName("main", "User", meta)
 	if typ == nil {
 		t.Error("Should find type by name")
 	}
 
 	// Test finding non-existent type
-	typ = typeByName(Parts{PkgName: "main", TypeName: "NonExistentType"}, meta)
+	typ = typeByName("main", "NonExistentType", meta)
 	if typ != nil {
 		t.Error("Should not find non-existent type")
 	}

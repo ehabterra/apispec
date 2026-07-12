@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 // wrapperFieldOverride describes one field of a wrapper-style
@@ -367,12 +368,11 @@ func lookupWrapperType(meta *metadata.Metadata, goType string) *metadata.Type {
 	if meta == nil || goType == "" {
 		return nil
 	}
-	goType = strings.TrimPrefix(goType, "*")
-	parts := TypeParts(goType)
-	if parts.TypeName == "" {
+	core := typemodel.Parse(goType).Core()
+	if core == nil || core.Name == "" {
 		return nil
 	}
-	return typeByName(parts, meta)
+	return typeByName(core.Pkg, core.Name, meta)
 }
 
 // wrapperFieldIsGeneric reports whether the declared type of the named
