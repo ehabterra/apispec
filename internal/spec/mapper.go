@@ -868,14 +868,29 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	// Generics
 	if len(typeParts.GenericTypes) > 0 {
 		for _, part := range typeParts.GenericTypes {
-			genericType := strings.Split(part, " ")
-			if metadata.IsPrimitiveType(genericType[1]) {
-				metaTypes[pkgName+genericType[0]+"-"+genericType[1]] = nil
-			} else {
-				genericTypeParts := TypeParts(genericType[0])
+			genericType := strings.Fields(part)
+			switch len(genericType) {
+			case 0:
+				continue
+			case 1:
+				// Concrete instantiation argument (e.g. "User" in Page[User]).
+				// Don't register it here: this map has one entry per schema to
+				// emit, and callers that want a single type for goType pick the
+				// first non-nil entry — a second one would non-deterministically
+				// shadow the parametric type itself. The concrete argument is
+				// emitted as its own component through the parametric struct's
+				// field resolution instead.
+				continue
+			default:
+				// Declaration form "T constraint" (e.g. "T any").
+				if metadata.IsPrimitiveType(genericType[1]) {
+					metaTypes[pkgName+genericType[0]+"-"+genericType[1]] = nil
+				} else {
+					genericTypeParts := TypeParts(genericType[0])
 
-				if t := typeByName(genericTypeParts, meta); t != nil {
-					metaTypes[pkgName+genericType[0]+"_"+genericType[1]] = t
+					if t := typeByName(genericTypeParts, meta); t != nil {
+						metaTypes[pkgName+genericType[0]+"_"+genericType[1]] = t
+					}
 				}
 			}
 		}
@@ -1026,6 +1041,47 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 	return schema, schemas
 }
 
+// allConcreteGenericArgs reports whether every generic part is a concrete type
+// argument (a single token) rather than a declaration entry ("T any"), which
+// carries its constraint after a space.
+func allConcreteGenericArgs(parts []string) bool {
+	for _, p := range parts {
+		if p == "" || strings.Contains(p, " ") {
+			return false
+		}
+	}
+	return len(parts) > 0
+}
+
+// substituteTypeParams replaces a parametric field type with its concrete
+// argument, preserving leading slice/pointer markers so `Items []T` becomes
+// `[]User` and `Data T` becomes `User`. Field types that don't reduce to a
+// declared type parameter are returned unchanged.
+func substituteTypeParams(fieldType string, genericTypes map[string]string) string {
+	if len(genericTypes) == 0 {
+		return fieldType
+	}
+	prefix := ""
+	rest := fieldType
+	for {
+		if strings.HasPrefix(rest, "[]") {
+			prefix += "[]"
+			rest = rest[2:]
+			continue
+		}
+		if strings.HasPrefix(rest, "*") {
+			prefix += "*"
+			rest = rest[1:]
+			continue
+		}
+		break
+	}
+	if concrete, ok := genericTypes[rest]; ok {
+		return prefix + concrete
+	}
+	return fieldType
+}
+
 // generateStructSchema generates a schema for a struct type
 func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
@@ -1033,7 +1089,26 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 	keyParts := TypeParts(key)
 	genericTypes := map[string]string{}
 
-	if len(keyParts.GenericTypes) > 0 {
+	// concreteGenerics reports whether the key carries concrete type arguments
+	// (Page[User]) rather than the bare declaration (Page[T any]). Concrete
+	// arguments are single tokens; a declaration entry carries its constraint
+	// after a space ("T any").
+	concreteGenerics := len(keyParts.GenericTypes) > 0 && len(typ.TypeParams) > 0 &&
+		allConcreteGenericArgs(keyParts.GenericTypes)
+
+	switch {
+	case concreteGenerics:
+		// Zip declared type-parameter names (typ.TypeParams) positionally with
+		// the concrete arguments, so a parametric field (Data T / Items []T)
+		// substitutes to the concrete type.
+		for i, param := range typ.TypeParams {
+			if i < len(keyParts.GenericTypes) {
+				genericTypes[param] = keyParts.GenericTypes[i]
+			}
+		}
+	case len(keyParts.GenericTypes) > 0:
+		// Declaration form: keep the legacy placeholder behavior (field T maps
+		// to the "T-constraint" stand-in).
 		for _, part := range keyParts.GenericTypes {
 			genericType := strings.Split(part, " ")
 			genericTypes[genericType[0]] = strings.ReplaceAll(part, " ", "-")
@@ -1059,7 +1134,9 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			continue
 		}
 
-		if genericType, ok := genericTypes[fieldType]; ok {
+		if concreteGenerics {
+			fieldType = substituteTypeParams(fieldType, genericTypes)
+		} else if genericType, ok := genericTypes[fieldType]; ok {
 			fieldType = genericType
 		}
 

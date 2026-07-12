@@ -250,6 +250,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Function & method return types resolved from signatures.
 - Function literals (anonymous handlers).
 - Generics on functions (concrete types mapped at call sites).
+- Generic *types* (parametric structs) — a response envelope instantiated with concrete arguments at the encode site (`Page[User]{…}`, `Envelope[Product]{…}`) resolves to its own component with the type argument substituted into the parametric field (`Items []T` → array of `$ref User`, `Data T` → `$ref User`). Distinct instantiations of the same generic (`Page[User]` vs `Page[Product]`) get distinct schemas rather than collapsing onto a shared placeholder. See `testdata/generic_structs/`.
 - Interface types and methods (unresolved dynamic values rendered generically).
 - Parameter tracing across the call graph; arguments mapped to parameters.
 - Method chaining and nested call expressions.
@@ -267,7 +268,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 
 **Partial / not yet supported**
 
-- Generic *types* (parametric structs) — partially supported.
+- Generic *types* (parametric structs) — resolved when the instantiation is visible at the encode site (`Page[User]{…}`, above). Still not recovered when the concrete argument only exists behind a helper that erases it to `interface{}`/`any` (e.g. a `respondWithSuccess(w, data any)` that writes `APIResponse[any]{Data: data}`) — such payloads render as a generic object.
 - Interface-typed function parameters — not fully resolved to concrete types.
 - Same path + same status code with different schemas — not yet supported.
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).

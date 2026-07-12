@@ -10,7 +10,7 @@
 | 2 | ~~**Wire existing `testdata/` scenarios into `go test`**~~ ✅ DONE 2026-07-08 — all 11 orphaned fixtures now covered (see §3.1) | Regressions in whole frameworks currently only caught by manual `compare-spec.sh` | Low–Medium |
 | 3 | **Fix `internal/spec/tests/*.yaml` fixture hygiene** (tracked-but-gitignored, mutated by every test run, embed absolute temp paths) | Constant dirty-tree noise; non-portable; hides real changes | Low |
 | 4 | ~~**Mux path params → handler params**~~ ✅ DONE 2026-07-08 — `mux.Vars(r)["id"]` now wired (see §2.1) | Only framework in the support matrix with a hole in a core column | Medium |
-| 5 | **Generic types (parametric structs)** | README-declared partial; generics are mainstream Go now | High |
+| 5 | ~~**Generic types (parametric structs)**~~ ✅ DONE 2026-07-12 — `Page[User]`-style envelopes resolved when the instantiation is visible at the encode site (see §2.2) | README-declared partial; generics are mainstream Go now | High |
 | 6 | **Interface-typed param resolution** | README-declared gap + `docs/INTERFACE_RESOLUTION.md` future-work list | High |
 | 7 | ~~**Robustness regression fixtures for large/cyclic projects**~~ ✅ DONE 2026-07-08 — #10/#14 (recursive_types) + #20 (dense_graph) fixtures added; one open limitation noted (see §4) | Worst historical failures (hang, stack overflow, truncated output) have no regression tests | Medium |
 
@@ -39,7 +39,7 @@
 Ordered by proposed value:
 
 1. ~~**Gorilla Mux path params** detected but not wired into handler params~~ ✅ **DONE 2026-07-08** (§2.1 below).
-2. **Generic types** (parametric structs) — partial. Function generics work; `Page[T]`-style response envelopes are common in real APIs.
+2. ~~**Generic types** (parametric structs)~~ ✅ **DONE 2026-07-12** (§2.2 below). Function generics already worked; `Page[T]`-style response envelopes returned directly at the encode site now resolve to per-instantiation schemas.
 3. **Interface-typed parameters** not resolved to concrete types. `docs/INTERFACE_RESOLUTION.md` lists the future work: automatic discovery, cross-package resolution, generic interfaces.
 4. **Handler-factory pattern, part 2** — request-body-via-wrapper still pending (part 1, closure-returning routes, is done).
 5. **Router passed as function parameter** (not via Mount) isn't traversed — known fiber `/products` gap; deferred feature.
@@ -60,6 +60,20 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 > - **Regex-constrained params** (`{id:[0-9]+}`, mux/chi): `convertPathToOpenAPI` now strips the regex to `{id}` (OpenAPI paths can't carry a regex — previously the param was dropped entirely and the path was invalid) and surfaces the constraint as a schema `pattern`.
 > - **Key-mismatch diagnostic**: reachability wires `{id}` clean whenever the handler *reaches* `mux.Vars`, but it can't tell whether the code reads the *right* key. `recordPathVarKeyMismatches` recovers the literal keys actually read — via the assignment tracker (`vars := mux.Vars(r); vars["id"]`, tagged `CalleeFunc`/`CalleePkg`) and inline `mux.Vars(r)["id"]` — and reports any key with no matching placeholder (e.g. `mux.Vars(r)["userId"]` on `/users/{id}`, an always-empty read). Surfaced as a `[path-params]` CLI warning and programmatically via `Engine.GetPathParamMismatches()` / `Generator.PathParamMismatches()` (for the UI). Dynamic keys and keys passed into helpers aren't recovered — the diagnostic errs toward zero false positives.
 > - Guarded by `TestTestdata_MuxPathParams` (direct), `TestTestdata_MuxAdvancedPathParams` (regex + helper indirection + unread-placeholder-stays-warned), and `TestTestdata_MuxPathParamKeyMismatch` (typo key). Other frameworks' path params verified unchanged; no golden drift.
+
+### 2.2 Generic types (parametric structs) — ✅ DONE 2026-07-12
+
+> A response envelope instantiated with concrete arguments at the encode site — `json.NewEncoder(w).Encode(Page[User]{…})` — now resolves to its own component with the type argument substituted into the parametric fields, instead of collapsing every instantiation onto a single placeholder (`Page_T-any`) whose payload pointed at an empty `T-any` object.
+>
+> Root cause: the concrete argument *was* captured in metadata (a composite literal's type expression `Page[User]` is an `IndexExpr` whose index child is the `User` ident), but the spec layer's `callArgToString` rendered the index node as the bare **declaration** `Page[T any]` and dropped the argument. So `Page[User]` and `Page[Product]` both stringified to `Page[T any]` and shared one schema; the payload field (`Data T` / `Items []T`) mapped to a `T-any` stand-in and the concrete structs were never emitted.
+>
+> Fix (spec layer + one metadata field, contained blast radius):
+> - `metadata.processTypeSpec` now records a generic type's declared parameter names (`Type.TypeParams`, e.g. `["T"]`) — previously only functions carried this.
+> - `context_provider.callArgToString` renders a composite-literal generic instantiation as `Base[Arg1,…]` carrying the **concrete** arguments (stripping the base's own declaration brackets; reducing each argument to its simple type name so the bracketed form parses through `TypeParts` and sanitizes to a valid component name; `interface{}` → `any` so no illegal `{}` leaks into a `$ref`).
+> - `mapper.generateStructSchema` zips the declared parameter names (`typ.TypeParams`) positionally with the concrete arguments off the key and substitutes them into each field, preserving slice/pointer markers (`Items []T` → `[]User`, `Data T` → `User`). `findTypesInMetadata` skips the concrete argument as a top-level entry (it is emitted through the parametric struct's field resolution) so a single `goType` still maps to exactly one non-nil type — avoiding a non-deterministic shadow where `Page[User]` could resolve to `User`.
+> - Guarded by `TestTestdata_GenericStructs` (`Page[User]`/`Page[Product]` distinct, `Items`→`[]$ref`, `Envelope[User].data`→`$ref User`, `User`/`Product` emitted, no `_T-any` placeholder) + a structural row in `TestTestdata_Frameworks`. Fixture: `testdata/generic_structs/`.
+>
+> **Known limitation (deferred, related to §2 item 4).** When the concrete argument only exists behind a helper that erases it to `interface{}`/`any` — e.g. the existing `testdata/generic` fixture's `respondWithSuccess(w, data any)` writing `APIResponse[any]{Data: data}` — the payload still renders as a generic object. `T` is genuinely bound to `interface{}` at the encode site; recovering the route's real `TResponse` requires interprocedural type-argument threading through the helper boundary (the same shape as handler-factory part 2 / wrapper specialisation). That fixture's output improved as a side effect (the junk `APIResponse_T-any` + dangling `T-any` component became a clean `APIResponse_any` with an inline `object` `data`).
 
 ## 3. Testing gaps
 
@@ -102,5 +116,5 @@ All 8 historical issues are closed and there are zero open issues/PRs, but the w
 
 1. **Now (this branch / next):** finish determinism (1.1) — it unblocks everything test-shaped; fixture hygiene (3.2) rides along.
 2. **Next:** ~~wire orphaned testdata scenarios into smoke tests (3.1)~~ ✅ DONE 2026-07-08 + ~~robustness fixtures (4)~~ ✅ DONE 2026-07-08 (one open cyclic-graph limitation noted in §4) — locks in current behavior before feature work.
-3. **Then features by value:** mux path params → generic types → interface resolution → handler-factory part 2 → router-as-param → `dive`.
+3. **Then features by value:** ~~mux path params~~ ✅ → ~~generic types~~ ✅ → interface resolution → handler-factory part 2 → router-as-param → `dive`.
 4. **Continuous:** apispecui test baseline, PR-level coverage gate, housekeeping.

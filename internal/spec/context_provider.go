@@ -84,6 +84,22 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 		return "*"
 	case metadata.KindCompositeLit:
 		if arg.X != nil {
+			// A composite literal's type expression can be a generic
+			// instantiation (Page[User]{...} / Pair[K,V]{...}). Render it
+			// carrying the concrete type arguments — `Base[User]` — so the
+			// schema layer can substitute them into the parametric struct's
+			// fields, instead of falling back to the bare declaration
+			// (Page[T any]) and collapsing every instantiation together.
+			switch arg.X.GetKind() {
+			case metadata.KindIndex:
+				if arg.X.X != nil && arg.X.Fun != nil {
+					return c.genericInstantiationName(arg.X.X, []*metadata.CallArgument{arg.X.Fun})
+				}
+			case metadata.KindIndexList:
+				if arg.X.X != nil && len(arg.X.Args) > 0 {
+					return c.genericInstantiationName(arg.X.X, arg.X.Args)
+				}
+			}
 			return c.callArgToString(arg.X, nil)
 		}
 		return ""
@@ -260,6 +276,62 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 	}
 	// Fallback for unknown kinds
 	return ""
+}
+
+// genericInstantiationName renders a generic type instantiation as
+// `Base[Arg1,Arg2]` (literal brackets), preserving the concrete type
+// arguments so the schema layer resolves each instantiation to its own
+// component (Page[User] vs Page[Product]) rather than collapsing onto the bare
+// declaration. Base keeps its package qualifier (e.g. pkg-->Page); each type
+// argument is reduced to its simple type name so the resulting bracketed form
+// parses cleanly through TypeParts and sanitizes to a readable component name.
+// Cross-package type arguments are reduced to their base name (a known v1
+// limitation) rather than dropped.
+func (c *ContextProviderImpl) genericInstantiationName(base *metadata.CallArgument, typeArgs []*metadata.CallArgument) string {
+	baseStr := c.callArgToString(base, nil)
+	if baseStr == "" {
+		return ""
+	}
+	// The base ident renders with its own declared type parameters
+	// (Page[T any]); drop them — we re-append the concrete arguments below.
+	if i := strings.Index(baseStr, "["); i >= 0 {
+		baseStr = baseStr[:i]
+	}
+	args := make([]string, 0, len(typeArgs))
+	for _, a := range typeArgs {
+		if a == nil {
+			continue
+		}
+		if name := simpleGenericArgName(c.callArgToString(a, nil)); name != "" {
+			args = append(args, name)
+		}
+	}
+	if len(args) == 0 {
+		return baseStr
+	}
+	return baseStr + "[" + strings.Join(args, ",") + "]"
+}
+
+// simpleGenericArgName reduces a rendered type-argument string to its simple
+// type name, stripping package qualifiers (which use TypeSep, "/", or ".") and
+// any leading pointer/slice markers. Keeping the bracketed argument free of
+// TypeSep is what lets TypeParts recover it via its single-generic bracket
+// fallback.
+func simpleGenericArgName(s string) string {
+	s = strings.TrimPrefix(s, "[]")
+	s = strings.TrimPrefix(s, "*")
+	for _, sepr := range []string{TypeSep, "/", "."} {
+		if i := strings.LastIndex(s, sepr); i >= 0 {
+			s = s[i+len(sepr):]
+		}
+	}
+	// The empty interface is a valid type argument (APIResponse[interface{}])
+	// but "{" / "}" are illegal in an OpenAPI component name; normalize it to
+	// the equivalent "any" so the instantiation key stays valid.
+	if s == "interface{}" || s == "interface {}" {
+		return "any"
+	}
+	return s
 }
 
 // DefaultPackageName returns the default package name for an package path (last non-version segment)
