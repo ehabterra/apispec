@@ -49,6 +49,7 @@ output.txt
 test_output.txt
 coverage.txt
 coverage.html
+coverage.json
 
 /apispec
 /apidiag
