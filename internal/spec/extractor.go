@@ -35,6 +35,13 @@ type RouteInfo struct {
 	// for ordinary routes. Appended as "_<suffix>" to the computed operationId.
 	OperationIDSuffix string
 
+	// MethodExplicit is true when Method was resolved from the registration
+	// (a verb-carrying call/arg/path, e.g. router.GET or "GET /x"), and false
+	// when it fell back to the default. Only verb-less routes are eligible for
+	// r.Method-dispatch splitting — a router that registers a concrete verb
+	// won't dispatch the other verbs to the handler.
+	MethodExplicit bool
+
 	UsedTypes map[string]*Schema
 	Metadata  *metadata.Metadata
 

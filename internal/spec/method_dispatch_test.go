@@ -162,6 +162,35 @@ func TestSplitMethodDispatchRoutes_SplitsDispatchHandler(t *testing.T) {
 	}
 }
 
+// TestSplitMethodDispatchRoutes_SkipsExplicitMethod verifies that a route
+// registered with a concrete verb (MethodExplicit) is NOT split even when its
+// handler happens to branch on r.Method — the router only routes that one verb
+// to the handler.
+func TestSplitMethodDispatchRoutes_SkipsExplicitMethod(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	meta.Packages = map[string]*metadata.Package{
+		"pkg": {Files: map[string]*metadata.File{
+			"h.go": {Functions: map[string]*metadata.Function{
+				"h": {
+					Position: meta.StringPool.Get("h.go:1:1"),
+					MethodDispatch: []metadata.MethodBranch{
+						{Methods: []string{"GET"}, StartLine: 2, EndLine: 3},
+						{Methods: []string{"POST"}, StartLine: 4, EndLine: 6},
+					},
+				},
+			}},
+		}},
+	}
+	route := &RouteInfo{
+		Path: "/x", Method: "GET", MethodExplicit: true, // e.g. router.GET("/x", h)
+		Function: "pkg.h", Package: "pkg", Metadata: meta,
+	}
+	got := splitMethodDispatchRoutes([]*RouteInfo{route})
+	if len(got) != 1 || got[0].Method != "GET" {
+		t.Errorf("explicit-method route must not split; got %d routes %+v", len(got), got)
+	}
+}
+
 // splitMethodDispatchRoutes must pass through routes whose handler has no
 // dispatch (or no resolvable metadata) unchanged.
 func TestSplitMethodDispatchRoutes_PassThrough(t *testing.T) {

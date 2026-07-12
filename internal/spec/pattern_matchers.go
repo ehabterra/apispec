@@ -246,6 +246,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	if r.pattern.MethodFromCall {
 		funcName := r.contextProvider.GetString(edge.Callee.Name)
 		routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(funcName, r.pattern.MethodExtraction)
+		routeInfo.MethodExplicit = true
 		found = true
 	} else if r.pattern.MethodFromHandler && r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
 		// Extract method from handler function name
@@ -253,6 +254,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		handlerName := r.contextProvider.GetArgumentInfo(handlerArg)
 		if handlerName != "" {
 			routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
+			routeInfo.MethodExplicit = true
 			found = true
 		}
 	} else if r.pattern.MethodArgIndex >= 0 && len(edge.Args) > r.pattern.MethodArgIndex {
@@ -267,6 +269,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			// Check if it's a valid HTTP method
 			if r.isValidHTTPMethod(cleanMethod) {
 				routeInfo.Method = strings.ToUpper(cleanMethod)
+				routeInfo.MethodExplicit = true
 				found = true
 			} else {
 				// If not a valid method, try to extract from argument info
@@ -275,6 +278,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 					cleanArgInfo := strings.Trim(argInfo, "\"'")
 					if r.isValidHTTPMethod(cleanArgInfo) {
 						routeInfo.Method = strings.ToUpper(cleanArgInfo)
+						routeInfo.MethodExplicit = true
 						found = true
 					}
 				}
@@ -284,6 +288,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		// If we still don't have a method, try to infer from context (if enabled)
 		if routeInfo.Method == "" && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
 			routeInfo.Method = r.inferMethodFromContext(node, edge)
+			routeInfo.MethodExplicit = true
 			found = true
 		}
 	}
@@ -297,6 +302,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		if r.pattern.MethodFromPath {
 			if method, rest := splitMethodFromPath(path); method != "" {
 				routeInfo.Method = method
+				routeInfo.MethodExplicit = true
 				path = rest
 			}
 			path = normalizeServeMuxPath(path)

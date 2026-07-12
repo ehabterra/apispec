@@ -40,6 +40,12 @@ func methodDispatchFor(route *RouteInfo) ([]metadata.MethodBranch, string) {
 	if meta == nil || route.Function == "" {
 		return nil, ""
 	}
+	// A route registered with a concrete verb (router.GET, "POST /x", …) only
+	// receives that verb, so its handler's incidental r.Method branches are dead
+	// for this route — never split it. Only verb-less registrations dispatch.
+	if route.MethodExplicit {
+		return nil, ""
+	}
 	bare := route.Function
 	if route.Package != "" {
 		bare = strings.TrimPrefix(route.Function, route.Package+".")
