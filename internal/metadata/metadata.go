@@ -1467,6 +1467,36 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 					varName := metadata.StringPool.GetString(assign.VariableName)
 					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 				}
+			case *ast.DeclStmt:
+				// `var a Iface = Concrete{}` is a declaration, not an AssignStmt,
+				// so it isn't caught above — but the concrete right-hand side is
+				// exactly what lets interface-typed bodies resolve. Synthesize an
+				// assignment per (name, value) and reuse processAssignment.
+				gd, ok := expr.Decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					break
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for i, name := range vs.Names {
+						if name.Name == "_" || i >= len(vs.Values) {
+							continue
+						}
+						synth := &ast.AssignStmt{
+							Lhs:    []ast.Expr{name},
+							TokPos: name.Pos(),
+							Tok:    token.ASSIGN,
+							Rhs:    []ast.Expr{vs.Values[i]},
+						}
+						for _, assign := range processAssignment(synth, file, info, pkgName, fset, fileToInfo, funcMap, metadata) {
+							varName := metadata.StringPool.GetString(assign.VariableName)
+							assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
+						}
+					}
+				}
 			}
 			return true
 		})
