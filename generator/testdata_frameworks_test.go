@@ -119,6 +119,15 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/create", []string{"POST"}},
 			},
 		},
+		{
+			name:     "method_switch",
+			fallback: spec.DefaultHTTPConfig(),
+			routes: []route{
+				{"/users", []string{"GET", "POST"}},
+				{"/item", []string{"GET", "DELETE"}},
+				{"/ping", []string{"GET", "HEAD"}},
+			},
+		},
 	}
 
 	for _, tc := range cases {

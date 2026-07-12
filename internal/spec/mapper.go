@@ -271,8 +271,12 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		}
 
 		// Create operation
+		operationID := pkg + strings.Replace(strings.Replace(route.Function, TypeSep, ".", 1), pkg, "", 1)
+		if route.OperationIDSuffix != "" {
+			operationID += "_" + route.OperationIDSuffix
+		}
 		operation := &Operation{
-			OperationID: pkg + strings.Replace(strings.Replace(route.Function, TypeSep, ".", 1), pkg, "", 1),
+			OperationID: operationID,
 			Summary:     route.Summary,
 			Tags:        route.Tags,
 		}

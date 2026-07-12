@@ -499,6 +499,21 @@ type Function struct {
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
+
+	// MethodDispatch records the arms of an `r.Method` control-flow dispatch
+	// (a `switch r.Method` or an `if r.Method == …` chain) inside the function
+	// body, so a net/http handler that branches on the verb can be split into
+	// one operation per HTTP method. Empty for handlers that don't dispatch.
+	MethodDispatch []MethodBranch `yaml:"method_dispatch,omitempty"`
+}
+
+// MethodBranch is one arm of an `r.Method` dispatch: the HTTP method(s) it
+// handles and the source line range of its body, used to attribute each
+// branch's request/response to the right operation.
+type MethodBranch struct {
+	Methods   []string `yaml:"methods,omitempty"`    // e.g. ["GET"] or ["GET","HEAD"]
+	StartLine int      `yaml:"start_line,omitempty"` // first line of the branch body (inclusive)
+	EndLine   int      `yaml:"end_line,omitempty"`   // last line of the branch body (inclusive)
 }
 
 // Variable represents a variable

@@ -262,6 +262,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - CGO packages can be skipped to avoid build errors.
 - Dependency-injected route groups.
 - Go 1.22 `net/http.ServeMux` method-aware routing — patterns that carry the verb on the registration (`mux.HandleFunc("GET /users/{id}", getUser)`) are split into method + path, `{id}` wildcards become path parameters, and `r.PathValue("id")` is recognised as a path parameter. ServeMux-only syntax (`{path...}` trailing wildcards, the `{$}` end-of-path anchor) is normalised to OpenAPI templating. See `testdata/servemux/`.
+- Method dispatch in the handler — a single handler registered without a verb (`http.HandleFunc("/users", h)`) that branches on `r.Method` (`switch r.Method { case http.MethodGet: … }` or an `if r.Method == …` chain) is split into one operation per HTTP method, with each branch's request body and responses attributed to its own method (by source position) and unique operationIds. `http.MethodXxx` constants, plain `"GET"` literals, and multi-method cases (`case http.MethodGet, http.MethodHead:`) all resolve. See `testdata/method_switch/`. *Not yet:* two branches returning the same status code with different bodies (the shared status slot keeps one), and dispatch inside a receiver-method handler.
 - Handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())` where `Create() echo.HandlerFunc { return func(c) {…} }`), including when the handler is dispatched through an interface whose implementation lives in a different package.
 - Function-local named types used as request/response bodies (`type Login struct{…}` declared inside a handler) — captured from the function body and emitted as real component schemas rather than dangling `$ref`s.
 - Request bodies bound through a custom wrapper (`util.ReadRequest(c, &dto)` → `ctx.Bind(dto)`) — the concrete type is traced through the wrapper's parameters.
@@ -272,7 +273,6 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Interface-typed function parameters — not fully resolved to concrete types.
 - Same path + same status code with different schemas — not yet supported.
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
-- HTTP methods set via switch/if around `net/http.Handle`/`HandleFunc` — not detected.
 - `dive` validator tag (array-element validation) — planned.
 
 ### Selected capability highlights
