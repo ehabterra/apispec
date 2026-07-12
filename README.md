@@ -31,6 +31,7 @@
 - [Framework Support](#framework-support)
 - [Go Language Support](#go-language-support)
 - [How It Works](#how-it-works)
+  - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Configuration](#configuration)
 - [Programmatic Usage](#programmatic-usage)
 - [Performance & Limits](#performance--limits)
@@ -250,7 +251,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Function & method return types resolved from signatures.
 - Function literals (anonymous handlers).
 - Generics on functions (concrete types mapped at call sites).
-- Generic *types* (parametric structs) — a response envelope instantiated with concrete arguments resolves to its own component with the type argument substituted into the parametric field (`Items []T` → array of `$ref User`, `Data T` → `$ref User`). Distinct instantiations of the same generic (`Page[User]` vs `Page[Product]`) get distinct schemas rather than collapsing onto a shared placeholder. Covers: written instantiations (`Page[User]{…}`), multi-parameter generics (`Pair[User, Product]`), nested generics (`Envelope[Page[User]]`), and **inferred** instantiations where the type argument comes from a generic constructor rather than an explicit `[T]` (`NewEnvelope(product)` → `Envelope[Product]`). See `testdata/generic_structs/`.
+- Generic *types* (parametric structs) — an envelope instantiated with concrete arguments resolves to its own component with the type argument substituted into the parametric field (`Items []T` → array of `$ref User`, `Data T` → `$ref User`), and distinct instantiations of the same generic (`Page[User]` vs `Page[Product]`) get distinct schemas rather than collapsing onto a shared placeholder. Covers written instantiations (`Page[User]{…}`), multi-parameter generics (`Pair[User, Product]`), nested generics (`Envelope[Page[User]]`), compiler-**inferred** instantiations from a generic constructor (`NewEnvelope(product)` → `Envelope[Product]`), and a generic type used as a struct field (`Wrapper{ Page Page[User] }`). See `testdata/generic_structs/`. *Not yet:* payloads whose type argument only exists behind a helper that erases it to `interface{}`/`any` (`respondWithSuccess(w, data any)` writing `APIResponse[any]{Data: data}`) render as a generic object — the argument is genuinely `interface{}` at the encode site; and aliases / defined types over an instantiation (`type UserPage = Page[User]`) are not expanded. Generic **request** bodies resolve to the correct schema but may get a more verbose component name than the equivalent response, and cross-package type arguments resolve with the argument's package dropped from the name.
 - Interface types and methods (unresolved dynamic values rendered generically).
 - Parameter tracing across the call graph; arguments mapped to parameters.
 - Method chaining and nested call expressions.
@@ -268,7 +269,6 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 
 **Partial / not yet supported**
 
-- Generic *types* (parametric structs) — resolved when the instantiation is visible at the encode site (`Page[User]{…}`, above). Still not recovered when the concrete argument only exists behind a helper that erases it to `interface{}`/`any` (e.g. a `respondWithSuccess(w, data any)` that writes `APIResponse[any]{Data: data}`) — such payloads render as a generic object.
 - Interface-typed function parameters — not fully resolved to concrete types.
 - Same path + same status code with different schemas — not yet supported.
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
@@ -551,17 +551,59 @@ graph TD
     Q -.-> R[metadata.yaml]
 ```
 
-The pipeline:
+### The pipeline, step by step
 
-1. **Parse flags** and locate the module root (`go.mod`).
-2. **Load and type-check** all packages in the module.
-3. **Detect the framework** from dependencies.
-4. **Load configuration** — framework default, then `--config`, then CLI overrides.
-5. **Generate metadata** by walking the ASTs (packages, calls, constants).
-6. **Build the call graph** from route registrations down to the real handlers, bounded by `--max-nodes`, `--max-children`, `--max-recursion-depth`.
-7. **Map patterns** — framework-specific patterns identify routes, params, bodies, and responses.
-8. **Serialize** the OpenAPI object to YAML or JSON (chosen by the `--output` extension).
-9. **(Optional)** Write the call-graph HTML, the effective config, and/or the metadata file.
+APISpec turns Go source into an OpenAPI document through a fixed sequence of stages. Each stage below is described by its **role** (what it does), its **purpose** (why it exists in the pipeline), and its **importance** (what it enables, and what breaks without it). Every stage consumes the output of the previous one, so a weakness early on shows up as a missing route or a dangling `$ref` at the end.
+
+**1. Locate the module and select sources**
+- *Role:* Resolve the input directory, walk up to the enclosing `go.mod` to find the module root and import path, then apply include/exclude package and file filters.
+- *Purpose:* Fix the analysis boundary (what to read) and the module import path (used to fully-qualify every type name in the output).
+- *Importance:* The module path is the namespace for every schema `$ref`; get it wrong and types resolve to the wrong package or dangle. Filters keep large monorepos analyzable by excluding code that can't contain routes.
+
+**2. Load and type-check the packages**
+- *Role:* Load every in-scope package with `go/packages` requesting full syntax **and** type information, so the Go type checker (`go/types`) runs over the whole set.
+- *Purpose:* Give every expression, field, and call a *resolved* type — the ground truth the rest of the pipeline reads instead of guessing from names.
+- *Importance:* This is why APISpec understands real Go semantics — generics, type aliases, embedded fields, interface implementations, and cross-package types — rather than pattern-matching strings. Packages that fail to type-check are skipped (and reported) so one broken dependency doesn't abort the run.
+
+**3. Detect the framework**
+- *Role:* Inspect the module's dependencies to identify the web framework in use (Gin, Echo, Chi, Fiber, Gorilla Mux, or plain `net/http`).
+- *Purpose:* Choose the default pattern set that describes how *that* framework registers routes, params, bodies, and responses.
+- *Importance:* Every framework expresses the same concept ("GET /users/{id} → handler") with different API calls. Detection picks the config that already knows those idioms, so the common case needs zero hand-written patterns.
+
+**4. Load and merge the configuration**
+- *Role:* Layer configuration deterministically: framework default → `--config` file → CLI/programmatic overrides → auto-applied security/auth presets (selected from the project's imports, e.g. `golang-jwt`). Later layers win.
+- *Purpose:* Produce a single **effective, framework-agnostic** config that drives extraction — route/param/body/response patterns plus OpenAPI `info`, type mappings, external types, and security schemes.
+- *Importance:* The engine itself is generic; *all* framework- and project-specific knowledge lives in this config. The layering lets defaults "just work" while allowing surgical overrides without forking the engine. `--output-config` writes this merged result so you can see exactly what ran.
+
+**5. Generate metadata**
+- *Role:* Walk the type-checked ASTs into one normalized, string-interned model: packages, types (fields, JSON tags, declared type parameters), functions, a call graph of caller→callee edges, per-variable assignments, and the structured arguments of every call.
+- *Purpose:* Collapse scattered AST and `go/types` facts into a single queryable, deterministic, serializable structure that every later stage reads.
+- *Importance:* Nothing downstream touches the raw AST again — metadata is the substrate. String-pooling plus sorted iteration at every boundary make the output **deterministic** (clean release diffs and reliable golden tests), and `--write-metadata` dumps this model so a missed route can be debugged.
+
+**6. Build the tracker tree**
+- *Role:* Starting from each route-registration call site, expand the call graph down to the actual handler and the calls made inside it — through wrappers, groups, mounts, handler factories, and helper functions — bounded by `--max-nodes`, `--max-children`, `--max-recursion-depth`, and `--max-nested-args`. The default **lazy** tree expands subtrees on demand; the eager tree (`--legacy-tracker`) materializes them up front.
+- *Purpose:* Connect a route to the concrete code that actually serves it, following real control flow rather than assuming the handler lives where the route is declared.
+- *Importance:* In real codebases the handler is rarely at the registration site — it's behind middleware, a group closure, a mounted sub-router, or a factory. This traversal is what makes detection work across those styles. The bounds are the safety brake that turns a pathological (deep or cyclic) call graph into a truncation warning instead of a hang or out-of-memory.
+
+**7. Extract patterns**
+- *Role:* Match the configured framework patterns against the tracker tree to identify each route's method and path, its path/query parameters, its request body, and its responses — then resolve every one to a concrete Go type (dereferencing pointers, unwrapping aliases/enums, applying external-type mappings, and substituting generic type arguments).
+- *Purpose:* Translate raw calls ("this site registers `GET /users/{id}` and encodes a `Page[User]`") into structured, typed route facts.
+- *Importance:* This is where source code becomes API semantics. The fidelity of the final schema is decided here: correct path-parameter names, truthful response status codes, and fully-resolved types (including generic envelopes like `Page[User]`, nested `Envelope[Page[User]]`, and inferred instantiations).
+
+**8. Map to OpenAPI**
+- *Role:* Assemble the OpenAPI 3.1 object from the route facts and resolved types — paths and operations, request/response content, reusable component schemas (promoting named types to `$ref`s), and security requirements/schemes — while deduplicating and merging (e.g. dropping mount prefixes subsumed by a longer path, pairing status codes to bodies).
+- *Purpose:* Convert typed route facts into a single valid, well-formed specification document.
+- *Importance:* This stage produces the deliverable. Schema promotion and `$ref` handling, security wiring, and dedup here are what make the spec valid (no dangling references), clean (no duplicate or placeholder schemas), and non-redundant.
+
+**9. Serialize the specification**
+- *Role:* Marshal the OpenAPI object to YAML or JSON, chosen by the `--output` file extension.
+- *Purpose:* Emit the file that downstream tools consume — Redoc/Swagger UI, client/server code generators, and contract tests.
+- *Importance:* Serialization is deterministic (stable key ordering), so regenerating an unchanged project yields a byte-identical file — the foundation for meaningful diffs and golden-file CI.
+
+**10. Emit side outputs and diagnostics (optional but valuable)**
+- *Role:* On request, write the interactive call-graph diagram (`--diagram`), the effective merged config (`--output-config`), and/or the metadata dump (`--write-metadata`); always surface diagnostics — middleware detected but not mapped to a security scheme, path-parameter key mismatches, and packages skipped due to errors.
+- *Purpose:* Make the analysis inspectable and its gaps visible instead of silent.
+- *Importance:* This is the debuggability layer. When a route is missed or a type won't resolve, these artifacts are how you find out *why* — the difference between "it didn't work" and a fixable, located cause.
 
 ## Configuration
 
@@ -702,15 +744,28 @@ func main() {
 
 ## Performance & Limits
 
-APISpec applies safeguards to prevent runaway analysis. Defaults:
+### Analysis engine: lazy (default) vs eager
 
-| Parameter            | Default  | CLI flag                   |
-|----------------------|----------|----------------------------|
-| Max nodes / tree     | 50,000   | `--max-nodes`              |
-| Max children / node  | 500      | `--max-children`           |
-| Max args / function  | 100      | `--max-args`               |
-| Max nested arg depth | 100      | `--max-nested-args`        |
-| Max recursion depth  | 10       | `--max-recursion-depth`    |
+The [tracker tree](#the-pipeline-step-by-step) — the expansion of each route down to its real handler and the calls inside it — can be built by either of two engines. They share the metadata, extraction, and mapping stages, so their **output is equivalent** (guarded by a parity test over the fixtures); they differ only in *how* the tree is built and bounded.
+
+- **Lazy (default).** Expands subtrees on demand, only along the paths a query actually touches. Cost scales with what's *reachable from routes*, not with the total size of the codebase — so it tends to win on large projects where much of the code never participates in routing, and is comparable on projects where almost everything is reachable. It degrades gracefully on dense or cyclic graphs (a cumulative budget, then leaf stubs) rather than expanding exponentially.
+- **Eager (`--legacy-tracker`).** Materializes the whole tree up front. Retained as a comparison/escape hatch; occasionally marginally faster when nearly all code is reachable anyway, but uses more memory (the full tree is held at once).
+
+Choose with `--legacy-tracker` on the CLI, or the analysis-engine selector in the browser UI. When in doubt, keep the default (lazy).
+
+### Limits
+
+APISpec applies safeguards to prevent runaway analysis. **Not every knob applies to both engines** — the eager engine bounds recursion with explicit depth caps, while the lazy engine replaces those with a cumulative node budget plus an internal per-scope instance cap:
+
+| Parameter            | Default  | CLI flag                | Applies to                                                                 |
+|----------------------|----------|-------------------------|----------------------------------------------------------------------------|
+| Max nodes / tree     | 50,000   | `--max-nodes`           | **both** — eager: nodes per route tree; lazy: cumulative budget of distinct callees materialized across the whole on-demand expansion (then leaf stubs) |
+| Max children / node  | 500      | `--max-children`        | both                                                                       |
+| Max args / function  | 100      | `--max-args`            | both                                                                       |
+| Max nested arg depth | 100      | `--max-nested-args`     | **eager only**                                                             |
+| Max recursion depth  | 10       | `--max-recursion-depth` | **eager only**                                                             |
+
+Instead of the recursion-depth / nested-args caps, the lazy engine uses a fixed per-scope instance cap (≈ per handler): it keeps one copy of a shared helper per route so per-route value tracing stays accurate, but cuts the combinatorial copies a call diamond inside a single handler would otherwise create — the role the eager tree's per-ID recursion cap plays. This cap is internal (not a CLI flag); tune the lazy engine through `--max-nodes` / `--max-children` / `--max-args`.
 
 When a limit is reached, APISpec logs a clear warning, e.g.:
 
