@@ -2271,9 +2271,64 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgumen
 				}
 			}
 		}
+		// Interface-typed body: the concrete value is usually assigned in the
+		// enclosing handler (`var a Animal = Dog{}; Encode(a)`), not on this
+		// call's edge. Resolve it to the concrete type so the schema documents
+		// Dog rather than the empty Animal interface.
+		if concrete := r.concreteFromEnclosingFunc(arg, edge, originalType); concrete != "" {
+			return concrete
+		}
 	}
 
 	return originalType
+}
+
+// concreteFromEnclosingFunc resolves an interface-typed body argument to the
+// concrete type assigned to it in the enclosing handler. It only fires when the
+// original type is a known interface and the enclosing function assigns exactly
+// one concrete (non-interface) type to the variable — an ambiguous set of
+// concrete assignments keeps the interface (honest over wrong).
+func (r *ResponsePatternMatcherImpl) concreteFromEnclosingFunc(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
+	if edge == nil {
+		return ""
+	}
+	meta := edge.Callee.Meta
+	if meta == nil || !isInterfaceTypeName(originalType, meta) {
+		return ""
+	}
+	callerName := r.contextProvider.GetString(edge.Caller.Name)
+	if callerName == "" {
+		return ""
+	}
+	fn := findFunctionByName(meta, r.contextProvider.GetString(edge.Caller.Pkg), callerName)
+	if fn == nil {
+		return ""
+	}
+	concrete := ""
+	for _, a := range fn.AssignmentMap[arg.GetName()] {
+		if a.ConcreteType == 0 {
+			continue
+		}
+		ct := r.contextProvider.GetString(a.ConcreteType)
+		if ct == "" || isInterfaceTypeName(ct, meta) {
+			continue
+		}
+		if concrete != "" && concrete != ct {
+			return "" // more than one concrete type assigned — ambiguous
+		}
+		concrete = ct
+	}
+	return concrete
+}
+
+// isInterfaceTypeName reports whether a type name resolves, in metadata, to an
+// interface type.
+func isInterfaceTypeName(typeName string, meta *metadata.Metadata) bool {
+	if typeName == "" || meta == nil {
+		return false
+	}
+	t := typeByName(TypeParts(typeName), meta)
+	return t != nil && getStringFromPool(meta, t.Kind) == "interface"
 }
 
 // ParamPatternMatcherImpl implements ParamPatternMatcher

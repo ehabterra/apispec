@@ -128,6 +128,15 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/ping", []string{"GET", "HEAD"}},
 			},
 		},
+		{
+			name:     "interface_response",
+			fallback: spec.DefaultHTTPConfig(),
+			routes: []route{
+				{"/dog", []string{"POST"}},
+				{"/cat", []string{"POST"}},
+				{"/either", []string{"POST"}},
+			},
+		},
 	}
 
 	for _, tc := range cases {
