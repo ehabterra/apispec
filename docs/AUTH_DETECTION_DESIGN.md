@@ -316,8 +316,8 @@ paths:
    `Extractor.securityMatchers`) + identity resolver in security.go
    (`MiddlewareRef`, `middlewareRefFromArg` for ident/selector/call,
    `SecurityMapping.matches`, `resolveSecurity` with AND-merge / OR-alternatives
-   / public / unresolved + dedup). Unit-tested in security_test.go. Not yet
-   called from traversal (phase 4).
+   / public / unresolved + dedup). Unit-tested in security_test.go. Wired into
+   traversal by phase 4 (below).
 4. ✓ DONE — Traversal propagation + `RouteInfo.Security`. Threads accumulated
    `[]MiddlewareRef` (not resolved reqs) through the traversal and resolves once
    per route via `applyRouteSecurity`. Router-scope (`Use`) is correlated to
