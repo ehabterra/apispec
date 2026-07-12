@@ -9,6 +9,7 @@ package spike_test
 
 import (
 	"encoding/json"
+	"os"
 	"sort"
 	"testing"
 
@@ -74,12 +75,20 @@ func TestLazyTreeParity(t *testing.T) {
 		meta := fixtureMetadata(t, fx.dir)
 
 		apiCfg := fx.cfg()
+		// used-config.yaml is a gitignored generation artifact (see .gitignore),
+		// so it is absent on a clean checkout / CI. Load it when present for
+		// snapshot fidelity, otherwise fall back to the framework default —
+		// mirroring generator.loadTestdataWithFixtureConfig. Parity (lazy ==
+		// eager) holds under either config; the config only shapes what both
+		// engines see.
 		if fx.cfgFile != "" {
-			loaded, err := spec.LoadAPISpecConfig(fx.cfgFile)
-			if err != nil {
-				t.Fatalf("%s: load %s: %v", fx.dir, fx.cfgFile, err)
+			if _, statErr := os.Stat(fx.cfgFile); statErr == nil {
+				loaded, err := spec.LoadAPISpecConfig(fx.cfgFile)
+				if err != nil {
+					t.Fatalf("%s: load %s: %v", fx.dir, fx.cfgFile, err)
+				}
+				apiCfg = loaded
 			}
-			apiCfg = loaded
 		}
 
 		eager := intspec.NewTrackerTree(meta, limits, nil)

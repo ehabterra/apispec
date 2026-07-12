@@ -51,7 +51,7 @@ const state = {
 
 // View prefs persisted across refreshes so a reload lands the user back where
 // they were (which tab, which spec viewer, panel layout).
-const PERSIST_KEYS = ["mode", "specView", "panelCollapsed"];
+const PERSIST_KEYS = ["mode", "specView", "panelCollapsed", "legacyTracker"];
 const PERSIST_LS_KEY = "apispecui.view";
 
 function loadPersistedView() {

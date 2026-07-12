@@ -776,7 +776,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// Distinct mount contexts have distinct keys and still run — their
 	// fragments merge below.
 	if edge := node.GetEdge(); edge != nil {
-		routeID := routeInfo.MountPath + "" + edge.Callee.ID()
+		routeID := routeInfo.MountPath + chainSep + edge.Callee.ID()
 		if e.extractedRouteIDs[routeID] {
 			return
 		}

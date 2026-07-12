@@ -2,6 +2,7 @@ package engine
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,7 +37,11 @@ func TestResolveCallGraph_Wiring(t *testing.T) {
 	checked := 0
 	for i := range meta.CallGraph {
 		id := meta.CallGraph[i].Caller.BaseID()
-		if id == "" || id[:len(modPkg)+1] != modPkg+"." {
+		// HasPrefix rather than a fixed-width slice: a BaseID shorter than
+		// len(modPkg)+1 (short stdlib/framework callers like "main.main") would
+		// otherwise panic with slice-bounds-out-of-range instead of just
+		// failing the module-prefix check.
+		if !strings.HasPrefix(id, modPkg+".") {
 			continue
 		}
 		checked++
