@@ -31,6 +31,10 @@ func TestParseParts(t *testing.T) {
 		{"[]pkg.User", Parts{PkgName: "pkg", TypeName: "User"}},
 		// map syntax is not understood; the key leaks into PkgName.
 		{"map[string]pkg.User", Parts{PkgName: "map[string]pkg", TypeName: "User"}},
+		// unqualified base with a QUALIFIED argument: the dotted-base fallback
+		// scans into the bracket and mangles the split (inherited from the
+		// original implementation; pinned so a change is deliberate).
+		{"Container[pkg.User]", Parts{PkgName: "Container[pkg", TypeName: "User]"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -126,6 +130,8 @@ func TestSplitArgs(t *testing.T) {
 		{"K,V", []string{"K", "V"}},
 		{"T any, U comparable", []string{"T any", "U comparable"}},
 		{"Page[User], Box[Pair[K, V]]", []string{"Page[User]", "Box[Pair[K, V]]"}},
+		// A function-type argument keeps its parameter commas.
+		{"func(int, string), User", []string{"func(int, string)", "User"}},
 		{"  User  ", []string{"User"}},
 	}
 	for _, tt := range tests {

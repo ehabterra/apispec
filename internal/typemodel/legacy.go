@@ -25,6 +25,11 @@ type Parts struct {
 //
 //   - A bracketed generic whose base is unqualified (Container[T]) stays
 //     opaque: the brackets remain in TypeName and no arguments are split.
+//     When such a bracket carries a *qualified* argument
+//     (Container[pkg.User]), the dotted-base fallback scans into the bracket
+//     and mangles the split (PkgName "Container[pkg", TypeName "User]") —
+//     inherited from the original; callers never resolve such names, and the
+//     canonicalizer qualifies these forms before they reach lookups.
 //   - Exactly one leading "*" or "[]" marker is stripped from PkgName; other
 //     wrapper syntax (map[…], chan) is not understood and leaks into PkgName.
 //   - In the legacy pkg-->Type-->Arg form, trailing segments become
@@ -73,9 +78,11 @@ func ParseParts(typeName string) Parts {
 
 // SplitArgs splits the contents of a generic bracket (`K,V` /
 // `T any, U comparable`) on top-level commas, keeping commas inside nested
-// brackets intact, and trims surrounding whitespace from each argument. An
-// empty input yields no arguments. Exact port of the spec layer's
-// splitGenericArgs; also used by the structured parser.
+// brackets or parentheses intact (a function-type argument like
+// `F[func(int, string)]` is one argument), and trims surrounding whitespace
+// from each argument. An empty input yields no arguments. Port of the spec
+// layer's splitGenericArgs, extended with parenthesis tracking (the original
+// split function-type arguments apart); also used by the structured parser.
 func SplitArgs(s string) []string {
 	var (
 		result []string
@@ -84,10 +91,10 @@ func SplitArgs(s string) []string {
 	)
 	for _, ch := range s {
 		switch ch {
-		case '[':
+		case '[', '(':
 			depth++
 			cur.WriteRune(ch)
-		case ']':
+		case ']', ')':
 			depth--
 			cur.WriteRune(ch)
 		case ',':
