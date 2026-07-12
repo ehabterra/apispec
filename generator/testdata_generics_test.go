@@ -25,7 +25,7 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	for _, p := range []string{"/users", "/products", "/user", "/pair"} {
+	for _, p := range []string{"/users", "/products", "/user", "/pair", "/nested", "/inferred"} {
 		item, ok := out.Paths[p]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", p, mapPathKeys(out.Paths))
@@ -111,6 +111,36 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	}
 	if second := pair.Properties["second"]; second == nil || !strings.HasSuffix(second.Ref, "_Product") {
 		t.Errorf("Pair.second = %+v, want a $ref to the Product component", second)
+	}
+
+	// Nested: Envelope[Page[User]] — the type argument is itself a generic
+	// instantiation. data must resolve to the Page[User] envelope (not a
+	// placeholder), and that Page must carry items -> $ref User.
+	_, nested := findSchema("_structs_Envelope_Page_User")
+	if nested == nil {
+		t.Fatalf("Envelope_Page_User (nested) component missing; have %v", mapSchemaKeys(schemas))
+	}
+	nestedData := nested.Properties["data"]
+	if nestedData == nil || !strings.HasSuffix(nestedData.Ref, "_Page_User") {
+		t.Fatalf("nested Envelope.data = %+v, want a $ref to the Page_User component", nestedData)
+	}
+	_, nestedPage := findSchema("_structs_Page_User")
+	if nestedPage == nil || nestedPage.Properties["items"] == nil ||
+		nestedPage.Properties["items"].Items == nil ||
+		!strings.HasSuffix(nestedPage.Properties["items"].Items.Ref, "_User") {
+		t.Errorf("nested Page_User.items = %+v, want array of $ref User", nestedPage)
+	}
+
+	// Inferred: NewEnvelope(products[0]) is Envelope[Product] with no explicit
+	// [Product] at the encode site. It must resolve to the same clean component
+	// as a written Envelope[Product] (data -> $ref Product), not embed the
+	// argument's full package path in the name.
+	_, inferred := findSchema("_structs_Envelope_Product")
+	if inferred == nil {
+		t.Fatalf("Envelope_Product (inferred) component missing; have %v", mapSchemaKeys(schemas))
+	}
+	if data := inferred.Properties["data"]; data == nil || !strings.HasSuffix(data.Ref, "_Product") {
+		t.Errorf("inferred Envelope.data = %+v, want a $ref to the Product component", data)
 	}
 
 	// No lingering unsubstituted placeholder (the pre-fix Page_T-any / T-any).

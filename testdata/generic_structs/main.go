@@ -69,6 +69,25 @@ func getPair(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Pair[User, Product]{First: users[0], Second: products[0]})
 }
 
+// getNested returns a NESTED generic — Envelope[Page[User]] — where the type
+// argument is itself a generic instantiation. data must resolve to the Page
+// envelope (items → User), not a placeholder.
+func getNested(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(Envelope[Page[User]]{Data: Page[User]{Items: users}})
+}
+
+// NewEnvelope is a generic constructor; T is INFERRED from the argument type.
+func NewEnvelope[T any](data T) Envelope[T] {
+	return Envelope[T]{Data: data}
+}
+
+// getInferred returns an INFERRED instantiation: NewEnvelope(products[0]) is
+// Envelope[Product] with no explicit [Product] at the encode site — the type
+// argument is inferred from the call. data must resolve to Product.
+func getInferred(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(NewEnvelope(products[0]))
+}
+
 var users = []User{{ID: 1, Name: "Alice", Email: "alice@example.com"}}
 var products = []Product{{SKU: "A-1", Price: 9.99}}
 
@@ -77,5 +96,7 @@ func main() {
 	http.HandleFunc("/products", listProducts)
 	http.HandleFunc("/user", getUser)
 	http.HandleFunc("/pair", getPair)
+	http.HandleFunc("/nested", getNested)
+	http.HandleFunc("/inferred", getInferred)
 	http.ListenAndServe(":8080", nil)
 }

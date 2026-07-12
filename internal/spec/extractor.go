@@ -2029,6 +2029,11 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			}
 		}
 
+		// Inferred generic instantiations arrive as the go/types string
+		// (pkg.Envelope[pkg.Product]); fold them into the internal form so they
+		// key to the same clean component as a written Envelope[Product].
+		bodyType = normalizeGenericInstanceName(bodyType)
+
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 
 		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)

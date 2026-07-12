@@ -302,7 +302,7 @@ func (c *ContextProviderImpl) genericInstantiationName(base *metadata.CallArgume
 		if a == nil {
 			continue
 		}
-		if name := simpleGenericArgName(c.callArgToString(a, nil)); name != "" {
+		if name := c.renderGenericArg(a); name != "" {
 			args = append(args, name)
 		}
 	}
@@ -313,6 +313,50 @@ func (c *ContextProviderImpl) genericInstantiationName(base *metadata.CallArgume
 	// "-", so a multi-argument instantiation (Pair[User, Product]) yields a
 	// valid component name (…Pair_User-Product) with no raw comma.
 	return baseStr + "[" + strings.Join(args, ", ") + "]"
+}
+
+// renderGenericArg renders one type argument of a generic instantiation. A
+// nested generic argument (the Page[User] in Envelope[Page[User]]) is rendered
+// recursively with its base reduced to a simple name — Page[User] — so that
+// once the enclosing type's package is glued back on during field resolution
+// it parses through TypeParts as pkg.Page[User] and resolves. Non-generic
+// arguments reduce to their simple type name.
+func (c *ContextProviderImpl) renderGenericArg(a *metadata.CallArgument) string {
+	switch a.GetKind() {
+	case metadata.KindIndex:
+		if a.X != nil && a.Fun != nil {
+			if inner := c.renderGenericArg(a.Fun); inner != "" {
+				return c.simpleGenericBase(a.X) + "[" + inner + "]"
+			}
+		}
+	case metadata.KindIndexList:
+		if a.X != nil && len(a.Args) > 0 {
+			inners := make([]string, 0, len(a.Args))
+			for _, sub := range a.Args {
+				if sub == nil {
+					continue
+				}
+				if s := c.renderGenericArg(sub); s != "" {
+					inners = append(inners, s)
+				}
+			}
+			if len(inners) > 0 {
+				return c.simpleGenericBase(a.X) + "[" + strings.Join(inners, ", ") + "]"
+			}
+		}
+	}
+	return simpleGenericArgName(c.callArgToString(a, nil))
+}
+
+// simpleGenericBase reduces a generic base expression to its unqualified type
+// name (Page), stripping both its declared type-parameter brackets and its
+// package qualifier.
+func (c *ContextProviderImpl) simpleGenericBase(a *metadata.CallArgument) string {
+	s := c.callArgToString(a, nil)
+	if i := strings.Index(s, "["); i >= 0 {
+		s = s[:i]
+	}
+	return simpleGenericArgName(s)
 }
 
 // simpleGenericArgName reduces a rendered type-argument string to its simple

@@ -956,31 +956,36 @@ type Parts struct {
 
 func TypeParts(typeName string) Parts {
 	parts := Parts{}
-	typeParts := strings.Split(typeName, TypeSep)
 
-	if len(typeParts) == 1 {
-		lastSep := strings.LastIndex(typeName, defaultSep)
-		if lastSep > 0 {
-			parts.PkgName = typeName[:lastSep]
-			parts.TypeName = typeName[lastSep+1:]
-		} else {
-			parts.TypeName = typeName
+	// Peel off a generic argument list first so every qualified form is handled
+	// uniformly: the internal form (pkg-->Type[Arg]) from composite-literal
+	// rendering AND the go/types form (pkg.Type[pkg.Arg]) that inferred
+	// instantiations and nested field types produce — including nested
+	// (Page[Box[User]]) and multi-argument (Pair[K,V]) brackets. A bare
+	// unqualified generic (Container[T], no package) stays opaque, matching the
+	// prior behavior for local/unresolvable type names.
+	base := typeName
+	if open := strings.Index(typeName, "["); open >= 0 && strings.HasSuffix(typeName, "]") {
+		b := typeName[:open]
+		if strings.Contains(b, TypeSep) || strings.Contains(b, defaultSep) {
+			base = b
+			parts.GenericTypes = splitGenericArgs(typeName[open+1 : len(typeName)-1])
 		}
-	} else if len(typeParts) > 1 {
-		parts.PkgName = typeParts[0]
-		parts.TypeName = typeParts[1]
-		parts.GenericTypes = typeParts[2:]
 	}
 
-	if len(typeParts) == 2 {
-		if open := strings.Index(typeParts[1], "["); open >= 0 && strings.HasSuffix(typeParts[1], "]") {
-			parts.TypeName = typeParts[1][:open]
-			inner := typeParts[1][open+1 : len(typeParts[1])-1]
-			// Split multi-argument generics (Pair[K,V]) into separate args so
-			// each declared type parameter can be zipped with its own concrete
-			// argument. Nested brackets (Page[Box[User]]) stay in one arg.
-			parts.GenericTypes = splitGenericArgs(inner)
+	baseParts := strings.Split(base, TypeSep)
+	if len(baseParts) >= 2 {
+		parts.PkgName = baseParts[0]
+		parts.TypeName = baseParts[1]
+		// pkg-->Type-->Arg form (no brackets): trailing segments are the args.
+		if len(parts.GenericTypes) == 0 && len(baseParts) > 2 {
+			parts.GenericTypes = baseParts[2:]
 		}
+	} else if lastSep := strings.LastIndex(base, defaultSep); lastSep > 0 {
+		parts.PkgName = base[:lastSep]
+		parts.TypeName = base[lastSep+1:]
+	} else {
+		parts.TypeName = base
 	}
 
 	parts.PkgName = strings.TrimPrefix(parts.PkgName, "*")
@@ -1022,6 +1027,51 @@ func splitGenericArgs(s string) []string {
 		result = append(result, strings.TrimSpace(cur.String()))
 	}
 	return result
+}
+
+// normalizeGenericInstanceName rewrites a generic instantiation rendered in the
+// go/types form (pkg.Type[pkg.Arg], produced by inferred instantiations whose
+// body type comes from the call's return type) into the internal form
+// pkg-->Type[Arg] with arguments reduced to their simple names — so an inferred
+// Envelope[Product] keys to the same clean component as a written one instead
+// of embedding the full package path of each argument. Names already in the
+// internal form, and bare unqualified generics (Container[T]), are returned
+// unchanged.
+func normalizeGenericInstanceName(s string) string {
+	open := strings.Index(s, "[")
+	if open < 0 || !strings.HasSuffix(s, "]") {
+		return s
+	}
+	base := s[:open]
+	if !strings.Contains(base, TypeSep) && !strings.Contains(base, defaultSep) {
+		return s
+	}
+	args := splitGenericArgs(s[open+1 : len(s)-1])
+	for i, a := range args {
+		args[i] = simplifyGenericArg(a)
+	}
+	// Convert a dotted base (pkg.Type) to the internal pkg-->Type form; a base
+	// already in TypeSep form is left as-is.
+	if !strings.Contains(base, TypeSep) {
+		if dot := strings.LastIndex(base, defaultSep); dot >= 0 {
+			base = base[:dot] + TypeSep + base[dot+1:]
+		}
+	}
+	return base + "[" + strings.Join(args, ", ") + "]"
+}
+
+// simplifyGenericArg reduces a type argument to its simple base name, recursing
+// into nested instantiations (pkg.Page[pkg.User] -> Page[User]) so the enclosing
+// type's package can be re-glued during field resolution.
+func simplifyGenericArg(a string) string {
+	if open := strings.Index(a, "["); open >= 0 && strings.HasSuffix(a, "]") {
+		inner := splitGenericArgs(a[open+1 : len(a)-1])
+		for i, x := range inner {
+			inner[i] = simplifyGenericArg(x)
+		}
+		return simpleGenericArgName(a[:open]) + "[" + strings.Join(inner, ", ") + "]"
+	}
+	return simpleGenericArgName(a)
 }
 
 const generateSchemaFromTypeKey = "generateSchemaFromType"

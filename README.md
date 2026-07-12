@@ -250,7 +250,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Function & method return types resolved from signatures.
 - Function literals (anonymous handlers).
 - Generics on functions (concrete types mapped at call sites).
-- Generic *types* (parametric structs) — a response envelope instantiated with concrete arguments at the encode site (`Page[User]{…}`, `Envelope[Product]{…}`) resolves to its own component with the type argument substituted into the parametric field (`Items []T` → array of `$ref User`, `Data T` → `$ref User`). Distinct instantiations of the same generic (`Page[User]` vs `Page[Product]`) get distinct schemas rather than collapsing onto a shared placeholder. See `testdata/generic_structs/`.
+- Generic *types* (parametric structs) — a response envelope instantiated with concrete arguments resolves to its own component with the type argument substituted into the parametric field (`Items []T` → array of `$ref User`, `Data T` → `$ref User`). Distinct instantiations of the same generic (`Page[User]` vs `Page[Product]`) get distinct schemas rather than collapsing onto a shared placeholder. Covers: written instantiations (`Page[User]{…}`), multi-parameter generics (`Pair[User, Product]`), nested generics (`Envelope[Page[User]]`), and **inferred** instantiations where the type argument comes from a generic constructor rather than an explicit `[T]` (`NewEnvelope(product)` → `Envelope[Product]`). See `testdata/generic_structs/`.
 - Interface types and methods (unresolved dynamic values rendered generically).
 - Parameter tracing across the call graph; arguments mapped to parameters.
 - Method chaining and nested call expressions.
