@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # push the badge data to the `badges` branch
+  contents: write   # <-- Needed for pushing changes
 
 jobs:
   coverage:
@@ -16,34 +16,38 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
         go-version: '1.26.2'
 
-    - name: Compute coverage badge data
-      run: |
-        chmod +x scripts/update-coverage-badge.sh
-        ./scripts/update-coverage-badge.sh
+    - name: Make script executable
+      run: chmod +x scripts/update-coverage-badge.sh
 
-    - name: Publish badge data to the badges branch
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Run coverage badge update script
+      run: ./scripts/update-coverage-badge.sh
+
+    - name: Commit and push changes
       run: |
-        # The badge lives on a dedicated, unprotected `badges` branch as a
-        # shields.io endpoint file, so updating it never touches the protected
-        # main branch. Build the branch in a throwaway repo and force-push it
-        # (badge data has no history worth keeping).
-        tmp="$(mktemp -d)"
-        cp coverage.json "$tmp/coverage.json"
-        cd "$tmp"
-        git init -q
-        git config user.email "action@github.com"
-        git config user.name "GitHub Action"
-        git checkout -q -b badges
-        git add coverage.json
-        git commit -q -m "Update coverage badge data"
-        git push -q --force \
-          "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-          badges
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add changes
+        git add README.md
+        
+        # Check if there are changes to commit
+        if git diff --quiet && git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          echo "Committing changes..."
+          git commit -m "Update coverage badge"
+          
+          # Push changes to main branch
+          echo "Pushing to main branch"
+          git push origin main
+        fi
