@@ -149,9 +149,12 @@ func parse(s string) *TypeRef {
 		t.Elem = parse(s[len("chan "):])
 		return t
 	case strings.HasPrefix(s, "["):
-		// Array with a length: [N]Elem. Anything bracketed that doesn't
-		// close before more input falls through to the opaque named fallback.
-		if i := strings.IndexByte(s, ']'); i > 1 && i < len(s)-1 {
+		// Array with a length: [N]Elem. The length is a constant expression
+		// and may itself contain brackets ([len([3]int{})]byte), so find the
+		// matching close bracket, not the first one. Anything bracketed that
+		// doesn't close before more input falls through to the opaque named
+		// fallback.
+		if i := matchingBracket(s); i > 1 && i < len(s)-1 {
 			t.Kind = KindArray
 			t.Len = s[1:i]
 			t.Elem = parse(s[i+1:])
@@ -160,6 +163,24 @@ func parse(s string) *TypeRef {
 	}
 	parseNamed(s, t)
 	return t
+}
+
+// matchingBracket returns the index of the "]" closing the "[" at s[0], or -1
+// when the bracket never closes.
+func matchingBracket(s string) int {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // splitMapKey splits "K]V" (the remainder of "map[K]V") at the bracket that

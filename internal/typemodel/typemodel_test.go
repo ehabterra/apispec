@@ -103,6 +103,11 @@ func TestRender(t *testing.T) {
 		{"Page[T any]", "Page[T any]", "Page[T any]", "Page[T any]"},
 		{"chan<- int", "chan<- int", "chan<- int", "chan<- int"},
 		{"[4]byte", "[4]byte", "[4]byte", "[4]byte"},
+		// An array length is a constant expression and may itself contain
+		// brackets; the matching close bracket ends the length.
+		{"[len([3]int{})]byte", "[len([3]int{})]byte", "[len([3]int{})]byte", "[len([3]int{})]byte"},
+		// A function-type argument is one argument, commas and all.
+		{"Box[func(int, string)]", "Box[func(int, string)]", "Box[func(int, string)]", "Box[func(int, string)]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
