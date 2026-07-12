@@ -108,6 +108,26 @@ scripts/compare-spec.sh                            # regenerate/diff fixture sna
 - Adding framework support: `internal/core/detector.go` → new
   `internal/spec/config_<framework>.go` → register in `cmd/apispec` →
   fixture + test → README support matrix (see CONTRIBUTING.md).
+- **Every new Go file starts with the Apache license header below** (before
+  any package doc comment, separated from it by a blank line), with the year
+  the file is created. Fixture projects (`testdata/`, `test_cgo_mixed/`) are
+  exempt.
+
+  ```go
+  // Copyright <current year> Ehab Terra
+  //
+  // Licensed under the Apache License, Version 2.0 (the "License");
+  // you may not use this file except in compliance with the License.
+  // You may obtain a copy of the License at
+  //
+  //     http://www.apache.org/licenses/LICENSE-2.0
+  //
+  // Unless required by applicable law or agreed to in writing, software
+  // distributed under the License is distributed on an "AS IS" BASIS,
+  // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  // See the License for the specific language governing permissions and
+  // limitations under the License.
+  ```
 
 ## Things never to do
 
