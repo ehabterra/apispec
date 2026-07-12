@@ -8,10 +8,13 @@ import (
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const (
-	TypeSep    = "-->"
+	// TypeSep aliases the type model's package/type separator; the single
+	// source of truth is internal/typemodel.
+	TypeSep    = typemodel.Sep
 	defaultSep = "."
 )
 

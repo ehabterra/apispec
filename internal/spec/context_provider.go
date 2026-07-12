@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 // ContextProviderImpl implements ContextProvider
@@ -360,25 +361,12 @@ func (c *ContextProviderImpl) simpleGenericBase(a *metadata.CallArgument) string
 }
 
 // simpleGenericArgName reduces a rendered type-argument string to its simple
-// type name, stripping package qualifiers (which use TypeSep, "/", or ".") and
-// any leading pointer/slice markers. Keeping the bracketed argument free of
-// TypeSep is what lets TypeParts recover it via its single-generic bracket
-// fallback.
+// type name, stripping package qualifiers and any leading pointer/slice
+// markers, and normalizing interface{} to "any". Keeping the bracketed
+// argument free of TypeSep is what lets TypeParts recover it via its
+// single-generic bracket fallback. Transitional: delegates to typemodel.
 func simpleGenericArgName(s string) string {
-	s = strings.TrimPrefix(s, "[]")
-	s = strings.TrimPrefix(s, "*")
-	for _, sepr := range []string{TypeSep, "/", "."} {
-		if i := strings.LastIndex(s, sepr); i >= 0 {
-			s = s[i+len(sepr):]
-		}
-	}
-	// The empty interface is a valid type argument (APIResponse[interface{}])
-	// but "{" / "}" are illegal in an OpenAPI component name; normalize it to
-	// the equivalent "any" so the instantiation key stays valid.
-	if s == "interface{}" || s == "interface {}" {
-		return "any"
-	}
-	return s
+	return typemodel.SimpleName(s)
 }
 
 // DefaultPackageName returns the default package name for an package path (last non-version segment)

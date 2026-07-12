@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const (
@@ -952,168 +953,23 @@ func typeInPackage(pkg *metadata.Package, typeName string) *metadata.Type {
 	return nil
 }
 
-type Parts struct {
-	PkgName      string
-	TypeName     string
-	GenericTypes []string
-}
+// Parts is the flat package/type/arguments view of a string-encoded type
+// name. It lives in the typemodel package now (the structured type model);
+// this alias keeps the spec API stable during the migration.
+type Parts = typemodel.Parts
 
+// TypeParts splits a string-encoded type name into its package, type, and
+// generic-argument parts. Transitional: delegates to typemodel; new code
+// should use typemodel.Parse and consume the structured TypeRef.
 func TypeParts(typeName string) Parts {
-	parts := Parts{}
-
-	// Peel off a generic argument list first so every qualified form is handled
-	// uniformly: the internal form (pkg-->Type[Arg]) from composite-literal
-	// rendering AND the go/types form (pkg.Type[pkg.Arg]) that inferred
-	// instantiations and nested field types produce — including nested
-	// (Page[Box[User]]) and multi-argument (Pair[K,V]) brackets. A bare
-	// unqualified generic (Container[T], no package) stays opaque, matching the
-	// prior behavior for local/unresolvable type names.
-	base := typeName
-	if open := strings.Index(typeName, "["); open >= 0 && strings.HasSuffix(typeName, "]") {
-		b := typeName[:open]
-		if strings.Contains(b, TypeSep) || strings.Contains(b, defaultSep) {
-			base = b
-			parts.GenericTypes = splitGenericArgs(typeName[open+1 : len(typeName)-1])
-		}
-	}
-
-	baseParts := strings.Split(base, TypeSep)
-	if len(baseParts) >= 2 {
-		parts.PkgName = baseParts[0]
-		parts.TypeName = baseParts[1]
-		// pkg-->Type-->Arg form (no brackets): trailing segments are the args.
-		if len(parts.GenericTypes) == 0 && len(baseParts) > 2 {
-			parts.GenericTypes = baseParts[2:]
-		}
-	} else if lastSep := strings.LastIndex(base, defaultSep); lastSep > 0 {
-		parts.PkgName = base[:lastSep]
-		parts.TypeName = base[lastSep+1:]
-	} else {
-		parts.TypeName = base
-	}
-
-	parts.PkgName = strings.TrimPrefix(parts.PkgName, "*")
-	parts.PkgName = strings.TrimPrefix(parts.PkgName, "[]")
-
-	return parts
+	return typemodel.ParseParts(typeName)
 }
 
-// splitGenericArgs splits the contents of a generic bracket (`K,V` /
-// `T any, U comparable`) on top-level commas, keeping commas inside nested
-// brackets intact, and trims surrounding whitespace from each argument. An
-// empty input yields no arguments.
-func splitGenericArgs(s string) []string {
-	var (
-		result []string
-		cur    strings.Builder
-		depth  int
-	)
-	for _, ch := range s {
-		switch ch {
-		case '[':
-			depth++
-			cur.WriteRune(ch)
-		case ']':
-			depth--
-			cur.WriteRune(ch)
-		case ',':
-			if depth == 0 {
-				result = append(result, strings.TrimSpace(cur.String()))
-				cur.Reset()
-				continue
-			}
-			cur.WriteRune(ch)
-		default:
-			cur.WriteRune(ch)
-		}
-	}
-	if strings.TrimSpace(cur.String()) != "" {
-		result = append(result, strings.TrimSpace(cur.String()))
-	}
-	return result
-}
-
-// normalizeGenericInstanceName rewrites a generic instantiation rendered in the
-// go/types form (pkg.Type[pkg.Arg], produced by inferred instantiations whose
-// body type comes from the call's return type) into the internal form
-// pkg-->Type[Arg] with arguments reduced to their simple names — so an inferred
-// Envelope[Product] keys to the same clean component as a written one instead
-// of embedding the full package path of each argument. Names already in the
-// internal form, and bare unqualified generics (Container[T]), are returned
-// unchanged.
+// normalizeGenericInstanceName rewrites a generic instantiation rendered in
+// the go/types form (pkg.Type[pkg.Arg]) into the internal pkg-->Type[Arg]
+// form with simple argument names. Transitional: delegates to typemodel.
 func normalizeGenericInstanceName(s string) string {
-	open := strings.Index(s, "[")
-	if open < 0 || !strings.HasSuffix(s, "]") {
-		return s
-	}
-	base := s[:open]
-	args := splitGenericArgs(s[open+1 : len(s)-1])
-
-	// Request-body var types can render with an unqualified base but a
-	// package-qualified argument (`Page[github.com/acme/svc.User]`). Qualify the
-	// base from the first qualified argument's package so it keys to the same
-	// component as the encode-site form (`…svc-->Page[User]`) — an envelope and
-	// its payload almost always co-locate. If nothing qualifies the base it's a
-	// bare local generic (`Container[T]`); leave it opaque.
-	if !strings.Contains(base, TypeSep) && !strings.Contains(base, defaultSep) {
-		pkg := ""
-		for _, a := range args {
-			if p := genericArgPackage(a); p != "" {
-				pkg = p
-				break
-			}
-		}
-		if pkg == "" {
-			return s
-		}
-		base = pkg + TypeSep + base
-	}
-
-	for i, a := range args {
-		args[i] = simplifyGenericArg(a)
-	}
-	// Convert a dotted base (pkg.Type) to the internal pkg-->Type form; a base
-	// already in TypeSep form is left as-is.
-	if !strings.Contains(base, TypeSep) {
-		if dot := strings.LastIndex(base, defaultSep); dot >= 0 {
-			base = base[:dot] + TypeSep + base[dot+1:]
-		}
-	}
-	return base + "[" + strings.Join(args, ", ") + "]"
-}
-
-// genericArgPackage returns the package qualifier of a rendered type argument
-// (`github.com/acme/svc.User` -> `github.com/acme/svc`, `pkg-->User` -> `pkg`),
-// or "" when the argument is unqualified. Only the segment before any nested
-// bracket is considered, so `pkg.Page[pkg.User]` yields `pkg`.
-func genericArgPackage(arg string) string {
-	arg = strings.TrimPrefix(arg, "[]")
-	arg = strings.TrimPrefix(arg, "*")
-	if i := strings.LastIndex(arg, TypeSep); i >= 0 {
-		return arg[:i]
-	}
-	head := arg
-	if b := strings.Index(arg, "["); b >= 0 {
-		head = arg[:b]
-	}
-	if dot := strings.LastIndex(head, defaultSep); dot >= 0 {
-		return head[:dot]
-	}
-	return ""
-}
-
-// simplifyGenericArg reduces a type argument to its simple base name, recursing
-// into nested instantiations (pkg.Page[pkg.User] -> Page[User]) so the enclosing
-// type's package can be re-glued during field resolution.
-func simplifyGenericArg(a string) string {
-	if open := strings.Index(a, "["); open >= 0 && strings.HasSuffix(a, "]") {
-		inner := splitGenericArgs(a[open+1 : len(a)-1])
-		for i, x := range inner {
-			inner[i] = simplifyGenericArg(x)
-		}
-		return simpleGenericArgName(a[:open]) + "[" + strings.Join(inner, ", ") + "]"
-	}
-	return simpleGenericArgName(a)
+	return typemodel.NormalizeInstance(s)
 }
 
 const generateSchemaFromTypeKey = "generateSchemaFromType"
