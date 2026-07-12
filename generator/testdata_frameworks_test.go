@@ -106,6 +106,19 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/api/users/list", []string{"POST"}},
 			},
 		},
+		{
+			name:     "generic_structs",
+			fallback: spec.DefaultHTTPConfig(),
+			routes: []route{
+				{"/users", []string{"POST"}},
+				{"/products", []string{"POST"}},
+				{"/user", []string{"POST"}},
+				{"/pair", []string{"POST"}},
+				{"/nested", []string{"POST"}},
+				{"/inferred", []string{"POST"}},
+				{"/create", []string{"POST"}},
+			},
+		},
 	}
 
 	for _, tc := range cases {

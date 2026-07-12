@@ -15,6 +15,7 @@ import (
 
 	"go/types"
 
+	"github.com/ehabterra/apispec/internal/callgraph"
 	"github.com/ehabterra/apispec/internal/core"
 	"github.com/ehabterra/apispec/internal/metadata"
 	intspec "github.com/ehabterra/apispec/internal/spec"
@@ -126,6 +127,19 @@ type EngineConfig struct {
 	SkipCGOPackages              bool
 	AnalyzeFrameworkDependencies bool
 	AutoIncludeFrameworkPackages bool
+	// ResolveCallGraph builds the SSA+VTA resolved call graph alongside
+	// metadata (docs/TRACKER_REDESIGN.md step 2). Off by default until the
+	// summary-based analyses consume it; enable to expose it via
+	// GetResolvedCallGraph.
+	ResolveCallGraph bool
+	// UseLazyTracker generates the spec with the lazy tracker tree
+	// (docs/TRACKER_REDESIGN.md step 4) — the default. It covers the wiring
+	// styles the legacy eager tree supports (verified by the fixture parity
+	// harness and the cross-codebase meter), resolves some responses/bodies
+	// the eager tree misses, and stays bounded on dense call graphs. Set to
+	// false (CLI --legacy-tracker, UI "Analysis engine") to generate with
+	// the legacy eager tree for comparison.
+	UseLazyTracker bool
 	// SkipHTTPFramework excludes net/http from framework dependency analysis
 	SkipHTTPFramework bool
 	// Auto-exclude common test files and folders (e.g., *_test.go, tests/)
@@ -191,6 +205,7 @@ func DefaultEngineConfig() *EngineConfig {
 		SkipHTTPFramework:            false,
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
+		UseLazyTracker:               true,
 	}
 }
 
@@ -229,6 +244,16 @@ type Engine struct {
 	// pathParamMismatches lists map-key path-variable reads (mux.Vars(r)["x"])
 	// whose key matches no route placeholder, gathered during the last generation.
 	pathParamMismatches []intspec.PathParamMismatch
+
+	// resolvedGraph is the SSA+VTA resolved call graph, built during
+	// GenerateMetadataOnly when config.ResolveCallGraph is set.
+	resolvedGraph *callgraph.Resolved
+}
+
+// GetResolvedCallGraph returns the resolved call graph from the last
+// generation, or nil when config.ResolveCallGraph was off.
+func (e *Engine) GetResolvedCallGraph() *callgraph.Resolved {
+	return e.resolvedGraph
 }
 
 // SkippedPackage is a package excluded from analysis due to compile/type
@@ -325,7 +350,9 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	fileToInfo := make(map[*ast.File]*types.Info)
 
 	cfg := &packages.Config{
-		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+		// NeedCompiledGoFiles and NeedTypesSizes are required by the SSA
+		// builder (config.ResolveCallGraph); harmless additions otherwise.
+		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesSizes | packages.NeedTypesInfo | packages.NeedImports,
 		Dir:     e.config.moduleRoot,
 		Fset:    fset,
 		Context: e.ctx(),
@@ -448,6 +475,16 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
+	}
+
+	// Resolved call graph (SSA+VTA) from the same loaded packages.
+	if e.config.ResolveCallGraph {
+		tResolved := time.Now()
+		e.resolvedGraph = callgraph.Build(filteredPkgs)
+		e.reportPhase(fmt.Sprintf("resolved call graph built (%d functions)", len(e.resolvedGraph.Graph.Nodes)), time.Since(tResolved))
+		if err := e.ctx().Err(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Store metadata in engine
@@ -588,8 +625,14 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		return nil, err
 	}
 	tTree := time.Now()
-	tree := intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
-	e.reportPhase("tracker tree built", time.Since(tTree))
+	var tree intspec.TrackerTreeInterface
+	if e.config.UseLazyTracker {
+		tree = intspec.NewLazyTree(meta, limits)
+		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
+	} else {
+		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
+		e.reportPhase("tracker tree built", time.Since(tTree))
+	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
 	}

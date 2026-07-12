@@ -1369,3 +1369,10 @@ h3 + .info {
   color: var(--muted);
   margin-bottom: 4px;
 }
+
+/* Compact analysis-engine selector in the top bar (lazy / legacy tracker). */
+.topbar .engine-select {
+  padding: 3px 6px;
+  font-size: var(--fs-sm);
+  height: auto;
+}

@@ -270,6 +270,8 @@ packages:
                         resolved_type: -1
                         generic_type_name: -1
             comments: -1
+            type_params:
+              - T
         functions:
           NewContainer:
             name: 41
@@ -966,6 +968,8 @@ packages:
                     resolved_type: -1
                     generic_type_name: -1
         comments: -1
+        type_params:
+          - T
 call_graph:
   - caller:
       name: 53

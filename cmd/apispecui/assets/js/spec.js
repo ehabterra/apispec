@@ -240,6 +240,17 @@ function Onboarding({ s, onGenerate, onBrowse }) {
               ${s.supportedFrameworks.map((f) => html`<option value=${f}>${f}</option>`)}
             </select>
           </div>
+          <div class="field">
+            <label>Analysis engine <span class="muted">(lazy is recommended)</span></label>
+            <select
+              class="input"
+              value=${s.legacyTracker ? "legacy" : "lazy"}
+              onChange=${(e) => setState({ legacyTracker: e.target.value === "legacy" })}
+            >
+              <option value="lazy">Lazy tracker (default)</option>
+              <option value="legacy">Legacy tracker (eager)</option>
+            </select>
+          </div>
           <div class="field" style="margin-bottom:0">
             <label>③ Generate</label>
             <button class="btn" disabled=${s.generating || !s.project} style="display: block" onClick=${onGenerate}>

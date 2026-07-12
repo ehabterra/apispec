@@ -78,6 +78,17 @@ function TopBar({ s }) {
         <span class="path">${projectLabel(s)}</span>
         <button class="btn ghost sm" onClick=${openProject}>📁</button>
       </div>
+      <select
+        class="input sm engine-select"
+        style="width:auto;min-width:0"
+        title="Analysis engine for the next generation. Lazy (default) expands the call tree on demand — covers the same wiring styles as the legacy tree, resolves more responses, and is faster. Legacy (eager) is the previous engine, kept for comparison."
+        disabled=${s.generating}
+        value=${s.legacyTracker ? "legacy" : "lazy"}
+        onChange=${(e) => setState({ legacyTracker: e.target.value === "legacy" })}
+      >
+        <option value="lazy">⚡ Lazy</option>
+        <option value="legacy">Legacy</option>
+      </select>
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
         ${s.generating
           ? html`Generating…${s.genPhase ? html` ${s.genPhase}` : ""}${s.genElapsed ? html` <span class="gen-elapsed">${fmtDur(s.genElapsed)}</span>` : ""}`

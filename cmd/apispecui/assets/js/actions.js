@@ -245,6 +245,7 @@ function fullGenerateRequest() {
     exclude: c.exclude,
     overrides: c.overrides,
     frameworkConfig: s.frameworkConfig || undefined,
+    legacyTracker: !!s.legacyTracker,
   };
 }
 

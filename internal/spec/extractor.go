@@ -126,6 +126,37 @@ type Extractor struct {
 	// look-through reach a library call that lives in the closure a middleware
 	// returns — the dominant net/http/echo idiom. Built lazily.
 	parentFnIndex map[string][]*metadata.CallGraphEdge
+
+	// scc is the call graph's SCC condensation, built lazily and shared by
+	// every reachability summary (docs/TRACKER_REDESIGN.md step 3).
+	scc *metadata.CallGraphSCC
+	// callDepthsByFn caches handlerCallDepths per handler function: the BFS
+	// is over the whole call graph and pairAndFillResponses runs once per
+	// route extraction context.
+	callDepthsByFn map[string]map[string]int
+	// extractedRouteIDs marks route identities whose subtree walk has
+	// already run in this extraction. Fragment extraction is pure, so a
+	// re-visit of the same (function, mount, path, method) through another
+	// traversal context reproduces byte-identical results — skip the walk.
+	extractedRouteIDs map[string]bool
+
+	// Per-edge matcher-verdict memos. The MatchNode implementations of the
+	// response/request/param matcher families are pure functions of the call
+	// edge (callee name/receiver/package and caller name), and the lazy tree
+	// visits the same edge through many node copies — memoizing the FIRST
+	// matching matcher index per edge (-1 = none) removes the dominant
+	// repeated regex work from route-subtree walks. Extraction itself stays
+	// per-node: it depends on the node's ancestry.
+	respMatcherByEdge  map[*metadata.CallGraphEdge]int16
+	reqMatcherByEdge   map[*metadata.CallGraphEdge]int16
+	paramMatcherByEdge map[*metadata.CallGraphEdge]int16
+	// reachSets caches, per accessor pattern, which function BaseIDs
+	// transitively reach a matching call. See reachability.go.
+	reachSets map[string]map[string]bool
+	// mwResolved memoizes, per function BaseID, the mapping-matching
+	// middleware refs transitively reachable through it. See reachability.go.
+	mwResolved map[string][]MiddlewareRef
+	mwOnStack  map[string]bool
 }
 
 // NewExtractor creates a new refactored extractor
@@ -244,6 +275,29 @@ func dropSubsumedMountPrefixes(routes []*RouteInfo) []*RouteInfo {
 					drop[i] = true
 					break
 				}
+			}
+		}
+	}
+
+	// A dropped duplicate is the same handler reached through a partial
+	// mount context, and its extraction resolved real fragments (error
+	// bodies, defaults) that the surviving context may not have walked.
+	// Fold each dropped route into its survivors before discarding, so the
+	// output does not depend on which traversal context wins subsumption.
+	// (Safe now that fragments are extracted purely and paired by frame —
+	// there is no order-dependent junk left to amplify.)
+	for _, idxs := range groups {
+		var keep, dropped []int
+		for _, i := range idxs {
+			if drop[i] {
+				dropped = append(dropped, i)
+			} else {
+				keep = append(keep, i)
+			}
+		}
+		for _, di := range dropped {
+			for _, ki := range keep {
+				mergeRouteExtraction(routes[ki], routes[di])
 			}
 		}
 	}
@@ -574,10 +628,6 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 	}
 }
 
-// maxWrapperLookThroughDepth bounds how deep wrapper look-through follows the
-// call graph (custom mw -> wrapper -> ... -> library constructor).
-const maxWrapperLookThroughDepth = 6
-
 // expandMiddlewareRefs replaces custom-wrapper middleware with the library
 // middleware it transitively calls, so a project-defined wrapper resolves to the
 // underlying scheme. Refs that already match a mapping, or that can't be looked
@@ -594,7 +644,20 @@ func (e *Extractor) expandMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
 	e.ensureParentFnIndex(meta)
 	var out []MiddlewareRef
 	for _, ref := range refs {
-		out = append(out, e.lookThroughMiddleware(ref, meta, make(map[string]bool), 0)...)
+		if anyMappingMatches(ref, e.cfg.SecurityMappings) {
+			out = append(out, ref)
+			continue
+		}
+		key := middlewareBaseID(ref)
+		if key == "" {
+			out = append(out, ref)
+			continue
+		}
+		if resolved := e.middlewareMatchesThrough(key, meta); len(resolved) > 0 {
+			out = append(out, resolved...)
+			continue
+		}
+		out = append(out, ref) // nothing matched downstream; keep for diagnostics
 	}
 	return dedupMiddlewareRefs(out)
 }
@@ -619,51 +682,6 @@ func (e *Extractor) ensureParentFnIndex(meta *metadata.Metadata) {
 		idx[key] = append(idx[key], edge)
 	}
 	e.parentFnIndex = idx
-}
-
-// lookThroughMiddleware resolves a single middleware ref, following the call
-// graph through wrapper functions until a mapping matches.
-func (e *Extractor) lookThroughMiddleware(ref MiddlewareRef, meta *metadata.Metadata, visited map[string]bool, depth int) []MiddlewareRef {
-	if anyMappingMatches(ref, e.cfg.SecurityMappings) {
-		return []MiddlewareRef{ref}
-	}
-	if depth >= maxWrapperLookThroughDepth {
-		return []MiddlewareRef{ref}
-	}
-	key := middlewareBaseID(ref)
-	if key == "" || visited[key] {
-		return []MiddlewareRef{ref}
-	}
-	visited[key] = true
-
-	// Calls made directly in the function's body, plus calls inside func
-	// literals it defines/returns (e.g. a middleware that validates a token in
-	// the http.Handler closure it returns).
-	direct := meta.Callers[key]
-	nested := e.parentFnIndex[key]
-	if len(direct) == 0 && len(nested) == 0 {
-		return []MiddlewareRef{ref} // external / no analyzable body
-	}
-	var found []MiddlewareRef
-	scan := func(edges []*metadata.CallGraphEdge) {
-		for _, edge := range edges {
-			callee := e.calleeMiddlewareRef(edge)
-			if callee.empty() {
-				continue
-			}
-			for _, r := range e.lookThroughMiddleware(callee, meta, visited, depth+1) {
-				if anyMappingMatches(r, e.cfg.SecurityMappings) {
-					found = append(found, r)
-				}
-			}
-		}
-	}
-	scan(direct)
-	scan(nested)
-	if len(found) > 0 {
-		return found
-	}
-	return []MiddlewareRef{ref} // nothing matched downstream; keep for diagnostics
 }
 
 // calleeMiddlewareRef builds a MiddlewareRef from a call edge's callee.
@@ -747,9 +765,35 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// any route-scope or handler-wrapper middleware on the route call itself.
 	e.applyRouteSecurity(node, routeInfo, mountMW)
 
-	// Extract route/request/response/params from children with visited edges tracking
+	// The same route CALL SITE reached again through another traversal
+	// context reproduces byte-identical extraction (fragments are pure and
+	// children expansions are memoized), so the expensive subtree walk runs
+	// once per site. The key must be the matched call site's identity, not
+	// the extracted fields: chain-style routes (Methods("GET").Path(...).
+	// HandlerFunc(...)) arrive here with Function/Path still empty — they
+	// resolve from chain children during extraction — so field-based keys
+	// would alias every such chain in the package onto one identity.
+	// Distinct mount contexts have distinct keys and still run — their
+	// fragments merge below.
+	if edge := node.GetEdge(); edge != nil {
+		routeID := routeInfo.MountPath + chainSep + edge.Callee.ID()
+		if e.extractedRouteIDs[routeID] {
+			return
+		}
+		if e.extractedRouteIDs == nil {
+			e.extractedRouteIDs = map[string]bool{}
+		}
+		e.extractedRouteIDs[routeID] = true
+	}
+
+	// Extract route/request/response/params from children. Response
+	// candidates are collected with their call-site CHAIN during the walk
+	// and resolved afterwards by pairAndFillResponses — see there for the
+	// order-insensitive pairing model.
 	visitedEdges := make(map[string]bool)
-	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges)
+	var respCandidates []responseCandidate
+	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, nil, "", &respCandidates)
+	e.pairAndFillResponses(routeInfo, respCandidates)
 
 	// Add map-key path params (mux.Vars) for placeholders the handler reads via
 	// the accessor — including through helper wrappers the subtree walk misses.
@@ -770,7 +814,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 				(*routes)[i].MountPath == routeInfo.MountPath &&
 				(*routes)[i].Path == routeInfo.Path &&
 				(*routes)[i].Method == routeInfo.Method {
-				(*routes)[i] = routeInfo
+				mergeRouteExtraction((*routes)[i], routeInfo)
 				found = true
 				break
 			}
@@ -778,6 +822,28 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 		if !found {
 			*routes = append(*routes, routeInfo)
 		}
+	}
+}
+
+// mergeRouteExtraction folds a re-extraction of the same route (reached
+// through another traversal context) into the existing RouteInfo instead of
+// replacing it wholesale. Different contexts can each resolve fragments the
+// others miss — e.g. one context binds the success body to the default slot
+// while another loses it to an error status — so the union with
+// informative-wins slot competition keeps extraction order-independent.
+func mergeRouteExtraction(existing, next *RouteInfo) {
+	for slot, resp := range next.Response {
+		existing.Response[slot] = preferResponseInfo(existing.Response[slot], resp)
+	}
+	existing.Request = preferRequestInfo(existing.Request, next.Request)
+	if len(existing.Params) == 0 {
+		existing.Params = next.Params
+	}
+	if len(existing.Tags) == 0 {
+		existing.Tags = next.Tags
+	}
+	if len(existing.Security) == 0 {
+		existing.Security = next.Security
 	}
 }
 
@@ -853,7 +919,42 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNod
 }
 
 // extractRouteChildren extracts request, response, and params from children nodes
-func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool) {
+// responseCandidate is a node that matched a response pattern during the
+// route walk, together with the chain of enclosing call-site instance IDs
+// (the "frames" entered from the route down to the statement). The chain is
+// what pairs a bodyless status write with the body write that follows it in
+// the same helper invocation — and keeps two invocations of the same helper
+// (respondWithError(w, 400) vs (w, 500)) apart.
+type responseCandidate struct {
+	node  TrackerNodeInterface
+	chain string
+}
+
+// chainSep separates call-site instance IDs in chain keys.
+const chainSep = "\x1f"
+
+// frameChainKey identifies the FRAME a response statement executes in: the
+// recursion chain truncated at the invocation of the statement's caller
+// function (keeping the invocation prefix, so two invocations of the same
+// helper stay distinct). Statements whose caller is not on the chain execute
+// in the route/handler frame itself — leaf-call detours the walk descends
+// through (an encoder chain, a fiber Status().JSON() chain) must not split
+// that frame, so the key falls back to the route frame ("").
+func frameChainKey(chain []string, node TrackerNodeInterface) string {
+	edge := node.GetEdge()
+	if edge == nil {
+		return strings.Join(chain, chainSep)
+	}
+	callerBase := edge.Caller.BaseID()
+	for i := len(chain) - 1; i >= 0; i-- {
+		if metadata.StripToBase(chain[i]) == callerBase {
+			return strings.Join(chain[:i+1], chainSep)
+		}
+	}
+	return "" // route/handler frame
+}
+
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool, chain []string, chainKey string, respCandidates *[]responseCandidate) {
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes
 		if isRoute := e.executeRoutePattern(child, route); isRoute {
@@ -869,24 +970,290 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 			route.Request = preferRequestInfo(route.Request, req)
 		}
 
-		// Extract responses (multiple if status fan-out applies — see
-		// ExtractResponse / issue #39). Each emitted ResponseInfo lands
-		// under its own status-keyed slot in route.Response.
-		for _, resp := range e.extractResponseFromNode(child, route, visitedEdges, routeNode.GetKey()) {
-			if resp != nil && (resp.BodyType != "" || resp.StatusCode != 0) {
-				route.Response[fmt.Sprintf("%d", resp.StatusCode)] = resp
+		// Collect response candidates with their call-site chain; resolution
+		// and pairing happen in pairAndFillResponses once the walk is done.
+		// Deduped per (chain, call site): the same statement reached again
+		// through the same frames is one candidate; the same statement in a
+		// different helper invocation is a separate one.
+		// Match first (memoized per edge — cheap), and only then build the
+		// per-(chain, site) dedupe key: constructing the key for every child
+		// dominated the allocation profile, and non-matching children never
+		// need one.
+		if child != nil && child.GetEdge() != nil && e.matchesResponsePattern(child) {
+			candKey := chainKey + chainSep + child.GetEdge().Callee.ID()
+			if !visitedEdges[candKey] {
+				visitedEdges[candKey] = true
+				*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(chain, child)})
 			}
 		}
 
 		// Extract parameters
 		route.Params = append(route.Params, e.extractParamsFromNode(child, route)...)
 
-		// Recursive extraction
-		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges)
+		// Recursive extraction. The chain grows only through CALL nodes —
+		// argument nodes reference values within the current frame.
+		childChain, childChainKey := chain, chainKey
+		if child != nil && child.GetArgument() == nil && child.GetEdge() != nil {
+			id := child.GetEdge().Callee.ID()
+			childChain = append(chain[:len(chain):len(chain)], id)
+			childChainKey = chainKey + chainSep + id
+		}
+		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, childChain, childChainKey, respCandidates)
 	}
 
 	// Extract parameters from the route node itself
 	route.Params = append(route.Params, e.extractParamsFromNode(routeNode, route)...)
+}
+
+// matchesResponsePattern reports whether any response matcher accepts the node.
+func (e *Extractor) matchesResponsePattern(node TrackerNodeInterface) bool {
+	return e.responseMatcherIndex(node) >= 0
+}
+
+// responseMatcherIndex returns the first response matcher accepting the
+// node's edge, memoized per edge (see the memo fields for why this is sound).
+func (e *Extractor) responseMatcherIndex(node TrackerNodeInterface) int16 {
+	if node == nil || node.GetEdge() == nil {
+		return -1
+	}
+	edge := node.GetEdge()
+	if idx, ok := e.respMatcherByEdge[edge]; ok {
+		return idx
+	}
+	idx := int16(-1)
+	for i, matcher := range e.responseMatchers {
+		if matcher.MatchNode(node) {
+			idx = int16(i)
+			break
+		}
+	}
+	if e.respMatcherByEdge == nil {
+		e.respMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+	}
+	e.respMatcherByEdge[edge] = idx
+	return idx
+}
+
+// pairAndFillResponses resolves the collected response candidates and fills
+// route.Response, replacing the old "attach body to the lowest bodyless
+// status seen so far" behavior — which depended on traversal order — with a
+// deterministic model:
+//
+//  1. every candidate is extracted as a PURE function (against an empty
+//     response map, so no slot peeking): statuses resolve only from the
+//     pattern's own arguments (including parameter tracing) or its
+//     configured default; unresolved statuses come out as -1;
+//  2. fragments are deduped by (frame chain, call site, status, body) —
+//     the same statement reached through shortcut relations within one
+//     frame yields byte-identical fragments; the same statement executed
+//     in DIFFERENT frames (a shared helper like respondWithError called
+//     from two branches) must keep one fragment per frame so each frame's
+//     pending status finds its body;
+//  3. fragments are ordered by SOURCE POSITION and paired: a bodyless
+//     status write leaves its status pending on its call-site chain, and
+//     the next unknown-status body on the same chain adopts it — exactly
+//     how `c.Status(400)` is followed by its `c.JSON(err)` in the code;
+//  4. bodies that remain unpaired land in distinct negative slots (the
+//     mapper's "default" collapse), numbered in source order.
+//
+// The model is independent of tree shape and traversal order: both tracker
+// trees see the same call sites and chains.
+func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []responseCandidate) {
+	type fragment struct {
+		resp   *ResponseInfo
+		chain  string
+		caller string // fragment statement's enclosing function (BaseID)
+		file   string
+		line   int
+		col    int
+	}
+
+	saved := route.Response
+	var frags []fragment
+	seen := map[string]bool{}
+	for _, cand := range candidates {
+		route.Response = map[string]*ResponseInfo{} // pure extraction: no slot peeking
+		resps := e.extractResponsesMatched(cand.node, route)
+		file, line, col := calleePosition(cand.node)
+		siteID := cand.node.GetEdge().Callee.ID()
+		caller := cand.node.GetEdge().Caller.BaseID()
+		for _, resp := range resps {
+			if resp == nil || (resp.BodyType == "" && resp.StatusCode < 100) {
+				continue // nothing resolved
+			}
+			status := resp.StatusCode
+			if status < 0 {
+				status = -1 // normalize "unknown"
+				resp.StatusCode = -1
+			}
+			dedupeKey := cand.chain + chainSep + siteID + chainSep + strconv.Itoa(status) + chainSep + resp.BodyType
+			if seen[dedupeKey] {
+				continue
+			}
+			seen[dedupeKey] = true
+			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col})
+		}
+	}
+	route.Response = saved
+
+	sort.SliceStable(frags, func(i, j int) bool {
+		if frags[i].file != frags[j].file {
+			return frags[i].file < frags[j].file
+		}
+		if frags[i].line != frags[j].line {
+			return frags[i].line < frags[j].line
+		}
+		return frags[i].col < frags[j].col
+	})
+
+	store := func(resp *ResponseInfo) {
+		slot := fmt.Sprintf("%d", resp.StatusCode)
+		existing := route.Response[slot]
+		switch {
+		case existing == nil:
+			route.Response[slot] = resp
+		case existing.BodyType == "" && resp.BodyType != "":
+			route.Response[slot] = resp
+		case existing.BodyType != "" && resp.BodyType == "":
+			// keep the informative one
+		default:
+			route.Response[slot] = preferResponseInfo(existing, resp)
+		}
+	}
+
+	pending := map[string]bool{} // chain -> a bodyless status awaits its body
+	pendingStatus := map[string]int{}
+	var unpaired []*fragment
+	for i := range frags {
+		f := &frags[i]
+		status, body := f.resp.StatusCode, f.resp.BodyType
+		known := status >= 100 && status < 600
+		switch {
+		case known && body == "":
+			store(f.resp)
+			pending[f.chain] = true
+			pendingStatus[f.chain] = status
+		case known:
+			store(f.resp)
+		case body != "":
+			if pending[f.chain] {
+				f.resp.StatusCode = pendingStatus[f.chain]
+				delete(pending, f.chain)
+				delete(pendingStatus, f.chain)
+				store(f.resp)
+			} else {
+				unpaired = append(unpaired, f)
+			}
+		}
+	}
+
+	// Unpaired bodies become undetermined-status ("default") candidates —
+	// but only from the SHALLOWEST call depth present, measured as call-graph
+	// distance from the route's handler to the statement's enclosing
+	// function (tree-shape independent: both trackers share the metadata).
+	// Response writes live in the handler or its immediate response helpers,
+	// while deeper unknown bodies are almost always outbound payloads (an
+	// Encode inside an HTTP client several calls down) that merely resemble
+	// responses.
+	if len(unpaired) > 0 {
+		depths := e.handlerCallDepths(route)
+		depthOf := func(f *fragment) int {
+			if d, ok := depths[f.caller]; ok {
+				return d
+			}
+			return 1 << 20 // unreachable from the handler: deepest possible
+		}
+		minDepth := -1
+		for _, f := range unpaired {
+			if d := depthOf(f); minDepth < 0 || d < minDepth {
+				minDepth = d
+			}
+		}
+		unknown := 0
+		for _, f := range unpaired {
+			if depthOf(f) != minDepth {
+				continue
+			}
+			unknown++
+			f.resp.StatusCode = -unknown
+			store(f.resp)
+		}
+	}
+}
+
+// handlerCallDepths returns the call-graph distance (in hops) from the
+// route's handler function to every function reachable from it, via a BFS
+// over meta.Callers. Used to rank undetermined-status response fragments by
+// how close to the handler they were written.
+func (e *Extractor) handlerCallDepths(route *RouteInfo) map[string]int {
+	if cached, ok := e.callDepthsByFn[route.Function]; ok {
+		return cached
+	}
+	meta := route.Metadata
+	if meta == nil {
+		meta = e.tree.GetMetadata()
+	}
+	depths := map[string]int{}
+	if meta == nil || route.Function == "" {
+		return depths
+	}
+	start := route.Function
+	depths[start] = 0
+	queue := []string{start}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		next := depths[cur] + 1
+		for _, edge := range meta.Callers[cur] {
+			callee := edge.Callee.BaseID()
+			if _, ok := depths[callee]; ok {
+				continue
+			}
+			depths[callee] = next
+			queue = append(queue, callee)
+		}
+	}
+	if e.callDepthsByFn == nil {
+		e.callDepthsByFn = map[string]map[string]int{}
+	}
+	e.callDepthsByFn[route.Function] = depths
+	return depths
+}
+
+// extractResponsesMatched runs the first matching response matcher on a
+// previously-collected candidate node.
+func (e *Extractor) extractResponsesMatched(node TrackerNodeInterface, route *RouteInfo) []*ResponseInfo {
+	if idx := e.responseMatcherIndex(node); idx >= 0 {
+		return e.responseMatchers[idx].ExtractResponse(node, route)
+	}
+	return nil
+}
+
+// calleePosition parses "file:line:col" out of the node's callee position,
+// for source-order sorting of response fragments.
+func calleePosition(n TrackerNodeInterface) (string, int, int) {
+	edge := n.GetEdge()
+	if edge == nil {
+		return "", 0, 0
+	}
+	pos := edge.Callee.ID()
+	at := strings.LastIndexByte(pos, '@')
+	if at < 0 {
+		return pos, 0, 0
+	}
+	pos = pos[at+1:]
+	lastColon := strings.LastIndexByte(pos, ':')
+	if lastColon < 0 {
+		return pos, 0, 0
+	}
+	col, _ := strconv.Atoi(pos[lastColon+1:])
+	rest := pos[:lastColon]
+	midColon := strings.LastIndexByte(rest, ':')
+	if midColon < 0 {
+		return rest, 0, col
+	}
+	line, _ := strconv.Atoi(rest[midColon+1:])
+	return rest[:midColon], line, col
 }
 
 // preferRequestInfo chooses the more specific of two request bodies for the
@@ -973,43 +1340,28 @@ func isErrorBodyType(bodyType string) bool {
 
 // extractRequestFromNode extracts request information from a node
 func (e *Extractor) extractRequestFromNode(node TrackerNodeInterface, route *RouteInfo) *RequestInfo {
-	for _, matcher := range e.requestMatchers {
-		if matcher.MatchNode(node) {
-			return matcher.ExtractRequest(node, route)
-		}
-	}
-	return nil
-}
-
-// extractResponseFromNode extracts response information from a node.
-// Returns a slice because a single call site can yield multiple responses
-// when conditional status codes apply (see ExtractResponse / issue #39).
-//
-// The visited-edge key is qualified by parentKey (the node through which this
-// one was reached). A response helper invoked from several branches with
-// different statuses — e.g. respondWithError(w,…,400) and
-// respondWithError(w,…,500), both reaching the SAME WriteHeader edge — would
-// otherwise be deduped by callee alone and collapse to the first status seen.
-// Qualifying by the call site lets each distinct status be resolved. (The same
-// node also gets reached via internal encoder-chain paths with no status
-// context; those yield a "default" that buildResponses drops when it carries no
-// new body information — see uninformativeDefault.)
-func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *RouteInfo, visitedEdges map[string]bool, parentKey string) []*ResponseInfo {
 	if node == nil || node.GetEdge() == nil {
 		return nil
 	}
 	edge := node.GetEdge()
-	edgeID := parentKey + "|" + edge.Callee.ID()
-	if visitedEdges[edgeID] {
-		return nil // already processed via this same call site
-	}
-	visitedEdges[edgeID] = true
-	for _, matcher := range e.responseMatchers {
-		if matcher.MatchNode(node) {
-			return matcher.ExtractResponse(node, route)
+	idx, ok := e.reqMatcherByEdge[edge]
+	if !ok {
+		idx = -1
+		for i, matcher := range e.requestMatchers {
+			if matcher.MatchNode(node) {
+				idx = int16(i)
+				break
+			}
 		}
+		if e.reqMatcherByEdge == nil {
+			e.reqMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+		}
+		e.reqMatcherByEdge[edge] = idx
 	}
-	return nil
+	if idx < 0 {
+		return nil
+	}
+	return e.requestMatchers[idx].ExtractRequest(node, route)
 }
 
 // extractParamsFromNode extracts parameter information from a node. Most
@@ -1017,10 +1369,29 @@ func (e *Extractor) extractResponseFromNode(node TrackerNodeInterface, route *Ro
 // but map-key patterns (gorilla/mux's `Vars(r)["id"]`) can yield several,
 // one per indexed key that matches a path placeholder.
 func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *RouteInfo) []Parameter {
-	for _, matcher := range e.paramMatchers {
-		if !matcher.MatchNode(node) {
-			continue
+	if node == nil || node.GetEdge() == nil {
+		return nil
+	}
+	edge := node.GetEdge()
+	idx, ok := e.paramMatcherByEdge[edge]
+	if !ok {
+		idx = -1
+		for i, matcher := range e.paramMatchers {
+			if matcher.MatchNode(node) {
+				idx = int16(i)
+				break
+			}
 		}
+		if e.paramMatcherByEdge == nil {
+			e.paramMatcherByEdge = map[*metadata.CallGraphEdge]int16{}
+		}
+		e.paramMatcherByEdge[edge] = idx
+	}
+	if idx < 0 {
+		return nil
+	}
+	{
+		matcher := e.paramMatchers[idx]
 		// Map-key accessors (mux.Vars) carry the parameter name as a map key,
 		// not a call argument, so nothing is extracted from the node itself.
 		// Their path params are added once per route in completeMapKeyPathParams,
@@ -1034,7 +1405,6 @@ func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *Rout
 		}
 		return nil
 	}
-	return nil
 }
 
 // completeMapKeyPathParams adds path parameters for frameworks whose path-var
@@ -1315,22 +1685,26 @@ func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Fun
 }
 
 // handlerReachesAccessor reports whether the route's handler transitively calls
-// the map-key accessor described by pattern, following the call graph through
-// helper functions up to maxWrapperLookThroughDepth. Seeds are the handler
-// function's call-graph base IDs (matched by name + package), so it works
-// regardless of the exact key format.
+// the map-key accessor described by pattern. Reachability is a precomputed
+// summary (reachSet, one bottom-up pass over the SCC condensation) rather
+// than a per-route bounded walk, so helper indirection resolves at any depth.
+// Seeds are the handler function's call-graph base IDs (matched by name +
+// package), so it works regardless of the exact key format.
 func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPattern) bool {
 	meta := route.Metadata
 	if meta == nil || route.Function == "" {
 		return false
 	}
+	reach := e.reachSet(meta, "accessor:"+pattern.CallRegex+"\x00"+pattern.RecvTypeRegex,
+		func(edge *metadata.CallGraphEdge) bool {
+			return edgeMatchesAccessor(meta, edge, pattern)
+		})
 	// route.Function is package-qualified ("pkg/path.Handler"); call-graph
 	// caller names are bare ("Handler"), so strip the package prefix to match.
 	bareFunc := route.Function
 	if route.Package != "" {
 		bareFunc = strings.TrimPrefix(route.Function, route.Package+".")
 	}
-	visited := make(map[string]bool)
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 		if getString(meta, edge.Caller.Name) != bareFunc {
@@ -1339,25 +1713,7 @@ func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPatter
 		if route.Package != "" && getString(meta, edge.Caller.Pkg) != route.Package {
 			continue
 		}
-		if e.reachesAccessor(meta, edge.Caller.BaseID(), pattern, visited, 0) {
-			return true
-		}
-	}
-	return false
-}
-
-// reachesAccessor walks meta.Callers from a function base ID, returning true if
-// any transitively-reachable call edge matches the accessor pattern.
-func (e *Extractor) reachesAccessor(meta *metadata.Metadata, key string, pattern ParamPattern, visited map[string]bool, depth int) bool {
-	if key == "" || visited[key] || depth > maxWrapperLookThroughDepth {
-		return false
-	}
-	visited[key] = true
-	for _, edge := range meta.Callers[key] {
-		if edgeMatchesAccessor(meta, edge, pattern) {
-			return true
-		}
-		if e.reachesAccessor(meta, edge.Callee.BaseID(), pattern, visited, depth+1) {
+		if reach[edge.Caller.BaseID()] {
 			return true
 		}
 	}
@@ -1672,6 +2028,11 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 				bodyType = strings.TrimPrefix(bodyType, "*")
 			}
 		}
+
+		// Inferred generic instantiations arrive as the go/types string
+		// (pkg.Envelope[pkg.Product]); fold them into the internal form so they
+		// key to the same clean component as a written Envelope[Product].
+		bodyType = normalizeGenericInstanceName(bodyType)
 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 

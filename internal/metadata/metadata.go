@@ -820,6 +820,18 @@ func processTypeSpec(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 		Scope: metadata.StringPool.Get(getScope(tspec.Name.Name)),
 	}
 
+	// Extract declared type-parameter names for generic types (e.g. the "T"
+	// in `type Page[T any] struct{...}`). The spec layer zips these with the
+	// concrete arguments of an instantiation (Page[User]) to substitute
+	// parametric fields into real schemas.
+	if tspec.TypeParams != nil {
+		for _, tparam := range tspec.TypeParams.List {
+			for _, name := range tparam.Names {
+				t.TypeParams = append(t.TypeParams, name.Name)
+			}
+		}
+	}
+
 	// Extract comments
 	t.Comments = metadata.StringPool.Get(getComments(tspec))
 

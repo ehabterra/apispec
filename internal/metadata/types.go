@@ -439,6 +439,11 @@ type Type struct {
 	Methods       []Method `yaml:"methods,omitempty"`
 	Comments      int      `yaml:"comments,omitempty"`
 	Tags          []int    `yaml:"tags,omitempty"`
+
+	// Declared type-parameter names for generic types, e.g. ["T"] for
+	// `type Page[T any] struct{...}`. The spec layer zips these positionally
+	// with the concrete arguments of an instantiation (Page[User]).
+	TypeParams []string `yaml:"type_params,omitempty"`
 }
 
 // Field represents a struct field

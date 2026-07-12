@@ -1794,6 +1794,16 @@ func TestTypeParts_Comprehensive(t *testing.T) {
 		{"Container[T]", "", "Container[T]", nil},
 		{"Container[T, U]", "", "Container[T, U]", nil},
 		{"pkg-->Container[T]", "pkg", "Container", []string{"T"}},
+		// Multi-argument generics: the bracket contents must split per arg so
+		// each declared type parameter zips with its own concrete argument.
+		{"pkg-->Pair[K, V]", "pkg", "Pair", []string{"K", "V"}},
+		{"pkg-->Pair[User, Product]", "pkg", "Pair", []string{"User", "Product"}},
+		// Nested generics stay in a single argument (comma is inside brackets).
+		{"pkg-->Box[Page[User]]", "pkg", "Box", []string{"Page[User]"}},
+		// go/types dotted form (inferred instantiations / nested field types):
+		// the base's last dot is the pkg/type split; args keep their qualifier.
+		{"pkg.Envelope[pkg.User]", "pkg", "Envelope", []string{"pkg.User"}},
+		{"github.com/x/y.Page[github.com/x/y.User]", "github.com/x/y", "Page", []string{"github.com/x/y.User"}},
 	}
 
 	for _, tt := range tests {
@@ -1812,6 +1822,38 @@ func TestTypeParts_Comprehensive(t *testing.T) {
 				if i < len(result.GenericTypes) && result.GenericTypes[i] != expected {
 					t.Errorf("Expected generic type %d to be %s, got %s", i, expected, result.GenericTypes[i])
 				}
+			}
+		})
+	}
+}
+
+func TestNormalizeGenericInstanceName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// go/types dotted form (inferred) -> internal form, clean args.
+		{"pkg.Envelope[pkg.Product]", "pkg-->Envelope[Product]"},
+		{"m/x.Page[m/x.User]", "m/x-->Page[User]"},
+		// Multi-argument inferred.
+		{"pkg.Pair[pkg.User, pkg.Product]", "pkg-->Pair[User, Product]"},
+		// Nested inferred: inner base reduced to a simple name.
+		{"pkg.Envelope[pkg.Page[pkg.User]]", "pkg-->Envelope[Page[User]]"},
+		// Unqualified base with a qualified arg (request-body var form): the base
+		// is qualified from the argument's package so it keys like the response.
+		{"Page[github.com/acme/svc.User]", "github.com/acme/svc-->Page[User]"},
+		{"Page[pkg.User]", "pkg-->Page[User]"},
+		// Already-internal form is unchanged.
+		{"pkg-->Envelope[User]", "pkg-->Envelope[User]"},
+		// Non-generic and bare-unqualified names pass through untouched.
+		{"pkg.User", "pkg.User"},
+		{"Container[T]", "Container[T]"},
+		{"string", "string"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := normalizeGenericInstanceName(tt.input); got != tt.want {
+				t.Errorf("normalizeGenericInstanceName(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

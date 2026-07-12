@@ -23,7 +23,7 @@ func TestAnonStructLiteralInlined(t *testing.T) {
 		{name: "bare", goType: lit},
 		{name: "pointer", goType: "*" + lit},
 		{name: "slice", goType: "[]" + lit, wantArray: true},
-		{name: "pkg-prefixed slice", goType: "[]github.com/ehabterra/enigma/services/api/internal/http." + lit, wantArray: true},
+		{name: "pkg-prefixed slice", goType: "[]example.com/realapp/services/api/internal/http." + lit, wantArray: true},
 	}
 
 	for _, tc := range cases {
