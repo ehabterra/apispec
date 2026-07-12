@@ -2048,14 +2048,27 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			// the CallArgument — see metadata.handleCallExpr. Prefer it
 			// over the stringified call, which would otherwise produce
 			// an unresolvable name like "error.Error" or "pkg.Helper".
+			resolvedConcrete := false
 			if arg.GetKind() == metadata.KindCall {
 				if t := arg.GetType(); t != "" {
 					bodyType = t
+					// When the call's return type is an interface, trace the
+					// callee's return value to the concrete type it actually
+					// returns (`Encode(makeAnimal())` where
+					// makeAnimal() Animal { return Dog{} } → Dog). Mark it
+					// resolved so resolveTypeOrigin's GetResolvedType fast-path
+					// (which would restore the interface) is skipped.
+					if concrete := r.concreteFromCalleeReturn(arg, node.GetEdge(), t); concrete != "" {
+						bodyType = concrete
+						resolvedConcrete = true
+					}
 				}
 			}
 
 			// Trace type origin for non-literal arguments
-			bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+			if !resolvedConcrete {
+				bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+			}
 
 			// Apply dereferencing if needed
 			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
@@ -2315,6 +2328,41 @@ func (r *ResponsePatternMatcherImpl) concreteFromEnclosingFunc(arg *metadata.Cal
 		}
 		if concrete != "" && concrete != ct {
 			return "" // more than one concrete type assigned — ambiguous
+		}
+		concrete = ct
+	}
+	return concrete
+}
+
+// concreteFromCalleeReturn resolves an interface-typed call result used as a
+// response body to the concrete type the called function actually returns
+// (`Encode(makeAnimal())` where makeAnimal() Animal { return Dog{} } → Dog). If
+// the callee's captured return values name more than one concrete type it is
+// ambiguous, so the interface is kept.
+func (r *ResponsePatternMatcherImpl) concreteFromCalleeReturn(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
+	if edge == nil || arg.Fun == nil {
+		return ""
+	}
+	meta := edge.Callee.Meta
+	if meta == nil || !isInterfaceTypeName(originalType, meta) {
+		return ""
+	}
+	name := arg.Fun.GetName()
+	if name == "" && arg.Fun.Sel != nil {
+		name = arg.Fun.Sel.GetName()
+	}
+	fn := findFunctionByName(meta, arg.Fun.GetPkg(), name)
+	if fn == nil {
+		return ""
+	}
+	concrete := ""
+	for i := range fn.ReturnVars {
+		ct := r.contextProvider.GetArgumentInfo(&fn.ReturnVars[i])
+		if ct == "" || isInterfaceTypeName(ct, meta) {
+			continue
+		}
+		if concrete != "" && concrete != ct {
+			return "" // more than one concrete type returned — ambiguous
 		}
 		concrete = ct
 	}

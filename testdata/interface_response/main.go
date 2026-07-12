@@ -49,9 +49,20 @@ func getEither(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a)
 }
 
+// makeDog returns a concrete Dog through a function whose declared return type
+// is the Animal interface.
+func makeDog() Animal { return Dog{} }
+
+// getMade encodes the result of a constructor typed to return the interface;
+// resolution traces the callee's return value to the concrete Dog.
+func getMade(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(makeDog())
+}
+
 func main() {
 	http.HandleFunc("/dog", getDog)
 	http.HandleFunc("/cat", getCat)
 	http.HandleFunc("/either", getEither)
+	http.HandleFunc("/made", getMade)
 	http.ListenAndServe(":8080", nil)
 }

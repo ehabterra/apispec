@@ -67,4 +67,10 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 	if ref := responseRef("/either"); !strings.HasSuffix(ref, "_Animal") {
 		t.Errorf("POST /either response = %q, want the Animal interface (ambiguous concrete)", ref)
 	}
+
+	// /made: `Encode(makeDog())` where makeDog() Animal { return Dog{} } →
+	// resolves to the concrete Dog via return-value tracing.
+	if ref := responseRef("/made"); !strings.HasSuffix(ref, "_Dog") {
+		t.Errorf("POST /made response = %q, want the concrete Dog (return trace)", ref)
+	}
 }
