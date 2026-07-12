@@ -1,14 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# Computes library test coverage and writes a shields.io "endpoint" badge file
-# (coverage.json). The CI workflow publishes that file to the unprotected
-# `badges` branch, and the README badge reads it from there — so the coverage
-# badge never requires a commit to the protected main branch.
-
 COVERAGE_FILE="coverage.txt"
-BADGE_FILE="coverage.json"
-THRESHOLD=45 # Minimum acceptable coverage %
+README_FILE="README.md"
+THRESHOLD=45  # Minimum acceptable coverage %
 
 # Library packages only. The cmd/* mains (notably cmd/apispecui's ~1400-line
 # main.go) and the root main are CLI glue with no unit tests; counting their
@@ -26,29 +21,39 @@ COVERAGE=$(go tool cover -func=$COVERAGE_FILE | grep total | awk '{print substr(
 # three-band cliff, so the colour tracks coverage smoothly. For a tool whose
 # CLI/UI glue is intentionally left untested, library coverage in the 65–80%
 # range is healthy and should read green-ish, not alarming red.
-if (($(echo "$COVERAGE >= 90" | bc -l))); then
-	COLOR="brightgreen"
-elif (($(echo "$COVERAGE >= 75" | bc -l))); then
-	COLOR="green"
-elif (($(echo "$COVERAGE >= 65" | bc -l))); then
-	COLOR="yellowgreen"
-elif (($(echo "$COVERAGE >= 50" | bc -l))); then
-	COLOR="yellow"
-elif (($(echo "$COVERAGE >= 40" | bc -l))); then
-	COLOR="orange"
+if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
+    COLOR="brightgreen"
+elif (( $(echo "$COVERAGE >= 75" | bc -l) )); then
+    COLOR="green"
+elif (( $(echo "$COVERAGE >= 65" | bc -l) )); then
+    COLOR="yellowgreen"
+elif (( $(echo "$COVERAGE >= 50" | bc -l) )); then
+    COLOR="yellow"
+elif (( $(echo "$COVERAGE >= 40" | bc -l) )); then
+    COLOR="orange"
 else
-	COLOR="red"
+    COLOR="red"
 fi
 
 # Enforce coverage threshold
-if (($(echo "$COVERAGE < $THRESHOLD" | bc -l))); then
-	echo "Coverage ($COVERAGE%) is below threshold ($THRESHOLD%). Failing."
-	exit 1
+if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+    echo "Coverage ($COVERAGE%) is below threshold ($THRESHOLD%). Failing."
+    exit 1
 fi
 
-# Write the shields.io endpoint badge data.
-cat >"$BADGE_FILE" <<JSON
-{"schemaVersion":1,"label":"coverage","message":"${COVERAGE}%","color":"${COLOR}"}
-JSON
+# Prepare badge URL
+BADGE_URL="https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}.svg"
 
-echo "Coverage: ${COVERAGE}% (${COLOR}) -> ${BADGE_FILE}"
+# Update or insert badge
+if grep -q "img.shields.io/badge/coverage" "$README_FILE"; then
+    echo "Updating coverage badge..."
+    sed -i.bak -E "s|!\[Coverage\]\(https://img.shields.io/badge/coverage-[0-9]+(\.[0-9]+)?%25-[a-z]+\.svg\)|![Coverage](${BADGE_URL})|" "$README_FILE"
+else
+    echo "Adding new coverage badge after the title..."
+    # Insert badge after first title line (starts with '# ')
+    awk -v badge="![Coverage](${BADGE_URL})" '
+    NR==1 {print; print ""; print badge; next} {print}
+    ' "$README_FILE" > "${README_FILE}.tmp" && mv "${README_FILE}.tmp" "$README_FILE"
+fi
+
+echo "Coverage updated: ${COVERAGE}% (${COLOR})"
