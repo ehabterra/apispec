@@ -55,7 +55,7 @@ The type model is the single largest architectural change in the codebase
 (GAP #8), so it lands in phases, each independently shippable and each
 verified against the golden fixtures:
 
-**Phase 1 — foundation (this change).**
+**Phase 1 — foundation.** *(landed)*
 - `internal/typemodel` exists with the structured core, full unit coverage,
   and round-trip guarantees.
 - A boundary differential test
@@ -89,19 +89,41 @@ verified against the golden fixtures:
   `traceGenericOrigin`) consume `Parse(...).Core()` fields directly.
 - Deleted from `legacy.go` (no callers remain): `NormalizeInstance`,
   `ArgPackage`, `SimplifyArg`, `SimpleName`.
-- **Still on `ParseParts` deliberately** — everything feeding `typeByName` /
-  metadata type lookups (`findTypesInMetadata`, `generateStructSchema`'s key
-  parsing, `isInterfaceTypeName`, `lookupWrapperType`): metadata keys a
-  generic declaration *with* its parameter brackets (`"Page[T]"`, via
-  `getTypeName`), and `ParseParts`'s opaque-unqualified-generic quirk matches
-  that format where the structured core name (`"Page"`) would miss. This
-  lookup invariant is the phase-3 boundary: both sides must move together.
+- Everything feeding `typeByName`/metadata type lookups stayed on
+  `ParseParts` in this phase, pending the lookup-side migration below.
 
-**Phase 3 — metadata carries structure.**
-- `metadata.getTypeName` call sites move to `FromExpr(...).String()` (proven
-  byte-identical by the boundary test), then the interesting ones keep the
-  `TypeRef` instead of the string — `CallArgument`, `Field`, assignment and
-  return records — with the string pool retained as the serialization format.
+**Phase 3 — the lookup boundary and the AST boundary unify.** *(landed)*
+- *Correction discovered here:* the metadata `Types` map was **already keyed
+  by the bare declared name** (`tspec.Name.Name`; a generic declaration is
+  stored as `"Page"`, its parameters in `Type.TypeParams`) — the bracketed
+  `getTypeName(tspec)` form (`"Page[T]"`) is only the *methods-table* key
+  convention, matching how a generic method-receiver expression renders. The
+  phase-2 worry that the `ParseParts` opaque quirk was load-bearing for
+  lookups was wrong: the quirk merely made unqualified generic names *miss*.
+- All lookup sites migrated to the structured core: `typeByName` now takes
+  `(pkg, name)` and every caller (`findTypesInMetadata`,
+  `generateStructSchema`'s key parsing incl. the concrete-vs-declaration
+  argument split via `Constraint`, `isInterfaceTypeName`,
+  `lookupWrapperType`) parses with `typemodel.Parse(...).Core()`.
+- `metadata.getTypeName`'s expression cases delegate to
+  `FromExpr(...).String()` — one render path for every layer. Two shapes the
+  old stringifier lost are now recorded correctly, proven by
+  `TestMetadata_BoundaryShapeImprovements`:
+  - fixed-size array fields keep their length (`[4]byte`, feeding the
+    mapper's existing maxItems/maxLength handling) — previously `[]byte`;
+  - methods on multi-parameter generic types attach (an `IndexListExpr`
+    receiver like `Pair[K, V]` previously stringified to `""`, filing the
+    method under the empty key and losing it).
+  `TypeSpec`/`FieldList` (the methods-table naming convention) are the only
+  shapes still rendered locally.
+- Zero drift on all goldens and fixtures.
+
+**Phase 4 — metadata carries structure (remaining).**
+- The interesting metadata records keep the `TypeRef` instead of the string —
+  `CallArgument`, `Field`, assignment and return records — with the string
+  pool retained as the serialization format.
+- The ~60 remaining ad-hoc `*`/`[]` prefix-trims in `internal/spec` collapse
+  onto `Core()`/renderers as their surrounding code is touched.
 
 **End state.** Strings exist only at two boundaries: metadata serialization
 (string pool) and OpenAPI component naming (sanitizer over `Internal()`).

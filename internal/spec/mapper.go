@@ -877,67 +877,56 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 		return nil
 	}
 
-	typeParts := TypeParts(typeName)
-	var pkgName string
+	core := typemodel.Parse(typeName).Core()
+	if core == nil {
+		return metaTypes
+	}
 
-	if !metadata.IsPrimitiveType(typeParts.PkgName) && typeParts.PkgName != "" {
-		pkgName = typeParts.PkgName + "."
+	var pkgName string
+	if !metadata.IsPrimitiveType(core.Pkg) && core.Pkg != "" {
+		pkgName = core.Pkg + "."
 	}
 
 	// Generics
-	if len(typeParts.GenericTypes) > 0 {
-		for _, part := range typeParts.GenericTypes {
-			genericType := strings.Fields(part)
-			switch len(genericType) {
-			case 0:
-				continue
-			case 1:
-				// Concrete instantiation argument (e.g. "User" in Page[User]).
-				// Don't register it here: this map has one entry per schema to
-				// emit, and callers that want a single type for goType pick the
-				// first non-nil entry — a second one would non-deterministically
-				// shadow the parametric type itself. The concrete argument is
-				// emitted as its own component through the parametric struct's
-				// field resolution instead.
-				continue
-			default:
-				// Declaration form "T constraint" (e.g. "T any").
-				if metadata.IsPrimitiveType(genericType[1]) {
-					metaTypes[pkgName+genericType[0]+"-"+genericType[1]] = nil
-				} else {
-					genericTypeParts := TypeParts(genericType[0])
-
-					if t := typeByName(genericTypeParts, meta); t != nil {
-						metaTypes[pkgName+genericType[0]+"_"+genericType[1]] = t
-					}
-				}
-			}
+	for _, arg := range core.Args {
+		if arg.Constraint == "" {
+			// Concrete instantiation argument (e.g. "User" in Page[User]).
+			// Don't register it here: this map has one entry per schema to
+			// emit, and callers that want a single type for goType pick the
+			// first non-nil entry — a second one would non-deterministically
+			// shadow the parametric type itself. The concrete argument is
+			// emitted as its own component through the parametric struct's
+			// field resolution instead.
+			continue
+		}
+		// Declaration form "T constraint" (e.g. "T any").
+		if metadata.IsPrimitiveType(arg.Constraint) {
+			metaTypes[pkgName+arg.Name+"-"+arg.Constraint] = nil
+		} else if t := typeByName("", arg.Name, meta); t != nil {
+			metaTypes[pkgName+arg.Name+"_"+arg.Constraint] = t
 		}
 	}
 
 	if typeName != "" {
-		metaTypes[typeName] = typeByName(typeParts, meta)
+		metaTypes[typeName] = typeByName(core.Pkg, core.Name, meta)
 	}
 
 	return metaTypes
 }
 
-// typeByName looks a type up in metadata by the Parts view of its name.
-//
-// Callers must produce Parts with ParseParts (spec's TypeParts), NOT the
-// structured typemodel.Parse: metadata keys a generic declaration with its
-// parameter brackets included ("Page[T]", via getTypeName), and ParseParts's
-// opaque-unqualified-generic quirk matches that format where the structured
-// core name ("Page") would miss. The two sides migrate together in phase 3
-// of docs/TYPE_MODEL.md.
-func typeByName(typeParts Parts, meta *metadata.Metadata) *metadata.Type {
+// typeByName looks a type up in metadata by its parsed core: first in the
+// named package, then across all packages. Metadata keys a type by its bare
+// declared name (tspec.Name.Name — a generic declaration is stored as "Page",
+// its parameters in Type.TypeParams), so callers pass the structured core
+// name (typemodel.Parse(...).Core().Name), never a bracketed form.
+func typeByName(pkgName, typeName string, meta *metadata.Metadata) *metadata.Type {
 	if meta == nil {
 		return nil
 	}
 
-	if typeParts.PkgName != "" && typeParts.TypeName != "" {
-		if pkg, exists := meta.Packages[typeParts.PkgName]; exists {
-			if typ := typeInPackage(pkg, typeParts.TypeName); typ != nil {
+	if pkgName != "" && typeName != "" {
+		if pkg, exists := meta.Packages[pkgName]; exists {
+			if typ := typeInPackage(pkg, typeName); typ != nil {
 				return typ
 			}
 		}
@@ -947,8 +936,8 @@ func typeByName(typeParts Parts, meta *metadata.Metadata) *metadata.Type {
 	// stable (cached) sorted order so the chosen type is deterministic across
 	// runs — otherwise map iteration would pick a different package's type and
 	// flip the schema between runs.
-	for _, pkgName := range meta.SortedPackageNames() {
-		if typ := typeInPackage(meta.Packages[pkgName], typeParts.TypeName); typ != nil {
+	for _, pkg := range meta.SortedPackageNames() {
+		if typ := typeInPackage(meta.Packages[pkg], typeName); typ != nil {
 			return typ
 		}
 	}
@@ -1054,13 +1043,27 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 // allConcreteGenericArgs reports whether every generic part is a concrete type
 // argument (a single token) rather than a declaration entry ("T any"), which
 // carries its constraint after a space.
-func allConcreteGenericArgs(parts []string) bool {
-	for _, p := range parts {
-		if p == "" || strings.Contains(p, " ") {
+func allConcreteGenericArgs(args []*typemodel.TypeRef) bool {
+	for _, a := range args {
+		if a == nil || a.Constraint != "" || genericArgText(a) == "" {
 			return false
 		}
 	}
-	return len(parts) > 0
+	return len(args) > 0
+}
+
+// genericArgText renders one generic argument for the substitution map,
+// preferring the exact text it was parsed from (what the legacy split
+// produced) and falling back to the simple rendering for programmatically
+// built refs.
+func genericArgText(a *typemodel.TypeRef) string {
+	if a == nil {
+		return ""
+	}
+	if r := a.Raw(); r != "" {
+		return r
+	}
+	return a.Simple()
 }
 
 // substituteTypeParams replaces a parametric field type with its concrete
@@ -1096,15 +1099,14 @@ func substituteTypeParams(fieldType string, genericTypes map[string]string) stri
 func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
 
-	keyParts := TypeParts(key)
+	keyCore := typemodel.Parse(key).Core()
 	genericTypes := map[string]string{}
 
 	// concreteGenerics reports whether the key carries concrete type arguments
-	// (Page[User]) rather than the bare declaration (Page[T any]). Concrete
-	// arguments are single tokens; a declaration entry carries its constraint
-	// after a space ("T any").
-	concreteGenerics := len(keyParts.GenericTypes) > 0 && len(typ.TypeParams) > 0 &&
-		allConcreteGenericArgs(keyParts.GenericTypes)
+	// (Page[User]) rather than the bare declaration (Page[T any]) — a
+	// declaration argument carries its constraint ("T any").
+	concreteGenerics := keyCore != nil && len(keyCore.Args) > 0 && len(typ.TypeParams) > 0 &&
+		allConcreteGenericArgs(keyCore.Args)
 
 	switch {
 	case concreteGenerics:
@@ -1112,16 +1114,15 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		// the concrete arguments, so a parametric field (Data T / Items []T)
 		// substitutes to the concrete type.
 		for i, param := range typ.TypeParams {
-			if i < len(keyParts.GenericTypes) {
-				genericTypes[param] = keyParts.GenericTypes[i]
+			if i < len(keyCore.Args) {
+				genericTypes[param] = genericArgText(keyCore.Args[i])
 			}
 		}
-	case len(keyParts.GenericTypes) > 0:
+	case keyCore != nil && len(keyCore.Args) > 0:
 		// Declaration form: keep the legacy placeholder behavior (field T maps
 		// to the "T-constraint" stand-in).
-		for _, part := range keyParts.GenericTypes {
-			genericType := strings.Split(part, " ")
-			genericTypes[genericType[0]] = strings.ReplaceAll(part, " ", "-")
+		for _, arg := range keyCore.Args {
+			genericTypes[arg.Name] = strings.ReplaceAll(genericArgText(arg), " ", "-")
 		}
 	}
 

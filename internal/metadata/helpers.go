@@ -20,6 +20,8 @@ import (
 	"go/token"
 	"go/types"
 	"strings"
+
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const (
@@ -27,13 +29,22 @@ const (
 	defaultScopeUnexported = "unexported"
 )
 
-// getTypeName extracts a type name from an AST expression
+// getTypeName extracts a type name from an AST node. Type expressions render
+// through the structured type model (typemodel.FromExpr), so every layer
+// parses and prints types through one code path; only the two non-expression
+// node shapes stay here:
+//
+//   - *ast.TypeSpec renders with its declared parameter-NAME list (Page[T]) —
+//     the methods-table key convention, matching how a generic method
+//     receiver expression renders (allTypeMethods is keyed by both).
+//   - *ast.FieldList renders that bracketed name list.
+//
+// Note the Types map itself is keyed by the bare tspec.Name.Name, not this
+// bracketed form.
 func getTypeName(nd ast.Node, info *types.Info) string {
-	if nd == nil {
-		return ""
-	}
-
 	switch t := nd.(type) {
+	case nil:
+		return ""
 	case *ast.TypeSpec:
 		var list string
 
@@ -50,43 +61,9 @@ func getTypeName(nd ast.Node, info *types.Info) string {
 			}
 		}
 		return fmt.Sprintf("[%s]", strings.TrimSuffix(string(result), ", "))
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		return "*" + getTypeName(t.X, info)
-	case *ast.IndexExpr:
-		return fmt.Sprintf("%s[%s]", getTypeName(t.X, info), getTypeName(t.Index, info))
-	case *ast.SelectorExpr:
-		if x, ok := t.X.(*ast.Ident); ok {
-			if obj := info.ObjectOf(x); obj != nil {
-				if pkg, ok := obj.(*types.PkgName); ok {
-					return pkg.Imported().Path() + "." + t.Sel.Name
-				}
-				return obj.Name() + "." + t.Sel.Name
-			}
-			return x.Name + "." + t.Sel.Name
-		}
-		return t.Sel.Name
-	case *ast.ArrayType:
-		return "[]" + getTypeName(t.Elt, info)
-	case *ast.MapType:
-		return "map[" + getTypeName(t.Key, info) + "]" + getTypeName(t.Value, info)
-	case *ast.InterfaceType:
-		return "interface{}"
-	case *ast.StructType:
-		// For nested struct types, we'll return a placeholder
-		// The actual structure will be captured in the Field.NestedType
-		return "struct{}"
-	case *ast.FuncType:
-		return "func"
-	case *ast.ChanType:
-		switch t.Dir {
-		case ast.SEND:
-			return "chan<- " + getTypeName(t.Value, info)
-		case ast.RECV:
-			return "<-chan " + getTypeName(t.Value, info)
-		}
-		return "chan " + getTypeName(t.Value, info)
+	}
+	if e, ok := nd.(ast.Expr); ok {
+		return typemodel.FromExpr(e, info).String()
 	}
 	return ""
 }
