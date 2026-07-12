@@ -1472,15 +1472,16 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 		})
 
 		f.Functions[fn.Name.Name] = &Function{
-			Name:          metadata.StringPool.Get(fn.Name.Name),
-			Pkg:           metadata.StringPool.Get(pkgName),
-			Signature:     *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
-			Position:      metadata.StringPool.Get(getFuncPosition(fn, fset)),
-			Scope:         metadata.StringPool.Get(getScope(fn.Name.Name)),
-			Comments:      metadata.StringPool.Get(comments),
-			TypeParams:    typeParams,
-			ReturnVars:    returnVars,
-			AssignmentMap: assignmentsInFunc,
+			Name:           metadata.StringPool.Get(fn.Name.Name),
+			Pkg:            metadata.StringPool.Get(pkgName),
+			Signature:      *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
+			Position:       metadata.StringPool.Get(getFuncPosition(fn, fset)),
+			Scope:          metadata.StringPool.Get(getScope(fn.Name.Name)),
+			Comments:       metadata.StringPool.Get(comments),
+			TypeParams:     typeParams,
+			ReturnVars:     returnVars,
+			AssignmentMap:  assignmentsInFunc,
+			MethodDispatch: detectMethodDispatch(fn.Body, info, fset),
 		}
 
 		f.Functions[fn.Name.Name].SignatureStr = metadata.StringPool.Get(CallArgToString(&f.Functions[fn.Name.Name].Signature))

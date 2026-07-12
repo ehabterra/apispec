@@ -30,6 +30,11 @@ type RouteInfo struct {
 	Response  map[string]*ResponseInfo
 	Params    []Parameter
 
+	// OperationIDSuffix disambiguates the operationId when one handler yields
+	// several operations (e.g. an r.Method dispatch split into GET/POST). Empty
+	// for ordinary routes. Appended as "_<suffix>" to the computed operationId.
+	OperationIDSuffix string
+
 	UsedTypes map[string]*Schema
 	Metadata  *metadata.Metadata
 
@@ -82,6 +87,11 @@ type RequestInfo struct {
 	ContentType string
 	BodyType    string
 	Schema      *Schema
+
+	// File and Line locate the call site that produced this request body, used
+	// to attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
+	File string
+	Line int
 }
 
 // ResponseInfo represents response information
@@ -90,6 +100,11 @@ type ResponseInfo struct {
 	ContentType string
 	BodyType    string
 	Schema      *Schema
+
+	// File and Line locate the call site that produced this response, used to
+	// attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
+	File string
+	Line int
 }
 
 // Extractor provides a cleaner, more modular approach to extraction
@@ -227,6 +242,10 @@ func (e *Extractor) ExtractRoutes() []*RouteInfo {
 		e.traverseForRoutes(root, "", nil, nil, nil, &routes)
 	}
 	routes = dropSubsumedMountPrefixes(routes)
+
+	// Split handlers that dispatch on r.Method (switch/if) into one route per
+	// HTTP method, before the per-route diagnostics below run on the settled set.
+	routes = splitMethodDispatchRoutes(routes)
 
 	// Diagnose map-key path-variable reads whose key matches no path placeholder.
 	// Done over the finalised route set so method/path are settled (handleRouteNode
@@ -967,6 +986,11 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		// a later generic `object` — which happens when one path resolves the
 		// type through a binding wrapper and another doesn't.
 		if req := e.extractRequestFromNode(child, route); req != nil {
+			// Record the call site so a method-dispatch handler can attribute
+			// this request body to the right verb branch by line range.
+			if f, l, _ := calleePosition(child); req.File == "" {
+				req.File, req.Line = f, l
+			}
 			route.Request = preferRequestInfo(route.Request, req)
 		}
 
@@ -1091,6 +1115,9 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				continue
 			}
 			seen[dedupeKey] = true
+			// Carry the call-site position so a method-dispatch handler can
+			// attribute this response to the right verb branch by line range.
+			resp.File, resp.Line = file, line
 			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col})
 		}
 	}
