@@ -837,6 +837,11 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 			}
 		}
 
+		// Fold a generic instantiation into the internal form so a generic
+		// request body keys to the same clean component as the equivalent
+		// response body (no duplicate schema). Mirrors the response matcher.
+		bodyType = normalizeGenericInstanceName(bodyType)
+
 		reqInfo.BodyType = preprocessingBodyType(bodyType)
 		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
 		reqInfo.Schema = schema

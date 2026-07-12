@@ -1839,6 +1839,10 @@ func TestNormalizeGenericInstanceName(t *testing.T) {
 		{"pkg.Pair[pkg.User, pkg.Product]", "pkg-->Pair[User, Product]"},
 		// Nested inferred: inner base reduced to a simple name.
 		{"pkg.Envelope[pkg.Page[pkg.User]]", "pkg-->Envelope[Page[User]]"},
+		// Unqualified base with a qualified arg (request-body var form): the base
+		// is qualified from the argument's package so it keys like the response.
+		{"Page[github.com/acme/svc.User]", "github.com/acme/svc-->Page[User]"},
+		{"Page[pkg.User]", "pkg-->Page[User]"},
 		// Already-internal form is unchanged.
 		{"pkg-->Envelope[User]", "pkg-->Envelope[User]"},
 		// Non-generic and bare-unqualified names pass through untouched.

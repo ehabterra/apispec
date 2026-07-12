@@ -25,7 +25,7 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	for _, p := range []string{"/users", "/products", "/user", "/pair", "/nested", "/inferred"} {
+	for _, p := range []string{"/users", "/products", "/user", "/pair", "/nested", "/inferred", "/create"} {
 		item, ok := out.Paths[p]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", p, mapPathKeys(out.Paths))
@@ -141,6 +141,35 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	}
 	if data := inferred.Properties["data"]; data == nil || !strings.HasSuffix(data.Ref, "_Product") {
 		t.Errorf("inferred Envelope.data = %+v, want a $ref to the Product component", data)
+	}
+
+	// Request body: POST /create decodes Page[User]. A generic request body must
+	// key to the SAME clean component as the Page[User] response (listUsers), not
+	// a separate verbose duplicate.
+	createReq := opFor(out.Paths["/create"], "POST")
+	if createReq == nil || createReq.RequestBody == nil {
+		t.Fatalf("POST /create missing request body")
+	}
+	var reqRef string
+	for _, mt := range createReq.RequestBody.Content {
+		if mt.Schema != nil {
+			reqRef = mt.Schema.Ref
+		}
+	}
+	if !strings.HasSuffix(reqRef, "_Page_User") {
+		t.Errorf("POST /create request body ref = %q, want the shared Page_User component", reqRef)
+	}
+	// Exactly one Page_User component — request and response share it, no
+	// verbose duplicate. Anchored on "_structs_Page_User" so the nested
+	// Envelope_Page_User component isn't counted.
+	pageUserComponents := 0
+	for k := range schemas {
+		if strings.HasSuffix(k, "_structs_Page_User") {
+			pageUserComponents++
+		}
+	}
+	if pageUserComponents != 1 {
+		t.Errorf("want exactly 1 Page_User component (request and response share it), got %d: %v", pageUserComponents, mapSchemaKeys(schemas))
 	}
 
 	// No lingering unsubstituted placeholder (the pre-fix Page_T-any / T-any).

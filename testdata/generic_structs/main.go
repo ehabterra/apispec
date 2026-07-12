@@ -88,6 +88,14 @@ func getInferred(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(NewEnvelope(products[0]))
 }
 
+// createPage decodes a generic REQUEST body Page[User]; it must key to the same
+// clean component as the Page[User] response body (no duplicate schema).
+func createPage(w http.ResponseWriter, r *http.Request) {
+	var p Page[User]
+	_ = json.NewDecoder(r.Body).Decode(&p)
+	w.WriteHeader(http.StatusCreated)
+}
+
 var users = []User{{ID: 1, Name: "Alice", Email: "alice@example.com"}}
 var products = []Product{{SKU: "A-1", Price: 9.99}}
 
@@ -98,5 +106,6 @@ func main() {
 	http.HandleFunc("/pair", getPair)
 	http.HandleFunc("/nested", getNested)
 	http.HandleFunc("/inferred", getInferred)
+	http.HandleFunc("/create", createPage)
 	http.ListenAndServe(":8080", nil)
 }

@@ -116,6 +116,7 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/pair", []string{"POST"}},
 				{"/nested", []string{"POST"}},
 				{"/inferred", []string{"POST"}},
+				{"/create", []string{"POST"}},
 			},
 		},
 	}

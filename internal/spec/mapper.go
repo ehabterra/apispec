@@ -1043,10 +1043,28 @@ func normalizeGenericInstanceName(s string) string {
 		return s
 	}
 	base := s[:open]
-	if !strings.Contains(base, TypeSep) && !strings.Contains(base, defaultSep) {
-		return s
-	}
 	args := splitGenericArgs(s[open+1 : len(s)-1])
+
+	// Request-body var types can render with an unqualified base but a
+	// package-qualified argument (`Page[github.com/acme/svc.User]`). Qualify the
+	// base from the first qualified argument's package so it keys to the same
+	// component as the encode-site form (`…svc-->Page[User]`) — an envelope and
+	// its payload almost always co-locate. If nothing qualifies the base it's a
+	// bare local generic (`Container[T]`); leave it opaque.
+	if !strings.Contains(base, TypeSep) && !strings.Contains(base, defaultSep) {
+		pkg := ""
+		for _, a := range args {
+			if p := genericArgPackage(a); p != "" {
+				pkg = p
+				break
+			}
+		}
+		if pkg == "" {
+			return s
+		}
+		base = pkg + TypeSep + base
+	}
+
 	for i, a := range args {
 		args[i] = simplifyGenericArg(a)
 	}
@@ -1058,6 +1076,26 @@ func normalizeGenericInstanceName(s string) string {
 		}
 	}
 	return base + "[" + strings.Join(args, ", ") + "]"
+}
+
+// genericArgPackage returns the package qualifier of a rendered type argument
+// (`github.com/acme/svc.User` -> `github.com/acme/svc`, `pkg-->User` -> `pkg`),
+// or "" when the argument is unqualified. Only the segment before any nested
+// bracket is considered, so `pkg.Page[pkg.User]` yields `pkg`.
+func genericArgPackage(arg string) string {
+	arg = strings.TrimPrefix(arg, "[]")
+	arg = strings.TrimPrefix(arg, "*")
+	if i := strings.LastIndex(arg, TypeSep); i >= 0 {
+		return arg[:i]
+	}
+	head := arg
+	if b := strings.Index(arg, "["); b >= 0 {
+		head = arg[:b]
+	}
+	if dot := strings.LastIndex(head, defaultSep); dot >= 0 {
+		return head[:dot]
+	}
+	return ""
 }
 
 // simplifyGenericArg reduces a type argument to its simple base name, recursing
