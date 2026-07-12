@@ -125,6 +125,45 @@ func TestRender(t *testing.T) {
 	}
 }
 
+// TestCanonicalize covers the component-key canonicalizer. The first block
+// mirrors the historical normalize table (behavior unchanged); the second
+// covers what the structured model fixes: instantiations wrapped in
+// pointer/slice constructors, which the legacy string view mangled.
+func TestCanonicalize(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// go/types dotted form (inferred) -> internal form, clean args.
+		{"pkg.Envelope[pkg.Product]", "pkg-->Envelope[Product]"},
+		{"m/x.Page[m/x.User]", "m/x-->Page[User]"},
+		{"pkg.Pair[pkg.User, pkg.Product]", "pkg-->Pair[User, Product]"},
+		{"pkg.Envelope[pkg.Page[pkg.User]]", "pkg-->Envelope[Page[User]]"},
+		// Unqualified base borrows the first qualified argument's package.
+		{"Page[github.com/acme/svc.User]", "github.com/acme/svc-->Page[User]"},
+		{"Page[pkg.User]", "pkg-->Page[User]"},
+		// Already-internal, non-generic, and bare-unqualified pass through.
+		{"pkg-->Envelope[User]", "pkg-->Envelope[User]"},
+		{"pkg.User", "pkg.User"},
+		{"Container[T]", "Container[T]"},
+		{"string", "string"},
+
+		// Structured improvements over the legacy view:
+		{"[]pkg.Page[pkg.User]", "[]pkg-->Page[User]"},
+		{"*pkg.Page[pkg.User]", "*pkg-->Page[User]"},
+		{"[]*m/x.Envelope[m/x.Page[m/x.User]]", "[]*m/x-->Envelope[Page[User]]"},
+		// Maps are not component-key candidates: pass through untouched.
+		{"map[string]pkg.Page[pkg.User]", "map[string]pkg.Page[pkg.User]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := Canonicalize(tt.input); got != tt.want {
+				t.Errorf("Canonicalize(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestRoundTrip: well-formed dotted input survives Parse+String unchanged,
 // and internal-form input survives Parse+Internal unchanged — the property
 // that makes TypeRef safe to thread through code that today passes strings.

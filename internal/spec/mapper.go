@@ -908,6 +908,14 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	return metaTypes
 }
 
+// typeByName looks a type up in metadata by the Parts view of its name.
+//
+// Callers must produce Parts with ParseParts (spec's TypeParts), NOT the
+// structured typemodel.Parse: metadata keys a generic declaration with its
+// parameter brackets included ("Page[T]", via getTypeName), and ParseParts's
+// opaque-unqualified-generic quirk matches that format where the structured
+// core name ("Page") would miss. The two sides migrate together in phase 3
+// of docs/TYPE_MODEL.md.
 func typeByName(typeParts Parts, meta *metadata.Metadata) *metadata.Type {
 	if meta == nil {
 		return nil
@@ -967,9 +975,11 @@ func TypeParts(typeName string) Parts {
 
 // normalizeGenericInstanceName rewrites a generic instantiation rendered in
 // the go/types form (pkg.Type[pkg.Arg]) into the internal pkg-->Type[Arg]
-// form with simple argument names. Transitional: delegates to typemodel.
+// form with simple argument names, via the structured type model — which,
+// unlike the legacy string view, also handles instantiations wrapped in
+// pointer/slice constructors ([]pkg.Page[pkg.User]).
 func normalizeGenericInstanceName(s string) string {
-	return typemodel.NormalizeInstance(s)
+	return typemodel.Canonicalize(s)
 }
 
 const generateSchemaFromTypeKey = "generateSchemaFromType"
@@ -1265,8 +1275,8 @@ func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta 
 	if schema != nil && metadata.IsPrimitiveType(underlyingType) {
 		// Extract package name for enum detection
 		pkgName := ""
-		if typeParts := TypeParts(originalTypeName); typeParts.PkgName != "" {
-			pkgName = typeParts.PkgName
+		if core := typemodel.Parse(originalTypeName).Core(); core != nil && core.Pkg != "" {
+			pkgName = core.Pkg
 		}
 
 		// Detect enum values for this alias type using the original type name
@@ -1756,13 +1766,9 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 
 	var goTypePkgName string
 
-	goTypeParts := TypeParts(goType)
-	if goTypeParts.PkgName != "" {
-		goTypePkgName = goTypeParts.PkgName
-		goTypePkgName = strings.TrimPrefix(goTypePkgName, "*")
-		goTypePkgName = strings.TrimPrefix(goTypePkgName, "[]")
-
-		goType = goTypeParts.TypeName
+	if core := typemodel.Parse(goType).Core(); core != nil && core.Pkg != "" {
+		goTypePkgName = core.Pkg
+		goType = core.Name
 	}
 
 	// Group constants by their resolved type and group index
@@ -2121,8 +2127,8 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
 				// Extract package name for enum detection
 				pkgName := ""
-				if typeParts := TypeParts(elementType); typeParts.PkgName != "" {
-					pkgName = typeParts.PkgName
+				if core := typemodel.Parse(elementType).Core(); core != nil && core.Pkg != "" {
+					pkgName = core.Pkg
 				}
 
 				// Detect enum values for this element type
@@ -2188,8 +2194,8 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 				if !metadata.IsPrimitiveType(valueType) && additionalProperties != nil && len(additionalProperties.Enum) == 0 {
 					// Extract package name for enum detection
 					pkgName := ""
-					if typeParts := TypeParts(valueType); typeParts.PkgName != "" {
-						pkgName = typeParts.PkgName
+					if core := typemodel.Parse(valueType).Core(); core != nil && core.Pkg != "" {
+						pkgName = core.Pkg
 					}
 
 					// Detect enum values for this value type
@@ -2266,8 +2272,8 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
 			// Extract package name for enum detection
 			pkgName := ""
-			if typeParts := TypeParts(elementType); typeParts.PkgName != "" {
-				pkgName = typeParts.PkgName
+			if core := typemodel.Parse(elementType).Core(); core != nil && core.Pkg != "" {
+				pkgName = core.Pkg
 			}
 
 			// Detect enum values for this element type
