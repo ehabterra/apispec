@@ -73,4 +73,10 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 	if ref := responseRef("/made"); !strings.HasSuffix(ref, "_Dog") {
 		t.Errorf("POST /made response = %q, want the concrete Dog (return trace)", ref)
 	}
+
+	// /passed: `writeAnimal(w, Dog{})` where writeAnimal(w, v Animal) encodes v
+	// → resolves to Dog via the named-interface parameter binding.
+	if ref := responseRef("/passed"); !strings.HasSuffix(ref, "_Dog") {
+		t.Errorf("POST /passed response = %q, want the concrete Dog (param binding)", ref)
+	}
 }

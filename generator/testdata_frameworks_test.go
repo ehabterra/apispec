@@ -136,6 +136,7 @@ func TestTestdata_Frameworks(t *testing.T) {
 				{"/cat", []string{"POST"}},
 				{"/either", []string{"POST"}},
 				{"/made", []string{"POST"}},
+				{"/passed", []string{"POST"}},
 			},
 		},
 	}

@@ -2291,6 +2291,13 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgumen
 		if concrete := r.concreteFromEnclosingFunc(arg, edge, originalType); concrete != "" {
 			return concrete
 		}
+		// Interface-typed function parameter: the concrete value is bound at the
+		// call site that entered the enclosing function (`writeAnimal(w, Dog{})`
+		// with the response `Encode(v)` inside writeAnimal). Resolve the param to
+		// that argument.
+		if concrete := r.concreteFromParamBinding(arg, node, originalType); concrete != "" {
+			return concrete
+		}
 	}
 
 	return originalType
@@ -2332,6 +2339,44 @@ func (r *ResponsePatternMatcherImpl) concreteFromEnclosingFunc(arg *metadata.Cal
 		concrete = ct
 	}
 	return concrete
+}
+
+// concreteFromParamBinding resolves an interface-typed parameter used as a
+// response body to the concrete argument bound to it at the call site that
+// entered the enclosing function. It walks up the tracker tree to the edge
+// whose callee IS the enclosing function (the response edge's caller) — not the
+// immediate parent, whose own parameters can shadow the name — and reads that
+// edge's ParamArgMap. Non-interface / unresolvable arguments are ignored so the
+// interface is kept.
+func (r *ResponsePatternMatcherImpl) concreteFromParamBinding(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
+	edge := node.GetEdge()
+	if edge == nil {
+		return ""
+	}
+	meta := edge.Callee.Meta
+	if meta == nil || !isInterfaceTypeName(originalType, meta) {
+		return ""
+	}
+	enclosing := edge.Caller.BaseID() // the function whose param `arg` is
+	if enclosing == "" {
+		return ""
+	}
+	for p := node.GetParent(); p != nil; p = p.GetParent() {
+		pe := p.GetEdge()
+		if pe == nil || pe.Callee.BaseID() != enclosing {
+			continue
+		}
+		callerArg, ok := pe.ParamArgMap[arg.GetName()]
+		if !ok {
+			return ""
+		}
+		ct := r.contextProvider.GetArgumentInfo(&callerArg)
+		if ct == "" || isInterfaceTypeName(ct, meta) {
+			return ""
+		}
+		return ct
+	}
+	return ""
 }
 
 // concreteFromCalleeReturn resolves an interface-typed call result used as a

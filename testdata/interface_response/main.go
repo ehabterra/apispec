@@ -49,6 +49,15 @@ func getEither(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a)
 }
 
+// writeAnimal encodes a value received through a named-interface parameter.
+func writeAnimal(w http.ResponseWriter, v Animal) { json.NewEncoder(w).Encode(v) }
+
+// getPassed passes a concrete Dog into a helper whose parameter is the Animal
+// interface; resolution traces the param back to the call-site concrete.
+func getPassed(w http.ResponseWriter, r *http.Request) {
+	writeAnimal(w, Dog{})
+}
+
 // makeDog returns a concrete Dog through a function whose declared return type
 // is the Animal interface.
 func makeDog() Animal { return Dog{} }
@@ -64,5 +73,6 @@ func main() {
 	http.HandleFunc("/cat", getCat)
 	http.HandleFunc("/either", getEither)
 	http.HandleFunc("/made", getMade)
+	http.HandleFunc("/passed", getPassed)
 	http.ListenAndServe(":8080", nil)
 }
