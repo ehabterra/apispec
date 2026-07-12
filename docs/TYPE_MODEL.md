@@ -72,16 +72,30 @@ verified against the golden fixtures:
 - Zero output drift: all golden fixtures, determinism tests, and framework
   tests unchanged.
 
-**Phase 2 — migrate consumers, kill quirks deliberately.**
-One consumer (or one quirk) per PR, so any golden diff is reviewable and
-intentional:
-- `internal/spec` call sites of `TypeParts(...)` consume `Parse(...)` fields
-  directly; the ~70 ad-hoc prefix-trim sites collapse onto `Core()`/renderers.
-- `genericInstantiationName`/`renderGenericArg` in the context provider build
-  a `TypeRef` and render `Internal()` instead of concatenating brackets.
-- Known legacy mangles become fixes with fixture coverage: wrapped generic
-  instantiations (`[]pkg.Page[pkg.User]`), map-typed generic arguments,
-  wrapper markers dropped from argument names.
+**Phase 2 — migrate consumers, kill quirks deliberately.** *(landed)*
+- The component-key canonicalizer is structured: `Canonicalize` (in
+  `typemodel`) replaces the legacy `NormalizeInstance` string view; unlike it,
+  instantiations wrapped in pointer/slice constructors
+  (`[]pkg.Page[pkg.User]`) canonicalize correctly instead of being mangled,
+  and maps pass through untouched.
+- The context provider *builds* instantiation names as `TypeRef` values
+  rendered via `Internal()` (`genericInstantiationName`/`genericArgRef`/
+  `genericBaseRef`) instead of concatenating bracket strings — and now
+  recognizes a composite literal whose type is a slice of an instantiation
+  (`[]Envelope[User]{…}`), which previously collapsed onto the declaration
+  placeholder (`Envelope_T-any`). Fixture: `testdata/generic_structs` route
+  `/batch`.
+- Pkg/simple-name-only consumers (`detectEnumFromConstants` and its callers,
+  `traceGenericOrigin`) consume `Parse(...).Core()` fields directly.
+- Deleted from `legacy.go` (no callers remain): `NormalizeInstance`,
+  `ArgPackage`, `SimplifyArg`, `SimpleName`.
+- **Still on `ParseParts` deliberately** — everything feeding `typeByName` /
+  metadata type lookups (`findTypesInMetadata`, `generateStructSchema`'s key
+  parsing, `isInterfaceTypeName`, `lookupWrapperType`): metadata keys a
+  generic declaration *with* its parameter brackets (`"Page[T]"`, via
+  `getTypeName`), and `ParseParts`'s opaque-unqualified-generic quirk matches
+  that format where the structured core name (`"Page"`) would miss. This
+  lookup invariant is the phase-3 boundary: both sides must move together.
 
 **Phase 3 — metadata carries structure.**
 - `metadata.getTypeName` call sites move to `FromExpr(...).String()` (proven

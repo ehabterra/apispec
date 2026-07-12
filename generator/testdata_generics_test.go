@@ -25,7 +25,7 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	for _, p := range []string{"/users", "/products", "/user", "/pair", "/nested", "/inferred", "/create"} {
+	for _, p := range []string{"/users", "/products", "/user", "/pair", "/nested", "/inferred", "/create", "/batch"} {
 		item, ok := out.Paths[p]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", p, mapPathKeys(out.Paths))
@@ -170,6 +170,28 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	}
 	if pageUserComponents != 1 {
 		t.Errorf("want exactly 1 Page_User component (request and response share it), got %d: %v", pageUserComponents, mapSchemaKeys(schemas))
+	}
+
+	// Wrapped instantiation: POST /batch encodes []Envelope[User] — a slice of
+	// a generic instantiation. The concrete argument must survive the slice
+	// constructor: the response is an array whose items $ref the same
+	// Envelope_User component as the direct /user route (no Envelope_T-any
+	// placeholder resurrected).
+	batchOp := opFor(out.Paths["/batch"], "POST")
+	if batchOp == nil {
+		t.Fatalf("POST /batch missing")
+	}
+	var batchSchema *intspec.Schema
+	for _, resp := range batchOp.Responses {
+		for _, mt := range resp.Content {
+			if mt.Schema != nil {
+				batchSchema = mt.Schema
+			}
+		}
+	}
+	if batchSchema == nil || batchSchema.Type != "array" || batchSchema.Items == nil ||
+		!strings.HasSuffix(batchSchema.Items.Ref, "_Envelope_User") {
+		t.Errorf("POST /batch response = %+v, want array of $ref Envelope_User", batchSchema)
 	}
 
 	// No lingering unsubstituted placeholder (the pre-fix Page_T-any / T-any).

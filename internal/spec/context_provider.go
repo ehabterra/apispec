@@ -86,20 +86,14 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 	case metadata.KindCompositeLit:
 		if arg.X != nil {
 			// A composite literal's type expression can be a generic
-			// instantiation (Page[User]{...} / Pair[K,V]{...}). Render it
-			// carrying the concrete type arguments — `Base[User]` — so the
+			// instantiation (Page[User]{...} / Pair[K,V]{...}), possibly
+			// wrapped in a slice constructor ([]Envelope[User]{...}). Render
+			// it carrying the concrete type arguments — `Base[User]` — so the
 			// schema layer can substitute them into the parametric struct's
 			// fields, instead of falling back to the bare declaration
 			// (Page[T any]) and collapsing every instantiation together.
-			switch arg.X.GetKind() {
-			case metadata.KindIndex:
-				if arg.X.X != nil && arg.X.Fun != nil {
-					return c.genericInstantiationName(arg.X.X, []*metadata.CallArgument{arg.X.Fun})
-				}
-			case metadata.KindIndexList:
-				if arg.X.X != nil && len(arg.X.Args) > 0 {
-					return c.genericInstantiationName(arg.X.X, arg.X.Args)
-				}
+			if name := c.instantiationName(arg.X); name != "" {
+				return name
 			}
 			return c.callArgToString(arg.X, nil)
 		}
@@ -279,94 +273,127 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 	return ""
 }
 
-// genericInstantiationName renders a generic type instantiation as
-// `Base[Arg1,Arg2]` (literal brackets), preserving the concrete type
-// arguments so the schema layer resolves each instantiation to its own
-// component (Page[User] vs Page[Product]) rather than collapsing onto the bare
-// declaration. Base keeps its package qualifier (e.g. pkg-->Page); each type
-// argument is reduced to its simple type name so the resulting bracketed form
-// parses cleanly through TypeParts and sanitizes to a readable component name.
-// Cross-package type arguments are reduced to their base name (a known v1
-// limitation) rather than dropped.
+// instantiationName renders a composite literal's type expression when it is
+// a generic instantiation — directly (Page[User]{...}, Pair[K,V]{...}) or
+// wrapped in slice constructors ([]Envelope[User]{...}) — and "" otherwise.
+// Preserving the concrete arguments through the wrapper is what keeps a
+// slice-of-instantiation element from collapsing onto the declaration
+// placeholder (Envelope[T any]).
+func (c *ContextProviderImpl) instantiationName(x *metadata.CallArgument) string {
+	switch x.GetKind() {
+	case metadata.KindIndex:
+		if x.X != nil && x.Fun != nil {
+			return c.genericInstantiationName(x.X, []*metadata.CallArgument{x.Fun})
+		}
+	case metadata.KindIndexList:
+		if x.X != nil && len(x.Args) > 0 {
+			return c.genericInstantiationName(x.X, x.Args)
+		}
+	case metadata.KindArrayType:
+		if x.X != nil {
+			if inner := c.instantiationName(x.X); inner != "" {
+				return "[]" + inner
+			}
+		}
+	}
+	return ""
+}
+
+// genericInstantiationName renders a generic type instantiation in the
+// canonical internal component-key form (pkg-->Page[User]), preserving the
+// concrete type arguments so the schema layer resolves each instantiation to
+// its own component (Page[User] vs Page[Product]) rather than collapsing onto
+// the bare declaration. The instantiation is built as a structured TypeRef —
+// the base's declared parameters (Page[T any]) replaced by the concrete
+// arguments — and rendered via Internal(), which keeps the base's package
+// qualifier and reduces every argument to its simple form (the component-name
+// convention; ", " joins so the sanitizer yields …Pair_User-Product with no
+// raw comma).
 func (c *ContextProviderImpl) genericInstantiationName(base *metadata.CallArgument, typeArgs []*metadata.CallArgument) string {
 	baseStr := c.callArgToString(base, nil)
 	if baseStr == "" {
 		return ""
 	}
-	// The base ident renders with its own declared type parameters
-	// (Page[T any]); drop them — we re-append the concrete arguments below.
-	if i := strings.Index(baseStr, "["); i >= 0 {
-		baseStr = baseStr[:i]
-	}
-	args := make([]string, 0, len(typeArgs))
+	ref := typemodel.Parse(baseStr)
+	core := ref.Core()
+	core.Args = nil
 	for _, a := range typeArgs {
 		if a == nil {
 			continue
 		}
-		if name := c.renderGenericArg(a); name != "" {
-			args = append(args, name)
+		if arg := c.genericArgRef(a); arg != nil {
+			core.Args = append(core.Args, arg)
 		}
 	}
-	if len(args) == 0 {
+	if len(core.Args) == 0 {
+		// No renderable arguments: fall back to the base with its declared
+		// parameter brackets stripped, preserving its original encoding.
+		if i := strings.Index(baseStr, "["); i >= 0 {
+			return baseStr[:i]
+		}
 		return baseStr
 	}
-	// Join with ", " (not a bare comma): the schema-name sanitizer maps ", " to
-	// "-", so a multi-argument instantiation (Pair[User, Product]) yields a
-	// valid component name (…Pair_User-Product) with no raw comma.
-	return baseStr + "[" + strings.Join(args, ", ") + "]"
+	return ref.Internal()
 }
 
-// renderGenericArg renders one type argument of a generic instantiation. A
-// nested generic argument (the Page[User] in Envelope[Page[User]]) is rendered
-// recursively with its base reduced to a simple name — Page[User] — so that
-// once the enclosing type's package is glued back on during field resolution
-// it parses through TypeParts as pkg.Page[User] and resolves. Non-generic
-// arguments reduce to their simple type name.
-func (c *ContextProviderImpl) renderGenericArg(a *metadata.CallArgument) string {
+// genericArgRef builds the TypeRef of one type argument of a generic
+// instantiation. A nested generic argument (the Page[User] in
+// Envelope[Page[User]]) recurses with its own concrete arguments attached;
+// leaves parse the rendered argument. The structured ref keeps the argument's
+// qualifier and wrappers — Internal() reduces arguments to their simple form
+// at render time, so a nested instantiation still re-parses cleanly once the
+// enclosing type's package is glued back on during field resolution.
+func (c *ContextProviderImpl) genericArgRef(a *metadata.CallArgument) *typemodel.TypeRef {
 	switch a.GetKind() {
 	case metadata.KindIndex:
 		if a.X != nil && a.Fun != nil {
-			if inner := c.renderGenericArg(a.Fun); inner != "" {
-				return c.simpleGenericBase(a.X) + "[" + inner + "]"
+			if inner := c.genericArgRef(a.Fun); inner != nil {
+				if base := c.genericBaseRef(a.X); base != nil {
+					base.Args = []*typemodel.TypeRef{inner}
+					return base
+				}
 			}
 		}
 	case metadata.KindIndexList:
 		if a.X != nil && len(a.Args) > 0 {
-			inners := make([]string, 0, len(a.Args))
+			inners := make([]*typemodel.TypeRef, 0, len(a.Args))
 			for _, sub := range a.Args {
 				if sub == nil {
 					continue
 				}
-				if s := c.renderGenericArg(sub); s != "" {
-					inners = append(inners, s)
+				if r := c.genericArgRef(sub); r != nil {
+					inners = append(inners, r)
 				}
 			}
 			if len(inners) > 0 {
-				return c.simpleGenericBase(a.X) + "[" + strings.Join(inners, ", ") + "]"
+				if base := c.genericBaseRef(a.X); base != nil {
+					base.Args = inners
+					return base
+				}
 			}
 		}
 	}
-	return simpleGenericArgName(c.callArgToString(a, nil))
-}
-
-// simpleGenericBase reduces a generic base expression to its unqualified type
-// name (Page), stripping both its declared type-parameter brackets and its
-// package qualifier.
-func (c *ContextProviderImpl) simpleGenericBase(a *metadata.CallArgument) string {
 	s := c.callArgToString(a, nil)
-	if i := strings.Index(s, "["); i >= 0 {
-		s = s[:i]
+	if s == "" {
+		return nil
 	}
-	return simpleGenericArgName(s)
+	return typemodel.Parse(s)
 }
 
-// simpleGenericArgName reduces a rendered type-argument string to its simple
-// type name, stripping package qualifiers and any leading pointer/slice
-// markers, and normalizing interface{} to "any". Keeping the bracketed
-// argument free of TypeSep is what lets TypeParts recover it via its
-// single-generic bracket fallback. Transitional: delegates to typemodel.
-func simpleGenericArgName(s string) string {
-	return typemodel.SimpleName(s)
+// genericBaseRef parses a generic base expression to its named core with the
+// declared type-parameter brackets dropped (the concrete arguments replace
+// them).
+func (c *ContextProviderImpl) genericBaseRef(a *metadata.CallArgument) *typemodel.TypeRef {
+	s := c.callArgToString(a, nil)
+	if s == "" {
+		return nil
+	}
+	base := typemodel.Parse(s).Core()
+	if base == nil || base.Name == "" {
+		return nil
+	}
+	base.Args = nil
+	return base
 }
 
 // DefaultPackageName returns the default package name for an package path (last non-version segment)

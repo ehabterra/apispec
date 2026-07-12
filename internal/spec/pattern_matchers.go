@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 // BasePatternMatcher provides common functionality for all pattern matchers
@@ -950,12 +951,11 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument
 		return resolvedType
 	}
 
-	typeParts := TypeParts(originalType)
-
 	// If it's a generic type with a concrete resolution, use it
-	genericType := traceGenericOrigin(node, typeParts)
-	if genericType != "" {
-		return genericType
+	if core := typemodel.Parse(originalType).Core(); core != nil {
+		if genericType := traceGenericOrigin(node, core.Name); genericType != "" {
+			return genericType
+		}
 	}
 
 	// Selector expression — resolve via metadata field lookup.
@@ -984,11 +984,14 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument
 	return originalType
 }
 
-func traceGenericOrigin(node TrackerNodeInterface, typeParts Parts) string {
+// traceGenericOrigin resolves a type-parameter name (the core name of the
+// traced type, e.g. "T") through the node's type-parameter map to its
+// concrete instantiation, following chained mappings.
+func traceGenericOrigin(node TrackerNodeInterface, typeName string) string {
 	typeParams := node.GetTypeParamMap()
 
-	if len(typeParams) > 0 && typeParts.TypeName != "" {
-		searchType := typeParts.TypeName
+	if len(typeParams) > 0 && typeName != "" {
+		searchType := typeName
 		foundMapping := false
 
 		for {

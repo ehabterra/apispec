@@ -334,6 +334,41 @@ func (t *TypeRef) render(m renderMode) string {
 	return base + "[" + strings.Join(args, ", ") + "]"
 }
 
+// Canonicalize renders a generic instantiation in the canonical internal
+// component-key form (pkg-->Type[SimpleArgs]) regardless of which encoding it
+// arrived in: the go/types dotted form an inferred instantiation renders as,
+// the internal form, or either wrapped in pointer/slice constructors (which
+// the legacy string view mangled). An unqualified base borrows the package of
+// the first qualified argument — an envelope and its payload almost always
+// co-locate — so a request-body var form (Page[github.com/acme/svc.User])
+// keys to the same component as the encode-site form.
+//
+// Returned unchanged: non-instantiations, bare unqualified generics with no
+// qualified argument to borrow from (Container[T]), and map types (a map is
+// not a component-key candidate).
+func Canonicalize(s string) string {
+	if !strings.Contains(s, "[") || !strings.HasSuffix(s, "]") {
+		return s
+	}
+	ref := Parse(s)
+	core := ref.Core()
+	if core == nil || core.Kind != KindNamed || len(core.Args) == 0 {
+		return s
+	}
+	if core.Pkg == "" {
+		for _, a := range core.Args {
+			if c := a.Core(); c != nil && c.Pkg != "" {
+				core.Pkg = c.Pkg
+				break
+			}
+		}
+		if core.Pkg == "" {
+			return s
+		}
+	}
+	return ref.Internal()
+}
+
 // Raw returns the exact input this ref was parsed from, or "" if it was
 // constructed programmatically.
 func (t *TypeRef) Raw() string {

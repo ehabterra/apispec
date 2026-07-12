@@ -88,6 +88,14 @@ func getInferred(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(NewEnvelope(products[0]))
 }
 
+// getBatch returns a SLICE of a generic instantiation — []Envelope[User] —
+// exercising the wrapped form: the concrete argument must survive the slice
+// constructor so the element resolves to Envelope[User], not the declaration
+// placeholder (Envelope[T any]).
+func getBatch(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode([]Envelope[User]{{Data: users[0], Message: "ok"}})
+}
+
 // createPage decodes a generic REQUEST body Page[User]; it must key to the same
 // clean component as the Page[User] response body (no duplicate schema).
 func createPage(w http.ResponseWriter, r *http.Request) {
@@ -107,5 +115,6 @@ func main() {
 	http.HandleFunc("/nested", getNested)
 	http.HandleFunc("/inferred", getInferred)
 	http.HandleFunc("/create", createPage)
+	http.HandleFunc("/batch", getBatch)
 	http.ListenAndServe(":8080", nil)
 }
