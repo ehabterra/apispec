@@ -245,7 +245,7 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 		m := NewRoutePatternMatcher(RoutePattern{
 			MethodFromHandler: true, HandlerFromArg: true, HandlerArgIndex: 0, MethodArgIndex: -1,
 		}, cfg, cp, nil)
-		edge := sweepEdge(meta, "main", "app", "Handle", "app", "", "", sweepIdent(meta, "deleteUser"))
+		edge := sweepEdge(meta, "main", "app", "Handle", "app", "", "", sweepIdent(meta, "deleteWidget"))
 		route := NewRouteInfo()
 		if !m.extractRouteDetails(sweepNode(edge), route) {
 			t.Fatal("expected details to be found")
@@ -355,10 +355,9 @@ func TestSweepInferMethodFromContext(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
 		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp, nil)
-		// "deleteUser" (not "...Widget"): the contains-matcher would otherwise
-		// spot "get" inside "widget" and short-circuit to GET before the
-		// caller-name prefix can win.
-		edge := sweepEdge(meta, "deleteUser", "app", "HandleFunc", "mux", "", "")
+		// "deleteWidget" pins the word-boundary fix: the old substring
+		// matcher spotted "get" inside "widget" and returned GET.
+		edge := sweepEdge(meta, "deleteWidget", "app", "HandleFunc", "mux", "", "")
 		if got := m.inferMethodFromContext(&TrackerNode{}, edge); got != "DELETE" {
 			t.Errorf("inferMethodFromContext() = %q, want DELETE", got)
 		}
@@ -368,10 +367,11 @@ func TestSweepInferMethodFromContext(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
 		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp, nil)
-		// Handler arg "updateUser" (not "...Widget"): "widget" contains "get"
-		// and would resolve to GET before the "update" prefix can map to PUT.
+		// "updateWidget" pins the word-boundary fix on the handler-arg path:
+		// the old substring matcher resolved "widget" to GET before the
+		// "update" prefix could map to PUT.
 		edge := sweepEdge(meta, "createThing", "app", "HandleFunc", "mux", "", "",
-			sweepLit(meta, `"/x"`), sweepIdent(meta, "updateUser"))
+			sweepLit(meta, `"/x"`), sweepIdent(meta, "updateWidget"))
 		if got := m.inferMethodFromContext(&TrackerNode{}, edge); got != "PUT" {
 			t.Errorf("inferMethodFromContext() = %q, want PUT from handler arg", got)
 		}
