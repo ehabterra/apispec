@@ -35,9 +35,10 @@ type Pair[K any, V any] struct {
 }
 
 type User struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+	Avatar []byte `json:"avatar,omitempty"`
 }
 
 type Product struct {

@@ -947,7 +947,8 @@ func testMapGoTypeToOpenAPISchema_PrimitiveTypes(t *testing.T) {
 		{"float64", "number"},
 		{"bool", "boolean"},
 		{"time.Time", "string"},
-		{"[]byte", "array"},
+		{"[]byte", "string"},  // base64, like encoding/json
+		{"[]uint8", "string"}, // alias of []byte
 		{"[]string", "array"},
 		{"[]time.Time", "array"},
 		{"[]int", "array"},

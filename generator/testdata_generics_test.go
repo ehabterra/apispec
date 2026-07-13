@@ -70,6 +70,11 @@ func TestTestdata_GenericStructs(t *testing.T) {
 	if _, ok := userSchema.Properties["email"]; !ok {
 		t.Errorf("User schema missing expected field 'email'; got %v", userSchema.Properties)
 	}
+	// []byte fields must render the way encoding/json marshals them: a
+	// base64 string, not an array of integers.
+	if avatar := userSchema.Properties["avatar"]; avatar == nil || avatar.Type != "string" || avatar.Format != "byte" {
+		t.Errorf("User.avatar = %+v, want {type: string, format: byte}", avatar)
+	}
 	_, productSchema := findSchema("_structs_Product")
 	if productSchema == nil {
 		t.Fatalf("Product component missing; have %v", mapSchemaKeys(schemas))
