@@ -72,6 +72,10 @@ coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
+# Check library coverage against the ratchet floor (same check CI runs)
+coverage-check:
+	bash scripts/check-coverage.sh
+
 # Run linting checks
 lint:
 	@echo "Running golangci-lint..."
