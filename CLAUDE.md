@@ -40,6 +40,31 @@ go test ./internal/metadata -run TestGenerateMetadata -update
 scripts/compare-spec.sh                            # regenerate/diff fixture snapshots
 ```
 
+## Profiling & performance
+
+```bash
+./apispec --dir <project> --cpu-profile --mem-profile --profile-dir profiles
+                     # also: --block-profile --mutex-profile --trace-profile
+go tool pprof -top ./apispec profiles/cpu.prof
+go tool pprof -list 'FuncName' -sample_index=alloc_space ./apispec profiles/mem.prof
+make metrics-generate     # per-stage metrics JSON (--custom-metrics --metrics-path)
+make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
+```
+
+- First-line diagnosis is the per-stage `[engine]` log lines (loaded /
+  metadata generated / tracker tree / spec mapped). With LazyTree, tree
+  expansion happens *inside* the "spec mapped" stage — a bigger mapping
+  number alone is moved work, not necessarily a regression.
+- Benchmark on a large real project, never on `testdata/` fixtures — they
+  are so small that `go/packages` load noise dominates. A/B by building
+  binaries from two `git worktree`s of the versions under comparison.
+- The extraction walk visits every tracker node: any per-child O(depth)
+  work (string concatenation, capped-cap slice appends) goes quadratic over
+  deep graphs and shows up as GC dominance (`runtime.scanObject`,
+  `runtime.madvise`) rather than as the guilty frame. Chain identity is
+  interned to int handles (`chainInterner`, extractor.go) for exactly this
+  reason — extend the interner rather than reintroducing key strings.
+
 ## Golden rules (hard-won invariants — do not relearn these)
 
 1. **Determinism is a feature.** Any map iteration whose order can reach the
@@ -76,6 +101,18 @@ scripts/compare-spec.sh                            # regenerate/diff fixture sna
 7. **Honest over wrong.** When resolution is ambiguous (two concrete types
    assigned to one interface, a type argument erased to `any`), keep the
    honest general type; never guess one concrete option.
+8. **HTTP-method precedence is a chain — don't short it.** Verb sources
+   resolve in order: explicit verb in the registration pattern
+   (`"GET /users"`, `MethodFromPath` → sets `MethodExplicit`) →
+   verb-carrying call (`.Methods("GET")`, `router.GET`) →
+   `switch r.Method` dispatch splitting (`splitMethodDispatchRoutes`,
+   fires **only** on non-explicit routes) → handler-name inference
+   (opt-in per config via `MethodExtraction`; matches whole camelCase
+   words via `splitNameWords` — "get" must never match inside "widget") →
+   the `ExtractRoute` POST default. `MethodExplicit` suppresses dispatch
+   splitting; the POST default gates name inference off for plain
+   registrations but does *not* block dispatch splitting
+   (`testdata/method_switch` guards this).
 
 ## Testing conventions
 
@@ -95,6 +132,16 @@ scripts/compare-spec.sh                            # regenerate/diff fixture sna
   change at a time.
 - New feature ⇒ new fixture + structural test + (if resolution logic) unit
   tests at the layer that changed.
+- **Coverage is ratcheted.** CI runs `scripts/check-coverage.sh` against
+  `scripts/coverage-floor.txt`; measure with `-coverpkg` over the library
+  packages and `-count=1` — per-package numbers under-report ~14 pts
+  (the `generator/` fixture suites exercise the pipeline cross-package)
+  and a stale test cache corrupts merged profiles. Bump the floor in its
+  own PR after the raising change merges.
+- **Before testing a 0%-coverage function, check its callers** — 0% usually
+  means dead code (delete it, don't test it). Caveat: the `deadcode` tool
+  (RTA) treats every exported `Metadata` method as reachable because of
+  yaml reflection — confirm dead exported methods by grep, not by tool.
 
 ## Code & PR conventions
 
