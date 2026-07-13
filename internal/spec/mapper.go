@@ -1692,10 +1692,13 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 		}
 	}
 
-	// Check if any constraints were found
+	// Check if any constraints were found. Format counts: a tag like
+	// validate:"email" sets only Format, and dropping it here silently lost
+	// the format from the schema.
 	if constraints.MinLength == nil && constraints.MaxLength == nil &&
 		constraints.Min == nil && constraints.Max == nil &&
-		constraints.Pattern == "" && !constraints.Required && len(constraints.Enum) == 0 {
+		constraints.Pattern == "" && constraints.Format == "" &&
+		!constraints.Required && len(constraints.Enum) == 0 {
 		return nil
 	}
 
