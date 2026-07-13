@@ -63,10 +63,11 @@ func (a *CallArgument) TypeRef() *typemodel.TypeRef {
 }
 
 // ResolvedTypeRef returns the structured reference of the argument's resolved
-// concrete type, or nil when no resolution was recorded. Shared and
-// immutable — see Metadata.TypeRefOf.
+// concrete type, or nil when no resolution was recorded (the unset sentinel
+// is -1; pool id 0 is a valid interned string, matching GetResolvedType).
+// Shared and immutable — see Metadata.TypeRefOf.
 func (a *CallArgument) ResolvedTypeRef() *typemodel.TypeRef {
-	if a == nil || a.Meta == nil || a.ResolvedType <= 0 {
+	if a == nil || a.Meta == nil || a.ResolvedType < 0 {
 		return nil
 	}
 	return a.Meta.TypeRefOf(a.ResolvedType)
