@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 )
@@ -161,7 +162,22 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 	arg.SetPkg(pkg)
 	arg.SetType(typeStr)
 	arg.SetPosition(getPosition(e.Pos(), fset))
+	setConstStringValue(arg, e, info)
 	return arg
+}
+
+// setConstStringValue records a constant expression's evaluated value — a
+// fact go/types already proved — so consumers see the same value a string
+// literal would carry (e.g. verb-from-argument route patterns reading
+// http.MethodGet, or const path strings). Scoped to string constants so
+// numeric idents (http.StatusOK everywhere) keep their existing shape.
+func setConstStringValue(arg *CallArgument, e ast.Expr, info *types.Info) {
+	if info == nil {
+		return
+	}
+	if tv, ok := info.Types[e]; ok && tv.Value != nil && tv.Value.Kind() == constant.String {
+		arg.SetValue(tv.Value.ExactString())
+	}
 }
 
 // handleSelector processes selector expressions with StringPool integration
@@ -217,6 +233,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 	arg.SetType(typeStr)
 	arg.SetPosition(getPosition(e.Pos(), fset))
 	arg.ReceiverType = receiverArg
+	setConstStringValue(arg, e, info)
 
 	return arg
 }
