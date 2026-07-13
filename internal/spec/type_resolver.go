@@ -554,17 +554,13 @@ func (t *TypeResolverImpl) splitTypeParameters(paramStr string) []string {
 	return result
 }
 
-// generateParameterName generates a parameter name based on index
+// generateParameterName generates a parameter name based on index.
+// Use single letters T..Z, then T1, U1, … — only 7 letters exist after 'T',
+// so the wrap must be at 7, not 26 (index 7 used to produce '[').
 func (t *TypeResolverImpl) generateParameterName(index int) string {
-	// Use single letters: T, U, V, W, X, Y, Z, then T1, U1, etc.
-	if index < 26 {
+	const letters = 7 // T..Z
+	if index < letters {
 		return string(rune('T' + index))
 	}
-	// For more than 26 parameters, use T1, U1, etc.
-	base := index % 26
-	number := index / 26
-	if number == 0 {
-		return string(rune('T' + base))
-	}
-	return fmt.Sprintf("%c%d", rune('T'+base), number)
+	return fmt.Sprintf("%c%d", rune('T'+index%letters), index/letters)
 }
