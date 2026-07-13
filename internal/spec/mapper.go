@@ -2239,6 +2239,14 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	if goTypeRef.Kind == typemodel.KindSlice {
 		elementType := strings.TrimSpace(goTypeRef.Elem.Raw())
 
+		// encoding/json marshals []byte ([]uint8) as a base64 string, not an
+		// array of integers — mirror that on the wire shape. (A "[]byte"
+		// switch arm existed below but was unreachable: this branch
+		// intercepts every slice first.)
+		if elementType == "byte" || elementType == "uint8" {
+			return &Schema{Type: "string", Format: "byte"}, schemas
+		}
+
 		var resolvedType string
 		if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
 			resolvedType = elementType
@@ -2335,14 +2343,6 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return &Schema{Type: "boolean"}, schemas
 	case "time.Time":
 		return &Schema{Type: "string", Format: "date-time"}, schemas
-	case "[]byte":
-		return &Schema{Type: "string", Format: "byte"}, schemas
-	case "[]string":
-		return &Schema{Type: "array", Items: &Schema{Type: "string"}}, schemas
-	case "[]time.Time":
-		return &Schema{Type: "array", Items: &Schema{Type: "string", Format: "date-time"}}, schemas
-	case "[]int":
-		return &Schema{Type: "array", Items: &Schema{Type: "integer"}}, schemas
 	case "interface{}", "struct{}", "any":
 		return &Schema{Type: "object"}, schemas
 	default:
