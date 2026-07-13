@@ -1,0 +1,35 @@
+name: 🧩 Framework or wiring-style support
+description: Request support for a router/framework, or a registration style an existing framework config doesn't cover.
+title: "[support] "
+labels: ["enhancement", "framework-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Framework behavior in apispec is config-driven (regex patterns over call names and receiver types), so many wiring styles can be validated without code changes: run `apispec --output-config used-config.yaml`, extend the patterns by hand, and re-run with `--config used-config.yaml`. If that works, paste the pattern you added — it usually becomes the fix.
+  - type: input
+    id: framework
+    attributes:
+      label: Framework / router package
+      placeholder: github.com/example/router
+    validations:
+      required: true
+  - type: textarea
+    id: wiring
+    attributes:
+      label: Registration style
+      description: A representative snippet of how routes, bodies, and responses look in this framework.
+      render: go
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Custom config patterns you experimented with (and whether they worked), or why the existing config can't express it.
+      render: yaml
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Popularity/links for the framework, related projects using this style…
