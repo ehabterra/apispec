@@ -1794,53 +1794,6 @@ func TestExtractJSONName_Comprehensive(t *testing.T) {
 	}
 }
 
-// TestTypeParts_Comprehensive tests type parts parsing
-func TestTypeParts_Comprehensive(t *testing.T) {
-	tests := []struct {
-		input                string
-		expectedPkgName      string
-		expectedTypeName     string
-		expectedGenericTypes []string
-	}{
-		{"string", "", "string", nil},
-		{"main-->User", "main", "User", nil},
-		{"pkg-->Type-->T", "pkg", "Type", []string{"T"}},
-		{"Container[T]", "", "Container[T]", nil},
-		{"Container[T, U]", "", "Container[T, U]", nil},
-		{"pkg-->Container[T]", "pkg", "Container", []string{"T"}},
-		// Multi-argument generics: the bracket contents must split per arg so
-		// each declared type parameter zips with its own concrete argument.
-		{"pkg-->Pair[K, V]", "pkg", "Pair", []string{"K", "V"}},
-		{"pkg-->Pair[User, Product]", "pkg", "Pair", []string{"User", "Product"}},
-		// Nested generics stay in a single argument (comma is inside brackets).
-		{"pkg-->Box[Page[User]]", "pkg", "Box", []string{"Page[User]"}},
-		// go/types dotted form (inferred instantiations / nested field types):
-		// the base's last dot is the pkg/type split; args keep their qualifier.
-		{"pkg.Envelope[pkg.User]", "pkg", "Envelope", []string{"pkg.User"}},
-		{"github.com/x/y.Page[github.com/x/y.User]", "github.com/x/y", "Page", []string{"github.com/x/y.User"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := TypeParts(tt.input)
-			if result.PkgName != tt.expectedPkgName {
-				t.Errorf("Expected PkgName to be %s, got %s", tt.expectedPkgName, result.PkgName)
-			}
-			if result.TypeName != tt.expectedTypeName {
-				t.Errorf("Expected TypeName to be %s, got %s", tt.expectedTypeName, result.TypeName)
-			}
-			if len(result.GenericTypes) != len(tt.expectedGenericTypes) {
-				t.Errorf("Expected %d generic types, got %d", len(tt.expectedGenericTypes), len(result.GenericTypes))
-			}
-			for i, expected := range tt.expectedGenericTypes {
-				if i < len(result.GenericTypes) && result.GenericTypes[i] != expected {
-					t.Errorf("Expected generic type %d to be %s, got %s", i, expected, result.GenericTypes[i])
-				}
-			}
-		})
-	}
-}
-
 func TestNormalizeGenericInstanceName(t *testing.T) {
 	tests := []struct {
 		input string

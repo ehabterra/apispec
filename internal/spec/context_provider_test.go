@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 func TestNewContextProvider(t *testing.T) {
@@ -340,5 +341,48 @@ func TestStrPtr_WithVariousInputs(t *testing.T) {
 				t.Errorf("strPtr(%q) = %q, expected %q", tt.input, *result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestBuiltinPassThrough pins the structured builtin detection the argument
+// renderer uses: a builtin passes through verbatim when it is a map, a bare
+// builtin name, one pointer deep, or a slice of either — and nothing else.
+func TestBuiltinPassThrough(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		// Pass-through shapes.
+		{"string", true},
+		{"error", true},
+		{"any", true},
+		{"interface{}", true},
+		{"*int", true},
+		{"[]byte", true},
+		{"[]*float64", true},
+		{"map[string]int", true},
+		{"map[string]main.User", true}, // any map passes through
+
+		// Rejected shapes.
+		{"main.User", false},        // package-qualified
+		{"pkg-->User", false},       // internal-form qualified
+		{"*main.User", false},       // pointer to named type
+		{"[]main.User", false},      // slice of named type
+		{"**int", false},            // deeper pointer nesting
+		{"[][]int", false},          // deeper slice nesting
+		{"[]map[string]int", false}, // slice of map is not the map shape
+		{"Page[User]", false},       // generic named type
+		{"Widget", false},           // unqualified non-builtin
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := builtinPassThrough(typemodel.Parse(tt.input)); got != tt.want {
+				t.Errorf("builtinPassThrough(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+	if builtinPassThrough(nil) {
+		t.Error("nil ref must not pass through")
 	}
 }
