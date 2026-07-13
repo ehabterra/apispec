@@ -55,3 +55,35 @@ jobs:
       run: |
         rm -f coverage.out
         go clean -testcache
+
+  # Coverage ratchet: library coverage must not fall below the committed
+  # floor (scripts/coverage-floor.txt). Runs as its own job so a failure is
+  # attributable at a glance and doesn't obscure real test failures.
+  coverage-ratchet:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.26.2'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Check coverage against floor
+      run: bash scripts/check-coverage.sh
