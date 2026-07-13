@@ -1,0 +1,76 @@
+name: 🕳️ Missing or wrong route
+description: A route is absent from the generated spec, or has the wrong verb/path/body.
+title: "[route] "
+labels: ["bug", "route-detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please skim the [debugging guide](https://github.com/ehabterra/apispec/blob/main/docs/DEBUGGING.md) first — it walks the artifacts this form asks for, and often reveals the cause directly (excluded packages, budget truncation, an unsupported wiring style you can confirm by extending the config).
+  - type: input
+    id: version
+    attributes:
+      label: apispec version
+      description: Output of `apispec --version`
+      placeholder: v0.5.0
+    validations:
+      required: true
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Framework
+      multiple: true
+      options:
+        - gin
+        - echo
+        - chi
+        - fiber
+        - gorilla/mux
+        - net/http (ServeMux)
+        - mixed / several in one binary
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: wiring
+    attributes:
+      label: How the route is registered
+      description: The minimal registration snippet — router setup plus the line that registers the missing route. Anonymized names are fine; the *shape* is what matters.
+      render: go
+      placeholder: |
+        r := chi.NewRouter()
+        r.Method(http.MethodGet, "/health", deps.Health)
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual
+      placeholder: |
+        Expected: GET /health present
+        Actual: /health missing entirely (only /live documented)
+    validations:
+      required: true
+  - type: textarea
+    id: stagelog
+    attributes:
+      label: Stage log
+      description: The `[engine]` lines apispec printed (they show packages loaded, call edges, and paths mapped — and any truncation warning).
+      render: text
+  - type: textarea
+    id: usedconfig
+    attributes:
+      label: Effective config
+      description: Attach or paste the relevant part of `used-config.yaml` (from `apispec --output-config used-config.yaml`) — at minimum the `routePatterns` section.
+      render: yaml
+  - type: textarea
+    id: metadata
+    attributes:
+      label: Metadata excerpt
+      description: From `apispec --write-metadata` (writes `metadata.yaml`) — the entries for the handler and, if present, the registration call edge. Skip if the file is huge and nothing matches your handler name; say so instead.
+      render: yaml
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Insight report export (apispecui), diagram screenshot around the registration node, include/exclude flags used, build tags…

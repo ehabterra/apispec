@@ -1,0 +1,47 @@
+name: 🐛 Bug report
+description: Wrong schema, dangling $ref, crash, bad YAML/JSON — anything that isn't a missing route.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For routes missing from the spec, please use the **Missing or wrong route** template instead — it collects the right artifacts.
+  - type: input
+    id: version
+    attributes:
+      label: apispec version
+      description: Output of `apispec --version`
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version and OS
+      placeholder: go1.26.2, macOS 15
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      render: shell
+      placeholder: apispec -d . -o openapi.yaml
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Expected vs. actual. For schema issues paste the relevant spec excerpt; for crashes the full panic/stack trace.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `main.go` (plus types) that reproduces it — the fixtures under `testdata/` are good templates. This is the single most useful thing you can provide.
+      render: go
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Config file used, `used-config.yaml`, insight export, related issues…

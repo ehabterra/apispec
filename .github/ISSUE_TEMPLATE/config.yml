@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 My route is missing — debugging guide
+    url: https://github.com/ehabterra/apispec/blob/main/docs/DEBUGGING.md
+    about: Work through the four failure classes first — the guide shows which artifact answers which question, and most gaps are diagnosable in minutes.
+  - name: 💬 Questions & help
+    url: https://github.com/ehabterra/apispec/discussions
+    about: Ask usage questions, share setups, or discuss ideas before they become issues.
+  - name: 📚 Documentation
+    url: https://github.com/ehabterra/apispec#documentation
+    about: README, installation, CLI reference, and design docs.
