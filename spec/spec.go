@@ -51,5 +51,15 @@ func DefaultFiberConfig() *APISpecConfig { return intspec.DefaultFiberConfig() }
 func DefaultMuxConfig() *APISpecConfig   { return intspec.DefaultMuxConfig() }
 func DefaultHTTPConfig() *APISpecConfig  { return intspec.DefaultHTTPConfig() }
 
+// HTTPSecondaryConfig is the merge-safe, receiver-scoped subset of the
+// net/http config for layering under another framework's config.
+func HTTPSecondaryConfig() *APISpecConfig { return intspec.HTTPSecondaryConfig() }
+
+// MergeFrameworkConfigs layers secondary framework configs under the primary
+// (first-occurrence-wins pattern dedupe; Info/Defaults stay the primary's).
+func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig) *APISpecConfig {
+	return intspec.MergeFrameworkConfigs(primary, secondaries...)
+}
+
 // LoadAPISpecConfig loads a YAML configuration file.
 func LoadAPISpecConfig(path string) (*APISpecConfig, error) { return intspec.LoadAPISpecConfig(path) }

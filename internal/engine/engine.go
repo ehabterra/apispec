@@ -579,6 +579,16 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		default:
 			apispecConfig = spec.DefaultHTTPConfig() // fallback
 		}
+		// Layer the stdlib net/http surface under the detected framework:
+		// mixed projects (a framework API plus plain ServeMux ops endpoints
+		// in one binary) are common, and net/http never appears in go.mod,
+		// so import-based detection cannot pick it as a second framework.
+		// Every merged pattern is receiver- or package-scoped, which keeps
+		// the merge inert for pure-framework projects; user-supplied configs
+		// (the branches above) are never augmented.
+		if framework != "net/http" {
+			apispecConfig = spec.MergeFrameworkConfigs(apispecConfig, spec.HTTPSecondaryConfig())
+		}
 	}
 
 	// Merge built-in auth/security library presets based on the project's
