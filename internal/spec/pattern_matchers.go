@@ -265,12 +265,15 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		routeInfo.MethodExplicit = true
 		found = true
 	} else if r.pattern.MethodFromHandler && r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
-		// Extract method from handler function name
+		// Extract method from handler function name. Only a real mapping hit
+		// makes the verb explicit — a DefaultMethod fallback keeps the route
+		// open so a `switch r.Method` handler still splits per dispatch verb.
 		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
 		handlerName := r.contextProvider.GetArgumentInfo(handlerArg)
 		if handlerName != "" {
-			routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
-			routeInfo.MethodExplicit = true
+			var matched bool
+			routeInfo.Method, matched = r.methodFromFunctionName(handlerName, r.pattern.MethodExtraction)
+			routeInfo.MethodExplicit = matched
 			found = true
 		}
 	} else if r.pattern.MethodArgIndex >= 0 && len(edge.Args) > r.pattern.MethodArgIndex {
@@ -1026,8 +1029,17 @@ func traceGenericOrigin(node TrackerNodeInterface, typeName string) string {
 }
 
 func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName string, config *MethodExtractionConfig) string {
+	method, _ := b.methodFromFunctionName(funcName, config)
+	return method
+}
+
+// methodFromFunctionName additionally reports whether a mapping word actually
+// matched. A false report means the returned method is config.DefaultMethod
+// (or empty) — a fallback, not evidence from the name — so callers can leave
+// the route non-explicit and let method-dispatch splitting refine it.
+func (b *BasePatternMatcher) methodFromFunctionName(funcName string, config *MethodExtractionConfig) (string, bool) {
 	if funcName == "" {
-		return ""
+		return "", false
 	}
 
 	// Use default config if none provided
@@ -1073,7 +1085,7 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 		for _, mapping := range mappings {
 			for _, pattern := range mapping.Patterns {
 				if words[0] == patternWord(pattern) {
-					return mapping.Method
+					return mapping.Method, true
 				}
 			}
 		}
@@ -1086,14 +1098,14 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 				p := patternWord(pattern)
 				for _, w := range words {
 					if w == p {
-						return mapping.Method
+						return mapping.Method, true
 					}
 				}
 			}
 		}
 	}
 
-	return config.DefaultMethod
+	return config.DefaultMethod, false
 }
 
 // splitNameWords splits an identifier into words at non-letter separators

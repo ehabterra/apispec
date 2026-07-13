@@ -703,6 +703,19 @@ func TestSweepExtractMethodFromFunctionNameWithConfig(t *testing.T) {
 	if got := b.extractMethodFromFunctionNameWithConfig("zzz", cfg); got != "HEAD" {
 		t.Errorf("default method: got %q, want HEAD", got)
 	}
+
+	// The matched report separates evidence from fallback: a mapping hit is
+	// explicit; the DefaultMethod is not (so verb-less registrations stay
+	// open to method-dispatch splitting).
+	if m, matched := b.methodFromFunctionName("xy", cfg); m != "PUT" || !matched {
+		t.Errorf("mapping hit: got (%q,%v), want (PUT,true)", m, matched)
+	}
+	if m, matched := b.methodFromFunctionName("zzz", cfg); m != "HEAD" || matched {
+		t.Errorf("default fallback: got (%q,%v), want (HEAD,false)", m, matched)
+	}
+	if m, matched := b.methodFromFunctionName("", cfg); m != "" || matched {
+		t.Errorf("empty name: got (%q,%v), want (\"\",false)", m, matched)
+	}
 }
 
 // --- extractor.go ------------------------------------------------------------
