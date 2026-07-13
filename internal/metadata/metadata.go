@@ -452,9 +452,6 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	// Process function return types to fill ResolvedType
 	metadata.ProcessFunctionReturnTypes()
 
-	// Finalize string pool
-	metadata.StringPool.Finalize()
-
 	if logger != nil {
 		logger.Println("process assignment Count:", processAssignmentCount)
 	}
@@ -463,38 +460,6 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	}
 
 	return metadata
-}
-
-// ClassifyArgument determines the type of an argument for enhanced processing
-func (m *Metadata) ClassifyArgument(arg *CallArgument) ArgumentType {
-	switch arg.GetKind() {
-	case KindCall, KindFuncLit:
-		return ArgTypeFunctionCall
-	case KindTypeConversion:
-		// Type conversions are not function calls and should be handled differently
-		return ArgTypeComplex
-	case KindIdent:
-		if strings.HasPrefix(arg.GetType(), "func(") {
-			return ArgTypeFunctionCall
-		}
-		return ArgTypeVariable
-	case KindLiteral:
-		return ArgTypeLiteral
-	case KindSelector:
-		return ArgTypeSelector
-	case KindUnary:
-		return ArgTypeUnary
-	case KindBinary:
-		return ArgTypeBinary
-	case KindIndex:
-		return ArgTypeIndex
-	case KindCompositeLit:
-		return ArgTypeComposite
-	case KindTypeAssert:
-		return ArgTypeTypeAssert
-	default:
-		return ArgTypeComplex
-	}
 }
 
 // BuildAssignmentRelationships builds assignment relationships for all call graph edges
@@ -575,127 +540,6 @@ func (m *Metadata) GetAssignmentRelationships() map[AssignmentKey]*AssignmentLin
 		m.assignmentRelationships = m.BuildAssignmentRelationships()
 	}
 	return m.assignmentRelationships
-}
-
-// TraverseCallGraph traverses the call graph with a visitor function
-func (m *Metadata) TraverseCallGraph(startFrom string, visitor func(*CallGraphEdge, int) bool) {
-	visited := make(map[string]bool)
-	m.traverseCallGraphHelper(startFrom, 0, visitor, visited)
-}
-
-// traverseCallGraphHelper is the internal implementation with cycle detection
-func (m *Metadata) traverseCallGraphHelper(current string, depth int, visitor func(*CallGraphEdge, int) bool, visited map[string]bool) {
-	if visited[current] {
-		return
-	}
-	visited[current] = true
-
-	if edges, exists := m.Callers[current]; exists {
-		for _, edge := range edges {
-			if !visitor(edge, depth) {
-				return
-			}
-			m.traverseCallGraphHelper(edge.Callee.BaseID(), depth+1, visitor, visited)
-		}
-	}
-}
-
-// GetCallDepth returns the call depth for a function
-func (m *Metadata) GetCallDepth(funcID string) int {
-	if depth, exists := m.callDepth[funcID]; exists {
-		return depth
-	}
-
-	// Calculate depth by traversing up the call graph
-	depth := 0
-	current := funcID
-
-	for {
-		if callers, exists := m.Callees[current]; exists && len(callers) > 0 {
-			depth++
-			current = callers[0].Caller.BaseID()
-		} else {
-			break
-		}
-	}
-
-	m.callDepth[funcID] = depth
-	return depth
-}
-
-// GetFunctionsAtDepth returns all functions at a specific call depth
-func (m *Metadata) GetFunctionsAtDepth(targetDepth int) []*CallGraphEdge {
-	var result []*CallGraphEdge
-
-	for funcID := range m.Callers {
-		if m.GetCallDepth(funcID) == targetDepth {
-			if edges, exists := m.Callers[funcID]; exists {
-				result = append(result, edges...)
-			}
-		}
-	}
-
-	return result
-}
-
-// IsReachableFrom checks if a function is reachable from another function
-func (m *Metadata) IsReachableFrom(fromFunc, toFunc string) bool {
-	visited := make(map[string]bool)
-
-	var dfs func(current string) bool
-	dfs = func(current string) bool {
-		if current == toFunc {
-			return true
-		}
-		if visited[current] {
-			return false
-		}
-		visited[current] = true
-
-		if edges, exists := m.Callers[current]; exists {
-			for _, edge := range edges {
-				if dfs(edge.Callee.BaseID()) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	return dfs(fromFunc)
-}
-
-// GetCallPath returns the call path from one function to another
-func (m *Metadata) GetCallPath(fromFunc, toFunc string) []*CallGraphEdge {
-	visited := make(map[string]bool)
-	var path []*CallGraphEdge
-
-	var dfs func(current string) bool
-	dfs = func(current string) bool {
-		if current == toFunc {
-			return true
-		}
-		if visited[current] {
-			return false
-		}
-		visited[current] = true
-
-		if edges, exists := m.Callers[current]; exists {
-			for _, edge := range edges {
-				path = append(path, edge)
-				if dfs(edge.Callee.BaseID()) {
-					return true
-				}
-				path = path[:len(path)-1] // backtrack
-			}
-		}
-		return false
-	}
-
-	if dfs(fromFunc) {
-		return path
-	}
-	return nil
 }
 
 // BuildFuncMap creates a map of function names to their declarations.
