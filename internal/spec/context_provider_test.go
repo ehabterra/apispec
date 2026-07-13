@@ -364,15 +364,15 @@ func TestBuiltinPassThrough(t *testing.T) {
 		{"map[string]main.User", true}, // any map passes through
 
 		// Rejected shapes.
-		{"main.User", false},           // package-qualified
-		{"pkg-->User", false},          // internal-form qualified
-		{"*main.User", false},          // pointer to named type
-		{"[]main.User", false},         // slice of named type
-		{"**int", false},               // deeper pointer nesting
-		{"[][]int", false},             // deeper slice nesting
-		{"[]map[string]int", false},    // slice of map is not the map shape
-		{"Page[User]", false},          // generic named type
-		{"Widget", false},              // unqualified non-builtin
+		{"main.User", false},        // package-qualified
+		{"pkg-->User", false},       // internal-form qualified
+		{"*main.User", false},       // pointer to named type
+		{"[]main.User", false},      // slice of named type
+		{"**int", false},            // deeper pointer nesting
+		{"[][]int", false},          // deeper slice nesting
+		{"[]map[string]int", false}, // slice of map is not the map shape
+		{"Page[User]", false},       // generic named type
+		{"Widget", false},           // unqualified non-builtin
 		{"", false},
 	}
 	for _, tt := range tests {
