@@ -17,6 +17,7 @@ package spec
 import (
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 	"github.com/ehabterra/apispec/internal/typemodel"
@@ -1034,10 +1035,17 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 		config = DefaultMethodExtractionConfig()
 	}
 
-	// Prepare function name based on case sensitivity
-	searchName := funcName
+	// Split the identifier into words at camelCase boundaries and
+	// non-letter separators so a pattern only ever matches a whole word:
+	// "deleteWidget" is [delete widget], and the "get" inside "widget" must
+	// not match. The old substring checks lowercased the name first, which
+	// erased the camel boundary and let GET (checked first) claim any name
+	// containing those three letters.
+	words := splitNameWords(funcName)
 	if !config.CaseSensitive {
-		searchName = strings.ToLower(funcName)
+		for i, w := range words {
+			words[i] = strings.ToLower(w)
+		}
 	}
 
 	// Sort mappings by priority (highest first)
@@ -1053,36 +1061,33 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 		}
 	}
 
-	// Check prefix matches first if enabled
-	if config.UsePrefix {
+	patternWord := func(pattern string) string {
+		if !config.CaseSensitive {
+			return strings.ToLower(pattern)
+		}
+		return pattern
+	}
+
+	// Check the leading word first if enabled ("deleteUser" → DELETE).
+	if config.UsePrefix && len(words) > 0 {
 		for _, mapping := range mappings {
 			for _, pattern := range mapping.Patterns {
-				searchPattern := pattern
-				if !config.CaseSensitive {
-					searchPattern = strings.ToLower(pattern)
-				}
-
-				if strings.HasPrefix(searchName, searchPattern) {
-					// Make sure it's a word boundary (not part of another word)
-					if len(searchName) == len(searchPattern) || !b.isLetter(rune(searchName[len(searchPattern)])) {
-						return mapping.Method
-					}
+				if words[0] == patternWord(pattern) {
+					return mapping.Method
 				}
 			}
 		}
 	}
 
-	// Check contains matches if enabled
+	// Then any whole word if enabled ("handleUserDelete" → DELETE).
 	if config.UseContains {
 		for _, mapping := range mappings {
 			for _, pattern := range mapping.Patterns {
-				searchPattern := pattern
-				if !config.CaseSensitive {
-					searchPattern = strings.ToLower(pattern)
-				}
-
-				if strings.Contains(searchName, searchPattern) {
-					return mapping.Method
+				p := patternWord(pattern)
+				for _, w := range words {
+					if w == p {
+						return mapping.Method
+					}
 				}
 			}
 		}
@@ -1091,7 +1096,34 @@ func (b *BasePatternMatcher) extractMethodFromFunctionNameWithConfig(funcName st
 	return config.DefaultMethod
 }
 
-// isLetter checks if a rune is a letter
-func (b *BasePatternMatcher) isLetter(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+// splitNameWords splits an identifier into words at non-letter separators
+// and camelCase boundaries: "handleHTTPDelete" → [handle HTTP Delete],
+// "delete_widget" → [delete widget]. An uppercase run followed by a
+// lowercase letter starts a new word (the "HTTPServer" → HTTP+Server rule).
+func splitNameWords(name string) []string {
+	var words []string
+	var cur []rune
+	runes := []rune(name)
+	flush := func() {
+		if len(cur) > 0 {
+			words = append(words, string(cur))
+			cur = nil
+		}
+	}
+	for i, r := range runes {
+		if !unicode.IsLetter(r) {
+			flush()
+			continue
+		}
+		if len(cur) > 0 && unicode.IsUpper(r) {
+			prev := cur[len(cur)-1]
+			if unicode.IsLower(prev) ||
+				(unicode.IsUpper(prev) && i+1 < len(runes) && unicode.IsLower(runes[i+1])) {
+				flush()
+			}
+		}
+		cur = append(cur, r)
+	}
+	flush()
+	return words
 }
