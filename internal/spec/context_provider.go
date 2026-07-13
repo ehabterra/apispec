@@ -125,44 +125,20 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 		// If not a function type, build a qualified type string
 		if !strings.HasPrefix(arg.GetType(), "func(") && !strings.HasPrefix(arg.GetType(), "func[") {
 			if arg.GetType() != "" {
-				// Check if this is a built-in Go type that doesn't need package prefix
-				builtinTypes := []string{
-					"string", "int", "int8", "int16", "int32", "int64",
-					"uint", "uint8", "uint16", "uint32", "uint64",
-					"float32", "float64", "bool", "byte", "rune",
-					"error", "interface{}", "any",
-				}
-
-				// Check for map types (built-in)
-				if strings.HasPrefix(arg.GetType(), "map[") {
+				// A builtin passes through untouched: a map, a bare builtin
+				// name, one pointer deep, or a slice of either. Decided on the
+				// argument's memoized structured type (arg.TypeRef()) instead
+				// of prefix trims.
+				if builtinPassThrough(arg.TypeRef()) {
 					return arg.GetType()
 				}
 
-				// Check for slice types with built-in element types
-				if after, ok := strings.CutPrefix(arg.GetType(), "[]"); ok {
-					elementType := after
-					elementType = strings.TrimPrefix(elementType, "*")
-					if slices.Contains(builtinTypes, elementType) {
-						return arg.GetType()
-					}
-				}
-
-				// Check for pointer types with built-in base types
-				if strings.HasPrefix(arg.GetType(), "*") {
-					baseType := strings.TrimPrefix(arg.GetType(), "*")
-					for _, builtin := range builtinTypes {
-						if baseType == builtin {
-							return arg.GetType()
-						}
-					}
-				}
-
-				// Check if it's a built-in type
-				if slices.Contains(builtinTypes, arg.GetType()) {
-					return arg.GetType()
-				}
-
-				// If we have a package and type, process as custom type
+				// If we have a package and type, process as custom type.
+				// Deliberately still string surgery, not TypeRef rendering:
+				// the one-marker trims, the dropped pointer marker, and the
+				// requalification of dotted foreign names are component-NAMING
+				// behavior that existing specs depend on; it migrates when
+				// component naming moves onto Internal() rendering.
 				if arg.GetPkg() != "" {
 					// Remove slice, pointer, and redundant package prefixes
 					argType := strings.TrimPrefix(arg.GetType(), "[]")
@@ -422,6 +398,37 @@ func DefaultPackageName(pkgPath string) string {
 		return pkgPath[:len(pkgPath)-len(last)-1]
 	}
 	return pkgPath
+}
+
+// builtinPassThrough reports whether ref is a builtin type shape the argument
+// renderer returns verbatim: a map, or a builtin name that is bare, one
+// pointer deep, or a slice of either ([]byte, []*int, *string, error, any).
+// Deeper wrappers (**T, [][]T) and package-qualified names are not builtins.
+func builtinPassThrough(ref *typemodel.TypeRef) bool {
+	if ref == nil {
+		return false
+	}
+	if ref.Kind == typemodel.KindMap {
+		return true
+	}
+	inner := ref
+	if inner.Kind == typemodel.KindSlice {
+		inner = inner.Elem
+	}
+	if inner != nil && inner.Kind == typemodel.KindPointer {
+		inner = inner.Elem
+	}
+	if inner == nil || inner.Kind != typemodel.KindNamed || inner.Pkg != "" || len(inner.Args) > 0 {
+		return false
+	}
+	switch inner.Name {
+	case "string", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64", "bool", "byte", "rune",
+		"error", "interface{}", "any":
+		return true
+	}
+	return false
 }
 
 // strPtr returns a pointer to the given string (helper for separator passing)

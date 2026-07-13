@@ -22,6 +22,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const (
@@ -152,6 +154,7 @@ type Metadata struct {
 	methodLookupCache    map[string]*Method                              `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
 	sortedPkgNames       []string                                        `yaml:"-"` // cached, lazily built
+	typeRefCache         map[int]*typemodel.TypeRef                      `yaml:"-"` // pooled type string -> parsed ref, lazily built
 
 	// Mutex for thread-safe cache access
 	cacheMutex sync.RWMutex `yaml:"-"`

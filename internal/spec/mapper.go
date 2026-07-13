@@ -964,18 +964,6 @@ func typeInPackage(pkg *metadata.Package, typeName string) *metadata.Type {
 	return nil
 }
 
-// Parts is the flat package/type/arguments view of a string-encoded type
-// name. It lives in the typemodel package now (the structured type model);
-// this alias keeps the spec API stable during the migration.
-type Parts = typemodel.Parts
-
-// TypeParts splits a string-encoded type name into its package, type, and
-// generic-argument parts. Transitional: delegates to typemodel; new code
-// should use typemodel.Parse and consume the structured TypeRef.
-func TypeParts(typeName string) Parts {
-	return typemodel.ParseParts(typeName)
-}
-
 // normalizeGenericInstanceName rewrites a generic instantiation rendered in
 // the go/types form (pkg.Type[pkg.Arg]) into the internal pkg-->Type[Arg]
 // form with simple argument names, via the structured type model — which,
@@ -2051,9 +2039,17 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return s, schemas
 	}
 
+	// Structured dispatch on the wrapper constructor: the pointer, fixed-size
+	// array, and slice branches below switch on the parsed Kind and recurse on
+	// the exact element substring (Raw), replacing the prefix-scanning they
+	// used to do. The map branch is deliberately still string-based: its
+	// Contains("map[") trigger and preceding-qualifier glue encode behavior
+	// beyond parsing (see the comment there) and migrate separately.
+	goTypeRef := typemodel.Parse(goType)
+
 	// Handle pointer types
-	if strings.HasPrefix(goType, "*") {
-		underlyingType := strings.TrimSpace(goType[1:])
+	if goTypeRef.Kind == typemodel.KindPointer {
+		underlyingType := strings.TrimSpace(goTypeRef.Elem.Raw())
 		// For pointer types, we generate the same schema as the underlying type
 		// but we could add nullable: true if needed for OpenAPI 3.0+
 		schema, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, underlyingType, meta, cfg, visitedTypes)
@@ -2062,100 +2058,32 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	}
 
 	// Handle array types (e.g., [16]byte, [N]string)
-	if strings.HasPrefix(goType, "[") {
-		// Find the closing bracket
-		endIdx := strings.Index(goType, "]")
-		if endIdx > 1 {
-			elementType := strings.TrimSpace(goType[endIdx+1:])
-			arraySize := strings.TrimSpace(goType[1:endIdx])
+	if goTypeRef.Kind == typemodel.KindArray {
+		elementType := strings.TrimSpace(goTypeRef.Elem.Raw())
+		arraySize := strings.TrimSpace(goTypeRef.Len)
 
-			var resolvedType string
-			if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
-				resolvedType = elementType
+		var resolvedType string
+		if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {
+			resolvedType = elementType
+		}
+		isPrimitiveElement := metadata.IsPrimitiveType(resolvedType)
+
+		// Special handling for byte arrays - convert to string with maxLength
+		if elementType == "byte" || resolvedType == "byte" {
+			schema = &Schema{
+				Type:   "string",
+				Format: "byte",
 			}
-			isPrimitiveElement := metadata.IsPrimitiveType(resolvedType)
-
-			// Special handling for byte arrays - convert to string with maxLength
-			if elementType == "byte" || resolvedType == "byte" {
-				schema = &Schema{
-					Type:   "string",
-					Format: "byte",
-				}
-				if size := parseArraySize(arraySize); size != nil {
-					schema.MaxLength = *size
-				}
-				return schema, schemas
+			if size := parseArraySize(arraySize); size != nil {
+				schema.MaxLength = *size
 			}
+			return schema, schemas
+		}
 
-			// For other primitive types, create array schema
-			if isPrimitiveElement {
-				items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
-				maps.Copy(schemas, newSchemas)
-
-				schema = &Schema{
-					Type:  "array",
-					Items: items,
-				}
-				if size := parseArraySize(arraySize); size != nil {
-					schema.MaxItems = *size
-					schema.MinItems = *size // Fixed size array
-				}
-				return schema, schemas
-			}
-
-			// For complex types, check if already exists in usedTypes.
-			// Inline external elements are excluded ($ref would dangle).
-			if bodySchema, ok := usedTypes[elementType]; ok && !isInlineExternalType(elementType, cfg, meta) {
-				if bodySchema == nil {
-					var newBodySchemas map[string]*Schema
-					bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
-					maps.Copy(schemas, newBodySchemas)
-				}
-				markUsedType(usedTypes, resolvedType, bodySchema)
-
-				// Create a reference to the existing schema
-				schema = &Schema{
-					Type:  "array",
-					Items: addRefSchemaForType(resolvedType),
-				}
-				if size := parseArraySize(arraySize); size != nil {
-					schema.MaxItems = *size
-					schema.MinItems = *size // Fixed size array
-				}
-				return schema, schemas
-			}
-
+		// For other primitive types, create array schema
+		if isPrimitiveElement {
 			items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
 			maps.Copy(schemas, newSchemas)
-
-			// Use reference for complex element types in arrays.
-			// Skip when items is already a $ref (avoid self-references —
-			// see TestSliceOfUnknownExternalType_NoSelfRef) or when items
-			// is primitive-shaped (uuid.UUID → {string, format: uuid}
-			// shouldn't be promoted to its own component).
-			if shouldPromoteToComponent(resolvedType, items) {
-				schemas[resolvedType] = items
-				items = addRefSchemaForType(resolvedType)
-			}
-
-			// Apply enum detection for array elements if the element type is not primitive
-			if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
-				// Extract package name for enum detection
-				pkgName := ""
-				if core := typemodel.Parse(elementType).Core(); core != nil && core.Pkg != "" {
-					pkgName = core.Pkg
-				}
-
-				// Detect enum values for this element type
-				if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
-					// Apply enum values to the stored schema if it exists
-					if storedSchema, exists := schemas[resolvedType]; exists {
-						storedSchema.Enum = enumValues
-					} else {
-						items.Enum = enumValues
-					}
-				}
-			}
 
 			schema = &Schema{
 				Type:  "array",
@@ -2167,6 +2095,70 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			}
 			return schema, schemas
 		}
+
+		// For complex types, check if already exists in usedTypes.
+		// Inline external elements are excluded ($ref would dangle).
+		if bodySchema, ok := usedTypes[elementType]; ok && !isInlineExternalType(elementType, cfg, meta) {
+			if bodySchema == nil {
+				var newBodySchemas map[string]*Schema
+				bodySchema, newBodySchemas = mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
+				maps.Copy(schemas, newBodySchemas)
+			}
+			markUsedType(usedTypes, resolvedType, bodySchema)
+
+			// Create a reference to the existing schema
+			schema = &Schema{
+				Type:  "array",
+				Items: addRefSchemaForType(resolvedType),
+			}
+			if size := parseArraySize(arraySize); size != nil {
+				schema.MaxItems = *size
+				schema.MinItems = *size // Fixed size array
+			}
+			return schema, schemas
+		}
+
+		items, newSchemas := mapGoTypeToOpenAPISchema(usedTypes, resolvedType, meta, cfg, visitedTypes)
+		maps.Copy(schemas, newSchemas)
+
+		// Use reference for complex element types in arrays.
+		// Skip when items is already a $ref (avoid self-references —
+		// see TestSliceOfUnknownExternalType_NoSelfRef) or when items
+		// is primitive-shaped (uuid.UUID → {string, format: uuid}
+		// shouldn't be promoted to its own component).
+		if shouldPromoteToComponent(resolvedType, items) {
+			schemas[resolvedType] = items
+			items = addRefSchemaForType(resolvedType)
+		}
+
+		// Apply enum detection for array elements if the element type is not primitive
+		if !metadata.IsPrimitiveType(elementType) && items != nil && len(items.Enum) == 0 {
+			// Extract package name for enum detection
+			pkgName := ""
+			if core := typemodel.Parse(elementType).Core(); core != nil && core.Pkg != "" {
+				pkgName = core.Pkg
+			}
+
+			// Detect enum values for this element type
+			if enumValues := detectEnumFromConstants(elementType, pkgName, meta); len(enumValues) > 0 {
+				// Apply enum values to the stored schema if it exists
+				if storedSchema, exists := schemas[resolvedType]; exists {
+					storedSchema.Enum = enumValues
+				} else {
+					items.Enum = enumValues
+				}
+			}
+		}
+
+		schema = &Schema{
+			Type:  "array",
+			Items: items,
+		}
+		if size := parseArraySize(arraySize); size != nil {
+			schema.MaxItems = *size
+			schema.MinItems = *size // Fixed size array
+		}
+		return schema, schemas
 	}
 
 	// Handle map types
@@ -2241,8 +2233,8 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	}
 
 	// Handle slice types
-	if strings.HasPrefix(goType, "[]") {
-		elementType := strings.TrimSpace(goType[2:])
+	if goTypeRef.Kind == typemodel.KindSlice {
+		elementType := strings.TrimSpace(goTypeRef.Elem.Raw())
 
 		var resolvedType string
 		if resolvedType = resolveUnderlyingType(elementType, meta); resolvedType == "" {

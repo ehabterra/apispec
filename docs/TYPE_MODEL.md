@@ -118,16 +118,37 @@ verified against the golden fixtures:
   shapes still rendered locally.
 - Zero drift on all goldens and fixtures.
 
-**Phase 4 — metadata carries structure (remaining).**
-- The interesting metadata records keep the `TypeRef` instead of the string —
-  `CallArgument`, `Field`, assignment and return records — with the string
-  pool retained as the serialization format.
-- The ~60 remaining ad-hoc `*`/`[]` prefix-trims in `internal/spec` collapse
-  onto `Core()`/renderers as their surrounding code is touched.
+**Phase 4 — metadata carries structure; the legacy layer dies.** *(landed)*
+- Metadata records carry their types structurally via a memoized accessor:
+  `Metadata.TypeRefOf(poolID)` parses each pooled type string at most once
+  (thread-safe, following the existing cache pattern), with
+  `CallArgument.TypeRef()`/`ResolvedTypeRef()` riding on it. The string pool
+  remains the serialization format — no metadata YAML change. Cached refs are
+  shared and immutable; `TypeRef.Clone()` exists for mutating consumers.
+- The mapper's core wrapper dispatch (`mapGoTypeToOpenAPISchema`) switches on
+  the parsed `Kind` for pointer/array/slice and recurses on the exact element
+  substring (`Raw()`) — byte-identical, and no longer confused by nested
+  brackets in array lengths. The **map branch stays string-based on
+  purpose**: its `Contains("map[")` trigger and preceding-qualifier glue
+  encode naming behavior beyond parsing; it migrates when component naming
+  moves onto `Internal()` rendering.
+- The argument renderer's builtin detection runs on the argument's memoized
+  structured type (`builtinPassThrough(arg.TypeRef())`); its custom-type
+  qualification tail deliberately stays string surgery for the same
+  component-naming reason.
+- **The transitional layer is gone**: `legacy.go` deleted (`ParseParts` and
+  spec's `TypeParts`/`Parts` had no production callers left; `SplitArgs`
+  folded into the parser as `splitArgs`).
 
-**End state.** Strings exist only at two boundaries: metadata serialization
-(string pool) and OpenAPI component naming (sanitizer over `Internal()`).
-`typemodel/legacy.go` shrinks to nothing and is deleted.
+**Remaining (deliberate, small).** Two string-surgery islands are kept until
+component naming itself is revisited (they *are* the naming behavior):
+the mapper's map branch and the argument renderer's qualification tail. The
+remaining scattered `*`/`[]` prefix-trims in `internal/spec` collapse onto
+`Core()`/renderers as their surrounding code is touched.
+
+**End state (reached for parsing).** Types are parsed in exactly one place;
+strings persist only at the serialization boundary (string pool) and in the
+two documented naming islands above.
 
 ## Ground rules
 

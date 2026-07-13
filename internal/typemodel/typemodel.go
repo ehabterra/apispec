@@ -18,21 +18,15 @@
 // prefixes, and bracketed generic argument lists — that the metadata and spec
 // layers previously parsed with hand-rolled, duplicated string code.
 //
-// The package has two layers:
+// Build and consume TypeRef values (TypeRef, Parse, FromExpr, the renderers,
+// and metadata's memoized Metadata.TypeRefOf accessor); render to a string
+// only at an output boundary (component naming, serialization). The
+// transitional string views that carried the old helpers through the
+// migration (ParseParts, NormalizeInstance, SimplifyArg, SimpleName,
+// ArgPackage, SplitArgs) have all been deleted — do not reintroduce
+// string-parsing helpers here or elsewhere.
 //
-//   - The structured core (TypeRef, Parse, FromExpr, and the renderers) — the
-//     target model. New code should build and consume TypeRef values and only
-//     render to a string at an output boundary (component naming,
-//     serialization).
-//   - Transitional string views (ParseParts and SplitArgs in legacy.go) —
-//     exact behavioral ports of the helpers that used to live in
-//     internal/spec, kept byte-compatible so consumers can migrate to the
-//     structured core one at a time with zero output drift. Each documents
-//     its quirks and its structured replacement; the views already migrated
-//     off (NormalizeInstance, SimplifyArg, SimpleName, ArgPackage) have been
-//     deleted.
-//
-// See docs/TYPE_MODEL.md for the migration plan.
+// See docs/TYPE_MODEL.md for the migration history and remaining work.
 package typemodel
 
 import "strings"
@@ -225,7 +219,7 @@ func parseNamed(s string, t *TypeRef) {
 	base := s
 	if open := strings.Index(s, "["); open > 0 && strings.HasSuffix(s, "]") {
 		base = s[:open]
-		for _, a := range SplitArgs(s[open+1 : len(s)-1]) {
+		for _, a := range splitArgs(s[open+1 : len(s)-1]) {
 			t.Args = append(t.Args, parseArg(a))
 		}
 	}
@@ -250,6 +244,42 @@ func parseNamed(s string, t *TypeRef) {
 		return
 	}
 	t.Name = base
+}
+
+// splitArgs splits the contents of a generic bracket (`K,V` /
+// `T any, U comparable`) on top-level commas, keeping commas inside nested
+// brackets or parentheses intact (a function-type argument like
+// `F[func(int, string)]` is one argument), and trims surrounding whitespace
+// from each argument. An empty input yields no arguments.
+func splitArgs(s string) []string {
+	var (
+		result []string
+		cur    strings.Builder
+		depth  int
+	)
+	for _, ch := range s {
+		switch ch {
+		case '[', '(':
+			depth++
+			cur.WriteRune(ch)
+		case ']', ')':
+			depth--
+			cur.WriteRune(ch)
+		case ',':
+			if depth == 0 {
+				result = append(result, strings.TrimSpace(cur.String()))
+				cur.Reset()
+				continue
+			}
+			cur.WriteRune(ch)
+		default:
+			cur.WriteRune(ch)
+		}
+	}
+	if strings.TrimSpace(cur.String()) != "" {
+		result = append(result, strings.TrimSpace(cur.String()))
+	}
+	return result
 }
 
 // parseArg parses one generic argument: either a declaration-form type
@@ -413,6 +443,24 @@ func (t *TypeRef) Raw() string {
 		return ""
 	}
 	return t.raw
+}
+
+// Clone returns a deep copy. Use it before mutating a ref obtained from a
+// shared source (e.g. metadata's memoized TypeRefOf cache).
+func (t *TypeRef) Clone() *TypeRef {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	c.Key = t.Key.Clone()
+	c.Elem = t.Elem.Clone()
+	if t.Args != nil {
+		c.Args = make([]*TypeRef, len(t.Args))
+		for i, a := range t.Args {
+			c.Args[i] = a.Clone()
+		}
+	}
+	return &c
 }
 
 // Core unwraps pointer/slice/array/chan constructors and returns the

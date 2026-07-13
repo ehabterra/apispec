@@ -46,15 +46,18 @@ scripts/compare-spec.sh                            # regenerate/diff fixture sna
    output (spec, metadata YAML, component names, operationIds) must be
    sorted. This was the root cause of a long-standing flaky-output bug;
    `TestGenerateMetadataDeterministic` / `TestGenerateDeterministic` guard it.
-2. **Never parse type strings in new code.** Build or accept a
-   `typemodel.TypeRef` (`internal/typemodel`); render to a string only at an
-   output boundary. The transitional legacy views (`ParseParts`, `SplitArgs`)
-   must not gain new callers. See `docs/TYPE_MODEL.md`.
-3. **The `typeByName` lookup invariant.** Metadata keys a generic declaration
-   *with* its parameter brackets (`"Page[T]"`). Everything feeding
-   `typeByName`/metadata type lookups therefore stays on `ParseParts` until
-   metadata and spec migrate to `TypeRef` together (phase 3 of the type-model
-   plan). Do not "fix" the opaque-generic quirk in isolation.
+2. **Never parse type strings.** Build or accept a `typemodel.TypeRef`
+   (`internal/typemodel`); pooled type strings parse once via the memoized
+   `Metadata.TypeRefOf` / `CallArgument.TypeRef()` (shared refs — `Clone()`
+   before mutating); render to a string only at an output boundary. The
+   transitional string views are deleted — do not reintroduce them. See
+   `docs/TYPE_MODEL.md`.
+3. **Metadata type-name conventions.** The `Types` map keys a declaration by
+   its bare name (`"Page"`, parameters in `Type.TypeParams`); the bracketed
+   `"Page[T]"` form exists only as the methods-table key (matching how a
+   generic receiver renders). Two string-surgery islands are deliberate
+   naming behavior, not parsing debt: the mapper's map branch and the
+   argument renderer's qualification tail (see `docs/TYPE_MODEL.md`).
 4. **Layering: metadata records facts, spec decides schemas.** External-type
    registry, config overrides, and marshaler-based decisions belong in the
    spec layer, never at metadata time (collapsing types early loses formats —
