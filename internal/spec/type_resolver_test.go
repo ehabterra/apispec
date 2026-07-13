@@ -435,3 +435,340 @@ func TestTypeResolver_ExtractTypeParameters(t *testing.T) {
 		})
 	}
 }
+
+// TestTypeResolver_ArgumentKinds covers the resolveTypeFromArgument dispatch
+// for every argument kind, via ResolveType with a nil context (the fallback
+// path when no call-graph edge is available).
+func TestTypeResolver_ArgumentKinds(t *testing.T) {
+	stringPool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: stringPool}
+	cfg := DefaultAPISpecConfig()
+	resolver := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
+
+	ident := func(name, typ string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindIdent)
+		a.SetName(name)
+		if typ != "" {
+			a.SetType(typ)
+		}
+		return a
+	}
+
+	tests := []struct {
+		name     string
+		arg      *metadata.CallArgument
+		expected string
+	}{
+		{
+			name: "call with nil Fun",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindCall)
+				return a
+			}(),
+			expected: "func()",
+		},
+		{
+			name: "call extracts return type from func signature",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindCall)
+				a.Fun = ident("newUser", "func(int) User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "call with non-func type passes it through",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindCall)
+				a.Fun = ident("u", "User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "type conversion returns target type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindTypeConversion)
+				a.Fun = ident("UserID", "UserID")
+				return a
+			}(),
+			expected: "UserID",
+		},
+		{
+			name: "type conversion with nil Fun is empty",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindTypeConversion)
+				return a
+			}(),
+			expected: "",
+		},
+		{
+			name: "composite literal resolves base type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindCompositeLit)
+				a.X = ident("User", "User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "composite literal with nil X falls back to kind",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindCompositeLit)
+				return a
+			}(),
+			expected: metadata.KindCompositeLit,
+		},
+		{
+			name: "index into slice yields element type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindIndex)
+				a.X = ident("users", "[]User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "index into map yields value type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindIndex)
+				a.X = ident("byName", "map[string]User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "index into non-container passes base through",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindIndex)
+				a.X = ident("v", "Vector")
+				return a
+			}(),
+			expected: "Vector",
+		},
+		{
+			name: "index with nil X falls back to kind",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindIndex)
+				return a
+			}(),
+			expected: metadata.KindIndex,
+		},
+		{
+			name: "unary adds pointer to non-pointer base",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindUnary)
+				a.X = ident("u", "User")
+				return a
+			}(),
+			expected: "*User",
+		},
+		{
+			name: "unary with nil X prefixes own type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindUnary)
+				a.SetType("User")
+				return a
+			}(),
+			expected: "*User",
+		},
+		{
+			name: "star dereferences pointer base",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindStar)
+				a.X = ident("p", "*User")
+				return a
+			}(),
+			expected: "User",
+		},
+		{
+			name: "map type with missing halves falls back",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindMapType)
+				return a
+			}(),
+			expected: "map",
+		},
+		{
+			name: "literal uses its type",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindLiteral)
+				a.SetType("string")
+				return a
+			}(),
+			expected: "string",
+		},
+		{
+			name: "raw uses raw text",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindRaw)
+				a.SetRaw("some raw expr")
+				return a
+			}(),
+			expected: "some raw expr",
+		},
+		{
+			name: "selector without X uses Sel name",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindSelector)
+				a.Sel = ident("Field", "")
+				return a
+			}(),
+			expected: "Field",
+		},
+		{
+			name: "selector without field metadata concatenates",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindSelector)
+				a.X = ident("u", "Unknown")
+				a.Sel = ident("Field", "")
+				return a
+			}(),
+			expected: "Unknown.Field",
+		},
+		{
+			name: "ident without type or metadata falls back to name",
+			arg: func() *metadata.CallArgument {
+				a := metadata.NewCallArgument(meta)
+				a.SetKind(metadata.KindIdent)
+				a.SetName("mystery")
+				return a
+			}(),
+			expected: "mystery",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolver.ResolveType(*tt.arg, nil); got != tt.expected {
+				t.Errorf("ResolveType = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestTypeResolver_HelperNilSafety pins the nil-context/nil-pool guards.
+func TestTypeResolver_HelperNilSafety(t *testing.T) {
+	cfg := DefaultAPISpecConfig()
+	resolver := NewTypeResolver(nil, cfg, NewSchemaMapper(cfg))
+
+	if got := resolver.getString(3); got != "" {
+		t.Errorf("getString with nil meta = %q, want empty", got)
+	}
+	if got := resolver.getCallerName(nil); got != "" {
+		t.Errorf("getCallerName(nil) = %q, want empty", got)
+	}
+	if got := resolver.getCallerPkg(nil); got != "" {
+		t.Errorf("getCallerPkg(nil) = %q, want empty", got)
+	}
+	// Node with a nil edge takes the same guard path.
+	node := &TrackerNode{}
+	if got := resolver.getCallerName(node); got != "" {
+		t.Errorf("getCallerName(edgeless node) = %q, want empty", got)
+	}
+	if got := resolver.getCallerPkg(node); got != "" {
+		t.Errorf("getCallerPkg(edgeless node) = %q, want empty", got)
+	}
+}
+
+// TestTypeResolver_GenericHelpers covers the generic-name helpers directly:
+// parameter-name extraction, concrete-type lookup, and generated parameter
+// naming (including the wrap past 'Z', which used to produce '[').
+func TestTypeResolver_GenericHelpers(t *testing.T) {
+	cfg := DefaultAPISpecConfig()
+	resolver := NewTypeResolver(nil, cfg, NewSchemaMapper(cfg))
+
+	t.Run("extractParameterName", func(t *testing.T) {
+		cases := []struct{ in, want string }{
+			{"K", "K"},
+			{"v", "v"},                 // single letter, any case
+			{"List[V]", "V"},           // nested parameter
+			{"Map[K, List[V]]", "V"},   // recursion descends to the innermost bracket
+			{"T comparable", "T"},      // first word is the parameter
+			{"main.User", "main.User"}, // not a parameter shape: unchanged
+			{"some words here", "some words here"},
+		}
+		for _, c := range cases {
+			if got := resolver.extractParameterName(c.in); got != c.want {
+				t.Errorf("extractParameterName(%q) = %q, want %q", c.in, got, c.want)
+			}
+		}
+	})
+
+	t.Run("findConcreteTypeByName", func(t *testing.T) {
+		params := map[string]string{"T": "string", "V": "int"}
+		if got := resolver.findConcreteTypeByName("T", params); got != "string" {
+			t.Errorf("exact match = %q, want string", got)
+		}
+		if got := resolver.findConcreteTypeByName("List[V]", params); got != "int" {
+			t.Errorf("extracted match = %q, want int", got)
+		}
+		if got := resolver.findConcreteTypeByName("Q", params); got != "" {
+			t.Errorf("miss = %q, want empty", got)
+		}
+	})
+
+	t.Run("generateParameterName", func(t *testing.T) {
+		cases := []struct {
+			index int
+			want  string
+		}{
+			{0, "T"}, {1, "U"}, {6, "Z"},
+			{7, "T1"}, {8, "U1"}, {13, "Z1"}, {14, "T2"},
+		}
+		for _, c := range cases {
+			if got := resolver.generateParameterName(c.index); got != c.want {
+				t.Errorf("generateParameterName(%d) = %q, want %q", c.index, got, c.want)
+			}
+		}
+	})
+}
+
+// TestTypeResolver_ResolveGenericType_Edges covers the bracket-cleanup
+// branches ResolveGenericType takes when no or empty parameters are present.
+func TestTypeResolver_ResolveGenericType_Edges(t *testing.T) {
+	cfg := DefaultAPISpecConfig()
+	resolver := NewTypeResolver(nil, cfg, NewSchemaMapper(cfg))
+
+	cases := []struct {
+		name    string
+		generic string
+		params  map[string]string
+		want    string
+	}{
+		{"no params keeps instantiated form", "Page[User]", nil, "Page[User]"},
+		{"no params cleans empty brackets", "Page[]", nil, "Page"},
+		{"no params plain type unchanged", "User", nil, "User"},
+		{"empty param string with params map", "Page[]", map[string]string{"T": "User"}, "Page"},
+		{"plain type with params map unchanged", "User", map[string]string{"T": "User"}, "User"},
+		{"nested generic recursion", "List[Box[T]]", map[string]string{"T": "int"}, "List[Box[int]]"},
+		{"unknown parameter kept", "Pair[T,Q]", map[string]string{"T": "string"}, "Pair[string,Q]"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolver.ResolveGenericType(c.generic, c.params); got != c.want {
+				t.Errorf("ResolveGenericType(%q) = %q, want %q", c.generic, got, c.want)
+			}
+		})
+	}
+}
