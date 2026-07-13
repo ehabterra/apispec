@@ -38,8 +38,11 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    # -coverpkg=./... attributes coverage across packages, so the fixture
+    # suites in generator/ credit the internal pipeline code they exercise
+    # (same methodology as the badge in scripts/update-coverage-badge.sh).
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: go test -v -race -coverpkg=./... -coverprofile=coverage.out ./...
 
     - name: Run integration tests
       run: go test -v ./cmd/apispec/...

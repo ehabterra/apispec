@@ -3,7 +3,7 @@ set -euo pipefail
 
 COVERAGE_FILE="coverage.txt"
 README_FILE="README.md"
-THRESHOLD=45  # Minimum acceptable coverage %
+THRESHOLD=80  # Minimum acceptable coverage %
 
 # Library packages only. The cmd/* mains (notably cmd/apispecui's ~1400-line
 # main.go) and the root main are CLI glue with no unit tests; counting their
@@ -11,16 +11,24 @@ THRESHOLD=45  # Minimum acceptable coverage %
 # matches what an IDE coverage run over the library subtree reports.
 LIB_PKGS=(./internal/... ./generator/... ./pkg/... ./spec/...)
 
+# Cross-package attribution (-coverpkg): without it, go test only credits a
+# package's own tests, so the generator/ fixture suite — which exercises the
+# whole metadata→tracker→extractor→mapper pipeline end-to-end — counts for
+# nothing in the packages it actually covers (lazytree.go reads 0% despite
+# being the default engine). The badge should report what the tests execute,
+# not where the test files happen to live.
+LIB_COVERPKG=$(IFS=,; echo "${LIB_PKGS[*]}")
+
 # Run tests and generate coverage report (library scope)
-go test "${LIB_PKGS[@]}" -coverprofile=$COVERAGE_FILE
+go test "${LIB_PKGS[@]}" -coverpkg="$LIB_COVERPKG" -coverprofile=$COVERAGE_FILE
 
 # Extract coverage percentage
 COVERAGE=$(go tool cover -func=$COVERAGE_FILE | grep total | awk '{print substr($3, 1, length($3)-1)}')
 
 # Determine badge color on a graduated scale (codecov-style) rather than a
-# three-band cliff, so the colour tracks coverage smoothly. For a tool whose
-# CLI/UI glue is intentionally left untested, library coverage in the 65–80%
-# range is healthy and should read green-ish, not alarming red.
+# three-band cliff, so the colour tracks coverage smoothly. With cross-package
+# attribution the library sits in the 80s and is being ratcheted toward 95%,
+# so green starts at 75 and brightgreen marks the 90s.
 if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
     COLOR="brightgreen"
 elif (( $(echo "$COVERAGE >= 75" | bc -l) )); then
