@@ -126,11 +126,6 @@ func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// Finalize cleans up the string pool by removing the lookup map
-func (sp *StringPool) Finalize() {
-	// sp.strings = nil
-}
-
 // Metadata represents the complete metadata for a Go codebase
 type Metadata struct {
 	StringPool *StringPool         `yaml:"string_pool,omitempty"`
@@ -228,30 +223,6 @@ func (m *Metadata) BuildCallGraphMaps() {
 			m.Args[argBase] = append(m.Args[argBase], edge)
 		}
 	}
-}
-
-// GetCallersOfFunction returns all edges where the given function is the caller
-func (m *Metadata) GetCallersOfFunction(pkg, funcName string) []*CallGraphEdge {
-	baseID := fmt.Sprintf("%s.%s", pkg, funcName)
-	return m.Callers[baseID]
-}
-
-// GetCalleesOfFunction returns all edges where the given function is called
-func (m *Metadata) GetCalleesOfFunction(pkg, funcName string) []*CallGraphEdge {
-	baseID := fmt.Sprintf("%s.%s", pkg, funcName)
-	return m.Callees[baseID]
-}
-
-// GetCallersOfMethod returns all edges where the given method is the caller
-func (m *Metadata) GetCallersOfMethod(pkg, recvType, methodName string) []*CallGraphEdge {
-	baseID := fmt.Sprintf("%s.%s.%s", pkg, recvType, methodName)
-	return m.Callers[baseID]
-}
-
-// GetCalleesOfMethod returns all edges where the given method is called
-func (m *Metadata) GetCalleesOfMethod(pkg, recvType, methodName string) []*CallGraphEdge {
-	baseID := fmt.Sprintf("%s.%s.%s", pkg, recvType, methodName)
-	return m.Callees[baseID]
 }
 
 // IsSubset checks if array 'a' is a subset of array 'b'
@@ -743,19 +714,6 @@ func (a *CallArgument) SetResolvedType(resolvedType string) {
 	}
 }
 
-func (a *CallArgument) SetGenericTypeName(genericTypeName string) {
-	if a.Meta.StringPool != nil {
-		a.GenericTypeName = a.Meta.StringPool.Get(genericTypeName)
-	}
-}
-
-// SetScope sets the scope string using StringPool
-func (c *Call) SetScope(scope string) {
-	if c.Meta.StringPool != nil {
-		c.Scope = c.Meta.StringPool.Get(scope)
-	}
-}
-
 func (a *CallArgument) TypeParams() map[string]string {
 	if a.TypeParamMap == nil {
 		a.TypeParamMap = map[string]string{}
@@ -967,14 +925,6 @@ func (c *Call) BaseID() string {
 
 	c.baseIDCache = c.identifier.ID(BaseID)
 	return c.baseIDCache
-}
-
-// GenericID returns the identifier with generic type parameters but no position
-func (c *Call) GenericID() string {
-	if c.identifier == nil {
-		c.buildIdentifier()
-	}
-	return c.identifier.ID(GenericID)
 }
 
 // InstanceID returns the full instance identifier with position and generics
