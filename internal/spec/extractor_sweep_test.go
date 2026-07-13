@@ -740,8 +740,13 @@ func TestSweepSmallHelpers(t *testing.T) {
 		if got := preferRequestInfo(concrete, generic); got != concrete {
 			t.Error("concrete cur must win")
 		}
-		if got := preferRequestInfo(generic, generic); got != generic {
-			t.Error("tie keeps last-write-wins")
+		genericB := &RequestInfo{Schema: &Schema{Type: "object"}}
+		if got := preferRequestInfo(generic, genericB); got != genericB {
+			t.Error("generic tie must keep the newer request (last-write-wins)")
+		}
+		concreteB := &RequestInfo{Schema: &Schema{Ref: "#/y"}}
+		if got := preferRequestInfo(concrete, concreteB); got != concreteB {
+			t.Error("concrete tie must keep the newer request")
 		}
 	})
 
@@ -900,13 +905,16 @@ func TestSweepExtractorGuards(t *testing.T) {
 		if len(first) != 1 || first["app.h"] != 0 {
 			t.Errorf("depths = %v, want {app.h:0}", first)
 		}
-		// The memo must return the identical map on a second call.
-		if &first == &second {
-			t.Log("map header comparison is not meaningful; assert equality instead")
-		}
+		// The memo must return the identical map: a mutation through one
+		// reference is visible through a fresh fetch.
 		if len(second) != len(first) {
 			t.Errorf("cached call returned different depths: %v vs %v", second, first)
 		}
+		first["zz_probe"] = 99
+		if third := ext.handlerCallDepths(route); third["zz_probe"] != 99 {
+			t.Error("handlerCallDepths did not return the cached map")
+		}
+		delete(first, "zz_probe")
 	})
 
 	t.Run("calleeMiddlewareRef nil edge", func(t *testing.T) {

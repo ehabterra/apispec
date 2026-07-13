@@ -553,6 +553,11 @@ func TestResolveInterfaceImplHandler(t *testing.T) {
 			"Real": {Name: pool.Get("Real"), Methods: []metadata.Method{
 				{Name: pool.Get("Handle"), Position: pool.Get("/impl/r.go:30:1")},
 			}},
+			// Ghost.Handle exists as a method but has no caller edge and no
+			// factory FuncLit — the "impl with no body" branch.
+			"Ghost": {Name: pool.Get("Ghost"), Methods: []metadata.Method{
+				{Name: pool.Get("Handle"), Position: pool.Get("/impl/g.go:40:1")},
+			}},
 		}},
 	}}
 	meta.Callers["example.com/impl.Real.Handle"] = []*metadata.CallGraphEdge{{

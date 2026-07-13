@@ -333,6 +333,17 @@ func TestAllConcreteGenericArgs_NilAndConstraint(t *testing.T) {
 	if allConcreteGenericArgs(nil) {
 		t.Error("empty args must not count as concrete")
 	}
+	constrained := &typemodel.TypeRef{Kind: typemodel.KindNamed, Name: "T", Constraint: "any"}
+	if allConcreteGenericArgs([]*typemodel.TypeRef{constrained}) {
+		t.Error("declaration-form parameter (with constraint) must not count as concrete")
+	}
+	concrete := typemodel.Parse("main.User")
+	if !allConcreteGenericArgs([]*typemodel.TypeRef{concrete}) {
+		t.Error("plain named argument must count as concrete")
+	}
+	if allConcreteGenericArgs([]*typemodel.TypeRef{concrete, constrained}) {
+		t.Error("one constrained parameter poisons the whole list")
+	}
 }
 
 func TestSubstituteTypeParams(t *testing.T) {

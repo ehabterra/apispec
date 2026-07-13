@@ -1205,11 +1205,17 @@ func TestSweepFrameworkDetectorDepthAndExternal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("analyze: %v", err)
 	}
-	var sawUtil bool
+	var sawModels, sawUtil bool
 	for _, dep := range list.AllPackages {
+		if dep.PackagePath == "myapp-svc/models" {
+			sawModels = true
+		}
 		if dep.PackagePath == "myapp-svc/util" {
 			sawUtil = true
 		}
+	}
+	if !sawModels {
+		t.Error("depth 1 should still include the direct dependency models")
 	}
 	if sawUtil {
 		t.Error("depth limit should stop recursion before util")
