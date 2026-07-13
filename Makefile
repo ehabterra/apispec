@@ -63,9 +63,11 @@ build-apidiag:
 test:
 	go test ./...
 
-# Run tests with coverage report
+# Run tests with coverage report. -coverpkg attributes cross-package coverage
+# so the generator/ fixture suites credit the internal code they exercise
+# (same methodology as the CI badge).
 coverage:
-	go test -coverprofile=coverage.out ./...
+	go test -coverpkg=./... -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
