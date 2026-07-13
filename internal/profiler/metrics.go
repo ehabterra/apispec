@@ -112,19 +112,9 @@ func (mc *MetricsCollector) AddMetric(name string, metricType MetricType, value 
 	mc.metrics = append(mc.metrics, metric)
 }
 
-// IncrementCounter increments a counter metric
-func (mc *MetricsCollector) IncrementCounter(name string, tags map[string]string) {
-	mc.AddMetric(name, MetricTypeCounter, 1, "", tags)
-}
-
 // SetGauge sets a gauge metric value
 func (mc *MetricsCollector) SetGauge(name string, value float64, unit string, tags map[string]string) {
 	mc.AddMetric(name, MetricTypeGauge, value, unit, tags)
-}
-
-// RecordHistogram records a histogram value
-func (mc *MetricsCollector) RecordHistogram(name string, value float64, unit string, tags map[string]string) {
-	mc.AddMetric(name, MetricTypeHistogram, value, unit, tags)
 }
 
 // StartTimer starts a timer
@@ -248,35 +238,4 @@ func (mc *MetricsCollector) collectGoroutineMetrics() {
 	tags := map[string]string{"type": "system"}
 
 	mc.SetGauge("goroutines.count", float64(numGoroutines), "count", tags)
-}
-
-// GetSummary returns a summary of collected metrics
-func (mc *MetricsCollector) GetSummary() map[string]interface{} {
-	mc.mu.RLock()
-	defer mc.mu.RUnlock()
-
-	summary := map[string]interface{}{
-		"total_metrics":   len(mc.metrics),
-		"collection_time": time.Now(),
-	}
-
-	// Group metrics by type
-	byType := make(map[MetricType]int)
-	for _, metric := range mc.metrics {
-		byType[metric.Type]++
-	}
-	summary["by_type"] = byType
-
-	// Get time range
-	if len(mc.metrics) > 0 {
-		first := mc.metrics[0].Timestamp
-		last := mc.metrics[len(mc.metrics)-1].Timestamp
-		summary["time_range"] = map[string]interface{}{
-			"start":    first,
-			"end":      last,
-			"duration": last.Sub(first),
-		}
-	}
-
-	return summary
 }

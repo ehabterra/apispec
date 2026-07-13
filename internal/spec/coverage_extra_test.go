@@ -15,8 +15,6 @@
 package spec
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -66,38 +64,31 @@ func TestTrackerTreeAccessors(t *testing.T) {
 	if tree.GetMetadata() != meta {
 		t.Error("GetMetadata mismatch")
 	}
-	if tree.GetLimits().MaxNodesPerTree == 0 {
-		t.Error("GetLimits not set")
-	}
 	roots := tree.GetRoots()
 	if len(roots) == 0 {
 		t.Skip("fixture produced no roots")
 	}
-	if tree.GetNodeCount() == 0 {
-		t.Error("GetNodeCount = 0")
-	}
 	n := 0
-	tree.TraverseTree(func(node TrackerNodeInterface) bool {
+	var walk func(node TrackerNodeInterface)
+	walk = func(node TrackerNodeInterface) {
+		if node == nil || n >= 50 {
+			return
+		}
+		n++
 		_ = node.GetKey()
 		_ = node.GetParent()
-		_ = node.GetChildren()
 		_ = node.GetEdge()
 		_ = node.GetArgument()
-		_ = node.GetArgType()
-		_ = node.GetArgIndex()
-		_ = node.GetArgContext()
 		_ = node.GetTypeParamMap()
-		_ = node.GetRootAssignmentMap()
-		n++
-		return n < 50
-	})
-	if k := roots[0].GetKey(); k != "" {
-		if tree.FindNodeByKey(k) == nil {
-			t.Errorf("FindNodeByKey(%q) = nil", k)
+		for _, c := range node.GetChildren() {
+			walk(c)
 		}
 	}
-	if tree.FindNodeByKey("definitely::not::a::key") != nil {
-		t.Error("FindNodeByKey(bogus) should be nil")
+	for _, r := range roots {
+		walk(r)
+	}
+	if n == 0 {
+		t.Error("no nodes visited")
 	}
 }
 
@@ -107,50 +98,22 @@ func TestVisualizationFromTree(t *testing.T) {
 	if len(roots) == 0 {
 		t.Skip("no roots")
 	}
-	if DrawTrackerTree(roots) == "" {
-		t.Error("DrawTrackerTree returned empty string")
-	}
-	data := DrawTrackerTreeCytoscape(roots)
+	data := DrawTrackerTreeCytoscapeWithMetadata(roots, meta)
 	if data == nil {
-		t.Fatal("DrawTrackerTreeCytoscape nil")
+		t.Fatal("DrawTrackerTreeCytoscapeWithMetadata nil")
 	}
-	_ = DrawTrackerTreeCytoscapeWithMetadata(roots, meta)
 	_ = OrderTrackerTreeNodesDepthFirst(data)
 	_ = TraverseTrackerTreeBranchOrder(data)
 }
 
 func TestExportToFiles(t *testing.T) {
-	tree, meta := loadEchoTree(t)
-	roots := tree.GetRoots()
+	_, meta := loadEchoTree(t)
 	dir := t.TempDir()
 	check := func(err error, what string) {
 		if err != nil {
 			t.Errorf("%s: %v", what, err)
 		}
 	}
-	check(GenerateCytoscapeHTML(roots, filepath.Join(dir, "t.html")), "GenerateCytoscapeHTML")
-	check(ExportCytoscapeJSON(roots, filepath.Join(dir, "t.json")), "ExportCytoscapeJSON")
 	check(GenerateCallGraphCytoscapeHTML(meta, filepath.Join(dir, "cg.html")), "GenerateCallGraphCytoscapeHTML")
-	check(ExportCallGraphCytoscapeJSON(meta, filepath.Join(dir, "cg.json")), "ExportCallGraphCytoscapeJSON")
-	check(GenerateOptimizedCallGraphHTML(meta, filepath.Join(dir, "opt.html"), "paginated"), "opt/paginated")
-	check(GenerateOptimizedCallGraphHTML(meta, filepath.Join(dir, "opt2.html"), ""), "opt/default")
 	check(GeneratePaginatedCytoscapeHTML(meta, filepath.Join(dir, "pag.html"), 100), "GeneratePaginatedCytoscapeHTML")
-}
-
-func TestPaginatedServer(t *testing.T) {
-	_, meta := loadEchoTree(t)
-	srv := NewPaginatedCallGraphServer(meta, 50)
-	for _, q := range []string{"", "?page=1", "?page=2&depth=3", "?package=echo", "?page=0"} {
-		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/"+q, nil))
-		if rec.Code != http.StatusOK {
-			t.Errorf("q=%q code=%d", q, rec.Code)
-		}
-		if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
-			t.Errorf("q=%q content-type=%q", q, ct)
-		}
-	}
-	if err := GenerateServerBasedCytoscapeHTML("http://localhost:9999", filepath.Join(t.TempDir(), "sb.html")); err != nil {
-		t.Errorf("GenerateServerBasedCytoscapeHTML: %v", err)
-	}
 }

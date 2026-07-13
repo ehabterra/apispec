@@ -204,20 +204,8 @@ type TrackerNodeInterface interface {
 	// GetArgument returns the call argument
 	GetArgument() *metadata.CallArgument
 
-	// GetArgType returns the argument type
-	GetArgType() metadata.ArgumentType
-
-	// GetArgIndex returns the argument index
-	GetArgIndex() int
-
-	// GetArgContext returns the argument context
-	GetArgContext() string
-
 	// GetTypeParamMap returns the type parameter map
 	GetTypeParamMap() map[string]string
-
-	// GetRootAssignmentMap returns the root assignment map
-	GetRootAssignmentMap() map[string][]metadata.Assignment
 }
 
 // TrackerTreeInterface defines the interface for tracker tree operations
@@ -225,21 +213,6 @@ type TrackerTreeInterface interface {
 	// GetRoots returns the root nodes of the tracker tree
 	GetRoots() []TrackerNodeInterface
 
-	// GetNodeCount returns the total number of nodes in the tree
-	GetNodeCount() int
-
-	// FindNodeByKey finds a node by its key
-	FindNodeByKey(key string) TrackerNodeInterface
-
-	// GetFunctionContext returns context information for a function
-	GetFunctionContext(functionName string) (*metadata.Function, string, string)
-
-	// TraverseTree traverses the tree with a visitor function
-	TraverseTree(visitor func(node TrackerNodeInterface) bool)
-
 	// GetMetadata returns the underlying metadata
 	GetMetadata() *metadata.Metadata
-
-	// GetLimits returns the tracker limits
-	GetLimits() metadata.TrackerLimits
 }

@@ -204,34 +204,6 @@ func (fd *FrameworkDetector) DisableFramework(frameworkType string) {
 	fd.config.DisabledFrameworks[frameworkType] = true
 }
 
-// AddFrameworkPattern adds a new framework pattern for detection
-func (fd *FrameworkDetector) AddFrameworkPattern(frameworkType string, patterns []string) {
-	if fd.config.FrameworkPatterns == nil {
-		fd.config.FrameworkPatterns = make(map[string][]string)
-	}
-	fd.config.FrameworkPatterns[frameworkType] = patterns
-}
-
-// AddExternalPrefix adds a new external package prefix to exclude
-func (fd *FrameworkDetector) AddExternalPrefix(prefix string) {
-	fd.config.ExternalPrefixes = append(fd.config.ExternalPrefixes, prefix)
-}
-
-// AddProjectPattern adds a new project pattern for fallback detection
-func (fd *FrameworkDetector) AddProjectPattern(pattern string) {
-	fd.config.ProjectPatterns = append(fd.config.ProjectPatterns, pattern)
-}
-
-// AddTestMockPattern adds a new test/mock pattern to exclude
-func (fd *FrameworkDetector) AddTestMockPattern(pattern string) {
-	fd.config.TestMockPatterns = append(fd.config.TestMockPatterns, pattern)
-}
-
-// GetConfig returns a copy of the current configuration
-func (fd *FrameworkDetector) GetConfig() FrameworkDetectorConfig {
-	return fd.config
-}
-
 // AnalyzeFrameworkDependencies analyzes all framework dependencies
 func (fd *FrameworkDetector) AnalyzeFrameworkDependencies(
 	pkgs []*packages.Package,

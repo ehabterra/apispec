@@ -15,36 +15,14 @@
 package spec
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-func TestDrawTrackerTree(t *testing.T) {
-	// Test with nil nodes
-	result := DrawTrackerTree(nil)
-	// Should return at least the header
-	if result == "" {
-		t.Error("Expected non-empty result even for nil nodes")
-	}
-
-	// Test with empty nodes slice
-	emptyNodes := []TrackerNodeInterface{}
-	result = DrawTrackerTree(emptyNodes)
-	if result == "" {
-		t.Error("Expected non-empty result for empty nodes slice")
-	}
-
-	// Should contain the Mermaid header
-	if !strings.Contains(result, "graph LR") {
-		t.Error("Expected result to contain Mermaid header")
-	}
-}
-
 func TestDrawTrackerTreeCytoscape(t *testing.T) {
 	// Test with nil nodes
-	result := DrawTrackerTreeCytoscape(nil)
+	result := DrawTrackerTreeCytoscapeWithMetadata(nil, nil)
 	if result == nil {
 		t.Error("Expected non-nil result even for nil nodes")
 		return
@@ -52,7 +30,7 @@ func TestDrawTrackerTreeCytoscape(t *testing.T) {
 
 	// Test with empty nodes slice
 	emptyNodes := []TrackerNodeInterface{}
-	result = DrawTrackerTreeCytoscape(emptyNodes)
+	result = DrawTrackerTreeCytoscapeWithMetadata(emptyNodes, nil)
 	if result == nil {
 		t.Error("Expected non-nil result for empty nodes slice")
 		return
@@ -108,7 +86,7 @@ func TestDrawCallGraphCytoscape(t *testing.T) {
 	}
 }
 
-func TestBuildCallPaths(t *testing.T) {
+func TestBuildCallPathInfos(t *testing.T) {
 	// Create a simple metadata with call graph
 	meta := &metadata.Metadata{
 		StringPool: metadata.NewStringPool(),
@@ -144,17 +122,17 @@ func TestBuildCallPaths(t *testing.T) {
 	// Build call graph maps
 	meta.BuildCallGraphMaps()
 
-	// Test buildCallPaths - use the callee's BaseID
+	// Test buildCallPathInfos - use the callee's BaseID
 	calleeID := meta.CallGraph[0].Callee.BaseID()
-	paths := buildCallPaths(meta, calleeID)
+	infos := buildCallPathInfos(meta, calleeID)
 
 	// Should have one caller path
-	if len(paths) != 1 {
-		t.Errorf("Expected 1 call path, got %d", len(paths))
+	if len(infos) != 1 {
+		t.Errorf("Expected 1 call path, got %d", len(infos))
 	}
 
-	if len(paths) > 0 && paths[0] != "main.main" {
-		t.Errorf("Expected call path 'main.main', got '%s'", paths[0])
+	if len(infos) > 0 && (infos[0].CallerPkg != "main" || infos[0].CallerName != "main") {
+		t.Errorf("Expected caller main.main, got %s.%s", infos[0].CallerPkg, infos[0].CallerName)
 	}
 }
 

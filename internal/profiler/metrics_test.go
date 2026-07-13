@@ -103,32 +103,6 @@ func TestAddMetric(t *testing.T) {
 	}
 }
 
-func TestIncrementCounter(t *testing.T) {
-	collector := NewMetricsCollector()
-
-	// Increment counter
-	collector.IncrementCounter("test_counter", map[string]string{"env": "test"})
-
-	metrics := collector.GetMetrics()
-	if len(metrics) != 1 {
-		t.Fatalf("Expected 1 metric, got %d", len(metrics))
-	}
-
-	metric := metrics[0]
-	if metric.Name != "test_counter" {
-		t.Errorf("Expected name 'test_counter', got %s", metric.Name)
-	}
-	if metric.Type != MetricTypeCounter {
-		t.Errorf("Expected type MetricTypeCounter, got %s", metric.Type)
-	}
-	if metric.Value != 1.0 {
-		t.Errorf("Expected value 1.0, got %f", metric.Value)
-	}
-	if metric.Tags["env"] != "test" {
-		t.Errorf("Expected tag 'test', got %s", metric.Tags["env"])
-	}
-}
-
 func TestSetGauge(t *testing.T) {
 	collector := NewMetricsCollector()
 
@@ -155,35 +129,6 @@ func TestSetGauge(t *testing.T) {
 	}
 	if metric.Tags["type"] != "memory" {
 		t.Errorf("Expected tag 'memory', got %s", metric.Tags["type"])
-	}
-}
-
-func TestRecordHistogram(t *testing.T) {
-	collector := NewMetricsCollector()
-
-	// Record histogram
-	collector.RecordHistogram("test_histogram", 50.0, "ms", map[string]string{"operation": "query"})
-
-	metrics := collector.GetMetrics()
-	if len(metrics) != 1 {
-		t.Fatalf("Expected 1 metric, got %d", len(metrics))
-	}
-
-	metric := metrics[0]
-	if metric.Name != "test_histogram" {
-		t.Errorf("Expected name 'test_histogram', got %s", metric.Name)
-	}
-	if metric.Type != MetricTypeHistogram {
-		t.Errorf("Expected type MetricTypeHistogram, got %s", metric.Type)
-	}
-	if metric.Value != 50.0 {
-		t.Errorf("Expected value 50.0, got %f", metric.Value)
-	}
-	if metric.Unit != "ms" {
-		t.Errorf("Expected unit 'ms', got %s", metric.Unit)
-	}
-	if metric.Tags["operation"] != "query" {
-		t.Errorf("Expected tag 'query', got %s", metric.Tags["operation"])
 	}
 }
 
@@ -337,55 +282,6 @@ func TestWriteToFileWithNonExistentDirectory(t *testing.T) {
 	err := collector.WriteToFile(filePath)
 	if err == nil {
 		t.Fatal("Expected error when writing to non-existent directory")
-	}
-}
-
-func TestGetSummary(t *testing.T) {
-	collector := NewMetricsCollector()
-
-	// Test with no metrics
-	summary := collector.GetSummary()
-	if summary["total_metrics"] != 0 {
-		t.Errorf("Expected 0 total metrics, got %v", summary["total_metrics"])
-	}
-
-	// Add some metrics
-	collector.AddMetric("counter1", MetricTypeCounter, 1.0, "count", nil)
-	collector.AddMetric("gauge1", MetricTypeGauge, 2.0, "bytes", nil)
-	collector.AddMetric("counter2", MetricTypeCounter, 3.0, "count", nil)
-
-	summary = collector.GetSummary()
-	if summary["total_metrics"] != 3 {
-		t.Errorf("Expected 3 total metrics, got %v", summary["total_metrics"])
-	}
-
-	// Check by_type
-	byType, ok := summary["by_type"].(map[MetricType]int)
-	if !ok {
-		t.Fatal("Expected by_type to be map[MetricType]int")
-	}
-
-	if byType[MetricTypeCounter] != 2 {
-		t.Errorf("Expected 2 counter metrics, got %d", byType[MetricTypeCounter])
-	}
-	if byType[MetricTypeGauge] != 1 {
-		t.Errorf("Expected 1 gauge metric, got %d", byType[MetricTypeGauge])
-	}
-
-	// Check time_range
-	timeRange, ok := summary["time_range"].(map[string]interface{})
-	if !ok {
-		t.Fatal("Expected time_range to be map[string]interface{}")
-	}
-
-	if timeRange["start"] == nil {
-		t.Fatal("Expected non-nil start time")
-	}
-	if timeRange["end"] == nil {
-		t.Fatal("Expected non-nil end time")
-	}
-	if timeRange["duration"] == nil {
-		t.Fatal("Expected non-nil duration")
 	}
 }
 

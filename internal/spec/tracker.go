@@ -199,55 +199,9 @@ func (nd *TrackerNode) GetArgument() *metadata.CallArgument {
 	return nd.CallArgument
 }
 
-// GetArgType returns the argument type
-func (nd *TrackerNode) GetArgType() metadata.ArgumentType {
-	// Convert local ArgumentType to metadata.ArgumentType
-	switch nd.ArgType {
-	case ArgTypeDirectCallee:
-		return metadata.ArgTypeDirectCallee
-	case ArgTypeFunctionCall:
-		return metadata.ArgTypeFunctionCall
-	case ArgTypeVariable:
-		return metadata.ArgTypeVariable
-	case ArgTypeLiteral:
-		return metadata.ArgTypeLiteral
-	case ArgTypeSelector:
-		return metadata.ArgTypeSelector
-	case ArgTypeComplex:
-		return metadata.ArgTypeComplex
-	case ArgTypeUnary:
-		return metadata.ArgTypeUnary
-	case ArgTypeBinary:
-		return metadata.ArgTypeBinary
-	case ArgTypeIndex:
-		return metadata.ArgTypeIndex
-	case ArgTypeComposite:
-		return metadata.ArgTypeComposite
-	case ArgTypeTypeAssert:
-		return metadata.ArgTypeTypeAssert
-	default:
-		return metadata.ArgTypeComplex
-	}
-}
-
-// GetArgIndex returns the argument index
-func (nd *TrackerNode) GetArgIndex() int {
-	return nd.ArgIndex
-}
-
-// GetArgContext returns the argument context
-func (nd *TrackerNode) GetArgContext() string {
-	return nd.ArgContext
-}
-
 // GetTypeParamMap returns the type parameter map
 func (nd *TrackerNode) GetTypeParamMap() map[string]string {
 	return nd.TypeParams()
-}
-
-// GetRootAssignmentMap returns the root assignment map
-func (nd *TrackerNode) GetRootAssignmentMap() map[string][]metadata.Assignment {
-	return nd.RootAssignmentMap
 }
 
 func (nd *TrackerNode) AddChild(child *TrackerNode) {
@@ -1699,116 +1653,9 @@ func (t *TrackerTree) GetRoots() []TrackerNodeInterface {
 	return roots
 }
 
-// FindNodeByKey finds a node by its key in the tracker tree
-func (t *TrackerTree) FindNodeByKey(key string) TrackerNodeInterface {
-	var findNode func(*TrackerNode) *TrackerNode
-
-	findNode = func(node *TrackerNode) *TrackerNode {
-		if node == nil {
-			return nil
-		}
-
-		if node.Key() == key {
-			return node
-		}
-
-		for _, child := range node.Children {
-			if found := findNode(child); found != nil {
-				return found
-			}
-		}
-
-		return nil
-	}
-
-	for _, root := range t.roots {
-		if found := findNode(root); found != nil {
-			return found
-		}
-	}
-
-	return nil
-}
-
-// TraverseTree traverses the tree with a visitor function
-func (t *TrackerTree) TraverseTree(visitor func(node TrackerNodeInterface) bool) {
-	var traverse func(*TrackerNode) bool
-	traverse = func(node *TrackerNode) bool {
-		if node == nil {
-			return true
-		}
-
-		if !visitor(node) {
-			return false
-		}
-
-		for _, child := range node.Children {
-			if !traverse(child) {
-				return false
-			}
-		}
-		return true
-	}
-
-	for _, root := range t.roots {
-		if !traverse(root) {
-			break
-		}
-	}
-}
-
 // GetMetadata returns the underlying metadata
 func (t *TrackerTree) GetMetadata() *metadata.Metadata {
 	return t.meta
-}
-
-// GetLimits returns the tracker limits
-func (t *TrackerTree) GetLimits() metadata.TrackerLimits {
-	return metadata.TrackerLimits{
-		MaxNodesPerTree:    t.limits.MaxNodesPerTree,
-		MaxChildrenPerNode: t.limits.MaxChildrenPerNode,
-		MaxArgsPerFunction: t.limits.MaxArgsPerFunction,
-		MaxNestedArgsDepth: t.limits.MaxNestedArgsDepth,
-	}
-}
-
-// GetFunctionContext returns the *metadata.Function, package name, and file name for a function name.
-func (t *TrackerTree) GetFunctionContext(functionName string) (*metadata.Function, string, string) {
-	if functionName == "" {
-		return nil, "", ""
-	}
-
-	// Deterministic first-match: Packages and Files are maps, so iterating them
-	// directly would return a different (pkg, file) when the same function name
-	// exists in more than one package — flipping resolution between runs.
-	pkgNames := make([]string, 0, len(t.meta.Packages))
-	for pkgName := range t.meta.Packages {
-		pkgNames = append(pkgNames, pkgName)
-	}
-	sort.Strings(pkgNames)
-	for _, pkgName := range pkgNames {
-		pkg := t.meta.Packages[pkgName]
-		fileNames := make([]string, 0, len(pkg.Files))
-		for fileName := range pkg.Files {
-			fileNames = append(fileNames, fileName)
-		}
-		sort.Strings(fileNames)
-		for _, fileName := range fileNames {
-			fns := pkg.Files[fileName].Functions
-			fnKeys := make([]string, 0, len(fns))
-			for key := range fns {
-				fnKeys = append(fnKeys, key)
-			}
-			sort.Strings(fnKeys)
-			for _, key := range fnKeys {
-				fn := fns[key]
-				if t.meta.StringPool.GetString(fn.Name) == functionName {
-					return fn, pkgName, fileName
-				}
-			}
-		}
-	}
-	return nil, "", ""
 }
 
 // getString retrieves a string value from the metadata string pool.
@@ -1817,63 +1664,6 @@ func getString(meta *metadata.Metadata, index int) string {
 		return ""
 	}
 	return meta.StringPool.GetString(index)
-}
-
-// GetNodeCount returns the total number of nodes in the tree
-func (t *TrackerTree) GetNodeCount() int {
-	var count int
-	var countNodes func(*TrackerNode)
-	countNodes = func(node *TrackerNode) {
-		if node == nil {
-			return
-		}
-		count++
-		for _, child := range node.Children {
-			countNodes(child)
-		}
-	}
-
-	for _, root := range t.roots {
-		countNodes(root)
-	}
-	return count
-}
-
-// TraceArgumentOrigin traces an argument back to its original definition
-func (t *TrackerTree) TraceArgumentOrigin(argNode *TrackerNode) *TrackerNode {
-	if argNode == nil || !argNode.IsArgument {
-		return nil
-	}
-
-	// For variable arguments, trace back to assignment
-	if argNode.ArgType == ArgTypeVariable && argNode.CallArgument != nil {
-		originVar, originPkg, _, funName := t.traceOrigin(
-			argNode.GetName(),
-			argNode.ArgContext,
-			"", // Use empty string for package, will be determined by TraceVariableOrigin
-		)
-
-		// Look for the origin variable in variable nodes
-		// Use the most recent assignment (last in slice) as it represents the actual value
-		if originNodes, ok := t.variableNodes[paramKey{
-			Name:      originVar,
-			Pkg:       originPkg,
-			Container: funName,
-		}]; ok && len(originNodes) > 0 {
-			return originNodes[len(originNodes)-1]
-		}
-	}
-
-	return nil
-}
-
-// FindVariableNodes returns all nodes that represent variables
-func (t *TrackerTree) FindVariableNodes() []*TrackerNode {
-	var result []*TrackerNode
-	for _, nodes := range t.variableNodes {
-		result = append(result, nodes...)
-	}
-	return result
 }
 
 // RegisterInterfaceResolution registers a mapping from an interface type to its concrete implementation
@@ -1901,15 +1691,6 @@ func (t *TrackerTree) ResolveInterface(interfaceType, structType, pkg string) st
 	}
 
 	return interfaceType
-}
-
-// GetInterfaceResolutions returns all registered interface resolutions for debugging
-func (t *TrackerTree) GetInterfaceResolutions() map[interfaceKey]string {
-	result := make(map[interfaceKey]string)
-	for k, v := range t.interfaceResolutionMap {
-		result[k] = v
-	}
-	return result
 }
 
 // SyncInterfaceResolutionsFromMetadata copies interface resolutions from metadata
