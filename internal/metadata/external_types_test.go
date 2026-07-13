@@ -20,15 +20,15 @@ import (
 	"testing"
 )
 
-// External-type resolution tests. These build synthesized go/types objects
-// instead of loading real source — that's enough to validate the recursive
-// walker without dragging the uuid/decimal modules into the test deps.
+// External-type fact tests. These build synthesized go/types objects
+// instead of loading real source — that's enough to validate the marshaler
+// classification without dragging the uuid/decimal modules into the test deps.
 
 const testCurrentModulePath = "example.com/me/proj"
 
 // makeExternalNamed returns a Named type living in an external package, with
 // the given underlying. Optionally attaches a zero-arg MarshalJSON method so
-// hasCustomJSONMarshaler treats it as a custom-marshaling type.
+// marshalerKind classifies it as controlling its own wire format.
 func makeExternalNamed(name string, underlying types.Type, withMarshalJSON bool) *types.Named {
 	pkg := types.NewPackage("github.com/some/ext", "ext")
 	obj := types.NewTypeName(token.NoPos, pkg, name, nil)
@@ -45,126 +45,17 @@ func makeExternalNamed(name string, underlying types.Type, withMarshalJSON bool)
 	return n
 }
 
-func makeInternalNamed(name string, underlying types.Type) *types.Named {
-	pkg := types.NewPackage(testCurrentModulePath+"/types", "types")
-	obj := types.NewTypeName(token.NoPos, pkg, name, nil)
-	return types.NewNamed(obj, underlying, nil)
-}
-
-func TestResolveExternalNamedTypes_TopLevel(t *testing.T) {
-	cases := []struct {
-		name     string
-		in       types.Type
-		wantSame bool   // resolver should return input unchanged
-		wantStr  string // expected .String() when wantSame=false
-	}{
-		{
-			name:    "external named with MarshalJSON resolves to string",
-			in:      makeExternalNamed("UUID", types.NewArray(types.Typ[types.Byte], 16), true),
-			wantStr: "string",
-		},
-		{
-			name:    "external named without MarshalJSON resolves to underlying primitive",
-			in:      makeExternalNamed("Duration", types.Typ[types.Int64], false),
-			wantStr: "int64",
-		},
-		{
-			// go/types prints byte (an alias of uint8) as "uint8" in
-			// composite stringification — the analyzer downstream treats
-			// both as primitive bytes.
-			name:    "external named without MarshalJSON, byte-array underlying",
-			in:      makeExternalNamed("Hash", types.NewArray(types.Typ[types.Byte], 32), false),
-			wantStr: "[32]uint8",
-		},
-		{
-			name:     "internal named is kept",
-			in:       makeInternalNamed("Local", types.NewStruct(nil, nil)),
-			wantSame: true,
-		},
-		{
-			name:     "builtin string is kept",
-			in:       types.Typ[types.String],
-			wantSame: true,
-		},
+// TestMarshalerKind pins the live classification recordExternalTypeFacts
+// relies on: MarshalJSON wins over nothing, and a plain named type has no
+// marshaler.
+func TestMarshalerKind(t *testing.T) {
+	withJSON := makeExternalNamed("UUID", types.NewArray(types.Typ[types.Byte], 16), true)
+	if got := marshalerKind(withJSON); got != MarshalerJSON {
+		t.Errorf("marshalerKind(with MarshalJSON) = %v, want MarshalerJSON", got)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := resolveExternalNamedTypes(tc.in, testCurrentModulePath)
-			if tc.wantSame {
-				if got != tc.in {
-					t.Errorf("expected identity, got %v", got)
-				}
-				return
-			}
-			if got.String() != tc.wantStr {
-				t.Errorf("want %q, got %q", tc.wantStr, got.String())
-			}
-		})
-	}
-}
-
-func TestResolveExternalNamedTypes_Containers(t *testing.T) {
-	uuid := makeExternalNamed("UUID", types.NewArray(types.Typ[types.Byte], 16), true)
-	local := makeInternalNamed("Local", types.NewStruct(nil, nil))
-
-	cases := []struct {
-		name    string
-		in      types.Type
-		wantStr string
-	}{
-		{
-			"pointer to external named (uuid) → *string",
-			types.NewPointer(uuid),
-			"*string",
-		},
-		{
-			"slice of external named (uuid) → []string",
-			types.NewSlice(uuid),
-			"[]string",
-		},
-		{
-			"array of external named (uuid) → [3]string",
-			types.NewArray(uuid, 3),
-			"[3]string",
-		},
-		{
-			"map[string]uuid → map[string]string",
-			types.NewMap(types.Typ[types.String], uuid),
-			"map[string]string",
-		},
-		{
-			"map[uuid]uuid → map[string]string",
-			types.NewMap(uuid, uuid),
-			"map[string]string",
-		},
-		{
-			"slice of internal named is kept",
-			types.NewSlice(local),
-			"[]" + testCurrentModulePath + "/types.Local",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := resolveExternalNamedTypes(tc.in, testCurrentModulePath)
-			if got.String() != tc.wantStr {
-				t.Errorf("want %q, got %q", tc.wantStr, got.String())
-			}
-		})
-	}
-}
-
-func TestHasCustomJSONMarshaler(t *testing.T) {
-	withMJ := makeExternalNamed("X", types.NewStruct(nil, nil), true)
-	withoutMJ := makeExternalNamed("Y", types.NewStruct(nil, nil), false)
-
-	if !hasCustomJSONMarshaler(withMJ) {
-		t.Errorf("expected MarshalJSON on X to be detected")
-	}
-	if hasCustomJSONMarshaler(withoutMJ) {
-		t.Errorf("did not expect Y to advertise MarshalJSON")
-	}
-	if hasCustomJSONMarshaler(nil) {
-		t.Errorf("nil named should return false, not panic")
+	plain := makeExternalNamed("Duration", types.Typ[types.Int64], false)
+	if got := marshalerKind(plain); got != MarshalerNone {
+		t.Errorf("marshalerKind(plain) = %v, want MarshalerNone", got)
 	}
 }
 

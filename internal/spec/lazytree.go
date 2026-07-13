@@ -367,34 +367,9 @@ func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *LazyTr
 			continue
 		}
 		seen[callerID] = true
-		root := &LazyNode{tree: t, key: strings.TrimPrefix(callerID, "*")}
-		root.rootAssignments = rootAssignmentsFor(meta, edge)
-		t.roots = append(t.roots, root)
+		t.roots = append(t.roots, &LazyNode{tree: t, key: strings.TrimPrefix(callerID, "*")})
 	}
 	return t
-}
-
-// rootAssignmentsFor mirrors the eager tree's root behavior: the root node
-// carries the main function's assignment map.
-func rootAssignmentsFor(meta *metadata.Metadata, edge *metadata.CallGraphEdge) map[string][]metadata.Assignment {
-	callerName := getString(meta, edge.Caller.Name)
-	callerPkg := getString(meta, edge.Caller.Pkg)
-	out := map[string][]metadata.Assignment{}
-	if pkg, ok := meta.Packages[callerPkg]; ok {
-		fileNames := make([]string, 0, len(pkg.Files))
-		for name := range pkg.Files {
-			fileNames = append(fileNames, name)
-		}
-		sort.Strings(fileNames)
-		for _, name := range fileNames {
-			if fn, ok := pkg.Files[name].Functions[callerName]; ok {
-				for k, v := range fn.AssignmentMap {
-					out[k] = append(out[k], v...)
-				}
-			}
-		}
-	}
-	return out
 }
 
 // edgesFor returns (and memoizes) the expansion edge list for a function base
@@ -434,96 +409,6 @@ func (t *LazyTree) GetRoots() []TrackerNodeInterface {
 // GetMetadata implements TrackerTreeInterface.
 func (t *LazyTree) GetMetadata() *metadata.Metadata { return t.meta }
 
-// GetLimits implements TrackerTreeInterface.
-func (t *LazyTree) GetLimits() metadata.TrackerLimits { return t.limits }
-
-// GetNodeCount implements TrackerTreeInterface: number of distinct function
-// keys visited by a full traversal (linear; not the unfolding size).
-func (t *LazyTree) GetNodeCount() int {
-	count := 0
-	t.TraverseTree(func(TrackerNodeInterface) bool { count++; return true })
-	return count
-}
-
-// TraverseTree implements TrackerTreeInterface. Each node key is visited at
-// most once globally, so the walk is linear in the call graph.
-func (t *LazyTree) TraverseTree(visitor func(node TrackerNodeInterface) bool) {
-	visited := map[string]bool{}
-	var walk func(n TrackerNodeInterface) bool
-	walk = func(n TrackerNodeInterface) bool {
-		key := n.GetKey()
-		if key != "" {
-			if visited[key] {
-				return true
-			}
-			visited[key] = true
-		}
-		if !visitor(n) {
-			return false
-		}
-		for _, child := range n.GetChildren() {
-			if !walk(child) {
-				return false
-			}
-		}
-		return true
-	}
-	for _, root := range t.roots {
-		if !walk(root) {
-			return
-		}
-	}
-}
-
-// FindNodeByKey implements TrackerTreeInterface.
-func (t *LazyTree) FindNodeByKey(key string) TrackerNodeInterface {
-	var found TrackerNodeInterface
-	t.TraverseTree(func(n TrackerNodeInterface) bool {
-		if n.GetKey() == key {
-			found = n
-			return false
-		}
-		return true
-	})
-	return found
-}
-
-// GetFunctionContext implements TrackerTreeInterface (same deterministic
-// lookup as the eager tree).
-func (t *LazyTree) GetFunctionContext(functionName string) (*metadata.Function, string, string) {
-	if functionName == "" {
-		return nil, "", ""
-	}
-	pkgNames := make([]string, 0, len(t.meta.Packages))
-	for pkgName := range t.meta.Packages {
-		pkgNames = append(pkgNames, pkgName)
-	}
-	sort.Strings(pkgNames)
-	for _, pkgName := range pkgNames {
-		pkg := t.meta.Packages[pkgName]
-		fileNames := make([]string, 0, len(pkg.Files))
-		for fileName := range pkg.Files {
-			fileNames = append(fileNames, fileName)
-		}
-		sort.Strings(fileNames)
-		for _, fileName := range fileNames {
-			fns := pkg.Files[fileName].Functions
-			fnKeys := make([]string, 0, len(fns))
-			for key := range fns {
-				fnKeys = append(fnKeys, key)
-			}
-			sort.Strings(fnKeys)
-			for _, key := range fnKeys {
-				fn := fns[key]
-				if t.meta.StringPool.GetString(fn.Name) == functionName {
-					return fn, pkgName, fileName
-				}
-			}
-		}
-	}
-	return nil, "", ""
-}
-
 // LazyNode implements TrackerNodeInterface. Identity is (content, parent):
 // node objects are per-path, so Parent is always the actual expansion parent.
 type LazyNode struct {
@@ -536,11 +421,8 @@ type LazyNode struct {
 
 	argType    ArgumentType
 	isArgument bool
-	argIndex   int
-	argContext string
 
-	rootAssignments map[string][]metadata.Assignment
-	typeParams      map[string]string // GetTypeParamMap cache
+	typeParams map[string]string // GetTypeParamMap cache
 
 	children []TrackerNodeInterface // nil = not yet expanded
 	expanded bool
@@ -562,20 +444,6 @@ func (n *LazyNode) GetEdge() *metadata.CallGraphEdge { return n.edge }
 
 // GetArgument implements TrackerNodeInterface.
 func (n *LazyNode) GetArgument() *metadata.CallArgument { return n.arg }
-
-// GetArgType implements TrackerNodeInterface.
-func (n *LazyNode) GetArgType() metadata.ArgumentType { return toMetadataArgType(n.argType) }
-
-// GetArgIndex implements TrackerNodeInterface.
-func (n *LazyNode) GetArgIndex() int { return n.argIndex }
-
-// GetArgContext implements TrackerNodeInterface.
-func (n *LazyNode) GetArgContext() string { return n.argContext }
-
-// GetRootAssignmentMap implements TrackerNodeInterface.
-func (n *LazyNode) GetRootAssignmentMap() map[string][]metadata.Assignment {
-	return n.rootAssignments
-}
 
 // GetTypeParamMap implements TrackerNodeInterface: bindings from this node's
 // edge/argument merged with its ancestors', nearest binding winning.
@@ -639,11 +507,9 @@ type childSpec struct {
 	key string
 
 	// argument child
-	arg      *metadata.CallArgument
-	argEdge  *metadata.CallGraphEdge
-	argType  ArgumentType
-	argIndex int
-	argCtx   string
+	arg     *metadata.CallArgument
+	argEdge *metadata.CallGraphEdge
+	argType ArgumentType
 
 	// callee child
 	edge *metadata.CallGraphEdge
@@ -718,8 +584,6 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			child.arg = spec.arg
 			child.argType = spec.argType
 			child.isArgument = true
-			child.argIndex = spec.argIndex
-			child.argContext = spec.argCtx
 		} else {
 			if spec.chainParented && n.parent != nil {
 				child.parent = n.parent
@@ -777,7 +641,6 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 		}
 	}
 	if ownerEdge != nil {
-		argCtx := getString(meta, ownerEdge.Caller.Name) + "." + getString(meta, ownerEdge.Callee.Name)
 		for i, arg := range ownerEdge.Args {
 			if i >= t.limits.MaxArgsPerFunction {
 				break
@@ -793,12 +656,10 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 				argEdge = arg.Edge
 			}
 			plan = append(plan, childSpec{
-				key:      strings.TrimPrefix(argID, "*"),
-				arg:      arg,
-				argEdge:  argEdge,
-				argType:  argType,
-				argIndex: i,
-				argCtx:   argCtx,
+				key:     strings.TrimPrefix(argID, "*"),
+				arg:     arg,
+				argEdge: argEdge,
+				argType: argType,
 			})
 		}
 	}
@@ -1010,35 +871,4 @@ func (t *LazyTree) implementerKeys(pkg, recv, method string) []string {
 		}
 	}
 	return out
-}
-
-// toMetadataArgType converts the spec-local classification to the interface's
-// metadata.ArgumentType (same mapping as TrackerNode.GetArgType).
-func toMetadataArgType(at ArgumentType) metadata.ArgumentType {
-	switch at {
-	case ArgTypeDirectCallee:
-		return metadata.ArgTypeDirectCallee
-	case ArgTypeFunctionCall:
-		return metadata.ArgTypeFunctionCall
-	case ArgTypeVariable:
-		return metadata.ArgTypeVariable
-	case ArgTypeLiteral:
-		return metadata.ArgTypeLiteral
-	case ArgTypeSelector:
-		return metadata.ArgTypeSelector
-	case ArgTypeComplex:
-		return metadata.ArgTypeComplex
-	case ArgTypeUnary:
-		return metadata.ArgTypeUnary
-	case ArgTypeBinary:
-		return metadata.ArgTypeBinary
-	case ArgTypeIndex:
-		return metadata.ArgTypeIndex
-	case ArgTypeComposite:
-		return metadata.ArgTypeComposite
-	case ArgTypeTypeAssert:
-		return metadata.ArgTypeTypeAssert
-	default:
-		return metadata.ArgTypeComplex
-	}
 }

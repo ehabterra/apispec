@@ -97,13 +97,6 @@ func NewPerformanceAnalyzer() *PerformanceAnalyzer {
 	}
 }
 
-// NewPerformanceAnalyzerWithThresholds creates a new analyzer with custom thresholds
-func NewPerformanceAnalyzerWithThresholds(thresholds map[string]ThresholdConfig) *PerformanceAnalyzer {
-	return &PerformanceAnalyzer{
-		thresholds: thresholds,
-	}
-}
-
 // AnalyzeMetrics analyzes collected metrics and identifies performance issues
 func (pa *PerformanceAnalyzer) AnalyzeMetrics(metrics []Metric) *PerformanceReport {
 	report := &PerformanceReport{

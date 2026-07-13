@@ -75,39 +75,6 @@ func TestNewPerformanceAnalyzer(t *testing.T) {
 	}
 }
 
-func TestNewPerformanceAnalyzerWithThresholds(t *testing.T) {
-	customThresholds := map[string]ThresholdConfig{
-		"custom_metric": {
-			Warning:  10.0,
-			Critical: 50.0,
-			Unit:     "custom",
-		},
-	}
-
-	analyzer := NewPerformanceAnalyzerWithThresholds(customThresholds)
-	if analyzer == nil {
-		t.Fatal("Expected non-nil analyzer")
-		return
-	}
-	if analyzer.thresholds == nil {
-		t.Fatal("Expected non-nil thresholds")
-		return
-	}
-
-	// Check that custom thresholds are set
-	if len(analyzer.thresholds) != 1 {
-		t.Errorf("Expected 1 threshold, got %d", len(analyzer.thresholds))
-	}
-
-	custom := analyzer.thresholds["custom_metric"]
-	if custom.Warning != 10.0 {
-		t.Errorf("Expected warning 10.0, got %f", custom.Warning)
-	}
-	if custom.Critical != 50.0 {
-		t.Errorf("Expected critical 50.0, got %f", custom.Critical)
-	}
-}
-
 func TestAnalyzeMetrics(t *testing.T) {
 	analyzer := NewPerformanceAnalyzer()
 

@@ -169,20 +169,6 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 	return "", "", ""
 }
 
-// DefaultImportName returns the default import name for an import path (last non-version segment)
-func DefaultImportName(importPath string) string {
-	parts := strings.Split(importPath, "/")
-	if len(parts) == 0 {
-		return ""
-	}
-	last := parts[len(parts)-1]
-	// If last is a version (e.g., v5), use the one before it
-	if len(parts) > 1 && strings.HasPrefix(last, "v") && len(last) > 1 && last[1] >= '0' && last[1] <= '9' {
-		return parts[len(parts)-2]
-	}
-	return last
-}
-
 // isTypeConversion checks if a CallExpr represents a type conversion rather than a function call
 func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 	if info == nil {

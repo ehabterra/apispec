@@ -1029,11 +1029,6 @@ func (e *Engine) SkippedPackages() []SkippedPackage {
 	return e.skipped
 }
 
-// GetConfig returns the current engine configuration
-func (e *Engine) GetConfig() *EngineConfig {
-	return e.config
-}
-
 // analyzeFrameworkDependencies analyzes framework dependencies
 func (e *Engine) analyzeFrameworkDependencies(
 	validPkgs []*packages.Package,

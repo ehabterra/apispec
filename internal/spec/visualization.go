@@ -22,9 +22,8 @@ import (
 )
 
 const (
-	mermaidGraphHeader = "graph LR\n"
-	nodePrefix         = "node_"
-	edgePrefix         = "edge_"
+	nodePrefix = "node_"
+	edgePrefix = "edge_"
 )
 
 // CallPathInfo represents information for a specific call path
@@ -42,26 +41,6 @@ type FuncLitInfo struct {
 	Position  string `json:"position,omitempty"`
 	Package   string `json:"package,omitempty"`
 	Signature string `json:"signature,omitempty"`
-}
-
-// DrawTrackerTree generates a Mermaid graph for the tracker tree.
-func DrawTrackerTree(nodes []TrackerNodeInterface) string {
-	var str = strings.Builder{}
-	var counter = 0
-	str.WriteString(mermaidGraphHeader)
-	for _, node := range nodes {
-		drawNode(node, &str, &counter)
-	}
-	return str.String()
-}
-
-func drawNode(node TrackerNodeInterface, str *strings.Builder, counter *int) {
-	nodeID := fmt.Sprintf("%s%d", nodePrefix, *counter)
-	for _, child := range node.GetChildren() {
-		*counter++
-		fmt.Fprintf(str, "  %s[%q] --> %s[%q]\n", nodeID, node.GetKey(), fmt.Sprintf("%s%d", nodePrefix, *counter), child.GetKey())
-		drawNode(child, str, counter)
-	}
 }
 
 // CytoscapeData represents the data structure for Cytoscape.js
@@ -116,11 +95,6 @@ type CytoscapeEdgeData struct {
 	Target string `json:"target"`
 	Label  string `json:"label,omitempty"`
 	Type   string `json:"type,omitempty"`
-}
-
-// DrawTrackerTreeCytoscape generates Cytoscape.js JSON data for the tracker tree.
-func DrawTrackerTreeCytoscape(nodes []TrackerNodeInterface) *CytoscapeData {
-	return DrawTrackerTreeCytoscapeWithMetadata(nodes, nil)
 }
 
 // DrawTrackerTreeCytoscapeWithMetadata generates Cytoscape.js JSON data for the tracker tree with metadata.
@@ -604,35 +578,6 @@ func processCallGraphEdge(meta *metadata.Metadata, edge *metadata.CallGraphEdge,
 			nodePairEdges[nodePairKey] = true
 		}
 	}
-}
-
-// buildCallPaths builds a list of direct call paths for a function with position information
-func buildCallPaths(meta *metadata.Metadata, functionID string) []string {
-	var paths []string
-
-	// Get all direct callers of this function (only immediate callers, not full call chains)
-	if callers, exists := meta.Callees[functionID]; exists {
-		seen := make(map[string]bool)
-		for _, caller := range callers {
-			callerName := meta.StringPool.GetString(caller.Caller.Name)
-			callerPkg := meta.StringPool.GetString(caller.Caller.Pkg)
-			callerPosition := meta.StringPool.GetString(caller.Caller.Position)
-
-			// Create path with position information
-			path := callerPkg + "." + callerName
-			if callerPosition != "" {
-				path += " @ " + callerPosition
-			}
-
-			// Only add unique paths to avoid duplicates
-			if !seen[path] {
-				paths = append(paths, path)
-				seen[path] = true
-			}
-		}
-	}
-
-	return paths
 }
 
 // buildCallPathInfos builds detailed call path information for a function

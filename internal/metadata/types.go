@@ -313,25 +313,6 @@ func ExtractGenericTypes(input string) []string {
 	return result
 }
 
-func TypeEdges(id string, callerEdges []*CallGraphEdge) []*CallGraphEdge {
-	edges := []*CallGraphEdge{}
-	idTypes := ExtractGenericTypes(id)
-
-	if len(idTypes) > 0 {
-		for i := range callerEdges {
-			CallerEdgeID := callerEdges[i].Caller.ID()
-			CallerEdgeTypes := ExtractGenericTypes(CallerEdgeID)
-
-			if IsSubset(idTypes, CallerEdgeTypes) {
-				edges = append(edges, callerEdges[i])
-			}
-		}
-	} else {
-		edges = callerEdges
-	}
-	return edges
-}
-
 const MaxSelfCallingDepth = 50
 
 // TraverseCallerChildren traverses the call graph using base IDs
