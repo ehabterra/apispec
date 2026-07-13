@@ -844,6 +844,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 
 ## Documentation
 
+- [docs/DEBUGGING.md](docs/DEBUGGING.md) — **my route is missing: how to debug** (effective config, metadata dump, call-graph diagram, insight reports)
 - [docs/INSTALLATION.md](docs/INSTALLATION.md) — installation methods
 - [docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md) — release process
 - [docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md) — TrackerTree internals

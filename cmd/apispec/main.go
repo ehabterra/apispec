@@ -206,11 +206,10 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		fmt.Printf("  %s -o spec.yaml -d ./api\n", os.Args[0])
 		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html\n", os.Args[0])
 		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html --diagram-page-size 50\n", os.Args[0])
-		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html --no-paginated-diagram\n", os.Args[0])
+		fmt.Printf("  %s -o spec.yaml -d ./api --diagram diagram.html --paginated-diagram\n", os.Args[0])
 		fmt.Printf("\nPerformance Tips:\n")
-		fmt.Printf("  • Use --paginated-diagram (default) for large call graphs (1000+ edges)\n")
+		fmt.Printf("  • Use --paginated-diagram for large call graphs (1000+ edges)\n")
 		fmt.Printf("  • Use --diagram-page-size 50 for very large graphs (3000+ edges)\n")
-		fmt.Printf("  • Use --no-paginated-diagram for small graphs (< 500 edges)\n")
 	}
 
 	// Parse flags
