@@ -16,26 +16,20 @@ package spec
 
 import (
 	"runtime"
-	"strings"
 	"testing"
 )
 
-// RecoverFromPanic is a helper function that recovers from panics and provides
-// better error reporting, especially for stack overflow scenarios.
-// This function should be used in defer statements to catch panics in tests
-// and make them fail gracefully instead of crashing the test runner.
+// RecoverFromPanic turns a recoverable panic into a test failure with a stack
+// trace instead of aborting the whole test binary. Note it cannot catch stack
+// exhaustion — Go reports that as a fatal error that recover() never sees;
+// runaway recursion must be prevented by explicit depth/cycle bounds.
 //
 // Usage:
 //
 //	defer RecoverFromPanic(t, "TestName")
 func RecoverFromPanic(t *testing.T, testName string) {
 	if r := recover(); r != nil {
-		// Check if it's a stack overflow
-		if err, ok := r.(runtime.Error); ok && strings.Contains(err.Error(), "stack overflow") {
-			t.Errorf("Test %s failed with stack overflow: %v", testName, err)
-		} else {
-			t.Errorf("Test %s panicked: %v", testName, r)
-		}
+		t.Errorf("Test %s panicked: %v", testName, r)
 
 		// Print stack trace for debugging
 		buf := make([]byte, 1024)
@@ -44,8 +38,8 @@ func RecoverFromPanic(t *testing.T, testName string) {
 	}
 }
 
-// RunWithPanicRecovery runs a test function with panic recovery.
-// This is useful for tests that might panic due to stack overflow or other issues.
+// RunWithPanicRecovery runs a test function, converting a recoverable panic
+// into a test failure (see RecoverFromPanic for the stack-exhaustion caveat).
 //
 // Usage:
 //
