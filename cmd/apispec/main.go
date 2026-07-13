@@ -496,7 +496,13 @@ func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.E
 			return nil
 		}
 	} else {
-		outputPath := filepath.Join(genEngine.ModuleRoot(), config.OutputFile)
+		// Relative --output paths land in the analyzed module (so
+		// `apispec --dir proj -o spec.yaml` writes proj/spec.yaml);
+		// absolute paths must be honored as given, not joined under it.
+		outputPath := config.OutputFile
+		if !filepath.IsAbs(outputPath) {
+			outputPath = filepath.Join(genEngine.ModuleRoot(), outputPath)
+		}
 
 		// Create file
 		file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
