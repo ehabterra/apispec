@@ -62,9 +62,14 @@ func (d *FrameworkDetector) DetectAll(dir string) ([]string, error) {
 		}
 	}
 
+	// ImportsOnly: parsing stops after the import block, which is all this
+	// scan reads — a full parse of every file (the pre-DetectAll code at
+	// least early-returned on the first hit) costs hundreds of ms on large
+	// projects. The loop also stops once every known framework is seen.
+	const knownFrameworks = 5
 	fset := token.NewFileSet()
 	for _, filePath := range goFiles {
-		f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		f, err := parser.ParseFile(fset, filePath, nil, parser.ImportsOnly)
 		if err != nil {
 			continue // Skip files that can't be parsed
 		}
@@ -83,6 +88,9 @@ func (d *FrameworkDetector) DetectAll(dir string) ([]string, error) {
 			case strings.Contains(importPath, "gorilla/mux"):
 				add("mux")
 			}
+		}
+		if len(frameworks) == knownFrameworks {
+			break
 		}
 	}
 
