@@ -512,6 +512,25 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	return meta, nil
 }
 
+// defaultFrameworkConfig maps a detected framework name to its built-in
+// config; unknown names (and "net/http") get the net/http config.
+func defaultFrameworkConfig(framework string) *spec.APISpecConfig {
+	switch framework {
+	case "gin":
+		return spec.DefaultGinConfig()
+	case "chi":
+		return spec.DefaultChiConfig()
+	case "echo":
+		return spec.DefaultEchoConfig()
+	case "fiber":
+		return spec.DefaultFiberConfig()
+	case "mux":
+		return spec.DefaultMuxConfig()
+	default:
+		return spec.DefaultHTTPConfig()
+	}
+}
+
 func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// Generate metadata using the shared method
 	meta, err := e.GenerateMetadataOnly()
@@ -546,12 +565,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 
 	// Framework dependency analysis is now handled in GenerateMetadataOnly()
 
-	// Detect framework and load configuration
+	// Detect frameworks and load configuration. The first-seen framework is
+	// the primary (whose Defaults/Info and unscoped helper patterns apply);
+	// any further recognised frameworks merge in below as scoped views.
 	detector := core.NewFrameworkDetector()
-	framework, err := detector.Detect(e.config.moduleRoot)
+	frameworks, err := detector.DetectAll(e.config.moduleRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect framework: %w", err)
 	}
+	framework := frameworks[0]
 
 	var apispecConfig *spec.APISpecConfig
 	if e.config.APISpecConfig != nil {
@@ -565,19 +587,24 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		}
 	} else {
 		// Auto-detect framework and use defaults
-		switch framework {
-		case "gin":
-			apispecConfig = spec.DefaultGinConfig()
-		case "chi":
-			apispecConfig = spec.DefaultChiConfig()
-		case "echo":
-			apispecConfig = spec.DefaultEchoConfig()
-		case "fiber":
-			apispecConfig = spec.DefaultFiberConfig()
-		case "mux":
-			apispecConfig = spec.DefaultMuxConfig()
-		default:
-			apispecConfig = spec.DefaultHTTPConfig() // fallback
+		apispecConfig = defaultFrameworkConfig(framework)
+		// Additional recognised frameworks (a gin API next to a gorilla/mux
+		// admin router, half-migrated projects): merge each one's
+		// receiver-scoped view so its registrations are traced too. Scoped
+		// patterns cannot claim another framework's calls, so the merge is
+		// inert where the secondary framework is imported but not routing.
+		for _, fw := range frameworks[1:] {
+			apispecConfig = spec.MergeFrameworkConfigs(apispecConfig, spec.SecondaryView(defaultFrameworkConfig(fw)))
+		}
+		// Layer the stdlib net/http surface under the detected framework:
+		// mixed projects (a framework API plus plain ServeMux ops endpoints
+		// in one binary) are common, and net/http never appears in go.mod,
+		// so import-based detection cannot pick it as a second framework.
+		// Every merged pattern is receiver- or package-scoped, which keeps
+		// the merge inert for pure-framework projects; user-supplied configs
+		// (the branches above) are never augmented.
+		if framework != "net/http" {
+			apispecConfig = spec.MergeFrameworkConfigs(apispecConfig, spec.HTTPSecondaryConfig())
 		}
 	}
 
