@@ -30,15 +30,38 @@ func NewFrameworkDetector() *FrameworkDetector {
 	return &FrameworkDetector{}
 }
 
-// Detect determines which web framework is being used in the given directory
+// Detect determines the primary web framework used in the given directory:
+// the first framework import encountered in file-walk order (lexical, so
+// deterministic). Kept as DetectAll's head for backwards compatibility.
 func (d *FrameworkDetector) Detect(dir string) (string, error) {
-	// Collect Go files
-	goFiles, err := CollectGoFiles(dir)
+	frameworks, err := d.DetectAll(dir)
 	if err != nil {
 		return "", err
 	}
+	return frameworks[0], nil
+}
 
-	// Parse files to check for framework imports
+// DetectAll returns every recognised framework imported anywhere in the
+// directory, in first-seen order (the head is what Detect historically
+// returned and is used as the primary config). "net/http" appears only as
+// the fallback when no framework import is found — its import is
+// near-universal and carries no routing signal, so the stdlib surface is
+// handled by the engine's always-on scoped merge instead.
+func (d *FrameworkDetector) DetectAll(dir string) ([]string, error) {
+	goFiles, err := CollectGoFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var frameworks []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			frameworks = append(frameworks, name)
+		}
+	}
+
 	fset := token.NewFileSet()
 	for _, filePath := range goFiles {
 		f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
@@ -46,25 +69,27 @@ func (d *FrameworkDetector) Detect(dir string) (string, error) {
 			continue // Skip files that can't be parsed
 		}
 
-		// Check imports for framework indicators
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, "\"")
 			switch {
 			case strings.Contains(importPath, "gin-gonic/gin"):
-				return "gin", nil
+				add("gin")
 			case strings.Contains(importPath, "go-chi/chi"):
-				return "chi", nil
+				add("chi")
 			case strings.Contains(importPath, "labstack/echo"):
-				return "echo", nil
+				add("echo")
 			case strings.Contains(importPath, "gofiber/fiber"):
-				return "fiber", nil
+				add("fiber")
 			case strings.Contains(importPath, "gorilla/mux"):
-				return "mux", nil
+				add("mux")
 			}
 		}
 	}
 
-	return "net/http", nil
+	if len(frameworks) == 0 {
+		frameworks = append(frameworks, "net/http")
+	}
+	return frameworks, nil
 }
 
 // CollectGoFiles recursively collects all .go files from a directory

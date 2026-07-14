@@ -90,6 +90,51 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 		}
 	})
 
+	t.Run("SecondaryView keeps only receiver-scoped patterns", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			cfg  *APISpecConfig
+		}{
+			{"gin", DefaultGinConfig()},
+			{"chi", DefaultChiConfig()},
+			{"echo", DefaultEchoConfig()},
+			{"fiber", DefaultFiberConfig()},
+			{"mux", DefaultMuxConfig()},
+			{"http", DefaultHTTPConfig()},
+		} {
+			view := SecondaryView(tc.cfg)
+			for _, p := range view.Framework.RoutePatterns {
+				if p.RecvType == "" && p.RecvTypeRegex == "" {
+					t.Errorf("%s: unscoped route pattern %q survived", tc.name, p.CallRegex)
+				}
+			}
+			for _, p := range view.Framework.ResponsePatterns {
+				if p.RecvType == "" && p.RecvTypeRegex == "" {
+					t.Errorf("%s: unscoped response pattern %q survived", tc.name, p.CallRegex)
+				}
+			}
+			// Every framework's verb route pattern is scoped, so a view must
+			// never come back route-less — that would mean the secondary
+			// framework's registrations silently stop being traced.
+			if len(view.Framework.RoutePatterns) == 0 {
+				t.Errorf("%s: SecondaryView dropped every route pattern", tc.name)
+			}
+		}
+		if SecondaryView(nil) != nil {
+			t.Errorf("SecondaryView(nil) must be nil")
+		}
+
+		// The known-dangerous unscoped patterns must be filtered: net/http's
+		// JSON/status catch-all (misreads fiber's status-less c.JSON) and the
+		// unscoped Handle route pattern.
+		httpView := SecondaryView(DefaultHTTPConfig())
+		for _, p := range httpView.Framework.ResponsePatterns {
+			if p.CallRegex == `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$` {
+				t.Errorf("http catch-all response pattern survived SecondaryView")
+			}
+		}
+	})
+
 	t.Run("nil secondaries are ignored", func(t *testing.T) {
 		primary := DefaultMuxConfig()
 		before := len(primary.Framework.RoutePatterns)

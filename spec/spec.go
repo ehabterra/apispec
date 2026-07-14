@@ -61,5 +61,10 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 	return intspec.MergeFrameworkConfigs(primary, secondaries...)
 }
 
+// SecondaryView returns a config's merge-safe subset: only receiver- or
+// package-scoped patterns survive, so the view cannot claim another
+// framework's calls when layered under it.
+func SecondaryView(cfg *APISpecConfig) *APISpecConfig { return intspec.SecondaryView(cfg) }
+
 // LoadAPISpecConfig loads a YAML configuration file.
 func LoadAPISpecConfig(path string) (*APISpecConfig, error) { return intspec.LoadAPISpecConfig(path) }

@@ -91,6 +91,59 @@ func HTTPSecondaryConfig() *APISpecConfig {
 	}
 }
 
+// SecondaryView filters a framework config down to its merge-safe subset:
+// only patterns carrying a receiver or package constraint (RecvType or
+// RecvTypeRegex) survive. The rule is mechanical on purpose — a scoped
+// pattern cannot claim another framework's calls, while an unscoped one
+// (the generic Marshal/Encode/FormValue helpers every config repeats, or a
+// catch-all like net/http's JSON responder) can misfire when transplanted.
+// The primary config keeps its own copies of the shared unscoped patterns,
+// so dropping them from secondaries loses nothing that was safe to merge.
+// Known cost: a secondary framework's unscoped Mount-style patterns are
+// dropped too, so mounts wired through a *secondary* framework's router may
+// not be traced — scoping those patterns in their home config is the
+// eventual fix. The receiving config is untouched; a filtered copy is
+// returned.
+func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
+	if cfg == nil {
+		return nil
+	}
+	out := &APISpecConfig{Framework: FrameworkConfig{
+		RequestContext: cfg.Framework.RequestContext,
+	}}
+	for _, p := range cfg.Framework.RoutePatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.RoutePatterns = append(out.Framework.RoutePatterns, p)
+		}
+	}
+	for _, p := range cfg.Framework.RequestBodyPatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.RequestBodyPatterns = append(out.Framework.RequestBodyPatterns, p)
+		}
+	}
+	for _, p := range cfg.Framework.ResponsePatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.ResponsePatterns = append(out.Framework.ResponsePatterns, p)
+		}
+	}
+	for _, p := range cfg.Framework.ParamPatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.ParamPatterns = append(out.Framework.ParamPatterns, p)
+		}
+	}
+	for _, p := range cfg.Framework.MountPatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.MountPatterns = append(out.Framework.MountPatterns, p)
+		}
+	}
+	for _, p := range cfg.Framework.SecurityPatterns {
+		if p.RecvType != "" || p.RecvTypeRegex != "" {
+			out.Framework.SecurityPatterns = append(out.Framework.SecurityPatterns, p)
+		}
+	}
+	return out
+}
+
 // MergeFrameworkConfigs layers secondary framework configs under the primary:
 // pattern lists are appended in order with first-occurrence-wins dedupe (the
 // primary's variant of a pattern always beats a secondary's), and the request
