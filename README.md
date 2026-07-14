@@ -234,6 +234,42 @@ See [`cmd/apidiag/README.md`](cmd/apidiag/README.md) for full documentation and 
 
 Conditional registration (dynamic routes built at runtime) is generally not supported.
 
+### Mixed / multi-framework projects
+
+One binary often serves more than one routing surface — a framework API next
+to plain `net/http` ops endpoints (expvar/pprof-style), a gin API beside a
+gorilla/mux admin router, or a half-migrated codebase. APISpec handles this
+automatically:
+
+- **All recognised frameworks are detected** (import scan), not just the
+  first one. The first-seen framework is the *primary* — its defaults and
+  info apply.
+- **Every additional framework's patterns are merged in**, restricted to its
+  receiver-scoped patterns, so each framework's registrations are documented.
+- **The stdlib `net/http` surface is always layered underneath** — it never
+  appears in `go.mod` and its import is universal, so it can't be "detected"
+  as a second framework; instead a receiver-scoped subset of its config is
+  always merged.
+
+**Why receiver-scoped only?** A scoped pattern (e.g. *`Handle` on
+`*mux.Router`*) can never claim another framework's calls, so merging is
+safe by construction — inert unless that framework is actually routing.
+Unscoped patterns are *not* merged from secondaries because precedence can't
+make them safe: gin's `Handle(method, path, h)` and mux's `Handle(path, h)`
+would each misparse the other's calls, and `net/http`'s JSON response
+catch-all would misread fiber's status-less `c.JSON(obj)`.
+
+**What this does and doesn't mean:**
+
+| Scenario | Supported? |
+|---|---|
+| Framework API + plain `net/http` ServeMux endpoints in one binary | ✅ both documented |
+| Two frameworks side by side (e.g. gin API + mux admin router) | ✅ both documented, correct verbs |
+| Raw `*http.Request` reads (headers, query, `PathValue`) inside framework handlers | ✅ documented as parameters |
+| A framework router **mounted under** a `net/http` mux (`root.Handle("/api/", http.StripPrefix("/api", chiRouter))`) | ⚠️ the framework's routes are found, but the `/api` **mount prefix is not composed** (routes appear as `/users`, not `/api/users`) — tracked in [#138](https://github.com/ehabterra/apispec/issues/138) |
+| Mounts wired through a *secondary* framework's own `Mount`-style calls | ⚠️ not traced yet (those patterns are unscoped in their home configs) — also [#138](https://github.com/ehabterra/apispec/issues/138) |
+| A user-supplied `--config` | never auto-augmented — what you write is exactly what runs |
+
 ## Go Language Support
 
 APISpec aims for practical coverage of real-world Go services. A quick survey of what's handled:

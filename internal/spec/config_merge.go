@@ -102,8 +102,8 @@ func HTTPSecondaryConfig() *APISpecConfig {
 // Known cost: a secondary framework's unscoped Mount-style patterns are
 // dropped too, so mounts wired through a *secondary* framework's router may
 // not be traced — scoping those patterns in their home config is the
-// eventual fix. The receiving config is untouched; a filtered copy is
-// returned.
+// eventual fix (tracked with cross-framework mount composition in issue
+// #138). The receiving config is untouched; a filtered copy is returned.
 func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	if cfg == nil {
 		return nil
