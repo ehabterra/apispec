@@ -833,9 +833,9 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// candidates are collected with their call-site CHAIN during the walk
 	// and resolved afterwards by pairAndFillResponses — see there for the
 	// order-insensitive pairing model.
-	visitedEdges := make(map[string]bool)
+	visitedEdges := make(map[chainStep]bool)
 	var respCandidates []responseCandidate
-	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, nil, "", &respCandidates)
+	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, &chainInterner{}, 0, &respCandidates)
 	e.pairAndFillResponses(routeInfo, respCandidates)
 
 	// Add map-key path params (mux.Vars) for placeholders the handler reads via
@@ -976,6 +976,56 @@ type responseCandidate struct {
 // chainSep separates call-site instance IDs in chain keys.
 const chainSep = "\x1f"
 
+// chainStep is one interned recursion step: the parent chain's handle plus
+// the callee instance ID entered at that step. The walk previously built an
+// O(depth) key string per visited child — quadratic in total bytes over deep
+// walks and the dominant allocation source on large projects; interning makes
+// each step one map operation while preserving value equality exactly, so
+// dedupe behaviour is unchanged. chainStep doubles as the response-candidate
+// dedupe key (parent = frame handle, callee = statement's call-site ID).
+type chainStep struct {
+	parent int
+	callee string
+}
+
+// chainInterner assigns stable small handles to recursion chains within one
+// route walk. Handle 0 is the empty chain — the route/handler frame.
+type chainInterner struct {
+	ids   map[chainStep]int
+	steps []chainStep // handle n is steps[n-1]
+}
+
+func (ci *chainInterner) push(parent int, callee string) int {
+	st := chainStep{parent: parent, callee: callee}
+	if id, ok := ci.ids[st]; ok {
+		return id
+	}
+	if ci.ids == nil {
+		ci.ids = map[chainStep]int{}
+	}
+	ci.steps = append(ci.steps, st)
+	ci.ids[st] = len(ci.steps)
+	return len(ci.steps)
+}
+
+// strings reconstructs a handle's chain root→leaf. Only response candidates
+// pay this cost — the hot walk never materializes chains.
+func (ci *chainInterner) strings(id int) []string {
+	var n int
+	for h := id; h != 0; h = ci.steps[h-1].parent {
+		n++
+	}
+	if n == 0 {
+		return nil
+	}
+	out := make([]string, n)
+	for h := id; h != 0; h = ci.steps[h-1].parent {
+		n--
+		out[n] = ci.steps[h-1].callee
+	}
+	return out
+}
+
 // frameChainKey identifies the FRAME a response statement executes in: the
 // recursion chain truncated at the invocation of the statement's caller
 // function (keeping the invocation prefix, so two invocations of the same
@@ -997,7 +1047,7 @@ func frameChainKey(chain []string, node TrackerNodeInterface) string {
 	return "" // route/handler frame
 }
 
-func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool, chain []string, chainKey string, respCandidates *[]responseCandidate) {
+func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate) {
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes
 		if isRoute := e.executeRoutePattern(child, route); isRoute {
@@ -1024,14 +1074,13 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		// through the same frames is one candidate; the same statement in a
 		// different helper invocation is a separate one.
 		// Match first (memoized per edge — cheap), and only then build the
-		// per-(chain, site) dedupe key: constructing the key for every child
-		// dominated the allocation profile, and non-matching children never
-		// need one.
+		// per-(chain, site) dedupe key; the chain string itself is
+		// reconstructed from the interner only for actual candidates.
 		if child != nil && child.GetEdge() != nil && e.matchesResponsePattern(child) {
-			candKey := chainKey + chainSep + child.GetEdge().Callee.ID()
+			candKey := chainStep{parent: chainID, callee: child.GetEdge().Callee.ID()}
 			if !visitedEdges[candKey] {
 				visitedEdges[candKey] = true
-				*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(chain, child)})
+				*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(ci.strings(chainID), child)})
 			}
 		}
 
@@ -1040,13 +1089,11 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 
 		// Recursive extraction. The chain grows only through CALL nodes —
 		// argument nodes reference values within the current frame.
-		childChain, childChainKey := chain, chainKey
+		childChainID := chainID
 		if child != nil && child.GetArgument() == nil && child.GetEdge() != nil {
-			id := child.GetEdge().Callee.ID()
-			childChain = append(chain[:len(chain):len(chain)], id)
-			childChainKey = chainKey + chainSep + id
+			childChainID = ci.push(chainID, child.GetEdge().Callee.ID())
 		}
-		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, childChain, childChainKey, respCandidates)
+		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, ci, childChainID, respCandidates)
 	}
 
 	// Extract parameters from the route node itself

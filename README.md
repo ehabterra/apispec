@@ -1,6 +1,6 @@
 # APISpec: Generate OpenAPI from Go code
 
-[![Coverage](https://img.shields.io/badge/coverage-95.3%25-brightgreen.svg)](https://github.com/ehabterra/apispec)
+[![Coverage](https://img.shields.io/badge/coverage-95.4%25-brightgreen.svg)](https://github.com/ehabterra/apispec)
 [![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/ehabterra/apispec/blob/main/LICENSE)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/ci.yml?branch=main&label=CI&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/ci.yml)
@@ -880,6 +880,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 
 ## Documentation
 
+- [docs/DEBUGGING.md](docs/DEBUGGING.md) — **my route is missing: how to debug** (effective config, metadata dump, call-graph diagram, insight reports)
 - [docs/INSTALLATION.md](docs/INSTALLATION.md) — installation methods
 - [docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md) — release process
 - [docs/TRACKER_TREE_USAGE.md](docs/TRACKER_TREE_USAGE.md) — TrackerTree internals

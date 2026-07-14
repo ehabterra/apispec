@@ -83,7 +83,7 @@ packages:
                   value:
                     kind: 7
                     name: 24
-                    value: -1
+                    value: 2
                     raw: -1
                     pkg: 10
                     type: 25
