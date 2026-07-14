@@ -26,6 +26,7 @@ import "testing"
 func TestTestdata_MixedGinMux(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "mixed_gin_mux", nil)
 	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
 
 	want := map[string][]string{
 		"/products":         {"GET", "POST"}, // gin verb calls (primary)

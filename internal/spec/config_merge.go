@@ -149,8 +149,12 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 // primary's variant of a pattern always beats a secondary's), and the request
 // context accumulates unique type regexes and body accessors. Info, Defaults,
 // overrides and mappings stay the primary's alone. The primary is mutated and
-// returned.
+// returned; a nil primary returns nil (mirroring SecondaryView's guard, since
+// both are exported through the public spec package).
 func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig) *APISpecConfig {
+	if primary == nil {
+		return nil
+	}
 	seenRoute := map[string]bool{}
 	for _, p := range primary.Framework.RoutePatterns {
 		seenRoute[routePatternKey(p)] = true

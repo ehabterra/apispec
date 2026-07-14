@@ -26,6 +26,7 @@ import "testing"
 func TestTestdata_MixedChiNetHTTP(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "mixed_chi_nethttp", nil)
 	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
 
 	want := map[string][]string{
 		"/api/users":   {"GET", "POST"},   // chi verb calls

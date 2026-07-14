@@ -143,4 +143,10 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 			t.Errorf("nil secondary changed the primary")
 		}
 	})
+
+	t.Run("nil primary returns nil instead of panicking", func(t *testing.T) {
+		if got := MergeFrameworkConfigs(nil, HTTPSecondaryConfig()); got != nil {
+			t.Errorf("MergeFrameworkConfigs(nil, ...) = %v, want nil", got)
+		}
+	})
 }
