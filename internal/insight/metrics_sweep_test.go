@@ -43,13 +43,19 @@ func sweepMeta() (*metadata.Metadata, func(pkg, recv, name, pos string) metadata
 	return meta, mk
 }
 
-func TestCalleeIsStdOrBuiltinAndClassifyPkg(t *testing.T) {
+func TestCalleeIsBuiltinAndClassifyPkg(t *testing.T) {
 	meta, mk := sweepMeta()
 	meta.CurrentModulePath = "example.com/app"
 
 	builtin := mk("", "", "append", "")
-	if !calleeIsStdOrBuiltin(meta, &builtin) {
+	if !calleeIsBuiltin(meta, &builtin) {
 		t.Error("append should be reported as builtin")
+	}
+	// Stdlib calls are NOT builtins: they stay in the trace as leaves so the
+	// handler subtree (and its metrics) is complete.
+	stdlib := mk("net/url", "Values", "Get", "")
+	if calleeIsBuiltin(meta, &stdlib) {
+		t.Error("net/url Values.Get must not be filtered as builtin")
 	}
 
 	cases := []struct {
