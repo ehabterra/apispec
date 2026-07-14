@@ -111,6 +111,8 @@ issues, and a Markdown export you can attach to a bug report as-is.
 |---|---|---|
 | Whole package of routes missing | package not loaded or excluded | check include/exclude flags, `--skip-cgo`, module root |
 | One wiring style missing (e.g. `r.Method(...)`) | no route pattern for it | extend config (Step 1), report the style |
+| Second framework's routes missing in a mixed binary | should work — all detected frameworks merge in (scoped patterns), and `net/http` is always layered underneath | confirm `used-config.yaml` contains both frameworks' patterns (Step 1); if it doesn't, report it |
+| Framework router mounted under a `net/http` mux: routes present but missing the mount prefix (`/users` instead of `/api/users`) | cross-framework mount composition not implemented yet | tracked in [#138](https://github.com/ehabterra/apispec/issues/138); until then apply the prefix via a config override or mount inside one framework |
 | Routes behind `for … range routeTable` missing | runtime values, statically unknowable | register statically, or accept the gap |
 | Verb-less registrations show POST | historic default for unknown method | handlers that `switch r.Method` split automatically; otherwise the default applies |
 | Deep/dense project: some routes missing + truncation warning | node budget hit | raise `--max-nodes` |
