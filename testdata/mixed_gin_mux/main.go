@@ -48,9 +48,12 @@ func main() {
 	g.POST("/products", createProduct)
 
 	// … and an internal admin surface on gorilla/mux, in the same binary.
+	// Verb constants (not string literals) on purpose: they pin the
+	// metadata-level constant-value recording composing with the
+	// cross-framework config merge.
 	m := mux.NewRouter()
-	m.HandleFunc("/admin/report", adminReport).Methods("GET")
-	m.HandleFunc("/admin/users/{id}", deleteUser).Methods("DELETE")
+	m.HandleFunc("/admin/report", adminReport).Methods(http.MethodGet)
+	m.HandleFunc("/admin/users/{id}", deleteUser).Methods(http.MethodDelete)
 
 	go func() { _ = http.ListenAndServe(":9091", m) }()
 	_ = g.Run(":8080")
