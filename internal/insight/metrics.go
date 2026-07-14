@@ -106,17 +106,17 @@ var builtinFuncs = map[string]bool{
 	"println": true, "real": true, "recover": true,
 }
 
-// calleeIsStdOrBuiltin reports whether a callee is a Go builtin or lives
-// in the standard library, so the trace can skip it. Project packages
-// (under the current module path) and third-party dependencies (import
-// paths with a dotted domain, e.g. github.com/...) are kept — the latter
-// includes web frameworks, which are meaningful in a trace.
-func calleeIsStdOrBuiltin(meta *metadata.Metadata, c *metadata.Call) bool {
+// calleeIsBuiltin reports whether a callee is a Go builtin (len, append,
+// make, …), which never belongs in a call trace. Standard-library calls are
+// NOT filtered here: the endpoint trace is the handler's complete scoped
+// subtree, and metrics (reachable, fanout, paths, grade) are computed from
+// it — dropping stdlib calls like r.URL.Query().Get would silently
+// understate them. Stdlib callees are natural leaves (their bodies aren't
+// analyzed, so they have no outgoing edges) and carry Origin "standard" so
+// the UI can style or collapse them.
+func calleeIsBuiltin(meta *metadata.Metadata, c *metadata.Call) bool {
 	name := meta.StringPool.GetString(c.Name)
-	if builtinFuncs[name] { // robust against older metadata that mis-qualified builtins
-		return true
-	}
-	return classifyPkg(meta, meta.StringPool.GetString(c.Pkg), meta.StringPool.GetString(c.RecvType)) == "standard"
+	return builtinFuncs[name] // robust against older metadata that mis-qualified builtins
 }
 
 // classifyPkg buckets a callee's package into "project" (under the
@@ -189,11 +189,10 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 		}
 		seen := map[string]bool{}
 		for _, e := range callersOf(cur) {
-			// Skip Go builtins (len, append, make, …) and standard-library
-			// calls (fmt, net/http, encoding/json, …) so the trace shows
-			// the project's own call flow (and third-party frameworks),
-			// not stdlib noise.
-			if calleeIsStdOrBuiltin(meta, &e.Callee) {
+			// Skip Go builtins (len, append, make, …) only. Stdlib calls stay
+			// in as leaves: the trace is the handler's complete subtree and
+			// the metrics depend on all of it.
+			if calleeIsBuiltin(meta, &e.Callee) {
 				continue
 			}
 			callee := e.Callee.BaseID()
@@ -352,7 +351,7 @@ func analyzeResolvedCallGraph(meta *metadata.Metadata, root string) (Metrics, Tr
 		}
 		seenCallee := map[string]bool{}
 		for _, e := range meta.Callers[cur] {
-			if calleeIsStdOrBuiltin(meta, &e.Callee) {
+			if calleeIsBuiltin(meta, &e.Callee) {
 				continue
 			}
 			callee := e.Callee.BaseID()
@@ -523,7 +522,7 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 			}
 			continue
 		}
-		if calleeIsStdOrBuiltin(meta, &ce.Callee) {
+		if calleeIsBuiltin(meta, &ce.Callee) {
 			continue
 		}
 		callee := ce.Callee.BaseID()
