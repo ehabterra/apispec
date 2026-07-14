@@ -189,6 +189,12 @@ type Extractor struct {
 	respMatcherByEdge  map[*metadata.CallGraphEdge]int16
 	reqMatcherByEdge   map[*metadata.CallGraphEdge]int16
 	paramMatcherByEdge map[*metadata.CallGraphEdge]int16
+	// Route matching keeps ALL matching indexes (not just the first):
+	// executeRoutePattern arbitrates between them by priority and extraction
+	// success. Multi-framework config merging multiplied the route-matcher
+	// count, which made the per-node linear scan visible on large-project
+	// profiles; matching depends only on edge facts, so it memoizes cleanly.
+	routeMatchersByEdge map[*metadata.CallGraphEdge][]int16
 	// reachSets caches, per accessor pattern, which function BaseIDs
 	// transitively reach a matching call. See reachability.go.
 	reachSets map[string]map[string]bool
@@ -451,19 +457,43 @@ func (e *Extractor) executeRoutePattern(node TrackerNodeInterface, routeInfo *Ro
 	var bestPriority int
 	var found bool
 
-	for _, matcher := range e.routeMatchers {
-		if matcher.MatchNode(node) {
-			priority := matcher.GetPriority()
-			if !found || priority > bestPriority {
-				found = matcher.ExtractRoute(node, routeInfo)
-				if found {
-					bestPriority = priority
-				}
+	for _, i := range e.routeMatchersFor(node) {
+		matcher := e.routeMatchers[i]
+		priority := matcher.GetPriority()
+		if !found || priority > bestPriority {
+			found = matcher.ExtractRoute(node, routeInfo)
+			if found {
+				bestPriority = priority
 			}
 		}
 	}
 
 	return found
+}
+
+// routeMatchersFor returns the indexes of route matchers accepting the
+// node's edge, in matcher order, memoized per edge (nil = none). Route
+// MatchNode reads only edge facts (callee name/receiver/package, caller
+// name), never node ancestry, so the set is a property of the edge.
+func (e *Extractor) routeMatchersFor(node TrackerNodeInterface) []int16 {
+	if node == nil || node.GetEdge() == nil {
+		return nil
+	}
+	edge := node.GetEdge()
+	if idxs, ok := e.routeMatchersByEdge[edge]; ok {
+		return idxs
+	}
+	var idxs []int16
+	for i, matcher := range e.routeMatchers {
+		if matcher.MatchNode(node) {
+			idxs = append(idxs, int16(i))
+		}
+	}
+	if e.routeMatchersByEdge == nil {
+		e.routeMatchersByEdge = map[*metadata.CallGraphEdge][]int16{}
+	}
+	e.routeMatchersByEdge[edge] = idxs
+	return idxs
 }
 
 // collectNodeSecurity runs the security matchers on a single node and returns
