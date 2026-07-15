@@ -246,8 +246,12 @@ func (t *LazyTree) buildRelations() {
 			pkg:  getString(meta, rel.Assignment.Pkg),
 			fn:   getString(meta, rel.Assignment.Func),
 		}] = producerKey
-		// Claiming uses the exact-caller key: the assignment's producing edge
-		// carries the full identity of the function the assignment lives in.
+		// Claim receiver calls only when the assignment lives in the producing
+		// edge's caller. Callee-body assignments can leak through AssignmentMap;
+		// matching them by variable name would steal unrelated caller-scope edges.
+		if getString(meta, rel.Assignment.Func) != getString(meta, rel.Edge.Caller.Name) {
+			continue
+		}
 		edges := edgesByRecvVar[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)]
 		if len(edges) == 0 {
 			continue
