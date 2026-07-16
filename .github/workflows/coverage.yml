@@ -3,6 +3,12 @@ name: Coverage Badge
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.go'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'scripts/**'
+      - '.github/workflows/coverage.yml'
   workflow_dispatch:
 
 permissions:
