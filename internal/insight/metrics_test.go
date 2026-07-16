@@ -145,3 +145,39 @@ func TestAnalyzers_Fixture(t *testing.T) {
 		t.Fatal("analyzeFromTrackerTree (echo cfg) should succeed")
 	}
 }
+
+// TestResolvedInterface checks the interface-decision helper: a concrete
+// receiver reached by resolution reports the interface it satisfies and how
+// many implementations that interface has (the ambiguity signal). It reads the
+// precomputed Implements / ImplementedBy indexes only.
+func TestResolvedInterface(t *testing.T) {
+	sp := metadata.NewStringPool()
+	iface := &metadata.Type{
+		Name: sp.Get("UserStore"), Pkg: sp.Get("app"), Kind: sp.Get("interface"),
+		ImplementedBy: []int{sp.Get("app.pgStore"), sp.Get("app.memStore")}, // 2 impls → ambiguous
+	}
+	concrete := &metadata.Type{
+		Name: sp.Get("pgStore"), Pkg: sp.Get("app"), Kind: sp.Get("struct"),
+		Implements: []int{sp.Get("app.UserStore")},
+	}
+	meta := &metadata.Metadata{
+		StringPool: sp,
+		Packages: map[string]*metadata.Package{
+			"app": {Files: map[string]*metadata.File{
+				"f.go": {Types: map[string]*metadata.Type{"UserStore": iface, "pgStore": concrete}},
+			}},
+		},
+	}
+	for _, recv := range []string{"pgStore", "*pgStore", "app.pgStore", "*app.pgStore"} {
+		name, n := resolvedInterface(meta, recv)
+		if name != "UserStore" || n != 2 {
+			t.Errorf("resolvedInterface(%q) = (%q, %d), want (UserStore, 2)", recv, name, n)
+		}
+	}
+	if _, n := resolvedInterface(meta, "nope"); n != 0 {
+		t.Errorf("unknown receiver should give 0 alternatives, got %d", n)
+	}
+	if _, n := resolvedInterface(nil, "x"); n != 0 {
+		t.Error("nil meta must be safe")
+	}
+}

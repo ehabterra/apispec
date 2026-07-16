@@ -175,12 +175,14 @@ func BuildEndpointExportMarkdown(rep *EndpointReport, opts ExportOptions) string
 
 	// scoped trace
 	if len(rep.Trace.Edges) > 0 {
-		// Node IDs whose target is a concrete implementation resolved from an
-		// interface call — annotated below so the AI sees the interface→impl hop.
-		resolved := make(map[string]bool, len(rep.Trace.Nodes))
+		// Nodes whose target is a concrete implementation resolved from an
+		// interface call — annotated below (with the interface and its
+		// implementation count) so the AI sees the interface→impl hop and any
+		// ambiguity behind it.
+		resolved := make(map[string]TraceNode, len(rep.Trace.Nodes))
 		for _, n := range rep.Trace.Nodes {
 			if n.Resolved {
-				resolved[n.ID] = true
+				resolved[n.ID] = n
 			}
 		}
 		b.WriteString("## Resolution trace (call subtree, this endpoint)\n")
@@ -192,8 +194,15 @@ func BuildEndpointExportMarkdown(rep *EndpointReport, opts ExportOptions) string
 				break
 			}
 			marker := ""
-			if resolved[e.Target] {
-				marker = "   ⟐ impl (resolved from interface)"
+			if rn, ok := resolved[e.Target]; ok {
+				switch {
+				case rn.ResolvedFrom != "" && rn.Alternatives > 1:
+					marker = fmt.Sprintf("   ⟐ impl (1 of %d implementations of %s — may be kept general)", rn.Alternatives, rn.ResolvedFrom)
+				case rn.ResolvedFrom != "":
+					marker = fmt.Sprintf("   ⟐ impl (sole implementation of %s)", rn.ResolvedFrom)
+				default:
+					marker = "   ⟐ impl (resolved from interface)"
+				}
 			}
 			fmt.Fprintf(&b, "%s → %s%s\n", red(shortLabel(e.Source)), red(shortLabel(e.Target)), marker)
 		}
