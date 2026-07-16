@@ -181,18 +181,23 @@ export function TraceDiagram({ trace }) {
     const p = pos[n.id];
     const isSel = selected && selected.node.id === n.id;
     const isFocus = focusId === n.id;
+    // A resolved node reached via an interface with >1 implementation is an
+    // ambiguous resolution — flag it in warn so it stands out from a clean
+    // single-implementation resolution.
+    const ambiguous = n.resolved && n.alternatives > 1;
+    const resCol = ambiguous ? "var(--warn)" : "var(--info)";
     return html`<g transform=${`translate(${p.x},${p.y})`} style="cursor:pointer" opacity=${nodeDim(n.id) ? 0.28 : 1}
       onMouseMove=${(e) => setHover({ node: n, x: e.clientX, y: e.clientY })}
       onMouseLeave=${() => setHover(null)}
       onClick=${(e) => setSelected({ node: n, x: e.clientX, y: e.clientY })}>
       <rect width=${NW} height=${NH} rx="6" fill=${nodeFill(n.kind)}
-        stroke=${isSel ? "var(--text)" : isFocus ? "var(--accent)" : n.resolved ? "var(--info)" : nodeColor(n.kind)}
+        stroke=${isSel ? "var(--text)" : isFocus ? "var(--accent)" : n.resolved ? resCol : nodeColor(n.kind)}
         stroke-width=${isSel || isFocus ? 2.5 : n.resolved ? 2 : n.kind === "handler" ? 2 : 1} />
-      <circle cx="11" cy=${NH / 2} r="3" fill=${n.resolved ? "var(--info)" : nodeColor(n.kind)} />
+      <circle cx="11" cy=${NH / 2} r="3" fill=${n.resolved ? resCol : nodeColor(n.kind)} />
       <text x="22" y=${NH / 2 + 4} font-size="11" fill="var(--text)" style="font-family:var(--font-mono)">${trunc(n.label, n.resolved ? 14 : 19)}</text>
       ${n.resolved
-        ? html`<text x=${NW - 6} y=${NH / 2 + 4} text-anchor="end" font-size="9" font-weight="700" fill="var(--info)"
-            ><title>resolved from an interface</title>⟐ impl</text
+        ? html`<text x=${NW - 6} y=${NH / 2 + 4} text-anchor="end" font-size="9" font-weight="700" fill=${resCol}
+            ><title>${n.resolvedFrom ? (ambiguous ? `one of ${n.alternatives} implementations of ${n.resolvedFrom}` : `sole implementation of ${n.resolvedFrom}`) : "resolved from an interface"}</title>⟐ ${ambiguous ? "1/" + n.alternatives : "impl"}</text
           >`
         : ""}
     </g>`;
@@ -218,7 +223,7 @@ export function TraceDiagram({ trace }) {
       </svg>
     </div>
     <p class="muted" style="font-size:var(--fs-xs);margin:6px 0 0">
-      Focus a node to highlight its edges: <span style="color:var(--accent)">▸ calls</span> · <span style="color:var(--warn)">◂ called by</span> · <span style="color:var(--info)">⟐ impl</span> = concrete resolved from an interface · hover to preview, click to pin.
+      Focus a node to highlight its edges: <span style="color:var(--accent)">▸ calls</span> · <span style="color:var(--warn)">◂ called by</span> · <span style="color:var(--info)">⟐ impl</span> = concrete resolved from an interface (sole impl) · <span style="color:var(--warn)">⟐ 1/N</span> = ambiguous, one of N implementations · hover to preview, click to pin.
     </p>
     ${selected ? html`<${TraceTip} key=${selected.node.id} node=${selected.node} x=${selected.x} y=${selected.y} pinned onClose=${() => setSelected(null)} />` : ""}
     ${hover && (!selected || selected.node.id !== hover.node.id) ? html`<${TraceTip} node=${hover.node} x=${hover.x} y=${hover.y} />` : ""}
@@ -354,9 +359,21 @@ function TraceTip({ node, x, y, pinned, onClose }) {
       <span class="tt-badge">${node.kind}</span>
       <span class="tt-badge">depth ${node.depth}</span>
       ${node.resolved
-        ? html`<span class="tt-badge" style="color:var(--info);border-color:var(--info)" title="Reached by resolving an interface call to its concrete implementation">⟐ resolved impl</span>`
+        ? html`<span
+            class="tt-badge"
+            style=${`color:${node.alternatives > 1 ? "var(--warn)" : "var(--info)"};border-color:${node.alternatives > 1 ? "var(--warn)" : "var(--info)"}`}
+            title="Reached by resolving an interface call to its concrete implementation"
+            >⟐ resolved impl</span
+          >`
         : ""}
     </div>
+    ${node.resolved && node.resolvedFrom
+      ? html`<div class="tt-meta">
+          ⟐ implements <b>${node.resolvedFrom}</b>${node.alternatives > 1
+            ? html` · <span style="color:var(--warn)">1 of ${node.alternatives} implementations — the type may be kept general (any)</span>`
+            : html` · <span style="color:var(--info)">sole implementation</span>`}
+        </div>`
+      : ""}
     <div class="tt-meta">
       <span style="color:var(--accent)">▸ ${node.calls} calls</span> · <span style="color:var(--warn)">◂ called by ${node.calledBy}</span>
     </div>

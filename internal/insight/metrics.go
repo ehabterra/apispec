@@ -69,6 +69,13 @@ type TraceNode struct {
 	// interface method call to its implementer — the UI badges these so the
 	// "interface → impl" hop is visible.
 	Resolved bool `json:"resolved,omitempty"`
+	// ResolvedFrom / Alternatives describe the interface decision behind a
+	// Resolved node: the interface this concrete type satisfies and how many
+	// implementations that interface has. Alternatives > 1 flags an ambiguous
+	// resolution — the concrete type may be kept general (erased to any) at the
+	// schema boundary, so this is where interface ambiguity costs precision.
+	ResolvedFrom string `json:"resolvedFrom,omitempty"`
+	Alternatives int    `json:"alternatives,omitempty"`
 	// Sites lists every distinct location this function is called from within
 	// the trace (a function reached from several callers, or called more than
 	// once by the same caller, has multiple). The UI shows them all and lets
@@ -540,6 +547,10 @@ func analyzeTrackerSubtree(meta *metadata.Metadata, routeNode spec.TrackerNodeIn
 			if _, ok := info[caller]; !ok {
 				cm := traceMetaFromCall(meta, &ce.Caller)
 				cm.resolved = true // concrete impl reached via interface resolution
+				if iface, n := resolvedInterface(meta, sp.GetString(ce.Caller.RecvType)); iface != "" {
+					cm.resolvedFrom = iface
+					cm.alternatives = n
+				}
 				info[caller] = cm
 			}
 			parentID, d = caller, d+1
@@ -715,11 +726,13 @@ func enumeratePaths(adj map[string][]string, root string, cap int) [][]string {
 
 // traceMeta is per-node display metadata surfaced in the trace tooltip.
 type traceMeta struct {
-	pkg      string
-	symbol   string
-	pos      string
-	origin   string
-	resolved bool // concrete impl reached via interface resolution
+	pkg          string
+	symbol       string
+	pos          string
+	origin       string
+	resolved     bool // concrete impl reached via interface resolution
+	resolvedFrom string
+	alternatives int
 }
 
 func traceMetaFromCall(meta *metadata.Metadata, c *metadata.Call) traceMeta {
@@ -737,6 +750,83 @@ func traceMetaFromCall(meta *metadata.Metadata, c *metadata.Call) traceMeta {
 		pos:    extractFilePos(sp.GetString(c.Position)),
 		origin: classifyPkg(meta, pkg, recv),
 	}
+}
+
+// typeIndex builds and memoizes a name→*Type lookup over the metadata, keyed by
+// both the bare type name and the qualified "pkg.Name" form (matching how the
+// Implements/ImplementedBy pool strings are stored). Rebuilt only when the
+// metadata pointer changes.
+var (
+	typeIdxMu  sync.Mutex
+	typeIdxKey *metadata.Metadata
+	typeIdxVal map[string]*metadata.Type
+)
+
+func typeIndex(meta *metadata.Metadata) map[string]*metadata.Type {
+	typeIdxMu.Lock()
+	defer typeIdxMu.Unlock()
+	if typeIdxKey == meta && typeIdxVal != nil {
+		return typeIdxVal
+	}
+	sp := meta.StringPool
+	idx := map[string]*metadata.Type{}
+	add := func(t *metadata.Type) {
+		name := sp.GetString(t.Name)
+		if name == "" {
+			return
+		}
+		if _, ok := idx[name]; !ok {
+			idx[name] = t
+		}
+		if pkg := sp.GetString(t.Pkg); pkg != "" {
+			idx[pkg+"."+name] = t
+		}
+	}
+	for _, pkg := range meta.Packages {
+		for _, f := range pkg.Files {
+			for k := range f.Types {
+				add(f.Types[k])
+			}
+		}
+		for k := range pkg.Types {
+			add(pkg.Types[k])
+		}
+	}
+	typeIdxKey = meta
+	typeIdxVal = idx
+	return idx
+}
+
+// resolvedInterface reports, for a concrete receiver type reached by interface
+// resolution, the interface it satisfies and how many implementations that
+// interface has. When the concrete type satisfies several interfaces it returns
+// the most-implemented one (the strongest ambiguity signal). Both inputs come
+// from the precomputed Implements / ImplementedBy indexes — no traversal.
+func resolvedInterface(meta *metadata.Metadata, recvType string) (string, int) {
+	if meta == nil || meta.StringPool == nil {
+		return "", 0
+	}
+	recvType = strings.TrimPrefix(strings.TrimSpace(recvType), "*")
+	if recvType == "" {
+		return "", 0
+	}
+	idx := typeIndex(meta)
+	ct := idx[recvType]
+	if ct == nil {
+		return "", 0
+	}
+	sp := meta.StringPool
+	bestIface, bestN := "", 0
+	for _, impIdx := range ct.Implements {
+		it := idx[sp.GetString(impIdx)]
+		if it == nil {
+			continue
+		}
+		if n := len(it.ImplementedBy); n > bestN {
+			bestN, bestIface = n, sp.GetString(it.Name)
+		}
+	}
+	return bestIface, bestN
 }
 
 // countPaths counts root→leaf paths over the adjacency DAG, capping at
@@ -835,18 +925,20 @@ func buildTraceGraph(tg *TraceGraph, adj map[string][]string, depth map[string]i
 		}
 		md := info[n.id]
 		tg.Nodes = append(tg.Nodes, TraceNode{
-			ID:       n.id,
-			Label:    shortLabel(n.id),
-			Depth:    n.d,
-			Kind:     kind,
-			Pkg:      md.pkg,
-			Symbol:   md.symbol,
-			Pos:      md.pos,
-			Origin:   md.origin,
-			Resolved: md.resolved,
-			Sites:    sortedSites(sites[n.id]),
-			Calls:    len(adj[n.id]),
-			CalledBy: calledBy[n.id],
+			ID:           n.id,
+			Label:        shortLabel(n.id),
+			Depth:        n.d,
+			Kind:         kind,
+			Pkg:          md.pkg,
+			Symbol:       md.symbol,
+			Pos:          md.pos,
+			Origin:       md.origin,
+			Resolved:     md.resolved,
+			ResolvedFrom: md.resolvedFrom,
+			Alternatives: md.alternatives,
+			Sites:        sortedSites(sites[n.id]),
+			Calls:        len(adj[n.id]),
+			CalledBy:     calledBy[n.id],
 		})
 		included[n.id] = true
 	}
