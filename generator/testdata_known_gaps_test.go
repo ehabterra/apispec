@@ -44,15 +44,13 @@ func TestTestdata_CLIActionRoutes(t *testing.T) {
 	}
 }
 
-// TestTestdata_StatusViaConstructor pins issue #144: a status carried
-// through a constructor struct field (`e := NewAPIError(msg, 401);
-// RespondWithError(w, e)` → `w.WriteHeader(err.Code)`) is not resolved.
-// Parameter tracing and assignment tracing both exist; the missing link is
-// return-field ↔ constructor-parameter provenance. The response IS detected
-// with the right body schema — only its status falls into "default".
-//
-// When #144 lands, the 401 must appear as a real response (keeping the
-// APIError schema) and "default" must no longer carry this write.
+// TestTestdata_StatusViaConstructor covers issue #144 (now fixed): a status
+// carried through a constructor struct field (`e := NewAPIError(msg, 401);
+// RespondWithError(w, e)` → `w.WriteHeader(err.Code)`) resolves to the real
+// status. statusFromConstructorField follows the selector's base variable
+// through the wrapper parameter to its constructor assignment, matches the
+// return composite-literal field (Code ← the parameter `code`), and reads that
+// parameter's actual argument at the constructor call site.
 func TestTestdata_StatusViaConstructor(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "status_via_constructor", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
@@ -66,26 +64,26 @@ func TestTestdata_StatusViaConstructor(t *testing.T) {
 		t.Fatal("GET /profile missing")
 	}
 
-	if _, ok := get.Responses["401"]; ok {
-		t.Errorf("GET /profile now resolves the 401 — the #144 gap seems fixed: " +
-			"flip this test to assert 401 (APIError schema) and close the issue")
-	}
-
-	// The parts that DO work today must not regress: the success body and
-	// the detected-but-unresolved error write with its correct schema.
-	if _, ok := get.Responses["200"]; !ok {
-		t.Errorf("GET /profile lost its 200 response: %v", keysOf(get.Responses))
-	}
-	def, ok := get.Responses["default"]
+	// The 401 now resolves and carries the APIError schema.
+	resp401, ok := get.Responses["401"]
 	if !ok {
-		t.Fatalf("GET /profile lost the default (unresolved-status) response: %v", keysOf(get.Responses))
+		t.Fatalf("GET /profile should resolve the 401 (via the constructor field); have %v", keysOf(get.Responses))
 	}
 	ref := ""
-	if mt, ok := def.Content["application/json"]; ok && mt.Schema != nil {
+	if mt, ok := resp401.Content["application/json"]; ok && mt.Schema != nil {
 		ref = mt.Schema.Ref
 	}
 	if !strings.HasSuffix(ref, "_APIError") {
-		t.Errorf("default response should carry the APIError schema, got %q", ref)
+		t.Errorf("401 response should carry the APIError schema, got %q", ref)
+	}
+
+	// The success body still resolves, and the error write no longer falls
+	// into the unresolved-status "default" bucket.
+	if _, ok := get.Responses["200"]; !ok {
+		t.Errorf("GET /profile lost its 200 response: %v", keysOf(get.Responses))
+	}
+	if _, ok := get.Responses["default"]; ok {
+		t.Errorf("GET /profile still has a default response — the error write should now be the 401: %v", keysOf(get.Responses))
 	}
 }
 
