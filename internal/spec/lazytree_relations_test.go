@@ -27,12 +27,18 @@ func TestLazyTreeBuildRelationsScopesReceiverClaimsToAssignmentFunction(t *testi
 	routesFunc := pool.Get("routes.func1")
 	middlewareFunc := pool.Get("middleware.func1")
 
+	// Pooled string fields use -1 as the "unset" sentinel; 0 is a valid index
+	// (the first interned string), so leaving them at Go's zero value would
+	// make Call.ID()/BaseID() resolve unset fields to a real string.
 	call := func(name string, position string) metadata.Call {
 		return metadata.Call{
-			Meta:     meta,
-			Name:     pool.Get(name),
-			Pkg:      pkg,
-			Position: pool.Get(position),
+			Meta:         meta,
+			Name:         pool.Get(name),
+			Pkg:          pkg,
+			Position:     pool.Get(position),
+			RecvType:     -1,
+			Scope:        -1,
+			SignatureStr: -1,
 		}
 	}
 	assignment := func(variable string, function int, concreteType string) metadata.Assignment {
@@ -41,6 +47,8 @@ func TestLazyTreeBuildRelationsScopesReceiverClaimsToAssignmentFunction(t *testi
 			Pkg:          pkg,
 			ConcreteType: pool.Get(concreteType),
 			Func:         function,
+			Position:     -1,
+			Scope:        -1,
 		}
 	}
 
