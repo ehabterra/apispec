@@ -37,7 +37,7 @@ func TestCovspecCheckIdentThroughAssignment(t *testing.T) {
 	rBody := mkSelector(meta, reqRoot, mkIdent(meta, "Body", ""))
 
 	edge := &metadata.CallGraphEdge{
-		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("handler"), Pkg: meta.StringPool.Get("app")},
+		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("handler"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
 		AssignmentMap: map[string][]metadata.Assignment{
 			"body": {{Value: *rBody}},
 		},
@@ -65,7 +65,7 @@ func TestCovspecCheckUnaryAndSelectorRoot(t *testing.T) {
 	unary.X = rBody
 
 	edge := &metadata.CallGraphEdge{
-		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")},
+		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
 	}
 	if !r.IsRequestSource(unary, edge) {
 		t.Fatal("expected &r.Body to be a request source")
@@ -89,13 +89,13 @@ func TestCovspecCheckIdentEdgeCases(t *testing.T) {
 	r := newBodySourceResolver(cfg, cp)
 
 	visited := map[string]bool{}
-	if r.checkIdent(mkIdent(meta, "", ""), &metadata.CallGraphEdge{}, visited) {
+	if r.checkIdent(mkIdent(meta, "", ""), &metadata.CallGraphEdge{Caller: metadata.Call{Name: -1, Pkg: -1, RecvType: -1}}, visited) {
 		t.Fatal("empty-name ident must not be a source")
 	}
 
 	// name == caller name -> self-recursion guard returns false.
 	edge := &metadata.CallGraphEdge{
-		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("selfName"), Pkg: meta.StringPool.Get("app")},
+		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("selfName"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
 	}
 	if r.checkIdent(mkIdent(meta, "selfName", ""), edge, map[string]bool{}) {
 		t.Fatal("self-referential ident must not be a source")
@@ -195,7 +195,7 @@ func TestCovspecResolveMiddlewareIdentRefGuards(t *testing.T) {
 
 	// Non-ident arg.
 	sel := mkSelector(meta, mkIdent(meta, "a", ""), mkIdent(meta, "b", ""))
-	if _, ok := resolveMiddlewareIdentRef(&metadata.CallGraphEdge{}, sel, meta); ok {
+	if _, ok := resolveMiddlewareIdentRef(&metadata.CallGraphEdge{Caller: metadata.Call{Name: -1, Pkg: -1, RecvType: -1}}, sel, meta); ok {
 		t.Fatal("non-ident arg must not resolve")
 	}
 

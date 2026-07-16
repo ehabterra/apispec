@@ -203,7 +203,16 @@ func lookupAssignments(edge *metadata.CallGraphEdge, name string, meta *metadata
 			}
 		}
 		// Methods live under their receiver type (e.g. (h *Handler) Register).
-		for _, t := range file.Types {
+		// Scan types in sorted order: when callerRecv is empty the receiver
+		// filter below is skipped, so an unsorted map range would let two
+		// same-named methods on different types resolve nondeterministically.
+		typeNames := make([]string, 0, len(file.Types))
+		for tn := range file.Types {
+			typeNames = append(typeNames, tn)
+		}
+		sort.Strings(typeNames)
+		for _, tn := range typeNames {
+			t := file.Types[tn]
 			if t == nil {
 				continue
 			}

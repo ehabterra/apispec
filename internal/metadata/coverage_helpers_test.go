@@ -224,13 +224,16 @@ func h(n int) {
 		return true
 	})
 
+	// Explicit instantiations (G[string]) share a base name with their
+	// inferred counterpart (G), so tag them distinctly — otherwise the two
+	// "G" calls collide in `got` and the inferred branch goes unasserted.
 	byName := func(c *ast.CallExpr) string {
 		switch fun := c.Fun.(type) {
 		case *ast.Ident:
 			return fun.Name
 		case *ast.IndexExpr:
 			if id, ok := fun.X.(*ast.Ident); ok {
-				return id.Name
+				return id.Name + "_explicit"
 			}
 		case *ast.SelectorExpr:
 			return fun.Sel.Name
@@ -251,6 +254,9 @@ func h(n int) {
 
 	if got["G"]["T"] == "" {
 		t.Errorf("G call: expected inferred type param, got %v", got["G"])
+	}
+	if got["G_explicit"]["T"] == "" {
+		t.Errorf("G[string] call: expected explicit type param, got %v", got["G_explicit"])
 	}
 	if got["GG"]["T"] == "" || got["GG"]["U"] == "" {
 		t.Errorf("GG call: expected two inferred type params, got %v", got["GG"])

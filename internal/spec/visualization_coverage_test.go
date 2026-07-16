@@ -24,12 +24,13 @@ import (
 func covspecFuncNode(meta *metadata.Metadata, key, name, pkg, recv string) *TrackerNode {
 	sp := meta.StringPool
 	callee := metadata.Call{
-		Meta:     meta,
-		Name:     sp.Get(name),
-		Pkg:      sp.Get(pkg),
-		RecvType: sp.Get(recv),
-		Scope:    -1,
-		Position: -1,
+		Meta:         meta,
+		Name:         sp.Get(name),
+		Pkg:          sp.Get(pkg),
+		RecvType:     sp.Get(recv),
+		Scope:        -1,
+		Position:     -1,
+		SignatureStr: -1,
 	}
 	edge := &metadata.CallGraphEdge{Callee: callee}
 	return &TrackerNode{key: key, CallGraphEdge: edge}
