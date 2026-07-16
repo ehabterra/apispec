@@ -1812,6 +1812,64 @@ func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Fun
 	return nil
 }
 
+// callerAssignmentMap returns the variable→assignments map of the function or
+// method that lexically contains a call edge's call site, preferring the map
+// that actually records varName. A plain call resolves via its caller function.
+// A call inside a returned closure (the handler-factory shape — a method
+// returning func(w, r){…}) flattens into the tree with a FuncLit caller, but
+// ast.Inspect records the closure's `err := NewX(…, status)` assignment on the
+// *enclosing* declared function or method (via the edge's ParentFunction).
+// Enclosing methods live in Type.Methods keyed by receiver, not in
+// file.Functions, so findFunctionByName alone would miss them.
+func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge, varName string) map[string][]metadata.Assignment {
+	if fn := findFunctionByName(impl.meta, impl.GetString(edge.Caller.Pkg), impl.GetString(edge.Caller.Name)); fn != nil {
+		if len(fn.AssignmentMap[varName]) > 0 {
+			return fn.AssignmentMap
+		}
+	}
+	pf := edge.ParentFunction
+	if pf == nil {
+		return nil
+	}
+	if fn := findFunctionByName(impl.meta, impl.GetString(pf.Pkg), impl.GetString(pf.Name)); fn != nil {
+		if len(fn.AssignmentMap[varName]) > 0 {
+			return fn.AssignmentMap
+		}
+	}
+	return methodAssignmentMap(impl.meta, impl.GetString(pf.Pkg), impl.GetString(pf.RecvType), impl.GetString(pf.Name), varName)
+}
+
+// methodAssignmentMap finds the AssignmentMap of the method (pkg, receiver,
+// name) whose map records varName. Methods are stored per-Type; receiver and
+// name are matched exactly (the same receiver string findParentFunction records
+// on ParentFunction), so an enclosing method's closure assignments resolve.
+func methodAssignmentMap(meta *metadata.Metadata, pkg, recv, name, varName string) map[string][]metadata.Assignment {
+	if meta == nil || name == "" {
+		return nil
+	}
+	p, ok := meta.Packages[pkg]
+	if !ok {
+		return nil
+	}
+	for _, file := range p.Files {
+		for _, t := range file.Types {
+			for i := range t.Methods {
+				m := &t.Methods[i]
+				if meta.StringPool.GetString(m.Name) != name {
+					continue
+				}
+				if recv != "" && meta.StringPool.GetString(m.Receiver) != recv {
+					continue
+				}
+				if len(m.AssignmentMap[varName]) > 0 {
+					return m.AssignmentMap
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // handlerReachesAccessor reports whether the route's handler transitively calls
 // the map-key accessor described by pattern. Reachability is a precomputed
 // summary (reachSet, one bottom-up pass over the SCC condensation) rather
@@ -2361,11 +2419,11 @@ func (r *ResponsePatternMatcherImpl) statusFromConstructorField(arg *metadata.Ca
 	}
 
 	// 2. That local's latest assignment, which must come from a constructor call.
-	fn := findFunctionByName(impl.meta, impl.GetString(callerEdge.Caller.Pkg), impl.GetString(callerEdge.Caller.Name))
-	if fn == nil {
+	assignMap := callerAssignmentMap(impl, callerEdge, baseVar.GetName())
+	if assignMap == nil {
 		return 0, false
 	}
-	assigns, ok := fn.AssignmentMap[baseVar.GetName()]
+	assigns, ok := assignMap[baseVar.GetName()]
 	if !ok || len(assigns) == 0 {
 		return 0, false
 	}
