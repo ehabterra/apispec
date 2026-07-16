@@ -70,12 +70,12 @@ validate_version() {
 create_release() {
     local version=$1
     local message=${2:-"Release version $version"}
-    
+
     print_status "Creating release v$version..."
-    
+
     # Create annotated tag
-    git tag -a "v$version" -m "$message"
-    
+    git tag -s -a "v$version" -m "$message"
+
     print_status "Tag v$version created locally."
     print_warning "To complete the release, push the tag:"
     echo "  git push origin v$version"
@@ -101,28 +101,28 @@ show_usage() {
 # Main script
 main() {
     print_header
-    
+
     # Check arguments
     if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
         show_usage
         exit 0
     fi
-    
+
     local version=$1
     local message=${2:-"Release version $version"}
-    
+
     # Validate version
     validate_version "$version"
-    
+
     # Check git repository
     check_git
-    
+
     # Check working directory is clean
     check_clean_working_dir
-    
+
     # Check if tag already exists
     check_tag_exists "$version"
-    
+
     # Create release
     create_release "$version" "$message"
 }

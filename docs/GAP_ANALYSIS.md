@@ -6,13 +6,15 @@
 
 | # | Item | Why it matters | Effort (guess) |
 |---|------|----------------|----------------|
-| 1 | **Deterministic output** (string pool, call-graph edge order, fiber/generic/operationId flips) | Blocks reliable golden testing, clean diffs, reproducible CI | Medium |
+| 1 | ~~**Deterministic output** (string pool, call-graph edge order, fiber/generic/operationId flips)~~ ✅ DONE 2026-07-07 — guarded by `TestGenerateMetadataDeterministic`/`TestGenerateDeterministic`; verified stable across repeated runs (see §1.1) | Blocks reliable golden testing, clean diffs, reproducible CI | Medium |
 | 2 | ~~**Wire existing `testdata/` scenarios into `go test`**~~ ✅ DONE 2026-07-08 — all 11 orphaned fixtures now covered (see §3.1) | Regressions in whole frameworks currently only caught by manual `compare-spec.sh` | Low–Medium |
-| 3 | **Fix `internal/spec/tests/*.yaml` fixture hygiene** (tracked-but-gitignored, mutated by every test run, embed absolute temp paths) | Constant dirty-tree noise; non-portable; hides real changes | Low |
+| 3 | ~~**Fix `internal/spec/tests/*.yaml` fixture hygiene**~~ ✅ DONE 2026-07-12 — promoted to real golden files: no gitignore contradiction, a test run no longer dirties the tree, no absolute temp paths, writes gated behind `-update` (see §3.2) | Constant dirty-tree noise; non-portable; hides real changes | Low |
 | 4 | ~~**Mux path params → handler params**~~ ✅ DONE 2026-07-08 — `mux.Vars(r)["id"]` now wired (see §2.1) | Only framework in the support matrix with a hole in a core column | Medium |
 | 5 | ~~**Generic types (parametric structs)**~~ ✅ DONE 2026-07-12 — `Page[User]`-style envelopes resolved when the instantiation is visible at the encode site (see §2.2) | README-declared partial; generics are mainstream Go now | High |
-| 6 | **Interface-typed param resolution** | README-declared gap + `docs/INTERFACE_RESOLUTION.md` future-work list | High |
+| 6 | ~~**Interface resolution**~~ ✅ DONE 2026-07-12 — interface-typed **response bodies** resolve to the concrete type across every common form: written assignment/declaration, return-through-interface, embedded-DI dispatch, and interface (named or `interface{}`) parameters; ambiguous cases keep the interface (PR #110, see §2.3) | README-declared gap + `docs/INTERFACE_RESOLUTION.md` future-work list | High |
 | 7 | ~~**Robustness regression fixtures for large/cyclic projects**~~ ✅ DONE 2026-07-08 — #10/#14 (recursive_types) + #20 (dense_graph) fixtures added; one open limitation noted (see §4) | Worst historical failures (hang, stack overflow, truncated output) have no regression tests | Medium |
+| 8 | ~~**Structured typed type-model**~~ ✅ **DONE 2026-07-13** (PRs #111/#112/#115/#116, all four phases) — `internal/typemodel.TypeRef` is the single parse path; metadata records carry types via the memoized `TypeRefOf` accessor; the mapper's wrapper dispatch is Kind-based; the transitional legacy views are deleted. Fixed en route: slice-of-instantiation collapse, lost array lengths, lost multi-param-generic methods. Two documented string-surgery islands remain by design (naming behavior — see docs/TYPE_MODEL.md) | Removes the separator/encoding fragility that keeps biting generics (`-->`/`.`/`[]` conventions) | High |
+| 9 | ~~**Control-flow awareness for method dispatch**~~ ✅ **DONE 2026-07-12** (narrow version — see §2 item 8) — `switch r.Method` / `if r.Method ==` handlers split per verb; a general CFG for other conditionals remains open (§7.1) | Closes the "HTTP method via switch/if" gap | High |
 
 ---
 
@@ -40,12 +42,12 @@ Ordered by proposed value:
 
 1. ~~**Gorilla Mux path params** detected but not wired into handler params~~ ✅ **DONE 2026-07-08** (§2.1 below).
 2. ~~**Generic types** (parametric structs)~~ ✅ **DONE 2026-07-12** (§2.2 below). Function generics already worked; `Page[T]`-style response envelopes returned directly at the encode site now resolve to per-instantiation schemas.
-3. **Interface-typed parameters** not resolved to concrete types. `docs/INTERFACE_RESOLUTION.md` lists the future work: automatic discovery, cross-package resolution, generic interfaces.
-4. **Handler-factory pattern, part 2** — request-body-via-wrapper still pending (part 1, closure-returning routes, is done).
+3. ~~**Interface resolution**~~ ✅ **DONE 2026-07-12** (§2.3 below, PR #110). Interface-typed **response bodies** resolve to the concrete type across every common form (written assignment/declaration, return-through-interface, embedded-DI dispatch, interface parameters — named and `interface{}`); ambiguous cases keep the interface. Not specifically addressed: interface-typed **request** bodies (`Decode(&v)` into an interface) and cross-package multi-implementation disambiguation — separate, rarer concerns.
+4. **Handler-factory pattern, part 2** — ✅ the request-body-via-wrapper variable-decoder case is done (issue #153, PR #152); part 1 (closure-returning routes) was already done. What remains under this heading is only the `interface{}`/`any`-erasing helper case below (recovering a route's real `TResponse` when the payload is genuinely bound to `any` at the encode site).
 5. **Router passed as function parameter** (not via Mount) isn't traversed — known fiber `/products` gap; deferred feature.
 6. **`dive` validator tag** (array-element validation) — README-declared "planned".
 7. **Same path + same status, different schemas** — not supported (would need `oneOf` merge).
-8. **HTTP method chosen via switch/if** around `net/http` Handle — not detected.
+8. ~~**HTTP method chosen via switch/if** around `net/http` Handle~~ ✅ **DONE 2026-07-12** — a handler that branches on `r.Method` (switch or if-chain) is split into one operation per verb, request/response attributed per branch by source position (`internal/metadata/method_dispatch.go`, `internal/spec/method_dispatch.go`, `testdata/method_switch/`). This is the narrow, targeted version of §7.1's control-flow idea (an AST pattern-detector + line-range scoping, not a general CFG).
 9. Conditional/dynamic runtime route registration — explicitly out of scope; keep it documented rather than attempt it.
 
 Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/security detection must stay framework-agnostic and config-driven** — every new detection feature should cover all six frameworks and all wiring styles (router-level, group, per-route, wrapper, var-assigned), not just the framework that prompted it.
@@ -79,6 +81,24 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 >
 > **Known limitation (deferred, related to §2 item 4).** When the concrete argument only exists behind a helper that erases it to `interface{}`/`any` — e.g. the existing `testdata/generic` fixture's `respondWithSuccess(w, data any)` writing `APIResponse[any]{Data: data}` — the payload still renders as a generic object. `T` is genuinely bound to `interface{}` at the encode site; recovering the route's real `TResponse` requires interprocedural type-argument threading through the helper boundary (the same shape as handler-factory part 2 / wrapper specialisation). That fixture's output improved as a side effect (the junk `APIResponse_T-any` + dangling `T-any` component became a clean `APIResponse_any` with an inline `object` `data`).
 
+### 2.3 Interface-typed response bodies — ✅ DONE 2026-07-12
+
+> When a handler encodes an interface-typed variable (`var a Animal = Dog{}; json.NewEncoder(w).Encode(a)`), the schema documented the empty `Animal` interface instead of the concrete `Dog`. It now resolves to the concrete type when statically traceable.
+>
+> Root cause was twofold: (1) `var a Iface = Concrete{}` is a `DeclStmt`, not an `AssignStmt`, so `processFunctions` never captured the concrete right-hand side; (2) the response resolver only checked the call edge's `AssignmentMap`, not the enclosing handler's.
+>
+> Fix (metadata + spec, gated to keep blast radius small):
+> - `metadata.processFunctions` now synthesizes an assignment from each var-declaration-with-initializer (`DeclStmt` → `ValueSpec`) and reuses `processAssignment`, so `var a Animal = Dog{}` records `a`'s concrete type like any other assignment.
+> - `spec.ResponsePatternMatcherImpl.resolveTypeOrigin`, when the body type resolves to a **known interface** (checked via the type's metadata `Kind`), looks up the enclosing handler's assignments (via `edge.Callee.Meta` + `findFunctionByName`) and prefers a single concrete (non-interface) type. **More than one concrete type across branches ⇒ ambiguous ⇒ keep the interface** (honest over wrong).
+> - Covers `var a Animal = Dog{}`, `var a Animal; a = Dog{}`, and an intermediate concrete var; the embedded-interface DI handler pattern already resolved.
+> - Guarded by `testdata/interface_response` + `TestTestdata_InterfaceResponse` (`/dog`→Dog, `/cat`→Cat, `/either`→Animal for the ambiguous case) + a structural row in `TestTestdata_Frameworks`. Full suite + lint clean; no golden drift.
+>
+> **Also done:** a concrete returned through a function typed to return the interface (`Encode(makeAnimal())` where `makeAnimal() Animal { return Dog{} }`) resolves via `concreteFromCalleeReturn`, which traces the callee's `ReturnVars` (single concrete → use it; ambiguous → keep interface). Fixture route `/made`.
+>
+> **Also done — interface parameters (named + `interface{}`).** A value passed into a helper via an interface parameter (`writeAnimal(w, v Animal); Encode(v)` with `writeAnimal(w, Dog{})`) resolves via `concreteFromParamBinding`, which walks up to the edge whose callee is the enclosing function (not the immediate parent, whose own same-named parameter shadowed the lookup) and reads that edge's `ParamArgMap`. Fixture route `/passed`.
+>
+> **Remaining (separate concerns, not this gap):** interface-typed **request** bodies (`Decode(&v)` into an interface), and disambiguating when several concrete types genuinely implement the interface at one site.
+
 ## 3. Testing gaps
 
 ### 3.1 Orphaned testdata scenarios (cheap, high-value) — ✅ DONE 2026-07-08
@@ -87,8 +107,11 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 
 Original finding (kept for context): 27 scenario dirs existed under `testdata/`, but automated tests only exercised ~14. **No `go test` references at all** for the 11 dirs above; they were only reachable via the manual `scripts/compare-spec.sh` flow. The structural-assertion style already used in `generator/testdata_smoke_test.go` (paths present, no dangling `$ref`, no unresolved placeholders) was the right template — now extended over these dirs.
 
-### 3.2 Fixture hygiene: `internal/spec/tests/*.yaml`
-These are not golden files — `metadata_test.go:802` *writes* them on every run as dev-inspection artifacts. They're tracked in git but also listed in `.gitignore`, so every `go test` run dirties the tree (CI's coverage workflow literally runs `git restore internal/spec/tests/` to cope). They also embed the absolute temp path of the machine that last ran tests. Options: (a) `git rm --cached` them and keep them purely local, (b) write them to `t.TempDir()`, or (c) sanitize paths + sort output and promote them to real golden files once 1.1 lands.
+### 3.2 Fixture hygiene: `internal/spec/tests/*.yaml` — ✅ DONE 2026-07-12
+
+> Status: resolved via option (c). The `internal/spec/tests/*.yaml` are now **real golden files**: `TestGenerateMetadata` builds each source module in `t.TempDir()` and compares the produced metadata byte-for-byte against the committed golden, writing only under `-update`. The `.gitignore` contradiction is gone (no rule for `internal/spec/tests/`), a `go test` run no longer dirties the tree, CI no longer needs `git restore`, and no absolute/temp machine paths are embedded. Verified on `main`.
+
+Original finding (kept for context): these were not golden files — the test *wrote* them on every run as dev-inspection artifacts. They were tracked **and** listed in `.gitignore`, so every `go test` dirtied the tree (CI's coverage workflow ran `git restore internal/spec/tests/` to cope) and they embedded the absolute temp path of the last machine to run tests.
 
 ### 3.3 Coverage cold spots
 - `cmd/apispecui` — **zero tests** for 1,845 lines (config editor, preview, diagram endpoints). Recent feature work (#91, #75/#76) keeps landing here untested. Even handler-level HTTP tests would help.
@@ -108,17 +131,97 @@ All 8 historical issues are closed and there are zero open issues/PRs, but the w
   - ✅ **Also fixed — pathological dense *cyclic* graphs (2026-07-08).** The root cause was in `NewTrackerNode`: the `MaxNodesPerTree` safety brake gated on `len(visited)`, but `visited` is a per-path recursion-*stack* counter (incremented on enter, decremented on exit), so its size is the current stack depth, never the total work. A dense/cyclic graph re-expands shared callees along exponentially many distinct paths while keeping stack depth small, so the brake never fired and generation ran effectively forever. Fixed by adding a cumulative `tree.nodesBuilt` counter and gating the cap on that instead; once the cap is hit every further call returns a leaf stub and the recursion unwinds cheaply. `testdata/cyclic_graph` + `TestTestdata_CyclicGraphBounded` locks it in (12 strongly-connected functions with modular back-edges; was >45s / no truncation, now ~1.3s with a single truncation warning, all 12 routes still recovered). Every real fixture builds ≤1.9k nodes, far under the 50k cap, so no existing output changes.
 - **#34 debuggability** — a user couldn't tell *why* routes were missed in a real project. The insight report and diagnostics exist; a documented "my route is missing — how to debug" section (using `--write-metadata`, the diagram, insight output) would close the loop.
 
-## 5. Housekeeping (quick wins)
+## 5. Housekeeping (quick wins) — ✅ DONE 2026-07-12
 
-- Delete `README.md.bak` (stale 33k copy).
-- Remove committed root-level artifacts: `coverage*.out/txt/html`, `profiles*/`, and decide the fate of `playground_optimized.go` (0% coverage, gitignore-patterned but present).
-- Resolve the tracked-vs-gitignored contradiction for `internal/spec/tests/` (see 3.2).
-- `docs/AUTH_DETECTION_DESIGN.md:319` says a phase is "not yet called from traversal" while marking it DONE below — reconcile the doc.
-- Verify the package READMEs linked from the main README (`cmd/apispec/README.md`, `internal/spec/README.md`, etc.) actually exist.
+Swept and verified on `main`:
+
+- ~~Delete `README.md.bak`~~ ✅ — it's gitignored (a `sed -i.bak` byproduct of the badge script), not tracked; no repo change needed.
+- ~~Remove committed root-level artifacts (`coverage*.out/txt/html`, `profiles*/`, `playground_optimized.go`)~~ ✅ — none are tracked.
+- ~~Resolve the tracked-vs-gitignored contradiction for `internal/spec/tests/`~~ ✅ — done (see §3.2).
+- ~~`docs/AUTH_DETECTION_DESIGN.md` phase-3/phase-4 contradiction~~ ✅ — reconciled (PR #109).
+- ~~Verify the package READMEs linked from the main README exist~~ ✅ — all linked docs/READMEs present (`cmd/apispec`, `cmd/apidiag`, `internal/spec`, `internal/metadata`, `docs/*`), plus `CONTRIBUTING.md` / `CODE_OF_CONDUCT.md`.
 
 ## 6. Suggested sequencing
 
-1. **Now (this branch / next):** finish determinism (1.1) — it unblocks everything test-shaped; fixture hygiene (3.2) rides along.
-2. **Next:** ~~wire orphaned testdata scenarios into smoke tests (3.1)~~ ✅ DONE 2026-07-08 + ~~robustness fixtures (4)~~ ✅ DONE 2026-07-08 (one open cyclic-graph limitation noted in §4) — locks in current behavior before feature work.
-3. **Then features by value:** ~~mux path params~~ ✅ → ~~generic types~~ ✅ → interface resolution → handler-factory part 2 → router-as-param → `dive`.
-4. **Continuous:** apispecui test baseline, PR-level coverage gate, housekeeping.
+1. ~~**Now:** finish determinism (1.1) + fixture hygiene (3.2)~~ ✅ DONE.
+2. ~~**Next:** wire orphaned testdata scenarios (3.1) + robustness fixtures (4)~~ ✅ DONE 2026-07-08 (one open cyclic-graph limitation noted in §4).
+3. **Then features by value:** ~~mux path params~~ ✅ → ~~generic types~~ ✅ → ~~method-via-switch/if (§2 item 8)~~ ✅ → ~~interface resolution~~ ✅ → **handler-factory part 2** (next) → router-as-param → `dive`.
+4. **Continuous:** apispecui test baseline, PR-level coverage gate, housekeeping ✅.
+
+### Delivered this session (2026-07-12)
+
+- **Generic types (#5)** — beyond the flat encode-site case: multi-parameter (`Pair[K,V]`), nested (`Envelope[Page[User]]`), compiler-**inferred** (`NewEnvelope(x)`), struct-field, and request bodies; all key to one shared component. Fixture `testdata/generic_structs`.
+- **Method-via-switch/if (§2 item 8 / #9)** — verb-less `r.Method`-dispatch handlers split per method with per-branch request/response attribution (PR #105, merged). Fixture `testdata/method_switch`.
+- **Interface resolution (#6, §2.3)** — interface-typed response bodies resolve to the concrete type across every common form (written assignment/declaration, return-through-interface, embedded-DI dispatch, named + `interface{}` parameters), with an ambiguity guard (PR #110). Fixture `testdata/interface_response`.
+- **Determinism (#1), fixture hygiene (#3), housekeeping (§5)** — confirmed done; AUTH doc reconcile (PR #109).
+- **Coverage badge** — moved off the blocked direct-push-to-protected-main; badge job now pushes with a bypass-capable PAT (`BADGE_TOKEN`), `[skip ci]` guards re-trigger (PR #108, merged).
+
+**Open / next:** handler-factory part 2 (request-body-via-wrapper, §2 item 4), or a bounded win — `dive` validator tag, or apispecui/cold-spot test coverage (§3.3). The type-model (#8) is complete through phase 4 (PR #116): metadata records carry `TypeRef` via the memoized `Metadata.TypeRefOf`, the mapper dispatch is Kind-based, and the legacy string views are deleted; only two documented naming-behavior islands remain (mapper map branch, argument-renderer qualification tail).
+
+### Delivered 2026-07-13
+
+- **Structured type-model (#8), phases 1–3** — `internal/typemodel`: `TypeRef` + `Parse` (all string encodings, never fails) + renderers with round-trip guarantees + `FromExpr` AST-boundary constructor (PR #111); spec consumers migrated onto it — canonicalizer, instantiation-name builders, enum/trace/lookup sites — with the legacy views shrunk to `ParseParts`+`SplitArgs` (PR #112); lookup + AST boundaries unified — `typeByName(pkg, name)`, `getTypeName` renders via `FromExpr` (PR #115). Bugs fixed en route, each fixture/test-covered: slice-of-instantiation composite literals collapsed onto `_T-any` (`testdata/generic_structs` `/batch`); fixed-size array fields lost their length (`[4]byte`→`[]byte`); methods on multi-parameter generic types were lost entirely (IndexListExpr receiver stringified to `""`). Zero golden drift throughout. Phase-2 assumption corrected in phase 3: metadata `Types` keys were already bare names; the bracketed form is only the methods-table convention.
+- **License headers** — every non-fixture Go file carries the full Apache header with its creation year (PR #114, merged); required for new files per CLAUDE.md.
+- **CLAUDE.md** — repo architecture map, invariants, and conventions for agents/contributors (PR #113, merged).
+
+### Delivered 2026-07-14/15 (pre-v0.5.0 session)
+
+- **Multi-framework detection & pattern merging (§7.2)** — `DetectAll` returns every framework present (first-seen order, `net/http` fallback); the engine merges a scoped secondary view (`SecondaryView` keeps only patterns with a receiver scope; `MergeFrameworkConfigs` first-occurrence-wins; `HTTPSecondaryConfig` for stdlib) so a chi-router-under-a-`net/http`-mux or a gin+mux binary gets both frameworks' patterns. Auto-detect path only — user configs are never augmented. Proven zero-drift on the suite + two real projects; fixtures `testdata/mixed_chi_nethttp`, `testdata/mixed_gin_mux` (PR #135, merged). README "Mixed / multi-framework projects" section documents the ✅/⚠️ scope.
+- **chi `Method()` / `Handle()` registration (§ new)** — `r.Method(http.MethodGet, path, h)` and `r.Handle(path, h)` now register; metadata records go/types constant string values so `http.MethodGet` resolves (PR #134, merged). Fixture `testdata/chi_method_handle`.
+- **Performance regressions fixed** — chain-key quadratic alloc → `chainInterner` (PR #132); `DetectAll` full-parse → `parser.ImportsOnly` + early-exit, 146→53ms (PR #140); merged-pattern route-matcher linear scan → per-edge memo, mapping 2.5–3.0s→1.8–1.9s (PR #141). All merged, byte-identical output.
+- **Insight-trace completeness (#34)** — the handler-scoped trace keeps stdlib callees as natural leaves (`calleeIsBuiltin`), so `*url.Values.Get` / `*http.Request.Query` query-param nodes appear in the apispecui graph; missing them under-counted metrics (PR #142, merged). `docs/DEBUGGING.md` "my route is missing" guide + issue templates (`.github/ISSUE_TEMPLATE/*`) round out #34.
+- **Known-gap pinning fixtures** — `testdata/cli_action_routes` (#143 composite-literal `Action` field, gitea urfave/cli shape) and `testdata/status_via_constructor` (#144 constructor-field status) with flip-when-fixed structural tests (PR #145, merged).
+- **Open enhancement issues filed:** #138 cross-framework mount composition (chi under `net/http` loses the mount prefix); #143 composite-literal function-field roots; #144 status-code-through-constructor-field provenance.
+
+### Found 2026-07-15 — real-world validation against a hand-maintained spec (chi cost-control API, ~50 ops)
+
+Regenerated a private production chi API and diffed against its hand-authored OpenAPI. **Route discovery, success schemas (from real Go return types), and success status codes are excellent.** Four gaps surfaced; one is a **v0.5.0 release blocker**.
+
+- **🔴 BLOCKER — ✅ FIXED 2026-07-16 (PR #147 by an external contributor, issue #146).** The default (lazy) tracker dropped routes registered on a receiver variable when a middleware reassigned an identically-named variable. On this app the lazy tracker emitted **22 of 50 operations**; the legacy (eager) tracker emitted all **43 paths / 50 ops**. Root cause: a middleware invoked via `r.Use(mw(...))` whose body reassigns the request variable `r` (the canonical `r = r.WithContext(ctx)` idiom) records that internal `r` (`*http.Request`) in the call edge's `AssignmentMap`. `Metadata.BuildAssignmentRelationships` then pairs that callee-body assignment with the *caller's* `r chi.Router` (same name, different scope), and `LazyTree.buildRelations` **claimed** the caller's `r.Get`/`r.Group` registrations onto the middleware producer, where they were never re-emitted (dropped) or re-homed under the wrong prefix (`/api/v1/tenant` → `/api/v1/auth/tenant`). Regression: v0.4.0 had no LazyTree (eager only); making LazyTree the default after v0.4.0 introduced the drop. **Fix (PR #147):** `internal/spec/lazytree.go` `buildRelations` gates the assignment-claim on `rel.Assignment.Func == rel.Edge.Caller.Name` (the assignment must live in the claiming caller scope), rejecting the cross-scope name collision — plus a claim-map unit test. Independently validated: lazy now matches the eager tracker (43 paths); full suite passes with zero golden drift; a 245-path real project is byte-identical; no perf regression. #147's original `chi_receiver_name_collision` fixture is too shallow to reproduce end-to-end (its structural test passes even without the fix), so a follow-up commit on #147 adds `testdata/chi_middleware_recv_shadow` + `TestTestdata_ChiMiddlewareRecvShadow` — installs the middleware as a call with nested-group density and **fails pre-fix** — and hardens the relation unit test's pooled fields to `-1` (resolving the CodeRabbit comment). (My duplicate PR #148 and the standalone fixture PR #150 were closed in favor of doing it all on #147.)
+- **⚠️ Error status codes collapse to `default` — ✅ FIXED 2026-07-16 (issue #144), in two parts:**
+  - **Constructor-field shape (PR #149, merged).** `RespondWithError(w, NewAPIError(msg, 401))` → `w.WriteHeader(err.Code)` (status is a selector on a parameter) now resolves via `statusFromConstructorField`: it follows the selector base variable through the wrapper parameter to its constructor assignment, matches the return composite-literal field (`Code ← code`), and reads that parameter's actual argument.
+  - **Nested-helper shape (PR #151).** The far more common `respondError(w, http.StatusX, …)` → `respondJSON(w, status, …)` → `w.WriteHeader(status)` threads the status through **two** parameter hops (three via a shared error→status mapper), but the resolver walked only **one** hop — so on the motivating chi API **23 of ~50 ops** were `default`. Fix: swap the single-hop `traceArgViaParent` for the existing multi-hop `resolveArgThroughParams`, a strict superset that never changes an already-resolved status. Result: 23 `default` → 0, each verified against its handler's branches (`GET /auth/me` → `200/401/500`; `POST /auth/login` → `200/400/401/403/429/500`, matching its `writeAuthError` switch). Fixture `status_via_helper_chain` (fails pre-change). A shared error mapper attributes all its switch-branch statuses to each caller — conservative but statically reachable; precise per-branch scoping (§7.3) remains a separate, harder refinement.
+- **⚠️ Request bodies not captured (only 2 `requestBody`, both generic `object`) — ✅ FIXED 2026-07-16 (issue #153, PR #152).** The app decodes via a `decodeJSON(w, r, &req)` wrapper that assigns the decoder to a local (`dec := json.NewDecoder(r.Body); dec.Decode(dst)`). The `dec` variable re-homes `dec.Decode` under the `json.NewDecoder` producer node in the LazyTree, so `argViaParent`'s single immediate-parent `ParamArgMap` lookup could not reach the wrapper's `dst` parameter and the concrete request type was lost — an *inline* decoder already worked, so only some bodies resolved. Fix: `argViaParent` keeps its immediate-parent fast path and adds an ancestor-walk fallback for the edge whose callee **is** the enclosing function (the same walk `concreteFromParamBinding` uses for interface params). Result on the motivating chi API: **25/25 request bodies now `$ref` a concrete schema** (was 0 through this wrapper). Fixture `testdata/request_body_var_decoder`; zero golden drift; the 245-path real project is byte-identical.
+- **ℹ️ Verbose component/operationId names** — `github_com_org_repo_internal_httpapi_userDTO`. Fine for Swagger UI, poor for FE TypeScript codegen. Addressable via `typeMapping`/`overrides` today; a name-shortening pass would be a nice polish.
+
+**Verdict on the tool's readiness:** all four gaps found on this app are now fixed and merged/in-flight, each drift-clean against the full suite and a 245-path real project (byte-identical): the lazy-tracker route drop (issue #146, PR #147), constructor-field status (issue #144, PR #149), nested-helper multi-hop status (PR #151, merged), and wrapper-decoded request bodies (issue #153, PR #152). On the motivating chi API the lazy default now recovers all 49 routes, 0 spurious `default` statuses (only `/docs`), and 25/25 request bodies `$ref` a concrete schema — 0 dangling refs, 0 unresolved placeholders. Remaining non-blocking cosmetic gap: verbose component names. One honest fidelity caveat (future work, §7.3): a shared error→status mapper attributes all of its switch-branch statuses to every caller — conservative and statically reachable, but per-branch scoping would be more precise. **v0.5.0 is unblocked.**
+
+### Found 2026-07-16 — second real-world validation (modular chi microservice gateway, ~83 ops)
+
+Regenerated a second private app (multi-module chi gateway) and audited its 21 `default` responses. Two distinct causes, one fixed, one filed:
+
+- **✅ FIXED (PR #154, a #144 follow-up) — constructor-field status lost through a handler-factory closure.** The #144 resolver worked for plain-function handlers but collapsed to `default` when the handler was a closure returned by a method (`func (h *handler) Cancel() http.HandlerFunc { return func(w, r){ e := NewLmdError(msg, http.StatusBadRequest); RespondWithError(w, e) } }`). The `e :=` assignment is recorded on the *enclosing method's* AssignmentMap, and methods live in `Type.Methods` keyed by receiver, not `file.Functions` — which `findFunctionByName` never searched, so the constructor provenance was never found. Fix: new `callerAssignmentMap`/`methodAssignmentMap` resolve the enclosing function **or method** via the edge's `ParentFunction` (which already carries the receiver). Additive by construction (only former `default`s change); fixture `status_via_constructor_closure`; zero drift; 245-path project byte-identical. Recovered **26 previously-missing `400`s** on this app.
+- **⏳ REMAINING (filed) — status assigned across switch branches, then passed to the constructor.** The shared `ePaymentError(w, err)` mapper does `switch { … statusCode = http.StatusNotFound … statusCode = http.StatusBadRequest … }; RespondWithError(w, NewLmdError(msg, statusCode))`. The status argument is a *variable* whose value depends on the branch, not a literal — so `constructorArgForParam` resolves to the `statusCode` ident and `MapStatusCode` can't pin one code, leaving `default` on the 18 endpoints that error only through this mapper (and dropping their `404`). Resolving it means fanning one WriteHeader out into the **set** of branch-assigned statuses ({404, 400, 500}) — a one→many change to the response-recording loop, distinct from every single-status path today. This is the concrete instance of the §7.3 shared-error-mapper caveat; tracked as issue #155. The other 3 `default`s (`GET /`, `/metrics`, an empty stub `GetOrderHandler`) are handlers that write nothing — `default` is the honest answer.
+
+## 7. Capability-gap ideas to consider
+
+*Added 2026-07-12. These are **conceptual capability gaps** — directions worth designing independently, not a to-do list to copy from anywhere. Each entry names the idea, why it matters for this codebase, and where in **our** code it would land. Treat every item as a clean-room design prompt: decide if it's worth doing, then design and implement it from first principles. Some may already exist here in a different shape — verify against current code first.*
+
+### 7.1 Architecture ideas (High effort, high leverage)
+
+- **A structured, typed type-model instead of string-encoded types.** ✅ **Phases 1–3 done 2026-07-13** (PRs #111/#112/#115; plan and status in `docs/TYPE_MODEL.md`): `internal/typemodel.TypeRef` is the first-class descriptor (package, name, type args, pointer/slice/map wrappers as fields) with one parser for every legacy encoding and one renderer per boundary; the spec layer's parsing/building helpers and metadata's `getTypeName` all flow through it. **Remaining (phase 4):** metadata records (`CallArgument`, `Field`, assignments/returns) carry the `TypeRef` itself, string pool as serialization; then the transitional `ParseParts`/`SplitArgs` views are deleted.
+- **Control-flow awareness for method/branch dispatch.** ✅ **Partially done 2026-07-12** — the specific `r.Method`-dispatch case (§2 item 8) now splits into per-method operations via a *targeted* AST detector (`detectMethodDispatch`) + line-range response scoping, deliberately **not** a general CFG. What remains as the broader idea: a reusable control-flow/branch model that also handles non-method conditionals (e.g. status set in one `if` arm, body in another), same-status-different-body branches, and dispatch inside receiver-method handlers. That general layer is a good candidate to design from scratch (or align with a contributor) rather than growing the narrow detector.
+
+### 7.2 Detection & inference ideas (Medium effort)
+
+- **Multi-framework detection & pattern merging.** `engine.go` detects a single framework and switches on it, so a project that mixes styles (e.g. a chi router mounted under a `net/http` mux, or a gin group embedded elsewhere) only gets one framework's patterns applied. **Idea:** let detection return the *set* of frameworks present and merge their pattern sets (with a defined precedence) before extraction. Lands in `internal/core` detection + config merge.
+- **Fold more request-shaping sources into params/bodies.** Areas where param/field inference could be broadened and consolidated (some logic today is spread across `mapper.go`/`extractor.go`): variable-bound `r.FormValue`/`r.FormFile` → query/form params, converter-typed params (`strconv`-style conversions that reveal the param type), and field-level schema inference as a cohesive step. **Idea:** treat these as first-class inference inputs rather than ad-hoc cases.
+
+### 7.3 Spec-correctness ideas (Medium; several are small and independently landable)
+
+- **Bodyless status codes.** 1xx / 204 / 304 responses must carry **no** response content — audit that we never emit an empty/placeholder schema for them.
+- **Decode data-source rigor.** A decode call should only count as a request body when its source argument provably traces to the request body; audit our `requestContext` disambiguation for gaps.
+- **Write-destination gating.** A write should only become a response when its destination is the response writer, not an arbitrary `io.Writer` passed around.
+- **Conditional-status fan-out scoping.** When a status variable is reassigned across branches, only attribute the statuses reachable from the actual call site (avoid over-emitting responses).
+- **Helper-internal error-path filtering.** Don't attribute a shared helper's internal error-fallback write to every caller's response schema.
+- **JSON DTO format inference + `requestBody.required`.** Richer `format` inference from field types/tags, and marking request bodies required when appropriate.
+
+### 7.4 Smaller ideas & housekeeping (Low–Medium effort)
+
+- **Doc comments → `summary`/`description`.** Ensure a handler's Go doc comment reliably becomes the operation `summary`/`description` (we extract some — verify coverage).
+- **Struct-level validation.** Support whole-struct constraints (e.g. a `validate` tag on a blank marker field) beyond per-field validation.
+- **Repo hygiene worth having regardless:** a committed `.golangci.yml` (pin the lint config that CI already runs), a `docs/CONFIGURATION.md` reference, a `CHANGELOG.md`, and moving inlined HTML (diagram/UI templates) into template files.
+
+### 7.5 Strengths to protect (not gaps)
+
+For balance: auth/security detection, envelope specialisation, and handler-factory support are already well-developed here, and the **lazy/eager tracker redesign, the SSA+VTA resolved call graph, and the generics work (§2.2)** are distinctive strengths. Any of the ideas above should be pursued without regressing these.
