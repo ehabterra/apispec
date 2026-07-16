@@ -89,6 +89,49 @@ type SecurityStats struct {
 	BySchemeUsage  []Count  `json:"bySchemeUsage"`  // operations requiring each scheme
 }
 
+// CoverMetric is a have-of-total coverage tally.
+type CoverMetric struct {
+	Have  int `json:"have"`
+	Total int `json:"total"`
+}
+
+// Coverage summarises how completely common facets are documented across the
+// API. All fields are derived from the generated spec (cheap — no call-graph or
+// tracker-tree traversal).
+type Coverage struct {
+	RequestBody    CoverMetric `json:"requestBody"`    // write ops (POST/PUT/PATCH) that declare a body schema
+	ErrorResponses CoverMetric `json:"errorResponses"` // ops that declare at least one 4xx/5xx
+	Protected      CoverMetric `json:"protected"`      // ops that require authentication
+}
+
+// Resolution splits operations by how completely they resolved: full (no
+// issues), partial (works but a detail is missing — a defaulted status or a
+// generic body), broken (a dangling ref / unresolved type / no responses
+// reaches the output).
+type Resolution struct {
+	Full    int `json:"full"`
+	Partial int `json:"partial"`
+	Broken  int `json:"broken"`
+}
+
+// InterfaceStats summarises interface→implementation resolution, read directly
+// from the metadata's precomputed ImplementedBy index (no tracker-tree build).
+type InterfaceStats struct {
+	Total         int     `json:"total"`
+	SingleImpl    int     `json:"singleImpl"`    // exactly one implementation — unambiguous
+	Ambiguous     int     `json:"ambiguous"`     // more than one — may be kept general (erased to any)
+	Unimplemented int     `json:"unimplemented"` // no implementation found
+	AmbiguousList []Count `json:"ambiguousList"` // ambiguous interface name -> implementation count
+}
+
+// VerbDispatch is one handler that serves several HTTP methods from a single
+// function via a `switch r.Method` / `if r.Method ==` dispatch (from the
+// metadata's precomputed MethodDispatch arms).
+type VerbDispatch struct {
+	Handler string   `json:"handler"`
+	Methods []string `json:"methods"`
+}
+
 // OverviewReport is the whole-API insight payload.
 type OverviewReport struct {
 	Routes        int            `json:"routes"`     // distinct path templates
@@ -101,8 +144,13 @@ type OverviewReport struct {
 	Components    int            `json:"components"`
 	TopTypes      []Count        `json:"topTypes"`
 	Health        Health         `json:"health"`
+	Resolution    Resolution     `json:"resolution"`
+	Coverage      Coverage       `json:"coverage"`
+	Taxonomy      []Count        `json:"taxonomy"` // issue kind -> count (the "why not resolved" breakdown)
 	Security      SecurityStats  `json:"security"`
 	Issues        []Issue        `json:"issues"`
+	Interfaces    InterfaceStats `json:"interfaces"`   // tree insight: interface resolution (cheap read)
+	VerbDispatch  []VerbDispatch `json:"verbDispatch"` // tree insight: handlers split by verb (cheap read)
 	CallGraph     CallGraphStats `json:"callGraph"`
 }
 
@@ -182,6 +230,27 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 			if !hasWarn(routeIssues) {
 				clean++
 			}
+
+			// Resolution state + documentation coverage — both cheap, from the
+			// spec we're already walking.
+			switch classifyResolution(routeIssues) {
+			case "broken":
+				rep.Resolution.Broken++
+			case "partial":
+				rep.Resolution.Partial++
+			default:
+				rep.Resolution.Full++
+			}
+			if isWriteMethod(mo.Method) {
+				rep.Coverage.RequestBody.Total++
+				if hasBodySchema(mo.Op) {
+					rep.Coverage.RequestBody.Have++
+				}
+			}
+			rep.Coverage.ErrorResponses.Total++
+			if hasErrorResponse(mo.Op) {
+				rep.Coverage.ErrorResponses.Have++
+			}
 		}
 	}
 
@@ -217,8 +286,175 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 	}
 
 	rep.Security = securityStats(s)
+	// Protected coverage reuses the security classification (cheap).
+	rep.Coverage.Protected = CoverMetric{
+		Have:  rep.Security.Protected,
+		Total: rep.Security.Protected + rep.Security.Public + rep.Security.Unsecured,
+	}
+	// Taxonomy: the "why not resolved" breakdown — a tally of every issue kind
+	// (all severities), so the UI can rank the causes.
+	kindC := map[string]int{}
+	for _, is := range rep.Issues {
+		kindC[is.Kind]++
+	}
+	rep.Taxonomy = sortedCounts(kindC, true)
+
+	// Tree insights — precomputed metadata reads only (no tracker-tree build,
+	// so the Overview stays lightweight).
+	rep.Interfaces = interfaceStats(meta)
+	rep.VerbDispatch = verbDispatch(meta)
+
 	rep.CallGraph = callGraphStats(meta)
 	return rep
+}
+
+// classifyResolution maps an operation's issues to a resolution state:
+// broken (a dangling ref / unresolved type / no responses reaches the output),
+// partial (works but a detail is missing — a generic body or a defaulted
+// status), or full (no issues).
+func classifyResolution(issues []Issue) string {
+	partial := false
+	for _, is := range issues {
+		switch is.Kind {
+		case "dangling-ref", "unresolved-type", "no-responses":
+			return "broken"
+		case "missing-body", "default-status":
+			partial = true
+		}
+	}
+	if partial {
+		return "partial"
+	}
+	return "full"
+}
+
+func isWriteMethod(m string) bool {
+	switch m {
+	case "POST", "PUT", "PATCH":
+		return true
+	}
+	return false
+}
+
+// hasBodySchema reports whether an operation declares a request body with a
+// schema (any content type).
+func hasBodySchema(op *spec.Operation) bool {
+	if op.RequestBody == nil {
+		return false
+	}
+	for _, mt := range op.RequestBody.Content {
+		if mt.Schema != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// hasErrorResponse reports whether an operation declares any 4xx or 5xx
+// response (a documented failure path), as opposed to only 2xx and/or default.
+func hasErrorResponse(op *spec.Operation) bool {
+	for status := range op.Responses {
+		if len(status) > 0 && (status[0] == '4' || status[0] == '5') {
+			return true
+		}
+	}
+	return false
+}
+
+// interfaceStats reads the metadata's precomputed ImplementedBy index to
+// summarise interface resolution. Cheap: a single pass over declared types, no
+// call-graph or tracker traversal.
+func interfaceStats(meta *metadata.Metadata) InterfaceStats {
+	st := InterfaceStats{AmbiguousList: []Count{}}
+	if meta == nil || meta.StringPool == nil {
+		return st
+	}
+	sp := meta.StringPool
+	ambig := map[string]int{}
+	seen := map[string]bool{} // dedupe types that appear under both file- and package-scope
+	visit := func(t *metadata.Type) {
+		if sp.GetString(t.Kind) != "interface" {
+			return
+		}
+		key := sp.GetString(t.Pkg) + "." + sp.GetString(t.Name)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		st.Total++
+		switch n := len(t.ImplementedBy); n {
+		case 0:
+			st.Unimplemented++
+		case 1:
+			st.SingleImpl++
+		default:
+			st.Ambiguous++
+			// Qualify the display label the same way `seen` qualifies its
+			// dedupe key: two ambiguous interfaces with the same bare name in
+			// different packages (Store, Repository, Handler … are common)
+			// would otherwise overwrite each other's count, and — because map
+			// iteration order is randomized — which one survived would vary
+			// run to run, breaking output determinism.
+			label := sp.GetString(t.Name)
+			if p := sp.GetString(t.Pkg); p != "" {
+				label = lastSegment(p) + "." + label
+			}
+			ambig[label] = n
+		}
+	}
+	for _, pkg := range meta.Packages {
+		for _, f := range pkg.Files {
+			for i := range f.Types {
+				visit(f.Types[i])
+			}
+		}
+		for i := range pkg.Types {
+			visit(pkg.Types[i])
+		}
+	}
+	st.AmbiguousList = topN(sortedCounts(ambig, true), 8)
+	return st
+}
+
+// verbDispatch reads the metadata's precomputed MethodDispatch arms to list
+// handlers that serve several HTTP methods from one function. Cheap: a single
+// pass over declared functions.
+func verbDispatch(meta *metadata.Metadata) []VerbDispatch {
+	out := []VerbDispatch{}
+	if meta == nil || meta.StringPool == nil {
+		return out
+	}
+	sp := meta.StringPool
+	for _, pkg := range meta.Packages {
+		for _, f := range pkg.Files {
+			for name, fn := range f.Functions {
+				if len(fn.MethodDispatch) == 0 {
+					continue
+				}
+				methods := []string{}
+				seen := map[string]bool{}
+				for _, b := range fn.MethodDispatch {
+					for _, m := range b.Methods {
+						if m != "" && !seen[m] {
+							seen[m] = true
+							methods = append(methods, m)
+						}
+					}
+				}
+				if len(methods) < 2 {
+					continue // a single-method dispatch isn't a split worth surfacing
+				}
+				sort.Strings(methods)
+				handler := name
+				if p := sp.GetString(fn.Pkg); p != "" {
+					handler = lastSegment(p) + "." + name
+				}
+				out = append(out, VerbDispatch{Handler: handler, Methods: methods})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Handler < out[j].Handler })
+	return out
 }
 
 // securityStats classifies every operation as protected / public / unsecured,
@@ -318,6 +554,16 @@ func collectOperationIssues(method, path string, op *spec.Operation, comps map[s
 				})
 			}
 		}
+	}
+
+	// A `default` response means apispec could not pin the status to a concrete
+	// code — the real 4xx/5xx isn't documented. Info-level (the route still
+	// works), but it feeds the resolution taxonomy and the "partial" bucket.
+	if _, ok := op.Responses["default"]; ok {
+		issues = append(issues, Issue{
+			Severity: "info", Kind: "default-status", Method: method, Path: path,
+			Detail: "an error status could not be determined (e.g. computed dynamically); the concrete 4xx/5xx isn't documented",
+		})
 	}
 
 	// parameter schemas can also reference components

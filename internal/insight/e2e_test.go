@@ -57,6 +57,24 @@ func TestEndToEnd_TrackerTraceFromTestdata(t *testing.T) {
 		t.Skip("no endpoints in overview")
 	}
 
+	// The redesigned Overview aggregations must hold their invariants on real
+	// generated metadata (exercises interfaceStats/verbDispatch/coverage/
+	// resolution over actual data, not just hand-built inputs).
+	if got := rep.Resolution.Full + rep.Resolution.Partial + rep.Resolution.Broken; got != rep.Operations {
+		t.Errorf("resolution split %+v sums to %d, want operations %d", rep.Resolution, got, rep.Operations)
+	}
+	if rep.Coverage.Protected.Total != rep.Operations {
+		t.Errorf("protected coverage total = %d, want operations %d", rep.Coverage.Protected.Total, rep.Operations)
+	}
+	if rep.Interfaces.Total != rep.Interfaces.SingleImpl+rep.Interfaces.Ambiguous+rep.Interfaces.Unimplemented {
+		t.Errorf("interface stats don't add up: %+v", rep.Interfaces)
+	}
+	for _, vd := range rep.VerbDispatch {
+		if len(vd.Methods) < 2 {
+			t.Errorf("verb dispatch %q should be a multi-method split, got %v", vd.Handler, vd.Methods)
+		}
+	}
+
 	tracker, callgraph, handlerFound := 0, 0, 0
 	for _, ep := range rep.Endpoints {
 		tr := BuildEndpointWithSource(out, meta, cfg, ep.Method, ep.Path, TraceSourceTracker)

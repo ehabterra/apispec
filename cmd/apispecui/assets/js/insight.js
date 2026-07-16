@@ -10,25 +10,33 @@ import { Donut, Gauge, Info, TraceDiagram } from "/assets/js/components/charts.j
 
 function normalizeReport(d) {
   d = d || {};
-  for (const k of ["issues", "endpoints", "byMethod", "byStatus", "byContentType", "byTag", "topTypes"]) {
+  for (const k of ["issues", "endpoints", "byMethod", "byStatus", "byContentType", "byTag", "topTypes", "taxonomy", "verbDispatch"]) {
     if (!Array.isArray(d[k])) d[k] = [];
   }
   d.health = d.health || { score: 0, cleanRoutes: 0, totalRoutes: 0 };
   d.callGraph = d.callGraph || { packages: 0, functions: 0, edges: 0 };
   d.security = d.security || { schemesDefined: 0, schemes: [], protected: 0, public: 0, unsecured: 0, bySchemeUsage: [] };
+  d.resolution = d.resolution || { full: 0, partial: 0, broken: 0 };
+  d.coverage = d.coverage || {};
+  for (const k of ["requestBody", "errorResponses", "protected"]) {
+    d.coverage[k] = d.coverage[k] || { have: 0, total: 0 };
+  }
+  d.interfaces = d.interfaces || { total: 0, singleImpl: 0, ambiguous: 0, unimplemented: 0, ambiguousList: [] };
+  if (!Array.isArray(d.interfaces.ambiguousList)) d.interfaces.ambiguousList = [];
   return d;
 }
 
 function Bars({ data, color }) {
   const max = Math.max(1, ...data.map((d) => d.count));
   return html`<div class="bars">
-    ${data.map(
-      (d) => html`<div class="bar-row" title=${`${d.name}: ${d.count}`}>
+    ${data.map((d) => {
+      const col = d.color || color;
+      return html`<div class="bar-row" title=${`${d.name}: ${d.count}`}>
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name}</span>
-        <div class="bar-track"><div class="bar-fill" style=${`width:${(d.count / max) * 100}%${color ? ";background:" + color : ""}`}></div></div>
+        <div class="bar-track"><div class="bar-fill" style=${`width:${(d.count / max) * 100}%${col ? ";background:" + col : ""}`}></div></div>
         <span class="muted" style="text-align:right">${d.count}</span>
-      </div>`,
-    )}
+      </div>`;
+    })}
   </div>`;
 }
 
@@ -72,6 +80,18 @@ const INFO = {
   chain: "Fluent method-chain depth at the handler (e.g. r.Group().Use()).",
   grade:
     "Heuristic complexity grade (A best … D worst) blending call-path fan-out, depth, mutations and unresolved types. A readability indicator — NOT a correctness or performance guarantee (built on AST, not SSA). The bars below are NOT a percent of a total: each gauges its metric against a fixed reference ceiling (a 'notably high' value, e.g. fan-out 8, depth 12, paths 200), so a full bar means 'at or above that ceiling'. Hover any bar to see its ceiling. The pointer:value bar is the exception — a true proportion.",
+  alerts:
+    "The issues that need you, grouped by cause and ranked by severity. Each is the count of operations affected — the per-route breakdown is in 'Needs attention' below.",
+  resolution:
+    "Every operation by how completely it resolved. Fully resolved = no issues. Partial = it works but a detail is missing (a defaulted status, a generic request body). Broken = a dangling $ref, an unresolved/external type, or no responses reaches the generated spec.",
+  taxonomy:
+    "The root cause behind each unresolved detail — one operation can appear in more than one bucket. This is what to fix to raise resolution health.",
+  coverage:
+    "How completely common facets are documented, as a share of the operations they apply to: request bodies on write operations, a 4xx/5xx on every operation, and authentication.",
+  interfaces:
+    "Interface method calls resolved to concrete implementations, read from the analyzer's implementation index (no extra traversal). Interfaces with several implementations may be kept general (erased to any) when the concrete type is ambiguous — those are the ones that cost schema precision.",
+  verbdispatch:
+    "Handlers that serve several HTTP methods from one function via a switch r.Method (or if r.Method ==). apispec splits each into its own operation.",
 };
 
 /* ---- root ----------------------------------------------------------- */
@@ -129,6 +149,170 @@ const Title = (text, info) =>
 
 /* ---- overview ------------------------------------------------------- */
 
+const SEV_ORDER = { crit: 0, warn: 1, info: 2 };
+
+// ALERT_META maps an issue kind to how it reads as an alert: its severity
+// (which can differ from the issue's own — a defaulted status is info-level as
+// an issue but actionable as an alert) and a plain-language cause.
+const ALERT_META = {
+  "dangling-ref": { sev: "crit", label: "Dangling schema references", det: "reference a component with no definition" },
+  "unresolved-type": { sev: "crit", label: "Unresolved / external types", det: "resolve to an external or placeholder type" },
+  "no-responses": { sev: "crit", label: "Operations with no responses", det: "no responses were detected" },
+  "missing-body": { sev: "warn", label: "Request body not resolved", det: "the body resolves to a generic object" },
+  "default-status": { sev: "warn", label: "Status falls back to default", det: "an error status could not be determined" },
+  "wrapper-specialised": { sev: "info", label: "Wrapper-specialised responses", det: "envelope types with an inlined data payload" },
+};
+
+const TAXO_META = {
+  "default-status": { label: "Status defaulted", color: "var(--warn)" },
+  "missing-body": { label: "Body not resolved", color: "var(--warn)" },
+  "unresolved-type": { label: "External / unresolved type", color: "var(--faint)" },
+  "dangling-ref": { label: "Dangling $ref", color: "var(--danger)" },
+  "no-responses": { label: "No responses", color: "var(--danger)" },
+  "wrapper-specialised": { label: "Wrapper specialised", color: "var(--info)" },
+};
+
+const SectionHead = (eyebrow, title, note, info) => html`
+  <div class="sec-head">
+    <span class="eyebrow">${eyebrow}</span>
+    <h3>${title}</h3>
+    ${info ? html`<${Info} text=${info} />` : ""}
+    ${note ? html`<span class="note">${note}</span>` : ""}
+  </div>
+`;
+
+// Alerts aggregates the per-route issues into a prioritized, severity-striped
+// strip — the triage entry point. The granular per-route list ("Needs
+// attention") remains below as the drill-down.
+function Alerts({ rep }) {
+  const s = useStore();
+  const unresolvedSec = (s.unresolvedSecurity || []).length;
+  const byKind = {};
+  for (const i of rep.issues) byKind[i.kind] = (byKind[i.kind] || 0) + 1;
+  const alerts = [];
+  for (const kind in byKind) {
+    const m = ALERT_META[kind];
+    if (m) alerts.push({ sev: m.sev, count: byKind[kind], label: m.label, det: m.det });
+  }
+  if (unresolvedSec > 0)
+    alerts.push({ sev: "warn", count: unresolvedSec, label: "Unmapped auth middleware", det: "middleware guards routes but isn't mapped to a security scheme", action: "configure" });
+  alerts.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || b.count - a.count);
+
+  return html`
+    ${SectionHead("What needs you", "Alerts", alerts.length ? "prioritized — critical first" : "all clear", INFO.alerts)}
+    ${alerts.length === 0
+      ? html`<div class="card"><p class="muted" style="margin:0">No issues detected — every reference resolves and every status is documented.</p></div>`
+      : html`<div class="alert-strip">
+          ${alerts.map((a) => {
+            const sevLabel = a.sev === "crit" ? "critical" : a.sev === "warn" ? "warning" : "info";
+            return html`<div class=${"alert " + a.sev}>
+              <span class="a-sev">${sevLabel}</span>
+              <span class="a-count">${a.count}</span>
+              <span class="a-msg"><b>${a.label}</b> <span class="a-det">— ${a.det}.</span></span>
+              ${a.action === "configure" ? html`<button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>` : ""}
+            </div>`;
+          })}
+        </div>`}
+  `;
+}
+
+// Meter — a coverage bar coloured by how complete it is.
+function Meter({ label, m, foot }) {
+  const pct = m.total ? Math.round((m.have / m.total) * 100) : 0;
+  const col = pct >= 85 ? "var(--accent-2)" : pct >= 60 ? "var(--warn)" : "var(--danger)";
+  return html`<div class="meter">
+    <div class="mtop"><span class="mt">${label}</span><span class="mp" style=${"color:" + col}>${pct}%</span></div>
+    <div class="mtrack"><span class="mfill" style=${`width:${pct}%;background:${col}`}></span></div>
+    <div class="mfoot">${foot}</div>
+  </div>`;
+}
+
+// ResolutionQuality decomposes the health score: the full/partial/broken split,
+// the root-cause taxonomy, and documentation-coverage meters.
+function ResolutionQuality({ rep }) {
+  const r = rep.resolution;
+  const tot = Math.max(1, r.full + r.partial + r.broken);
+  const c = rep.coverage;
+  const taxo = rep.taxonomy
+    .map((t) => ({ name: (TAXO_META[t.name] || {}).label || t.name, count: t.count, color: (TAXO_META[t.name] || {}).color }))
+    .filter((t) => t.count > 0);
+  return html`
+    ${SectionHead("Resolution quality", "How the spec resolved", "why it looks the way it does")}
+    <div class="grid-cards" style="grid-template-columns:1.3fr 1fr;margin-bottom:var(--sp-3)">
+      <div class="card">
+        <div class="row" style="gap:6px"><h3 style="margin:0">Operations by state</h3><${Info} text=${INFO.resolution} /></div>
+        <div class="resbar" style="margin-top:var(--sp-3)" role="img" aria-label=${`${r.full} fully resolved, ${r.partial} partial, ${r.broken} broken`}>
+          ${r.full ? html`<span style=${`width:${(r.full / tot) * 100}%;background:var(--accent-2)`}></span>` : ""}
+          ${r.partial ? html`<span style=${`width:${(r.partial / tot) * 100}%;background:var(--warn)`}></span>` : ""}
+          ${r.broken ? html`<span style=${`width:${(r.broken / tot) * 100}%;background:var(--danger)`}></span>` : ""}
+        </div>
+        <div class="res-legend">
+          <span class="it"><span class="sw" style="background:var(--accent-2)"></span>Fully resolved <b>${r.full}</b></span>
+          <span class="it"><span class="sw" style="background:var(--warn)"></span>Partial <b>${r.partial}</b></span>
+          <span class="it"><span class="sw" style="background:var(--danger)"></span>Broken <b>${r.broken}</b></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row" style="gap:6px"><h3 style="margin:0">Why not resolved</h3><${Info} text=${INFO.taxonomy} /></div>
+        ${taxo.length ? html`<div style="margin-top:var(--sp-2)"><${Bars} data=${taxo} /></div>` : html`<p class="muted" style="margin-top:var(--sp-2)">Nothing unresolved.</p>`}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      <div class="row" style="gap:6px"><h3 style="margin:0">Documentation coverage</h3><${Info} text=${INFO.coverage} /></div>
+      <div class="meters" style="margin-top:var(--sp-3)">
+        ${Meter({ label: "Request body documented", m: c.requestBody, foot: `${c.requestBody.have} of ${c.requestBody.total} write operations declare a body` })}
+        ${Meter({ label: "Error responses documented", m: c.errorResponses, foot: `${c.errorResponses.have} of ${c.errorResponses.total} operations declare a 4xx/5xx` })}
+        ${Meter({ label: "Operations protected", m: c.protected, foot: `${c.protected.have} of ${c.protected.total} require authentication` })}
+      </div>
+    </div>
+  `;
+}
+
+// TreeInsights surfaces whole-API facts read straight from the analyzer's
+// precomputed indexes (no per-request tracker-tree build): interface
+// resolution and verb-dispatch splits.
+function TreeInsights({ rep }) {
+  const itf = rep.interfaces;
+  const vd = rep.verbDispatch;
+  if (!itf.total && !vd.length) return "";
+  const ambig = (itf.ambiguousList || []).map((a) => ({ name: a.name, count: a.count, color: "var(--warn)" }));
+  return html`
+    ${SectionHead("Tree insights", "Resolution internals", "from the analyzer — interfaces & verb dispatch")}
+    <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:var(--sp-3)">
+      ${itf.total
+        ? html`<div class="card">
+            <div class="row" style="gap:6px"><h3 style="margin:0">Interface resolution</h3><${Info} text=${INFO.interfaces} /></div>
+            <div class="miniquad" style="margin-top:var(--sp-3)">
+              <div class="q"><div class="v">${itf.total}</div><div class="k">interfaces</div></div>
+              <div class="q"><div class="v" style="color:var(--accent-2)">${itf.singleImpl}</div><div class="k">single impl</div></div>
+              <div class="q"><div class="v" style=${itf.ambiguous ? "color:var(--warn)" : ""}>${itf.ambiguous}</div><div class="k">ambiguous</div></div>
+              <div class="q"><div class="v" style="color:var(--faint)">${itf.unimplemented}</div><div class="k">unimplemented</div></div>
+            </div>
+            ${ambig.length
+              ? html`<div class="shape-h">Ambiguous — may erase to <code>any</code></div><${Bars} data=${ambig} />`
+              : html`<p class="muted" style="font-size:var(--fs-sm);margin:0">Every interface resolves to a single implementation.</p>`}
+          </div>`
+        : ""}
+      ${vd.length
+        ? html`<div class="card">
+            <div class="row" style="gap:6px"><h3 style="margin:0">Verb dispatch</h3><${Info} text=${INFO.verbdispatch} /></div>
+            <p class="muted" style="font-size:var(--fs-xs);margin:4px 0 var(--sp-2)">
+              ${vd.length} handler${vd.length === 1 ? "" : "s"} split into multiple operations from one function
+            </p>
+            <div class="disp-list">
+              ${vd.map(
+                (d) => html`<div class="disp-row">
+                  <span class="mono" style="color:var(--accent)">${d.handler}</span>
+                  <span class="muted">${(d.methods || []).join("  ")}</span>
+                </div>`,
+              )}
+            </div>
+          </div>`
+        : ""}
+    </div>
+  `;
+}
+
 function Overview({ rep, onTag }) {
   const [exportOpen, setExportOpen] = useState(false);
   const warns = rep.issues.filter((i) => i.severity === "warn");
@@ -156,6 +340,11 @@ function Overview({ rep, onTag }) {
       <div class="stat"><div class="num">${rep.components}</div><div class="lbl">components <${Info} text=${INFO.components} /></div></div>
     </div>
 
+    <${Alerts} rep=${rep} />
+    <${ResolutionQuality} rep=${rep} />
+    <${TreeInsights} rep=${rep} />
+
+    ${SectionHead("API shape", "Requests & responses")}
     <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:var(--sp-3)">
       ${rep.byMethod.length ? html`<div class="card">${Title("Methods", INFO.methods)}<${Bars} data=${rep.byMethod} /></div>` : ""}
       ${rep.byStatus.length ? html`<div class="card">${Title("Status codes", INFO.status)}<${Donut} data=${rep.byStatus.map((d) => ({ ...d, color: statusColor(d.name) }))} centerLabel=${rep.byStatus.reduce((a, b) => a + b.count, 0)} centerSub="responses" /></div>` : ""}
