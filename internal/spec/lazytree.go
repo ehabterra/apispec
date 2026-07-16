@@ -248,6 +248,20 @@ func (t *LazyTree) buildRelations() {
 		}] = producerKey
 		// Claiming uses the exact-caller key: the assignment's producing edge
 		// carries the full identity of the function the assignment lives in.
+		//
+		// Guard against a cross-scope name collision: a callee's internal
+		// reassignment of a same-named variable (the canonical middleware
+		// `r = r.WithContext(ctx)`, where `r` is a *http.Request) is recorded
+		// in the call edge's AssignmentMap, so the link's Edge.Caller is the
+		// *caller's* scope (which may have its own `r`, e.g. a chi.Router
+		// receiver) while the assignment actually lives in the callee. Claiming
+		// then would steal the caller's receiver route registrations (r.Get,
+		// r.Group) onto the callee's producer, where they are never re-emitted
+		// — dropping those routes. The assignment must genuinely live in the
+		// scope whose receiver calls we claim.
+		if getString(meta, rel.Assignment.Func) != getString(meta, rel.Edge.Caller.Name) {
+			continue
+		}
 		edges := edgesByRecvVar[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)]
 		if len(edges) == 0 {
 			continue
