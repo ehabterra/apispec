@@ -1376,3 +1376,212 @@ h3 + .info {
   font-size: var(--fs-sm);
   height: auto;
 }
+
+/* ============================================================
+   Insight Overview redesign — alerts, resolution quality,
+   coverage meters, tree-insight stat blocks.
+   ============================================================ */
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+.sec-head .eyebrow {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  font-weight: 600;
+}
+.sec-head h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.sec-head .note {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* alert strip */
+.alert-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.alert {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--r-2);
+  background: var(--panel);
+}
+.alert.crit {
+  border-left-color: var(--danger);
+}
+.alert.warn {
+  border-left-color: var(--warn);
+}
+.alert.info {
+  border-left-color: var(--info);
+}
+.alert .a-sev {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: var(--r-1);
+  flex: 0 0 auto;
+}
+.alert.crit .a-sev {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.alert.warn .a-sev {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.alert.info .a-sev {
+  color: var(--info);
+  background: var(--info-bg);
+}
+.alert .a-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  min-width: 26px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+.alert .a-msg {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+.alert .a-msg b {
+  font-weight: 600;
+}
+.alert .a-msg .a-det {
+  color: var(--muted);
+}
+
+/* resolution segmented bar */
+.resbar {
+  display: flex;
+  height: 26px;
+  border-radius: var(--r-2);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.resbar > span {
+  display: block;
+  height: 100%;
+}
+.res-legend {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.res-legend .it {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.res-legend .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.res-legend b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* coverage meters */
+.meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-4);
+}
+.meter .mtop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.meter .mtop .mt {
+  font-size: var(--fs-sm);
+}
+.meter .mtop .mp {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.meter .mtrack {
+  position: relative;
+  height: 10px;
+  background: var(--panel-3);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.meter .mfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-pill);
+}
+.meter .mfoot {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+  margin-top: 5px;
+}
+
+/* mini quad stat (interface resolution) */
+.miniquad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.miniquad .q {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  padding: 8px 10px;
+}
+.miniquad .q .v {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.miniquad .q .k {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* verb dispatch rows */
+.disp-list {
+  display: flex;
+  flex-direction: column;
+}
+.disp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.disp-row:first-child {
+  border-top: 0;
+}

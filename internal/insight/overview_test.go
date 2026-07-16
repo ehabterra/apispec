@@ -135,6 +135,113 @@ func TestBuildOverview_IssuesNeverNil(t *testing.T) {
 	}
 }
 
+func TestBuildOverview_ResolutionCoverageTaxonomy(t *testing.T) {
+	s := &spec.OpenAPISpec{
+		Paths: map[string]spec.PathItem{
+			// clean write op: has a body + a documented 400 → full, body+error covered
+			"/a": {Post: &spec.Operation{
+				RequestBody: &spec.RequestBody{Content: map[string]spec.MediaType{"application/json": {Schema: ref("In")}}},
+				Responses: map[string]spec.Response{
+					"201": {Content: map[string]spec.MediaType{"application/json": {Schema: ref("Out")}}},
+					"400": {},
+				},
+			}},
+			// only 200 + default → partial (default-status), no documented error
+			"/b": {Get: &spec.Operation{Responses: map[string]spec.Response{
+				"200":     {Content: map[string]spec.MediaType{"application/json": {Schema: ref("Out")}}},
+				"default": {},
+			}}},
+			// dangling ref → broken
+			"/c": {Get: &spec.Operation{Responses: jsonResp("200", ref("Missing"))}},
+		},
+		Components: &spec.Components{Schemas: map[string]*spec.Schema{"In": {Type: "object"}, "Out": {Type: "object"}}},
+	}
+	rep := BuildOverview(s, nil)
+
+	if rep.Resolution.Full != 1 || rep.Resolution.Partial != 1 || rep.Resolution.Broken != 1 {
+		t.Errorf("resolution = %+v, want full1 partial1 broken1", rep.Resolution)
+	}
+	if rep.Coverage.RequestBody.Have != 1 || rep.Coverage.RequestBody.Total != 1 {
+		t.Errorf("request-body coverage = %+v, want 1/1", rep.Coverage.RequestBody)
+	}
+	if rep.Coverage.ErrorResponses.Have != 1 || rep.Coverage.ErrorResponses.Total != 3 {
+		t.Errorf("error-response coverage = %+v, want 1/3", rep.Coverage.ErrorResponses)
+	}
+	if countOf(rep.Taxonomy, "default-status") != 1 {
+		t.Errorf("taxonomy default-status = %d, want 1 (%+v)", countOf(rep.Taxonomy, "default-status"), rep.Taxonomy)
+	}
+	if countOf(rep.Taxonomy, "dangling-ref") != 1 {
+		t.Errorf("taxonomy dangling-ref = %d, want 1 (%+v)", countOf(rep.Taxonomy, "dangling-ref"), rep.Taxonomy)
+	}
+	// default-status is info-level, so /b stays "clean"; health counts /a and /b.
+	if rep.Health.Score != 67 {
+		t.Errorf("health = %d, want 67 (default-status must not drop the score)", rep.Health.Score)
+	}
+}
+
+func TestInterfaceStats(t *testing.T) {
+	sp := metadata.NewStringPool()
+	iface := sp.Get("interface")
+	mkIface := func(name string, impls int) *metadata.Type {
+		by := make([]int, impls)
+		for i := range by {
+			by[i] = sp.Get(name + "Impl" + string(rune('a'+i)))
+		}
+		return &metadata.Type{Name: sp.Get(name), Pkg: sp.Get("pkg"), Kind: iface, ImplementedBy: by}
+	}
+	meta := &metadata.Metadata{
+		StringPool: sp,
+		Packages: map[string]*metadata.Package{
+			"pkg": {Files: map[string]*metadata.File{
+				"f.go": {Types: map[string]*metadata.Type{
+					"Store": mkIface("Store", 2), // ambiguous
+					"Clock": mkIface("Clock", 1), // single
+					"Empty": mkIface("Empty", 0), // unimplemented
+					"Foo":   {Name: sp.Get("Foo"), Pkg: sp.Get("pkg"), Kind: sp.Get("struct")},
+				}},
+			}},
+		},
+	}
+	st := interfaceStats(meta)
+	if st.Total != 3 || st.SingleImpl != 1 || st.Ambiguous != 1 || st.Unimplemented != 1 {
+		t.Errorf("interface stats = %+v, want total3 single1 ambiguous1 unimpl1", st)
+	}
+	if len(st.AmbiguousList) != 1 || st.AmbiguousList[0].Name != "Store" || st.AmbiguousList[0].Count != 2 {
+		t.Errorf("ambiguous list = %+v, want [Store:2]", st.AmbiguousList)
+	}
+	if interfaceStats(nil).Total != 0 {
+		t.Error("nil meta should be zero stats")
+	}
+}
+
+func TestVerbDispatch(t *testing.T) {
+	sp := metadata.NewStringPool()
+	pkg := "github.com/x/httpapi"
+	meta := &metadata.Metadata{
+		StringPool: sp,
+		Packages: map[string]*metadata.Package{
+			pkg: {Files: map[string]*metadata.File{
+				"h.go": {Functions: map[string]*metadata.Function{
+					"Widget": {Name: sp.Get("Widget"), Pkg: sp.Get(pkg),
+						MethodDispatch: []metadata.MethodBranch{{Methods: []string{"POST"}}, {Methods: []string{"GET"}}}},
+					"Plain":  {Name: sp.Get("Plain"), Pkg: sp.Get(pkg)},
+					"Single": {Name: sp.Get("Single"), Pkg: sp.Get(pkg), MethodDispatch: []metadata.MethodBranch{{Methods: []string{"GET"}}}},
+				}},
+			}},
+		},
+	}
+	vd := verbDispatch(meta)
+	if len(vd) != 1 {
+		t.Fatalf("verb dispatch = %+v, want exactly 1 (multi-method only)", vd)
+	}
+	if vd[0].Handler != "httpapi.Widget" {
+		t.Errorf("handler = %q, want httpapi.Widget", vd[0].Handler)
+	}
+	if len(vd[0].Methods) != 2 || vd[0].Methods[0] != "GET" || vd[0].Methods[1] != "POST" {
+		t.Errorf("methods = %v, want sorted [GET POST]", vd[0].Methods)
+	}
+}
+
 func TestSchemaRefs_DedupAndNested(t *testing.T) {
 	s := &spec.Schema{
 		Properties: map[string]*spec.Schema{
