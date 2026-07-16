@@ -389,7 +389,17 @@ func interfaceStats(meta *metadata.Metadata) InterfaceStats {
 			st.SingleImpl++
 		default:
 			st.Ambiguous++
-			ambig[sp.GetString(t.Name)] = n
+			// Qualify the display label the same way `seen` qualifies its
+			// dedupe key: two ambiguous interfaces with the same bare name in
+			// different packages (Store, Repository, Handler … are common)
+			// would otherwise overwrite each other's count, and — because map
+			// iteration order is randomized — which one survived would vary
+			// run to run, breaking output determinism.
+			label := sp.GetString(t.Name)
+			if p := sp.GetString(t.Pkg); p != "" {
+				label = lastSegment(p) + "." + label
+			}
+			ambig[label] = n
 		}
 	}
 	for _, pkg := range meta.Packages {

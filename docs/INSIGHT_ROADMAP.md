@@ -13,6 +13,18 @@
 > (correctness gaps) — this doc is about **observability of the pipeline's
 > reasoning**, not about resolving more types.
 
+> **Status (updated as work lands).** The Overview redesign in this PR shipped
+> the whole-API aggregate layer of §4.5: the resolution funnel + failure
+> taxonomy, coverage meters, the **interface inventory** (single-impl /
+> ambiguous / unimplemented, from `ImplementedBy`), and the **verb-dispatch**
+> explainer — all as lightweight precomputed reads (`interfaceStats`,
+> `verbDispatch`, `classifyResolution` in `overview.go`), no tracker-tree build.
+> The per-endpoint **interface-decision** overlay (§4.2) followed on its own
+> branch. Sections 1, 3, 4.5, and 5 below describe the *original* pre-redesign
+> state and the full plan; items marked **✔ shipped** are done. The remaining
+> frontier is the per-endpoint "why" — provenance (§4.1), param/generic flow
+> (§4.3), and registration chains (§4.4).
+
 ---
 
 ## 1. The core reframe: the dashboard shows *what*, not *why*
@@ -75,11 +87,11 @@ data-model audit.
 | Fact | Struct (file:line) | Dashboard today | Diagram viewer |
 |---|---|---|---|
 | Assignment provenance | `Assignment` (`internal/metadata/types.go:518`); `AssignmentMap` on `Function`/`Method`/`CallGraphEdge` (`types.go:470`, `449`, `981`) | **No** | count-only (`RootAssignments`) |
-| Interface impl set | `Type.ImplementedBy` / `Implements` / `Embeds` (`types.go:403-408`) | badge only (`Resolved`) | via trace |
+| Interface impl set | `Type.ImplementedBy` / `Implements` / `Embeds` (`types.go:403-408`) | **✔ Overview inventory** (single/ambiguous/unimplemented) + per-node badge | via trace |
 | Param→arg binding | `CallGraphEdge.ParamArgMap` (`types.go:984`) | **No** | yes (popup) |
 | Generic instantiation | `CallGraphEdge.TypeParamMap` (`types.go:985`) | **No** | yes (popup) |
 | Fluent-chain shape | `CallGraphEdge.ChainParent`/`ChainRoot` (`types.go:991-992`) | depth scalar only | indirect |
-| Verb dispatch arms | `Function.MethodDispatch` / `MethodBranch` (`types.go:476-482`) | **No** | **No** |
+| Verb dispatch arms | `Function.MethodDispatch` / `MethodBranch` (`types.go:476-482`) | **✔ Overview** (verb-dispatch explainer) | **No** |
 | Return-value origins | `Method`/`Function.ReturnVars` (`types.go:446-467`) | **No** | **No** |
 | External-type facts | `Metadata.ExternalTypes` / `ExternalTypeFact` (`types.go:169-191`) | string-marker only | **No** |
 | Go signatures | `SignatureStr` / `Signature` (`types.go:434-457`) | **No** (uses spec schema summary) | partial |
@@ -180,22 +192,23 @@ dashboard today.
 
 These lift the per-endpoint facts into API-level signals:
 
-- **Resolution funnel + failure taxonomy.** Replace the flat "needs attention"
-  list with *categorized* causes: external type, interface-erased-to-`any`,
-  **status defaulted (dynamic/switch)**, wrapper-not-matched,
-  request-body-unresolved — each linking to the exact nodes. A "status
-  defaulted" bucket would have surfaced the #155 case at a glance instead of
-  eyeballing 21 `default`s. Generalizes every gap we file.
+- **✔ shipped — Resolution funnel + failure taxonomy.** Replaces the flat
+  "needs attention" list with *categorized* causes: external type,
+  interface-erased-to-`any`, **status defaulted (dynamic/switch)**,
+  wrapper-not-matched, request-body-unresolved — each linking to the exact
+  nodes. A "status defaulted" bucket would have surfaced the #155 case at a
+  glance instead of eyeballing 21 `default`s. Generalizes every gap we file.
 - **Resolution confidence per endpoint** (beside the complexity grade): did
   body / status / params resolve via a *literal*, via *N-hop param threading*,
   or *default/fallback*? A "defaulted status" / "body = object" / "synthesized
   param" badge is the single highest-signal addition.
-- **Interface inventory:** interfaces by implementation count, unimplemented
-  interfaces, and ambiguous (multi-impl) interfaces — from `ImplementedBy` /
-  `Implements`.
-- **Verb-dispatch explainer:** where a `switch r.Method` split one handler into
-  several operations (`MethodDispatch`, `types.go:476`) — read by no UI today —
-  answers "where did this extra operation come from?" (golden-rule #8).
+- **✔ shipped — Interface inventory:** interfaces by implementation count,
+  unimplemented interfaces, and ambiguous (multi-impl) interfaces — from
+  `ImplementedBy` / `Implements` (`interfaceStats`, `overview.go`).
+- **✔ shipped — Verb-dispatch explainer:** where a `switch r.Method` split one
+  handler into several operations (`MethodDispatch`, `types.go:476`) — answers
+  "where did this extra operation come from?" (golden-rule #8) (`verbDispatch`,
+  `overview.go`).
 - **Generation diff / regression view.** Compare two runs (lazy vs legacy, or
   before/after a code change): which routes / statuses / bodies changed. This is
   the A/B done by hand in every validation session; valuable as a feature and as
@@ -209,8 +222,8 @@ shippable and testable.
 **Phase 0 — unlock what exists (cheap, high value)**
 - Add **resolution-confidence badges** to the endpoint report (defaulted status,
   generic-object body, synthesized param) — small `internal/insight` additions.
-- **Failure taxonomy** on the Overview (re-bucket issues already collected in
-  `collectOperationIssues` + a few metadata-derived causes).
+- **✔ shipped — Failure taxonomy** on the Overview (re-bucket issues already
+  collected in `collectOperationIssues` + a few metadata-derived causes).
 - (The endpoint view already exposes a tracker-tree ↔ call-graph toggle
   (`insight.js` trace-source segment), so the tree substrate is already
   user-reachable there; wiring the separate `/diagram` page's `tracker-tree`
@@ -218,12 +231,13 @@ shippable and testable.
 
 **Phase 1 — the differentiators**
 - **Param/generic type-flow overlay** (§4.3) — extraction already exists.
-- **Interface-decision panel** with alternatives + ambiguity flag (§4.2).
+- **✔ shipped — Interface-decision panel** with alternatives + ambiguity flag
+  (§4.2) — the per-endpoint trace now annotates each interface→impl hop.
 
 **Phase 2 — deeper provenance**
 - Fix `Assignment.ReturnIndex` (§4.1 prerequisite), then the **value-provenance
   panel** (§4.1).
-- **Verb-dispatch explainer** and **interface inventory** (§4.5).
+- **✔ shipped — Verb-dispatch explainer** and **interface inventory** (§4.5).
 
 **Phase 3 — bigger bets**
 - **Registration-chain inspector** (§4.4).
@@ -233,11 +247,16 @@ shippable and testable.
 
 - **`Assignment.ReturnIndex == 0` (hardcoded, `metadata.go:1428`).** Multi-return
   provenance is lossy; must be fixed before §4.1 is correct.
-- **Tracker tree is transient.** LazyTree nodes are expanded on demand and not
-  serialized (`internal/spec/lazytree.go`); insights that need the tree build it
-  via `cachedTrackerTree` (`internal/insight/metrics.go:624`), as the endpoint
-  metrics already do. No new persistence is required, but the cost is a tree
-  build per request — keep the existing cache.
+- **Tracker tree is transient — but the Overview must not build it.** The
+  whole-API Overview aggregation (`BuildOverview`) is deliberately restricted to
+  lightweight precomputed reads (spec walk + `ImplementedBy` / `MethodDispatch`
+  / issue tallies) and builds **no** tracker tree, so it stays cheap on large
+  projects. LazyTree nodes are expanded on demand and not serialized
+  (`internal/spec/lazytree.go`); the per-request tree build via
+  `cachedTrackerTree` (`internal/insight/metrics.go:624`) applies only to the
+  per-**endpoint** resolution/tree-inspector features (§4.1–4.4), as the
+  endpoint metrics already do. No new persistence is required; keep the existing
+  cache, and keep any new Overview-level insight tree-free.
 - **Determinism.** Any new insight that ranges maps whose order can reach the
   API response must sort (golden rule #1). The existing insight code already
   does this (`sortedCounts`, stable issue sort); match it.

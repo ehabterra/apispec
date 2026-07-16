@@ -206,11 +206,49 @@ func TestInterfaceStats(t *testing.T) {
 	if st.Total != 3 || st.SingleImpl != 1 || st.Ambiguous != 1 || st.Unimplemented != 1 {
 		t.Errorf("interface stats = %+v, want total3 single1 ambiguous1 unimpl1", st)
 	}
-	if len(st.AmbiguousList) != 1 || st.AmbiguousList[0].Name != "Store" || st.AmbiguousList[0].Count != 2 {
-		t.Errorf("ambiguous list = %+v, want [Store:2]", st.AmbiguousList)
+	if len(st.AmbiguousList) != 1 || st.AmbiguousList[0].Name != "pkg.Store" || st.AmbiguousList[0].Count != 2 {
+		t.Errorf("ambiguous list = %+v, want [pkg.Store:2]", st.AmbiguousList)
 	}
 	if interfaceStats(nil).Total != 0 {
 		t.Error("nil meta should be zero stats")
+	}
+}
+
+// Two ambiguous interfaces sharing a bare name in different packages must both
+// survive as distinct, package-qualified entries — a bare-name ambig key would
+// let one overwrite the other, and map-iteration order would decide which,
+// producing non-deterministic output (golden rule #1).
+func TestInterfaceStats_SameNameDifferentPackages(t *testing.T) {
+	sp := metadata.NewStringPool()
+	iface := sp.Get("interface")
+	mkIface := func(pkg, name string, impls int) *metadata.Type {
+		by := make([]int, impls)
+		for i := range by {
+			by[i] = sp.Get(pkg + name + "Impl" + string(rune('a'+i)))
+		}
+		return &metadata.Type{Name: sp.Get(name), Pkg: sp.Get(pkg), Kind: iface, ImplementedBy: by}
+	}
+	meta := &metadata.Metadata{
+		StringPool: sp,
+		Packages: map[string]*metadata.Package{
+			"github.com/me/app/orders": {Types: map[string]*metadata.Type{
+				"Store": mkIface("github.com/me/app/orders", "Store", 2),
+			}},
+			"github.com/me/app/users": {Types: map[string]*metadata.Type{
+				"Store": mkIface("github.com/me/app/users", "Store", 3),
+			}},
+		},
+	}
+	st := interfaceStats(meta)
+	if st.Ambiguous != 2 {
+		t.Fatalf("ambiguous = %d, want 2 (both Store interfaces)", st.Ambiguous)
+	}
+	got := map[string]int{}
+	for _, c := range st.AmbiguousList {
+		got[c.Name] = c.Count
+	}
+	if got["orders.Store"] != 2 || got["users.Store"] != 3 {
+		t.Errorf("ambiguous list = %+v, want orders.Store:2 users.Store:3", st.AmbiguousList)
 	}
 }
 
