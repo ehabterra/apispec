@@ -2251,26 +2251,50 @@ func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgumen
 	return argViaParent(arg, node)
 }
 
-// argViaParent walks one step up the tracker tree to recover the caller-site
-// value of a parameter ident. The parent tracker node represents the call into
-// the function the matched call lives in, and that edge's ParamArgMap maps
-// callee parameter names back to the caller's actual arguments. Returns nil
-// when the arg isn't an ident, there's no parent, or the name isn't a mapped
-// parameter. Shared by the response and request matchers.
+// argViaParent recovers the caller-site value of a parameter ident by finding
+// the call into the function the matched call lives in and reading that edge's
+// ParamArgMap (callee parameter name → caller argument). Returns nil when the
+// arg isn't an ident or no such binding exists. Shared by the response and
+// request matchers.
 func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
 	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
 		return nil
 	}
-	parent := node.GetParent()
-	if parent == nil {
+	// Fast path: the immediate parent is normally the call into the enclosing
+	// function. Kept as-is so existing resolutions are byte-for-byte unchanged.
+	if parent := node.GetParent(); parent != nil {
+		if pe := parent.GetEdge(); pe != nil && pe.ParamArgMap != nil {
+			if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
+				return &callerArg
+			}
+		}
+	}
+	// Fallback: the node may be re-homed under a receiver-variable producer
+	// rather than under its call site — e.g. `dec := json.NewDecoder(r.Body);
+	// dec.Decode(dst)` parents Decode under NewDecoder, so the immediate parent
+	// is not the call into the enclosing wrapper and the wrapper's param (dst)
+	// never resolves. Walk ancestors for the edge whose callee IS the enclosing
+	// function and read its ParamArgMap. Mirrors concreteFromParamBinding.
+	edge := node.GetEdge()
+	if edge == nil {
 		return nil
 	}
-	parentEdge := parent.GetEdge()
-	if parentEdge == nil || parentEdge.ParamArgMap == nil {
+	enclosing := edge.Caller.BaseID()
+	if enclosing == "" {
 		return nil
 	}
-	if callerArg, ok := parentEdge.ParamArgMap[arg.GetName()]; ok {
-		return &callerArg
+	for p := node.GetParent(); p != nil; p = p.GetParent() {
+		pe := p.GetEdge()
+		if pe == nil || pe.Callee.BaseID() != enclosing {
+			continue
+		}
+		if pe.ParamArgMap == nil {
+			return nil
+		}
+		if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
+			return &callerArg
+		}
+		return nil
 	}
 	return nil
 }
