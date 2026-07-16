@@ -31,7 +31,7 @@
 
 ### 1.2 Silent degradations worth surfacing or fixing
 - `internal/spec/extractor.go:515` — speculative middleware (`auth(h)`) using an **unknown auth library is silently ignored** — no warning, no diagnostic. Contradicts the unresolved-security diagnostics philosophy used elsewhere; should at least emit a diagnostic.
-- `internal/metadata/metadata.go:1598` — `assignment.ReturnIndex = 0` hardcoded: multi-return assignments always bind the first return value. Wrong tracing for `h, err := factory()` style code paths.
+- `internal/metadata/metadata.go:1598` — `assignment.ReturnIndex = 0` hardcoded: multi-return assignments always bind the first return value. Wrong tracing for `h, err := factory()` style code paths. **Verified 2026-07-16: not observable in output** — `u, err := build()` and even the adversarial error-first `err, u := build2()` both resolve the response to the concrete `User`, so response resolution uses the assigned variable's actual type, not a naive index-0 binding. No issue filed; the hardcode may still matter for provenance depth (`§4.1` in `INSIGHT_ROADMAP.md`) but produces no wrong spec today.
 - `internal/spec/tracker.go:1213` — functional-options parameter tracing uses a self-described "confusing, may not handle all cases" reverse-link workaround (relates to closed issue #38).
 - Non-string map keys silently fall back to bare `object` (`schema_mapper.go:84`, `mapper.go:2030`) — fine as behavior, but could warrant a diagnostic.
 - Many bare `object` fallbacks in `mapper.go` when a type can't be resolved — the insight report catches some of these; consider making "unresolved → object" count a first-class quality metric.
@@ -43,9 +43,9 @@ Ordered by proposed value:
 1. ~~**Gorilla Mux path params** detected but not wired into handler params~~ ✅ **DONE 2026-07-08** (§2.1 below).
 2. ~~**Generic types** (parametric structs)~~ ✅ **DONE 2026-07-12** (§2.2 below). Function generics already worked; `Page[T]`-style response envelopes returned directly at the encode site now resolve to per-instantiation schemas.
 3. ~~**Interface resolution**~~ ✅ **DONE 2026-07-12** (§2.3 below, PR #110). Interface-typed **response bodies** resolve to the concrete type across every common form (written assignment/declaration, return-through-interface, embedded-DI dispatch, interface parameters — named and `interface{}`); ambiguous cases keep the interface. Not specifically addressed: interface-typed **request** bodies (`Decode(&v)` into an interface) and cross-package multi-implementation disambiguation — separate, rarer concerns.
-4. **Handler-factory pattern, part 2** — ✅ the request-body-via-wrapper variable-decoder case is done (issue #153, PR #152); part 1 (closure-returning routes) was already done. What remains under this heading is only the `interface{}`/`any`-erasing helper case below (recovering a route's real `TResponse` when the payload is genuinely bound to `any` at the encode site).
+4. **Handler-factory pattern, part 2** — ✅ the request-body-via-wrapper variable-decoder case is done (issue #153, PR #152); part 1 (closure-returning routes) was already done. What remains under this heading is only the `interface{}`/`any`-erasing helper case below (recovering a route's real `TResponse` when the payload is genuinely bound to `any` at the encode site). **→ reproduced & filed as [#163](https://github.com/ehabterra/apispec/issues/163).**
 5. **Router passed as function parameter** (not via Mount) isn't traversed — known fiber `/products` gap; deferred feature.
-6. **`dive` validator tag** (array-element validation) — README-declared "planned".
+6. **`dive` validator tag** (array-element validation) — README-declared "planned". **→ reproduced & filed as [#165](https://github.com/ehabterra/apispec/issues/165).**
 7. **Same path + same status, different schemas** — not supported (would need `oneOf` merge).
 8. ~~**HTTP method chosen via switch/if** around `net/http` Handle~~ ✅ **DONE 2026-07-12** — a handler that branches on `r.Method` (switch or if-chain) is split into one operation per verb, request/response attributed per branch by source position (`internal/metadata/method_dispatch.go`, `internal/spec/method_dispatch.go`, `testdata/method_switch/`). This is the narrow, targeted version of §7.1's control-flow idea (an AST pattern-detector + line-range scoping, not a general CFG).
 9. Conditional/dynamic runtime route registration — explicitly out of scope; keep it documented rather than attempt it.
@@ -97,7 +97,7 @@ Cross-cutting principle (worth restating in CONTRIBUTING or docs): **auth/securi
 >
 > **Also done — interface parameters (named + `interface{}`).** A value passed into a helper via an interface parameter (`writeAnimal(w, v Animal); Encode(v)` with `writeAnimal(w, Dog{})`) resolves via `concreteFromParamBinding`, which walks up to the edge whose callee is the enclosing function (not the immediate parent, whose own same-named parameter shadowed the lookup) and reads that edge's `ParamArgMap`. Fixture route `/passed`.
 >
-> **Remaining (separate concerns, not this gap):** interface-typed **request** bodies (`Decode(&v)` into an interface), and disambiguating when several concrete types genuinely implement the interface at one site.
+> **Remaining (separate concerns, not this gap):** interface-typed **request** bodies (`Decode(&v)` into an interface) — **reproduced & filed as [#164](https://github.com/ehabterra/apispec/issues/164)** (response resolution traces the concrete, request resolution does not — an asymmetry); and disambiguating when several concrete types genuinely implement the interface at one site.
 
 ## 3. Testing gaps
 
@@ -193,6 +193,32 @@ Regenerated a second private app (multi-module chi gateway) and audited its 21 `
 - **✅ FIXED (PR #154, a #144 follow-up) — constructor-field status lost through a handler-factory closure.** The #144 resolver worked for plain-function handlers but collapsed to `default` when the handler was a closure returned by a method (`func (h *handler) Cancel() http.HandlerFunc { return func(w, r){ e := NewLmdError(msg, http.StatusBadRequest); RespondWithError(w, e) } }`). The `e :=` assignment is recorded on the *enclosing method's* AssignmentMap, and methods live in `Type.Methods` keyed by receiver, not `file.Functions` — which `findFunctionByName` never searched, so the constructor provenance was never found. Fix: new `callerAssignmentMap`/`methodAssignmentMap` resolve the enclosing function **or method** via the edge's `ParentFunction` (which already carries the receiver). Additive by construction (only former `default`s change); fixture `status_via_constructor_closure`; zero drift; 245-path project byte-identical. Recovered **26 previously-missing `400`s** on this app.
 - **⏳ REMAINING (filed) — status assigned across switch branches, then passed to the constructor.** The shared `ePaymentError(w, err)` mapper does `switch { … statusCode = http.StatusNotFound … statusCode = http.StatusBadRequest … }; RespondWithError(w, NewLmdError(msg, statusCode))`. The status argument is a *variable* whose value depends on the branch, not a literal — so `constructorArgForParam` resolves to the `statusCode` ident and `MapStatusCode` can't pin one code, leaving `default` on the 18 endpoints that error only through this mapper (and dropping their `404`). Resolving it means fanning one WriteHeader out into the **set** of branch-assigned statuses ({404, 400, 500}) — a one→many change to the response-recording loop, distinct from every single-status path today. This is the concrete instance of the §7.3 shared-error-mapper caveat; tracked as issue #155. The other 3 `default`s (`GET /`, `/metrics`, an empty stub `GetOrderHandler`) are handlers that write nothing — `default` is the honest answer.
 
+### Verified & filed 2026-07-16 — open-gap reproduction sweep (issues #163–#172)
+
+Every still-open item from this doc and the history was **reproduced on current `main` with an explicit minimal fixture** (`example.com/*` stdlib net/http repros, run through the CLI) before filing — so these are confirmed, not stale. Ten issues filed; three candidates were verified as **not** gaps and closed out here.
+
+**Filed (confirmed reproducing):**
+
+| Issue | Gap | GAP ref | Kind |
+|---|---|---|---|
+| [#163](https://github.com/ehabterra/apispec/issues/163) | Response type erased through an `any`/`interface{}` helper parameter (`APIResponse[any]{Data: data}` → `data: {}`) | §2 item 4, §2.2 | enhancement |
+| [#164](https://github.com/ehabterra/apispec/issues/164) | Interface-typed **request** body not resolved to concrete (responses do; requests don't — asymmetry) | §2.3 | enhancement |
+| [#165](https://github.com/ehabterra/apispec/issues/165) | `dive` validator tag ignored — post-`dive` constraints not applied to slice elements | §2 item 6 | enhancement |
+| [#166](https://github.com/ehabterra/apispec/issues/166) | Struct-level `validate` tag (blank marker field) silently dropped | §7.4 | enhancement |
+| [#167](https://github.com/ehabterra/apispec/issues/167) | `requestBody.required` never emitted; string `min`/`max` → no `minLength`/`maxLength` | §7.3 | enhancement |
+| [#168](https://github.com/ehabterra/apispec/issues/168) | Handler doc comment not mapped to operation `summary`/`description` | §7.4 | enhancement |
+| [#169](https://github.com/ehabterra/apispec/issues/169) | Bodyless 204/304 emit an invalid empty `content` block | §7.3 | bug |
+| [#170](https://github.com/ehabterra/apispec/issues/170) | Value encoded to a non-`ResponseWriter` `io.Writer` wrongly emitted as the response (no write-destination gating) | §7.3 | bug |
+| [#171](https://github.com/ehabterra/apispec/issues/171) | `r.FormValue` params emitted with an invalid `in: form` location | §7.2 | bug |
+| [#172](https://github.com/ehabterra/apispec/issues/172) | Repo hygiene: `.golangci.yml` / `docs/CONFIGURATION.md` / `CHANGELOG.md` all missing | §7.4 | documentation |
+
+**Verified NOT a gap (no issue filed):**
+- **Multi-return `ReturnIndex = 0`** (§1.2) — response resolves correctly even error-first; no wrong output. See the §1.2 note.
+- **Router passed as a function parameter** (net/http) — `registerUsers(mux *http.ServeMux)` routes *are* discovered. (The historical fiber `/products` case, §2 item 5, is framework-specific and was not re-tested here — it needs a fiber fixture.)
+- **Inlined HTML → template files** (§7.4) — only a test file contains inline HTML; apispecui already uses external assets. Folded into #172's description as already-done.
+
+Not re-tested (need a framework fixture or are design-scale, left as documented notes rather than filed): §2 item 5 router-as-param **fiber** case, §2 item 7 same-path/same-status `oneOf` merge, §1.2 speculative-middleware unknown-auth diagnostic, §7.1 general CFG. Existing open issues [#138](https://github.com/ehabterra/apispec/issues/138) / [#143](https://github.com/ehabterra/apispec/issues/143) / [#155](https://github.com/ehabterra/apispec/issues/155) already cover their respective gaps.
+
 ## 7. Capability-gap ideas to consider
 
 *Added 2026-07-12. These are **conceptual capability gaps** — directions worth designing independently, not a to-do list to copy from anywhere. Each entry names the idea, why it matters for this codebase, and where in **our** code it would land. Treat every item as a clean-room design prompt: decide if it's worth doing, then design and implement it from first principles. Some may already exist here in a different shape — verify against current code first.*
@@ -205,22 +231,22 @@ Regenerated a second private app (multi-module chi gateway) and audited its 21 `
 ### 7.2 Detection & inference ideas (Medium effort)
 
 - **Multi-framework detection & pattern merging.** `engine.go` detects a single framework and switches on it, so a project that mixes styles (e.g. a chi router mounted under a `net/http` mux, or a gin group embedded elsewhere) only gets one framework's patterns applied. **Idea:** let detection return the *set* of frameworks present and merge their pattern sets (with a defined precedence) before extraction. Lands in `internal/core` detection + config merge.
-- **Fold more request-shaping sources into params/bodies.** Areas where param/field inference could be broadened and consolidated (some logic today is spread across `mapper.go`/`extractor.go`): variable-bound `r.FormValue`/`r.FormFile` → query/form params, converter-typed params (`strconv`-style conversions that reveal the param type), and field-level schema inference as a cohesive step. **Idea:** treat these as first-class inference inputs rather than ad-hoc cases.
+- **Fold more request-shaping sources into params/bodies.** Areas where param/field inference could be broadened and consolidated (some logic today is spread across `mapper.go`/`extractor.go`): variable-bound `r.FormValue`/`r.FormFile` → query/form params, converter-typed params (`strconv`-style conversions that reveal the param type), and field-level schema inference as a cohesive step. **Idea:** treat these as first-class inference inputs rather than ad-hoc cases. **Note:** `r.FormValue` *is* detected today, but emitted with an invalid `in: form` location — **filed as [#171](https://github.com/ehabterra/apispec/issues/171)** (a spec-conformance bug: valid locations are query/header/path/cookie).
 
 ### 7.3 Spec-correctness ideas (Medium; several are small and independently landable)
 
-- **Bodyless status codes.** 1xx / 204 / 304 responses must carry **no** response content — audit that we never emit an empty/placeholder schema for them.
+- **Bodyless status codes.** 1xx / 204 / 304 responses must carry **no** response content — audit that we never emit an empty/placeholder schema for them. **→ reproduced & filed as [#169](https://github.com/ehabterra/apispec/issues/169)** (204/304 emit an invalid empty `content: {application/json: {}}`).
 - **Decode data-source rigor.** A decode call should only count as a request body when its source argument provably traces to the request body; audit our `requestContext` disambiguation for gaps.
-- **Write-destination gating.** A write should only become a response when its destination is the response writer, not an arbitrary `io.Writer` passed around.
-- **Conditional-status fan-out scoping.** When a status variable is reassigned across branches, only attribute the statuses reachable from the actual call site (avoid over-emitting responses).
+- **Write-destination gating.** A write should only become a response when its destination is the response writer, not an arbitrary `io.Writer` passed around. **→ reproduced & filed as [#170](https://github.com/ehabterra/apispec/issues/170)** (a value encoded to a `bytes.Buffer` is wrongly emitted as the response).
+- **Conditional-status fan-out scoping.** When a status variable is reassigned across branches, only attribute the statuses reachable from the actual call site (avoid over-emitting responses). **→ tracked as [#155](https://github.com/ehabterra/apispec/issues/155).**
 - **Helper-internal error-path filtering.** Don't attribute a shared helper's internal error-fallback write to every caller's response schema.
-- **JSON DTO format inference + `requestBody.required`.** Richer `format` inference from field types/tags, and marking request bodies required when appropriate.
+- **JSON DTO format inference + `requestBody.required`.** Richer `format` inference from field types/tags, and marking request bodies required when appropriate. **→ reproduced & filed as [#167](https://github.com/ehabterra/apispec/issues/167)** (`requestBody.required` never emitted; string `min`/`max` don't map to `minLength`/`maxLength`).
 
 ### 7.4 Smaller ideas & housekeeping (Low–Medium effort)
 
-- **Doc comments → `summary`/`description`.** Ensure a handler's Go doc comment reliably becomes the operation `summary`/`description` (we extract some — verify coverage).
-- **Struct-level validation.** Support whole-struct constraints (e.g. a `validate` tag on a blank marker field) beyond per-field validation.
-- **Repo hygiene worth having regardless:** a committed `.golangci.yml` (pin the lint config that CI already runs), a `docs/CONFIGURATION.md` reference, a `CHANGELOG.md`, and moving inlined HTML (diagram/UI templates) into template files.
+- **Doc comments → `summary`/`description`.** Ensure a handler's Go doc comment reliably becomes the operation `summary`/`description` (we extract some — verify coverage). **→ reproduced & filed as [#168](https://github.com/ehabterra/apispec/issues/168)** (doc comment not consumed at all — no `summary`/`description`).
+- **Struct-level validation.** Support whole-struct constraints (e.g. a `validate` tag on a blank marker field) beyond per-field validation. **→ reproduced & filed as [#166](https://github.com/ehabterra/apispec/issues/166)** (blank-field `validate` tag silently dropped).
+- **Repo hygiene worth having regardless:** a committed `.golangci.yml` (pin the lint config that CI already runs), a `docs/CONFIGURATION.md` reference, a `CHANGELOG.md`, and moving inlined HTML (diagram/UI templates) into template files. **→ filed as [#172](https://github.com/ehabterra/apispec/issues/172)** (`.golangci.yml`/`docs/CONFIGURATION.md`/`CHANGELOG.md` confirmed missing; the inlined-HTML sub-item is already effectively done — only a test file contains inline HTML, apispecui uses external assets).
 
 ### 7.5 Strengths to protect (not gaps)
 
