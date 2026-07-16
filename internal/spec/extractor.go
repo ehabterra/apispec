@@ -2057,12 +2057,17 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
 			statusResolved = true
 			respInfo.StatusCode = status
-		} else if callerArg := r.traceArgViaParent(statusArg, node); callerArg != nil {
-			// The status arg is a parameter of the enclosing function
-			// (e.g. WriteHeader(status) inside writeJSON(w, status, v)).
-			// Walk up to the caller's call site and read the actual value.
-			// Per-route tracker tree isolates each handler's path, so the
-			// status pairs correctly with the body resolved below.
+		} else if callerArg, _ := resolveArgThroughParams(statusArg, node); callerArg != statusArg {
+			// The status arg is a parameter threaded through one or more
+			// response helpers — e.g. WriteHeader(status) inside
+			// respondJSON(w, status, v), itself called from
+			// respondError(w, status, code, msg). Walk up EACH wrapper hop to
+			// the handler's actual literal; a single hop (the common
+			// writeJSON(w, status, v) shape) is just the one-iteration case.
+			// resolveArgThroughParams stops at the first non-parameter, so this
+			// is a strict superset of the single-hop lookup and never changes an
+			// already-resolved status. Per-route tracker isolation pairs each
+			// WriteHeader path with its handler's specific status.
 			callerStr := r.contextProvider.GetArgumentInfo(callerArg)
 			if status, ok := r.schemaMapper.MapStatusCode(callerStr); ok {
 				statusResolved = true
