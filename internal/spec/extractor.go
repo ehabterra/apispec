@@ -2068,6 +2068,12 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 				statusResolved = true
 				respInfo.StatusCode = status
 			}
+		} else if status, ok := r.statusFromConstructorField(statusArg, node); ok {
+			// The status arg is a struct field (err.Code) whose value was
+			// stored by a constructor call — the error-helper pattern
+			// RespondWithError(w, NewAPIError(msg, 401)) → w.WriteHeader(err.Code).
+			statusResolved = true
+			respInfo.StatusCode = status
 		}
 	}
 
@@ -2284,6 +2290,154 @@ func resolveArgThroughParams(arg *metadata.CallArgument, node TrackerNodeInterfa
 		cur = cur.GetParent()
 	}
 	return arg, cur
+}
+
+// statusFromConstructorField resolves a status argument shaped like `x.Field`
+// (a selector on a variable) whose value was stored into that field by a
+// constructor call — the common error-helper pattern:
+//
+//	e := NewAPIError("...", http.StatusUnauthorized) // struct field Code: code
+//	RespondWithError(w, e)                            // w.WriteHeader(err.Code)
+//
+// It follows the provenance precisely, hop by hop: the selector's base
+// variable up through any wrapper parameters to the local it aliases; that
+// local's assignment from the constructor call; the constructor's return
+// composite-literal field whose key matches the selector (`Code` ← the
+// parameter `code`); and finally that parameter's actual argument at the
+// constructor call site. Returns (status, true) only when every hop resolves
+// to a single known HTTP status — any missing or ambiguous hop returns false
+// (honest over wrong).
+func (r *ResponsePatternMatcherImpl) statusFromConstructorField(arg *metadata.CallArgument, node TrackerNodeInterface) (int, bool) {
+	if arg == nil || arg.GetKind() != metadata.KindSelector || arg.X == nil || arg.Sel == nil {
+		return 0, false
+	}
+	fieldName := arg.Sel.GetName()
+	if fieldName == "" || arg.X.GetKind() != metadata.KindIdent {
+		return 0, false
+	}
+	impl, ok := r.contextProvider.(*ContextProviderImpl)
+	if !ok || impl.meta == nil {
+		return 0, false
+	}
+
+	// 1. The selector's base variable, up through wrapper parameters to the
+	//    local it aliases (err -> e), and the tracker node where it lives.
+	baseVar, callerNode := resolveArgThroughParams(arg.X, node)
+	if baseVar == nil || baseVar.GetKind() != metadata.KindIdent || callerNode == nil {
+		return 0, false
+	}
+	callerEdge := callerNode.GetEdge()
+	if callerEdge == nil {
+		return 0, false
+	}
+
+	// 2. That local's latest assignment, which must come from a constructor call.
+	fn := findFunctionByName(impl.meta, impl.GetString(callerEdge.Caller.Pkg), impl.GetString(callerEdge.Caller.Name))
+	if fn == nil {
+		return 0, false
+	}
+	assigns, ok := fn.AssignmentMap[baseVar.GetName()]
+	if !ok || len(assigns) == 0 {
+		return 0, false
+	}
+	assign := assigns[len(assigns)-1]
+	if assign.Value.GetKind() != metadata.KindCall || assign.CalleeFunc == "" {
+		return 0, false
+	}
+
+	// 3. The constructor's return composite-literal field matching the selector,
+	//    giving the constructor parameter that field is assigned from.
+	ctor := findFunctionByName(impl.meta, assign.CalleePkg, assign.CalleeFunc)
+	if ctor == nil {
+		return 0, false
+	}
+	paramName := constructorFieldParam(ctor, fieldName)
+	if paramName == "" {
+		return 0, false
+	}
+
+	// 4. That parameter's actual argument at the constructor call site.
+	statusArg := constructorArgForParam(impl, callerEdge.Caller, &assign, paramName)
+	if statusArg == nil {
+		return 0, false
+	}
+	return r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(statusArg))
+}
+
+// constructorFieldParam returns the parameter name a constructor's return
+// composite-literal assigns into fieldName (e.g. for
+// `return &APIError{Message: message, Code: code}` and fieldName "Code" it
+// returns "code"). Empty when no return value is a composite literal keying
+// that field to a bare parameter ident.
+func constructorFieldParam(ctor *metadata.Function, fieldName string) string {
+	for i := range ctor.ReturnVars {
+		lit := compositeLitOf(&ctor.ReturnVars[i])
+		if lit == nil {
+			continue
+		}
+		for _, elt := range lit.Args {
+			if elt == nil || elt.GetKind() != metadata.KindKeyValue {
+				continue
+			}
+			key, val := elt.X, elt.Fun
+			if key == nil || val == nil {
+				continue
+			}
+			if key.GetKind() == metadata.KindIdent && key.GetName() == fieldName &&
+				val.GetKind() == metadata.KindIdent {
+				return val.GetName()
+			}
+		}
+	}
+	return ""
+}
+
+// compositeLitOf peels an optional address-of (`&T{...}`) and returns the
+// composite literal, or nil when arg is not (a pointer to) one.
+func compositeLitOf(arg *metadata.CallArgument) *metadata.CallArgument {
+	if arg == nil {
+		return nil
+	}
+	if arg.GetKind() == metadata.KindUnary && arg.X != nil {
+		arg = arg.X
+	}
+	if arg.GetKind() == metadata.KindCompositeLit {
+		return arg
+	}
+	return nil
+}
+
+// constructorArgForParam finds the constructor call edge (caller -> the
+// assignment's callee, at the assignment's call-site position) and returns the
+// argument bound to paramName via that edge's ParamArgMap. The position match
+// disambiguates multiple calls to the same constructor in one function; it
+// falls back to the first caller/callee match (the single-call case).
+func constructorArgForParam(impl *ContextProviderImpl, caller metadata.Call, assign *metadata.Assignment, paramName string) *metadata.CallArgument {
+	callerID := caller.ID()
+	valPos := impl.GetString(assign.Value.Position)
+	var chosen *metadata.CallGraphEdge
+	for i := range impl.meta.CallGraph {
+		e := &impl.meta.CallGraph[i]
+		if e.Caller.ID() != callerID ||
+			impl.GetString(e.Callee.Name) != assign.CalleeFunc ||
+			impl.GetString(e.Callee.Pkg) != assign.CalleePkg {
+			continue
+		}
+		if valPos != "" && impl.GetString(e.Callee.Position) == valPos {
+			chosen = e
+			break
+		}
+		if chosen == nil {
+			chosen = e
+		}
+	}
+	if chosen == nil || chosen.ParamArgMap == nil {
+		return nil
+	}
+	if a, ok := chosen.ParamArgMap[paramName]; ok {
+		return &a
+	}
+	return nil
 }
 
 // expandStatusesFromIdent walks the caller's function-level AssignmentMap
