@@ -3,7 +3,7 @@ name: Test
 on:
   push:
     branches: [ main, develop ]
-    paths: &go-paths
+    paths:
       - '**.go'
       - '**/go.mod'
       - '**/go.sum'
@@ -11,7 +11,12 @@ on:
       - '.github/workflows/test.yml'
   pull_request:
     branches: [ main, develop ]
-    paths: *go-paths
+    paths:
+      - '**.go'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'scripts/**'
+      - '.github/workflows/test.yml'
   workflow_dispatch:
 
 permissions:
