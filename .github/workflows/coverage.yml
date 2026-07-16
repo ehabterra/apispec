@@ -55,9 +55,7 @@ jobs:
           echo "No changes to commit"
         else
           echo "Committing changes..."
-          # [skip ci] stops this push from re-triggering the workflow — a PAT
-          # push (unlike GITHUB_TOKEN) would otherwise fire it again.
-          git commit -m "Update coverage badge [skip ci]"
+          git commit -m "Update coverage badge"
 
           # Push changes to main branch
           echo "Pushing to main branch"
