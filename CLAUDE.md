@@ -113,6 +113,20 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
    splitting; the POST default gates name inference off for plain
    registrations but does *not* block dispatch splitting
    (`testdata/method_switch` guards this).
+9. **Fix the root cause or file an issue — never a workaround.** When a
+   feature is blocked by a real precision gap in a lower layer (assignment,
+   parameter, variable, type, chain, generics, or interface resolution;
+   metadata facts; the tracker), do **not** paper over it in the upper layer
+   with a heuristic — a type-name denylist/allowlist, a hardcoded special
+   case, or a "good enough" guess. Fix the actual limitation, or if that's out
+   of scope, **open a GitHub issue** describing the root cause (with a
+   reproduction) and mark the dependent work blocked on it. A heuristic that
+   trades one wrong answer for another (a false negative for a false positive)
+   is not progress. This is the operational form of #7: when resolution is
+   genuinely blocked, the honest move is to report the gap, not to guess around
+   it. (Origin: issue #178 — `Type.Implements` omitting stdlib interfaces
+   blocked the #170 write-destination gate; the denylist attempt was reverted
+   and the metadata gap was filed instead.)
 
 ## Testing conventions
 
