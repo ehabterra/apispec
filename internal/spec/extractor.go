@@ -2362,23 +2362,29 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	return []*ResponseInfo{respInfo}
 }
 
-// traceArgViaParent walks one step up the tracker tree to recover the
-// caller-site value of a parameter ident. When a response pattern matches
-// inside a helper (writeJSON-style) — e.g. WriteHeader(status) where
-// status is a parameter of writeJSON — the matched call's args reference
-// parameters, not literals. The parent tracker node represents the call
-// to the helper, and that edge's ParamArgMap maps callee parameter
+// traceArgViaParent walks up the tracker tree to recover the caller-site value
+// of a parameter ident. When a response pattern matches inside a helper
+// (writeJSON-style) — e.g. Encode(v) where v is a parameter of writeJSON — the
+// matched call's args reference parameters, not literals. Each parent tracker
+// node represents a call, and that edge's ParamArgMap maps callee parameter
 // names back to the caller's actual arguments.
 //
-// Returns nil when the arg isn't an ident, there is no parent node,
-// or the parameter name isn't present in the parent's ParamArgMap.
+// It follows the parameter across MULTIPLE hops (writeJSON -> render -> Encode),
+// stopping at the first non-parameter — the concrete value — via
+// resolveArgThroughParams. A single hop resolved only the outermost helper's
+// parameter, leaving `v any` at a generic object for two-hop helper chains
+// (issue #180). Returns nil when nothing resolves (the arg is unchanged).
 //
-// Per-route isolation in the tracker tree is what makes this sound:
-// each handler's path through the helper is a distinct tracker subtree,
-// so two routes that call writeJSON with different statuses each
-// resolve to their own value independently.
+// Per-route isolation in the tracker tree is what makes this sound: each
+// handler's path through the helpers is a distinct tracker subtree, so two
+// routes that call the same helper with different values each resolve to their
+// own value independently.
 func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
-	return argViaParent(arg, node)
+	resolved, _ := resolveArgThroughParams(arg, node)
+	if resolved == arg {
+		return nil
+	}
+	return resolved
 }
 
 // argViaParent recovers the caller-site value of a parameter ident by finding
