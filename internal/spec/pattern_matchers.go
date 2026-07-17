@@ -759,6 +759,14 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	// (json.Decode, json.Unmarshal, render.DecodeJSON, ...). Receiver-based
 	// patterns like *gin.Context.BindJSON are already unambiguous because
 	// the receiver type IS the request.
+	//
+	// Note: this gate is evaluated once per tracker node, and a decoder helper
+	// shared by several routes has a single node — so the source cannot be
+	// resolved per-route HERE without attributing one route's argument to all
+	// (an io.Reader helper decoding r.Body in one route and a buffer in another
+	// would otherwise leak the body into the second). The known io.Reader-helper
+	// false negative is left to a per-route gate rather than risk that false
+	// positive. See the discussion on issue #170's response counterpart.
 	if r.pattern.RequireRequestSource && r.bodyResolver != nil && r.bodyResolver.Enabled() {
 		src := r.bodySource(edge)
 		if src == nil || !r.bodyResolver.IsRequestSource(src, edge) {

@@ -2057,15 +2057,20 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	// Write-destination gating: only meaningful for destination-carrying
-	// encoders (json.NewEncoder(x).Encode(v)). Drop the response only when x
-	// provably resolves to a concrete non-writer — a bytes.Buffer, a hash, a log
-	// sink. A proven writer, a writer-compatible interface (io.Writer helper
-	// param), or an unresolvable destination all stay permissive, so a real
-	// response is never dropped ("honest over wrong"). Mirrors the request-source
-	// gating on RequestBodyPattern. See issue #170.
+	// encoders (json.NewEncoder(x).Encode(v)). Drop the response only when the
+	// direct destination x is a known sink — a bytes.Buffer, a hash, a log. A
+	// writer, a custom writer, an interface (io.Writer helper parameter), or an
+	// unresolved destination stay permissive, so a real response is never
+	// dropped ("honest over wrong").
+	//
+	// The destination is NOT resolved per-route through wrapper parameters here:
+	// a helper shared by several routes is a single tracker node, so resolving
+	// its argument at this once-evaluated gate would attribute one route's
+	// destination to all. The direct check plus per-route response attribution
+	// already handles the helper case (each route only sees its own encode).
+	// Mirrors the request-source gating on RequestBodyPattern. See issue #170.
 	if r.pattern.RequireResponseDestination && r.destResolver != nil && r.destResolver.Enabled() {
-		dst := r.destination(edge)
-		if dst != nil && r.destResolver.IsProvablyNonWriter(dst, edge) {
+		if dst := r.destination(edge); dst != nil && r.destResolver.IsProvablyNonWriter(dst, edge) {
 			return false
 		}
 	}
@@ -2074,15 +2079,14 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 }
 
 // destination returns the CallArgument that carries the encoder's write
-// destination for the given call edge, according to the pattern configuration.
+// destination for the given call edge — for json.NewEncoder(x).Encode(v) the
+// factory's first argument x. Returns nil when the pattern carries no
+// receiver-based destination.
 func (r *ResponsePatternMatcherImpl) destination(edge *metadata.CallGraphEdge) *metadata.CallArgument {
-	if edge == nil {
+	if edge == nil || !r.pattern.DestFromReceiver {
 		return nil
 	}
-	if r.pattern.DestFromReceiver {
-		return resolveReceiverSource(edge, r.destResolver.metadata())
-	}
-	return nil
+	return resolveReceiverSource(edge, r.destResolver.metadata())
 }
 
 // GetPattern returns the response pattern

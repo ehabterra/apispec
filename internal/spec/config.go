@@ -88,24 +88,26 @@ type RequestContextConfig struct {
 	BodyAccessors []string `yaml:"bodyAccessors,omitempty" json:"bodyAccessors,omitempty"`
 }
 
-// ResponseContextConfig describes how to recognise the HTTP response writer,
-// so a generic encoder's write destination can be traced to it. It is the
-// write-side mirror of RequestContextConfig (issue #170).
+// ResponseContextConfig gates generic encoders (json.NewEncoder(x).Encode(v))
+// on their write destination, so a value written somewhere OTHER than the HTTP
+// response — a bytes.Buffer, a hash, a log sink — is not mistaken for the
+// operation response (issue #170). It is the write-side mirror of
+// RequestContextConfig.
+//
+// The gate is deliberately PERMISSIVE ("honest over wrong", golden rule #7):
+// the encoder destination is first resolved through the call graph to its
+// concrete value, then dropped ONLY when that value's type matches a configured
+// known-sink pattern. A destination that is the response writer, a custom
+// writer, an interface (io.Writer), or simply unresolved is kept — a real
+// response is never dropped just because it could not be proven to be a writer.
 type ResponseContextConfig struct {
-	// WriterTypeRegexes match the (fully-qualified) types that ARE an HTTP
-	// response writer. A destination resolving to one of these keeps the
-	// response. Examples:
-	//   net/http -> "^net/http\\.ResponseWriter$"
-	//   gin      -> "^github\\.com/gin-gonic/gin\\.ResponseWriter$"
-	WriterTypeRegexes []string `yaml:"writerTypeRegexes,omitempty" json:"writerTypeRegexes,omitempty"`
-
-	// WriterCompatibleTypeRegexes match interface types that an HTTP response
-	// writer SATISFIES — most importantly io.Writer, the parameter type of the
-	// ubiquitous `func writeJSON(w io.Writer, v any)` helper. A destination of
-	// such a type could dynamically be the response writer, so the response is
-	// kept (the gate rejects only destinations that provably cannot be the
-	// writer). Leave empty to treat every non-writer type as disqualifying.
-	WriterCompatibleTypeRegexes []string `yaml:"writerCompatibleTypeRegexes,omitempty" json:"writerCompatibleTypeRegexes,omitempty"`
+	// WriterExcludeTypeRegexes match the (fully-qualified) types of write
+	// destinations that are PROVABLY not the HTTP response — standard-library
+	// sinks a handler encodes into for reasons unrelated to the response. A
+	// destination resolving to one of these disqualifies the encoded value.
+	// Everything else is kept. Examples:
+	//   "^\\*?bytes\\.Buffer$", "^\\*?strings\\.Builder$", "^hash\\.Hash$"
+	WriterExcludeTypeRegexes []string `yaml:"writerExcludeTypeRegexes,omitempty" json:"writerExcludeTypeRegexes,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names
@@ -217,15 +219,16 @@ type ResponsePattern struct {
 	// DefaultContentType overrides the config default content type when set
 	DefaultContentType string `yaml:"defaultContentType,omitempty" json:"defaultContentType,omitempty"`
 
-	// RequireResponseDestination gates the pattern on write-destination: the
-	// encoded/written value only becomes a response when its destination writer
-	// provably traces to the HTTP response writer (see ResponseContext). This
-	// is the symmetric counterpart of RequestBodyPattern.RequireRequestSource
-	// and disambiguates generic encoders (json.NewEncoder(x).Encode(v)) that
-	// may write to some other io.Writer — a bytes.Buffer, a hash, a log — rather
-	// than the response. Only meaningful for destination-carrying encoders;
-	// receiver-based writers (net/http.ResponseWriter.Write) are already
-	// unambiguous because their receiver IS the writer.
+	// RequireResponseDestination gates the pattern on write-destination: a
+	// generic encoder (json.NewEncoder(x).Encode(v)) is dropped as a response
+	// ONLY when x provably resolves to a known sink (see ResponseContext) — a
+	// bytes.Buffer, a hash, a log. A destination that is the response writer, a
+	// custom writer, an interface, or unresolved is kept, so a real response is
+	// never dropped (permissive; "honest over wrong"). Symmetric counterpart of
+	// RequestBodyPattern.RequireRequestSource. Only meaningful for
+	// destination-carrying encoders; receiver-based writers
+	// (net/http.ResponseWriter.Write) are already unambiguous because their
+	// receiver IS the writer.
 	RequireResponseDestination bool `yaml:"requireResponseDestination,omitempty" json:"requireResponseDestination,omitempty"`
 	// DestFromReceiver resolves the write destination from the encoder factory
 	// receiver — for json.NewEncoder(w).Encode(v), the destination is

@@ -20,14 +20,14 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// TestResponseDestResolver_Disabled: with no ResponseContext configured the
+// TestResponseDestResolver_Disabled: with no exclude patterns configured the
 // resolver never rejects, preserving prior behaviour (zero-drift guarantee).
 func TestResponseDestResolver_Disabled(t *testing.T) {
 	meta := newTestMeta()
 	cp := NewContextProvider(meta)
 	r := newResponseDestResolver(&APISpecConfig{}, cp)
 	if r.Enabled() {
-		t.Fatal("expected resolver to be disabled with no WriterTypeRegexes")
+		t.Fatal("expected resolver to be disabled with no exclude patterns")
 	}
 	// Even a clearly-non-writer destination is not rejected when disabled.
 	if r.IsProvablyNonWriter(mkIdent(meta, "buf", "*bytes.Buffer"), &metadata.CallGraphEdge{}) {
@@ -35,10 +35,10 @@ func TestResponseDestResolver_Disabled(t *testing.T) {
 	}
 }
 
-// TestResponseDestResolver_ProvablyNonWriter: once ResponseContext is
-// configured, only a destination that resolves to a concrete non-writer type is
-// rejected; writers, writer-compatible interfaces, and unresolvable
-// destinations are all kept.
+// TestResponseDestResolver_ProvablyNonWriter: once exclude patterns are
+// configured, only a destination whose resolved type matches a known-sink
+// pattern is rejected; writers, custom/unknown types, interfaces, and
+// unresolvable destinations are all kept (permissive, honest over wrong).
 func TestResponseDestResolver_ProvablyNonWriter(t *testing.T) {
 	meta := newTestMeta()
 	cp := NewContextProvider(meta)
@@ -54,17 +54,16 @@ func TestResponseDestResolver_ProvablyNonWriter(t *testing.T) {
 		arg     *metadata.CallArgument
 		nonWrit bool // want IsProvablyNonWriter
 	}{
-		// Writers — kept.
+		// Known sinks — rejected.
+		{"bytes.Buffer", mkIdent(meta, "buf", "*bytes.Buffer"), true},
+		{"strings.Builder", mkIdent(meta, "b", "*strings.Builder"), true},
+		{"os.File", mkIdent(meta, "f", "*os.File"), true},
+		{"hash.Hash", mkIdent(meta, "h", "hash.Hash"), true},
+		// Response writer and writer-compatible/unknown — kept.
 		{"response writer param w", mkIdent(meta, "w", "net/http.ResponseWriter"), false},
-		{"httptest recorder", mkIdent(meta, "rec", "*net/http/httptest.ResponseRecorder"), false},
-		// Writer-compatible interfaces — kept (could be the writer).
 		{"io.Writer helper param", mkIdent(meta, "dst", "io.Writer"), false},
-		{"io.WriteCloser", mkIdent(meta, "wc", "io.WriteCloser"), false},
-		// Concrete non-writers — rejected.
-		{"bytes.Buffer is a non-writer", mkIdent(meta, "buf", "*bytes.Buffer"), true},
-		{"os.File is a non-writer", mkIdent(meta, "f", "*os.File"), true},
-		{"a named hash type is a non-writer", mkIdent(meta, "h", "crypto/sha256.digest"), true},
-		// Unresolvable — kept (permissive).
+		{"custom writer type", mkIdent(meta, "cw", "example.com/app.LoggingWriter"), false},
+		// Unresolvable — kept.
 		{"untyped ident stays permissive", mkIdent(meta, "x", ""), false},
 	}
 	for _, tc := range cases {
@@ -78,7 +77,7 @@ func TestResponseDestResolver_ProvablyNonWriter(t *testing.T) {
 }
 
 // TestResponseDestResolver_AddressOf: &buf strips to buf, so a concrete buffer
-// is still recognised as a non-writer, while &w stays a writer.
+// is still recognised as a sink, while &w (a writer) is kept.
 func TestResponseDestResolver_AddressOf(t *testing.T) {
 	meta := newTestMeta()
 	cp := NewContextProvider(meta)
@@ -88,9 +87,9 @@ func TestResponseDestResolver_AddressOf(t *testing.T) {
 
 	addrBuf := metadata.NewCallArgument(meta)
 	addrBuf.SetKind(metadata.KindUnary)
-	addrBuf.X = mkIdent(meta, "buf", "*bytes.Buffer")
+	addrBuf.X = mkIdent(meta, "buf", "bytes.Buffer")
 	if !r.IsProvablyNonWriter(addrBuf, &metadata.CallGraphEdge{}) {
-		t.Error("&buf should be recognised as a concrete non-writer")
+		t.Error("&buf should be recognised as a sink")
 	}
 
 	addrW := metadata.NewCallArgument(meta)
@@ -102,8 +101,9 @@ func TestResponseDestResolver_AddressOf(t *testing.T) {
 }
 
 // TestResponseDestResolver_TypeTracing covers identType's fallbacks: a variable
-// whose concrete type is recorded on a local assignment resolves through, and a
-// selector/call destination uses its recorded result type.
+// whose concrete type is recorded on a local assignment resolves through, a
+// selector/call destination uses its recorded result type, and an unsupported
+// kind stays permissive.
 func TestResponseDestResolver_TypeTracing(t *testing.T) {
 	meta := newTestMeta()
 	cp := NewContextProvider(meta)
@@ -111,18 +111,18 @@ func TestResponseDestResolver_TypeTracing(t *testing.T) {
 		Framework: FrameworkConfig{ResponseContext: netHTTPResponseContext},
 	}, cp)
 
-	t.Run("concrete type recovered from assignment ConcreteType", func(t *testing.T) {
+	t.Run("sink type recovered from assignment ConcreteType", func(t *testing.T) {
 		edge := &metadata.CallGraphEdge{
 			AssignmentMap: map[string][]metadata.Assignment{
 				"buf": {{ConcreteType: meta.StringPool.Get("bytes.Buffer")}},
 			},
 		}
 		if !r.IsProvablyNonWriter(mkIdent(meta, "buf", ""), edge) {
-			t.Error("buf whose assignment ConcreteType is bytes.Buffer should be a non-writer")
+			t.Error("buf whose assignment ConcreteType is bytes.Buffer should be a sink")
 		}
 	})
 
-	t.Run("writer type recovered from assignment keeps the response", func(t *testing.T) {
+	t.Run("writer type from assignment keeps the response", func(t *testing.T) {
 		edge := &metadata.CallGraphEdge{
 			AssignmentMap: map[string][]metadata.Assignment{
 				"rw": {{ConcreteType: meta.StringPool.Get("net/http.ResponseWriter")}},
@@ -134,10 +134,10 @@ func TestResponseDestResolver_TypeTracing(t *testing.T) {
 	})
 
 	t.Run("selector destination uses its resolved type", func(t *testing.T) {
-		sel := mkSelector(meta, mkIdent(meta, "c", "*gin.Context"), mkIdent(meta, "buf", ""))
+		sel := mkSelector(meta, mkIdent(meta, "s", "app.Server"), mkIdent(meta, "buf", ""))
 		sel.ResolvedType = meta.StringPool.Get("bytes.Buffer")
 		if !r.IsProvablyNonWriter(sel, &metadata.CallGraphEdge{}) {
-			t.Error("a selector resolving to bytes.Buffer should be a non-writer")
+			t.Error("a selector resolving to bytes.Buffer should be a sink")
 		}
 	})
 
@@ -145,16 +145,16 @@ func TestResponseDestResolver_TypeTracing(t *testing.T) {
 		lit := metadata.NewCallArgument(meta)
 		lit.SetKind(metadata.KindLiteral)
 		if r.IsProvablyNonWriter(lit, &metadata.CallGraphEdge{}) {
-			t.Error("a literal destination is not provably a non-writer")
+			t.Error("a literal destination is not provably a sink")
 		}
 		if r.IsProvablyNonWriter(nil, &metadata.CallGraphEdge{}) {
-			t.Error("a nil destination is not provably a non-writer")
+			t.Error("a nil destination is not provably a sink")
 		}
 	})
 }
 
 // TestNewResponseDestResolver_EdgeCases covers the constructor's nil-config and
-// invalid-regex handling for both regex lists.
+// invalid-regex handling.
 func TestNewResponseDestResolver_EdgeCases(t *testing.T) {
 	cp := NewContextProvider(newTestMeta())
 
@@ -163,29 +163,27 @@ func TestNewResponseDestResolver_EdgeCases(t *testing.T) {
 	}
 
 	bad := &APISpecConfig{Framework: FrameworkConfig{ResponseContext: ResponseContextConfig{
-		WriterTypeRegexes: []string{"("}, // invalid regex, skipped
+		WriterExcludeTypeRegexes: []string{"("}, // invalid regex, skipped
 	}}}
 	if newResponseDestResolver(bad, cp).Enabled() {
-		t.Error("an invalid writer regex should be skipped, leaving the resolver disabled")
+		t.Error("an invalid regex should be skipped, leaving the resolver disabled")
 	}
 
 	mix := &APISpecConfig{Framework: FrameworkConfig{ResponseContext: ResponseContextConfig{
-		WriterTypeRegexes:           []string{"(", `^net/http\.ResponseWriter$`}, // one bad, one good
-		WriterCompatibleTypeRegexes: []string{"[", `^io\.Writer$`},               // one bad, one good
+		WriterExcludeTypeRegexes: []string{"(", `^\*?bytes\.Buffer$`}, // one bad, one good
 	}}}
 	r := newResponseDestResolver(mix, cp)
 	if !r.Enabled() {
-		t.Error("a valid writer regex should enable the resolver despite an invalid sibling")
+		t.Error("a valid exclude regex should enable the resolver despite an invalid sibling")
 	}
-	// The valid compatible regex still applies.
 	m := newTestMeta()
-	if r2 := newResponseDestResolver(mix, NewContextProvider(m)); r2.IsProvablyNonWriter(mkIdent(m, "dst", "io.Writer"), &metadata.CallGraphEdge{}) {
-		t.Error("io.Writer should be kept via the valid compatible regex")
+	if r2 := newResponseDestResolver(mix, NewContextProvider(m)); !r2.IsProvablyNonWriter(mkIdent(m, "buf", "*bytes.Buffer"), &metadata.CallGraphEdge{}) {
+		t.Error("the valid exclude regex should still reject bytes.Buffer")
 	}
 }
 
 // TestResponsePatternMatcher_Destination covers ResponsePatternMatcherImpl.
-// destination across its branches: nil edge, DestFromReceiver off, and the
+// destination across its branches: nil node, DestFromReceiver off, and the
 // receiver-chain resolution that yields the encoder factory's first argument.
 func TestResponsePatternMatcher_Destination(t *testing.T) {
 	meta := newTestMeta()

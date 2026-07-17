@@ -24,22 +24,21 @@ var netHTTPRequestContext = RequestContextConfig{
 	BodyAccessors: []string{`^Body$`},
 }
 
-// netHTTPResponseContext is the ResponseContext preset for plain net/http
-// handlers: the response writer is the http.ResponseWriter parameter. Chi and
-// Mux share it (their handlers also take an http.ResponseWriter). The
-// compatible list keeps the ubiquitous `func writeJSON(w io.Writer, v any)`
-// helper shape — an io.Writer parameter could dynamically be the response
-// writer, so responses written through it must not be dropped.
+// netHTTPResponseContext is the ResponseContext preset shared by the net/http
+// family (net/http, chi, mux — all encode to an http.ResponseWriter). It lists
+// standard-library sinks a handler encodes into for reasons unrelated to the
+// response, so a value written to one of them is not mistaken for the response.
+// Only known sinks are listed: an unrecognised destination (a custom writer,
+// an io.Writer parameter that could be the writer) is kept.
 var netHTTPResponseContext = ResponseContextConfig{
-	WriterTypeRegexes: []string{
-		`^net/http\.ResponseWriter$`,
-		`^\*?net/http\.response$`,
-		`^\*?net/http/httptest\.ResponseRecorder$`,
-	},
-	WriterCompatibleTypeRegexes: []string{
-		`^io\.Writer$`,
-		`^io\.WriteCloser$`,
-		`^io\.ReadWriter$`,
+	WriterExcludeTypeRegexes: []string{
+		`^\*?bytes\.Buffer$`,
+		`^\*?strings\.Builder$`,
+		`^\*?bufio\.Writer$`,
+		`^\*?os\.File$`,
+		`^hash\.Hash$`,
+		`^hash/.*\.Hash.*$`,
+		`^\*?crypto/.*$`, // e.g. *crypto/sha256.digest from sha256.New()
 	},
 }
 

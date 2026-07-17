@@ -23,60 +23,49 @@ import (
 // responseDestResolver is the write-side counterpart of bodySourceResolver
 // (issue #170). It decides whether an encoder's write destination disqualifies
 // the encoded value from being the operation's response — i.e. whether the
-// value was written somewhere OTHER than the HTTP response writer (a
-// bytes.Buffer, a hash, a log sink).
+// value was written to a known sink (a bytes.Buffer, a hash, a log) rather than
+// to the HTTP response.
 //
-// It is deliberately CONSERVATIVE ("honest over wrong", golden rule #7): it
-// rejects a destination only when it can PROVE the destination is a concrete
-// non-writer. A proven writer, a writer-compatible interface (io.Writer — the
-// ubiquitous `func writeJSON(w io.Writer, v any)` helper shape), or a
-// destination it cannot resolve all stay permissive, so a legitimate response
-// is never dropped. The narrower risk it accepts is missing a false positive
-// that hides behind an interface indirection — preferable to regressing real
-// responses.
+// It is deliberately PERMISSIVE ("honest over wrong", golden rule #7). The
+// destination is first resolved through the call graph to its concrete value
+// (see ResponsePatternMatcherImpl.destination), then rejected ONLY when that
+// value's type matches a configured known-sink pattern. A destination that is
+// the response writer, a custom writer type, an interface (io.Writer), or one
+// that cannot be resolved is kept — the gate never drops a real response merely
+// because it could not prove the destination is a writer.
 type responseDestResolver struct {
 	contextProvider ContextProvider
-	writerTypeREs   []*regexp.Regexp // types that ARE a response writer
-	compatibleREs   []*regexp.Regexp // interfaces a response writer satisfies (io.Writer, ...)
+	excludeREs      []*regexp.Regexp // types that are provably NOT the response
 }
 
 // newResponseDestResolver compiles the configured regexes once. Enabled()
-// reports false when no ResponseContext writer types are configured; callers
-// then fall back to prior (fully permissive) behaviour.
+// reports false when no exclude patterns are configured; callers then fall back
+// to prior (fully permissive) behaviour.
 func newResponseDestResolver(cfg *APISpecConfig, contextProvider ContextProvider) *responseDestResolver {
 	r := &responseDestResolver{contextProvider: contextProvider}
 	if cfg == nil {
 		return r
 	}
-	for _, p := range cfg.Framework.ResponseContext.WriterTypeRegexes {
+	for _, p := range cfg.Framework.ResponseContext.WriterExcludeTypeRegexes {
 		if re, err := cachedRegex(p); err == nil {
-			r.writerTypeREs = append(r.writerTypeREs, re)
-		}
-	}
-	for _, p := range cfg.Framework.ResponseContext.WriterCompatibleTypeRegexes {
-		if re, err := cachedRegex(p); err == nil {
-			r.compatibleREs = append(r.compatibleREs, re)
+			r.excludeREs = append(r.excludeREs, re)
 		}
 	}
 	return r
 }
 
-// Enabled reports whether ResponseContext writer types are configured. When
-// false, the resolver is skipped and matchers keep their prior behaviour.
+// Enabled reports whether any exclude patterns are configured. When false, the
+// resolver is skipped and matchers keep their prior behaviour.
 func (r *responseDestResolver) Enabled() bool {
-	return r != nil && len(r.writerTypeREs) > 0
+	return r != nil && len(r.excludeREs) > 0
 }
 
 // IsProvablyNonWriter reports whether the destination argument resolves to a
-// concrete type that is definitely NOT the response writer, and so the encoded
-// value must not be treated as the response. It returns false — permissive —
-// whenever the destination:
-//   - is a configured response-writer type, or
-//   - is a writer-compatible interface (io.Writer, ...), or
-//   - cannot be resolved to a concrete type.
-//
-// Only a destination that resolves to a specific, non-writer, non-compatible
-// type (bytes.Buffer, os.File, a hash, ...) is reported as provably non-writer.
+// type that is a configured known sink and therefore definitely NOT the HTTP
+// response. It returns false — permissive — whenever the destination cannot be
+// resolved to a type or that type is not on the exclude list, so a proven
+// writer, a custom writer, an io.Writer interface, or an unknown destination
+// are all kept.
 func (r *responseDestResolver) IsProvablyNonWriter(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) bool {
 	if !r.Enabled() {
 		return false
@@ -85,13 +74,7 @@ func (r *responseDestResolver) IsProvablyNonWriter(arg *metadata.CallArgument, e
 	if t == "" {
 		return false // unresolved — stay permissive
 	}
-	if matchAny(r.writerTypeREs, t) {
-		return false // it IS a writer
-	}
-	if matchAny(r.compatibleREs, t) {
-		return false // could be the writer (e.g. an io.Writer parameter)
-	}
-	return true
+	return matchAny(r.excludeREs, t)
 }
 
 // leafType resolves the destination expression to the type of its underlying
@@ -144,6 +127,11 @@ func (r *responseDestResolver) identType(arg *metadata.CallArgument, edge *metad
 		callerPkg := r.contextProvider.GetString(edge.Caller.Pkg)
 		_, _, originArg, _ := metadata.TraceVariableOrigin(arg.GetName(), callerName, callerPkg, meta)
 		if originArg != nil && originArg != arg {
+			// Prefer the resolved (concrete/instantiated) type so a traced
+			// generic or wrapper argument keeps its real type for gating.
+			if t := originArg.GetResolvedType(); t != "" {
+				return t
+			}
 			return originArg.GetType()
 		}
 	}
