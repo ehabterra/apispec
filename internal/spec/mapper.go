@@ -595,6 +595,15 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 			description = "Status code could not be determined"
 		}
 
+		// Bodyless status codes (204, 304, 1xx) must not carry a response body
+		// per the OpenAPI spec — emit them with no `content` block. Any body the
+		// handler appears to write is spurious for these codes and would produce
+		// an invalid document.
+		if isBodylessStatus(resp.StatusCode) {
+			responses[statusCode] = Response{Description: description}
+			continue
+		}
+
 		responses[statusCode] = Response{
 			Description: description,
 			Content: map[string]MediaType{
@@ -606,6 +615,14 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	}
 
 	return responses
+}
+
+// isBodylessStatus reports whether an HTTP status code must not carry a
+// response body per RFC 7231 / the OpenAPI spec: 1xx (informational), 204
+// (No Content), and 304 (Not Modified). Responses for these codes must omit
+// the `content` block entirely.
+func isBodylessStatus(code int) bool {
+	return (code >= 100 && code < 200) || code == 204 || code == 304
 }
 
 // setOperationOnPathItem sets an operation on a path item based on HTTP method
