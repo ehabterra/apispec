@@ -307,9 +307,22 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 			}
 		}
 
+		// r.FormValue-style reads carry the sentinel location "form", which is
+		// not a valid OpenAPI parameter location (issue #171). Resolve it to a
+		// real location from the HTTP method: for body-bearing methods
+		// (POST/PUT/PATCH) the values form an application/x-www-form-urlencoded
+		// request body; otherwise (GET/HEAD/DELETE/…) they are query params —
+		// Go's FormValue reads the URL query for those. A pre-existing request
+		// body (e.g. decoded JSON) is never clobbered: form params then fall
+		// back to query so we still emit a valid location.
+		params, formBody := resolveFormParams(route.Method, route.Params, operation.RequestBody != nil)
+		if formBody != nil {
+			operation.RequestBody = formBody
+		}
+
 		// Add parameters (deduplicated and ensure all path params)
-		if len(route.Params) > 0 {
-			operation.Parameters = deduplicateParameters(route.Params)
+		if len(params) > 0 {
+			operation.Parameters = deduplicateParameters(params)
 		} else {
 			operation.Parameters = nil
 		}
@@ -530,6 +543,82 @@ func isGenericObjectResponse(r *ResponseInfo) bool {
 		return false
 	}
 	return s.Type == "" || s.Type == "object"
+}
+
+// methodTakesRequestBody reports whether an HTTP method conventionally carries
+// a request body — the methods for which form values live in the body rather
+// than the query string.
+func methodTakesRequestBody(method string) bool {
+	switch strings.ToUpper(method) {
+	case "POST", "PUT", "PATCH":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveFormParams rewrites the sentinel "form" parameter location (emitted for
+// r.FormValue-style reads) into a valid OpenAPI shape (issue #171). Form values
+// are ambiguous in Go — FormValue reads the URL query for GET and the
+// urlencoded body for POST — so the HTTP method decides:
+//
+//   - body-bearing method (POST/PUT/PATCH) with no existing request body:
+//     the form params are folded into an application/x-www-form-urlencoded
+//     request body and removed from the parameter list.
+//   - otherwise: each form param is rewritten to `in: query`, a valid location.
+//
+// hasRequestBody guards against clobbering an already-detected body (e.g.
+// decoded JSON); in that case the query-param fallback is used. Non-form
+// params pass through untouched. The input slice is never mutated.
+func resolveFormParams(method string, params []Parameter, hasRequestBody bool) ([]Parameter, *RequestBody) {
+	hasForm := false
+	for i := range params {
+		if params[i].In == "form" {
+			hasForm = true
+			break
+		}
+	}
+	if !hasForm {
+		return params, nil
+	}
+
+	kept := make([]Parameter, 0, len(params))
+	var formParams []Parameter
+	for _, p := range params {
+		if p.In == "form" {
+			formParams = append(formParams, p)
+			continue
+		}
+		kept = append(kept, p)
+	}
+
+	if methodTakesRequestBody(method) && !hasRequestBody {
+		schema := &Schema{Type: "object", Properties: make(map[string]*Schema, len(formParams))}
+		for _, fp := range formParams {
+			s := fp.Schema
+			if s == nil {
+				s = &Schema{Type: "string"}
+			}
+			schema.Properties[fp.Name] = s
+			if fp.Required {
+				schema.Required = append(schema.Required, fp.Name)
+			}
+		}
+		sort.Strings(schema.Required)
+		body := &RequestBody{
+			Content: map[string]MediaType{
+				"application/x-www-form-urlencoded": {Schema: schema},
+			},
+		}
+		return kept, body
+	}
+
+	// Query-param fallback (non-body methods, or a body already exists).
+	for _, fp := range formParams {
+		fp.In = "query"
+		kept = append(kept, fp)
+	}
+	return kept, nil
 }
 
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
