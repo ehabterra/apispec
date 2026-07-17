@@ -17,13 +17,13 @@ package spec
 import "testing"
 
 func TestIsBodylessStatus(t *testing.T) {
-	bodyless := []int{100, 101, 102, 199, 204, 304}
+	bodyless := []int{100, 101, 102, 199, 204, 205, 304}
 	for _, code := range bodyless {
 		if !isBodylessStatus(code) {
 			t.Errorf("isBodylessStatus(%d) = false, want true", code)
 		}
 	}
-	withBody := []int{200, 201, 202, 203, 205, 206, 300, 301, 400, 404, 500}
+	withBody := []int{200, 201, 202, 203, 206, 300, 301, 400, 404, 500}
 	for _, code := range withBody {
 		if isBodylessStatus(code) {
 			t.Errorf("isBodylessStatus(%d) = true, want false", code)
@@ -60,7 +60,7 @@ func TestBuildResponses_BodylessOmitsContent(t *testing.T) {
 		}
 	}
 
-	if ok := r["200"]; len(ok.Content) == 0 {
+	if resp, ok := r["200"]; !ok || len(resp.Content) == 0 {
 		t.Error("status 200 must keep its content block")
 	}
 }

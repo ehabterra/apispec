@@ -28,6 +28,7 @@ import (
 func TestTestdata_BodylessStatus(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "bodyless_status", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
 
 	// (path, method, status) -> whether a content block is expected.
 	cases := []struct {
