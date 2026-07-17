@@ -57,6 +57,28 @@ func writeErrorVar(w http.ResponseWriter, err error) {
 	RespondWithError(w, e)
 }
 
+// mapStatus is a non-constant (computed) status — the residue branch.
+func mapStatus(err error) int { return http.StatusServiceUnavailable }
+
+// writeErrorMixed has a constant branch (404) and a computed branch (residue):
+// the concrete 404 must survive, and the residue's honest `default` is emitted
+// then pruned by buildResponses as redundant with 404's body (a shared error
+// helper writes the same body across branches).
+func writeErrorMixed(w http.ResponseWriter, err error) {
+	var statusCode int
+	if errors.Is(err, ErrNotFound) {
+		statusCode = http.StatusNotFound
+	} else {
+		statusCode = mapStatus(err)
+	}
+	RespondWithError(w, NewAPIError(err.Error(), statusCode))
+}
+
+// getMixed reports errors through the mixed (constant + computed) helper.
+func getMixed(w http.ResponseWriter, r *http.Request) {
+	writeErrorMixed(w, ErrNotFound)
+}
+
 // getThing reports every error through writeError, so its concrete error
 // statuses come only from the branch set.
 func getThing(w http.ResponseWriter, r *http.Request) {
@@ -76,5 +98,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /thing", getThing)
 	mux.HandleFunc("GET /other", getOther)
+	mux.HandleFunc("GET /mixed", getMixed)
 	_ = http.ListenAndServe(":8080", mux)
 }

@@ -30,6 +30,12 @@ const (
 	// source of truth is internal/typemodel.
 	TypeSep    = typemodel.Sep
 	defaultSep = "."
+
+	// unresolvedStatus marks a ResponseInfo whose HTTP status could not be
+	// pinned to a concrete code; buildResponses maps any StatusCode < 0 to the
+	// OpenAPI "default" response. Used for the residue of a branched status set
+	// with a non-constant branch (issue #155).
+	unresolvedStatus = -1
 )
 
 // RouteInfo represents extracted route information
@@ -2351,15 +2357,14 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// err)) still produce responses when the branches encode the codes.
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
 		statusArg := edge.Args[r.pattern.StatusArgIndex]
-		expanded := r.expandStatusesFromIdent(statusArg, edge)
-		residue := false
-		if len(expanded) == 0 {
+		expanded, residue := r.expandStatusesFromIdent(statusArg, edge)
+		if len(expanded) == 0 && !residue {
 			// The status arg wasn't a directly branch-assigned local. It may be
 			// a constructor field (err.Code) whose value was set across branches
 			// then handed to the error constructor — issue #155.
 			expanded, residue = r.statusesFromConstructorField(statusArg, node)
 		}
-		if len(expanded) > 1 || (len(expanded) == 1 && residue) {
+		if len(expanded) > 1 || (len(expanded) >= 1 && residue) {
 			out := make([]*ResponseInfo, 0, len(expanded)+1)
 			for _, st := range expanded {
 				out = append(out, &ResponseInfo{
@@ -2369,10 +2374,12 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 					Schema:      respInfo.Schema,
 				})
 			}
-			// A non-constant branch keeps an honest `default` for the residue.
+			// A non-constant branch keeps an honest `default`: a fresh
+			// unresolved status (below every real code), never a copy of an
+			// already-resolved concrete status.
 			if residue {
 				out = append(out, &ResponseInfo{
-					StatusCode:  respInfo.StatusCode,
+					StatusCode:  unresolvedStatus,
 					ContentType: respInfo.ContentType,
 					BodyType:    respInfo.BodyType,
 					Schema:      respInfo.Schema,
@@ -2689,7 +2696,7 @@ func findCallEdge(impl *ContextProviderImpl, callerID, calleeFunc, valPos string
 		if e.Caller.ID() != callerID || impl.GetString(e.Callee.Name) != calleeFunc {
 			continue
 		}
-		if valPos != "" && impl.GetString(e.Callee.Position) == valPos {
+		if valPos != "" && impl.GetString(e.Position) == valPos {
 			return e
 		}
 		if first == nil {
@@ -2730,7 +2737,7 @@ func constructorArgForParam(impl *ContextProviderImpl, caller metadata.Call, ass
 			impl.GetString(e.Callee.Pkg) != assign.CalleePkg {
 			continue
 		}
-		if valPos != "" && impl.GetString(e.Callee.Position) == valPos {
+		if valPos != "" && impl.GetString(e.Position) == valPos {
 			chosen = e
 			break
 		}
@@ -2758,20 +2765,19 @@ func constructorArgForParam(impl *ContextProviderImpl, caller metadata.Call, ass
 //   - the caller function or its AssignmentMap can't be located, or
 //   - fewer than two assignments exist (single-branch flows are left
 //     untouched so existing latest-wins behaviour is preserved).
-func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) []int {
+func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) ([]int, bool) {
 	if arg == nil || arg.GetKind() != metadata.KindIdent || edge == nil {
-		return nil
+		return nil, false
 	}
 	impl, ok := r.contextProvider.(*ContextProviderImpl)
 	if !ok || impl.meta == nil {
-		return nil
+		return nil, false
 	}
 	fn := findFunction(impl.meta, impl.GetString(edge.Caller.Pkg), impl.GetString(edge.Caller.Name))
 	if fn == nil {
-		return nil
+		return nil, false
 	}
-	codes, _ := r.expandVarStatuses(arg.GetName(), fn, impl)
-	return codes
+	return r.expandVarStatuses(arg.GetName(), fn, impl)
 }
 
 // expandVarStatuses fans a variable's branch assignments in function fn out to
@@ -2811,13 +2817,23 @@ func (r *ResponsePatternMatcherImpl) statusCodeOfValue(value *metadata.CallArgum
 		return 0, false
 	}
 	if value.GetKind() == metadata.KindCall {
+		// Accept a constructor's status only when EXACTLY ONE argument parses as
+		// a status — otherwise which numeric field is the HTTP status is a guess
+		// (e.g. NewErr(retryAfter, code)), so keep it as an unresolved residue
+		// rather than pick the first. Precise field→parameter resolution for the
+		// multi-status case is handled by statusesFromConstructorField.
+		found, count := 0, 0
 		for _, a := range value.Args {
 			if a == nil {
 				continue
 			}
 			if s, ok := r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(a)); ok {
-				return s, true
+				found = s
+				count++
 			}
+		}
+		if count == 1 {
+			return found, true
 		}
 		return 0, false
 	}

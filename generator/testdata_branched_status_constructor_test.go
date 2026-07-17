@@ -57,4 +57,22 @@ func TestTestdata_BranchedStatusConstructor(t *testing.T) {
 			t.Errorf("GET /other missing status %s; have %v", want, keysOf(other.Responses))
 		}
 	}
+
+	// GET /mixed has a constant branch (404) and a computed branch (residue).
+	// The concrete 404 must survive — it must NOT collapse to only a `default`.
+	// (The residue's own default is emitted then pruned as redundant with 404's
+	// body; the concrete code surviving is the observable guarantee.)
+	mixed := opFor(out.Paths["/mixed"], "GET")
+	if mixed == nil {
+		t.Fatalf("GET /mixed missing; have %v", mapPathKeys(out.Paths))
+	}
+	if _, ok := mixed.Responses["404"]; !ok {
+		t.Errorf("GET /mixed: the concrete 404 branch must survive alongside the computed residue; have %v",
+			keysOf(mixed.Responses))
+	}
+	if len(mixed.Responses) == 1 {
+		if _, only := mixed.Responses["default"]; only {
+			t.Errorf("GET /mixed collapsed to only `default`; the 404 branch was lost")
+		}
+	}
 }
