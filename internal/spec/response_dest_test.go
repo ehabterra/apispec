@@ -168,6 +168,40 @@ func TestResponseDestResolver_Wrapper(t *testing.T) {
 	}
 }
 
+// TestResponseDestResolver_ConstructorWrapper covers the constructor-function
+// wrapper: ww := newWrapped(w) — the writer flows through the call argument, so
+// the result reaches the writer; a sink constructor with no writer argument
+// does not.
+func TestResponseDestResolver_ConstructorWrapper(t *testing.T) {
+	meta := newTestMeta()
+	r := newRespDestResolver(meta)
+
+	// ww := newWrapped(w) — a call whose arg is the writer.
+	w := mkIdent(meta, "w", "net/http.ResponseWriter")
+	ctorCall := metadata.NewCallArgument(meta)
+	ctorCall.SetKind(metadata.KindCall)
+	ctorCall.Fun = mkIdent(meta, "newWrapped", "")
+	ctorCall.Args = []*metadata.CallArgument{w}
+	edge := &metadata.CallGraphEdge{AssignmentMap: map[string][]metadata.Assignment{
+		"ww": {{Value: *ctorCall}},
+	}}
+	if r.ShouldDrop(mkIdent(meta, "ww", "*app.wrappedWriter"), edge) {
+		t.Error("a constructor wrapper receiving w must reach the writer and be kept")
+	}
+
+	// buf := bytes.NewBufferString("{}") — a call with no writer argument.
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindLiteral)
+	lit.SetValue(`"{}"`)
+	sinkCall := metadata.NewCallArgument(meta)
+	sinkCall.SetKind(metadata.KindCall)
+	sinkCall.Fun = mkIdent(meta, "NewBufferString", "")
+	sinkCall.Args = []*metadata.CallArgument{lit}
+	if r.reachesWriter(sinkCall, &metadata.CallGraphEdge{}, map[string]bool{}) {
+		t.Error("a constructor with no writer argument must not reach the writer")
+	}
+}
+
 // TestResponseDestResolver_CyclicAssignment: a := b; b := a terminates.
 func TestResponseDestResolver_CyclicAssignment(t *testing.T) {
 	meta := newTestMeta()

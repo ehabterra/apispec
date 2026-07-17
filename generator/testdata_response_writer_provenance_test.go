@@ -40,7 +40,7 @@ func TestTestdata_ResponseWriterProvenance(t *testing.T) {
 	}
 
 	// KEEP: destination traces to w → User response present.
-	for _, path := range []string{"/direct", "/helper", "/assign", "/wrapper"} {
+	for _, path := range []string{"/direct", "/helper", "/assign", "/wrapper", "/ctor-wrapper"} {
 		get := opFor(out.Paths[path], "GET")
 		if get == nil {
 			t.Errorf("GET %s missing; have %v", path, mapPathKeys(out.Paths))
