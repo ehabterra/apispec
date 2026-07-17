@@ -22,7 +22,8 @@
 #                     project instead of comparing.
 #   -k, --keep        Keep the freshly generated spec file (compare mode only;
 #                     default: deleted).
-#   -a, --all         Also report CHANGED and ADDED keys, not just MISSING.
+#   -a, --all         Also list ADDED keys (new routes/fields). STATUS CHANGES,
+#                     MISSING and CHANGED are always reported and always fail.
 #       --strict      Compare keys literally (do NOT canonicalize '.'<->'_' in
 #                     schema names / $refs). Off by default.
 #       --paths FILE  External-projects list file (default: scripts/compare-spec.paths).
@@ -30,8 +31,9 @@
 #       --bin PATH    Use an existing apispec binary instead of building one.
 #   -h, --help        Show this help.
 #
-# Exit status: non-zero if any path has missing parts, a missing snapshot, or a
-# generation failure.
+# Exit status: non-zero if any path has drift (a response status gained/lost, a
+# dropped key, or an in-place value change), a missing snapshot, or a generation
+# failure.
 #
 set -euo pipefail
 
@@ -125,7 +127,10 @@ for t in "${PATHS[@]}"; do
     echo "  SKIP (directory not found): $t" >&2
   fi
 done
-PATHS=("${VALID[@]}")
+# Reassign safely: expanding an empty array under `set -u` is an error in
+# older bash (e.g. macOS 3.2), which crashed when every path was skipped.
+PATHS=()
+[[ ${#VALID[@]} -gt 0 ]] && PATHS=("${VALID[@]}")
 if [[ ${#PATHS[@]} -eq 0 ]]; then
   echo "Error: none of the requested directories exist." >&2
   exit 2
@@ -184,16 +189,29 @@ run_apispec() {
 
 # Structural comparator: flattens both specs to leaf key-PATHS (kept as tuples so
 # dots inside schema names like "pkg.Type" never collide with the path separator)
-# and reports keys in the snapshot that are absent from / differ in the generated
-# spec. Schema component names and $ref targets are canonicalized ('.' <-> '_') so
-# a cosmetic rename of the sanitizer does not masquerade as hundreds of drops.
+# and reports differences. Schema component names and $ref targets are
+# canonicalized ('.' <-> '_') so a cosmetic rename of the sanitizer does not
+# masquerade as hundreds of drops.
+#
+# It surfaces — and FAILS on — three kinds of DRIFT so no change slips through
+# silently (a regression MISSING-only mode used to hide):
+#   * STATUS CHANGES — per operation, the set of response status codes gained or
+#     lost a status (order-independent). This catches e.g. a route degrading to
+#     `default` because a status could no longer be resolved.
+#   * MISSING — a key present in the snapshot is absent from the generated spec.
+#   * CHANGED — a key present in both has a different value (a $ref retargeted, a
+#     schema type flipped in place, a `required`/format changed).
+# ADDED keys (new routes/fields) are informational and shown only with --all,
+# except added statuses, which the STATUS section always reports and fails on.
 compare_py() {
 python3 - "$1" "$2" "$SHOW_ALL" "$STRICT" <<'PY'
 import sys, yaml
 
 ref_file, gen_file = sys.argv[1], sys.argv[2]
-show_all = sys.argv[3] == "1"
-strict   = sys.argv[4] == "1"
+show_added = sys.argv[3] == "1"
+strict     = sys.argv[4] == "1"
+
+HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
 def flatten(obj, prefix=()):
     out = {}
@@ -201,6 +219,10 @@ def flatten(obj, prefix=()):
         for k, v in obj.items():
             out.update(flatten(v, prefix + (str(k),)))
     elif isinstance(obj, list):
+        # Sort all-scalar lists (required, enum, tags, security scopes, ...) so a
+        # cosmetic reorder does not masquerade as a CHANGED value.
+        if obj and all(not isinstance(v, (dict, list)) for v in obj):
+            obj = sorted(obj, key=lambda x: (str(type(x)), str(x)))
         for i, v in enumerate(obj):
             out.update(flatten(v, prefix + (f"[{i}]",)))
     else:
@@ -234,12 +256,27 @@ def show(key):
             out += ("." if out else "") + seg
     return out
 
-with open(ref_file) as f: ref_raw = flatten(yaml.safe_load(f) or {})
-with open(gen_file) as f: gen_raw = flatten(yaml.safe_load(f) or {})
+def op_statuses(doc):
+    # {(path, METHOD): set(response status keys)} for every operation.
+    out = {}
+    for p, item in ((doc or {}).get("paths", {}) or {}).items():
+        if not isinstance(item, dict):
+            continue
+        for m, op in item.items():
+            if m.lower() not in HTTP_METHODS or not isinstance(op, dict):
+                continue
+            resps = op.get("responses", {}) or {}
+            out[(p, m.upper())] = {str(k) for k in resps}
+    return out
+
+with open(ref_file) as f: ref_doc = yaml.safe_load(f) or {}
+with open(gen_file) as f: gen_doc = yaml.safe_load(f) or {}
+
+ref_raw = flatten(ref_doc)
+gen_raw = flatten(gen_doc)
 
 if strict:
-    ref = ref_raw
-    gen = gen_raw
+    ref, gen = ref_raw, gen_raw
 else:
     ref = {canon_key(k): canon_val(v) for k, v in ref_raw.items()}
     gen = {canon_key(k): canon_val(v) for k, v in gen_raw.items()}
@@ -248,12 +285,31 @@ missing = sorted((k for k in ref if k not in gen), key=show)
 changed = sorted((k for k in ref if k in gen and ref[k] != gen[k]), key=show)
 added   = sorted((k for k in gen if k not in ref), key=show)
 
+# Per-operation response-status-set diffs (order-independent).
+ref_st, gen_st = op_statuses(ref_doc), op_statuses(gen_doc)
+status_diffs = []
+for opkey in sorted(set(ref_st) | set(gen_st)):
+    lost = sorted(ref_st.get(opkey, set()) - gen_st.get(opkey, set()))
+    gained = sorted(gen_st.get(opkey, set()) - ref_st.get(opkey, set()))
+    if lost or gained:
+        status_diffs.append((opkey, lost, gained))
+
 # Note the schema-rename normalization if it actually merged anything.
 if not strict:
     renamed = sum(1 for k in ref_raw if canon_key(k) != k)
     if renamed:
         print(f"  (note: schema names canonicalized '.'<->'_'; {renamed} keys "
               f"normalized — pass --strict to compare literally)")
+
+if status_diffs:
+    print(f"  STATUS CHANGES ({len(status_diffs)}) — response status set differs:")
+    for (p, m), lost, gained in status_diffs:
+        parts = []
+        if lost:   parts.append("lost "   + ",".join(lost))
+        if gained: parts.append("gained " + ",".join(gained))
+        print(f"    ! {m} {p}: {'; '.join(parts)}")
+else:
+    print("  STATUS CHANGES (0) — response status sets unchanged.")
 
 if missing:
     print(f"  MISSING ({len(missing)}) — in snapshot, absent from generated:")
@@ -262,18 +318,21 @@ if missing:
 else:
     print("  MISSING (0) — nothing from the snapshot was dropped.")
 
-if show_all:
-    if changed:
-        print(f"  CHANGED ({len(changed)}):")
-        for k in changed:
-            print(f"    ~ {show(k)}: {ref[k]!r} -> {gen[k]!r}")
-    if added:
-        print(f"  ADDED ({len(added)}) — new in generated:")
-        for k in added:
-            print(f"    + {show(k)} = {gen[k]!r}")
+if changed:
+    print(f"  CHANGED ({len(changed)}) — same key, different value:")
+    for k in changed:
+        print(f"    ~ {show(k)}: {ref[k]!r} -> {gen[k]!r}")
+else:
+    print("  CHANGED (0) — no in-place value changes.")
 
-# Exit 1 if anything is missing so the wrapper can aggregate failures.
-sys.exit(1 if missing else 0)
+if show_added and added:
+    print(f"  ADDED ({len(added)}) — new in generated:")
+    for k in added:
+        print(f"    + {show(k)} = {gen[k]!r}")
+
+# Fail on any drift that removes or alters documented behaviour: a status
+# gained/lost, a dropped key, or an in-place value change.
+sys.exit(1 if (status_diffs or missing or changed) else 0)
 PY
 }
 
@@ -352,8 +411,8 @@ done
 
 echo "=============================================================="
 if [[ $OVERALL -eq 0 ]]; then
-  echo "RESULT: no missing parts across all paths."
+  echo "RESULT: no drift across all paths (status sets, keys, and values match)."
 else
-  echo "RESULT: missing parts and/or missing snapshots found (see above)."
+  echo "RESULT: drift found — status changes, missing/changed keys, and/or missing snapshots (see above)."
 fi
 exit $OVERALL
