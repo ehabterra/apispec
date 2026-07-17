@@ -1,0 +1,29 @@
+# golangci-lint configuration.
+#
+# Pinned so local `make lint` and CI agree, and so a version bump of
+# golangci-lint cannot silently change the enabled rule set (issue #172).
+# This pins the v2 `standard` linter set — errcheck, govet, ineffassign,
+# staticcheck, unused — which is what CI (golangci-lint v2.11.4) already runs
+# by default. Enable additional linters in their own PR so each rule's churn
+# is reviewed on its own.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # `standard` is golangci-lint's default enabled set; naming it here makes the
+  # set explicit and version-stable rather than implicit.
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+formatters:
+  # gofmt is enforced separately by the CI `gofmt -s -l` step; list it here so
+  # `golangci-lint fmt` stays consistent with that check.
+  enable:
+    - gofmt
