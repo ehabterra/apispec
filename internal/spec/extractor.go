@@ -2245,8 +2245,17 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// concrete type — otherwise `v any` would resolve to a generic
 		// object. Per-route isolation in the tracker tree means each
 		// handler's response gets the type from its own call site.
-		if callerArg := r.traceArgViaParent(arg, node); callerArg != nil {
+		//
+		// typeNode follows arg to the scope where it was resolved, so the
+		// scope-dependent lookups below (concreteFromCalleeReturn,
+		// resolveTypeOrigin, collectWrapperOverrides) read the right function
+		// after a multi-hop trace, not the deepest helper's scope.
+		typeNode := node
+		if callerArg, callerNode := r.traceArgViaParent(arg, node); callerArg != nil {
 			arg = callerArg
+			if callerNode != nil {
+				typeNode = callerNode
+			}
 		}
 
 		// Type conversion like `[]byte(swaggerUIHTML)`: the *target* type of
@@ -2293,7 +2302,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 					// makeAnimal() Animal { return Dog{} } → Dog). Mark it
 					// resolved so resolveTypeOrigin's GetResolvedType fast-path
 					// (which would restore the interface) is skipped.
-					if concrete := r.concreteFromCalleeReturn(arg, node.GetEdge(), t); concrete != "" {
+					if concrete := r.concreteFromCalleeReturn(arg, typeNode.GetEdge(), t); concrete != "" {
 						bodyType = concrete
 						resolvedConcrete = true
 					}
@@ -2302,7 +2311,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 			// Trace type origin for non-literal arguments
 			if !resolvedConcrete {
-				bodyType = r.resolveTypeOrigin(arg, node, bodyType)
+				bodyType = r.resolveTypeOrigin(arg, typeNode, bodyType)
 			}
 
 			// Apply dereferencing if needed
@@ -2327,7 +2336,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// concrete type for each bound field and compose an `allOf`
 		// override so per-route schemas reflect the actual payload
 		// type instead of the wrapper's declared `interface{}`.
-		if overrides := r.collectWrapperOverrides(arg, node); len(overrides) > 0 {
+		if overrides := r.collectWrapperOverrides(arg, typeNode); len(overrides) > 0 {
 			schema = specialiseWrapperSchema(schema, overrides, bodyType, route.UsedTypes, route.Metadata, r.cfg)
 		}
 
@@ -2362,23 +2371,29 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	return []*ResponseInfo{respInfo}
 }
 
-// traceArgViaParent walks one step up the tracker tree to recover the
-// caller-site value of a parameter ident. When a response pattern matches
-// inside a helper (writeJSON-style) — e.g. WriteHeader(status) where
-// status is a parameter of writeJSON — the matched call's args reference
-// parameters, not literals. The parent tracker node represents the call
-// to the helper, and that edge's ParamArgMap maps callee parameter
+// traceArgViaParent walks up the tracker tree to recover the caller-site value
+// of a parameter ident. When a response pattern matches inside a helper
+// (writeJSON-style) — e.g. Encode(v) where v is a parameter of writeJSON — the
+// matched call's args reference parameters, not literals. Each parent tracker
+// node represents a call, and that edge's ParamArgMap maps callee parameter
 // names back to the caller's actual arguments.
 //
-// Returns nil when the arg isn't an ident, there is no parent node,
-// or the parameter name isn't present in the parent's ParamArgMap.
+// It follows the parameter across MULTIPLE hops (writeJSON -> render -> Encode),
+// stopping at the first non-parameter — the concrete value — via
+// resolveArgThroughParams. A single hop resolved only the outermost helper's
+// parameter, leaving `v any` at a generic object for two-hop helper chains
+// (issue #180). Returns nil when nothing resolves (the arg is unchanged).
 //
-// Per-route isolation in the tracker tree is what makes this sound:
-// each handler's path through the helper is a distinct tracker subtree,
-// so two routes that call writeJSON with different statuses each
-// resolve to their own value independently.
-func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
-	return argViaParent(arg, node)
+// Per-route isolation in the tracker tree is what makes this sound: each
+// handler's path through the helpers is a distinct tracker subtree, so two
+// routes that call the same helper with different values each resolve to their
+// own value independently.
+func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, TrackerNodeInterface) {
+	resolved, resolvedNode := resolveArgThroughParams(arg, node)
+	if resolved == arg {
+		return nil, nil
+	}
+	return resolved, resolvedNode
 }
 
 // argViaParent recovers the caller-site value of a parameter ident by finding
@@ -2386,16 +2401,22 @@ func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgumen
 // ParamArgMap (callee parameter name → caller argument). Returns nil when the
 // arg isn't an ident or no such binding exists. Shared by the response and
 // request matchers.
-func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
+// argViaParent recovers the caller-site value of a parameter ident and the
+// tracker node where it was resolved — the parent call node whose ParamArgMap
+// carried the argument. The returned node is the scope in which the resolved
+// argument lives, so downstream type resolution reads the right function
+// (issue #180 / CodeRabbit review on PR #183). Returns (nil, nil) when the arg
+// isn't a parameter reachable from the parent chain.
+func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, TrackerNodeInterface) {
 	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
-		return nil
+		return nil, nil
 	}
 	// Fast path: the immediate parent is normally the call into the enclosing
-	// function. Kept as-is so existing resolutions are byte-for-byte unchanged.
+	// function.
 	if parent := node.GetParent(); parent != nil {
 		if pe := parent.GetEdge(); pe != nil && pe.ParamArgMap != nil {
 			if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
-				return &callerArg
+				return &callerArg, parent
 			}
 		}
 	}
@@ -2407,11 +2428,11 @@ func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metada
 	// function and read its ParamArgMap. Mirrors concreteFromParamBinding.
 	edge := node.GetEdge()
 	if edge == nil {
-		return nil
+		return nil, nil
 	}
 	enclosing := edge.Caller.BaseID()
 	if enclosing == "" {
-		return nil
+		return nil, nil
 	}
 	for p := node.GetParent(); p != nil; p = p.GetParent() {
 		pe := p.GetEdge()
@@ -2419,14 +2440,14 @@ func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) *metada
 			continue
 		}
 		if pe.ParamArgMap == nil {
-			return nil
+			return nil, nil
 		}
 		if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
-			return &callerArg
+			return &callerArg, p
 		}
-		return nil
+		return nil, nil
 	}
-	return nil
+	return nil, nil
 }
 
 // resolveArgThroughParams follows a parameter ident up through one or more
@@ -2441,12 +2462,20 @@ func resolveArgThroughParams(arg *metadata.CallArgument, node TrackerNodeInterfa
 	cur := node
 	const maxHops = 8
 	for i := 0; i < maxHops; i++ {
-		next := argViaParent(arg, cur)
+		next, nextNode := argViaParent(arg, cur)
 		if next == nil {
 			break
 		}
 		arg = next
-		cur = cur.GetParent()
+		// Advance to the node where the argument actually resolved, not blindly
+		// cur.GetParent(): on the re-homed fallback path argViaParent resolves at
+		// an ancestor several levels up, and cur.GetParent() would desync the
+		// scope from the resolved argument (CodeRabbit review on PR #183). On the
+		// fast path nextNode == cur.GetParent(), so this is unchanged there.
+		if nextNode == nil {
+			break
+		}
+		cur = nextNode
 	}
 	return arg, cur
 }
