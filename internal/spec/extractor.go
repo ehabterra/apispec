@@ -2001,7 +2001,8 @@ func preprocessingBodyType(bodyType string) string {
 // ResponsePatternMatcherImpl implements ResponsePatternMatcher
 type ResponsePatternMatcherImpl struct {
 	*BasePatternMatcher
-	pattern ResponsePattern
+	pattern      ResponsePattern
+	destResolver *responseDestResolver
 }
 
 // NewResponsePatternMatcher creates a new response pattern matcher
@@ -2009,6 +2010,7 @@ func NewResponsePatternMatcher(pattern ResponsePattern, cfg *APISpecConfig, cont
 	return &ResponsePatternMatcherImpl{
 		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
 		pattern:            pattern,
+		destResolver:       newResponseDestResolver(cfg, contextProvider),
 	}
 }
 
@@ -2054,7 +2056,31 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		return false
 	}
 
+	// Write-destination gating: only meaningful for destination-carrying
+	// encoders (json.NewEncoder(x).Encode(v)). The encoded value is a response
+	// only when x provably traces to the response writer — otherwise it was
+	// written to some other io.Writer (a bytes.Buffer, a hash, a log). Mirrors
+	// the request-source gating on RequestBodyPattern. See issue #170.
+	if r.pattern.RequireResponseDestination && r.destResolver != nil && r.destResolver.Enabled() {
+		dst := r.destination(edge)
+		if dst == nil || !r.destResolver.IsResponseDest(dst, edge) {
+			return false
+		}
+	}
+
 	return true
+}
+
+// destination returns the CallArgument that carries the encoder's write
+// destination for the given call edge, according to the pattern configuration.
+func (r *ResponsePatternMatcherImpl) destination(edge *metadata.CallGraphEdge) *metadata.CallArgument {
+	if edge == nil {
+		return nil
+	}
+	if r.pattern.DestFromReceiver {
+		return resolveReceiverSource(edge, r.destResolver.metadata())
+	}
+	return nil
 }
 
 // GetPattern returns the response pattern

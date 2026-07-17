@@ -59,6 +59,13 @@ type FrameworkConfig struct {
 	// so they are only treated as request-body extraction when the bytes
 	// actually originate from an HTTP request.
 	RequestContext RequestContextConfig `yaml:"requestContext,omitempty" json:"requestContext,omitempty"`
+
+	// ResponseContext is the symmetric counterpart of RequestContext for the
+	// write side: it describes how to recognise the HTTP response writer so
+	// generic encoders (json.NewEncoder(x).Encode(v)) are only treated as a
+	// response when x provably traces to the response writer. Used together
+	// with ResponsePattern.RequireResponseDestination.
+	ResponseContext ResponseContextConfig `yaml:"responseContext,omitempty" json:"responseContext,omitempty"`
 }
 
 // RequestContextConfig describes the types and accessors that identify an
@@ -79,6 +86,28 @@ type RequestContextConfig struct {
 	//   echo     -> "^Request\\(\\)\\.Body$"
 	//   fiber    -> "^Body\\(\\)$"
 	BodyAccessors []string `yaml:"bodyAccessors,omitempty" json:"bodyAccessors,omitempty"`
+}
+
+// ResponseContextConfig describes how to recognise the HTTP response writer,
+// so a generic encoder's write destination can be traced to it. It is the
+// write-side mirror of RequestContextConfig (issue #170).
+type ResponseContextConfig struct {
+	// WriterTypeRegexes match the (fully-qualified) types that ARE an HTTP
+	// response writer. The root of a write-destination expression must have one
+	// of these types for the write to count as a response. Examples:
+	//   net/http -> "^net/http\\.ResponseWriter$"
+	//   gin      -> "^github\\.com/gin-gonic/gin\\.ResponseWriter$"
+	WriterTypeRegexes []string `yaml:"writerTypeRegexes,omitempty" json:"writerTypeRegexes,omitempty"`
+
+	// WriterAccessors are regexes matched against the dot-joined accessor chain
+	// applied to a response-writer root, for frameworks whose writer is reached
+	// through the request context rather than being a bare parameter. The chain
+	// is rendered like RequestContextConfig.BodyAccessors (method calls as
+	// "Name()"). An empty chain (the writer IS the root, e.g. net/http's `w`)
+	// always qualifies. Examples:
+	//   gin  -> "^Writer$"          (c.Writer)
+	//   echo -> "^Response\\(\\)$"  (c.Response())
+	WriterAccessors []string `yaml:"writerAccessors,omitempty" json:"writerAccessors,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names
@@ -189,6 +218,21 @@ type ResponsePattern struct {
 	DefaultStatus int `yaml:"defaultStatus,omitempty" json:"defaultStatus,omitempty"`
 	// DefaultContentType overrides the config default content type when set
 	DefaultContentType string `yaml:"defaultContentType,omitempty" json:"defaultContentType,omitempty"`
+
+	// RequireResponseDestination gates the pattern on write-destination: the
+	// encoded/written value only becomes a response when its destination writer
+	// provably traces to the HTTP response writer (see ResponseContext). This
+	// is the symmetric counterpart of RequestBodyPattern.RequireRequestSource
+	// and disambiguates generic encoders (json.NewEncoder(x).Encode(v)) that
+	// may write to some other io.Writer — a bytes.Buffer, a hash, a log — rather
+	// than the response. Only meaningful for destination-carrying encoders;
+	// receiver-based writers (net/http.ResponseWriter.Write) are already
+	// unambiguous because their receiver IS the writer.
+	RequireResponseDestination bool `yaml:"requireResponseDestination,omitempty" json:"requireResponseDestination,omitempty"`
+	// DestFromReceiver resolves the write destination from the encoder factory
+	// receiver — for json.NewEncoder(w).Encode(v), the destination is
+	// NewEncoder's first argument. Mirrors RequestBodyPattern.BodyFromReceiver.
+	DestFromReceiver bool `yaml:"destFromReceiver,omitempty" json:"destFromReceiver,omitempty"`
 
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
@@ -775,6 +819,11 @@ func jsonEncodePattern(recvTypeRegex string) ResponsePattern {
 		TypeFromArg:   true,
 		Deref:         true,
 		RecvTypeRegex: recvTypeRegex,
+		// Gate on write destination: json.NewEncoder(x).Encode(v) is only a
+		// response when x traces to the response writer (issue #170). Inert
+		// unless the framework config populates ResponseContext.
+		RequireResponseDestination: true,
+		DestFromReceiver:           true,
 	}
 }
 

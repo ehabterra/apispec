@@ -24,6 +24,20 @@ var netHTTPRequestContext = RequestContextConfig{
 	BodyAccessors: []string{`^Body$`},
 }
 
+// netHTTPResponseContext is the ResponseContext preset for plain net/http
+// handlers: the response writer is the http.ResponseWriter parameter. Chi and
+// Mux share it (their handlers also take an http.ResponseWriter). Concrete
+// implementations of ResponseWriter (http.ResponseWriter itself resolves to the
+// interface, but wrappers may surface as *http.response) are covered by the
+// interface match plus the httptest recorder used in tests.
+var netHTTPResponseContext = ResponseContextConfig{
+	WriterTypeRegexes: []string{
+		`^net/http\.ResponseWriter$`,
+		`^\*?net/http\.response$`,
+		`^\*?net/http/httptest\.ResponseRecorder$`,
+	},
+}
+
 // DefaultHTTPConfig returns a default configuration for net/http.
 func DefaultHTTPConfig() *APISpecConfig {
 	// net/http response patterns come from netHTTPResponsePatterns(); the
@@ -67,6 +81,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			ResponseContext:  netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(""),
 				jsonUnmarshalRequestPattern(""),

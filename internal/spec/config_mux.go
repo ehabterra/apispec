@@ -90,7 +90,8 @@ func DefaultMuxConfig() *APISpecConfig {
 					MethodExtraction:  DefaultMethodExtractionConfig(),
 				},
 			},
-			RequestContext: netHTTPRequestContext,
+			RequestContext:  netHTTPRequestContext,
+			ResponseContext: netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(".*json(iter)?\\.\\*?Decoder"),
 				jsonUnmarshalRequestPattern("json"),
