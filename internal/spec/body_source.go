@@ -152,14 +152,15 @@ func (r *bodySourceResolver) checkIdent(arg *metadata.CallArgument, edge *metada
 	callerName := r.contextProvider.GetString(edge.Caller.Name)
 	callerPkg := r.contextProvider.GetString(edge.Caller.Pkg)
 
-	// 1) Local assignments visible at this call site.
-	if assigns, ok := edge.AssignmentMap[name]; ok && len(assigns) > 0 {
-		// Latest-wins, consistent with TraceVariableOrigin.
-		rhs := assigns[len(assigns)-1].Value
+	// 1) Local assignments: src := r.Body. latestAssignment checks the call
+	// edge's map first, then the enclosing handler function's scope — a source
+	// assigned in the handler body lives on the Function, not on the Decode call
+	// edge. Latest-wins, consistent with TraceVariableOrigin.
+	if rhs := latestAssignment(r.contextProvider, edge, name); rhs != nil {
 		if rhs.Meta == nil {
 			rhs.Meta = arg.Meta
 		}
-		if r.check(&rhs, edge, visited) {
+		if r.check(rhs, edge, visited) {
 			return true
 		}
 	}

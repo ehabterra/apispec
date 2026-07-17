@@ -529,9 +529,9 @@ func TestSweepRequestBodySource(t *testing.T) {
 	cp := NewContextProvider(meta)
 	cfg := &APISpecConfig{}
 
-	t.Run("nil edge", func(t *testing.T) {
+	t.Run("nil node", func(t *testing.T) {
 		m := NewRequestPatternMatcher(RequestBodyPattern{}, cfg, cp, nil)
-		if m.bodySource(nil) != nil {
+		if got, _ := m.bodySource(nil); got != nil {
 			t.Error("bodySource(nil) != nil")
 		}
 	})
@@ -541,7 +541,8 @@ func TestSweepRequestBodySource(t *testing.T) {
 		src := sweepIdent(meta, "r")
 		edge := sweepEdge(meta, "h", "app", "Decode", "json", "Decoder", "")
 		edge.ChainParent = sweepEdge(meta, "h", "app", "NewDecoder", "json", "", "", src)
-		got := m.bodySource(edge)
+		// No parent node → resolveArgThroughParams returns the factory arg as-is.
+		got, _ := m.bodySource(sweepNode(edge))
 		if got != src {
 			t.Errorf("bodySource() = %v, want the chain-parent factory arg", got)
 		}

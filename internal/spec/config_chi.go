@@ -79,7 +79,8 @@ func DefaultChiConfig() *APISpecConfig {
 					RecvTypeRegex:     "^github.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$",
 				},
 			},
-			RequestContext: netHTTPRequestContext,
+			RequestContext:  netHTTPRequestContext,
+			ResponseContext: netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:            `^DecodeJSON$`,
