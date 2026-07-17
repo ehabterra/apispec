@@ -24,6 +24,25 @@ var netHTTPRequestContext = RequestContextConfig{
 	BodyAccessors: []string{`^Body$`},
 }
 
+// netHTTPResponseContext is the ResponseContext preset for the net/http family
+// (net/http, chi, mux — all encode to an http.ResponseWriter). The response
+// writer is the handler's `w http.ResponseWriter` parameter; an encode is a
+// response only when its destination traces back to it. The compatible list
+// keeps `func writeJSON(w io.Writer, v)` helpers whose destination stays an
+// io.Writer interface (could be the writer).
+var netHTTPResponseContext = ResponseContextConfig{
+	WriterTypeRegexes: []string{
+		`^net/http\.ResponseWriter$`,
+		`^\*?net/http\.response$`,
+		`^\*?net/http/httptest\.ResponseRecorder$`,
+	},
+	WriterCompatibleTypeRegexes: []string{
+		`^io\.Writer$`,
+		`^io\.WriteCloser$`,
+		`^io\.ReadWriter$`,
+	},
+}
+
 // DefaultHTTPConfig returns a default configuration for net/http.
 func DefaultHTTPConfig() *APISpecConfig {
 	// net/http response patterns come from netHTTPResponsePatterns(); the
@@ -67,6 +86,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			ResponseContext:  netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(""),
 				jsonUnmarshalRequestPattern(""),
