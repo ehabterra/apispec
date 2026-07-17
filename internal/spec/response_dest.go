@@ -127,6 +127,19 @@ func (r *responseDestResolver) reachesWriter(arg *metadata.CallArgument, edge *m
 			return true
 		}
 		return false
+
+	case metadata.KindCall:
+		// A constructor-function wrapper: ww := newResponseWriter(w). If any
+		// argument reaches the writer, the constructed value wraps it, so the
+		// call reaches the writer too. A sink constructor with no writer argument
+		// (bytes.NewBufferString("{}"), sha256.New()) does not, and still drops.
+		// Provenance-consistent with the composite-literal wrapper above.
+		for _, a := range arg.Args {
+			if r.reachesWriter(a, edge, visited) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

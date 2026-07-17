@@ -37,6 +37,10 @@ func encodeTo(dst io.Writer, v any) { _ = json.NewEncoder(dst).Encode(v) }
 
 func makeBuffer() *bytes.Buffer { return &bytes.Buffer{} }
 
+// newLoggingWriter is a CONSTRUCTOR-FUNCTION wrapper around w (the common
+// middleware pattern). The writer flows into the call, so the result wraps it.
+func newLoggingWriter(w http.ResponseWriter) *loggingWriter { return &loggingWriter{w} }
+
 // --- KEEP: the destination traces to the response writer w ---
 
 // getDirect writes straight to w.
@@ -59,6 +63,14 @@ func getViaAssign(w http.ResponseWriter, r *http.Request) {
 func getViaWrapper(w http.ResponseWriter, r *http.Request) {
 	lw := &loggingWriter{w}
 	_ = json.NewEncoder(lw).Encode(User{ID: "4"})
+}
+
+// getViaCtorWrapper encodes to a wrapper built by a CONSTRUCTOR FUNCTION — the
+// writer flows through the call argument, so the response must be kept (the
+// regression that dropped these was surfacing as spurious `default` statuses).
+func getViaCtorWrapper(w http.ResponseWriter, r *http.Request) {
+	lw := newLoggingWriter(w)
+	_ = json.NewEncoder(lw).Encode(User{ID: "5"})
 }
 
 // --- DROP: the destination is a sink unrelated to w ---
@@ -103,6 +115,7 @@ func main() {
 	mux.HandleFunc("GET /helper", getViaHelper)
 	mux.HandleFunc("GET /assign", getViaAssign)
 	mux.HandleFunc("GET /wrapper", getViaWrapper)
+	mux.HandleFunc("GET /ctor-wrapper", getViaCtorWrapper)
 	mux.HandleFunc("POST /leak-buffer", leakBuffer)
 	mux.HandleFunc("POST /leak-hash", leakHash)
 	mux.HandleFunc("POST /leak-discard", leakDiscard)
