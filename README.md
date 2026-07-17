@@ -645,6 +645,8 @@ APISpec turns Go source into an OpenAPI document through a fixed sequence of sta
 
 APISpec uses YAML configuration files to describe framework patterns and OpenAPI metadata. For most projects the bundled defaults are enough; provide `--config` only when you need to extend or override them.
 
+📖 See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the full field-by-field configuration reference.
+
 ### Minimal example (Gin)
 
 ```yaml
