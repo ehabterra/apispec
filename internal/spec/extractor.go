@@ -2350,11 +2350,29 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// patterns whose status arg is an opaque ident (e.g. RespondWithError(w,
 	// err)) still produce responses when the branches encode the codes.
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
-		if expanded := r.expandStatusesFromIdent(edge.Args[r.pattern.StatusArgIndex], edge); len(expanded) > 1 {
-			out := make([]*ResponseInfo, 0, len(expanded))
+		statusArg := edge.Args[r.pattern.StatusArgIndex]
+		expanded := r.expandStatusesFromIdent(statusArg, edge)
+		residue := false
+		if len(expanded) == 0 {
+			// The status arg wasn't a directly branch-assigned local. It may be
+			// a constructor field (err.Code) whose value was set across branches
+			// then handed to the error constructor — issue #155.
+			expanded, residue = r.statusesFromConstructorField(statusArg, node)
+		}
+		if len(expanded) > 1 || (len(expanded) == 1 && residue) {
+			out := make([]*ResponseInfo, 0, len(expanded)+1)
 			for _, st := range expanded {
 				out = append(out, &ResponseInfo{
 					StatusCode:  st,
+					ContentType: respInfo.ContentType,
+					BodyType:    respInfo.BodyType,
+					Schema:      respInfo.Schema,
+				})
+			}
+			// A non-constant branch keeps an honest `default` for the residue.
+			if residue {
+				out = append(out, &ResponseInfo{
+					StatusCode:  respInfo.StatusCode,
 					ContentType: respInfo.ContentType,
 					BodyType:    respInfo.BodyType,
 					Schema:      respInfo.Schema,
@@ -2580,6 +2598,107 @@ func constructorFieldParam(ctor *metadata.Function, fieldName string) string {
 	return ""
 }
 
+// statusesFromConstructorField is the one→many counterpart of
+// statusFromConstructorField (issue #155): when the WriteHeader status argument
+// (`err.Code`) resolves through the error constructor to a local variable whose
+// value is set across switch/if branches, it fans that variable out to the set
+// of concrete status codes the branches assign. residue is true when a branch
+// is non-constant, so the caller keeps an honest `default` alongside the codes.
+// Returns nil codes when the status is a single value (handled by the existing
+// single-status path) or cannot be resolved to a branch variable.
+func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.CallArgument, node TrackerNodeInterface) (codes []int, residue bool) {
+	if arg == nil || arg.GetKind() != metadata.KindSelector || arg.X == nil || arg.Sel == nil {
+		return nil, false
+	}
+	fieldName := arg.Sel.GetName()
+	if fieldName == "" {
+		return nil, false
+	}
+	impl, ok := r.contextProvider.(*ContextProviderImpl)
+	if !ok || impl.meta == nil {
+		return nil, false
+	}
+
+	// The selector base up to its concrete producer (through wrapper params):
+	// either the constructor call itself (inline `Respond(w, NewErr(...))`) or a
+	// local variable assigned from it (`e := NewErr(...); Respond(w, e)`). The
+	// tracker node's caller is the scope where the branch variable lives.
+	base, baseNode := resolveArgThroughParams(arg.X, node)
+	if base == nil || baseNode == nil || baseNode.GetEdge() == nil {
+		return nil, false
+	}
+	scope := findFunction(impl.meta, impl.GetString(baseNode.GetEdge().Caller.Pkg), impl.GetString(baseNode.GetEdge().Caller.Name))
+	if scope == nil {
+		return nil, false
+	}
+
+	var calleeFunc, valPos string
+	switch base.GetKind() {
+	case metadata.KindCall:
+		if base.Fun == nil {
+			return nil, false
+		}
+		calleeFunc = base.Fun.GetName()
+		valPos = impl.GetString(base.Position)
+	case metadata.KindIdent:
+		assignMap := callerAssignmentMap(impl, baseNode.GetEdge(), base.GetName())
+		if assignMap == nil {
+			return nil, false
+		}
+		as := assignMap[base.GetName()]
+		if len(as) == 0 || as[len(as)-1].Value.GetKind() != metadata.KindCall {
+			return nil, false
+		}
+		calleeFunc = as[len(as)-1].CalleeFunc
+		valPos = impl.GetString(as[len(as)-1].Value.Position)
+	default:
+		return nil, false
+	}
+	if calleeFunc == "" {
+		return nil, false
+	}
+
+	// The constructor call edge, its return field's parameter, and the argument
+	// bound to that parameter — the branch variable (`statusCode`).
+	ctorEdge := findCallEdge(impl, baseNode.GetEdge().Caller.ID(), calleeFunc, valPos)
+	if ctorEdge == nil || ctorEdge.ParamArgMap == nil {
+		return nil, false
+	}
+	ctor := findFunctionByName(impl.meta, impl.GetString(ctorEdge.Callee.Pkg), calleeFunc)
+	if ctor == nil {
+		return nil, false
+	}
+	paramName := constructorFieldParam(ctor, fieldName)
+	if paramName == "" {
+		return nil, false
+	}
+	statusArg, ok := ctorEdge.ParamArgMap[paramName]
+	if !ok || statusArg.GetKind() != metadata.KindIdent {
+		return nil, false
+	}
+	return r.expandVarStatuses(statusArg.GetName(), scope, impl)
+}
+
+// findCallEdge returns the call-graph edge from callerID to a callee named
+// calleeFunc, preferring the one at valPos (disambiguating repeated calls to the
+// same function in one caller) and falling back to the first match.
+func findCallEdge(impl *ContextProviderImpl, callerID, calleeFunc, valPos string) *metadata.CallGraphEdge {
+	var first *metadata.CallGraphEdge
+	for i := range impl.meta.CallGraph {
+		e := &impl.meta.CallGraph[i]
+		if e.Caller.ID() != callerID || impl.GetString(e.Callee.Name) != calleeFunc {
+			continue
+		}
+		if valPos != "" && impl.GetString(e.Callee.Position) == valPos {
+			return e
+		}
+		if first == nil {
+			first = e
+		}
+	}
+	return first
+}
+
 // compositeLitOf peels an optional address-of (`&T{...}`) and returns the
 // composite literal, or nil when arg is not (a pointer to) one.
 func compositeLitOf(arg *metadata.CallArgument) *metadata.CallArgument {
@@ -2647,40 +2766,62 @@ func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallA
 	if !ok || impl.meta == nil {
 		return nil
 	}
-	callerName := impl.GetString(edge.Caller.Name)
-	callerPkg := impl.GetString(edge.Caller.Pkg)
-	fn := findFunction(impl.meta, callerPkg, callerName)
+	fn := findFunction(impl.meta, impl.GetString(edge.Caller.Pkg), impl.GetString(edge.Caller.Name))
 	if fn == nil {
 		return nil
 	}
-	assigns, ok := fn.AssignmentMap[arg.GetName()]
+	codes, _ := r.expandVarStatuses(arg.GetName(), fn, impl)
+	return codes
+}
+
+// expandVarStatuses fans a variable's branch assignments in function fn out to
+// the set of HTTP status codes it can hold: `statusCode = http.StatusNotFound`
+// (a constant, in any branch of a switch/if) and `err = NewError(msg, 404)` (a
+// constructor call carrying a status literal) both count. residue is true when
+// at least one assignment is non-constant (its concrete code can't be pinned),
+// so the caller can keep an honest `default` for it. Returns nil codes when the
+// variable has fewer than two assignments — single-branch flows resolve through
+// the normal latest-wins path and must not be split. Issues #39 and #155.
+func (r *ResponsePatternMatcherImpl) expandVarStatuses(name string, fn *metadata.Function, impl *ContextProviderImpl) (codes []int, residue bool) {
+	assigns, ok := fn.AssignmentMap[name]
 	if !ok || len(assigns) < 2 {
-		return nil
+		return nil, false
 	}
 	seen := make(map[int]struct{}, len(assigns))
-	out := make([]int, 0, len(assigns))
-	for _, a := range assigns {
-		if a.Value.GetKind() != metadata.KindCall {
+	for i := range assigns {
+		if s, ok := r.statusCodeOfValue(&assigns[i].Value, impl); ok {
+			if _, dup := seen[s]; !dup {
+				seen[s] = struct{}{}
+				codes = append(codes, s)
+			}
 			continue
 		}
-		for _, callArg := range a.Value.Args {
-			if callArg == nil {
-				continue
-			}
-			argStr := impl.GetArgumentInfo(callArg)
-			status, ok := r.schemaMapper.MapStatusCode(argStr)
-			if !ok {
-				continue
-			}
-			if _, dup := seen[status]; dup {
-				break
-			}
-			seen[status] = struct{}{}
-			out = append(out, status)
-			break // first matching arg wins per assignment
-		}
+		residue = true
 	}
-	return out
+	return codes, residue
+}
+
+// statusCodeOfValue resolves a single assignment right-hand side to an HTTP
+// status code: a constant / const-selector (`http.StatusNotFound`, `404`)
+// directly, or a constructor call by taking the first argument that parses as a
+// status literal (`NewError(msg, 404)`). Returns false for a non-constant value
+// (a computed status that can't be pinned).
+func (r *ResponsePatternMatcherImpl) statusCodeOfValue(value *metadata.CallArgument, impl *ContextProviderImpl) (int, bool) {
+	if value == nil {
+		return 0, false
+	}
+	if value.GetKind() == metadata.KindCall {
+		for _, a := range value.Args {
+			if a == nil {
+				continue
+			}
+			if s, ok := r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(a)); ok {
+				return s, true
+			}
+		}
+		return 0, false
+	}
+	return r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(value))
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
