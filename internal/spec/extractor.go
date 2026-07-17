@@ -2057,13 +2057,15 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	// Write-destination gating: only meaningful for destination-carrying
-	// encoders (json.NewEncoder(x).Encode(v)). The encoded value is a response
-	// only when x provably traces to the response writer — otherwise it was
-	// written to some other io.Writer (a bytes.Buffer, a hash, a log). Mirrors
-	// the request-source gating on RequestBodyPattern. See issue #170.
+	// encoders (json.NewEncoder(x).Encode(v)). Drop the response only when x
+	// provably resolves to a concrete non-writer — a bytes.Buffer, a hash, a log
+	// sink. A proven writer, a writer-compatible interface (io.Writer helper
+	// param), or an unresolvable destination all stay permissive, so a real
+	// response is never dropped ("honest over wrong"). Mirrors the request-source
+	// gating on RequestBodyPattern. See issue #170.
 	if r.pattern.RequireResponseDestination && r.destResolver != nil && r.destResolver.Enabled() {
 		dst := r.destination(edge)
-		if dst == nil || !r.destResolver.IsResponseDest(dst, edge) {
+		if dst != nil && r.destResolver.IsProvablyNonWriter(dst, edge) {
 			return false
 		}
 	}

@@ -49,8 +49,10 @@ func TestTestdata_ResponseDestGating(t *testing.T) {
 		t.Error("expected the real response type User to be present")
 	}
 
-	// The two writer-destination routes carry a User response ref.
-	for _, path := range []string{"/user", "/user-helper"} {
+	// The writer-destination routes carry a User response ref — including the
+	// io.Writer-typed helper, whose destination can't be proven to be the
+	// writer but could be, so the response must be kept (regression guard).
+	for _, path := range []string{"/user", "/user-helper", "/user-iowriter"} {
 		get := opFor(out.Paths[path], "GET")
 		if get == nil {
 			t.Errorf("GET %s missing; have %v", path, mapPathKeys(out.Paths))

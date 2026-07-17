@@ -26,15 +26,20 @@ var netHTTPRequestContext = RequestContextConfig{
 
 // netHTTPResponseContext is the ResponseContext preset for plain net/http
 // handlers: the response writer is the http.ResponseWriter parameter. Chi and
-// Mux share it (their handlers also take an http.ResponseWriter). Concrete
-// implementations of ResponseWriter (http.ResponseWriter itself resolves to the
-// interface, but wrappers may surface as *http.response) are covered by the
-// interface match plus the httptest recorder used in tests.
+// Mux share it (their handlers also take an http.ResponseWriter). The
+// compatible list keeps the ubiquitous `func writeJSON(w io.Writer, v any)`
+// helper shape — an io.Writer parameter could dynamically be the response
+// writer, so responses written through it must not be dropped.
 var netHTTPResponseContext = ResponseContextConfig{
 	WriterTypeRegexes: []string{
 		`^net/http\.ResponseWriter$`,
 		`^\*?net/http\.response$`,
 		`^\*?net/http/httptest\.ResponseRecorder$`,
+	},
+	WriterCompatibleTypeRegexes: []string{
+		`^io\.Writer$`,
+		`^io\.WriteCloser$`,
+		`^io\.ReadWriter$`,
 	},
 }
 

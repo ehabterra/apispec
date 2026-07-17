@@ -93,21 +93,19 @@ type RequestContextConfig struct {
 // write-side mirror of RequestContextConfig (issue #170).
 type ResponseContextConfig struct {
 	// WriterTypeRegexes match the (fully-qualified) types that ARE an HTTP
-	// response writer. The root of a write-destination expression must have one
-	// of these types for the write to count as a response. Examples:
+	// response writer. A destination resolving to one of these keeps the
+	// response. Examples:
 	//   net/http -> "^net/http\\.ResponseWriter$"
 	//   gin      -> "^github\\.com/gin-gonic/gin\\.ResponseWriter$"
 	WriterTypeRegexes []string `yaml:"writerTypeRegexes,omitempty" json:"writerTypeRegexes,omitempty"`
 
-	// WriterAccessors are regexes matched against the dot-joined accessor chain
-	// applied to a response-writer root, for frameworks whose writer is reached
-	// through the request context rather than being a bare parameter. The chain
-	// is rendered like RequestContextConfig.BodyAccessors (method calls as
-	// "Name()"). An empty chain (the writer IS the root, e.g. net/http's `w`)
-	// always qualifies. Examples:
-	//   gin  -> "^Writer$"          (c.Writer)
-	//   echo -> "^Response\\(\\)$"  (c.Response())
-	WriterAccessors []string `yaml:"writerAccessors,omitempty" json:"writerAccessors,omitempty"`
+	// WriterCompatibleTypeRegexes match interface types that an HTTP response
+	// writer SATISFIES — most importantly io.Writer, the parameter type of the
+	// ubiquitous `func writeJSON(w io.Writer, v any)` helper. A destination of
+	// such a type could dynamically be the response writer, so the response is
+	// kept (the gate rejects only destinations that provably cannot be the
+	// writer). Leave empty to treat every non-writer type as disqualifying.
+	WriterCompatibleTypeRegexes []string `yaml:"writerCompatibleTypeRegexes,omitempty" json:"writerCompatibleTypeRegexes,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names

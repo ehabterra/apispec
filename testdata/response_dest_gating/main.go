@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"io"
 	"net/http"
 )
 
@@ -44,6 +45,19 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// getUserViaIOWriter threads w through a helper whose parameter is typed
+// io.Writer — the destination can't be PROVEN to be the response writer, but it
+// could be (a writer satisfies io.Writer), so the response must be kept. This
+// is the ubiquitous writeJSON(w io.Writer, v) shape; dropping it was the
+// regression the conservative gate avoids.
+func getUserViaIOWriter(w http.ResponseWriter, r *http.Request) {
+	encodeTo(w, User{ID: "3", Name: "c"})
+}
+
+func encodeTo(dst io.Writer, v any) {
+	_ = json.NewEncoder(dst).Encode(v)
+}
+
 // leakBuffer encodes Secret to a bytes.Buffer, not to w — must be ignored. The
 // real response is the plain w.Write below.
 func leakBuffer(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +77,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", getUser)
 	mux.HandleFunc("GET /user-helper", getUserViaHelper)
+	mux.HandleFunc("GET /user-iowriter", getUserViaIOWriter)
 	mux.HandleFunc("POST /leak-buffer", leakBuffer)
 	mux.HandleFunc("POST /leak-hash", leakHash)
 	_ = http.ListenAndServe(":8080", mux)

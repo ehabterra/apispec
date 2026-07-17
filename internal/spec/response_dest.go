@@ -20,25 +20,29 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// responseDestResolver is the write-side mirror of bodySourceResolver
-// (issue #170). It determines whether an encoder's write destination can be
-// traced back to the HTTP response writer as configured by
-// FrameworkConfig.ResponseContext. This is the "response-destination gating"
-// that stops a value encoded to some other io.Writer — a bytes.Buffer, a hash,
-// a log sink — from being mistaken for the operation's response.
+// responseDestResolver is the write-side counterpart of bodySourceResolver
+// (issue #170). It decides whether an encoder's write destination disqualifies
+// the encoded value from being the operation's response — i.e. whether the
+// value was written somewhere OTHER than the HTTP response writer (a
+// bytes.Buffer, a hash, a log sink).
 //
-// The two resolvers are deliberately symmetric: request gating traces a
-// decoder's *source* bytes to a request-body accessor; response gating traces
-// an encoder's *destination* writer to a response writer.
+// It is deliberately CONSERVATIVE ("honest over wrong", golden rule #7): it
+// rejects a destination only when it can PROVE the destination is a concrete
+// non-writer. A proven writer, a writer-compatible interface (io.Writer — the
+// ubiquitous `func writeJSON(w io.Writer, v any)` helper shape), or a
+// destination it cannot resolve all stay permissive, so a legitimate response
+// is never dropped. The narrower risk it accepts is missing a false positive
+// that hides behind an interface indirection — preferable to regressing real
+// responses.
 type responseDestResolver struct {
 	contextProvider ContextProvider
-	writerTypeREs   []*regexp.Regexp
-	accessorREs     []*regexp.Regexp
+	writerTypeREs   []*regexp.Regexp // types that ARE a response writer
+	compatibleREs   []*regexp.Regexp // interfaces a response writer satisfies (io.Writer, ...)
 }
 
 // newResponseDestResolver compiles the configured regexes once. Enabled()
 // reports false when no ResponseContext writer types are configured; callers
-// then fall back to prior (permissive) behaviour.
+// then fall back to prior (fully permissive) behaviour.
 func newResponseDestResolver(cfg *APISpecConfig, contextProvider ContextProvider) *responseDestResolver {
 	r := &responseDestResolver{contextProvider: contextProvider}
 	if cfg == nil {
@@ -49,9 +53,9 @@ func newResponseDestResolver(cfg *APISpecConfig, contextProvider ContextProvider
 			r.writerTypeREs = append(r.writerTypeREs, re)
 		}
 	}
-	for _, p := range cfg.Framework.ResponseContext.WriterAccessors {
+	for _, p := range cfg.Framework.ResponseContext.WriterCompatibleTypeRegexes {
 		if re, err := cachedRegex(p); err == nil {
-			r.accessorREs = append(r.accessorREs, re)
+			r.compatibleREs = append(r.compatibleREs, re)
 		}
 	}
 	return r
@@ -63,131 +67,59 @@ func (r *responseDestResolver) Enabled() bool {
 	return r != nil && len(r.writerTypeREs) > 0
 }
 
-// IsResponseDest returns true if the destination argument at the given call
-// site can be traced through selectors, idents, assignments and parameter
-// boundaries to a response-writer root.
+// IsProvablyNonWriter reports whether the destination argument resolves to a
+// concrete type that is definitely NOT the response writer, and so the encoded
+// value must not be treated as the response. It returns false — permissive —
+// whenever the destination:
+//   - is a configured response-writer type, or
+//   - is a writer-compatible interface (io.Writer, ...), or
+//   - cannot be resolved to a concrete type.
 //
-// When Enabled() is false it returns true (permissive) so callers can use it
-// unconditionally.
-func (r *responseDestResolver) IsResponseDest(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) bool {
+// Only a destination that resolves to a specific, non-writer, non-compatible
+// type (bytes.Buffer, os.File, a hash, ...) is reported as provably non-writer.
+func (r *responseDestResolver) IsProvablyNonWriter(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) bool {
 	if !r.Enabled() {
-		return true
-	}
-	visited := make(map[string]bool, 4)
-	return r.check(arg, edge, visited)
-}
-
-func (r *responseDestResolver) check(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, visited map[string]bool) bool {
-	if arg == nil || edge == nil {
 		return false
 	}
+	t := r.leafType(arg, edge)
+	if t == "" {
+		return false // unresolved — stay permissive
+	}
+	if matchAny(r.writerTypeREs, t) {
+		return false // it IS a writer
+	}
+	if matchAny(r.compatibleREs, t) {
+		return false // could be the writer (e.g. an io.Writer parameter)
+	}
+	return true
+}
 
-	// Strip address-of and deref so &w and *w trace the same as w.
+// leafType resolves the destination expression to the type of its underlying
+// value. Address-of and deref are stripped (&buf and buf resolve alike); a bare
+// ident yields its (possibly traced) type; a selector/call yields its recorded
+// result type when available. Returns "" when the type cannot be determined.
+func (r *responseDestResolver) leafType(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) string {
 	for arg != nil && (arg.GetKind() == metadata.KindUnary || arg.GetKind() == metadata.KindStar) {
 		arg = arg.X
 	}
 	if arg == nil {
-		return false
+		return ""
 	}
-
-	key := arg.ID()
-	if visited[key] {
-		return false
-	}
-	visited[key] = true
-
 	switch arg.GetKind() {
-	case metadata.KindSelector, metadata.KindCall:
-		root, segs := peelAccessorChain(arg)
-		if root != nil && r.chainMatches(root, segs, edge) {
-			return true
-		}
-		// The root may itself be a variable whose origin is the writer —
-		// e.g. dst := w; json.NewEncoder(dst).Encode(v).
-		if root != nil && root.GetKind() == metadata.KindIdent {
-			return r.checkIdent(root, edge, visited)
-		}
-		return false
-
 	case metadata.KindIdent:
-		return r.checkIdent(arg, edge, visited)
-	}
-	return false
-}
-
-// chainMatches reports whether the (root, segs) chain points at a response
-// writer: the root's type must match a WriterTypeRegex when segs is empty
-// (the writer IS the root, e.g. net/http's `w`), otherwise the dotted accessor
-// chain must match a WriterAccessor applied to a writer-typed context root.
-func (r *responseDestResolver) chainMatches(root *metadata.CallArgument, segs []chainSegment, edge *metadata.CallGraphEdge) bool {
-	if root == nil || root.GetKind() != metadata.KindIdent {
-		return false
-	}
-	rootType := r.identType(root, edge)
-	if rootType == "" {
-		return false
-	}
-	// Bare writer parameter (no accessor chain): the root's own type decides.
-	if len(segs) == 0 {
-		return matchAny(r.writerTypeREs, rootType)
-	}
-	// Writer reached through a context accessor (e.g. c.Writer): the accessor
-	// chain must match. WriterAccessors is optional; when unset, only bare
-	// writer roots qualify.
-	return matchAny(r.accessorREs, accessorString(segs))
-}
-
-// checkIdent traces an ident through local assignments and parameter
-// boundaries to see whether its value is the response writer.
-func (r *responseDestResolver) checkIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, visited map[string]bool) bool {
-	if arg == nil || arg.GetKind() != metadata.KindIdent || edge == nil {
-		return false
-	}
-	name := arg.GetName()
-	if name == "" {
-		return false
-	}
-
-	// A bare ident whose own type is already a writer qualifies directly —
-	// this is the common `json.NewEncoder(w).Encode(v)` case.
-	if t := r.identType(arg, edge); t != "" && matchAny(r.writerTypeREs, t) {
-		return true
-	}
-
-	// 1) Local assignments visible at this call site (dst := w).
-	if assigns, ok := edge.AssignmentMap[name]; ok && len(assigns) > 0 {
-		rhs := assigns[len(assigns)-1].Value
-		if rhs.Meta == nil {
-			rhs.Meta = arg.Meta
+		return r.identType(arg, edge)
+	case metadata.KindSelector, metadata.KindCall:
+		if t := arg.GetResolvedType(); t != "" {
+			return t
 		}
-		if r.check(&rhs, edge, visited) {
-			return true
-		}
+		return arg.GetType()
 	}
-
-	// 2) The ident may be a parameter of a helper — trace it up the call graph
-	// to the caller's argument so writeJSON(w, v) { enc(w) } resolves from its
-	// caller passing the real response writer.
-	callerName := r.contextProvider.GetString(edge.Caller.Name)
-	callerPkg := r.contextProvider.GetString(edge.Caller.Pkg)
-	if name == callerName {
-		return false // guard against pathological self-recursion
-	}
-	if meta := r.metadata(); meta != nil {
-		_, _, originArg, _ := metadata.TraceVariableOrigin(name, callerName, callerPkg, meta)
-		if originArg != nil && originArg != arg {
-			if t := originArg.GetType(); t != "" && matchAny(r.writerTypeREs, t) {
-				return true
-			}
-		}
-	}
-
-	return false
+	return ""
 }
 
 // identType returns the ident's declared type, preferring the resolved type.
-// Falls back to local assignments and a call-graph origin trace. Mirrors
-// bodySourceResolver.identType.
+// Falls back to the concrete type recorded on a local assignment, then to a
+// call-graph origin trace. Mirrors bodySourceResolver.identType.
 func (r *responseDestResolver) identType(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) string {
 	if arg == nil {
 		return ""
@@ -211,7 +143,7 @@ func (r *responseDestResolver) identType(arg *metadata.CallArgument, edge *metad
 		callerName := r.contextProvider.GetString(edge.Caller.Name)
 		callerPkg := r.contextProvider.GetString(edge.Caller.Pkg)
 		_, _, originArg, _ := metadata.TraceVariableOrigin(arg.GetName(), callerName, callerPkg, meta)
-		if originArg != nil {
+		if originArg != nil && originArg != arg {
 			return originArg.GetType()
 		}
 	}
