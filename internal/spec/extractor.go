@@ -1839,6 +1839,35 @@ func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge
 	return methodAssignmentMap(impl.meta, impl.GetString(pf.Pkg), impl.GetString(pf.RecvType), impl.GetString(pf.Name), varName)
 }
 
+// latestAssignment returns the right-hand side of the most recent assignment to
+// the variable `name` visible at the given call site — the Decode/Encode call
+// edge's own AssignmentMap first, then the enclosing handler function's scope
+// (via callerAssignmentMap) for a variable assigned in the handler body rather
+// than at the call edge. Returns nil when there is no such assignment.
+//
+// This is the shared variable-assignment lookup used by both the request-body
+// source resolver (src := r.Body) and the response-destination resolver
+// (dst := w, lw := &loggingWriter{w}); see issue #182 for consolidating it with
+// the other variable-resolution mechanisms.
+func latestAssignment(cp ContextProvider, edge *metadata.CallGraphEdge, name string) *metadata.CallArgument {
+	if name == "" || edge == nil {
+		return nil
+	}
+	assigns := edge.AssignmentMap[name]
+	if len(assigns) == 0 {
+		if impl, ok := cp.(*ContextProviderImpl); ok {
+			if am := callerAssignmentMap(impl, edge, name); am != nil {
+				assigns = am[name]
+			}
+		}
+	}
+	if len(assigns) == 0 {
+		return nil
+	}
+	rhs := assigns[len(assigns)-1].Value
+	return &rhs
+}
+
 // methodAssignmentMap finds the AssignmentMap of the method (pkg, receiver,
 // name) whose map records varName. Methods are stored per-Type; receiver and
 // name are matched exactly (the same receiver string findParentFunction records

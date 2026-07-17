@@ -149,7 +149,7 @@ func (r *responseDestResolver) reachesWriterIdent(arg *metadata.CallArgument, ed
 	// declared type. latestAssignment checks the call edge's map then the
 	// enclosing handler function's scope (a destination assigned in the handler
 	// body lives on the Function, not on the Encode call edge).
-	if rhs := r.latestAssignment(name, edge); rhs != nil {
+	if rhs := latestAssignment(r.contextProvider, edge, name); rhs != nil {
 		if rhs.Meta == nil {
 			rhs.Meta = arg.Meta
 		}
@@ -203,7 +203,7 @@ func (r *responseDestResolver) leafType(arg *metadata.CallArgument, edge *metada
 	case metadata.KindIdent:
 		if key := arg.ID(); !visited[key] {
 			visited[key] = true
-			if rhs := r.latestAssignment(arg.GetName(), edge); rhs != nil {
+			if rhs := latestAssignment(r.contextProvider, edge, arg.GetName()); rhs != nil {
 				if t := r.leafType(rhs, edge, visited); t != "" {
 					return t
 				}
@@ -222,28 +222,6 @@ func (r *responseDestResolver) leafType(arg *metadata.CallArgument, edge *metada
 		return r.contextProvider.GetArgumentInfo(arg)
 	}
 	return ""
-}
-
-// latestAssignment returns the RHS of the latest assignment to a variable
-// visible at this call site — the Encode call edge first, then the enclosing
-// handler function's scope — or nil when there is none.
-func (r *responseDestResolver) latestAssignment(name string, edge *metadata.CallGraphEdge) *metadata.CallArgument {
-	if name == "" || edge == nil {
-		return nil
-	}
-	assigns := edge.AssignmentMap[name]
-	if len(assigns) == 0 {
-		if impl, ok := r.contextProvider.(*ContextProviderImpl); ok {
-			if am := callerAssignmentMap(impl, edge, name); am != nil {
-				assigns = am[name]
-			}
-		}
-	}
-	if len(assigns) == 0 {
-		return nil
-	}
-	rhs := assigns[len(assigns)-1].Value
-	return &rhs
 }
 
 // identType returns the ident's declared type, preferring the resolved type.
