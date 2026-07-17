@@ -43,6 +43,16 @@ func TestTestdata_MultiHopValueType(t *testing.T) {
 		}
 	}
 
+	// An interface-returning call forwarded through two hops must resolve to the
+	// concrete Dog — which needs the trace to carry the handler's scope, not the
+	// deepest helper's (CodeRabbit review on PR #183).
+	if get := opFor(out.Paths["/interface-return"], "GET"); get == nil {
+		t.Errorf("GET /interface-return missing; have %v", mapPathKeys(out.Paths))
+	} else if !responseSchemaRefs(get.Responses, "Dog") {
+		t.Errorf("GET /interface-return: expected the concrete Dog through the helper chain, got %v",
+			keysOf(get.Responses))
+	}
+
 	post := opFor(out.Paths["/create-two-hops"], "POST")
 	if post == nil {
 		t.Fatalf("POST /create-two-hops missing; have %v", mapPathKeys(out.Paths))
@@ -53,10 +63,18 @@ func TestTestdata_MultiHopValueType(t *testing.T) {
 	}
 }
 
+// refIsType reports whether a $ref points at the component for the exact type
+// `name`. Component names are the qualified path with the bare type as the last
+// underscore-delimited segment (…_User), so an exact "_"+name suffix avoids
+// matching "User" inside "CreateUserRequest".
+func refIsType(ref, name string) bool {
+	return ref != "" && strings.HasSuffix(ref, "_"+name)
+}
+
 func responseSchemaRefs(responses map[string]intspec.Response, name string) bool {
 	for _, resp := range responses {
 		for _, media := range resp.Content {
-			if media.Schema != nil && strings.Contains(media.Schema.Ref, name) {
+			if media.Schema != nil && refIsType(media.Schema.Ref, name) {
 				return true
 			}
 		}
@@ -66,7 +84,7 @@ func responseSchemaRefs(responses map[string]intspec.Response, name string) bool
 
 func bodySchemaRefs(rb *intspec.RequestBody, name string) bool {
 	for _, media := range rb.Content {
-		if media.Schema != nil && strings.Contains(media.Schema.Ref, name) {
+		if media.Schema != nil && refIsType(media.Schema.Ref, name) {
 			return true
 		}
 	}

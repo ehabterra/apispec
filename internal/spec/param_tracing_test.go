@@ -85,7 +85,7 @@ func TestTraceArgViaParent_ResolvesParameterToCallerArg(t *testing.T) {
 		},
 	}
 
-	got := matcher.traceArgViaParent(statusIdent, child)
+	got, _ := matcher.traceArgViaParent(statusIdent, child)
 	if got == nil {
 		t.Fatal("expected to recover caller-site arg via parent's ParamArgMap, got nil")
 	}
@@ -110,7 +110,7 @@ func TestTraceArgViaParent_ReturnsNilForLiteral(t *testing.T) {
 		},
 	}
 
-	if got := matcher.traceArgViaParent(lit, &fakeNode{}); got != nil {
+	if got, _ := matcher.traceArgViaParent(lit, &fakeNode{}); got != nil {
 		t.Errorf("expected nil for literal arg, got %+v", got)
 	}
 }
@@ -139,7 +139,7 @@ func TestTraceArgViaParent_ReturnsNilWhenParamNotMapped(t *testing.T) {
 		},
 	}
 
-	if got := matcher.traceArgViaParent(ident, child); got != nil {
+	if got, _ := matcher.traceArgViaParent(ident, child); got != nil {
 		t.Errorf("expected nil when param not in ParamArgMap, got %+v", got)
 	}
 }
