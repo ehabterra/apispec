@@ -164,3 +164,113 @@ func TestStatusCodeOfValue(t *testing.T) {
 		}
 	})
 }
+
+// TestFindCallEdge covers the call-site position match, the first-match
+// fallback, and the no-match case.
+func TestFindCallEdge(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	impl := NewContextProvider(meta)
+	caller := metadata.Call{Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")}
+	e := func(pos string) metadata.CallGraphEdge {
+		return metadata.CallGraphEdge{
+			Caller:   caller,
+			Callee:   metadata.Call{Name: meta.StringPool.Get("New")},
+			Position: meta.StringPool.Get(pos),
+		}
+	}
+	meta.CallGraph = []metadata.CallGraphEdge{e("pos1"), e("pos2")}
+	callerID := caller.ID()
+
+	if got := findCallEdge(impl, callerID, "New", "pos2"); got == nil || impl.GetString(got.Position) != "pos2" {
+		t.Errorf("valPos match should return the pos2 edge, got %v", got)
+	}
+	if got := findCallEdge(impl, callerID, "New", ""); got == nil || impl.GetString(got.Position) != "pos1" {
+		t.Errorf("no valPos should return the first match (pos1), got %v", got)
+	}
+	if got := findCallEdge(impl, callerID, "New", "nope"); got == nil || impl.GetString(got.Position) != "pos1" {
+		t.Errorf("unmatched valPos should fall back to the first match, got %v", got)
+	}
+	if got := findCallEdge(impl, callerID, "Missing", ""); got != nil {
+		t.Errorf("unknown callee should return nil, got %v", got)
+	}
+}
+
+// TestStatusesFromConstructorField_Guards covers the early-out guards.
+func TestStatusesFromConstructorField_Guards(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	m := branchStatusMatcher(meta)
+
+	sel := func(base, field string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindSelector)
+		x := metadata.NewCallArgument(meta)
+		x.SetKind(metadata.KindIdent)
+		x.SetName(base)
+		f := metadata.NewCallArgument(meta)
+		f.SetKind(metadata.KindIdent)
+		f.SetName(field)
+		a.X, a.Sel = x, f
+		return a
+	}
+	node := &fakeNode{edge: &metadata.CallGraphEdge{
+		Caller: metadata.Call{Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")},
+	}}
+
+	cases := []struct {
+		name string
+		arg  *metadata.CallArgument
+		node TrackerNodeInterface
+	}{
+		{"nil arg", nil, node},
+		{"non-selector", mkIdent(meta, "x", ""), node},
+		{"selector, empty field", sel("e", ""), node},
+		{"selector, unresolvable base scope", sel("e", "Code"), node},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			codes, residue := m.statusesFromConstructorField(tc.arg, tc.node)
+			if codes != nil || residue {
+				t.Errorf("guard %q should yield (nil,false); got (%v,%v)", tc.name, codes, residue)
+			}
+		})
+	}
+}
+
+// TestConstructorFieldParam covers resolving a return composite-literal field to
+// its source parameter (and the no-match / non-composite cases).
+func TestConstructorFieldParam(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+
+	kv := func(field, param string) *metadata.CallArgument {
+		e := metadata.NewCallArgument(meta)
+		e.SetKind(metadata.KindKeyValue)
+		key := metadata.NewCallArgument(meta)
+		key.SetKind(metadata.KindIdent)
+		key.SetName(field)
+		val := metadata.NewCallArgument(meta)
+		val.SetKind(metadata.KindIdent)
+		val.SetName(param)
+		e.X, e.Fun = key, val
+		return e
+	}
+	// return &APIError{Message: message, Code: code}
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindCompositeLit)
+	lit.Args = []*metadata.CallArgument{kv("Message", "message"), kv("Code", "code")}
+	addr := metadata.NewCallArgument(meta)
+	addr.SetKind(metadata.KindUnary)
+	addr.X = lit
+	ctor := &metadata.Function{ReturnVars: []metadata.CallArgument{*addr}}
+
+	if got := constructorFieldParam(ctor, "Code"); got != "code" {
+		t.Errorf(`constructorFieldParam(_, "Code") = %q, want "code"`, got)
+	}
+	if got := constructorFieldParam(ctor, "Missing"); got != "" {
+		t.Errorf(`constructorFieldParam(_, "Missing") = %q, want ""`, got)
+	}
+	// A non-composite return contributes no field param.
+	plain := &metadata.Function{ReturnVars: []metadata.CallArgument{*mkIdent(meta, "x", "")}}
+	if got := constructorFieldParam(plain, "Code"); got != "" {
+		t.Errorf(`non-composite return should yield "", got %q`, got)
+	}
+}
