@@ -31,10 +31,13 @@ var netHTTPRequestContext = RequestContextConfig{
 // keeps `func writeJSON(w io.Writer, v)` helpers whose destination stays an
 // io.Writer interface (could be the writer).
 var netHTTPResponseContext = ResponseContextConfig{
+	// Only the handler's parameter type. Independently-constructible concretes
+	// (httptest.ResponseRecorder, net/http.response) are intentionally NOT
+	// listed: a locally-built recorder is writer-typed but is not the handler's
+	// response writer, so encoding to it must not count as the response
+	// (provenance, not type — CodeRabbit review on PR #181).
 	WriterTypeRegexes: []string{
 		`^net/http\.ResponseWriter$`,
-		`^\*?net/http\.response$`,
-		`^\*?net/http/httptest\.ResponseRecorder$`,
 	},
 	WriterCompatibleTypeRegexes: []string{
 		`^io\.Writer$`,

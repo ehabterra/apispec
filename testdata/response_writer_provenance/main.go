@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 )
 
 // User is the real response body; Secret must never reach the response.
@@ -88,6 +89,14 @@ func leakConstructed(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
+// leakRecorder encodes to a locally-built httptest recorder — writer-typed but
+// NOT the handler's w, so it has no response provenance.
+func leakRecorder(w http.ResponseWriter, r *http.Request) {
+	rec := httptest.NewRecorder()
+	_ = json.NewEncoder(rec).Encode(Secret{Token: "shh"})
+	_, _ = w.Write([]byte("ok"))
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /direct", getDirect)
@@ -98,5 +107,6 @@ func main() {
 	mux.HandleFunc("POST /leak-hash", leakHash)
 	mux.HandleFunc("POST /leak-discard", leakDiscard)
 	mux.HandleFunc("POST /leak-constructed", leakConstructed)
+	mux.HandleFunc("POST /leak-recorder", leakRecorder)
 	_ = http.ListenAndServe(":8080", mux)
 }

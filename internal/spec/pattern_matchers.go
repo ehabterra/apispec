@@ -755,34 +755,50 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		return false
 	}
 
-	// Body-source verification: only meaningful for ambiguous decoders
-	// (json.Decode, json.Unmarshal, render.DecodeJSON, ...). Receiver-based
-	// patterns like *gin.Context.BindJSON are already unambiguous because
-	// the receiver type IS the request.
-	if r.pattern.RequireRequestSource && r.bodyResolver != nil && r.bodyResolver.Enabled() {
-		src := r.bodySource(edge)
-		if src == nil || !r.bodyResolver.IsRequestSource(src, edge) {
-			return false
-		}
-	}
+	// NOTE: body-source verification (RequireRequestSource) is intentionally NOT
+	// done here. MatchNode is memoized per edge, but an ambiguous decoder's
+	// source is per-route — the same helper node decodes r.Body in one route and
+	// a non-request reader in another. The gate lives in ExtractRequest
+	// (per-route), where the source is resolved through the call graph to its
+	// concrete value. Mirror of the response-destination gating (issue #170).
 
 	return true
 }
 
-// bodySource returns the CallArgument that carries the decoder's input bytes
-// for the given call edge, according to the pattern configuration.
-func (r *RequestPatternMatcherImpl) bodySource(edge *metadata.CallGraphEdge) *metadata.CallArgument {
+// bodySource returns the decoder's input source for the given node, resolved
+// per-route through the call graph to its concrete value, plus the tracker edge
+// in whose scope that value is checked. For json.NewDecoder(x).Decode(v) the
+// raw source is the factory's first argument x; when x is a wrapper parameter
+// (`func decodeFrom(src io.Reader, v)`) it is followed to the caller's actual
+// argument at this route's call site, so the same helper resolves to r.Body for
+// decodeFrom(r.Body, &v) and to a non-request reader otherwise.
+func (r *RequestPatternMatcherImpl) bodySource(node TrackerNodeInterface) (*metadata.CallArgument, *metadata.CallGraphEdge) {
+	if node == nil {
+		return nil, nil
+	}
+	edge := node.GetEdge()
 	if edge == nil {
-		return nil
+		return nil, nil
 	}
+	var src *metadata.CallArgument
 	if r.pattern.BodyFromReceiver {
-		return resolveReceiverSource(edge, r.bodyResolver.metadata())
+		src = resolveReceiverSource(edge, r.bodyResolver.metadata())
+	} else {
+		idx := r.pattern.BodySourceArgIndex
+		if idx < 0 || idx >= len(edge.Args) {
+			return nil, edge
+		}
+		src = edge.Args[idx]
 	}
-	idx := r.pattern.BodySourceArgIndex
-	if idx < 0 || idx >= len(edge.Args) {
-		return nil
+	if src == nil {
+		return nil, edge
 	}
-	return edge.Args[idx]
+	resolved, resolvedNode := resolveArgThroughParams(src, node)
+	srcEdge := edge
+	if resolvedNode != nil && resolvedNode.GetEdge() != nil {
+		srcEdge = resolvedNode.GetEdge()
+	}
+	return resolved, srcEdge
 }
 
 // GetPattern returns the request pattern
@@ -807,6 +823,21 @@ func (r *RequestPatternMatcherImpl) GetPriority() int {
 
 // ExtractRequest extracts request information from a matched node
 func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, route *RouteInfo) *RequestInfo {
+	// Body-source verification, done here — NOT in MatchNode, which is memoized
+	// per edge — because an ambiguous decoder's source is per-route. Resolve the
+	// source through the call graph to its concrete value at THIS route's call
+	// site and drop the body when it does not trace to an HTTP request. This
+	// recognises a decoder wrapped in a `func decodeFrom(src io.Reader, v)`
+	// helper called with r.Body (fixing the io.Reader-helper false negative)
+	// without the shared-node false positive of a per-edge gate. Mirror of the
+	// response-destination gating (issue #170).
+	if r.pattern.RequireRequestSource && r.bodyResolver != nil && r.bodyResolver.Enabled() {
+		src, srcEdge := r.bodySource(node)
+		if src == nil || !r.bodyResolver.IsRequestSource(src, srcEdge) {
+			return nil
+		}
+	}
+
 	reqInfo := &RequestInfo{
 		ContentType: r.cfg.Defaults.RequestContentType,
 	}

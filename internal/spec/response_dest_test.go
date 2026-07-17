@@ -54,8 +54,10 @@ func TestResponseDestResolver_DirectTypes(t *testing.T) {
 		arg  *metadata.CallArgument
 		drop bool
 	}{
-		{"response writer w", mkIdent(meta, "w", "net/http.ResponseWriter"), false},
-		{"httptest recorder", mkIdent(meta, "rec", "*net/http/httptest.ResponseRecorder"), false},
+		{"response writer w (handler param)", mkIdent(meta, "w", "net/http.ResponseWriter"), false},
+		// A recorder type alone is NOT provenance — a locally-built recorder is
+		// writer-shaped but is not the handler's w, so it must drop.
+		{"locally-typed recorder is not the handler writer", mkIdent(meta, "rec", "*net/http/httptest.ResponseRecorder"), true},
 		{"io.Writer helper param stays permissive", mkIdent(meta, "dst", "io.Writer"), false},
 		{"untyped ident stays permissive", mkIdent(meta, "x", ""), false},
 		{"bytes.Buffer is a sink", mkIdent(meta, "buf", "*bytes.Buffer"), true},

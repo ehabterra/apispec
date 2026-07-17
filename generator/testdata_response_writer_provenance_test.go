@@ -53,7 +53,7 @@ func TestTestdata_ResponseWriterProvenance(t *testing.T) {
 	}
 
 	// DROP: destination is a sink → no struct/$ref response.
-	for _, path := range []string{"/leak-buffer", "/leak-hash", "/leak-discard", "/leak-constructed"} {
+	for _, path := range []string{"/leak-buffer", "/leak-hash", "/leak-discard", "/leak-constructed", "/leak-recorder"} {
 		post := opFor(out.Paths[path], "POST")
 		if post == nil {
 			t.Errorf("POST %s missing; have %v", path, mapPathKeys(out.Paths))

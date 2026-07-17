@@ -75,13 +75,13 @@ func (r *responseDestResolver) ShouldDrop(arg *metadata.CallArgument, edge *meta
 		return false
 	}
 	if r.reachesWriter(arg, edge, make(map[string]bool, 4)) {
-		return false // provenance reaches the response writer — it's the response
+		return false // provenance reaches the handler's response writer — it's the response
 	}
 	t := r.leafType(arg, edge, make(map[string]bool, 4))
-	if t == "" || matchAny(r.compatibleREs, t) || matchAny(r.writerTypeREs, t) {
-		return false // unresolved, a writer-compatible interface, or a writer — keep
+	if t == "" || matchAny(r.compatibleREs, t) {
+		return false // unresolved, or a writer-compatible interface — keep
 	}
-	return true // a resolved concrete non-writer — drop
+	return true // resolved to something with no provenance to w — drop
 }
 
 // reachesWriter reports whether the destination's provenance includes a value
@@ -131,31 +131,36 @@ func (r *responseDestResolver) reachesWriter(arg *metadata.CallArgument, edge *m
 	return false
 }
 
-// reachesWriterIdent traces an ident through its own type, local assignments,
-// and parameter boundaries to a response-writer value.
+// reachesWriterIdent traces an ident to the handler's response-writer
+// PARAMETER — not merely to any writer-typed value. A writer type alone is not
+// provenance: a locally-constructed httptest.NewRecorder() is writer-typed but
+// is not the handler's `w` (CodeRabbit review on PR #181). So a local (an ident
+// with an assignment in scope) is judged by its assigned provenance, and only
+// an unassigned ident — the handler/helper parameter itself — is accepted on
+// its writer type.
 func (r *responseDestResolver) reachesWriterIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, visited map[string]bool) bool {
-	// The ident's own type IS a writer (the common `w` case, and the resolved
-	// writer at the end of a param/assignment chain).
-	if matchAny(r.writerTypeREs, r.identType(arg, edge)) {
-		return true
-	}
-
 	name := arg.GetName()
 	if name == "" {
 		return false
 	}
 
-	// Local assignments: dst := w, lw := &loggingWriter{w}. latestAssignment
-	// checks the call edge's map first, then the enclosing handler function's
-	// scope — a destination assigned in the handler body (the common wrapper
-	// case) lives on the Function, not on the Encode call edge.
+	// Local assignments come FIRST: dst := w, lw := &loggingWriter{w},
+	// rec := httptest.NewRecorder(). The local's provenance is its RHS, not its
+	// declared type. latestAssignment checks the call edge's map then the
+	// enclosing handler function's scope (a destination assigned in the handler
+	// body lives on the Function, not on the Encode call edge).
 	if rhs := r.latestAssignment(name, edge); rhs != nil {
 		if rhs.Meta == nil {
 			rhs.Meta = arg.Meta
 		}
-		if r.reachesWriter(rhs, edge, visited) {
-			return true
-		}
+		return r.reachesWriter(rhs, edge, visited)
+	}
+
+	// No local assignment: the ident is a parameter (or free var). The handler's
+	// writer parameter is accepted on its writer type — this is where provenance
+	// to `w` is seeded.
+	if matchAny(r.writerTypeREs, r.identType(arg, edge)) {
+		return true
 	}
 
 	// Parameter boundary: a helper's writer parameter traced up to the caller's
