@@ -274,3 +274,44 @@ func TestConstructorFieldParam(t *testing.T) {
 		t.Errorf(`non-composite return should yield "", got %q`, got)
 	}
 }
+
+// TestAssignmentLookups covers the two canonical assignment entry points and the
+// scope difference between them (issue #182): assignmentsAt / latestAssignment
+// consult the call edge first then the enclosing function; latestCallerAssignment
+// resolves the enclosing-function scope only and ignores the edge's own map.
+func TestAssignmentLookups(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	impl := NewContextProvider(meta)
+
+	rhs := httpStatusSelector(meta, "StatusOK")
+	edge := &metadata.CallGraphEdge{
+		Caller:        metadata.Call{Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")},
+		AssignmentMap: map[string][]metadata.Assignment{"x": {{Value: rhs}}},
+	}
+
+	// Edge-map hit: no enclosing-function fallback needed.
+	if got := assignmentsAt(impl, edge, "x"); len(got) != 1 {
+		t.Fatalf("edge-map hit: got %d assignments, want 1", len(got))
+	}
+	// Guards.
+	if assignmentsAt(impl, nil, "x") != nil {
+		t.Error("nil edge must yield nil")
+	}
+	if assignmentsAt(impl, edge, "") != nil {
+		t.Error("empty name must yield nil")
+	}
+	// Unknown var with no enclosing function registered -> nil.
+	if assignmentsAt(impl, edge, "missing") != nil {
+		t.Error("unknown var with no function scope must yield nil")
+	}
+	// latestAssignment returns the latest RHS of the edge assignment.
+	if la := latestAssignment(impl, edge, "x"); la == nil || la.GetKind() != metadata.KindSelector {
+		t.Errorf("latestAssignment should return the selector RHS, got %v", la)
+	}
+	// latestCallerAssignment is function-scope only: it ignores the edge's own
+	// map, so with no enclosing function it reports ok=false even though the edge
+	// records `x`.
+	if _, ok := latestCallerAssignment(impl, edge, "x"); ok {
+		t.Error("function-scope lookup must ignore the edge map (ok=false)")
+	}
+}
