@@ -442,8 +442,14 @@ type Method struct {
 	// Type parameter names for generics
 	TypeParams []string `yaml:"type_params,omitempty"`
 
-	// Return value origins for tracing through return values
-	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
+	// Return value origins for tracing through return values. ReturnVars holds
+	// only the greatest-arity return statement (for resolving a returned value by
+	// index); Returns holds EVERY explicit return statement's values in source
+	// order, so a function with several returns (e.g. an error mapper whose
+	// branches each return a differently-statused struct) can have each return's
+	// fields enumerated. See #192.
+	ReturnVars []CallArgument   `yaml:"return_vars,omitempty"`
+	Returns    [][]CallArgument `yaml:"returns,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
@@ -463,8 +469,14 @@ type Function struct {
 	// Type parameter names for generics
 	TypeParams []string `yaml:"type_params,omitempty"`
 
-	// Return value origins for tracing through return values
-	ReturnVars []CallArgument `yaml:"return_vars,omitempty"`
+	// Return value origins for tracing through return values. ReturnVars holds
+	// only the greatest-arity return statement (for resolving a returned value by
+	// index); Returns holds EVERY explicit return statement's values in source
+	// order, so a function with several returns (e.g. an error mapper whose
+	// branches each return a differently-statused struct) can have each return's
+	// fields enumerated. See #192.
+	ReturnVars []CallArgument   `yaml:"return_vars,omitempty"`
+	Returns    [][]CallArgument `yaml:"returns,omitempty"`
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
