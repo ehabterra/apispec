@@ -128,6 +128,20 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
    blocked the #170 write-destination gate; the denylist attempt was reverted
    and the metadata gap was filed instead.)
 
+10. **A call's callee name is package-shaped — never read it from `Fun.GetName()`
+    alone.** For a same-package call the `CallArgument.Fun` is an ident and
+    `Fun.GetName()` is the function name; for a **cross-package** call
+    (`pkg.NewErr(...)`) the `Fun` is a *selector* and the name lives in
+    `Fun.Sel` — `Fun.GetName()` returns `""`. Any code resolving a callee from a
+    call node must use `calleeNameOf(fun)` (ident name, else selector `.Sel`),
+    or the whole resolution silently collapses for every cross-package call.
+    This is invisible in single-package fixtures — the same-package shape works,
+    so a bug here only surfaces on real multi-package projects. (Origin: PR #194
+    — the inline constructor/mapper status resolvers bailed on a cross-package
+    error constructor `common.NewError(...)`, collapsing every cross-package
+    error status to `default`; `testdata/cross_package_constructor_status`
+    guards it.)
+
 ## Testing conventions
 
 - **Fixture projects** live in `testdata/<name>/` (a `main.go` + `go.mod`).

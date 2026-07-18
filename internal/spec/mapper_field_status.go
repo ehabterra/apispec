@@ -71,10 +71,9 @@ func (r *ResponsePatternMatcherImpl) statusesFromMapperField(arg *metadata.CallA
 	var mapperFunc, mapperPkg string
 	switch base.GetKind() {
 	case metadata.KindCall:
-		if base.Fun == nil {
-			return nil, false
-		}
-		mapperFunc = base.Fun.GetName()
+		// Same-package `MapError(...)` (ident Fun) or cross-package
+		// `pkg.MapError(...)` (selector Fun — name lives in .Sel).
+		mapperFunc = calleeNameOf(base.Fun)
 	case metadata.KindIdent:
 		as := assignmentsAt(impl, baseNode.GetEdge(), base.GetName())
 		if len(as) == 0 || as[len(as)-1].Value.GetKind() != metadata.KindCall {
@@ -171,12 +170,14 @@ func (r *ResponsePatternMatcherImpl) fieldStatusOfValue(impl *ContextProviderImp
 		}
 		return residue
 	case metadata.KindCall:
-		// A returned helper call directly (`return mapAsXxx(err)`). The callee
-		// package is usually the mapper's own; fall back to a name search.
-		if val.Fun == nil {
+		// A returned helper call directly (`return mapAsXxx(err)` or
+		// `return pkg.mapAsXxx(err)`). The callee package is usually the mapper's
+		// own; findFunctionByName falls back to an all-packages name search.
+		name := calleeNameOf(val.Fun)
+		if name == "" {
 			return false
 		}
-		helper := findFunctionByName(impl.meta, impl.GetString(scope.Pkg), val.Fun.GetName())
+		helper := findFunctionByName(impl.meta, impl.GetString(scope.Pkg), name)
 		return r.returnFieldStatuses(impl, helper, fieldName, set, seen, depth+1)
 	}
 	return false

@@ -2648,10 +2648,7 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 	var calleeFunc, valPos string
 	switch base.GetKind() {
 	case metadata.KindCall:
-		if base.Fun == nil {
-			return nil, false
-		}
-		calleeFunc = base.Fun.GetName()
+		calleeFunc = calleeNameOf(base.Fun)
 		valPos = impl.GetString(base.Position)
 	case metadata.KindIdent:
 		// Edge-first (assignmentsAt): the error variable may be assigned inside a
@@ -2678,6 +2675,23 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 		return nil, false
 	}
 	return r.expandVarStatuses(statusArg.GetName(), scope, impl)
+}
+
+// calleeNameOf returns the bare name of the function a call invokes, from the
+// call's Fun. A same-package call (`NewErr(...)`) has a plain ident Fun whose
+// name is the function; a cross-package call (`pkg.NewErr(...)`) has a selector
+// Fun whose name lives in .Sel. Returns "" when neither yields a name.
+func calleeNameOf(fun *metadata.CallArgument) string {
+	if fun == nil {
+		return ""
+	}
+	if name := fun.GetName(); name != "" {
+		return name
+	}
+	if fun.GetKind() == metadata.KindSelector && fun.Sel != nil {
+		return fun.Sel.GetName()
+	}
+	return ""
 }
 
 // findCallEdge returns the call-graph edge from callerID to a callee named
