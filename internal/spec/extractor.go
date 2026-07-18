@@ -1845,28 +1845,58 @@ func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge
 	return methodAssignmentMap(impl.meta, impl.GetString(pf.Pkg), impl.GetString(pf.RecvType), impl.GetString(pf.Name), varName)
 }
 
-// latestAssignment returns the right-hand side of the most recent assignment to
-// the variable `name` visible at the given call site — the Decode/Encode call
-// edge's own AssignmentMap first, then the enclosing handler function's scope
-// (via callerAssignmentMap) for a variable assigned in the handler body rather
-// than at the call edge. Returns nil when there is no such assignment.
+// latestCallerAssignment returns the most recent assignment to `name` in the
+// enclosing function's scope at the given edge (via callerAssignmentMap), and
+// whether one exists. It is the function-scope counterpart of latestAssignment:
+// the constructor-field status resolvers deliberately resolve the error variable
+// in the handler-body scope only and never consult the edge's own AssignmentMap.
+// Widening them to the edge-first assignmentsAt resolves additional real-project
+// statuses but is a behavior change, tracked separately (issue #182 follow-up).
+func latestCallerAssignment(impl *ContextProviderImpl, edge *metadata.CallGraphEdge, name string) (metadata.Assignment, bool) {
+	am := callerAssignmentMap(impl, edge, name)
+	if am == nil {
+		return metadata.Assignment{}, false
+	}
+	as := am[name]
+	if len(as) == 0 {
+		return metadata.Assignment{}, false
+	}
+	return as[len(as)-1], true
+}
+
+// assignmentsAt returns the assignments to the variable `name` visible at the
+// given call site: the call edge's own AssignmentMap first, then the enclosing
+// function's scope (via callerAssignmentMap) for a variable assigned in the
+// handler body rather than at the edge. The edge map and the function scope
+// record the same assignment for a given variable, so consulting the edge first
+// is a fast path, not a different answer.
 //
-// This is the shared variable-assignment lookup used by both the request-body
-// source resolver (src := r.Body) and the response-destination resolver
-// (dst := w, lw := &loggingWriter{w}); see issue #182 for consolidating it with
-// the other variable-resolution mechanisms.
-func latestAssignment(cp ContextProvider, edge *metadata.CallGraphEdge, name string) *metadata.CallArgument {
+// This is the one canonical call-site assignment lookup (issue #182): the
+// request-body / response-destination resolvers reach it via latestAssignment
+// (latest RHS), and the constructor-field status resolvers consume the full
+// Assignment (CalleeFunc / position) directly. Returns nil when there is none.
+func assignmentsAt(cp ContextProvider, edge *metadata.CallGraphEdge, name string) []metadata.Assignment {
 	if name == "" || edge == nil {
 		return nil
 	}
-	assigns := edge.AssignmentMap[name]
-	if len(assigns) == 0 {
-		if impl, ok := cp.(*ContextProviderImpl); ok {
-			if am := callerAssignmentMap(impl, edge, name); am != nil {
-				assigns = am[name]
-			}
+	if assigns := edge.AssignmentMap[name]; len(assigns) > 0 {
+		return assigns
+	}
+	if impl, ok := cp.(*ContextProviderImpl); ok {
+		if am := callerAssignmentMap(impl, edge, name); am != nil {
+			return am[name]
 		}
 	}
+	return nil
+}
+
+// latestAssignment returns the right-hand side of the most recent assignment to
+// the variable `name` visible at the given call site (see assignmentsAt for the
+// scope). Returns nil when there is no such assignment. Used by the request-body
+// source resolver (src := r.Body) and the response-destination resolver
+// (dst := w, lw := &loggingWriter{w}).
+func latestAssignment(cp ContextProvider, edge *metadata.CallGraphEdge, name string) *metadata.CallArgument {
+	assigns := assignmentsAt(cp, edge, name)
 	if len(assigns) == 0 {
 		return nil
 	}
@@ -2545,16 +2575,8 @@ func (r *ResponsePatternMatcherImpl) statusFromConstructorField(arg *metadata.Ca
 	}
 
 	// 2. That local's latest assignment, which must come from a constructor call.
-	assignMap := callerAssignmentMap(impl, callerEdge, baseVar.GetName())
-	if assignMap == nil {
-		return 0, false
-	}
-	assigns, ok := assignMap[baseVar.GetName()]
-	if !ok || len(assigns) == 0 {
-		return 0, false
-	}
-	assign := assigns[len(assigns)-1]
-	if assign.Value.GetKind() != metadata.KindCall || assign.CalleeFunc == "" {
+	assign, ok := latestCallerAssignment(impl, callerEdge, baseVar.GetName())
+	if !ok || assign.Value.GetKind() != metadata.KindCall || assign.CalleeFunc == "" {
 		return 0, false
 	}
 
@@ -2648,16 +2670,12 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 		calleeFunc = base.Fun.GetName()
 		valPos = impl.GetString(base.Position)
 	case metadata.KindIdent:
-		assignMap := callerAssignmentMap(impl, baseNode.GetEdge(), base.GetName())
-		if assignMap == nil {
+		assign, ok := latestCallerAssignment(impl, baseNode.GetEdge(), base.GetName())
+		if !ok || assign.Value.GetKind() != metadata.KindCall {
 			return nil, false
 		}
-		as := assignMap[base.GetName()]
-		if len(as) == 0 || as[len(as)-1].Value.GetKind() != metadata.KindCall {
-			return nil, false
-		}
-		calleeFunc = as[len(as)-1].CalleeFunc
-		valPos = impl.GetString(as[len(as)-1].Value.Position)
+		calleeFunc = assign.CalleeFunc
+		valPos = impl.GetString(assign.Value.Position)
 	default:
 		return nil, false
 	}
