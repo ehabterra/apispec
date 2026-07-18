@@ -1110,7 +1110,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(nil), nil)
 		meta := exSweepMeta()
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
-		if got := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
+		if got, _ := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
 			t.Errorf("got %v, want nil", got)
 		}
 	})
@@ -1119,7 +1119,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 		meta := exSweepMeta()
 		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta), nil)
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
-		if got := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
+		if got, _ := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
 			t.Errorf("got %v, want nil", got)
 		}
 	})
@@ -1150,9 +1150,12 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 		}
 		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta), nil)
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
-		got := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge)
+		got, residue := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge)
 		if len(got) != 2 || got[0] != 400 || got[1] != 500 {
 			t.Errorf("got %v, want [400 500]", got)
+		}
+		if !residue {
+			t.Error("a non-constant branch must report a residue")
 		}
 	})
 }
