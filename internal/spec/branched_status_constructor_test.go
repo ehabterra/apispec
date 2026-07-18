@@ -284,9 +284,17 @@ func TestAssignmentLookups(t *testing.T) {
 	impl := NewContextProvider(meta)
 
 	rhs := httpStatusSelector(meta, "StatusOK")
+	// Unused pooled int fields must be -1, not the zero value: index 0 is a valid
+	// interned string ("http" here), so a zero Position/Scope would resolve to it.
 	edge := &metadata.CallGraphEdge{
-		Caller:        metadata.Call{Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")},
-		AssignmentMap: map[string][]metadata.Assignment{"x": {{Value: rhs}}},
+		Caller: metadata.Call{
+			Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app"),
+			Position: -1, RecvType: -1, Scope: -1, SignatureStr: -1,
+		},
+		AssignmentMap: map[string][]metadata.Assignment{"x": {{
+			Value:        rhs,
+			VariableName: -1, Pkg: -1, ConcreteType: -1, Position: -1, Scope: -1, Func: -1,
+		}}},
 	}
 
 	// Edge-map hit: no enclosing-function fallback needed.
