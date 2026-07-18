@@ -303,6 +303,36 @@ packages:
                     position: 4
                     resolved_type: -1
                     generic_type_name: -1
+                returns:
+                  - - kind: 8
+                      name: -1
+                      value: -1
+                      x:
+                        kind: 0
+                        name: 1
+                        value: -1
+                        raw: -1
+                        pkg: 2
+                        type: 3
+                        position: 4
+                        resolved_type: -1
+                        generic_type_name: -1
+                      sel:
+                        kind: 0
+                        name: 5
+                        value: -1
+                        raw: -1
+                        pkg: 2
+                        type: 6
+                        position: 7
+                        resolved_type: -1
+                        generic_type_name: -1
+                      raw: -1
+                      pkg: 2
+                      type: 6
+                      position: 4
+                      resolved_type: -1
+                      generic_type_name: -1
               - name: 26
                 receiver: 10
                 signature:
@@ -464,6 +494,16 @@ packages:
                 position: 43
                 resolved_type: -1
                 generic_type_name: -1
+            returns:
+              - - kind: 0
+                  name: 1
+                  value: -1
+                  raw: -1
+                  pkg: 2
+                  type: 3
+                  position: 43
+                  resolved_type: -1
+                  generic_type_name: -1
             assignments:
               u:
                 - variable_name: 1
@@ -879,6 +919,36 @@ packages:
                 position: 4
                 resolved_type: -1
                 generic_type_name: -1
+            returns:
+              - - kind: 8
+                  name: -1
+                  value: -1
+                  x:
+                    kind: 0
+                    name: 1
+                    value: -1
+                    raw: -1
+                    pkg: 2
+                    type: 3
+                    position: 4
+                    resolved_type: -1
+                    generic_type_name: -1
+                  sel:
+                    kind: 0
+                    name: 5
+                    value: -1
+                    raw: -1
+                    pkg: 2
+                    type: 6
+                    position: 7
+                    resolved_type: -1
+                    generic_type_name: -1
+                  raw: -1
+                  pkg: 2
+                  type: 6
+                  position: 4
+                  resolved_type: -1
+                  generic_type_name: -1
           - name: 26
             receiver: 10
             signature:

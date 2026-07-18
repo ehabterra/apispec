@@ -291,29 +291,8 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 					}
 				}
 
-				// Extract return value origins
-				var returnVars []CallArgument
-				var maxReturnCount int
-
-				if fn.Body != nil {
-					ast.Inspect(fn.Body, func(n ast.Node) bool {
-						ret, ok := n.(*ast.ReturnStmt)
-						if !ok {
-							return true
-						}
-
-						// Track the maximum number of return values seen
-						if len(ret.Results) > maxReturnCount {
-							maxReturnCount = len(ret.Results)
-							returnVars = nil // Clear and rebuild with the most complete return
-							for _, expr := range ret.Results {
-								returnVars = append(returnVars, *ExprToCallArgument(expr, info, pkgName, fset, metadata))
-							}
-						}
-
-						return true // Continue traversal to see all returns
-					})
-				}
+				// Extract return value origins (#192: all returns + max-arity)
+				returnVars, allReturns := extractReturns(fn.Body, info, pkgName, fset, metadata)
 
 				// Use funcMap to get callee function declaration
 				var assignmentsInFunc = make(map[string][]Assignment)
@@ -340,6 +319,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 					AssignmentMap: assignmentsInFunc,
 					TypeParams:    typeParams,
 					ReturnVars:    returnVars,
+					Returns:       allReturns,
 					Filename:      metadata.StringPool.Get(fileName),
 				}
 				m.SignatureStr = metadata.StringPool.Get(CallArgToString(&m.Signature))
@@ -1168,29 +1148,8 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			}
 		}
 
-		// Extract return value origins
-		var returnVars []CallArgument
-		var maxReturnCount int
-
-		if fn.Body != nil {
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				ret, ok := n.(*ast.ReturnStmt)
-				if !ok {
-					return true
-				}
-
-				// Track the maximum number of return values seen
-				if len(ret.Results) > maxReturnCount {
-					maxReturnCount = len(ret.Results)
-					returnVars = nil // Clear and rebuild with the most complete return
-					for _, expr := range ret.Results {
-						returnVars = append(returnVars, *ExprToCallArgument(expr, info, pkgName, fset, metadata))
-					}
-				}
-
-				return true // Continue traversal to see all returns
-			})
-		}
+		// Extract return value origins (#192: all returns + max-arity)
+		returnVars, allReturns := extractReturns(fn.Body, info, pkgName, fset, metadata)
 
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
@@ -1246,6 +1205,7 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			Comments:       metadata.StringPool.Get(comments),
 			TypeParams:     typeParams,
 			ReturnVars:     returnVars,
+			Returns:        allReturns,
 			AssignmentMap:  assignmentsInFunc,
 			MethodDispatch: detectMethodDispatch(fn.Body, info, fset),
 		}
@@ -1490,6 +1450,46 @@ func processImports(file *ast.File, metadata *Metadata, f *File) {
 }
 
 // buildCallGraph builds the call graph for all files in a package
+// extractReturns walks a function or method body and returns both:
+//   - returnVars: the values of the greatest-arity return statement (kept for
+//     callers that resolve a returned value by index), and
+//   - allReturns: every explicit return statement's values in source order, so a
+//     function with several returns (e.g. an error mapper whose branches each
+//     return a differently-statused struct) can have each return's fields
+//     enumerated (#192, unblocks #187). Naked returns (no explicit results) are
+//     skipped — they carry no expression to resolve.
+func extractReturns(body *ast.BlockStmt, info *types.Info, pkgName string, fset *token.FileSet, metadata *Metadata) (returnVars []CallArgument, allReturns [][]CallArgument) {
+	if body == nil {
+		return nil, nil
+	}
+	maxReturnCount := 0
+	ast.Inspect(body, func(n ast.Node) bool {
+		// Don't descend into nested closures: a func literal's return statements
+		// belong to that closure, not the enclosing function, and would otherwise
+		// pollute this function's Returns (and status extraction over them).
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok || len(ret.Results) == 0 {
+			return true
+		}
+		vals := make([]CallArgument, len(ret.Results))
+		for i, expr := range ret.Results {
+			vals[i] = *ExprToCallArgument(expr, info, pkgName, fset, metadata)
+		}
+		allReturns = append(allReturns, vals)
+		// The first return of the greatest arity wins ReturnVars, matching the
+		// prior behavior (strictly-greater comparison, no override on ties).
+		if len(ret.Results) > maxReturnCount {
+			maxReturnCount = len(ret.Results)
+			returnVars = append([]CallArgument(nil), vals...)
+		}
+		return true
+	})
+	return returnVars, allReturns
+}
+
 func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, fset *token.FileSet, funcMap map[string]*ast.FuncDecl, metadata *Metadata) {
 	// Stable file order within the package (files is a map) so call-graph edge
 	// order is deterministic across runs.

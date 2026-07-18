@@ -179,6 +179,11 @@ func setupMetadataReferences(metadata *Metadata) {
 				for j := range fn.ReturnVars {
 					setCallArgumentMeta(&fn.ReturnVars[j], metadata)
 				}
+				for k := range fn.Returns {
+					for j := range fn.Returns[k] {
+						setCallArgumentMeta(&fn.Returns[k][j], metadata)
+					}
+				}
 
 				file.Functions[funcName] = fn
 			}
@@ -192,6 +197,11 @@ func setupMetadataReferences(metadata *Metadata) {
 
 					for j := range method.ReturnVars {
 						setCallArgumentMeta(&method.ReturnVars[j], metadata)
+					}
+					for k := range method.Returns {
+						for j := range method.Returns[k] {
+							setCallArgumentMeta(&method.Returns[k][j], metadata)
+						}
 					}
 					for varName, assignments := range method.AssignmentMap {
 						for j := range assignments {
