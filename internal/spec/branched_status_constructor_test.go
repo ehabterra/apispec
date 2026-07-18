@@ -426,3 +426,28 @@ func TestStatusesFromConstructorField_EdgeOnlyAssignment(t *testing.T) {
 		t.Error("all-constant branches must not report a residue")
 	}
 }
+
+// TestCalleeNameOf covers same-package idents, cross-package selectors, and the
+// empty cases.
+func TestCalleeNameOf(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	if got := calleeNameOf(mkIdent(meta, "NewErr", "")); got != "NewErr" {
+		t.Errorf("ident: got %q, want NewErr", got)
+	}
+	// pkg.NewErr — a selector whose name lives in .Sel.
+	sel := metadata.NewCallArgument(meta)
+	sel.SetKind(metadata.KindSelector)
+	sel.X, sel.Sel = mkIdent(meta, "pkg", ""), mkIdent(meta, "NewErr", "")
+	if got := calleeNameOf(sel); got != "NewErr" {
+		t.Errorf("selector: got %q, want NewErr", got)
+	}
+	if got := calleeNameOf(nil); got != "" {
+		t.Errorf("nil: got %q, want empty", got)
+	}
+	// A selector with no Sel yields empty.
+	bare := metadata.NewCallArgument(meta)
+	bare.SetKind(metadata.KindSelector)
+	if got := calleeNameOf(bare); got != "" {
+		t.Errorf("selector without Sel: got %q, want empty", got)
+	}
+}
