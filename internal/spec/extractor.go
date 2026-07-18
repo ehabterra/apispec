@@ -2375,6 +2375,11 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			// then handed to the error constructor — issue #155.
 			expanded, residue = r.statusesFromConstructorField(statusArg, node)
 		}
+		if len(expanded) == 0 && !residue {
+			// Or a mapper field (api.Status) whose value is set across the return
+			// branches of an error mapper (api := MapError(err)) — issue #187.
+			expanded, residue = r.statusesFromMapperField(statusArg, node)
+		}
 		if len(expanded) > 1 || (len(expanded) >= 1 && residue) {
 			out := make([]*ResponseInfo, 0, len(expanded)+1)
 			for _, st := range expanded {
