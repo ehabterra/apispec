@@ -166,32 +166,40 @@ func TestStatusCodeOfValue(t *testing.T) {
 }
 
 // TestFindCallEdge covers the call-site position match, the first-match
-// fallback, and the no-match case.
+// fallback, the no-match case, and the optional package filter.
 func TestFindCallEdge(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	impl := NewContextProvider(meta)
 	caller := metadata.Call{Name: meta.StringPool.Get("h"), Pkg: meta.StringPool.Get("app")}
-	e := func(pos string) metadata.CallGraphEdge {
+	e := func(pkg, pos string) metadata.CallGraphEdge {
 		return metadata.CallGraphEdge{
 			Caller:   caller,
-			Callee:   metadata.Call{Name: meta.StringPool.Get("New")},
+			Callee:   metadata.Call{Name: meta.StringPool.Get("New"), Pkg: meta.StringPool.Get(pkg)},
 			Position: meta.StringPool.Get(pos),
 		}
 	}
-	meta.CallGraph = []metadata.CallGraphEdge{e("pos1"), e("pos2")}
+	meta.CallGraph = []metadata.CallGraphEdge{e("pkgA", "pos1"), e("pkgB", "pos2")}
 	callerID := caller.ID()
 
-	if got := findCallEdge(impl, callerID, "New", "pos2"); got == nil || impl.GetString(got.Position) != "pos2" {
+	// Package-agnostic ("" pkg): position match, first-match fallback, no-match.
+	if got := findCallEdge(impl, callerID, "New", "", "pos2"); got == nil || impl.GetString(got.Position) != "pos2" {
 		t.Errorf("valPos match should return the pos2 edge, got %v", got)
 	}
-	if got := findCallEdge(impl, callerID, "New", ""); got == nil || impl.GetString(got.Position) != "pos1" {
+	if got := findCallEdge(impl, callerID, "New", "", ""); got == nil || impl.GetString(got.Position) != "pos1" {
 		t.Errorf("no valPos should return the first match (pos1), got %v", got)
 	}
-	if got := findCallEdge(impl, callerID, "New", "nope"); got == nil || impl.GetString(got.Position) != "pos1" {
+	if got := findCallEdge(impl, callerID, "New", "", "nope"); got == nil || impl.GetString(got.Position) != "pos1" {
 		t.Errorf("unmatched valPos should fall back to the first match, got %v", got)
 	}
-	if got := findCallEdge(impl, callerID, "Missing", ""); got != nil {
+	if got := findCallEdge(impl, callerID, "Missing", "", ""); got != nil {
 		t.Errorf("unknown callee should return nil, got %v", got)
+	}
+	// Package filter: only the matching-package edge is eligible.
+	if got := findCallEdge(impl, callerID, "New", "pkgB", ""); got == nil || impl.GetString(got.Position) != "pos2" {
+		t.Errorf("pkg filter should select the pkgB edge, got %v", got)
+	}
+	if got := findCallEdge(impl, callerID, "New", "pkgC", ""); got != nil {
+		t.Errorf("non-matching pkg must yield nil, got %v", got)
 	}
 }
 

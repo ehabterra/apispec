@@ -2568,20 +2568,11 @@ func (r *ResponsePatternMatcherImpl) statusFromConstructorField(arg *metadata.Ca
 		return 0, false
 	}
 
-	// 3. The constructor's return composite-literal field matching the selector,
-	//    giving the constructor parameter that field is assigned from.
-	ctor := findFunctionByName(impl.meta, assign.CalleePkg, assign.CalleeFunc)
-	if ctor == nil {
-		return 0, false
-	}
-	paramName := constructorFieldParam(ctor, fieldName)
-	if paramName == "" {
-		return 0, false
-	}
-
-	// 4. That parameter's actual argument at the constructor call site.
-	statusArg := constructorArgForParam(impl, callerEdge.Caller, &assign, paramName)
-	if statusArg == nil {
+	// 3. The constructor's return field matching the selector, and the actual
+	//    argument bound to the parameter it assigns from, at the call site.
+	statusArg, ok := constructorFieldArg(impl, callerEdge.Caller.ID(), assign.CalleeFunc,
+		assign.CalleePkg, impl.GetString(assign.Value.Position), fieldName)
+	if !ok {
 		return 0, false
 	}
 	return r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(statusArg))
@@ -2674,21 +2665,10 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 		return nil, false
 	}
 
-	// The constructor call edge, its return field's parameter, and the argument
-	// bound to that parameter — the branch variable (`statusCode`).
-	ctorEdge := findCallEdge(impl, baseNode.GetEdge().Caller.ID(), calleeFunc, valPos)
-	if ctorEdge == nil || ctorEdge.ParamArgMap == nil {
-		return nil, false
-	}
-	ctor := findFunctionByName(impl.meta, impl.GetString(ctorEdge.Callee.Pkg), calleeFunc)
-	if ctor == nil {
-		return nil, false
-	}
-	paramName := constructorFieldParam(ctor, fieldName)
-	if paramName == "" {
-		return nil, false
-	}
-	statusArg, ok := ctorEdge.ParamArgMap[paramName]
+	// The constructor's return field's parameter and the argument bound to it —
+	// the branch variable (`statusCode`). Package-agnostic (calleeFunc came from
+	// the resolved call, not a known package).
+	statusArg, ok := constructorFieldArg(impl, baseNode.GetEdge().Caller.ID(), calleeFunc, "", valPos, fieldName)
 	if !ok || statusArg.GetKind() != metadata.KindIdent {
 		return nil, false
 	}
@@ -2697,12 +2677,17 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 
 // findCallEdge returns the call-graph edge from callerID to a callee named
 // calleeFunc, preferring the one at valPos (disambiguating repeated calls to the
-// same function in one caller) and falling back to the first match.
-func findCallEdge(impl *ContextProviderImpl, callerID, calleeFunc, valPos string) *metadata.CallGraphEdge {
+// same function in one caller) and falling back to the first match. When
+// calleePkg is non-empty the callee package must match too (disambiguating
+// same-named constructors across packages); "" skips the package check.
+func findCallEdge(impl *ContextProviderImpl, callerID, calleeFunc, calleePkg, valPos string) *metadata.CallGraphEdge {
 	var first *metadata.CallGraphEdge
 	for i := range impl.meta.CallGraph {
 		e := &impl.meta.CallGraph[i]
 		if e.Caller.ID() != callerID || impl.GetString(e.Callee.Name) != calleeFunc {
+			continue
+		}
+		if calleePkg != "" && impl.GetString(e.Callee.Pkg) != calleePkg {
 			continue
 		}
 		if valPos != "" && impl.GetString(e.Position) == valPos {
@@ -2730,37 +2715,34 @@ func compositeLitOf(arg *metadata.CallArgument) *metadata.CallArgument {
 	return nil
 }
 
-// constructorArgForParam finds the constructor call edge (caller -> the
-// assignment's callee, at the assignment's call-site position) and returns the
-// argument bound to paramName via that edge's ParamArgMap. The position match
-// disambiguates multiple calls to the same constructor in one function; it
-// falls back to the first caller/callee match (the single-call case).
-func constructorArgForParam(impl *ContextProviderImpl, caller metadata.Call, assign *metadata.Assignment, paramName string) *metadata.CallArgument {
-	callerID := caller.ID()
-	valPos := impl.GetString(assign.Value.Position)
-	var chosen *metadata.CallGraphEdge
-	for i := range impl.meta.CallGraph {
-		e := &impl.meta.CallGraph[i]
-		if e.Caller.ID() != callerID ||
-			impl.GetString(e.Callee.Name) != assign.CalleeFunc ||
-			impl.GetString(e.Callee.Pkg) != assign.CalleePkg {
-			continue
-		}
-		if valPos != "" && impl.GetString(e.Position) == valPos {
-			chosen = e
-			break
-		}
-		if chosen == nil {
-			chosen = e
-		}
+// constructorFieldArg resolves a selector field on a value produced by a
+// constructor call: given the constructor reachable from callerID as
+// (calleeFunc, calleePkg) at valPos, it locates that call edge, maps fieldName
+// to the constructor parameter its return composite assigns it from
+// (constructorFieldParam), and returns the argument bound to that parameter at
+// the call site. calleePkg disambiguates same-named constructors across packages
+// ("" skips the check); valPos disambiguates repeated calls in one caller. This
+// is the shared "constructor return field -> bound argument" tail of both the
+// single-status (statusFromConstructorField) and one->many
+// (statusesFromConstructorField) resolvers (issue #182).
+func constructorFieldArg(impl *ContextProviderImpl, callerID, calleeFunc, calleePkg, valPos, fieldName string) (*metadata.CallArgument, bool) {
+	ctorEdge := findCallEdge(impl, callerID, calleeFunc, calleePkg, valPos)
+	if ctorEdge == nil || ctorEdge.ParamArgMap == nil {
+		return nil, false
 	}
-	if chosen == nil || chosen.ParamArgMap == nil {
-		return nil
+	ctor := findFunctionByName(impl.meta, impl.GetString(ctorEdge.Callee.Pkg), calleeFunc)
+	if ctor == nil {
+		return nil, false
 	}
-	if a, ok := chosen.ParamArgMap[paramName]; ok {
-		return &a
+	paramName := constructorFieldParam(ctor, fieldName)
+	if paramName == "" {
+		return nil, false
 	}
-	return nil
+	a, ok := ctorEdge.ParamArgMap[paramName]
+	if !ok {
+		return nil, false
+	}
+	return &a, true
 }
 
 // expandStatusesFromIdent walks the caller's function-level AssignmentMap
