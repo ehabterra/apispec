@@ -1845,25 +1845,6 @@ func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge
 	return methodAssignmentMap(impl.meta, impl.GetString(pf.Pkg), impl.GetString(pf.RecvType), impl.GetString(pf.Name), varName)
 }
 
-// latestCallerAssignment returns the most recent assignment to `name` in the
-// enclosing function's scope at the given edge (via callerAssignmentMap), and
-// whether one exists. It is the function-scope counterpart of latestAssignment:
-// the constructor-field status resolvers deliberately resolve the error variable
-// in the handler-body scope only and never consult the edge's own AssignmentMap.
-// Widening them to the edge-first assignmentsAt resolves additional real-project
-// statuses but is a behavior change, tracked separately (issue #182 follow-up).
-func latestCallerAssignment(impl *ContextProviderImpl, edge *metadata.CallGraphEdge, name string) (metadata.Assignment, bool) {
-	am := callerAssignmentMap(impl, edge, name)
-	if am == nil {
-		return metadata.Assignment{}, false
-	}
-	as := am[name]
-	if len(as) == 0 {
-		return metadata.Assignment{}, false
-	}
-	return as[len(as)-1], true
-}
-
 // assignmentsAt returns the assignments to the variable `name` visible at the
 // given call site: the call edge's own AssignmentMap first, then the enclosing
 // function's scope (via callerAssignmentMap) for a variable assigned in the
@@ -2575,8 +2556,15 @@ func (r *ResponsePatternMatcherImpl) statusFromConstructorField(arg *metadata.Ca
 	}
 
 	// 2. That local's latest assignment, which must come from a constructor call.
-	assign, ok := latestCallerAssignment(impl, callerEdge, baseVar.GetName())
-	if !ok || assign.Value.GetKind() != metadata.KindCall || assign.CalleeFunc == "" {
+	//    Edge-first (assignmentsAt): the error variable may be assigned inside a
+	//    returned handler closure, where its assignment is recorded on the call
+	//    edge rather than a name-resolvable declared function's scope (#189).
+	assigns := assignmentsAt(impl, callerEdge, baseVar.GetName())
+	if len(assigns) == 0 {
+		return 0, false
+	}
+	assign := assigns[len(assigns)-1]
+	if assign.Value.GetKind() != metadata.KindCall || assign.CalleeFunc == "" {
 		return 0, false
 	}
 
@@ -2670,12 +2658,15 @@ func (r *ResponsePatternMatcherImpl) statusesFromConstructorField(arg *metadata.
 		calleeFunc = base.Fun.GetName()
 		valPos = impl.GetString(base.Position)
 	case metadata.KindIdent:
-		assign, ok := latestCallerAssignment(impl, baseNode.GetEdge(), base.GetName())
-		if !ok || assign.Value.GetKind() != metadata.KindCall {
+		// Edge-first (assignmentsAt): the error variable may be assigned inside a
+		// returned handler closure, where the assignment is recorded on the call
+		// edge rather than a name-resolvable declared function's scope (#189).
+		as := assignmentsAt(impl, baseNode.GetEdge(), base.GetName())
+		if len(as) == 0 || as[len(as)-1].Value.GetKind() != metadata.KindCall {
 			return nil, false
 		}
-		calleeFunc = assign.CalleeFunc
-		valPos = impl.GetString(assign.Value.Position)
+		calleeFunc = as[len(as)-1].CalleeFunc
+		valPos = impl.GetString(as[len(as)-1].Value.Position)
 	default:
 		return nil, false
 	}

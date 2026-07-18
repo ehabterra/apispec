@@ -312,14 +312,109 @@ func TestAssignmentLookups(t *testing.T) {
 	if assignmentsAt(impl, edge, "missing") != nil {
 		t.Error("unknown var with no function scope must yield nil")
 	}
-	// latestAssignment returns the latest RHS of the edge assignment.
+	// latestAssignment returns the latest RHS of the edge assignment. The
+	// edge-first lookup recovers an assignment recorded only on the call edge —
+	// the case #189 relies on to resolve constructor-field statuses for error
+	// variables assigned inside returned handler closures.
 	if la := latestAssignment(impl, edge, "x"); la == nil || la.GetKind() != metadata.KindSelector {
 		t.Errorf("latestAssignment should return the selector RHS, got %v", la)
 	}
-	// latestCallerAssignment is function-scope only: it ignores the edge's own
-	// map, so with no enclosing function it reports ok=false even though the edge
-	// records `x`.
-	if _, ok := latestCallerAssignment(impl, edge, "x"); ok {
-		t.Error("function-scope lookup must ignore the edge map (ok=false)")
+}
+
+// TestStatusesFromConstructorField_EdgeOnlyAssignment proves the #189 behavior at
+// the layer it changed: when the error variable's `e := NewAPIError(...)`
+// assignment is recorded only on the call edge — as it is for a variable
+// assigned inside a returned handler closure, where function-scope lookup
+// (findFunctionByName / ParentFunction) cannot reach it — the edge-first
+// assignmentsAt lookup still resolves the constructor-field status through to the
+// branch set. The pre-#189 function-scope-only path missed it (the operation lost
+// its concrete error statuses); this is the minimal isolation of the real-project
+// gain, which a synthetic full-pipeline fixture cannot reproduce because clean
+// code keeps the closure's locals on the enclosing method's scope.
+func TestStatusesFromConstructorField_EdgeOnlyAssignment(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+
+	// Scope function app.handler records the branch variable `statusCode` (set
+	// across three branches) but NOT the error variable `e` — `e` lives only on
+	// the call edge below, so function-scope resolution alone would miss it.
+	asg := func(v metadata.CallArgument) metadata.Assignment {
+		return metadata.Assignment{Value: v, VariableName: -1, Pkg: -1, ConcreteType: -1, Position: -1, Scope: -1, Func: -1}
+	}
+	handlerFn := &metadata.Function{AssignmentMap: map[string][]metadata.Assignment{
+		"statusCode": {
+			asg(httpStatusSelector(meta, "StatusNotFound")),
+			asg(httpStatusSelector(meta, "StatusBadRequest")),
+			asg(httpStatusSelector(meta, "StatusInternalServerError")),
+		},
+	}}
+
+	// Constructor app.NewAPIError returning &APIError{Message: message, Code: code}.
+	kv := func(field, param string) *metadata.CallArgument {
+		e := metadata.NewCallArgument(meta)
+		e.SetKind(metadata.KindKeyValue)
+		key := mkIdent(meta, field, "")
+		val := mkIdent(meta, param, "")
+		e.X, e.Fun = key, val
+		return e
+	}
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindCompositeLit)
+	lit.Args = []*metadata.CallArgument{kv("Message", "message"), kv("Code", "code")}
+	addr := metadata.NewCallArgument(meta)
+	addr.SetKind(metadata.KindUnary)
+	addr.X = lit
+	ctorFn := &metadata.Function{ReturnVars: []metadata.CallArgument{*addr}}
+
+	meta.Packages = map[string]*metadata.Package{
+		"app": {Files: map[string]*metadata.File{
+			"f": {Functions: map[string]*metadata.Function{"handler": handlerFn, "NewAPIError": ctorFn}},
+		}},
+	}
+
+	caller := metadata.Call{
+		Name: meta.StringPool.Get("handler"), Pkg: meta.StringPool.Get("app"),
+		Position: -1, RecvType: -1, Scope: -1, SignatureStr: -1,
+	}
+
+	// The NewAPIError call, recorded as `e`'s edge-only assignment RHS.
+	ctorCall := metadata.NewCallArgument(meta)
+	ctorCall.SetKind(metadata.KindCall)
+	ctorCall.Fun = mkIdent(meta, "NewAPIError", "")
+	ctorCall.Position = meta.StringPool.Get("callpos")
+
+	baseEdge := &metadata.CallGraphEdge{
+		Caller: caller,
+		AssignmentMap: map[string][]metadata.Assignment{
+			"e": {{Value: *ctorCall, CalleeFunc: "NewAPIError", CalleePkg: "app",
+				VariableName: -1, Pkg: -1, ConcreteType: -1, Position: -1, Scope: -1, Func: -1}},
+		},
+	}
+	node := &fakeNode{edge: baseEdge}
+
+	// The constructor call edge binds parameter `code` to the branch variable.
+	meta.CallGraph = []metadata.CallGraphEdge{{
+		Caller: caller,
+		Callee: metadata.Call{
+			Name: meta.StringPool.Get("NewAPIError"), Pkg: meta.StringPool.Get("app"),
+			Position: -1, RecvType: -1, Scope: -1, SignatureStr: -1,
+		},
+		Position:    meta.StringPool.Get("callpos"),
+		ParamArgMap: map[string]metadata.CallArgument{"code": *mkIdent(meta, "statusCode", "")},
+	}}
+
+	// arg = e.Code
+	arg := metadata.NewCallArgument(meta)
+	arg.SetKind(metadata.KindSelector)
+	arg.X = mkIdent(meta, "e", "")
+	arg.Sel = mkIdent(meta, "Code", "")
+
+	m := branchStatusMatcher(meta)
+	codes, residue := m.statusesFromConstructorField(arg, node)
+	sort.Ints(codes)
+	if want := []int{400, 404, 500}; len(codes) != 3 || codes[0] != want[0] || codes[1] != want[1] || codes[2] != want[2] {
+		t.Errorf("edge-only assignment must still resolve the branch set: codes = %v, want %v", codes, want)
+	}
+	if residue {
+		t.Error("all-constant branches must not report a residue")
 	}
 }
