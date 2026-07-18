@@ -1464,6 +1464,12 @@ func extractReturns(body *ast.BlockStmt, info *types.Info, pkgName string, fset 
 	}
 	maxReturnCount := 0
 	ast.Inspect(body, func(n ast.Node) bool {
+		// Don't descend into nested closures: a func literal's return statements
+		// belong to that closure, not the enclosing function, and would otherwise
+		// pollute this function's Returns (and status extraction over them).
+		if _, ok := n.(*ast.FuncLit); ok {
+			return false
+		}
 		ret, ok := n.(*ast.ReturnStmt)
 		if !ok || len(ret.Results) == 0 {
 			return true

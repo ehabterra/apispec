@@ -37,6 +37,11 @@ func TestTestdata_MapperFieldStatus(t *testing.T) {
 	}
 	got := keysOf(get.Responses)
 	sort.Strings(got)
+	// The mapper resolves to exactly {400, 404, 500}; any extra status (or a
+	// spurious success code) is a regression.
+	if len(got) != 3 {
+		t.Fatalf("GET /thing responses = %v, want exactly [400 404 500]", got)
+	}
 	for _, want := range []string{"400", "404", "500"} {
 		if _, ok := get.Responses[want]; !ok {
 			t.Errorf("GET /thing missing status %s; have %v", want, got)
