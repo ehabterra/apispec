@@ -144,6 +144,14 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
 
 ## Testing conventions
 
+- **Probe every uncovered shape with a fixture.** When you hit a code shape no
+  existing fixture covers — a new wiring style, an edge case, a suspected gap —
+  reproduce it as a `testdata/` fixture first, then decide from what it shows:
+  if it exposes a real bug, file an issue (golden rule #9) and, when the fix is
+  deferred, keep the fixture as a change-detector (assert the current behavior
+  with a comment so the test flips when it's fixed); if it already works, the
+  fixture is regression coverage. Never assert a case is (un)covered from
+  reasoning alone — build the fixture and look.
 - **Fixture projects** live in `testdata/<name>/` (a `main.go` + `go.mod`).
   Every fixture is wired into `go test` via structural tests in `generator/`
   (`testdata_*_test.go`): expected routes/methods present, no dangling

@@ -803,6 +803,12 @@ func jsonMarshalPattern() ResponsePattern {
 		TypeArgIndex: 0,
 		TypeFromArg:  true,
 		Deref:        true,
+		// NOTE: json.Marshal(v) returns []byte with no writer argument, so it is
+		// not destination-gated. It therefore over-detects — a Marshal reachable
+		// anywhere (e.g. a downstream client marshaling its OUTBOUND request) is
+		// treated as a response. Root cause + fix (anchor detection on the write
+		// sink, trace the written value's type back) tracked in issue #195; a
+		// writer-in-scope filter was tried and reverted as a workaround (#197).
 	}
 }
 
