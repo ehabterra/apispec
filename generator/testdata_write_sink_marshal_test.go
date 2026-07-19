@@ -31,10 +31,10 @@ import (
 //     WriteHeader(200) status, and no spurious `default` remains.
 //   - /raw-write: w.Write([]byte("pong")) — a raw write with no transform behind
 //     it stays a plain (schema-less) 200, never a spurious $ref body.
-//   - /helper-write (CHANGE-DETECTOR, helper hop still pending): the marshal
-//     lives one function boundary away (encodeEnvelope returns json.Marshal(e)),
-//     so the sink can't yet trace through it — the Envelope body still lands on
-//     `default` instead of 200. When the helper-return hop lands, this flips.
+//   - /helper-write: the marshal lives one function boundary away
+//     (encodeEnvelope returns json.Marshal(e)); the sink traces through the
+//     helper's return to the serialized parameter and binds it to the call-site
+//     value, resolving Envelope at 200.
 func TestTestdata_WriteSinkMarshal(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "write_sink_marshal", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
@@ -64,15 +64,28 @@ func TestTestdata_WriteSinkMarshal(t *testing.T) {
 		}
 	}
 
-	// Helper hop still pending: Envelope lands on `default`, not 200. When the
-	// helper-return hop is implemented, the sink will resolve Envelope at 200 and
-	// this assertion flips — update it to require 200->Envelope with no default.
+	// Helper hop: Envelope resolves at 200 (traced through encodeEnvelope's
+	// returned marshal, bound to the call-site value), with no spurious default.
 	hw := opFor(out.Paths["/helper-write"], "GET")
 	if hw == nil {
 		t.Fatalf("GET /helper-write missing; have %v", mapPathKeys(out.Paths))
 	}
-	if !responseRefsAt(hw.Responses, "default", "Envelope") {
-		t.Errorf("helper-return hop appears IMPLEMENTED (Envelope no longer on `default`) — update this test to require 200->Envelope with no default")
+	if !responseRefsAt(hw.Responses, "200", "Envelope") {
+		t.Errorf("GET /helper-write: expected 200 to ref Envelope (sink traced through helper return), got %v", keysOf(hw.Responses))
+	}
+	if _, ok := hw.Responses["default"]; ok {
+		t.Errorf("GET /helper-write: unexpected spurious `default` — the helper-return hop should resolve Envelope at 200")
+	}
+
+	// Method handler: the sink resolves b := json.Marshal(m) from the method's
+	// own scope (via the method table, since a plain method has no
+	// ParentFunction), yielding Member at 200.
+	mtw := opFor(out.Paths["/method-write"], "GET")
+	if mtw == nil {
+		t.Fatalf("GET /method-write missing; have %v", mapPathKeys(out.Paths))
+	}
+	if !responseRefsAt(mtw.Responses, "200", "Member") {
+		t.Errorf("GET /method-write: expected 200 to ref Member (method-scope sink unwrap), got %v", keysOf(mtw.Responses))
 	}
 }
 

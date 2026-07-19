@@ -59,7 +59,6 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 	)
 

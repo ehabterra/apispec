@@ -54,10 +54,29 @@ func helperWriteHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(encodeEnvelope(Envelope{Data: "d"}))
 }
 
+// Handler exercises the method-handler shape: a plain method (not a closure)
+// is absent from the file's functions and has no ParentFunction, so the write
+// sink must resolve its local `b := json.Marshal(m)` via the method table.
+type Handler struct{}
+
+// Member is the real response body of GET /method-write.
+type Member struct {
+	Name string `json:"name"`
+}
+
+func (h *Handler) MethodWrite(w http.ResponseWriter, r *http.Request) {
+	m := Member{Name: "n"}
+	b, _ := json.Marshal(m)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
+}
+
 func main() {
+	h := &Handler{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /marshal-write", marshalWriteHandler)
 	mux.HandleFunc("GET /raw-write", rawWriteHandler)
 	mux.HandleFunc("GET /helper-write", helperWriteHandler)
+	mux.HandleFunc("GET /method-write", h.MethodWrite)
 	_ = http.ListenAndServe(":8080", mux)
 }

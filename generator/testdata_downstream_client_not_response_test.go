@@ -20,17 +20,12 @@ import (
 	"github.com/ehabterra/apispec/spec"
 )
 
-// TestTestdata_DownstreamClientNotResponse pins the KNOWN over-detection bug of
-// issue #195: json.Marshal is matched as a response with no write-sink check, so
-// a downstream HTTP client's OUTBOUND-request marshal (in a method with no
-// ResponseWriter) leaks as a spurious `default` response of the outer route.
-// The handler's real responses are the success 200 and the error 500.
-//
-// This is a CHANGE-DETECTOR for the unsolved bug: it asserts the spurious
-// `default` is still present. When #195's root-cause fix lands (anchor response
-// detection on the write to w and trace the written value's type back), the
-// spurious default disappears — this test then fails, prompting the update to
-// require exactly {200, 500}.
+// TestTestdata_DownstreamClientNotResponse covers the fix for issue #195:
+// response detection is anchored on the write to w, so a downstream HTTP
+// client's OUTBOUND-request marshal (json.Marshal in a method with no
+// ResponseWriter) is never reached from a sink and does NOT leak as a spurious
+// `default` response of the outer route. The handler's only responses are the
+// success 200 (its RespondWithSuccess encode) and the error 500 (http.Error).
 func TestTestdata_DownstreamClientNotResponse(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "downstream_client_not_response", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
@@ -44,7 +39,7 @@ func TestTestdata_DownstreamClientNotResponse(t *testing.T) {
 			t.Errorf("GET /pk missing status %s; have %v", want, keysOf(get.Responses))
 		}
 	}
-	if _, ok := get.Responses["default"]; !ok {
-		t.Errorf("issue #195 appears FIXED (no spurious `default` on GET /pk) — update this test to require exactly {200,500}")
+	if _, ok := get.Responses["default"]; ok {
+		t.Errorf("GET /pk: spurious `default` response present — the downstream client's outbound-request marshal leaked (issue #195 regressed); have %v", keysOf(get.Responses))
 	}
 }

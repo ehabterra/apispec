@@ -67,7 +67,6 @@ func DefaultHTTPConfig() *APISpecConfig {
 			TypeFromArg:    true,
 			Deref:          true,
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(""),
 	)
 

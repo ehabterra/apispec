@@ -40,7 +40,6 @@ func DefaultGinConfig() *APISpecConfig {
 			TypeFromArg:    true,
 			StatusFromArg:  true,
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(""),
 	)
 

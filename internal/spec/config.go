@@ -820,22 +820,14 @@ func netHTTPResponsePatterns() []ResponsePattern {
 	}
 }
 
-// jsonMarshalPattern returns the encoding/json.Marshal-style response
-// pattern. Identical across every framework default.
-func jsonMarshalPattern() ResponsePattern {
-	return ResponsePattern{
-		CallRegex:    `^Marshal$`,
-		TypeArgIndex: 0,
-		TypeFromArg:  true,
-		Deref:        true,
-		// NOTE: json.Marshal(v) returns []byte with no writer argument, so it is
-		// not destination-gated. It therefore over-detects — a Marshal reachable
-		// anywhere (e.g. a downstream client marshaling its OUTBOUND request) is
-		// treated as a response. Root cause + fix (anchor detection on the write
-		// sink, trace the written value's type back) tracked in issue #195; a
-		// writer-in-scope filter was tried and reverted as a workaround (#197).
-	}
-}
+// Response detection for json.Marshal is intentionally NOT a standalone
+// pattern. json.Marshal(v) returns []byte with no writer argument, so matching
+// it in isolation over-detects: a Marshal reachable anywhere (e.g. a downstream
+// client marshaling its OUTBOUND request) would be treated as a response.
+// Instead, detection is anchored on the write sink — the ^Write$ pattern —
+// which traces the written []byte back through ResponseContext.BodyTransforms to
+// the marshaled value's type (see unwrapWriteSink, issue #195). A marshal whose
+// result never reaches a sink is therefore never a response, structurally.
 
 // jsonEncodePattern returns the json.Encoder.Encode response pattern.
 // recvTypeRegex varies between frameworks: pass "" to match any receiver,
