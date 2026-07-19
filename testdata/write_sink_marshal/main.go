@@ -54,6 +54,34 @@ func helperWriteHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(encodeEnvelope(Envelope{Data: "d"}))
 }
 
+// Boxed is the real response body of GET /multiparam-write, serialized by a
+// helper whose payload is its SECOND parameter — the sink must bind the returned
+// marshal's parameter to the correct positional call-site argument, not arg 0.
+type Boxed struct {
+	V int `json:"v"`
+}
+
+func encodeWithPrefix(prefix string, v Boxed) []byte {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+func multiparamWriteHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(encodeWithPrefix("meta", Boxed{V: 7}))
+}
+
+// rawHelper returns bytes that are not a serialized parameter, so the sink must
+// find no body transform and produce a schema-less response (honest over wrong).
+func rawHelper() []byte {
+	return []byte("static")
+}
+
+func rawHelperWriteHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(rawHelper())
+}
+
 // Handler exercises the method-handler shape: a plain method (not a closure)
 // is absent from the file's functions and has no ParentFunction, so the write
 // sink must resolve its local `b := json.Marshal(m)` via the method table.
@@ -77,6 +105,8 @@ func main() {
 	mux.HandleFunc("GET /marshal-write", marshalWriteHandler)
 	mux.HandleFunc("GET /raw-write", rawWriteHandler)
 	mux.HandleFunc("GET /helper-write", helperWriteHandler)
+	mux.HandleFunc("GET /multiparam-write", multiparamWriteHandler)
+	mux.HandleFunc("GET /rawhelper-write", rawHelperWriteHandler)
 	mux.HandleFunc("GET /method-write", h.MethodWrite)
 	_ = http.ListenAndServe(":8080", mux)
 }

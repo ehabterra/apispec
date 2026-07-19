@@ -87,6 +87,30 @@ func TestTestdata_WriteSinkMarshal(t *testing.T) {
 	if !responseRefsAt(mtw.Responses, "200", "Member") {
 		t.Errorf("GET /method-write: expected 200 to ref Member (method-scope sink unwrap), got %v", keysOf(mtw.Responses))
 	}
+
+	// Multi-param helper: the serialized payload is the helper's SECOND
+	// parameter, so the sink must bind to the correct positional call-site arg.
+	mpw := opFor(out.Paths["/multiparam-write"], "GET")
+	if mpw == nil {
+		t.Fatalf("GET /multiparam-write missing; have %v", mapPathKeys(out.Paths))
+	}
+	if !responseRefsAt(mpw.Responses, "200", "Boxed") {
+		t.Errorf("GET /multiparam-write: expected 200 to ref Boxed (positional param binding), got %v", keysOf(mpw.Responses))
+	}
+
+	// Raw helper: returns non-serialized bytes, so no body transform is found —
+	// the response carries no $ref schema.
+	rhw := opFor(out.Paths["/rawhelper-write"], "GET")
+	if rhw == nil {
+		t.Fatalf("GET /rawhelper-write missing; have %v", mapPathKeys(out.Paths))
+	}
+	for status, resp := range rhw.Responses {
+		for ct, media := range resp.Content {
+			if media.Schema != nil && media.Schema.Ref != "" {
+				t.Errorf("GET /rawhelper-write [%s %s]: unexpected $ref %q — a raw-bytes helper must not synthesize a body", status, ct, media.Schema.Ref)
+			}
+		}
+	}
 }
 
 // responseRefsAt reports whether the response at the given status has a content
