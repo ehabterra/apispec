@@ -2256,6 +2256,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 		arg := edge.Args[r.pattern.TypeArgIndex]
 
+		// Write-sink transform unwrap (issue #195): when the written value is the
+		// result of a serialization transform (b := json.Marshal(v); w.Write(b)),
+		// resolve the body from the transform's payload (v) rather than the []byte
+		// the sink literally receives. No-op when the arg isn't a transform result
+		// (a raw w.Write([]byte("ok"))), so raw writes are kept as-is.
+		if payload := r.unwrapWriteSink(arg, edge); payload != nil {
+			arg = payload
+		}
+
 		// Parameter tracing: if the body arg is a parameter of the
 		// enclosing function (e.g. Encode(v) inside writeJSON(w, status,
 		// v)), follow it to the caller's actual argument so we get the

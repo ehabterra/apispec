@@ -88,6 +88,31 @@ type ResponseContextConfig struct {
 	// because it could not be resolved to a concrete value — could be the
 	// writer, so the response is kept (honest over wrong).
 	WriterCompatibleTypeRegexes []string `yaml:"writerCompatibleTypeRegexes,omitempty" json:"writerCompatibleTypeRegexes,omitempty"`
+
+	// BodyTransforms describe serialization calls whose result is a response
+	// body. When a write sink writes their result — the decoupled shape
+	// `b, _ := json.Marshal(v); w.Write(b)`, or `w.Write(encode(v))` — the body
+	// type is resolved from the transform's payload argument (v), not from the
+	// []byte the sink literally receives. Anchoring response detection on the
+	// write sink and tracing back through these transforms is what removes the
+	// marshal-anywhere over-detection (issue #195): a json.Marshal whose result
+	// never reaches a sink (a downstream client's outbound request) is simply
+	// never a response.
+	BodyTransforms []BodyTransform `yaml:"bodyTransforms,omitempty" json:"bodyTransforms,omitempty"`
+}
+
+// BodyTransform matches a serialization call (by callee function name and
+// package) whose result is a serialized response body, and names the argument
+// that carries the payload whose type the schema should document. Used by the
+// write-sink resolver to trace a written []byte back to its source value.
+type BodyTransform struct {
+	// CallRegex matches the callee function name, e.g. "^Marshal(Indent)?$".
+	CallRegex string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	// PkgRegex matches the callee package path, e.g. "^encoding/json$". Empty
+	// matches any package.
+	PkgRegex string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
+	// ArgIndex is the position of the payload argument (json.Marshal(v) -> 0).
+	ArgIndex int `yaml:"argIndex,omitempty" json:"argIndex,omitempty"`
 }
 
 // RequestContextConfig describes the types and accessors that identify an
