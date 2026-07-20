@@ -57,12 +57,16 @@ func TestTestdata_ChiMethodHandle(t *testing.T) {
 		if opFor(health, "POST") != nil {
 			t.Errorf("/health should not carry a POST operation (verb is http.MethodGet)")
 		}
-		// Change detector: an opaque http.Handler *value* (r.Method(..., deps.Health))
-		// names no method in the registration, so #168 cannot reach the concrete
-		// ServeHTTP doc comment — resolving it needs interface-value → concrete
-		// type resolution. Asserted empty on purpose; flip when issue #204 lands.
-		if get := opFor(health, "GET"); get != nil && get.Summary != "" {
-			t.Errorf("GET /health summary: got %q, want \"\" until handler-value doc sourcing lands (#168)", get.Summary)
+		// #204: an opaque http.Handler *value* (r.Method(..., deps.Health)) names
+		// no method in the registration, so the framework's handler interface
+		// supplies it — the route resolves both its doc comment and its body.
+		if get := opFor(health, "GET"); get != nil {
+			if get.Summary != "ServeHTTP reports service health." {
+				t.Errorf("GET /health summary: got %q (#204)", get.Summary)
+			}
+			if _, ok := get.Responses["200"]; !ok {
+				t.Errorf("GET /health: expected the 200 response from ServeHTTP's body (#204)")
+			}
 		}
 	}
 

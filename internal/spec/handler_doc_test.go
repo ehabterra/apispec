@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -213,6 +214,7 @@ func TestSplitSynopsis(t *testing.T) {
 			wantDesc: "- one\n  - two",
 		},
 		{name: "empty", text: ""},
+		{name: "whitespace only", text: "   \n\t\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sum, desc := splitSynopsis(tc.text)
@@ -271,6 +273,21 @@ func TestSwaggoDoc(t *testing.T) {
 			name: "plain doc comment is not swaggo",
 			text: "Create makes a thing.\nAnd describes it.",
 		},
+		{
+			// A continuation line under a directive that is neither @Summary nor
+			// @Description belongs to that directive, so it is dropped with it
+			// rather than falling back into the prose.
+			name:     "continuation of an unrecognised directive is dropped",
+			text:     "@Summary Create\n@Param body body Acc true \"account\"\ncontinued param text\n@Description Registers it.",
+			wantSum:  "Create",
+			wantDesc: "Registers it.",
+			wantOK:   true,
+		},
+		{
+			name:   "annotations only, nothing to source",
+			text:   "@Router /accounts [post]",
+			wantOK: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sum, desc, ok := swaggoDoc(tc.text)
@@ -284,6 +301,220 @@ func TestSwaggoDoc(t *testing.T) {
 				t.Errorf("description: got %q, want %q", desc, tc.wantDesc)
 			}
 		})
+	}
+}
+
+// TestHandlerValueComments covers issue #204's mapper half: a handler passed as
+// a value names no method, so the framework's handler-interface method supplies
+// it. Resolution must stay scoped to the value's own type — a framework that
+// declares no handler method, or a type that does not implement it, resolves to
+// nothing rather than to a same-named method found elsewhere.
+func TestHandlerValueComments(t *testing.T) {
+	meta := docMeta(t)
+	// Give Handler a ServeHTTP, and a second type that also declares one, so a
+	// name-only match would be ambiguous.
+	handler := meta.Packages["app"].Types["Handler"]
+	handler.Methods = append(handler.Methods, metadata.Method{
+		Name:     meta.StringPool.Get("ServeHTTP"),
+		Receiver: meta.StringPool.Get("*Handler"),
+		Comments: meta.StringPool.Get("ServeHTTP serves it directly."),
+	})
+	other := &metadata.Type{
+		Name: meta.StringPool.Get("Other"),
+		Methods: []metadata.Method{{
+			Name:     meta.StringPool.Get("ServeHTTP"),
+			Receiver: meta.StringPool.Get("*Other"),
+			Comments: meta.StringPool.Get("Other serves something else."),
+		}},
+	}
+	meta.Packages["app"].Types["Other"] = other
+	meta.Packages["app"].Files["app.go"].Types["Other"] = other
+
+	for _, tc := range []struct {
+		name, function string
+		methods        []string
+		want           string
+	}{
+		{
+			name:     "value of a concrete type",
+			function: "app.Handler",
+			methods:  []string{"ServeHTTP"},
+			want:     "ServeHTTP serves it directly.",
+		},
+		{
+			name:     "value held in a struct field",
+			function: "app" + TypeSep + "Deps.H",
+			methods:  []string{"ServeHTTP"},
+			want:     "ServeHTTP serves it directly.",
+		},
+		{
+			// A func-handler framework declares none, so the same route resolves
+			// to nothing rather than picking one of the two ServeHTTPs.
+			name:     "framework declares no handler method",
+			function: "app.Handler",
+			want:     "",
+		},
+		{
+			name:     "type does not declare the handler method",
+			function: "app.Deps",
+			methods:  []string{"ServeHTTP"},
+			want:     "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			route := &RouteInfo{Metadata: meta, Package: "app", Function: tc.function}
+			if got, _ := handlerDoc(route, tc.methods...); got != tc.want {
+				t.Errorf("summary: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHandlerValueCommentsExternalInterface covers the interface-typed half of
+// #204: the value's type is declared outside the analyzed set (net/http.Handler),
+// so it has no Type entry to carry ImplementedBy and the relation is read from
+// the concrete side's Implements facts (#178).
+//
+// The summary requires a UNIQUE implementer. Expansion may fan out to every
+// implementer of an interface, but a doc comment cannot: with two implementers
+// there are two different comments and no basis to choose (golden rule #7).
+func TestHandlerValueCommentsExternalInterface(t *testing.T) {
+	const ifaceKey = "net/http.Handler"
+
+	// newMeta builds a package holding `impls` types, each implementing the
+	// external interface and declaring a documented ServeHTTP, plus a Deps
+	// struct with an interface-typed field pointing at that interface.
+	newMeta := func(impls ...string) *metadata.Metadata {
+		meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+		types := map[string]*metadata.Type{}
+		for _, name := range impls {
+			types[name] = &metadata.Type{
+				Name:       meta.StringPool.Get(name),
+				Implements: []int{meta.StringPool.Get(ifaceKey)},
+				Methods: []metadata.Method{{
+					Name:     meta.StringPool.Get("ServeHTTP"),
+					Receiver: meta.StringPool.Get("*" + name),
+					Comments: meta.StringPool.Get(name + " serves it."),
+				}},
+			}
+		}
+		types["Deps"] = &metadata.Type{
+			Name: meta.StringPool.Get("Deps"),
+			Fields: []metadata.Field{
+				{Name: meta.StringPool.Get("Iface"), Type: meta.StringPool.Get(ifaceKey)},
+			},
+		}
+		meta.Packages = map[string]*metadata.Package{
+			"app": {Types: types, Files: map[string]*metadata.File{"app.go": {Types: types}}},
+		}
+		return meta
+	}
+
+	for _, tc := range []struct {
+		name, function string
+		impls          []string
+		want           string
+	}{
+		{
+			// A struct field declared http.Handler: the field's type is looked up.
+			name:     "unique implementer via a field path",
+			function: "app" + TypeSep + "Deps.Iface",
+			impls:    []string{"H"},
+			want:     "H serves it.",
+		},
+		{
+			// A plain var of interface type renders as the interface itself, so
+			// the rendered name IS the lookup key.
+			name:     "unique implementer via a bare interface name",
+			function: "app." + ifaceKey,
+			impls:    []string{"H"},
+			want:     "H serves it.",
+		},
+		{
+			name:     "ambiguous: two implementers yield no summary",
+			function: "app" + TypeSep + "Deps.Iface",
+			impls:    []string{"H", "Other"},
+			want:     "",
+		},
+		{
+			name:     "no implementers",
+			function: "app" + TypeSep + "Deps.Iface",
+			impls:    nil,
+			want:     "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			meta := newMeta(tc.impls...)
+			route := &RouteInfo{Metadata: meta, Package: "app", Function: tc.function}
+			if got, _ := handlerDoc(route, "ServeHTTP"); got != tc.want {
+				t.Errorf("summary: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestValueTypeKey pins the field-path → external type resolution that feeds the
+// implementer lookup, including the shapes that must not resolve.
+func TestValueTypeKey(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	deps := &metadata.Type{
+		Name: meta.StringPool.Get("Deps"),
+		Fields: []metadata.Field{
+			{Name: meta.StringPool.Get("Iface"), Type: meta.StringPool.Get("net/http.Handler")},
+			{Name: meta.StringPool.Get("Local"), Type: meta.StringPool.Get("Handler")},
+		},
+	}
+	meta.Packages = map[string]*metadata.Package{
+		"app": {
+			Types: map[string]*metadata.Type{"Deps": deps},
+			Files: map[string]*metadata.File{"app.go": {Types: map[string]*metadata.Type{"Deps": deps}}},
+		},
+	}
+	route := &RouteInfo{Metadata: meta, Package: "app"}
+
+	for _, tc := range []struct{ name, in, want string }{
+		{"external field type", "Deps.Iface", "net/http.Handler"},
+		{"unqualified field type has no package", "Deps.Local", ""},
+		{"no dot is not a field path", "Handler", ""},
+		{"unknown owner", "Nope.Iface", ""},
+		{"unknown field", "Deps.Missing", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := valueTypeKey(route, tc.in); got != tc.want {
+				t.Errorf("valueTypeKey(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestImplementersOfExternal covers the reverse lookup, including the sorted
+// order that tree expansion depends on (golden rule #1).
+func TestImplementersOfExternal(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	iface := meta.StringPool.Get("net/http.Handler")
+	mk := func(name string, implements bool) *metadata.Type {
+		t := &metadata.Type{Name: meta.StringPool.Get(name)}
+		if implements {
+			t.Implements = []int{iface}
+		}
+		return t
+	}
+	// Deliberately inserted out of order: map iteration must not reach the result.
+	zeta, alpha, plain := mk("Zeta", true), mk("Alpha", true), mk("Plain", false)
+	meta.Packages = map[string]*metadata.Package{
+		"app": {Types: map[string]*metadata.Type{"Zeta": zeta, "Alpha": alpha, "Plain": plain}},
+	}
+
+	got := implementersOfExternal(meta, "net/http.Handler")
+	want := []string{"app.Alpha", "app.Zeta"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v (sorted, implementers only)", got, want)
+	}
+	if got := implementersOfExternal(meta, ""); got != nil {
+		t.Errorf("empty key: got %v, want nil", got)
+	}
+	if got := implementersOfExternal(nil, "net/http.Handler"); got != nil {
+		t.Errorf("nil metadata: got %v, want nil", got)
 	}
 }
 

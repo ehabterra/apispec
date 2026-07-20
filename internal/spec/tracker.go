@@ -248,6 +248,11 @@ type TrackerTree struct {
 	roots     []*TrackerNode
 	limits    metadata.TrackerLimits
 
+	// handlerMethods are the framework's handler-interface methods (net/http's
+	// "ServeHTTP"), used to expand a handler passed as a value. Kept at parity
+	// with LazyTree so both engines resolve the same routes (issue #204).
+	handlerMethods []string
+
 	// logger receives traversal-time warnings (limit truncations, etc.).
 	// May be nil; callers should reach it via t.warn / t.info.
 	logger metadata.VerboseLogger
@@ -402,7 +407,17 @@ func (k interfaceKey) String() string {
 // NewTrackerTree constructs a TrackerTree from metadata and limits.
 // logger may be nil — warnings then route directly to stderr so the CLI
 // behaviour callers had before this parameter existed is preserved.
-func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logger metadata.VerboseLogger) *TrackerTree {
+// TrackerTreeOption configures an optional capability, keeping the existing
+// three-argument constructor working for callers that need none.
+type TrackerTreeOption func(*TrackerTree)
+
+// WithEagerHandlerInterfaceMethods is the eager tree's counterpart to
+// WithHandlerInterfaceMethods (issue #204).
+func WithEagerHandlerInterfaceMethods(methods []string) TrackerTreeOption {
+	return func(t *TrackerTree) { t.handlerMethods = methods }
+}
+
+func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logger metadata.VerboseLogger, opts ...TrackerTreeOption) *TrackerTree {
 	t := &TrackerTree{
 		meta:          meta,
 		positions:     make(map[string]bool, 100), // Pre-allocate with estimated capacity
@@ -416,6 +431,9 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 		// Initialize performance optimization caches with pre-allocated capacity
 		nodeMap: make(map[string]*TrackerNode, 200),
 		idCache: make(map[string]string, 100),
+	}
+	for _, opt := range opts {
+		opt(t)
 	}
 
 	// Pre-allocate roots slice with estimated capacity
@@ -908,6 +926,12 @@ func processArguments(tree *TrackerTree, meta *metadata.Metadata, parentNode *Tr
 		argNode.IsArgument = true
 		argNode.ArgIndex = i
 		argNode.ArgContext = fmt.Sprintf("%s.%s", getString(meta, edge.Caller.Name), getString(meta, edge.Callee.Name))
+
+		// Handler *value* (mux.Handle("/x", h) / r.Method(GET, "/health", deps.Health)):
+		// the argument names no method, so the framework's handler interface
+		// supplies it — LazyTree's handlerValueKeys, mirrored here so both
+		// engines resolve the same routes (issue #204).
+		attachHandlerValueChildren(tree, meta, argNode, arg, visited, assignmentIndex, limits)
 
 		switch argType {
 		case ArgTypeFunctionCall:

@@ -377,6 +377,9 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 
 	// Analyze interface implementations
 	analyzeInterfaceImplementations(metadata.Packages, metadata.StringPool)
+	// …then the ones declared outside the analyzed set (stdlib), which the pass
+	// above structurally cannot see — issue #178.
+	analyzeExternalInterfaceImplementations(pkgs, fileToInfo, metadata)
 
 	if logger != nil {
 		logger.Println("Building call graph...")
@@ -2039,6 +2042,160 @@ func analyzeInterfaceImplementations(pkgs map[string]*Package, pool *StringPool)
 					if implementsInterface(structMethods, intrf, pool, sigMemo) {
 						stct.Implements = append(stct.Implements, pool.Get(interfacePkgName+"."+interfaceName))
 						intrf.ImplementedBy = append(intrf.ImplementedBy, pool.Get(pkgName+"."+structName))
+					}
+				}
+			}
+		}
+	}
+}
+
+// analyzeExternalInterfaceImplementations records user types that implement
+// interfaces declared OUTSIDE the analyzed package set — standard-library ones
+// above all (net/http.Handler, io.Writer, error, …). Issue #178.
+//
+// analyzeInterfaceImplementations can only pair types it has recorded, and an
+// imported package's interface declarations are never materialised as Type
+// entries, so a user type implementing http.Handler had an empty Implements
+// list. That blocks every question of the form "does T implement stdlib
+// interface I?" — the write-destination gate (#170), the request-body source
+// gate (#153), and expanding a handler passed as an http.Handler value (#204).
+//
+// Rather than synthesising Type entries for imported interfaces, this answers
+// the question with go/types directly: the loaded type information is already
+// available, and types.Implements is exact where a re-derived signature
+// comparison is approximate.
+//
+// Scope: the candidates are the interfaces the analyzed code actually
+// *references* — named in its own source, or appearing in the signature of
+// something it calls. A type implementing io.Writer in a program that never
+// mentions io.Writer is therefore not recorded. That is deliberate: scanning
+// every interface in every imported package would be costly and mostly noise,
+// and the motivating cases all have the interface in the registration's
+// signature — http.Handler (#204), http.ResponseWriter (#170), io.Reader (#153).
+//
+// The pointer method set is used because Go's method sets put pointer-receiver
+// methods only on *T, and a handler is virtually always registered as &T{}.
+func analyzeExternalInterfaceImplementations(
+	pkgs map[string]map[string]*ast.File,
+	fileToInfo map[*ast.File]*types.Info,
+	meta *Metadata,
+) {
+	// Candidate interfaces: every named interface referenced anywhere in the
+	// analyzed code whose declaring package is NOT itself analyzed. Keyed by
+	// "importpath.Name" so the recorded form matches the in-package analysis.
+	external := make(map[string]*types.Interface)
+	seen := make(map[types.Type]bool)
+	var consider func(t types.Type, depth int)
+	consider = func(t types.Type, depth int) {
+		// The walk must reach interfaces named only in a *signature*: the
+		// dominant shape is `mux.Handle("/x", h)`, where http.Handler appears
+		// solely as Handle's parameter type and never in the user's own source.
+		// Depth is bounded and types are visited once — info.Types is large on
+		// real projects, and named types can be mutually recursive.
+		if t == nil || depth > 4 || seen[t] {
+			return
+		}
+		seen[t] = true
+		switch t := t.(type) {
+		case *types.Named:
+			if t.Obj() == nil {
+				return
+			}
+			iface, ok := t.Underlying().(*types.Interface)
+			// Method count, not Empty(): `comparable` and type-set constraints
+			// (~int|~string) are non-empty interfaces that almost everything
+			// "implements", which is noise rather than a behavioral fact.
+			if !ok || iface.NumMethods() == 0 {
+				return
+			}
+			pkg := t.Obj().Pkg()
+			if pkg == nil {
+				// Universe scope: `error`. Recorded unqualified, as written.
+				external[t.Obj().Name()] = iface
+				return
+			}
+			if _, analyzed := pkgs[pkg.Path()]; analyzed {
+				return // already covered by the in-package analysis
+			}
+			external[pkg.Path()+"."+t.Obj().Name()] = iface
+		case *types.Signature:
+			for _, tup := range []*types.Tuple{t.Params(), t.Results()} {
+				for i := 0; i < tup.Len(); i++ {
+					consider(tup.At(i).Type(), depth+1)
+				}
+			}
+		case *types.Pointer:
+			consider(t.Elem(), depth+1)
+		case *types.Slice:
+			consider(t.Elem(), depth+1)
+		case *types.Array:
+			consider(t.Elem(), depth+1)
+		case *types.Map:
+			consider(t.Key(), depth+1)
+			consider(t.Elem(), depth+1)
+		case *types.Chan:
+			consider(t.Elem(), depth+1)
+		}
+	}
+	for _, info := range fileToInfo {
+		for _, obj := range info.Uses {
+			if obj != nil {
+				consider(obj.Type(), 0)
+			}
+		}
+		for _, tv := range info.Types {
+			consider(tv.Type, 0)
+		}
+	}
+	if len(external) == 0 {
+		return
+	}
+	ifaceNames := slices.Sorted(maps.Keys(external))
+
+	// Walk the analyzed declarations in sorted order so appends stay
+	// deterministic (the Implements/ImplementedBy ordering invariant).
+	for _, pkgName := range slices.Sorted(maps.Keys(pkgs)) {
+		metaPkg, ok := meta.Packages[pkgName]
+		if !ok {
+			continue
+		}
+		files := pkgs[pkgName]
+		for _, fileName := range slices.Sorted(maps.Keys(files)) {
+			info, ok := fileToInfo[files[fileName]]
+			if !ok || info == nil {
+				continue
+			}
+			for _, decl := range files[fileName].Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.TYPE {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					ts, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					recorded, ok := metaPkg.Types[ts.Name.Name]
+					if !ok || recorded == nil {
+						continue
+					}
+					obj, ok := info.Defs[ts.Name].(*types.TypeName)
+					if !ok || obj == nil || obj.Type() == nil {
+						continue
+					}
+					named, ok := obj.Type().(*types.Named)
+					if !ok {
+						continue
+					}
+					ptr := types.NewPointer(named)
+					for _, ifaceName := range ifaceNames {
+						if !types.Implements(ptr, external[ifaceName]) {
+							continue
+						}
+						idx := meta.StringPool.Get(ifaceName)
+						if !slices.Contains(recorded.Implements, idx) {
+							recorded.Implements = append(recorded.Implements, idx)
+						}
 					}
 				}
 			}

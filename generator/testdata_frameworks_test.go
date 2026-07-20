@@ -107,6 +107,7 @@ func TestTestdata_Frameworks(t *testing.T) {
 			fallback: spec.DefaultMuxConfig(),
 			routes: []route{
 				{"/api/v1/health", []string{"GET"}},
+				{"/status", []string{"GET"}}, // r.Handle with an http.Handler value (#204)
 				{"/users", []string{"GET", "POST"}},
 				{"/users/{id}", []string{"GET", "PUT", "DELETE"}},
 			},
