@@ -56,6 +56,14 @@ func TestTestdata_ValidationTags(t *testing.T) {
 		t.Error("POST /accounts: requestBody should be required:true (#167)")
 	}
 
+	// #168: the handler's Go doc comment → summary (first line) + description.
+	if post.Summary != "createAccount registers a new account." {
+		t.Errorf("POST /accounts summary: got %q (#168)", post.Summary)
+	}
+	if post.Description != "It validates the payload and returns the created account." {
+		t.Errorf("POST /accounts description: got %q (#168)", post.Description)
+	}
+
 	req := schemaBySuffix(out.Components.Schemas, "CreateAccountRequest")
 	if req == nil {
 		t.Fatalf("CreateAccountRequest schema missing; have %v", mapSchemaKeys(out.Components.Schemas))

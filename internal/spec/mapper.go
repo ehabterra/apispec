@@ -290,9 +290,21 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		if route.OperationIDSuffix != "" {
 			operationID += "_" + route.OperationIDSuffix
 		}
+		// Fill the summary/description from the handler's Go doc comment (issue
+		// #168) when not already set by a more specific source.
+		summary, description := route.Summary, route.Description
+		if summary == "" {
+			if s, d := handlerDoc(route); s != "" {
+				summary = s
+				if description == "" {
+					description = d
+				}
+			}
+		}
 		operation := &Operation{
 			OperationID: operationID,
-			Summary:     route.Summary,
+			Summary:     summary,
+			Description: description,
 			Tags:        route.Tags,
 		}
 
@@ -1520,6 +1532,33 @@ func extractJSONName(tag string) string {
 	}
 
 	return ""
+}
+
+// handlerDoc resolves the handler function's Go doc comment into an operation
+// summary (the first line) and description (the remaining lines), per the common
+// Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
+// anonymous (a func literal), a method not indexed in the function table, or
+// undocumented — callers keep whatever summary/description they already had.
+func handlerDoc(route *RouteInfo) (summary, description string) {
+	if route == nil || route.Metadata == nil || route.Function == "" {
+		return "", ""
+	}
+	name := route.Function
+	if route.Package != "" {
+		name = strings.TrimPrefix(name, route.Package+".")
+	}
+	fn := findFunctionByName(route.Metadata, route.Package, name)
+	if fn == nil {
+		return "", ""
+	}
+	doc := getStringFromPool(route.Metadata, fn.Comments)
+	if doc == "" {
+		return "", ""
+	}
+	if i := strings.IndexByte(doc, '\n'); i >= 0 {
+		return strings.TrimSpace(doc[:i]), strings.TrimSpace(doc[i+1:])
+	}
+	return doc, ""
 }
 
 // ValidationConstraints represents validation constraints extracted from struct tags

@@ -48,10 +48,13 @@ type RouteInfo struct {
 	File      string
 	Function  string
 	Summary   string
-	Tags      []string
-	Request   *RequestInfo
-	Response  map[string]*ResponseInfo
-	Params    []Parameter
+	// Description is the operation's long description, sourced from the handler's
+	// Go doc comment (issue #168) when not otherwise set.
+	Description string
+	Tags        []string
+	Request     *RequestInfo
+	Response    map[string]*ResponseInfo
+	Params      []Parameter
 
 	// OperationIDSuffix disambiguates the operationId when one handler yields
 	// several operations (e.g. an r.Method dispatch split into GET/POST). Empty

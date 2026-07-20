@@ -16,6 +16,8 @@ type CreateAccountRequest struct {
 	Scores []int `json:"scores" validate:"required,min=1,max=10,dive,min=5,max=100"`
 }
 
+// createAccount registers a new account.
+// It validates the payload and returns the created account.
 func createAccount(w http.ResponseWriter, r *http.Request) {
 	var req CreateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
