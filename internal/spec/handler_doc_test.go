@@ -1,0 +1,190 @@
+// Copyright 2026 Ehab Terra
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package spec
+
+import (
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
+
+// docMeta builds a package "app" holding:
+//   - func Plain          — documented package-level function
+//   - type Handler        — with documented method Create and undocumented Patch
+//   - type Deps{H *Handler} — so a field-path receiver has something to resolve
+func docMeta(t *testing.T) *metadata.Metadata {
+	t.Helper()
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+
+	handler := &metadata.Type{
+		Name: meta.StringPool.Get("Handler"),
+		Methods: []metadata.Method{
+			{
+				Name:     meta.StringPool.Get("Create"),
+				Receiver: meta.StringPool.Get("*Handler"),
+				Comments: meta.StringPool.Get("Create makes a thing.\nAnd describes it."),
+			},
+			{
+				Name:     meta.StringPool.Get("Patch"),
+				Receiver: meta.StringPool.Get("*Handler"),
+				Comments: meta.StringPool.Get(""),
+			},
+		},
+	}
+	deps := &metadata.Type{
+		Name: meta.StringPool.Get("Deps"),
+		Fields: []metadata.Field{
+			{Name: meta.StringPool.Get("H"), Type: meta.StringPool.Get("*app.Handler")},
+		},
+	}
+	meta.Packages = map[string]*metadata.Package{
+		"app": {
+			Types: map[string]*metadata.Type{"Handler": handler, "Deps": deps},
+			Files: map[string]*metadata.File{
+				"app.go": {
+					Types: map[string]*metadata.Type{"Handler": handler, "Deps": deps},
+					Functions: map[string]*metadata.Function{
+						"Plain": {
+							Name:     meta.StringPool.Get("Plain"),
+							Comments: meta.StringPool.Get("Plain serves a thing."),
+						},
+					},
+				},
+			},
+		},
+	}
+	return meta
+}
+
+// TestHandlerDoc covers every RouteInfo.Function shape. The method shapes are
+// the regression: methods live only in the per-Type table, so the original
+// findFunctionByName-only lookup returned nothing for them (issue #168).
+func TestHandlerDoc(t *testing.T) {
+	meta := docMeta(t)
+
+	for _, tc := range []struct {
+		name, function        string
+		wantSummary, wantDesc string
+	}{
+		{
+			name:        "package-level function",
+			function:    "app.Plain",
+			wantSummary: "Plain serves a thing.",
+		},
+		{
+			name:        "method value on a variable",
+			function:    "app" + TypeSep + "app.Handler.Create",
+			wantSummary: "Create makes a thing.",
+			wantDesc:    "And describes it.",
+		},
+		{
+			name:        "method value on a struct field",
+			function:    "app" + TypeSep + "Deps.H.Create",
+			wantSummary: "Create makes a thing.",
+			wantDesc:    "And describes it.",
+		},
+		{
+			name:     "undocumented method",
+			function: "app" + TypeSep + "app.Handler.Patch",
+		},
+		{
+			// Honest-empty: the field exists but names no method, so there is
+			// nothing to resolve. Matching on the method name alone would guess
+			// (golden rule #7) — see issue #204.
+			name:     "handler value with no method segment",
+			function: "app" + TypeSep + "Deps.H",
+		},
+		{
+			name:     "unknown receiver",
+			function: "app" + TypeSep + "app.Missing.Create",
+		},
+		{
+			name:     "func literal",
+			function: "app.FuncLit:/tmp/app.go:12:3",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			route := &RouteInfo{Metadata: meta, Package: "app", Function: tc.function}
+			summary, desc := handlerDoc(route)
+			if summary != tc.wantSummary {
+				t.Errorf("summary: got %q, want %q", summary, tc.wantSummary)
+			}
+			if desc != tc.wantDesc {
+				t.Errorf("description: got %q, want %q", desc, tc.wantDesc)
+			}
+		})
+	}
+}
+
+// TestHandlerDocGuards covers the nil/empty short-circuits.
+func TestHandlerDocGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		route *RouteInfo
+	}{
+		{"nil route", nil},
+		{"nil metadata", &RouteInfo{Function: "app.Plain"}},
+		{"empty function", &RouteInfo{Metadata: docMeta(t)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if s, d := handlerDoc(tc.route); s != "" || d != "" {
+				t.Errorf("got (%q, %q), want empty", s, d)
+			}
+		})
+	}
+}
+
+// TestReceiverTypeName pins the receiver-segment resolution: a bare type name
+// passes through, a field path resolves through the field's type (pointer
+// unwrapped to its named core), and an unresolvable path falls back to the last
+// segment rather than matching broadly.
+func TestReceiverTypeName(t *testing.T) {
+	meta := docMeta(t)
+
+	for _, tc := range []struct{ name, recv, want string }{
+		{"bare type name", "Handler", "Handler"},
+		{"field path resolves to the field's type", "Deps.H", "Handler"},
+		{"unknown owner falls back to the last segment", "Nope.Handler", "Handler"},
+		{"unknown field falls back to the last segment", "Deps.Missing", "Missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := receiverTypeName(meta, "app", tc.recv); got != tc.want {
+				t.Errorf("receiverTypeName(%q) = %q, want %q", tc.recv, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFindMethodByName covers the per-Type method lookup, including the pointer
+// receiver trim and the unknown-package guard.
+func TestFindMethodByName(t *testing.T) {
+	meta := docMeta(t)
+
+	if m := findMethodByName(meta, "app", "Handler", "Create"); m == nil {
+		t.Error("value receiver should match the *Handler record (leading * trimmed)")
+	}
+	if m := findMethodByName(meta, "app", "", "Create"); m == nil {
+		t.Error("empty receiver should match on the method name alone")
+	}
+	if m := findMethodByName(meta, "app", "Other", "Create"); m != nil {
+		t.Error("a non-matching receiver must not resolve")
+	}
+	if m := findMethodByName(meta, "nosuch", "Handler", "Create"); m != nil {
+		t.Error("unknown package must not resolve")
+	}
+	if m := findMethodByName(nil, "app", "Handler", "Create"); m != nil {
+		t.Error("nil metadata must not resolve")
+	}
+}

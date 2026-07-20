@@ -488,6 +488,7 @@ packages:
                 signature_str: 51
                 position: 48
                 scope: 49
+                comments: -1
                 filename: 50
                 return_vars:
                   - kind: 12
@@ -584,6 +585,7 @@ packages:
                 signature_str: 59
                 position: 58
                 scope: 49
+                comments: -1
                 filename: 50
                 return_vars:
                   - kind: 12
@@ -1031,6 +1033,7 @@ packages:
             signature_str: 51
             position: 48
             scope: 49
+            comments: -1
             filename: 50
             return_vars:
               - kind: 12
@@ -1127,6 +1130,7 @@ packages:
             signature_str: 59
             position: 58
             scope: 49
+            comments: -1
             filename: 50
             return_vars:
               - kind: 12
@@ -1357,6 +1361,7 @@ packages:
                 signature_str: 111
                 position: 109
                 scope: 49
+                comments: -1
                 filename: 110
                 return_vars:
                   - kind: 13
@@ -1726,6 +1731,7 @@ packages:
                 signature_str: 119
                 position: 118
                 scope: 49
+                comments: -1
                 filename: 110
                 assignments:
                   multipackage/services.UserService.prefix:
@@ -2040,6 +2046,7 @@ packages:
             signature_str: 111
             position: 109
             scope: 49
+            comments: -1
             filename: 110
             return_vars:
               - kind: 13
@@ -2409,6 +2416,7 @@ packages:
             signature_str: 119
             position: 118
             scope: 49
+            comments: -1
             filename: 110
             assignments:
               multipackage/services.UserService.prefix:

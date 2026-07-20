@@ -1576,24 +1576,86 @@ func appendConstraintNote(desc, note string) string {
 	return desc + "\n" + note
 }
 
-// handlerDoc resolves the handler function's Go doc comment into an operation
-// summary (the first line) and description (the remaining lines), per the common
+// receiverTypeName resolves the receiver segment of a rendered method value to
+// the type name that declares the method. The segment is already a type name for
+// the common `h.Method` shape (`h` is a variable, rendered as its type), but for
+// a dependency-injected handler the receiver is a *field path* — `deps.Health`
+// renders as `Deps.Health`, where `Deps` is the type and `Health` the field. In
+// that case the declaring type is the field's own type, read through TypeRefOf
+// (never by parsing the type string) and unwrapped to its named core so a
+// `*HealthHandler` field resolves to `HealthHandler`.
+//
+// Falls back to the last segment when the path resolves to no known field: for a
+// cross-package receiver (`otherpkg.Handler`) that is exactly the type name, and
+// for anything else it yields a name that simply matches nothing — an empty
+// summary rather than a guessed one.
+func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
+	i := strings.LastIndexByte(recv, '.')
+	if i < 0 {
+		return recv
+	}
+	owner, field := recv[:i], recv[i+1:]
+	if t := findType(meta, pkg, owner); t != nil {
+		for _, f := range t.Fields {
+			if meta.StringPool.GetString(f.Name) != field {
+				continue
+			}
+			if core := meta.TypeRefOf(f.Type).Core(); core.IsNamed() {
+				return core.Name
+			}
+			// An unnamed field type (a bare func type, say) declares no methods.
+			// Fall through to the field name so the lookup stays receiver-scoped:
+			// returning "" here would let it match on the method name alone and
+			// pick an arbitrary same-named method (golden rule #7).
+			break
+		}
+	}
+	return field
+}
+
+// handlerComments returns the Go doc comment recorded for the route's handler,
+// resolving every handler shape. RouteInfo.Function is the rendered handler
+// argument, and the shapes differ (issue #168 originally handled only the first):
+//
+//	pkg.Handler                 — a package-level function
+//	pkg-->pkg.Recv.Method       — a method value (h.Handler)
+//	pkg-->Owner.Field.Method    — a method value on a struct field (deps.H.Handler)
+//
+// The method shapes resolve through the per-Type methods table, which
+// findFunctionByName cannot reach — it indexes only receiver-less declarations.
+// Returns "" for an anonymous (func-literal) or undocumented handler.
+func handlerComments(route *RouteInfo) string {
+	name := route.Function
+	if _, tail, found := strings.Cut(name, TypeSep); found {
+		recv, method := "", strings.TrimPrefix(tail, route.Package+".")
+		if i := strings.LastIndexByte(method, '.'); i >= 0 {
+			recv, method = method[:i], method[i+1:]
+		}
+		recv = receiverTypeName(route.Metadata, route.Package, recv)
+		if m := findMethodByName(route.Metadata, route.Package, recv, method); m != nil {
+			return getStringFromPool(route.Metadata, m.Comments)
+		}
+		return ""
+	}
+	if route.Package != "" {
+		name = strings.TrimPrefix(name, route.Package+".")
+	}
+	if fn := findFunctionByName(route.Metadata, route.Package, name); fn != nil {
+		return getStringFromPool(route.Metadata, fn.Comments)
+	}
+	return ""
+}
+
+// handlerDoc resolves the handler's Go doc comment into an operation summary
+// (the first line) and description (the remaining lines), per the common
 // Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
-// anonymous (a func literal), a method not indexed in the function table, or
-// undocumented — callers keep whatever summary/description they already had.
+// anonymous or undocumented — callers keep whatever summary/description they
+// already had.
 func handlerDoc(route *RouteInfo) (summary, description string) {
 	if route == nil || route.Metadata == nil || route.Function == "" {
 		return "", ""
 	}
-	name := route.Function
-	if route.Package != "" {
-		name = strings.TrimPrefix(name, route.Package+".")
-	}
-	fn := findFunctionByName(route.Metadata, route.Package, name)
-	if fn == nil {
-		return "", ""
-	}
-	doc := getStringFromPool(route.Metadata, fn.Comments)
+	doc := handlerComments(route)
 	if doc == "" {
 		return "", ""
 	}

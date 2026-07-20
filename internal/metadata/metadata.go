@@ -316,6 +316,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 					Signature:     *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
 					Position:      metadata.StringPool.Get(getFuncPosition(fn, fset)),
 					Scope:         metadata.StringPool.Get(getScope(fn.Name.Name)),
+					Comments:      metadata.StringPool.Get(getComments(fn)),
 					AssignmentMap: assignmentsInFunc,
 					TypeParams:    typeParams,
 					ReturnVars:    returnVars,

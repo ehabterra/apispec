@@ -160,6 +160,7 @@ packages:
                 signature_str: 57
                 position: 56
                 scope: 15
+                comments: -1
                 filename: 16
                 assignments:
                   name:
@@ -398,6 +399,7 @@ packages:
                 signature_str: 17
                 position: 14
                 scope: 15
+                comments: -1
                 filename: 16
                 return_vars:
                   - kind: 8
@@ -504,6 +506,7 @@ packages:
                 signature_str: 36
                 position: 35
                 scope: 15
+                comments: -1
                 filename: 16
                 return_vars:
                   - kind: 0
@@ -1157,6 +1160,7 @@ packages:
             signature_str: 57
             position: 56
             scope: 15
+            comments: -1
             filename: 16
             assignments:
               name:
@@ -1395,6 +1399,7 @@ packages:
             signature_str: 17
             position: 14
             scope: 15
+            comments: -1
             filename: 16
             return_vars:
               - kind: 8
@@ -1501,6 +1506,7 @@ packages:
             signature_str: 36
             position: 35
             scope: 15
+            comments: -1
             filename: 16
             return_vars:
               - kind: 0

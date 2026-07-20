@@ -32,6 +32,7 @@ func TestTestdata_ChiMethodHandle(t *testing.T) {
 
 	want := map[string][]string{
 		"/live":    {"GET"},           // plain r.Get with a func value
+		"/live2":   {"GET"},           // r.Get with a method value on a struct field
 		"/health":  {"GET"},           // r.Method(http.MethodGet, ..., http.Handler value)
 		"/ready":   {"POST"},          // r.MethodFunc(http.MethodPost, ...)
 		"/metrics": {"GET"},           // r.Handle with an opaque handler: defaulted GET
@@ -55,6 +56,22 @@ func TestTestdata_ChiMethodHandle(t *testing.T) {
 	if health, ok := out.Paths["/health"]; ok {
 		if opFor(health, "POST") != nil {
 			t.Errorf("/health should not carry a POST operation (verb is http.MethodGet)")
+		}
+		// Change detector: an opaque http.Handler *value* (r.Method(..., deps.Health))
+		// names no method in the registration, so #168 cannot reach the concrete
+		// ServeHTTP doc comment — resolving it needs interface-value → concrete
+		// type resolution. Asserted empty on purpose; flip when issue #204 lands.
+		if get := opFor(health, "GET"); get != nil && get.Summary != "" {
+			t.Errorf("GET /health summary: got %q, want \"\" until handler-value doc sourcing lands (#168)", get.Summary)
+		}
+	}
+
+	// #168 is framework-agnostic: it resolves off the handler declaration, not
+	// the router. A chi-registered method value on a DI field (deps.Health.ServeHTTP)
+	// sources its summary through the field's type, same as a net/http one.
+	if live2, ok := out.Paths["/live2"]; ok {
+		if get := opFor(live2, "GET"); get != nil && get.Summary != "ServeHTTP reports service health." {
+			t.Errorf("GET /live2 summary: got %q (#168)", get.Summary)
 		}
 	}
 
