@@ -296,9 +296,12 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 			Tags:        route.Tags,
 		}
 
-		// Add request body if present
+		// Add request body if present. A detected request body means the handler
+		// decodes it, so it is required (issue #167) — an OpenAPI requestBody
+		// defaults to optional otherwise.
 		if route.Request != nil {
 			operation.RequestBody = &RequestBody{
+				Required: true,
 				Content: map[string]MediaType{
 					route.Request.ContentType: {
 						Schema: route.Request.Schema,
@@ -1817,13 +1820,20 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 		return
 	}
 
-	// Apply string length constraints (only for string types)
+	// Apply string length constraints (only for string types). In
+	// go-playground/validator, `min`/`max` on a string constrain its LENGTH, not
+	// a numeric value — so route Min/Max here to minLength/maxLength (issue
+	// #167). Explicit len/minlen/maxlen (MinLength/MaxLength) take precedence.
 	if schema.Type == "string" {
 		if constraints.MinLength != nil {
 			schema.MinLength = *constraints.MinLength
+		} else if constraints.Min != nil {
+			schema.MinLength = int(*constraints.Min)
 		}
 		if constraints.MaxLength != nil {
 			schema.MaxLength = *constraints.MaxLength
+		} else if constraints.Max != nil {
+			schema.MaxLength = int(*constraints.Max)
 		}
 	}
 
@@ -1841,6 +1851,22 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 		}
 		if constraints.MaxLength != nil && schema.Type == "integer" {
 			schema.Maximum = float64(*constraints.MaxLength)
+		}
+	}
+
+	// Apply item-count constraints (for array types). `min`/`max` (and
+	// len/minlen/maxlen) on a slice constrain the number of ELEMENTS — map them
+	// to minItems/maxItems (issue #167). Explicit length rules win.
+	if schema.Type == "array" {
+		if constraints.MinLength != nil {
+			schema.MinItems = *constraints.MinLength
+		} else if constraints.Min != nil {
+			schema.MinItems = int(*constraints.Min)
+		}
+		if constraints.MaxLength != nil {
+			schema.MaxItems = *constraints.MaxLength
+		} else if constraints.Max != nil {
+			schema.MaxItems = int(*constraints.Max)
 		}
 	}
 
