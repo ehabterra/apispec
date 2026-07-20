@@ -67,16 +67,18 @@ type Handler struct{}
 // GetUserHandler handles GET /user requests
 func (h *Handler) GetUserHandler(w http.ResponseWriter, r *http.Request) {
 	user := GetUser()
-	// This will trigger schema generation for User type
+	// Marshal the User and write it to the response: the write sink traces the
+	// []byte back to json.Marshal(user), resolving the User schema.
 	w.Header().Set("Content-Type", "application/json")
-	// Use json.Marshal to trigger response pattern matching
-	json.Marshal(user)
+	b, _ := json.Marshal(user)
+	w.Write(b)
 }
 
 func (h *Handler) GetProductHandler(w http.ResponseWriter, r *http.Request) {
 	product := GetProduct()
 	w.Header().Set("Content-Type", "application/json")
-	json.Marshal(product)
+	b, _ := json.Marshal(product)
+	w.Write(b)
 }
 
 func main() {

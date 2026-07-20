@@ -44,6 +44,13 @@ var netHTTPResponseContext = ResponseContextConfig{
 		`^io\.WriteCloser$`,
 		`^io\.ReadWriter$`,
 	},
+	// Serializers whose result, when written to the response writer, carries the
+	// response body's type on their payload argument (issue #195). Serializer-
+	// level, not framework-level, so every net/http-family framework shares it.
+	BodyTransforms: []BodyTransform{
+		{CallRegex: `^Marshal$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
+		{CallRegex: `^MarshalIndent$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
+	},
 }
 
 // DefaultHTTPConfig returns a default configuration for net/http.
@@ -60,7 +67,6 @@ func DefaultHTTPConfig() *APISpecConfig {
 			TypeFromArg:    true,
 			Deref:          true,
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(""),
 	)
 

@@ -49,7 +49,6 @@ func DefaultEchoConfig() *APISpecConfig {
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 	)
 

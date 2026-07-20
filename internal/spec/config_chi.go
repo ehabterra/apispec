@@ -35,7 +35,6 @@ func DefaultChiConfig() *APISpecConfig {
 			StatusFromArg:  true,
 			RecvTypeRegex:  "^github\\.com/go-chi/render$",
 		},
-		jsonMarshalPattern(),
 		jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 	)
 
