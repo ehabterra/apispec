@@ -61,7 +61,7 @@ func (r *ResponsePatternMatcherImpl) unwrapWriteSink(arg *metadata.CallArgument,
 	// parameter bound to THIS call's argument, so the type resolves in the
 	// caller's scope from the actual call-site value.
 	if arg.GetKind() == metadata.KindCall {
-		return r.unwrapHelperReturn(arg, edge, 0)
+		return r.unwrapHelperReturn(arg, edge)
 	}
 
 	return nil
@@ -73,11 +73,12 @@ func (r *ResponsePatternMatcherImpl) unwrapWriteSink(arg *metadata.CallArgument,
 // `b := json.Marshal(param)`), and — when the transform's payload is one of the
 // helper's parameters — binds that parameter back to the matching call-site
 // argument (per-call-site correct, unlike a call-graph origin trace that fixes
-// on one arbitrary caller). depth bounds recursion through helper-returning
-// helpers. Returns nil when the helper doesn't serialize a parameter (honest
-// over wrong: a raw-bytes helper produces no body).
-func (r *ResponsePatternMatcherImpl) unwrapHelperReturn(call *metadata.CallArgument, edge *metadata.CallGraphEdge, depth int) *metadata.CallArgument {
-	if call == nil || call.Fun == nil || depth > 3 {
+// on one arbitrary caller). Single-hop by design: a helper that returns another
+// helper's result is not followed (no fixture covers that shape yet). Returns
+// nil when the helper doesn't serialize a parameter (honest over wrong: a
+// raw-bytes helper produces no body).
+func (r *ResponsePatternMatcherImpl) unwrapHelperReturn(call *metadata.CallArgument, edge *metadata.CallGraphEdge) *metadata.CallArgument {
+	if call == nil || call.Fun == nil {
 		return nil
 	}
 	name := calleeNameOf(call.Fun)

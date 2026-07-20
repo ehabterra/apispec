@@ -20,6 +20,8 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
+// writeSinkMatcher builds a matcher whose ResponseContext configures the JSON
+// body transforms the write-sink resolver traces through.
 func writeSinkMatcher(meta *metadata.Metadata) *ResponsePatternMatcherImpl {
 	cfg := &APISpecConfig{Defaults: Defaults{ResponseContentType: "application/json"}}
 	cfg.Framework.ResponseContext.BodyTransforms = []BodyTransform{
@@ -35,6 +37,8 @@ func writeSinkMatcher(meta *metadata.Metadata) *ResponsePatternMatcherImpl {
 	}
 }
 
+// TestMatchBodyTransform pins the transform matcher: callee+package matching,
+// empty-PkgRegex-matches-any, and non-transform/empty rejection.
 func TestMatchBodyTransform(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
@@ -61,7 +65,8 @@ func TestMatchBodyTransform(t *testing.T) {
 }
 
 // marshalHelper builds `func h(<params>) []byte { b, _ := json.Marshal(payload); return b }`
-// as a Function, where payload is the parameter named payloadParam.
+// as a Function, where payload is the parameter named payloadParam. Used to
+// exercise helperSerializedParam / paramIndexOf without a full metadata graph.
 func marshalHelper(meta *metadata.Metadata, params []string, payloadParam string) *metadata.Function {
 	sig := metadata.NewCallArgument(meta)
 	sig.SetKind(metadata.KindFuncType)
@@ -80,6 +85,9 @@ func marshalHelper(meta *metadata.Metadata, params []string, payloadParam string
 	}
 }
 
+// TestHelperSerializedParam pins the returned-local transform case: which
+// parameter a helper serializes and returns, its positional index (including a
+// non-zero index), an unknown-name lookup, and the raw-bytes (no-transform) residue.
 func TestHelperSerializedParam(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
@@ -117,6 +125,9 @@ func TestHelperSerializedParam(t *testing.T) {
 	}
 }
 
+// TestHelperSerializedParam_InlineReturn pins the `return json.Marshal(p)`
+// branch (the returned value is itself the transform call) and the
+// literal-payload residue.
 func TestHelperSerializedParam_InlineReturn(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
@@ -153,6 +164,8 @@ func TestHelperSerializedParam_InlineReturn(t *testing.T) {
 	}
 }
 
+// TestUnwrapWriteSink_ParenStrip pins the address-of/deref/paren strip loop and
+// the fully-stripped-to-nil path.
 func TestUnwrapWriteSink_ParenStrip(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
@@ -179,6 +192,8 @@ func TestUnwrapWriteSink_ParenStrip(t *testing.T) {
 	}
 }
 
+// TestUnwrapWriteSink_Guards pins the early returns: nil arg, nil edge, and no
+// configured BodyTransforms.
 func TestUnwrapWriteSink_Guards(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
@@ -200,22 +215,24 @@ func TestUnwrapWriteSink_Guards(t *testing.T) {
 	}
 }
 
+// TestUnwrapHelperReturn_Guards pins the guards: an unknown helper (not in
+// metadata) and a nil callee function.
 func TestUnwrapHelperReturn_Guards(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
 	edge := &metadata.CallGraphEdge{}
 
-	// depth over the recursion bound → nil.
+	// A call to a helper that isn't in metadata (findFunctionByName → nil) → nil.
 	call := metadata.NewCallArgument(meta)
 	call.SetKind(metadata.KindCall)
 	call.Fun = identArg(meta, "helper")
-	if got := m.unwrapHelperReturn(call, edge, 4); got != nil {
-		t.Error("depth over bound should return nil")
+	if got := m.unwrapHelperReturn(call, edge); got != nil {
+		t.Error("unknown helper should return nil")
 	}
 	// nil Fun → nil.
 	bad := metadata.NewCallArgument(meta)
 	bad.SetKind(metadata.KindCall)
-	if got := m.unwrapHelperReturn(bad, edge, 0); got != nil {
+	if got := m.unwrapHelperReturn(bad, edge); got != nil {
 		t.Error("nil Fun should return nil")
 	}
 }
