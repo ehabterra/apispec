@@ -74,4 +74,19 @@ func TestTestdata_ValidationTags(t *testing.T) {
 	} else if age.Minimum != 18 || age.Maximum != 120 {
 		t.Errorf("age: got minimum=%v maximum=%v, want 18/120", age.Minimum, age.Maximum)
 	}
+
+	// #165: on `validate:"min=1,max=10,dive,min=5,max=100"`, the pre-dive rules
+	// constrain the container (minItems/maxItems) and the post-dive rules
+	// constrain each element (items.minimum/items.maximum).
+	scores := req.Properties["scores"]
+	switch {
+	case scores == nil:
+		t.Error("scores property missing")
+	case scores.MinItems != 1 || scores.MaxItems != 10:
+		t.Errorf("scores: got minItems=%d maxItems=%d, want 1/10 (#165 container)", scores.MinItems, scores.MaxItems)
+	case scores.Items == nil:
+		t.Error("scores.items missing")
+	case scores.Items.Minimum != 5 || scores.Items.Maximum != 100:
+		t.Errorf("scores.items: got minimum=%v maximum=%v, want 5/100 (#165 post-dive elements)", scores.Items.Minimum, scores.Items.Maximum)
+	}
 }

@@ -1532,6 +1532,23 @@ type ValidationConstraints struct {
 	Pattern   string
 	Required  bool
 	Enum      []interface{}
+	// Dive holds the constraints that follow a `dive` token in a validator tag;
+	// they apply to the ELEMENTS of a slice/map rather than the container
+	// (issue #165). Nil when the tag has no `dive`.
+	Dive *ValidationConstraints
+}
+
+// splitOnDive splits a go-playground/validator rule string on the first `dive`
+// token (comma-delimited). Rules before `dive` constrain the container; rules
+// after constrain each element. found is false when there is no `dive`.
+func splitOnDive(validateTag string) (before, after string, found bool) {
+	parts := strings.Split(validateTag, ",")
+	for i, p := range parts {
+		if strings.TrimSpace(p) == "dive" {
+			return strings.Join(parts[:i], ","), strings.Join(parts[i+1:], ","), true
+		}
+	}
+	return validateTag, "", false
 }
 
 // extractValidationConstraints extracts validation constraints from struct tags
@@ -1547,6 +1564,17 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 		parts := strings.Split(tag, "validate:")
 		if len(parts) > 1 {
 			validateTag := strings.Trim(parts[1], "\"")
+
+			// Peel off post-`dive` rules: they constrain slice/map elements, not
+			// the container, so parse them separately into constraints.Dive
+			// (issue #165). The container rules (before `dive`) fall through to
+			// the loop below.
+			if before, after, found := splitOnDive(validateTag); found {
+				validateTag = before
+				if trimmed := strings.Trim(after, ", "); trimmed != "" {
+					constraints.Dive = extractValidationConstraints(`validate:"` + trimmed + `"`)
+				}
+			}
 
 			// Parse common validation rules - improved regex to handle various formats
 			// Matches: required, email, min=5, max=10, len=8, regexp=^[a-z]{2,3}$, oneof=val1 val2, etc.
@@ -1807,7 +1835,8 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 	if constraints.MinLength == nil && constraints.MaxLength == nil &&
 		constraints.Min == nil && constraints.Max == nil &&
 		constraints.Pattern == "" && constraints.Format == "" &&
-		!constraints.Required && len(constraints.Enum) == 0 {
+		!constraints.Required && len(constraints.Enum) == 0 &&
+		constraints.Dive == nil {
 		return nil
 	}
 
@@ -1867,6 +1896,10 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 			schema.MaxItems = *constraints.MaxLength
 		} else if constraints.Max != nil {
 			schema.MaxItems = int(*constraints.Max)
+		}
+		// Post-`dive` constraints apply to each element (issue #165).
+		if constraints.Dive != nil && schema.Items != nil {
+			applyValidationConstraints(schema.Items, constraints.Dive)
 		}
 	}
 
