@@ -295,7 +295,8 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Wrapper/envelope response specialisation — when a handler's payload flows through a shared helper whose field is declared `interface{}`/`any` (e.g. `RespondWithSuccess(w, msg, data, code)` → `NewEnvelope{Data: data}`), APISpec recovers the concrete per-route payload type from the call site and emits an `allOf` of the base envelope `$ref` plus a `data` override, instead of a generic `object`.
 - Interface-typed response bodies — when a handler encodes an interface-typed variable (`var a Animal = Dog{}; json.NewEncoder(w).Encode(a)`, or `var a Animal; a = Dog{}`), the schema documents the **concrete** type statically assigned to it (`Dog`) rather than the empty interface. When the handler assigns more than one concrete type on different branches the result is ambiguous, so the interface is kept (honest over wrong). A concrete value returned through a function whose declared return type is the interface (`Encode(makeAnimal())` where `makeAnimal() Animal { return Dog{} }`) resolves via the callee's return value. A value passed into a helper through an interface parameter — named (`writeAnimal(w, v Animal)`) or `interface{}`/`any` — resolves to the concrete argument bound at the call site. Embedded-interface handler dispatch (the DI/clean-architecture `Handlers{ AuthorHandler }` pattern) also resolves to the concrete implementation. See `testdata/interface_response/`. In every case, when the concrete type is genuinely ambiguous (several concrete types on different branches) the interface is kept rather than guessed.
 - External package types automatically resolved to underlying primitives (with `externalTypes` for custom overrides).
-- `go-playground/validator` tags mapped to OpenAPI constraints.
+- `go-playground/validator` (`validate:`) tags mapped to OpenAPI constraints — `required`, formats (`email`, `uuid`, …), patterns, and length/value/item constraints that route by field type: `min`/`max` on a string → `minLength`/`maxLength`, on a number → `minimum`/`maximum`, on a slice → `minItems`/`maxItems`. The `dive` tag applies post-`dive` rules to slice/map **elements** (`items.*`). Struct-level (cross-field) rules on a blank marker field (`_ struct{} \`validate:"gtefield=Min"\``) surface as a schema `description` note. A decoded JSON request body is marked `required: true`.
+- Handler Go doc comments mapped to the operation `summary` (first line) and `description` (remaining lines).
 - CGO packages can be skipped to avoid build errors.
 - Dependency-injected route groups.
 - Go 1.22 `net/http.ServeMux` method-aware routing — patterns that carry the verb on the registration (`mux.HandleFunc("GET /users/{id}", getUser)`) are split into method + path, `{id}` wildcards become path parameters, and `r.PathValue("id")` is recognised as a path parameter. ServeMux-only syntax (`{path...}` trailing wildcards, the `{$}` end-of-path anchor) is normalised to OpenAPI templating. See `testdata/servemux/`.
@@ -309,7 +310,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 
 - Same path + same status code with different schemas — not yet supported.
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
-- `dive` validator tag (array-element validation) — planned.
+- Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
 
 ### Selected capability highlights
 
