@@ -1978,8 +1978,13 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 		} else if constraints.Max != nil {
 			schema.MaxItems = int(*constraints.Max)
 		}
-		// Post-`dive` constraints apply to each element (issue #165).
+		// Post-`dive` constraints apply to each element (issue #165). Clone the
+		// item schema before mutating it: even though promoted element types
+		// currently resolve to a fresh $ref (making this a no-op there), the
+		// codebase treats component schemas as shared/immutable — cloning keeps
+		// per-field dive rules from ever leaking into a shared component.
 		if constraints.Dive != nil && schema.Items != nil {
+			schema.Items = cloneSchema(schema.Items)
 			applyValidationConstraints(schema.Items, constraints.Dive)
 		}
 	}
