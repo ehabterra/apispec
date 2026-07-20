@@ -16,6 +16,9 @@ type HealthStatus struct {
 // HealthHandler implements http.Handler and is registered via r.Method.
 type HealthHandler struct{}
 
+// ServeHTTP reports service health.
+// Doc-comment sourcing (#168) is framework-agnostic: it resolves off the
+// handler declaration, not the router, so a chi-registered method gets it too.
 func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(HealthStatus{Status: "ok"})
@@ -67,6 +70,7 @@ func NewRouter(deps Deps) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Get("/live", ServeLive)                        // func value
+	r.Get("/live2", deps.Health.ServeHTTP)           // method value
 	r.Method(http.MethodGet, "/health", deps.Health) // http.Handler via Method
 	r.MethodFunc(http.MethodPost, "/ready", readyHandler)
 	r.Handle("/metrics", deps.Metrics) // opaque http.Handler

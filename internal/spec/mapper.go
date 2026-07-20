@@ -17,6 +17,7 @@ package spec
 import (
 	"fmt"
 	"go/ast"
+	godoc "go/doc"
 	"go/types"
 	"log"
 	"maps"
@@ -292,13 +293,16 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		}
 		// Fill the summary/description from the handler's Go doc comment (issue
 		// #168) when not already set by a more specific source.
+		// Each field falls back independently: a comment carrying only a
+		// @Description (no @Summary) must still contribute its description.
 		summary, description := route.Summary, route.Description
-		if summary == "" {
-			if s, d := handlerDoc(route); s != "" {
+		if summary == "" || description == "" {
+			s, d := handlerDoc(route)
+			if summary == "" {
 				summary = s
-				if description == "" {
-					description = d
-				}
+			}
+			if description == "" {
+				description = d
 			}
 		}
 		operation := &Operation{
@@ -1576,29 +1580,201 @@ func appendConstraintNote(desc, note string) string {
 	return desc + "\n" + note
 }
 
-// handlerDoc resolves the handler function's Go doc comment into an operation
-// summary (the first line) and description (the remaining lines), per the common
-// Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
-// anonymous (a func literal), a method not indexed in the function table, or
-// undocumented — callers keep whatever summary/description they already had.
+// receiverTypeName resolves the receiver segment of a rendered method value to
+// the type name that declares the method. The segment is already a type name for
+// the common `h.Method` shape (`h` is a variable, rendered as its type), but for
+// a dependency-injected handler the receiver is a *field path* — `deps.Health`
+// renders as `Deps.Health`, where `Deps` is the type and `Health` the field. In
+// that case the declaring type is the field's own type, read through TypeRefOf
+// (never by parsing the type string) and unwrapped to its named core so a
+// `*HealthHandler` field resolves to `HealthHandler`.
+//
+// Falls back to the last segment when the path resolves to no known field: for a
+// cross-package receiver (`otherpkg.Handler`) that is exactly the type name, and
+// for anything else it yields a name that simply matches nothing — an empty
+// summary rather than a guessed one.
+func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
+	i := strings.LastIndexByte(recv, '.')
+	if i < 0 {
+		return recv
+	}
+	owner, field := recv[:i], recv[i+1:]
+	if t := findType(meta, pkg, owner); t != nil {
+		for _, f := range t.Fields {
+			if meta.StringPool.GetString(f.Name) != field {
+				continue
+			}
+			if core := meta.TypeRefOf(f.Type).Core(); core.IsNamed() {
+				return core.Name
+			}
+			// An unnamed field type (a bare func type, say) declares no methods.
+			// Fall through to the field name so the lookup stays receiver-scoped:
+			// returning "" here would let it match on the method name alone and
+			// pick an arbitrary same-named method (golden rule #7).
+			break
+		}
+	}
+	return field
+}
+
+// handlerComments returns the Go doc comment recorded for the route's handler,
+// resolving every handler shape. RouteInfo.Function is the rendered handler
+// argument, and the shapes differ (issue #168 originally handled only the first):
+//
+//	pkg.Handler                 — a package-level function
+//	pkg-->pkg.Recv.Method       — a method value (h.Handler)
+//	pkg-->Owner.Field.Method    — a method value on a struct field (deps.H.Handler)
+//
+// The method shapes resolve through the per-Type methods table, which
+// findFunctionByName cannot reach — it indexes only receiver-less declarations.
+// Returns "" for an anonymous (func-literal) or undocumented handler.
+func handlerComments(route *RouteInfo) string {
+	name := route.Function
+	// The separator between the package and the rest is TypeSep in some render
+	// paths and a plain dot in others, so normalize before splitting. The package
+	// prefix can then appear twice ("pkg" + TypeSep + "pkg.Recv.Method"), hence
+	// the loop.
+	name = strings.ReplaceAll(name, TypeSep, ".")
+	if route.Package != "" {
+		for strings.HasPrefix(name, route.Package+".") {
+			name = name[len(route.Package)+1:]
+		}
+	}
+	// What remains is either "Method" / "Func" or "<recv>.Method", where <recv>
+	// is a type name or a field path.
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		recv := receiverTypeName(route.Metadata, route.Package, name[:i])
+		if m := findMethodByName(route.Metadata, route.Package, recv, name[i+1:]); m != nil {
+			return getStringFromPool(route.Metadata, m.Comments)
+		}
+		return ""
+	}
+	if fn := findFunctionByName(route.Metadata, route.Package, name); fn != nil {
+		return getStringFromPool(route.Metadata, fn.Comments)
+	}
+	return ""
+}
+
+// swaggoDoc extracts the operation summary/description from swaggo/swag
+// annotations when the doc comment carries them:
+//
+//	// CreateAccount godoc
+//	// @Summary      Create an account
+//	// @Description  Registers a new account.
+//	// @Router       /accounts [post]
+//
+// Only @Summary and @Description are consumed; every other annotation line is
+// dropped rather than swept into the prose (they are structured directives, not
+// description text, and the rest of the pipeline derives those facts from the
+// code itself). A line that does not start with '@' continues the annotation
+// above it, which is how multi-line descriptions are written.
+//
+// ok is false when the comment carries no annotations at all, so a plain Go doc
+// comment keeps the first-sentence behaviour. When annotations are present but
+// name no @Summary, the prose above the first annotation supplies it — that is
+// where the conventional "Name godoc" line lives.
+func swaggoDoc(text string) (summary, description string, ok bool) {
+	var lead, summaryLines, descLines []string
+	section := ""
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "@") {
+			ok = true
+			name := strings.Fields(trimmed)[0]
+			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, name))
+			switch strings.ToLower(name) {
+			case "@summary":
+				section = "summary"
+				if rest != "" {
+					summaryLines = append(summaryLines, rest)
+				}
+			case "@description":
+				section = "description"
+				if rest != "" {
+					descLines = append(descLines, rest)
+				}
+			default:
+				section = ""
+			}
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		switch {
+		case section == "summary":
+			summaryLines = append(summaryLines, trimmed)
+		case section == "description":
+			descLines = append(descLines, trimmed)
+		case !ok:
+			lead = append(lead, trimmed)
+		}
+	}
+	if !ok {
+		return "", "", false
+	}
+	summary = strings.Join(summaryLines, " ")
+	description = strings.Join(descLines, "\n")
+	if summary == "" && len(lead) > 0 {
+		summary, _ = splitSynopsis(strings.Join(lead, "\n"))
+	}
+	return summary, description, true
+}
+
+// splitSynopsis splits a doc comment into its first sentence and the remainder.
+// The split is by *sentence*, not by line: real doc comments wrap, so taking the
+// first line truncates mid-sentence ("…origin publisher (admin-only). PUT").
+//
+// Synopsis rewrites the text as well as collapsing whitespace — Go doc markup
+// turns “quoted” into curly quotes — so the synopsis is not a literal prefix
+// of the comment and the remainder cannot be recovered by comparing the two
+// character by character (that silently dropped the description whenever a
+// rewrite occurred). Those rewrites preserve *word count*, so the split instead
+// consumes that many whitespace-separated words from the original, which keeps
+// the description's own formatting intact.
+func splitSynopsis(text string) (summary, description string) {
+	// The package-level godoc.Synopsis is deprecated; the method form on an empty
+	// Package is the supported equivalent and needs no loaded package.
+	summary = new(godoc.Package).Synopsis(text)
+	if summary == "" {
+		return "", ""
+	}
+	i := 0
+	for n := len(strings.Fields(summary)); n > 0; n-- {
+		for i < len(text) && isSpaceByte(text[i]) {
+			i++
+		}
+		if i >= len(text) {
+			break
+		}
+		for i < len(text) && !isSpaceByte(text[i]) {
+			i++
+		}
+	}
+	return summary, strings.TrimSpace(text[i:])
+}
+
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
+
+// handlerDoc resolves the handler's Go doc comment into an operation summary
+// and description, per the common Go→OpenAPI convention (issue #168): swaggo
+// annotations win when present, otherwise the first sentence is the summary and
+// the remainder the description. Returns empty strings when the handler is
+// anonymous or undocumented — callers keep whatever summary/description they
+// already had.
 func handlerDoc(route *RouteInfo) (summary, description string) {
 	if route == nil || route.Metadata == nil || route.Function == "" {
 		return "", ""
 	}
-	name := route.Function
-	if route.Package != "" {
-		name = strings.TrimPrefix(name, route.Package+".")
-	}
-	fn := findFunctionByName(route.Metadata, route.Package, name)
-	if fn == nil {
-		return "", ""
-	}
-	doc := getStringFromPool(route.Metadata, fn.Comments)
+	doc := handlerComments(route)
 	if doc == "" {
 		return "", ""
 	}
-	if i := strings.IndexByte(doc, '\n'); i >= 0 {
-		return strings.TrimSpace(doc[:i]), strings.TrimSpace(doc[i+1:])
+	if s, d, ok := swaggoDoc(doc); ok {
+		return s, d
+	}
+	if summary, description = splitSynopsis(doc); summary != "" {
+		return summary, description
 	}
 	return doc, ""
 }

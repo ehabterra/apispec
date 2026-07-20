@@ -272,6 +272,7 @@ packages:
                 signature_str: 17
                 position: 14
                 scope: 15
+                comments: -1
                 filename: 16
                 return_vars:
                   - kind: 8
@@ -368,6 +369,7 @@ packages:
                 signature_str: 28
                 position: 27
                 scope: 15
+                comments: -1
                 filename: 16
                 assignments:
                   example.User.Age:
@@ -888,6 +890,7 @@ packages:
             signature_str: 17
             position: 14
             scope: 15
+            comments: -1
             filename: 16
             return_vars:
               - kind: 8
@@ -984,6 +987,7 @@ packages:
             signature_str: 28
             position: 27
             scope: 15
+            comments: -1
             filename: 16
             assignments:
               example.User.Age:

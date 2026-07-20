@@ -157,6 +157,7 @@ packages:
                 signature_str: 17
                 position: 14
                 scope: 15
+                comments: -1
                 filename: 16
                 return_vars:
                   - kind: 8
@@ -253,6 +254,7 @@ packages:
                 signature_str: 26
                 position: 25
                 scope: 15
+                comments: -1
                 filename: 16
                 assignments:
                   generic.Container[T].Value:
@@ -1004,6 +1006,7 @@ packages:
             signature_str: 17
             position: 14
             scope: 15
+            comments: -1
             filename: 16
             return_vars:
               - kind: 8
@@ -1100,6 +1103,7 @@ packages:
             signature_str: 26
             position: 25
             scope: 15
+            comments: -1
             filename: 16
             assignments:
               generic.Container[T].Value:

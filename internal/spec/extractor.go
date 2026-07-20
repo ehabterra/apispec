@@ -1919,6 +1919,45 @@ func methodAssignmentMap(meta *metadata.Metadata, pkg, recv, name, varName strin
 	return nil
 }
 
+// findMethodByName resolves the method (pkg, receiver, name) in the per-Type
+// methods table. Methods never appear in file.Functions (processFunctions skips
+// any decl with a receiver), so findFunctionByName cannot see them — anything
+// resolving a handler that may be a method needs this fallback. An empty recv
+// matches on the method name alone; receivers are compared with a leading `*`
+// trimmed so a pointer-receiver handler matches its value-typed record.
+func findMethodByName(meta *metadata.Metadata, pkg, recv, name string) *metadata.Method {
+	if meta == nil || name == "" {
+		return nil
+	}
+	p, ok := meta.Packages[pkg]
+	if !ok {
+		return nil
+	}
+	// Sort file keys: a receiver-less lookup can match in several files, and map
+	// iteration order would make the winner (and any doc comment it carries)
+	// vary between runs.
+	fileNames := make([]string, 0, len(p.Files))
+	for f := range p.Files {
+		fileNames = append(fileNames, f)
+	}
+	sort.Strings(fileNames)
+	for _, fname := range fileNames {
+		for _, t := range p.Files[fname].Types {
+			for i := range t.Methods {
+				m := &t.Methods[i]
+				if meta.StringPool.GetString(m.Name) != name {
+					continue
+				}
+				if recv != "" && strings.TrimPrefix(meta.StringPool.GetString(m.Receiver), "*") != strings.TrimPrefix(recv, "*") {
+					continue
+				}
+				return m
+			}
+		}
+	}
+	return nil
+}
+
 // handlerReachesAccessor reports whether the route's handler transitively calls
 // the map-key accessor described by pattern. Reachability is a precomputed
 // summary (reachSet, one bottom-up pass over the SCC condensation) rather
