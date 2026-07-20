@@ -290,15 +290,30 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		if route.OperationIDSuffix != "" {
 			operationID += "_" + route.OperationIDSuffix
 		}
+		// Fill the summary/description from the handler's Go doc comment (issue
+		// #168) when not already set by a more specific source.
+		summary, description := route.Summary, route.Description
+		if summary == "" {
+			if s, d := handlerDoc(route); s != "" {
+				summary = s
+				if description == "" {
+					description = d
+				}
+			}
+		}
 		operation := &Operation{
 			OperationID: operationID,
-			Summary:     route.Summary,
+			Summary:     summary,
+			Description: description,
 			Tags:        route.Tags,
 		}
 
-		// Add request body if present
+		// Add request body if present. A detected request body means the handler
+		// decodes it, so it is required (issue #167) — an OpenAPI requestBody
+		// defaults to optional otherwise.
 		if route.Request != nil {
 			operation.RequestBody = &RequestBody{
+				Required: true,
 				Content: map[string]MediaType{
 					route.Request.ContentType: {
 						Schema: route.Request.Schema,
@@ -1236,6 +1251,15 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		// or an unexported field. Mirrors the anonymous-struct path so both
 		// stay consistent.
 		if jsonFieldOmitted(getStringFromPool(meta, field.Tag)) || !ast.IsExported(fieldName) {
+			// A blank marker field (`_ struct{} `validate:"gtefield=Min"`)
+			// carries struct-level, cross-field validation that OpenAPI cannot
+			// express natively. Surface it as a note on the schema description so
+			// it is not silently dropped (issue #166).
+			if fieldName == "_" {
+				if note := structLevelValidationNote(getStringFromPool(meta, field.Tag)); note != "" {
+					schema.Description = appendConstraintNote(schema.Description, note)
+				}
+			}
 			continue
 		}
 
@@ -1519,6 +1543,66 @@ func extractJSONName(tag string) string {
 	return ""
 }
 
+// validateTagValue returns the value of the `validate:"..."` struct tag, or ""
+// when absent. Robust to other tags sharing the struct-tag string.
+func validateTagValue(tag string) string {
+	const key = `validate:"`
+	idx := strings.Index(tag, key)
+	if idx == -1 {
+		return ""
+	}
+	rest := tag[idx+len(key):]
+	if end := strings.IndexByte(rest, '"'); end != -1 {
+		return rest[:end]
+	}
+	return ""
+}
+
+// structLevelValidationNote turns a blank marker field's validate rules into a
+// human-readable schema note, or "" when there are none (issue #166).
+func structLevelValidationNote(tag string) string {
+	rules := strings.TrimSpace(validateTagValue(tag))
+	if rules == "" || rules == "-" {
+		return ""
+	}
+	return "Struct-level validation: " + rules
+}
+
+// appendConstraintNote appends a note to a description on its own line.
+func appendConstraintNote(desc, note string) string {
+	if desc == "" {
+		return note
+	}
+	return desc + "\n" + note
+}
+
+// handlerDoc resolves the handler function's Go doc comment into an operation
+// summary (the first line) and description (the remaining lines), per the common
+// Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
+// anonymous (a func literal), a method not indexed in the function table, or
+// undocumented — callers keep whatever summary/description they already had.
+func handlerDoc(route *RouteInfo) (summary, description string) {
+	if route == nil || route.Metadata == nil || route.Function == "" {
+		return "", ""
+	}
+	name := route.Function
+	if route.Package != "" {
+		name = strings.TrimPrefix(name, route.Package+".")
+	}
+	fn := findFunctionByName(route.Metadata, route.Package, name)
+	if fn == nil {
+		return "", ""
+	}
+	doc := getStringFromPool(route.Metadata, fn.Comments)
+	if doc == "" {
+		return "", ""
+	}
+	if i := strings.IndexByte(doc, '\n'); i >= 0 {
+		return strings.TrimSpace(doc[:i]), strings.TrimSpace(doc[i+1:])
+	}
+	return doc, ""
+}
+
 // ValidationConstraints represents validation constraints extracted from struct tags
 type ValidationConstraints struct {
 	MinLength *int
@@ -1529,6 +1613,23 @@ type ValidationConstraints struct {
 	Pattern   string
 	Required  bool
 	Enum      []interface{}
+	// Dive holds the constraints that follow a `dive` token in a validator tag;
+	// they apply to the ELEMENTS of a slice/map rather than the container
+	// (issue #165). Nil when the tag has no `dive`.
+	Dive *ValidationConstraints
+}
+
+// splitOnDive splits a go-playground/validator rule string on the first `dive`
+// token (comma-delimited). Rules before `dive` constrain the container; rules
+// after constrain each element. found is false when there is no `dive`.
+func splitOnDive(validateTag string) (before, after string, found bool) {
+	parts := strings.Split(validateTag, ",")
+	for i, p := range parts {
+		if strings.TrimSpace(p) == "dive" {
+			return strings.Join(parts[:i], ","), strings.Join(parts[i+1:], ","), true
+		}
+	}
+	return validateTag, "", false
 }
 
 // extractValidationConstraints extracts validation constraints from struct tags
@@ -1544,6 +1645,17 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 		parts := strings.Split(tag, "validate:")
 		if len(parts) > 1 {
 			validateTag := strings.Trim(parts[1], "\"")
+
+			// Peel off post-`dive` rules: they constrain slice/map elements, not
+			// the container, so parse them separately into constraints.Dive
+			// (issue #165). The container rules (before `dive`) fall through to
+			// the loop below.
+			if before, after, found := splitOnDive(validateTag); found {
+				validateTag = before
+				if trimmed := strings.Trim(after, ", "); trimmed != "" {
+					constraints.Dive = extractValidationConstraints(`validate:"` + trimmed + `"`)
+				}
+			}
 
 			// Parse common validation rules - improved regex to handle various formats
 			// Matches: required, email, min=5, max=10, len=8, regexp=^[a-z]{2,3}$, oneof=val1 val2, etc.
@@ -1804,7 +1916,8 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 	if constraints.MinLength == nil && constraints.MaxLength == nil &&
 		constraints.Min == nil && constraints.Max == nil &&
 		constraints.Pattern == "" && constraints.Format == "" &&
-		!constraints.Required && len(constraints.Enum) == 0 {
+		!constraints.Required && len(constraints.Enum) == 0 &&
+		constraints.Dive == nil {
 		return nil
 	}
 
@@ -1817,13 +1930,20 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 		return
 	}
 
-	// Apply string length constraints (only for string types)
+	// Apply string length constraints (only for string types). In
+	// go-playground/validator, `min`/`max` on a string constrain its LENGTH, not
+	// a numeric value — so route Min/Max here to minLength/maxLength (issue
+	// #167). Explicit len/minlen/maxlen (MinLength/MaxLength) take precedence.
 	if schema.Type == "string" {
 		if constraints.MinLength != nil {
 			schema.MinLength = *constraints.MinLength
+		} else if constraints.Min != nil {
+			schema.MinLength = int(*constraints.Min)
 		}
 		if constraints.MaxLength != nil {
 			schema.MaxLength = *constraints.MaxLength
+		} else if constraints.Max != nil {
+			schema.MaxLength = int(*constraints.Max)
 		}
 	}
 
@@ -1841,6 +1961,31 @@ func applyValidationConstraints(schema *Schema, constraints *ValidationConstrain
 		}
 		if constraints.MaxLength != nil && schema.Type == "integer" {
 			schema.Maximum = float64(*constraints.MaxLength)
+		}
+	}
+
+	// Apply item-count constraints (for array types). `min`/`max` (and
+	// len/minlen/maxlen) on a slice constrain the number of ELEMENTS — map them
+	// to minItems/maxItems (issue #167). Explicit length rules win.
+	if schema.Type == "array" {
+		if constraints.MinLength != nil {
+			schema.MinItems = *constraints.MinLength
+		} else if constraints.Min != nil {
+			schema.MinItems = int(*constraints.Min)
+		}
+		if constraints.MaxLength != nil {
+			schema.MaxItems = *constraints.MaxLength
+		} else if constraints.Max != nil {
+			schema.MaxItems = int(*constraints.Max)
+		}
+		// Post-`dive` constraints apply to each element (issue #165). Clone the
+		// item schema before mutating it: even though promoted element types
+		// currently resolve to a fresh $ref (making this a no-op there), the
+		// codebase treats component schemas as shared/immutable — cloning keeps
+		// per-field dive rules from ever leaking into a shared component.
+		if constraints.Dive != nil && schema.Items != nil {
+			schema.Items = cloneSchema(schema.Items)
+			applyValidationConstraints(schema.Items, constraints.Dive)
 		}
 	}
 
