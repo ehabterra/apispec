@@ -1682,6 +1682,56 @@ func handlerValueComments(route *RouteInfo, name string, handlerMethods ...strin
 			return getStringFromPool(route.Metadata, m.Comments)
 		}
 	}
+	// The value may be interface-typed (a field declared `http.Handler`), whose
+	// declaring package is outside the analyzed set. The body expansion fans out
+	// to every implementer, but a summary cannot: with two implementers there are
+	// two different doc comments and no basis to choose, so one is sourced only
+	// when the implementer is unique (golden rule #7).
+	// A variable of interface type renders as the interface itself
+	// ("net/http.Handler"), so the name IS the key; a struct field renders as the
+	// field path, whose type has to be looked up.
+	key := valueTypeKey(route, name)
+	if key == "" {
+		key = name
+	}
+	impls := implementersOfExternal(route.Metadata, key)
+	if len(impls) != 1 {
+		return ""
+	}
+	i := strings.LastIndexByte(impls[0], '.')
+	if i < 0 {
+		return ""
+	}
+	for _, hm := range handlerMethods {
+		if m := findMethodByName(route.Metadata, impls[0][:i], impls[0][i+1:], hm); m != nil {
+			return getStringFromPool(route.Metadata, m.Comments)
+		}
+	}
+	return ""
+}
+
+// valueTypeKey returns the fully-qualified type key ("net/http.Handler") of the
+// handler value named by the rendered argument, or "" when it does not resolve
+// to a field whose type is known. Only the field-path form carries an external
+// type — a bare type name is by definition declared in the analyzed package.
+func valueTypeKey(route *RouteInfo, name string) string {
+	i := strings.LastIndexByte(name, '.')
+	if i < 0 {
+		return ""
+	}
+	owner, field := name[:i], name[i+1:]
+	t := findType(route.Metadata, route.Package, owner)
+	if t == nil {
+		return ""
+	}
+	for _, f := range t.Fields {
+		if route.Metadata.StringPool.GetString(f.Name) != field {
+			continue
+		}
+		if core := route.Metadata.TypeRefOf(f.Type).Core(); core.IsNamed() && core.Pkg != "" {
+			return core.Pkg + "." + core.Name
+		}
+	}
 	return ""
 }
 

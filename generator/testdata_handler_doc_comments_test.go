@@ -77,6 +77,16 @@ func TestTestdata_HandlerDocComments(t *testing.T) {
 			shape:  "func literal",
 		},
 		{
+			// #178 + #204: an interface-typed value resolves through the
+			// concrete implementers recorded for the stdlib interface. Unique
+			// implementer here, so the summary is unambiguous.
+			method:      "GET",
+			path:        "/accounts/direct",
+			shape:       "interface-typed handler value",
+			summary:     "ServeHTTP serves the account resource directly.",
+			description: "A route registered with the handler *value* (mux.Handle(\"...\", h)) names no\nmethod, so the framework's handler interface supplies it (issue #204).",
+		},
+		{
 			// #204: the handler value names no method, so the framework's
 			// handler interface (ServeHTTP) supplies it. Also guards that the
 			// traced origin type never leaks in as a summary ("*pkg-->Handler").

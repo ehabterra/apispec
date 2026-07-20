@@ -841,50 +841,8 @@ func (n *LazyNode) handlerValueKeys() []string {
 	if !n.isArgument || n.arg == nil || len(n.tree.handlerMethods) == 0 {
 		return nil
 	}
-	// A method value (h.ServeHTTP) or func value already resolves via
-	// methodBaseKeys; its type is a signature, not a named type.
-	ref := n.arg.TypeRef()
-	core := ref.Core()
-	if !core.IsNamed() || core.Pkg == "" || core.Name == "" {
-		return nil
-	}
-	return n.tree.handlerImplKeys(core.Pkg, core.Name)
-}
-
-// handlerImplKeys returns the base IDs of the configured handler methods
-// declared by (pkg, name), fanning an interface out to its implementers. Kept
-// separate from handlerValueKeys so the interface and concrete cases share one
-// declaration check.
-func (t *LazyTree) handlerImplKeys(pkg, name string) []string {
-	typ := findType(t.meta, pkg, name)
-	if typ == nil {
-		return nil
-	}
-	if getString(t.meta, typ.Kind) == "interface" {
-		var out []string
-		for _, implIdx := range typ.ImplementedBy {
-			impl := getString(t.meta, implIdx) // "import/path.Type"
-			if impl == "" {
-				continue
-			}
-			i := strings.LastIndexByte(impl, '.')
-			if i < 0 {
-				continue
-			}
-			out = append(out, t.handlerImplKeys(impl[:i], impl[i+1:])...)
-		}
-		return out
-	}
-	var out []string
-	for _, method := range t.handlerMethods {
-		for i := range typ.Methods {
-			if getString(t.meta, typ.Methods[i].Name) == method {
-				out = append(out, pkg+"."+name+"."+method)
-				break
-			}
-		}
-	}
-	return out
+	pkg, name := handlerValueTypeOf(n.arg)
+	return handlerMethodKeys(n.tree.meta, n.tree.handlerMethods, pkg, name)
 }
 
 // argProducerIDs resolves a variable or struct-field argument to the callee

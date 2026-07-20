@@ -75,9 +75,13 @@ func main() {
 	mux.HandleFunc("PATCH /accounts", h.PatchAccount)
 	mux.HandleFunc("GET /accounts", listAccounts)
 	mux.HandleFunc("GET /accounts/search", h.SearchAccounts)
-	// A handler *value* names no method, so nothing is resolved for it — and in
-	// particular the traced origin type must not leak in as the summary.
+	// A handler *value* names no method: the framework's handler interface
+	// supplies it (#204). The traced origin type must not leak in as the summary.
 	mux.Handle("OPTIONS /accounts", h)
+	// An INTERFACE-typed value: resolving it needs the concrete implementers of
+	// a stdlib interface, which metadata records via Implements (issue #178).
+	var iface http.Handler = h
+	mux.Handle("GET /accounts/direct", iface)
 	// A func literal has no doc comment to source from.
 	mux.HandleFunc("PUT /accounts", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

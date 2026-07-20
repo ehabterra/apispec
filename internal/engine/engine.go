@@ -672,7 +672,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
 	} else {
-		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))
+		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose),
+			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
 		e.reportPhase("tracker tree built", time.Since(tTree))
 	}
 	if err := e.ctx().Err(); err != nil {
