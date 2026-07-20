@@ -14,6 +14,18 @@ type CreateAccountRequest struct {
 	// Slice min/max constrain ITEM COUNT → minItems / maxItems; the post-`dive`
 	// rules constrain each element → items.minimum / items.maximum (#165).
 	Scores []int `json:"scores" validate:"required,min=1,max=10,dive,min=5,max=100"`
+	// Bounds carries a struct-level (cross-field) constraint on a blank marker
+	// field (#166).
+	Bounds Range `json:"bounds"`
+}
+
+// Range has a whole-struct constraint expressed on a blank marker field: Max
+// must be >= Min. OpenAPI has no native cross-field rule, so it surfaces as a
+// schema description note (#166).
+type Range struct {
+	Min int      `json:"min" validate:"required"`
+	Max int      `json:"max" validate:"required"`
+	_   struct{} `validate:"gtefield=Min"`
 }
 
 // createAccount registers a new account.

@@ -97,4 +97,14 @@ func TestTestdata_ValidationTags(t *testing.T) {
 	case scores.Items.Minimum != 5 || scores.Items.Maximum != 100:
 		t.Errorf("scores.items: got minimum=%v maximum=%v, want 5/100 (#165 post-dive elements)", scores.Items.Minimum, scores.Items.Maximum)
 	}
+
+	// #166: a struct-level constraint on a blank marker field surfaces as a note
+	// on the schema description (OpenAPI has no native cross-field rule).
+	rng := schemaBySuffix(out.Components.Schemas, "_Range")
+	if rng == nil {
+		t.Fatalf("Range schema missing; have %v", mapSchemaKeys(out.Components.Schemas))
+	}
+	if !strings.Contains(rng.Description, "gtefield=Min") {
+		t.Errorf("Range: struct-level constraint not surfaced in description; got %q (#166)", rng.Description)
+	}
 }

@@ -1251,6 +1251,15 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		// or an unexported field. Mirrors the anonymous-struct path so both
 		// stay consistent.
 		if jsonFieldOmitted(getStringFromPool(meta, field.Tag)) || !ast.IsExported(fieldName) {
+			// A blank marker field (`_ struct{} `validate:"gtefield=Min"`)
+			// carries struct-level, cross-field validation that OpenAPI cannot
+			// express natively. Surface it as a note on the schema description so
+			// it is not silently dropped (issue #166).
+			if fieldName == "_" {
+				if note := structLevelValidationNote(getStringFromPool(meta, field.Tag)); note != "" {
+					schema.Description = appendConstraintNote(schema.Description, note)
+				}
+			}
 			continue
 		}
 
@@ -1532,6 +1541,39 @@ func extractJSONName(tag string) string {
 	}
 
 	return ""
+}
+
+// validateTagValue returns the value of the `validate:"..."` struct tag, or ""
+// when absent. Robust to other tags sharing the struct-tag string.
+func validateTagValue(tag string) string {
+	const key = `validate:"`
+	idx := strings.Index(tag, key)
+	if idx == -1 {
+		return ""
+	}
+	rest := tag[idx+len(key):]
+	if end := strings.IndexByte(rest, '"'); end != -1 {
+		return rest[:end]
+	}
+	return ""
+}
+
+// structLevelValidationNote turns a blank marker field's validate rules into a
+// human-readable schema note, or "" when there are none (issue #166).
+func structLevelValidationNote(tag string) string {
+	rules := strings.TrimSpace(validateTagValue(tag))
+	if rules == "" || rules == "-" {
+		return ""
+	}
+	return "Struct-level validation: " + rules
+}
+
+// appendConstraintNote appends a note to a description on its own line.
+func appendConstraintNote(desc, note string) string {
+	if desc == "" {
+		return note
+	}
+	return desc + "\n" + note
 }
 
 // handlerDoc resolves the handler function's Go doc comment into an operation
