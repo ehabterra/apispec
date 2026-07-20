@@ -16,6 +16,7 @@ package spec
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -133,4 +134,42 @@ func TestHandlerMethodKeys(t *testing.T) {
 	if got := handlerMethodKeys(nil, methods, "app", "H"); got != nil {
 		t.Errorf("nil metadata: got %v, want nil", got)
 	}
+}
+
+// TestOneOfSchemaFor covers the polymorphic schema builder (issue #201): it
+// emits `oneOf` only when there is genuine polymorphism to express, and each
+// member registers as a component so the refs resolve.
+func TestOneOfSchemaFor(t *testing.T) {
+	meta := sweepInterfaceMeta()
+	cfg := &APISpecConfig{}
+
+	t.Run("fewer than two yields nothing", func(t *testing.T) {
+		for _, in := range [][]string{nil, {}, {"app.Dog"}} {
+			if got := oneOfSchemaFor(map[string]*Schema{}, in, meta, cfg); got != nil {
+				t.Errorf("oneOfSchemaFor(%v) = %+v, want nil", in, got)
+			}
+		}
+	})
+
+	t.Run("two concretes yield oneOf and register components", func(t *testing.T) {
+		used := map[string]*Schema{}
+		got := oneOfSchemaFor(used, []string{"app.Cat", "app.Dog"}, meta, cfg)
+		if got == nil {
+			t.Fatal("got nil, want a oneOf schema")
+		}
+		if len(got.OneOf) != 2 {
+			t.Fatalf("oneOf has %d members, want 2: %+v", len(got.OneOf), got.OneOf)
+		}
+		// Order follows the input, which the resolver sorts — the output must
+		// not vary between runs (golden rule #1).
+		for i, want := range []string{"Cat", "Dog"} {
+			if !strings.HasSuffix(got.OneOf[i].Ref, want) {
+				t.Errorf("oneOf[%d] ref = %q, want it to end %q", i, got.OneOf[i].Ref, want)
+			}
+		}
+		// A polymorphic schema states one thing; it must not also carry a $ref.
+		if got.Ref != "" {
+			t.Errorf("oneOf schema also carries $ref %q", got.Ref)
+		}
+	})
 }

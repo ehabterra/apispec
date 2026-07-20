@@ -2,8 +2,9 @@
 // when a handler decodes into a value whose static type is an interface, the
 // request schema should document the concrete type actually assigned to it,
 // mirroring what testdata/interface_response already does for responses. When
-// more than one concrete type is assigned the resolution is ambiguous, and the
-// interface is kept (honest over wrong).
+// more than one concrete type is assigned, the payload is genuinely one of them
+// and maps to `oneOf` (issue #201) — honest over wrong, without discarding what
+// is known.
 package main
 
 import (
@@ -43,7 +44,8 @@ func createCat(w http.ResponseWriter, r *http.Request) {
 }
 
 // createEither assigns two different concrete types on different branches, so
-// the concrete type is ambiguous — resolution keeps the Animal interface.
+// the payload is genuinely one of them — the schema is a `oneOf` of both
+// (issue #201), not a guessed single type and not the bare interface.
 func createEither(w http.ResponseWriter, r *http.Request) {
 	var a Animal = Dog{}
 	if r.URL.Query().Get("x") == "1" {

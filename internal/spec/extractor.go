@@ -17,6 +17,7 @@ package spec
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2332,6 +2333,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// Fun directly rather than peeling to the inner ident — otherwise a
 		// const ident's literal value can leak into the schema as a $ref.
 		var bodyType string
+		// Concrete types assigned to an interface-typed body, when there is more
+		// than one — see oneOfSchemaFor (issue #201).
+		var oneOfTypes []string
 		if arg.GetKind() == metadata.KindTypeConversion && arg.Fun != nil {
 			bodyType = r.contextProvider.GetArgumentInfo(arg.Fun)
 		} else {
@@ -2379,7 +2383,14 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 			// Trace type origin for non-literal arguments
 			if !resolvedConcrete {
-				bodyType = r.resolveTypeOrigin(arg, typeNode, bodyType)
+				resolved := r.resolveTypeOrigin(arg, typeNode, bodyType)
+				if resolved == bodyType {
+					// Unchanged means the type did not narrow — when that is
+					// because several concrete types are assigned, the body is
+					// polymorphic and `oneOf` says so (issue #201).
+					oneOfTypes = r.ambiguousConcreteSet(arg, typeNode, bodyType)
+				}
+				bodyType = resolved
 			}
 
 			// Apply dereferencing if needed
@@ -2396,6 +2407,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 
 		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+		if oneOf := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg); oneOf != nil {
+			schema = oneOf
+		}
 
 		// Wrapper specialisation: when the body resolves to a struct
 		// whose fields are bound to constructor parameters at the
@@ -2974,11 +2988,41 @@ func (r *BasePatternMatcher) concreteFromEnclosingFunc(arg *metadata.CallArgumen
 	if callerName == "" {
 		return ""
 	}
+	set := r.concreteSetFromEnclosingFunc(arg, edge, originalType)
+	if len(set) == 1 {
+		return set[0]
+	}
+	// Zero (nothing resolvable) or more than one (ambiguous) keeps the
+	// interface. The ambiguous set is not discarded, though — callers that can
+	// express polymorphism read it via concreteSetFromEnclosingFunc and emit
+	// `oneOf` instead (issue #201).
+	return ""
+}
+
+// concreteSetFromEnclosingFunc returns every distinct concrete type assigned to
+// the variable in the enclosing handler, sorted.
+//
+// One element means the type is unambiguous and callers can narrow to it;
+// several mean the payload is genuinely one of them, which `oneOf` expresses
+// exactly where a bare interface schema (`{type: object}`) expresses nothing.
+// The result is sorted because it reaches the output (golden rule #1).
+func (r *BasePatternMatcher) concreteSetFromEnclosingFunc(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) []string {
+	if edge == nil {
+		return nil
+	}
+	meta := edge.Callee.Meta
+	if meta == nil || !isInterfaceTypeName(originalType, meta) {
+		return nil
+	}
+	callerName := r.contextProvider.GetString(edge.Caller.Name)
+	if callerName == "" {
+		return nil
+	}
 	fn := findFunctionByName(meta, r.contextProvider.GetString(edge.Caller.Pkg), callerName)
 	if fn == nil {
-		return ""
+		return nil
 	}
-	concrete := ""
+	var set []string
 	for _, a := range fn.AssignmentMap[arg.GetName()] {
 		if a.ConcreteType == 0 {
 			continue
@@ -2987,12 +3031,12 @@ func (r *BasePatternMatcher) concreteFromEnclosingFunc(arg *metadata.CallArgumen
 		if ct == "" || isInterfaceTypeName(ct, meta) {
 			continue
 		}
-		if concrete != "" && concrete != ct {
-			return "" // more than one concrete type assigned — ambiguous
+		if !slices.Contains(set, ct) {
+			set = append(set, ct)
 		}
-		concrete = ct
 	}
-	return concrete
+	slices.Sort(set)
+	return set
 }
 
 // concreteFromParamBinding resolves an interface-typed parameter used as a

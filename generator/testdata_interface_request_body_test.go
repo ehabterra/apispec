@@ -44,8 +44,8 @@ func TestTestdata_InterfaceRequestBody(t *testing.T) {
 		}
 		return nil
 	}
-	// requestRef returns the component name a path's POST request body resolves to.
-	requestRef := func(path string) string {
+	// requestSchema returns the schema of a path's POST request body.
+	requestSchema := func(path string) *intspec.Schema {
 		item, ok := out.Paths[path]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", path, mapPathKeys(out.Paths))
@@ -58,9 +58,15 @@ func TestTestdata_InterfaceRequestBody(t *testing.T) {
 			t.Fatalf("POST %s has no requestBody", path)
 		}
 		for _, mt := range op.RequestBody.Content {
-			if mt.Schema != nil && mt.Schema.Ref != "" {
-				return mt.Schema.Ref
+			if mt.Schema != nil {
+				return mt.Schema
 			}
+		}
+		return nil
+	}
+	requestRef := func(path string) string {
+		if s := requestSchema(path); s != nil {
+			return s.Ref
 		}
 		return ""
 	}
@@ -81,11 +87,10 @@ func TestTestdata_InterfaceRequestBody(t *testing.T) {
 		t.Errorf("Cat schema missing 'lives'; got %+v", cat)
 	}
 
-	// /either: two concrete types assigned → ambiguous → keep the interface
-	// rather than guessing one of them (golden rule #7).
-	if ref := requestRef("/either"); !strings.HasSuffix(ref, "_Animal") {
-		t.Errorf("POST /either requestBody = %q, want the Animal interface kept when ambiguous", ref)
-	}
+	// /either: two concrete types assigned → the payload really is one of them,
+	// so it maps to `oneOf` (issue #201) rather than to a guessed single type or
+	// to the bare interface, whose schema describes nothing.
+	assertOneOf(t, requestSchema("/either"), "_Cat", "_Dog")
 
 	// /concrete: the pre-existing concrete path must be unaffected.
 	if ref := requestRef("/concrete"); !strings.HasSuffix(ref, "_Dog") {
