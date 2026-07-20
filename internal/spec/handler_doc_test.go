@@ -114,12 +114,89 @@ func TestHandlerDoc(t *testing.T) {
 			name:     "func literal",
 			function: "app.FuncLit:/tmp/app.go:12:3",
 		},
+		{
+			// Regression: some render paths separate the package with a plain
+			// dot instead of TypeSep. Every fixture happened to produce the
+			// TypeSep form, so a TypeSep-only implementation passed the whole
+			// suite while resolving nothing on real projects.
+			name:        "dotted separator instead of TypeSep",
+			function:    "app.Handler.Create",
+			wantSummary: "Create makes a thing.",
+			wantDesc:    "And describes it.",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			route := &RouteInfo{Metadata: meta, Package: "app", Function: tc.function}
 			summary, desc := handlerDoc(route)
 			if summary != tc.wantSummary {
 				t.Errorf("summary: got %q, want %q", summary, tc.wantSummary)
+			}
+			if desc != tc.wantDesc {
+				t.Errorf("description: got %q, want %q", desc, tc.wantDesc)
+			}
+		})
+	}
+}
+
+// TestHandlerDocImportPathPackage repeats the shapes with a real import-path
+// package name. The path itself contains dots, so the package prefix has to be
+// stripped before the receiver/method split — splitting on the last dot of the
+// raw string alone would work here by luck but the prefix strip is what makes it
+// correct, and real projects are always this shape.
+func TestHandlerDocImportPathPackage(t *testing.T) {
+	const pkg = "github.com/acme/svc/internal/http"
+	meta := docMeta(t)
+	// Re-key the fixture package under the import path.
+	meta.Packages[pkg] = meta.Packages["app"]
+	delete(meta.Packages, "app")
+
+	for _, tc := range []struct{ name, function, want string }{
+		{"dotted method value", pkg + ".Handler.Create", "Create makes a thing."},
+		{"TypeSep method value", pkg + TypeSep + pkg + ".Handler.Create", "Create makes a thing."},
+		{"package-level func", pkg + ".Plain", "Plain serves a thing."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			route := &RouteInfo{Metadata: meta, Package: pkg, Function: tc.function}
+			if got, _ := handlerDoc(route); got != tc.want {
+				t.Errorf("summary: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSplitSynopsis pins the sentence split. Splitting on the first *line*
+// truncates mid-sentence, because real doc comments wrap — that produced
+// summaries like "…origin publisher (admin-only). PUT" on a real project.
+func TestSplitSynopsis(t *testing.T) {
+	for _, tc := range []struct{ name, text, wantSum, wantDesc string }{
+		{
+			name:     "sentence wraps across lines",
+			text:     "setSource records an asset's origin publisher (admin-only). PUT\nbecause it replaces the record.",
+			wantSum:  "setSource records an asset's origin publisher (admin-only).",
+			wantDesc: "PUT\nbecause it replaces the record.",
+		},
+		{
+			name:    "single sentence spanning two lines has no remainder",
+			text:    "usage returns the reference graph — collections that assemble it and\nlessons that use it.",
+			wantSum: "usage returns the reference graph — collections that assemble it and lessons that use it.",
+		},
+		{
+			name:     "sentence per line",
+			text:     "Create makes a thing.\nAnd describes it.",
+			wantSum:  "Create makes a thing.",
+			wantDesc: "And describes it.",
+		},
+		{
+			name:    "no terminator",
+			text:    "listAccounts returns every account",
+			wantSum: "listAccounts returns every account",
+		},
+		{name: "empty", text: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sum, desc := splitSynopsis(tc.text)
+			if sum != tc.wantSum {
+				t.Errorf("summary: got %q, want %q", sum, tc.wantSum)
 			}
 			if desc != tc.wantDesc {
 				t.Errorf("description: got %q, want %q", desc, tc.wantDesc)

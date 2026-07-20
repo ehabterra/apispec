@@ -17,6 +17,7 @@ package spec
 import (
 	"fmt"
 	"go/ast"
+	godoc "go/doc"
 	"go/types"
 	"log"
 	"maps"
@@ -1626,19 +1627,24 @@ func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
 // Returns "" for an anonymous (func-literal) or undocumented handler.
 func handlerComments(route *RouteInfo) string {
 	name := route.Function
-	if _, tail, found := strings.Cut(name, TypeSep); found {
-		recv, method := "", strings.TrimPrefix(tail, route.Package+".")
-		if i := strings.LastIndexByte(method, '.'); i >= 0 {
-			recv, method = method[:i], method[i+1:]
+	// The separator between the package and the rest is TypeSep in some render
+	// paths and a plain dot in others, so normalize before splitting. The package
+	// prefix can then appear twice ("pkg" + TypeSep + "pkg.Recv.Method"), hence
+	// the loop.
+	name = strings.ReplaceAll(name, TypeSep, ".")
+	if route.Package != "" {
+		for strings.HasPrefix(name, route.Package+".") {
+			name = name[len(route.Package)+1:]
 		}
-		recv = receiverTypeName(route.Metadata, route.Package, recv)
-		if m := findMethodByName(route.Metadata, route.Package, recv, method); m != nil {
+	}
+	// What remains is either "Method" / "Func" or "<recv>.Method", where <recv>
+	// is a type name or a field path.
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		recv := receiverTypeName(route.Metadata, route.Package, name[:i])
+		if m := findMethodByName(route.Metadata, route.Package, recv, name[i+1:]); m != nil {
 			return getStringFromPool(route.Metadata, m.Comments)
 		}
 		return ""
-	}
-	if route.Package != "" {
-		name = strings.TrimPrefix(name, route.Package+".")
 	}
 	if fn := findFunctionByName(route.Metadata, route.Package, name); fn != nil {
 		return getStringFromPool(route.Metadata, fn.Comments)
@@ -1646,8 +1652,47 @@ func handlerComments(route *RouteInfo) string {
 	return ""
 }
 
+// splitSynopsis splits a doc comment into its first sentence and the remainder.
+// The split is by *sentence*, not by line: real doc comments wrap, so taking the
+// first line truncates mid-sentence ("…origin publisher (admin-only). PUT").
+//
+// Synopsis collapses interior whitespace, so the synopsis is not always a
+// literal prefix of the comment. The remainder is therefore recovered by walking
+// the original alongside the synopsis, treating any whitespace run in the
+// original as the synopsis's single space — which keeps the description's
+// original formatting intact.
+func splitSynopsis(text string) (summary, description string) {
+	// The package-level godoc.Synopsis is deprecated; the method form on an empty
+	// Package is the supported equivalent and needs no loaded package.
+	summary = new(godoc.Package).Synopsis(text)
+	if summary == "" {
+		return "", ""
+	}
+	i, j := 0, 0
+	for i < len(text) && j < len(summary) {
+		if isSpaceByte(text[i]) {
+			for i < len(text) && isSpaceByte(text[i]) {
+				i++
+			}
+			if summary[j] == ' ' {
+				j++
+			}
+			continue
+		}
+		if text[i] != summary[j] {
+			// Divergence (a directive line Synopsis dropped, say): fall back to
+			// the whole comment as the summary rather than slicing at a guess.
+			return summary, ""
+		}
+		i, j = i+1, j+1
+	}
+	return summary, strings.TrimSpace(text[i:])
+}
+
+func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
+
 // handlerDoc resolves the handler's Go doc comment into an operation summary
-// (the first line) and description (the remaining lines), per the common
+// (the first sentence) and description (the remainder), per the common
 // Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
 // anonymous or undocumented — callers keep whatever summary/description they
 // already had.
@@ -1659,8 +1704,8 @@ func handlerDoc(route *RouteInfo) (summary, description string) {
 	if doc == "" {
 		return "", ""
 	}
-	if i := strings.IndexByte(doc, '\n'); i >= 0 {
-		return strings.TrimSpace(doc[:i]), strings.TrimSpace(doc[i+1:])
+	if summary, description = splitSynopsis(doc); summary != "" {
+		return summary, description
 	}
 	return doc, ""
 }
