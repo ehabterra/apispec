@@ -169,7 +169,7 @@ func TestHelperSerializedParam_InlineReturn(t *testing.T) {
 func TestUnwrapWriteSink_ParenStrip(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
-	edge := &metadata.CallGraphEdge{}
+	edge := &metadata.CallGraphEdge{Caller: metadata.Call{Name: -1, Pkg: -1, RecvType: -1}}
 
 	// *(b) — parenthesized deref wrapping an ident exercises the strip loop.
 	inner := identArg(meta, "b")
@@ -197,7 +197,7 @@ func TestUnwrapWriteSink_ParenStrip(t *testing.T) {
 func TestUnwrapWriteSink_Guards(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
-	edge := &metadata.CallGraphEdge{}
+	edge := &metadata.CallGraphEdge{Caller: metadata.Call{Name: -1, Pkg: -1, RecvType: -1}}
 
 	if got := m.unwrapWriteSink(nil, edge); got != nil {
 		t.Error("nil arg should return nil")
@@ -220,7 +220,7 @@ func TestUnwrapWriteSink_Guards(t *testing.T) {
 func TestUnwrapHelperReturn_Guards(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	m := writeSinkMatcher(meta)
-	edge := &metadata.CallGraphEdge{}
+	edge := &metadata.CallGraphEdge{Caller: metadata.Call{Name: -1, Pkg: -1, RecvType: -1}}
 
 	// A call to a helper that isn't in metadata (findFunctionByName → nil) → nil.
 	call := metadata.NewCallArgument(meta)
