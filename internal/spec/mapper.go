@@ -293,13 +293,16 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		}
 		// Fill the summary/description from the handler's Go doc comment (issue
 		// #168) when not already set by a more specific source.
+		// Each field falls back independently: a comment carrying only a
+		// @Description (no @Summary) must still contribute its description.
 		summary, description := route.Summary, route.Description
-		if summary == "" {
-			if s, d := handlerDoc(route); s != "" {
+		if summary == "" || description == "" {
+			s, d := handlerDoc(route)
+			if summary == "" {
 				summary = s
-				if description == "" {
-					description = d
-				}
+			}
+			if description == "" {
+				description = d
 			}
 		}
 		operation := &Operation{
@@ -1652,6 +1655,72 @@ func handlerComments(route *RouteInfo) string {
 	return ""
 }
 
+// swaggoDoc extracts the operation summary/description from swaggo/swag
+// annotations when the doc comment carries them:
+//
+//	// CreateAccount godoc
+//	// @Summary      Create an account
+//	// @Description  Registers a new account.
+//	// @Router       /accounts [post]
+//
+// Only @Summary and @Description are consumed; every other annotation line is
+// dropped rather than swept into the prose (they are structured directives, not
+// description text, and the rest of the pipeline derives those facts from the
+// code itself). A line that does not start with '@' continues the annotation
+// above it, which is how multi-line descriptions are written.
+//
+// ok is false when the comment carries no annotations at all, so a plain Go doc
+// comment keeps the first-sentence behaviour. When annotations are present but
+// name no @Summary, the prose above the first annotation supplies it — that is
+// where the conventional "Name godoc" line lives.
+func swaggoDoc(text string) (summary, description string, ok bool) {
+	var lead, summaryLines, descLines []string
+	section := ""
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "@") {
+			ok = true
+			name := strings.Fields(trimmed)[0]
+			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, name))
+			switch strings.ToLower(name) {
+			case "@summary":
+				section = "summary"
+				if rest != "" {
+					summaryLines = append(summaryLines, rest)
+				}
+			case "@description":
+				section = "description"
+				if rest != "" {
+					descLines = append(descLines, rest)
+				}
+			default:
+				section = ""
+			}
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		switch {
+		case section == "summary":
+			summaryLines = append(summaryLines, trimmed)
+		case section == "description":
+			descLines = append(descLines, trimmed)
+		case !ok:
+			lead = append(lead, trimmed)
+		}
+	}
+	if !ok {
+		return "", "", false
+	}
+	summary = strings.Join(summaryLines, " ")
+	description = strings.Join(descLines, "\n")
+	if summary == "" && len(lead) > 0 {
+		summary, _ = splitSynopsis(strings.Join(lead, "\n"))
+	}
+	return summary, description, true
+}
+
 // splitSynopsis splits a doc comment into its first sentence and the remainder.
 // The split is by *sentence*, not by line: real doc comments wrap, so taking the
 // first line truncates mid-sentence ("…origin publisher (admin-only). PUT").
@@ -1692,8 +1761,9 @@ func splitSynopsis(text string) (summary, description string) {
 func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
 
 // handlerDoc resolves the handler's Go doc comment into an operation summary
-// (the first sentence) and description (the remainder), per the common
-// Go→OpenAPI convention (issue #168). Returns empty strings when the handler is
+// and description, per the common Go→OpenAPI convention (issue #168): swaggo
+// annotations win when present, otherwise the first sentence is the summary and
+// the remainder the description. Returns empty strings when the handler is
 // anonymous or undocumented — callers keep whatever summary/description they
 // already had.
 func handlerDoc(route *RouteInfo) (summary, description string) {
@@ -1703,6 +1773,9 @@ func handlerDoc(route *RouteInfo) (summary, description string) {
 	doc := handlerComments(route)
 	if doc == "" {
 		return "", ""
+	}
+	if s, d, ok := swaggoDoc(doc); ok {
+		return s, d
 	}
 	if summary, description = splitSynopsis(doc); summary != "" {
 		return summary, description

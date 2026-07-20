@@ -205,6 +205,67 @@ func TestSplitSynopsis(t *testing.T) {
 	}
 }
 
+// TestSwaggoDoc pins swaggo/swag annotation handling: @Summary/@Description are
+// consumed, every other directive is dropped rather than swept into the prose,
+// and a comment with no annotations is left to the sentence split.
+func TestSwaggoDoc(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, wantSum, wantDesc string
+		wantOK                        bool
+	}{
+		{
+			name:     "full annotation block",
+			text:     "CreateAccount godoc\n@Summary      Create an account\n@Description  Registers a new account.\n@Tags         accounts\n@Router       /accounts [post]",
+			wantSum:  "Create an account",
+			wantDesc: "Registers a new account.",
+			wantOK:   true,
+		},
+		{
+			name:     "multi-line description",
+			text:     "@Summary Search\n@Description  Filters by query.\n@Description  Empty list when nothing matches.",
+			wantSum:  "Search",
+			wantDesc: "Filters by query.\nEmpty list when nothing matches.",
+			wantOK:   true,
+		},
+		{
+			name:     "continuation line belongs to the annotation above",
+			text:     "@Summary Create an account\n@Description Registers a new account\nand returns the created record.",
+			wantSum:  "Create an account",
+			wantDesc: "Registers a new account\nand returns the created record.",
+			wantOK:   true,
+		},
+		{
+			name:    "no @Summary falls back to the prose above the annotations",
+			text:    "CreateAccount registers a new account.\n@Tags accounts\n@Router /accounts [post]",
+			wantSum: "CreateAccount registers a new account.",
+			wantOK:  true,
+		},
+		{
+			name:     "only @Description",
+			text:     "@Description Registers a new account.",
+			wantDesc: "Registers a new account.",
+			wantOK:   true,
+		},
+		{
+			name: "plain doc comment is not swaggo",
+			text: "Create makes a thing.\nAnd describes it.",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sum, desc, ok := swaggoDoc(tc.text)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if sum != tc.wantSum {
+				t.Errorf("summary: got %q, want %q", sum, tc.wantSum)
+			}
+			if desc != tc.wantDesc {
+				t.Errorf("description: got %q, want %q", desc, tc.wantDesc)
+			}
+		})
+	}
+}
+
 // TestHandlerDocGuards covers the nil/empty short-circuits.
 func TestHandlerDocGuards(t *testing.T) {
 	for _, tc := range []struct {

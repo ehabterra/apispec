@@ -41,6 +41,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// SearchAccounts godoc
+// @Summary      Search accounts
+// @Description  Filters accounts by query string.
+// @Description  Returns an empty list when nothing matches.
+// @Tags         accounts
+// @Produce      json
+// @Success      200 {array} Account
+// @Router       /accounts/search [get]
+func (h *Handler) SearchAccounts(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode([]Account{})
+}
+
 // listAccounts returns every account.
 // The remaining lines become the operation description.
 func listAccounts(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +74,7 @@ func main() {
 	mux.HandleFunc("DELETE /accounts", h.DeleteAccount)
 	mux.HandleFunc("PATCH /accounts", h.PatchAccount)
 	mux.HandleFunc("GET /accounts", listAccounts)
+	mux.HandleFunc("GET /accounts/search", h.SearchAccounts)
 	// A handler *value* names no method, so nothing is resolved for it — and in
 	// particular the traced origin type must not leak in as the summary.
 	mux.Handle("OPTIONS /accounts", h)

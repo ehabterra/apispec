@@ -34,7 +34,17 @@ func TestTestdata_HandlerDocComments(t *testing.T) {
 
 	for _, tc := range []struct {
 		method, summary, description, shape string
+		path                                string // defaults to /accounts
 	}{
+		{
+			// swaggo annotations win over the prose, and the non-@Summary /
+			// @Description directives (@Tags, @Router, …) must not leak in.
+			method:      "GET",
+			path:        "/accounts/search",
+			shape:       "swaggo annotations",
+			summary:     "Search accounts",
+			description: "Filters accounts by query string.\nReturns an empty list when nothing matches.",
+		},
 		{
 			method:      "POST",
 			shape:       "pointer-receiver method",
@@ -74,7 +84,11 @@ func TestTestdata_HandlerDocComments(t *testing.T) {
 			shape:  "handler value",
 		},
 	} {
-		op := opFor(path, tc.method)
+		p := path
+		if tc.path != "" {
+			p = out.Paths[tc.path]
+		}
+		op := opFor(p, tc.method)
 		if op == nil {
 			t.Errorf("%s /accounts (%s) missing; have %v", tc.method, tc.shape, mapPathKeys(out.Paths))
 			continue
