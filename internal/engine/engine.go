@@ -668,7 +668,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	tTree := time.Now()
 	var tree intspec.TrackerTreeInterface
 	if e.config.UseLazyTracker {
-		tree = intspec.NewLazyTree(meta, limits)
+		tree = intspec.NewLazyTree(meta, limits,
+			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
 	} else {
 		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose))

@@ -53,6 +53,11 @@ type LazyTree struct {
 	limits metadata.TrackerLimits
 	roots  []TrackerNodeInterface
 
+	// handlerMethods are the framework's handler-interface methods (net/http's
+	// "ServeHTTP"), used to expand a handler passed as a value — see
+	// handlerValueKeys and issue #204. Empty for func-handler frameworks.
+	handlerMethods []string
+
 	// calleeEdges memoizes, per function base key, the filtered+ordered call
 	// edges used to expand any node of that function. Computed once.
 	calleeEdges map[string][]*metadata.CallGraphEdge
@@ -358,11 +363,25 @@ func (t *LazyTree) buildRelations() {
 
 // NewLazyTree builds the root layer (main functions, like the eager tree)
 // and nothing else.
-func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits) *LazyTree {
+// LazyTreeOption configures an optional tree capability. Options keep the
+// constructor's existing two-argument form working for every caller that does
+// not need them (notably the test suite).
+type LazyTreeOption func(*LazyTree)
+
+// WithHandlerInterfaceMethods supplies the framework's handler-interface methods
+// so a handler passed as a value expands into its body (issue #204).
+func WithHandlerInterfaceMethods(methods []string) LazyTreeOption {
+	return func(t *LazyTree) { t.handlerMethods = methods }
+}
+
+func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits, opts ...LazyTreeOption) *LazyTree {
 	t := &LazyTree{
 		meta:        meta,
 		limits:      limits,
 		calleeEdges: make(map[string][]*metadata.CallGraphEdge),
+	}
+	for _, opt := range opts {
+		opt(t)
 	}
 	seen := map[string]bool{}
 	for _, edge := range meta.CallGraphRoots() {
@@ -730,6 +749,12 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	for _, methodKey := range n.methodBaseKeys() {
 		expandKey(methodKey)
 	}
+	// Handler *value* (r.Method(GET, "/health", deps.Health) / mux.Handle("/x", h)):
+	// the argument names no method at all, so the framework's handler-interface
+	// method supplies it — otherwise the handler body is unreachable (issue #204).
+	for _, methodKey := range n.handlerValueKeys() {
+		expandKey(methodKey)
+	}
 	// Variable/field argument (router.Mount("/cart", r.cartRouter) or
 	// Mount("/x", subRouter)): the producer subtree — the registrations
 	// claimed under the router that was stored into the variable/field —
@@ -794,6 +819,72 @@ func (n *LazyNode) methodBaseKeys() []string {
 	// the eager build's ImplementedBy attachment.
 	keys = append(keys, n.tree.implementerKeys(pkg, recv, selName)...)
 	return keys
+}
+
+// handlerValueKeys resolves an argument that is a handler *value* — a variable
+// or struct field holding something the framework invokes through an interface
+// method — to the base ID(s) of that method's body (issue #204).
+//
+// This is the shape methodBaseKeys cannot serve: `r.Method(GET, "/health",
+// deps.Health)` and `mux.Handle("/x", h)` name no method anywhere in the
+// registration, so there is no selector to resolve. The method name comes from
+// the framework config (FrameworkConfig.HandlerInterfaceMethods), never from a
+// hardcoded "ServeHTTP" — frameworks whose handlers are func types declare none
+// and get no keys.
+//
+// Resolution is honest in both directions: a concrete type contributes a key
+// only for a handler method it actually declares, and an interface-typed value
+// fans out to its recorded implementers (the same ImplementedBy index the
+// method-call paths use) rather than guessing one. A value whose type declares
+// no configured handler method yields nothing.
+func (n *LazyNode) handlerValueKeys() []string {
+	if !n.isArgument || n.arg == nil || len(n.tree.handlerMethods) == 0 {
+		return nil
+	}
+	// A method value (h.ServeHTTP) or func value already resolves via
+	// methodBaseKeys; its type is a signature, not a named type.
+	ref := n.arg.TypeRef()
+	core := ref.Core()
+	if !core.IsNamed() || core.Pkg == "" || core.Name == "" {
+		return nil
+	}
+	return n.tree.handlerImplKeys(core.Pkg, core.Name)
+}
+
+// handlerImplKeys returns the base IDs of the configured handler methods
+// declared by (pkg, name), fanning an interface out to its implementers. Kept
+// separate from handlerValueKeys so the interface and concrete cases share one
+// declaration check.
+func (t *LazyTree) handlerImplKeys(pkg, name string) []string {
+	typ := findType(t.meta, pkg, name)
+	if typ == nil {
+		return nil
+	}
+	if getString(t.meta, typ.Kind) == "interface" {
+		var out []string
+		for _, implIdx := range typ.ImplementedBy {
+			impl := getString(t.meta, implIdx) // "import/path.Type"
+			if impl == "" {
+				continue
+			}
+			i := strings.LastIndexByte(impl, '.')
+			if i < 0 {
+				continue
+			}
+			out = append(out, t.handlerImplKeys(impl[:i], impl[i+1:])...)
+		}
+		return out
+	}
+	var out []string
+	for _, method := range t.handlerMethods {
+		for i := range typ.Methods {
+			if getString(t.meta, typ.Methods[i].Name) == method {
+				out = append(out, pkg+"."+name+"."+method)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // argProducerIDs resolves a variable or struct-field argument to the callee

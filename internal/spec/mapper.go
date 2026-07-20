@@ -167,7 +167,13 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	}
 
 	// Build paths
-	paths := buildPathsFromRoutes(routes)
+	// cfg is optional here (the nil case is handled below for Info), so read the
+	// handler methods defensively rather than dereferencing it unconditionally.
+	var handlerMethods []string
+	if cfg != nil {
+		handlerMethods = cfg.Framework.HandlerInterfaceMethods
+	}
+	paths := buildPathsFromRoutes(routes, handlerMethods...)
 
 	// Generate component schemas
 	components := generateComponentSchemas(tree.GetMetadata(), cfg, routes)
@@ -266,7 +272,7 @@ func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo) map[strin
 }
 
 // buildPathsFromRoutes builds OpenAPI paths from extracted routes
-func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
+func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[string]PathItem {
 	paths := make(map[string]PathItem)
 
 	for _, route := range routes {
@@ -297,7 +303,7 @@ func buildPathsFromRoutes(routes []*RouteInfo) map[string]PathItem {
 		// @Description (no @Summary) must still contribute its description.
 		summary, description := route.Summary, route.Description
 		if summary == "" || description == "" {
-			s, d := handlerDoc(route)
+			s, d := handlerDoc(route, handlerMethods...)
 			if summary == "" {
 				summary = s
 			}
@@ -1628,7 +1634,7 @@ func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
 // The method shapes resolve through the per-Type methods table, which
 // findFunctionByName cannot reach — it indexes only receiver-less declarations.
 // Returns "" for an anonymous (func-literal) or undocumented handler.
-func handlerComments(route *RouteInfo) string {
+func handlerComments(route *RouteInfo, handlerMethods ...string) string {
 	name := route.Function
 	// The separator between the package and the rest is TypeSep in some render
 	// paths and a plain dot in others, so normalize before splitting. The package
@@ -1647,10 +1653,34 @@ func handlerComments(route *RouteInfo) string {
 		if m := findMethodByName(route.Metadata, route.Package, recv, name[i+1:]); m != nil {
 			return getStringFromPool(route.Metadata, m.Comments)
 		}
-		return ""
+		return handlerValueComments(route, name, handlerMethods...)
 	}
 	if fn := findFunctionByName(route.Metadata, route.Package, name); fn != nil {
 		return getStringFromPool(route.Metadata, fn.Comments)
+	}
+	return handlerValueComments(route, name, handlerMethods...)
+}
+
+// handlerValueComments resolves the doc comment of a handler passed as a *value*
+// (issue #204): the registration names no method, so the framework's handler
+// interface supplies it. `name` is the rendered handler argument with the package
+// prefix already stripped — either a type name ("H", from `mux.Handle("/x", h)`)
+// or a field path ("Deps.Health", from `r.Method(GET, "/health", deps.Health)`),
+// both of which receiverTypeName resolves to the declaring type.
+//
+// This mirrors LazyTree.handlerValueKeys so the summary and the expanded body
+// agree on which method serves the route: whenever one resolves, so does the
+// other. A value whose type declares no configured handler method yields "",
+// never a same-named method picked from elsewhere.
+func handlerValueComments(route *RouteInfo, name string, handlerMethods ...string) string {
+	if len(handlerMethods) == 0 || name == "" {
+		return ""
+	}
+	recv := receiverTypeName(route.Metadata, route.Package, name)
+	for _, hm := range handlerMethods {
+		if m := findMethodByName(route.Metadata, route.Package, recv, hm); m != nil {
+			return getStringFromPool(route.Metadata, m.Comments)
+		}
 	}
 	return ""
 }
@@ -1762,11 +1792,11 @@ func isSpaceByte(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b =
 // the remainder the description. Returns empty strings when the handler is
 // anonymous or undocumented — callers keep whatever summary/description they
 // already had.
-func handlerDoc(route *RouteInfo) (summary, description string) {
+func handlerDoc(route *RouteInfo, handlerMethods ...string) (summary, description string) {
 	if route == nil || route.Metadata == nil || route.Function == "" {
 		return "", ""
 	}
-	doc := handlerComments(route)
+	doc := handlerComments(route, handlerMethods...)
 	if doc == "" {
 		return "", ""
 	}

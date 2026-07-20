@@ -34,6 +34,18 @@ type FrameworkConfig struct {
 	// Route extraction patterns
 	RoutePatterns []RoutePattern `yaml:"routePatterns" json:"routePatterns,omitempty"`
 
+	// HandlerInterfaceMethods names the method(s) through which this framework
+	// invokes a handler passed as a *value* rather than as a function — net/http
+	// and the routers built on it take an `http.Handler` and call `ServeHTTP`.
+	// A registration like `r.Method(GET, "/health", deps.Health)` names no method
+	// at all, so without this the handler's body is unreachable and the route
+	// yields no params, request body, response, or summary (issue #204).
+	// Frameworks whose handlers are plain func types (gin, echo, fiber) leave
+	// this empty. Expansion only follows a method the concrete type actually
+	// declares, so an unrelated value in a handler position resolves to nothing
+	// rather than to a guess.
+	HandlerInterfaceMethods []string `yaml:"handlerInterfaceMethods,omitempty" json:"handlerInterfaceMethods,omitempty"`
+
 	// Request body extraction patterns
 	RequestBodyPatterns []RequestBodyPattern `yaml:"requestBodyPatterns" json:"requestBodyPatterns,omitempty"`
 

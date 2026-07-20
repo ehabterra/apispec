@@ -72,6 +72,9 @@ func DefaultHTTPConfig() *APISpecConfig {
 
 	return &APISpecConfig{
 		Framework: FrameworkConfig{
+			// A handler passed as a value (r.Handle("/x", h)) is invoked through
+			// http.Handler; without this its body is unreachable (issue #204).
+			HandlerInterfaceMethods: []string{"ServeHTTP"},
 			RoutePatterns: []RoutePattern{
 				{
 					CallRegex:       `^HandleFunc$`,

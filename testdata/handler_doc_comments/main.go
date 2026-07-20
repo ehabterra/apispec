@@ -34,9 +34,9 @@ func (h *Handler) PatchAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// ServeHTTP is documented, but a route registered with the handler *value*
-// (mux.Handle("...", h)) names no method, so nothing resolves it — the
-// operation keeps an empty summary rather than a guessed one. See issue #204.
+// ServeHTTP serves the account resource directly.
+// A route registered with the handler *value* (mux.Handle("...", h)) names no
+// method, so the framework's handler interface supplies it (issue #204).
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }

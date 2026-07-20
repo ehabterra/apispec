@@ -287,6 +287,72 @@ func TestSwaggoDoc(t *testing.T) {
 	}
 }
 
+// TestHandlerValueComments covers issue #204's mapper half: a handler passed as
+// a value names no method, so the framework's handler-interface method supplies
+// it. Resolution must stay scoped to the value's own type — a framework that
+// declares no handler method, or a type that does not implement it, resolves to
+// nothing rather than to a same-named method found elsewhere.
+func TestHandlerValueComments(t *testing.T) {
+	meta := docMeta(t)
+	// Give Handler a ServeHTTP, and a second type that also declares one, so a
+	// name-only match would be ambiguous.
+	handler := meta.Packages["app"].Types["Handler"]
+	handler.Methods = append(handler.Methods, metadata.Method{
+		Name:     meta.StringPool.Get("ServeHTTP"),
+		Receiver: meta.StringPool.Get("*Handler"),
+		Comments: meta.StringPool.Get("ServeHTTP serves it directly."),
+	})
+	other := &metadata.Type{
+		Name: meta.StringPool.Get("Other"),
+		Methods: []metadata.Method{{
+			Name:     meta.StringPool.Get("ServeHTTP"),
+			Receiver: meta.StringPool.Get("*Other"),
+			Comments: meta.StringPool.Get("Other serves something else."),
+		}},
+	}
+	meta.Packages["app"].Types["Other"] = other
+	meta.Packages["app"].Files["app.go"].Types["Other"] = other
+
+	for _, tc := range []struct {
+		name, function string
+		methods        []string
+		want           string
+	}{
+		{
+			name:     "value of a concrete type",
+			function: "app.Handler",
+			methods:  []string{"ServeHTTP"},
+			want:     "ServeHTTP serves it directly.",
+		},
+		{
+			name:     "value held in a struct field",
+			function: "app" + TypeSep + "Deps.H",
+			methods:  []string{"ServeHTTP"},
+			want:     "ServeHTTP serves it directly.",
+		},
+		{
+			// A func-handler framework declares none, so the same route resolves
+			// to nothing rather than picking one of the two ServeHTTPs.
+			name:     "framework declares no handler method",
+			function: "app.Handler",
+			want:     "",
+		},
+		{
+			name:     "type does not declare the handler method",
+			function: "app.Deps",
+			methods:  []string{"ServeHTTP"},
+			want:     "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			route := &RouteInfo{Metadata: meta, Package: "app", Function: tc.function}
+			if got, _ := handlerDoc(route, tc.methods...); got != tc.want {
+				t.Errorf("summary: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestHandlerDocGuards covers the nil/empty short-circuits.
 func TestHandlerDocGuards(t *testing.T) {
 	for _, tc := range []struct {

@@ -26,6 +26,11 @@ func main() {
 	r.HandleFunc("/users/{id}", updateUser).Methods("PUT")
 	r.HandleFunc("/users/{id}", deleteUser).Methods("DELETE")
 
+	// Handler value: names no method, so the framework's handler interface
+	// (http.Handler → ServeHTTP) supplies it — issue #204.
+	sh := &statusHandler{}
+	r.Handle("/status", sh).Methods("GET")
+
 	// Subrouter
 	api := r.PathPrefix("/api/v1").Subrouter()
 	api.HandleFunc("/health", healthCheck).Methods("GET")
@@ -81,4 +86,17 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 func healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+// statusHandler is registered as an http.Handler value rather than a func.
+type statusHandler struct{}
+
+// ServeHTTP reports the service status.
+func (h *statusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode(Status{State: "ok"})
+}
+
+// Status is the /status response body.
+type Status struct {
+	State string `json:"state"`
 }
