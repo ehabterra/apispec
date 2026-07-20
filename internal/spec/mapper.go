@@ -1725,11 +1725,13 @@ func swaggoDoc(text string) (summary, description string, ok bool) {
 // The split is by *sentence*, not by line: real doc comments wrap, so taking the
 // first line truncates mid-sentence ("…origin publisher (admin-only). PUT").
 //
-// Synopsis collapses interior whitespace, so the synopsis is not always a
-// literal prefix of the comment. The remainder is therefore recovered by walking
-// the original alongside the synopsis, treating any whitespace run in the
-// original as the synopsis's single space — which keeps the description's
-// original formatting intact.
+// Synopsis rewrites the text as well as collapsing whitespace — Go doc markup
+// turns “quoted” into curly quotes — so the synopsis is not a literal prefix
+// of the comment and the remainder cannot be recovered by comparing the two
+// character by character (that silently dropped the description whenever a
+// rewrite occurred). Those rewrites preserve *word count*, so the split instead
+// consumes that many whitespace-separated words from the original, which keeps
+// the description's own formatting intact.
 func splitSynopsis(text string) (summary, description string) {
 	// The package-level godoc.Synopsis is deprecated; the method form on an empty
 	// Package is the supported equivalent and needs no loaded package.
@@ -1737,23 +1739,17 @@ func splitSynopsis(text string) (summary, description string) {
 	if summary == "" {
 		return "", ""
 	}
-	i, j := 0, 0
-	for i < len(text) && j < len(summary) {
-		if isSpaceByte(text[i]) {
-			for i < len(text) && isSpaceByte(text[i]) {
-				i++
-			}
-			if summary[j] == ' ' {
-				j++
-			}
-			continue
+	i := 0
+	for n := len(strings.Fields(summary)); n > 0; n-- {
+		for i < len(text) && isSpaceByte(text[i]) {
+			i++
 		}
-		if text[i] != summary[j] {
-			// Divergence (a directive line Synopsis dropped, say): fall back to
-			// the whole comment as the summary rather than slicing at a guess.
-			return summary, ""
+		if i >= len(text) {
+			break
 		}
-		i, j = i+1, j+1
+		for i < len(text) && !isSpaceByte(text[i]) {
+			i++
+		}
 	}
 	return summary, strings.TrimSpace(text[i:])
 }

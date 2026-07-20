@@ -191,6 +191,27 @@ func TestSplitSynopsis(t *testing.T) {
 			text:    "listAccounts returns every account",
 			wantSum: "listAccounts returns every account",
 		},
+		{
+			// Synopsis rewrites ``…'' into curly quotes, so the summary is not a
+			// literal prefix of the comment. A character-by-character recovery
+			// diverged here and silently dropped the description.
+			name:     "Go doc quote markup is rewritten",
+			text:     "Create makes a ``quoted'' thing. And describes it.",
+			wantSum:  "Create makes a “quoted” thing.",
+			wantDesc: "And describes it.",
+		},
+		{
+			name:     "doc link and URL do not diverge",
+			text:     "Create makes a [Thing] at https://example.com/x. And describes it.",
+			wantSum:  "Create makes a [Thing] at https://example.com/x.",
+			wantDesc: "And describes it.",
+		},
+		{
+			name:     "list after the first sentence",
+			text:     "Create makes a thing.\n\n  - one\n  - two",
+			wantSum:  "Create makes a thing.",
+			wantDesc: "- one\n  - two",
+		},
 		{name: "empty", text: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
