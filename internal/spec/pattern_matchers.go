@@ -1011,11 +1011,20 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument
 		}
 	}
 
+	// A request body is decoded into a POINTER (`Decode(&v)`), so the variable
+	// is the unary's operand — unlike the response path, which encodes the value
+	// itself. Peel it, or the ident-keyed resolution below never fires (this is
+	// why interface-typed request bodies stayed unresolved, issue #164).
+	target := arg
+	if target.GetKind() == metadata.KindUnary && target.X != nil {
+		target = target.X
+	}
+
 	// Original logic for type resolution
-	if arg.GetKind() == metadata.KindIdent || arg.GetKind() == metadata.KindFuncLit {
+	if target.GetKind() == metadata.KindIdent || target.GetKind() == metadata.KindFuncLit {
 		// Check if this variable has assignments that might give us more type information
 		edge := node.GetEdge()
-		if assignments, exists := edge.AssignmentMap[arg.GetName()]; exists {
+		if assignments, exists := edge.AssignmentMap[target.GetName()]; exists {
 			for _, assignment := range assignments {
 				if assignment.ConcreteType != 0 {
 					concreteType := r.contextProvider.GetString(assignment.ConcreteType)
@@ -1024,6 +1033,19 @@ func (r *RequestPatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument
 					}
 				}
 			}
+		}
+		// Interface-typed body: the concrete value is assigned in the enclosing
+		// handler (`var a Animal = Dog{}; Decode(&a)`), not on this call's edge.
+		// Resolve it so the schema documents Dog rather than the empty Animal
+		// interface — the same resolution the response path already applies
+		// (issue #164). An ambiguous set of assignments keeps the interface.
+		if concrete := r.concreteFromEnclosingFunc(target, edge, originalType); concrete != "" {
+			return concrete
+		}
+		// Interface-typed function parameter: the concrete value is bound at the
+		// call site that entered the enclosing function (`decodeAnimal(r, Dog{})`).
+		if concrete := r.concreteFromParamBinding(target, node, originalType); concrete != "" {
+			return concrete
 		}
 	}
 

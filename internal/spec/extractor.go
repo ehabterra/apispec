@@ -2962,7 +2962,7 @@ func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgumen
 // original type is a known interface and the enclosing function assigns exactly
 // one concrete (non-interface) type to the variable — an ambiguous set of
 // concrete assignments keeps the interface (honest over wrong).
-func (r *ResponsePatternMatcherImpl) concreteFromEnclosingFunc(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
+func (r *BasePatternMatcher) concreteFromEnclosingFunc(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
 	if edge == nil {
 		return ""
 	}
@@ -3002,7 +3002,7 @@ func (r *ResponsePatternMatcherImpl) concreteFromEnclosingFunc(arg *metadata.Cal
 // immediate parent, whose own parameters can shadow the name — and reads that
 // edge's ParamArgMap. Non-interface / unresolvable arguments are ignored so the
 // interface is kept.
-func (r *ResponsePatternMatcherImpl) concreteFromParamBinding(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
+func (r *BasePatternMatcher) concreteFromParamBinding(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	edge := node.GetEdge()
 	if edge == nil {
 		return ""
@@ -3038,7 +3038,7 @@ func (r *ResponsePatternMatcherImpl) concreteFromParamBinding(arg *metadata.Call
 // (`Encode(makeAnimal())` where makeAnimal() Animal { return Dog{} } → Dog). If
 // the callee's captured return values name more than one concrete type it is
 // ambiguous, so the interface is kept.
-func (r *ResponsePatternMatcherImpl) concreteFromCalleeReturn(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
+func (r *BasePatternMatcher) concreteFromCalleeReturn(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, originalType string) string {
 	if edge == nil || arg.Fun == nil {
 		return ""
 	}
