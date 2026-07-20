@@ -62,6 +62,7 @@ func TestTestdata_HandlerValueRoutes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			out := loadTestdataWithFixtureConfig(t, tc.fixture, tc.cfg)
 			noDanglingRefs(t, out)
+			noUnresolvedPlaceholders(t, out)
 
 			item, ok := out.Paths[tc.path]
 			if !ok {

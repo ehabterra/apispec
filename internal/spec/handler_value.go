@@ -86,6 +86,15 @@ func handlerValueTypeOf(arg *metadata.CallArgument) (pkg, name string) {
 	if arg == nil {
 		return "", ""
 	}
+	// A func signature has to be rejected up front: the type model has no
+	// function kind (a signature is "otherwise opaque" KindNamed), so TypeRef
+	// splits "func(w http.ResponseWriter, r *http.Request)" at its last dot and
+	// yields a plausible-looking but meaningless pkg/name pair. findType would
+	// then simply miss, but resolving a garbage type is not something to rely on.
+	// The prefix check is how classifyArgument already distinguishes the two.
+	if strings.HasPrefix(arg.GetType(), "func(") || strings.HasPrefix(arg.GetType(), "func[") {
+		return "", ""
+	}
 	core := arg.TypeRef().Core()
 	if !core.IsNamed() || core.Pkg == "" || core.Name == "" {
 		return "", ""
