@@ -66,6 +66,13 @@ func TestTestdata_HandlerDocComments(t *testing.T) {
 			method: "PUT",
 			shape:  "func literal",
 		},
+		{
+			// Change detector on two counts: the handler value names no method
+			// so ServeHTTP's doc comment is out of reach (#204), and the traced
+			// origin type must not leak in as a summary ("*pkg-->Handler").
+			method: "OPTIONS",
+			shape:  "handler value",
+		},
 	} {
 		op := opFor(path, tc.method)
 		if op == nil {

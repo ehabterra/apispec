@@ -229,7 +229,12 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeI
 
 			handlerName := handlerArg.GetName()
 			// Use variable tracing to resolve handler
-			originVar, originPkg, originType, _ := r.traceVariable(
+			// The traced origin *type* is deliberately unused: it renders as a
+			// type string ("*pkg-->Handler"), which is meaningless as an
+			// operation summary in a published spec and — since handlerDoc only
+			// fills an empty summary — would suppress the handler's real doc
+			// comment (#168).
+			originVar, originPkg, _, _ := r.traceVariable(
 				handlerName,
 				r.contextProvider.GetString(edge.Caller.Name),
 				r.contextProvider.GetString(edge.Caller.Pkg),
@@ -239,14 +244,6 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeI
 			}
 			if originPkg != "" {
 				routeInfo.Package = originPkg
-			}
-
-			var originTypeStr string
-			if originType != nil {
-				originTypeStr = r.contextProvider.GetArgumentInfo(originType)
-			}
-			if originTypeStr != "" {
-				routeInfo.Summary = originTypeStr
 			}
 		}
 	}
