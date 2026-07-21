@@ -41,7 +41,8 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 	}
 	// responseRef returns the trailing component name a path's POST response
 	// resolves to.
-	responseRef := func(path string) string {
+	// responseSchema returns the schema of a path's POST response body.
+	responseSchema := func(path string) *intspec.Schema {
 		item, ok := out.Paths[path]
 		if !ok {
 			t.Fatalf("path %q missing; have %v", path, mapPathKeys(out.Paths))
@@ -52,10 +53,16 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 		}
 		for _, resp := range op.Responses {
 			for _, mt := range resp.Content {
-				if mt.Schema != nil && mt.Schema.Ref != "" {
-					return mt.Schema.Ref
+				if mt.Schema != nil {
+					return mt.Schema
 				}
 			}
+		}
+		return nil
+	}
+	responseRef := func(path string) string {
+		if s := responseSchema(path); s != nil {
+			return s.Ref
 		}
 		return ""
 	}
@@ -76,10 +83,18 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 		t.Errorf("Cat schema missing 'lives'; got %+v", cat)
 	}
 
-	// /either: two concrete types assigned → ambiguous → keep the Animal
-	// interface (an empty-object schema), NOT one of the concretes.
-	if ref := responseRef("/either"); !strings.HasSuffix(ref, "_Animal") {
-		t.Errorf("POST /either response = %q, want the Animal interface (ambiguous concrete)", ref)
+	// /either: two concrete types assigned → the payload really is one of them,
+	// so it maps to `oneOf` (issue #201). Narrowing to one would be a guess, but
+	// the previous fallback — the bare Animal interface, an empty-object schema
+	// — described nothing at all.
+	assertOneOf(t, responseSchema("/either"), "_Cat", "_Dog")
+
+	// The bare interface must not linger as a component: the operation now
+	// references the members, so emitting Animal too would leave a schema
+	// nothing points at. (An interface that stays unresolved DOES keep its
+	// component — testdata/interface_request_body /unknown covers that side.)
+	if animal := findSchema("_response_Animal"); animal != nil {
+		t.Errorf("bare interface Animal emitted as an orphan component: %+v", animal)
 	}
 
 	// /made: `Encode(makeDog())` where makeDog() Animal { return Dog{} } →
@@ -92,5 +107,28 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 	// → resolves to Dog via the named-interface parameter binding.
 	if ref := responseRef("/passed"); !strings.HasSuffix(ref, "_Dog") {
 		t.Errorf("POST /passed response = %q, want the concrete Dog (param binding)", ref)
+	}
+}
+
+// assertOneOf checks that a schema is a `oneOf` whose members are exactly the
+// expected component suffixes, in order. Order matters: the concrete set is
+// sorted so the output cannot vary between runs (golden rule #1).
+func assertOneOf(t *testing.T, schema *intspec.Schema, wantSuffixes ...string) {
+	t.Helper()
+	if schema == nil {
+		t.Fatalf("no schema; want oneOf %v", wantSuffixes)
+	}
+	if len(schema.OneOf) != len(wantSuffixes) {
+		t.Fatalf("oneOf has %d members, want %d: %+v", len(schema.OneOf), len(wantSuffixes), schema.OneOf)
+	}
+	for i, want := range wantSuffixes {
+		if got := schema.OneOf[i].Ref; !strings.HasSuffix(got, want) {
+			t.Errorf("oneOf[%d] = %q, want a ref ending %q", i, got, want)
+		}
+	}
+	// A polymorphic schema must not also carry a direct $ref — that would be
+	// two conflicting statements about the same payload.
+	if schema.Ref != "" {
+		t.Errorf("oneOf schema also carries $ref %q", schema.Ref)
 	}
 }

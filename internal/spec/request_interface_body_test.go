@@ -122,3 +122,123 @@ func TestRequestResolveTypeOriginInterface(t *testing.T) {
 		})
 	}
 }
+
+// TestConcreteSetFromEnclosingFunc covers the set the ambiguous branch now
+// returns instead of discarding (issue #201). One element means the type is
+// unambiguous and callers narrow to it; several mean the payload is genuinely
+// one of them and maps to `oneOf`.
+func TestConcreteSetFromEnclosingFunc(t *testing.T) {
+	meta := sweepInterfaceMeta()
+	pool := meta.StringPool
+	appFile := meta.Packages["app"].Files["app/main.go"]
+	appFile.Functions["single"] = &metadata.Function{
+		AssignmentMap: map[string][]metadata.Assignment{
+			"a": {
+				{ConcreteType: 0},                      // unset: skipped
+				{ConcreteType: pool.Get("app.Animal")}, // interface: skipped
+				{ConcreteType: pool.Get("app.Dog")},
+				{ConcreteType: pool.Get("app.Dog")}, // duplicate: one member
+			},
+		},
+	}
+	// Deliberately assigned Dog-then-Cat, so a sorted result proves the order
+	// does not follow assignment order (golden rule #1).
+	appFile.Functions["several"] = &metadata.Function{
+		AssignmentMap: map[string][]metadata.Assignment{
+			"a": {
+				{ConcreteType: pool.Get("app.Dog")},
+				{ConcreteType: pool.Get("app.Cat")},
+			},
+		},
+	}
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	arg := sweepIdent(meta, "a")
+
+	for _, tc := range []struct {
+		name, caller, original string
+		want                   []string
+	}{
+		{"single concrete, duplicates collapsed", "single", "app.Animal", []string{"app.Dog"}},
+		{"several concretes are returned sorted", "several", "app.Animal", []string{"app.Cat", "app.Dog"}},
+		{"non-interface original yields nothing", "several", "app.Dog", nil},
+		{"unknown caller yields nothing", "nosuch", "app.Animal", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			edge := sweepEdge(meta, tc.caller, "app", "Decode", "json", "", "")
+			got := m.concreteSetFromEnclosingFunc(arg, edge, tc.original)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("got %v, want %v", got, tc.want)
+					break
+				}
+			}
+		})
+	}
+
+	if got := m.concreteSetFromEnclosingFunc(arg, nil, "app.Animal"); got != nil {
+		t.Errorf("nil edge: got %v, want nil", got)
+	}
+
+	// The single-value resolver must still narrow only when unambiguous — the
+	// ambiguous case belongs to oneOf, not to a guess.
+	single := sweepEdge(meta, "single", "app", "Decode", "json", "", "")
+	if got := m.concreteFromEnclosingFunc(arg, single, "app.Animal"); got != "app.Dog" {
+		t.Errorf("single: got %q, want app.Dog", got)
+	}
+	several := sweepEdge(meta, "several", "app", "Decode", "json", "", "")
+	if got := m.concreteFromEnclosingFunc(arg, several, "app.Animal"); got != "" {
+		t.Errorf("several: got %q, want empty (oneOf handles it)", got)
+	}
+}
+
+// TestAmbiguousConcreteSet covers the argument handling in front of the set
+// lookup: a request body is decoded into a pointer, so the variable is the
+// unary's operand, and a single concrete is NOT polymorphic.
+func TestAmbiguousConcreteSet(t *testing.T) {
+	meta := sweepInterfaceMeta()
+	pool := meta.StringPool
+	appFile := meta.Packages["app"].Files["app/main.go"]
+	appFile.Functions["several"] = &metadata.Function{
+		AssignmentMap: map[string][]metadata.Assignment{
+			"a": {
+				{ConcreteType: pool.Get("app.Dog")},
+				{ConcreteType: pool.Get("app.Cat")},
+			},
+		},
+	}
+	appFile.Functions["single"] = &metadata.Function{
+		AssignmentMap: map[string][]metadata.Assignment{
+			"a": {{ConcreteType: pool.Get("app.Dog")}},
+		},
+	}
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	unary := metadata.NewCallArgument(meta)
+	unary.SetKind(metadata.KindUnary)
+	unary.X = sweepIdent(meta, "a")
+
+	node := sweepNode(sweepEdge(meta, "several", "app", "Decode", "json", "", ""))
+	if got := m.ambiguousConcreteSet(unary, node, "app.Animal"); len(got) != 2 {
+		t.Errorf("pointer-to-interface: got %v, want two members", got)
+	}
+	if got := m.ambiguousConcreteSet(sweepIdent(meta, "a"), node, "app.Animal"); len(got) != 2 {
+		t.Errorf("bare ident: got %v, want two members", got)
+	}
+
+	singleNode := sweepNode(sweepEdge(meta, "single", "app", "Decode", "json", "", ""))
+	if got := m.ambiguousConcreteSet(unary, singleNode, "app.Animal"); got != nil {
+		t.Errorf("one concrete is not polymorphic: got %v, want nil", got)
+	}
+
+	if got := m.ambiguousConcreteSet(nil, node, "app.Animal"); got != nil {
+		t.Errorf("nil arg: got %v, want nil", got)
+	}
+	if got := m.ambiguousConcreteSet(unary, nil, "app.Animal"); got != nil {
+		t.Errorf("nil node: got %v, want nil", got)
+	}
+	if got := m.ambiguousConcreteSet(sweepLit(meta, "x"), node, "app.Animal"); got != nil {
+		t.Errorf("literal arg: got %v, want nil", got)
+	}
+}

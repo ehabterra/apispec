@@ -854,6 +854,9 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 			typeNode = rnode
 		}
 		bodyType := r.contextProvider.GetArgumentInfo(arg)
+		// Concrete types assigned to an interface-typed body, when there is more
+		// than one — see oneOfSchemaFor (issue #201).
+		var oneOfTypes []string
 
 		// Check if this is a literal value - if so, determine appropriate type
 		if arg.GetKind() == metadata.KindLiteral {
@@ -882,7 +885,14 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 
 			// Trace type origin (in the scope the arg was resolved into, so a
 			// wrapper-passed local's assignment is found at the call site).
-			bodyType = r.resolveTypeOrigin(arg, typeNode, bodyType)
+			resolved := r.resolveTypeOrigin(arg, typeNode, bodyType)
+			if resolved == bodyType {
+				// Unchanged means the type did not narrow — when that is because
+				// several concrete types are assigned, the body is polymorphic
+				// and `oneOf` says so (issue #201).
+				oneOfTypes = r.ambiguousConcreteSet(arg, typeNode, bodyType)
+			}
+			bodyType = resolved
 
 			// Apply dereferencing if needed
 			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
@@ -896,7 +906,16 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		bodyType = normalizeGenericInstanceName(bodyType)
 
 		reqInfo.BodyType = preprocessingBodyType(bodyType)
-		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+		// Build the polymorphic schema FIRST and skip the single-type mapping
+		// when it applies: mapping the bare interface would register it as a
+		// component that nothing then references, leaving an orphan
+		// `{type: object}` in the output.
+		schema := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg)
+		if schema != nil {
+			reqInfo.OneOfTypes = oneOfTypes
+		} else {
+			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+		}
 		reqInfo.Schema = schema
 	}
 

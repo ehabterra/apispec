@@ -27,6 +27,66 @@ import (
 // names no method anywhere in the registration, so the framework's handler
 // interface supplies it.
 
+// ambiguousConcreteSet returns the concrete types assigned to an interface-typed
+// body when there is more than one — the case where narrowing is impossible but
+// `oneOf` can still say exactly what the payload may be (issue #201).
+//
+// It mirrors resolveTypeOrigin's argument handling: a request body is decoded
+// into a pointer (`Decode(&v)`), so the variable is the unary's operand, while a
+// response encodes the value itself.
+func (r *BasePatternMatcher) ambiguousConcreteSet(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) []string {
+	if arg == nil || node == nil {
+		return nil
+	}
+	target := arg
+	if target.GetKind() == metadata.KindUnary && target.X != nil {
+		target = target.X
+	}
+	if target.GetKind() != metadata.KindIdent && target.GetKind() != metadata.KindFuncLit {
+		return nil
+	}
+	set := r.concreteSetFromEnclosingFunc(target, node.GetEdge(), originalType)
+	if len(set) < 2 {
+		return nil
+	}
+	return set
+}
+
+// oneOfSchemaFor builds a `oneOf` schema from a set of concrete types, or
+// returns nil when there is nothing polymorphic to express (issue #201).
+//
+// This is the ambiguous branch of interface resolution. When a handler assigns
+// more than one concrete type to an interface-typed variable, narrowing to one
+// of them would be a guess, but falling back to the bare interface emits
+// `{type: object}` — a schema that describes nothing. `oneOf: [Cat, Dog]` states
+// exactly what is known, so it is the stronger form of "honest over wrong"
+// (golden rule #7), not a relaxation of it.
+//
+// The set is the types assigned *in this handler*, deliberately not every
+// recorded implementer of the interface: enumerating implementers the handler
+// never assigns would over-claim.
+//
+// Each member is mapped through mapGoTypeToOpenAPISchema so it registers as a
+// component and the `$ref`s resolve; a member that maps to nothing is dropped,
+// and if fewer than two survive there is no polymorphism to express.
+func oneOfSchemaFor(usedTypes map[string]*Schema, concretes []string, meta *metadata.Metadata, cfg *APISpecConfig) *Schema {
+	if len(concretes) < 2 {
+		return nil
+	}
+	members := make([]*Schema, 0, len(concretes))
+	for _, ct := range concretes {
+		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, ct, meta, cfg, nil)
+		if schema == nil {
+			continue
+		}
+		members = append(members, schema)
+	}
+	if len(members) < 2 {
+		return nil
+	}
+	return &Schema{OneOf: members}
+}
+
 // handlerMethodKeys returns the base IDs ("pkg.Type.Method") of the configured
 // handler methods declared by the type (pkg, name), fanning an interface out to
 // its implementers.
