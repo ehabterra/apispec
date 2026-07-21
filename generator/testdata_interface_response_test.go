@@ -89,6 +89,14 @@ func TestTestdata_InterfaceResponse(t *testing.T) {
 	// — described nothing at all.
 	assertOneOf(t, responseSchema("/either"), "_Cat", "_Dog")
 
+	// The bare interface must not linger as a component: the operation now
+	// references the members, so emitting Animal too would leave a schema
+	// nothing points at. (An interface that stays unresolved DOES keep its
+	// component — testdata/interface_request_body /unknown covers that side.)
+	if animal := findSchema("_response_Animal"); animal != nil {
+		t.Errorf("bare interface Animal emitted as an orphan component: %+v", animal)
+	}
+
 	// /made: `Encode(makeDog())` where makeDog() Animal { return Dog{} } →
 	// resolves to the concrete Dog via return-value tracing.
 	if ref := responseRef("/made"); !strings.HasSuffix(ref, "_Dog") {

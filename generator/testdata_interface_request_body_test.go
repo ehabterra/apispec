@@ -92,6 +92,17 @@ func TestTestdata_InterfaceRequestBody(t *testing.T) {
 	// to the bare interface, whose schema describes nothing.
 	assertOneOf(t, requestSchema("/either"), "_Cat", "_Dog")
 
+	// /unknown: an interface with no traceable assignment stays the interface —
+	// the honest answer — and its component must still be emitted. This is the
+	// counterweight to the orphan check below: component marking follows what
+	// the operations actually reference, rather than pruning interfaces wholesale.
+	if ref := requestRef("/unknown"); !strings.HasSuffix(ref, "_Animal") {
+		t.Errorf("POST /unknown requestBody = %q, want the Animal interface kept", ref)
+	}
+	if findSchema("_body_Animal") == nil {
+		t.Error("Animal component missing though /unknown references it")
+	}
+
 	// /concrete: the pre-existing concrete path must be unaffected.
 	if ref := requestRef("/concrete"); !strings.HasSuffix(ref, "_Dog") {
 		t.Errorf("POST /concrete requestBody = %q, want Dog", ref)

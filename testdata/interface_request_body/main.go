@@ -83,6 +83,15 @@ func createPointer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// createUnknown decodes into an interface with no traceable assignment, so
+// nothing narrows it and the interface itself is the honest answer. Its
+// component must still be emitted — pruning it would be over-correction.
+func createUnknown(w http.ResponseWriter, r *http.Request) {
+	var a Animal
+	_ = json.NewDecoder(r.Body).Decode(&a)
+	w.WriteHeader(http.StatusCreated)
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /dogs", createDog)
@@ -91,5 +100,6 @@ func main() {
 	mux.HandleFunc("POST /concrete", createConcrete)
 	mux.HandleFunc("POST /via-param", createViaParam)
 	mux.HandleFunc("POST /pointer", createPointer)
+	mux.HandleFunc("POST /unknown", createUnknown)
 	_ = http.ListenAndServe(":8080", mux)
 }

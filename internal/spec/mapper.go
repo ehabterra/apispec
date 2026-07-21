@@ -959,16 +959,30 @@ func collectUsedTypesFromRoutes(routes []*RouteInfo) map[string]*Schema {
 	usedTypes := make(map[string]*Schema)
 
 	for _, route := range routes {
-		// Add request body types
-		if route.Request != nil && route.Request.BodyType != "" {
-			// addTypeAndDependenciesWithMetadata(route.Request.BodyType, usedTypes, meta, cfg)
-			markUsedType(usedTypes, route.Request.BodyType, nil)
+		// Add request body types. A polymorphic body marks its concrete members
+		// rather than the interface: the operation references the members, so
+		// emitting the interface too would leave a component nothing points at
+		// (issue #201).
+		if route.Request != nil {
+			if len(route.Request.OneOfTypes) > 0 {
+				for _, ct := range route.Request.OneOfTypes {
+					markUsedType(usedTypes, ct, nil)
+				}
+			} else if route.Request.BodyType != "" {
+				markUsedType(usedTypes, route.Request.BodyType, nil)
+			}
 		}
 
 		// Add response types
 		for _, res := range route.Response {
-			if route.Response != nil && res.BodyType != "" {
-				// addTypeAndDependenciesWithMetadata(res.BodyType, usedTypes, meta, cfg)
+			if res == nil {
+				continue
+			}
+			if len(res.OneOfTypes) > 0 {
+				for _, ct := range res.OneOfTypes {
+					markUsedType(usedTypes, ct, nil)
+				}
+			} else if res.BodyType != "" {
 				markUsedType(usedTypes, res.BodyType, nil)
 			}
 		}

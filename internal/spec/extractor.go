@@ -122,6 +122,13 @@ type RequestInfo struct {
 	BodyType    string
 	Schema      *Schema
 
+	// OneOfTypes holds the concrete types a polymorphic body resolves to
+	// (issue #201). BodyType stays the interface — it is the Go type, and
+	// several consumers key off it — but component collection marks these
+	// instead, so the interface is not emitted as a component that nothing
+	// references.
+	OneOfTypes []string
+
 	// File and Line locate the call site that produced this request body, used
 	// to attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
 	File string
@@ -134,6 +141,13 @@ type ResponseInfo struct {
 	ContentType string
 	BodyType    string
 	Schema      *Schema
+
+	// OneOfTypes holds the concrete types a polymorphic body resolves to
+	// (issue #201). BodyType stays the interface — it is the Go type, and
+	// several consumers key off it — but component collection marks these
+	// instead, so the interface is not emitted as a component that nothing
+	// references.
+	OneOfTypes []string
 
 	// File and Line locate the call site that produced this response, used to
 	// attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
@@ -2406,9 +2420,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 
-		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
-		if oneOf := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg); oneOf != nil {
-			schema = oneOf
+		// Build the polymorphic schema FIRST and skip the single-type mapping
+		// when it applies: mapping the bare interface would register it as a
+		// component that nothing then references, leaving an orphan
+		// `{type: object}` in the output.
+		schema := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg)
+		if schema != nil {
+			respInfo.OneOfTypes = oneOfTypes
+		} else {
+			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
 		}
 
 		// Wrapper specialisation: when the body resolves to a struct

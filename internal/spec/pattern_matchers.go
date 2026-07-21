@@ -906,9 +906,15 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		bodyType = normalizeGenericInstanceName(bodyType)
 
 		reqInfo.BodyType = preprocessingBodyType(bodyType)
-		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
-		if oneOf := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg); oneOf != nil {
-			schema = oneOf
+		// Build the polymorphic schema FIRST and skip the single-type mapping
+		// when it applies: mapping the bare interface would register it as a
+		// component that nothing then references, leaving an orphan
+		// `{type: object}` in the output.
+		schema := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg)
+		if schema != nil {
+			reqInfo.OneOfTypes = oneOfTypes
+		} else {
+			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
 		}
 		reqInfo.Schema = schema
 	}
