@@ -323,6 +323,15 @@ type MountPattern struct {
 	RouterFromArg bool `yaml:"routerFromArg,omitempty" json:"routerFromArg,omitempty"` // Extract router from argument
 	IsMount       bool `yaml:"isMount,omitempty" json:"isMount,omitempty"`             // This is a mount operation
 
+	// RouterArgTypeRegex gates the pattern on the TYPE of the router argument.
+	// Required where one call registers both routes and mounts: net/http's
+	// `mux.Handle(path, h)` takes a plain handler *and* a mounted sub-router,
+	// and matching on the call name alone would swallow every ordinary route
+	// (issue #138). A pass-through wrapper is looked through, so
+	// `http.StripPrefix("/api", api)` is judged by the router inside it.
+	// Empty means the pattern does not discriminate on the argument type.
+	RouterArgTypeRegex string `yaml:"routerArgTypeRegex,omitempty" json:"routerArgTypeRegex,omitempty"`
+
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
