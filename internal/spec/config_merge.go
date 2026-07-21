@@ -32,8 +32,8 @@ import "strings"
 //     status from arg 0 and would misread status-less calls like fiber's
 //     c.JSON(obj) if merged into that framework.
 //   - Marshal/Encode/Decode variants use the encoder/decoder-scoped forms.
-//   - FormValue/Cookie param patterns are omitted until they gain receiver
-//     scoping; the scoped header/query/PathValue patterns are included.
+//   - FormValue/Cookie are included now that they are receiver-scoped on
+//     *http.Request in the primary config (issue #211).
 func HTTPSecondaryConfig() *APISpecConfig {
 	serveMuxRecv := "^net/http(\\.\\*ServeMux)?$"
 	return &APISpecConfig{
@@ -96,6 +96,21 @@ func HTTPSecondaryConfig() *APISpecConfig {
 				{
 					CallRegex:     "^PathValue$",
 					ParamIn:       "path",
+					ParamArgIndex: 0,
+					RecvType:      "net/http.*Request",
+				},
+				// Now receiver-scoped in the primary config (issue #211), so
+				// they are safe to merge — the omission below was conditional
+				// on exactly that.
+				{
+					CallRegex:     "^FormValue$",
+					ParamIn:       "form",
+					ParamArgIndex: 0,
+					RecvType:      "net/http.*Request",
+				},
+				{
+					CallRegex:     "^Cookie$",
+					ParamIn:       "cookie",
 					ParamArgIndex: 0,
 					RecvType:      "net/http.*Request",
 				},

@@ -31,14 +31,22 @@ var ginRequestContext = RequestContextConfig{
 
 // DefaultGinConfig returns a default configuration for the Gin framework.
 func DefaultGinConfig() *APISpecConfig {
+	// gin's request context, the receiver of its param/bind/response helpers.
+	const ginContextRecv = "^github\\.com/gin-gonic/gin\\.\\*Context$"
+
 	responsePatterns := netHTTPResponsePatterns()
 	responsePatterns = append(responsePatterns,
+		// Scoped to gin's Context: this reads the status from arg 0, which is a
+		// gin convention — unscoped it would misread a status-less call like
+		// fiber's c.JSON(obj), which is why SecondaryView dropped it and a
+		// secondary gin lost its responses (issue #211).
 		ResponsePattern{
 			CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
 			StatusArgIndex: 0,
 			TypeArgIndex:   1,
 			TypeFromArg:    true,
 			StatusFromArg:  true,
+			RecvTypeRegex:  ginContextRecv,
 		},
 		jsonEncodePattern(""),
 	)
@@ -59,35 +67,45 @@ func DefaultGinConfig() *APISpecConfig {
 			RequestContext: ginRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
-					CallRegex:    `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,
-					TypeArgIndex: 0,
-					TypeFromArg:  true,
-					Deref:        true,
+					CallRegex:     `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,
+					TypeArgIndex:  0,
+					TypeFromArg:   true,
+					Deref:         true,
+					RecvTypeRegex: ginContextRecv,
 				},
 				jsonDecodeRequestPattern(""),
 				jsonUnmarshalRequestPattern(""),
 			},
 			ResponsePatterns: responsePatterns,
+			// Receiver-scoped so they survive SecondaryView when gin is not the
+			// primary framework: unscoped, every one of these was dropped and a
+			// secondary gin documented its endpoints with no parameters at all
+			// (issue #211). The scope is gin's own Context, which is the only
+			// receiver these calls ever had.
 			ParamPatterns: []ParamPattern{
 				{
 					CallRegex:     "^Param$",
 					ParamIn:       "path",
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
 				},
 				{
 					CallRegex:     "^Query$",
 					ParamIn:       "query",
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
 				},
 				{
 					CallRegex:     "^DefaultQuery$",
 					ParamIn:       "query",
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
 				},
 				{
 					CallRegex:     "^GetHeader$",
 					ParamIn:       "header",
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
 				},
 			},
 			SecurityPatterns: ginSecurityPatterns(),

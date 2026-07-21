@@ -83,6 +83,7 @@ func DefaultEchoConfig() *APISpecConfig {
 					CallRegex:     "^Param$",
 					ParamIn:       "path",
 					ParamArgIndex: 0,
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
 				},
 				{
 					CallRegex:     "^QueryParam$",
@@ -94,11 +95,13 @@ func DefaultEchoConfig() *APISpecConfig {
 					CallRegex:     "^FormValue$",
 					ParamIn:       "form",
 					ParamArgIndex: 0,
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
 				},
 				{
 					CallRegex:     "^Cookie$",
 					ParamIn:       "cookie",
 					ParamArgIndex: 0,
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
 				},
 			},
 			SecurityPatterns: echoSecurityPatterns(),
