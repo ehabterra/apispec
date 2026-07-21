@@ -484,7 +484,46 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		return false
 	}
 
+	// Router-type gate: where the same call registers both routes and mounts,
+	// only the argument's type tells them apart (issue #138).
+	if m.pattern.RouterArgTypeRegex != "" && !m.routerArgIsRouter(edge) {
+		return false
+	}
+
 	return m.pattern.IsMount
+}
+
+// routerArgIsRouter reports whether the pattern's router argument really holds a
+// router, per RouterArgTypeRegex.
+//
+// A pass-through wrapper is looked through: `http.StripPrefix("/api", api)` has
+// the type of its own result (net/http.Handler, which any handler satisfies), so
+// judging the outer expression would tell us nothing — the router is the
+// argument inside. Only one level is unwrapped, which covers the idiomatic
+// shape without inviting a search through arbitrary call nesting.
+func (m *MountPatternMatcherImpl) routerArgIsRouter(edge *metadata.CallGraphEdge) bool {
+	if m.pattern.RouterArgIndex < 0 || len(edge.Args) <= m.pattern.RouterArgIndex {
+		return false
+	}
+	re, err := cachedRegex(m.pattern.RouterArgTypeRegex)
+	if err != nil {
+		return false
+	}
+	arg := edge.Args[m.pattern.RouterArgIndex]
+	if arg == nil {
+		return false
+	}
+	if re.MatchString(arg.GetType()) {
+		return true
+	}
+	if arg.GetKind() == metadata.KindCall {
+		for _, inner := range arg.Args {
+			if inner != nil && re.MatchString(inner.GetType()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetPattern returns the mount pattern
@@ -526,7 +565,6 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 	// Extract router argument if available
 	if m.pattern.RouterArgIndex >= 0 && len(edge.Args) > m.pattern.RouterArgIndex {
 		mountInfo.RouterArg = edge.Args[m.pattern.RouterArgIndex]
-
 		// Trace router origin
 		m.traceRouterOrigin(mountInfo.RouterArg, node)
 

@@ -16,6 +16,9 @@ package spec
 
 // DefaultChiConfig returns a default configuration for the Chi router.
 func DefaultChiConfig() *APISpecConfig {
+	// chi's own router receiver, shared by the route and mount patterns.
+	const chiRouterRecv = "^github.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$"
+
 	// Chi composes net/http response patterns with chi-render's JSON/Status,
 	// then the generic Marshal/Encode pair. Order preserved from the
 	// pre-refactor config so the matcher priority resolution is unchanged.
@@ -135,6 +138,11 @@ func DefaultChiConfig() *APISpecConfig {
 				},
 			},
 			SecurityPatterns: chiSecurityPatterns(),
+			// Receiver-scoped so these survive SecondaryView when chi is not the
+			// primary framework — an unscoped pattern is dropped from a
+			// secondary config, which left chi-wired mounts untraced in mixed
+			// projects (issue #138). The scope is chi's own router types, which
+			// is what these calls were always about.
 			MountPatterns: []MountPattern{
 				{
 					CallRegex:      `^Mount$`,
@@ -143,6 +151,7 @@ func DefaultChiConfig() *APISpecConfig {
 					PathArgIndex:   0,
 					RouterArgIndex: 1,
 					IsMount:        true,
+					RecvTypeRegex:  chiRouterRecv,
 				},
 				{
 					CallRegex:      `^Route$`,
@@ -151,6 +160,7 @@ func DefaultChiConfig() *APISpecConfig {
 					PathArgIndex:   0,
 					RouterArgIndex: 1,
 					IsMount:        true,
+					RecvTypeRegex:  chiRouterRecv,
 				},
 			},
 		},

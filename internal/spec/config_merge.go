@@ -60,6 +60,19 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					RecvTypeRegex:   serveMuxRecv,
 				},
 			},
+			MountPatterns: []MountPattern{
+				{
+					CallRegex:      `^Handle$`,
+					PathFromArg:    true,
+					RouterFromArg:  true,
+					PathArgIndex:   0,
+					RouterArgIndex: 1,
+					IsMount:        true,
+					RecvTypeRegex:  serveMuxRecv,
+					// Only a mounted ROUTER, never an ordinary handler (issue #138).
+					RouterArgTypeRegex: `^\*?(github\.com/go-chi/chi(/v\d)?\.(Mux|Router)|github\.com/gorilla/mux\.Router|net/http\.ServeMux|github\.com/labstack/echo(/v\d)?\.Echo|github\.com/gin-gonic/gin\.(Engine|RouterGroup)|github\.com/gofiber/fiber(/v\d)?\.App)$`,
+				},
+			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
 			RequestBodyPatterns: []RequestBodyPattern{
