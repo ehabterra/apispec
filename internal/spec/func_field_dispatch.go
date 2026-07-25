@@ -88,7 +88,7 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 				for _, varName := range sortedMapKeys(fn.AssignmentMap) {
 					for i := range fn.AssignmentMap[varName] {
 						a := &fn.AssignmentMap[varName][i]
-						d.walkCompositeLits(meta, known, pkgName, &a.Value, "", 0)
+						d.walkCompositeLits(meta, known, pkgName, &a.Value, litType{}, 0)
 					}
 				}
 			}
@@ -102,7 +102,7 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 		edge := &meta.CallGraph[i]
 		ctxPkg := getString(meta, edge.Caller.Pkg)
 		for _, arg := range edge.Args {
-			d.walkCompositeLits(meta, known, ctxPkg, arg, "", 0)
+			d.walkCompositeLits(meta, known, ctxPkg, arg, litType{}, 0)
 		}
 	}
 
@@ -151,8 +151,15 @@ func funcFieldKey(pkg, typeName, field string) string {
 func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map[string]bool, pkgName string, file *metadata.File) {
 	for i := range file.StructInstances {
 		inst := &file.StructInstances[i]
-		typeName := bareTypeName(getString(meta, inst.Type))
-		fields := structFieldTypes(meta, pkgName, typeName)
+		// The instance is recorded under the package that WRITES the literal,
+		// while its type may belong to another one (`&clipkg.Command{…}` in
+		// main). The rendered type carries the owner when it is qualified, and
+		// that owner is what the dispatching edge will be keyed by.
+		typePkg, typeName := splitQualifiedType(getString(meta, inst.Type))
+		if typePkg == "" {
+			typePkg = pkgName
+		}
+		fields := structFieldTypes(meta, typePkg, typeName)
 		if len(fields) == 0 || len(inst.Fields) == 0 {
 			continue
 		}
@@ -173,22 +180,35 @@ func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map
 			}
 			// A rendered value is only usable when it names a function; a
 			// literal, a call or a nested literal renders to something that is
-			// not a function key, and the existence check rejects it.
-			if key := functionKeyFromName(known, pkgName, byName[name]); key != "" {
-				k := funcFieldKey(pkgName, typeName, name)
+			// not a function key, and the existence check rejects it. The name
+			// may be import-qualified ("web.RunWeb"), which only resolves
+			// against the file's own import table.
+			if key := functionKeyFromRendered(meta, known, pkgName, file, byName[name]); key != "" {
+				k := funcFieldKey(typePkg, typeName, name)
 				d[k] = append(d[k], key)
 			}
 		}
 	}
 }
 
+// litType is a composite literal's type as the walk knows it: the rendered type
+// string (possibly a slice/pointer form) plus the package that declares it.
+//
+// Both halves are needed because an elided literal — the `{…}` elements of
+// `[]*clipkg.Command{{…}}` — states neither, and falling back to the package
+// that *writes* the literal is wrong the moment the type comes from elsewhere,
+// which is the normal case in a real project.
+type litType struct {
+	pkg  string
+	name string
+}
+
 // walkCompositeLits descends a CallArgument looking for composite literals and
 // records each func-typed field initialised with a function value.
 //
-// expectType carries the type a literal cannot state for itself: the elements of
-// `[]*Command{{…}}` are elided literals whose type comes from the slice, and a
-// field's value literal takes its type from the field.
-func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[string]bool, ctxPkg string, arg *metadata.CallArgument, expectType string, depth int) {
+// expect carries the type a literal cannot state for itself: elements take it
+// from the enclosing slice/array/map, and a field's value literal from the field.
+func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[string]bool, ctxPkg string, arg *metadata.CallArgument, expect litType, depth int) {
 	if arg == nil || depth > maxCompositeLitDepth {
 		return
 	}
@@ -196,23 +216,34 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 		// Not a literal itself, but one may sit underneath: &T{…} is a unary,
 		// f(T{…}) a call, and so on.
 		for _, child := range []*metadata.CallArgument{arg.X, arg.Fun, arg.Sel} {
-			d.walkCompositeLits(meta, known, ctxPkg, child, expectType, depth+1)
+			d.walkCompositeLits(meta, known, ctxPkg, child, expect, depth+1)
 		}
 		for _, child := range arg.Args {
-			d.walkCompositeLits(meta, known, ctxPkg, child, "", depth+1)
+			d.walkCompositeLits(meta, known, ctxPkg, child, litType{}, depth+1)
 		}
 		return
 	}
 
-	typeName := compositeLitTypeName(arg)
-	if typeName == "" {
-		typeName = expectType
+	lit := expect
+	if stated := compositeLitTypeName(arg); stated != "" {
+		lit = litType{pkg: compositeLitPkg(arg, ""), name: stated}
 	}
-	litPkg := compositeLitPkg(arg, ctxPkg)
-	bare := bareTypeName(typeName)
-	fields := structFieldTypes(meta, litPkg, bare)
-	ordered := structFieldOrder(meta, litPkg, bare)
-	elem := elementTypeName(typeName)
+	// A type string can carry its own package ("[]*github.com/x/clipkg.Command",
+	// the form a recorded field type takes when it crosses a package boundary);
+	// that owner beats any inherited one.
+	if qualPkg, _ := splitQualifiedType(lit.name); qualPkg != "" {
+		lit.pkg = qualPkg
+	}
+	if lit.pkg == "" {
+		lit.pkg = ctxPkg
+	}
+
+	bare := bareTypeName(lit.name)
+	fields := structFieldTypes(meta, lit.pkg, bare)
+	ordered := structFieldOrder(meta, lit.pkg, bare)
+	// A field's type is written from inside its own declaring package, so that
+	// is the package an unqualified field type refers to.
+	elem := litType{pkg: lit.pkg, name: elementTypeName(lit.name)}
 
 	for i, elt := range arg.Args {
 		if elt == nil {
@@ -227,10 +258,10 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 			}
 			fieldType := fields[name]
 			if name != "" && isFuncTypeString(fieldType) {
-				d.record(known, litPkg, bare, name, elt.Fun, ctxPkg)
+				d.record(known, lit.pkg, bare, name, elt.Fun, ctxPkg)
 			}
-			next := fieldType
-			if next == "" {
+			next := litType{pkg: lit.pkg, name: fieldType}
+			if fieldType == "" {
 				next = elem
 			}
 			d.walkCompositeLits(meta, known, ctxPkg, elt.Fun, next, depth+1)
@@ -239,12 +270,12 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 		// Positional: a struct literal binds elements to fields in declaration
 		// order (`Command{"web", runWeb}`); anything else (slice, array, map
 		// value list) binds them to the element type.
-		if i < len(ordered) && len(ordered) > 0 && elem == "" {
+		if i < len(ordered) && len(ordered) > 0 && elem.name == "" {
 			name := ordered[i]
 			if isFuncTypeString(fields[name]) {
-				d.record(known, litPkg, bare, name, elt, ctxPkg)
+				d.record(known, lit.pkg, bare, name, elt, ctxPkg)
 			}
-			d.walkCompositeLits(meta, known, ctxPkg, elt, fields[name], depth+1)
+			d.walkCompositeLits(meta, known, ctxPkg, elt, litType{pkg: lit.pkg, name: fields[name]}, depth+1)
 			continue
 		}
 		d.walkCompositeLits(meta, known, ctxPkg, elt, elem, depth+1)
@@ -318,6 +349,112 @@ func functionKeysOfValue(known map[string]bool, value *metadata.CallArgument, ct
 		}
 	}
 	return nil
+}
+
+// functionKeyFromRendered resolves a *rendered* field value — what
+// StructInstance.Fields holds, a string rather than an expression — to a function
+// base key.
+//
+// Three forms occur, and only the first two can be trusted:
+//
+//	"runWeb"                     a function in the file's own package
+//	"web.RunWeb"                 import-qualified: the alias resolves through the
+//	                             file's import table, never by guessing a path
+//	"[]*Command{{…}}"            a rendered literal, which names no function and
+//	                             is rejected by the existence check
+//
+// A fully-qualified value ("github.com/x/web.Server.RunAdmin") matches `known`
+// directly, so it needs no alias step.
+func functionKeyFromRendered(meta *metadata.Metadata, known map[string]bool, pkg string, file *metadata.File, value string) string {
+	if key := functionKeyFromName(known, pkg, value); key != "" {
+		return key
+	}
+	dot := strings.Index(value, ".")
+	if dot <= 0 || file == nil {
+		return ""
+	}
+	qualifier, rest := value[:dot], value[dot+1:]
+
+	// Imports are recorded alias -> path, and an import with no explicit alias
+	// records the path as its own "alias" — so the source-level qualifier is
+	// matched against both the alias and the path's own tail. Candidates are
+	// gathered and sorted rather than returned from the map walk: two imports can
+	// both answer to one qualifier, and picking by map order would let the index
+	// (and the routes it decides) vary between runs.
+	var candidates []string
+	for aliasIdx, pathIdx := range file.Imports {
+		path := getString(meta, pathIdx)
+		if getString(meta, aliasIdx) != qualifier && !importTailMatches(path, qualifier) {
+			continue
+		}
+		if key := path + "." + rest; known[key] {
+			candidates = append(candidates, key)
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	sort.Strings(candidates)
+	return candidates[0]
+}
+
+// importTailMatches reports whether an unaliased import of path binds the given
+// qualifier in source. That is the path's last element, except for the module
+// major-version convention ("github.com/go-chi/chi/v5" is `chi`).
+func importTailMatches(path, qualifier string) bool {
+	if path == "" || qualifier == "" {
+		return false
+	}
+	parts := strings.Split(path, "/")
+	last := parts[len(parts)-1]
+	if last == qualifier {
+		return true
+	}
+	if len(parts) > 1 && isMajorVersionElement(last) {
+		return parts[len(parts)-2] == qualifier
+	}
+	return false
+}
+
+// isMajorVersionElement reports whether a path element is a "vN" module major
+// version rather than the package name.
+func isMajorVersionElement(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// splitQualifiedType splits a rendered type into its declaring package and bare
+// name ("[]*github.com/x/clipkg.Command" -> "github.com/x/clipkg", "Command").
+// An unqualified type ("[]*Command") has no package to report: the caller
+// supplies the context it was written in.
+func splitQualifiedType(t string) (pkg, name string) {
+	name = strings.TrimSpace(t)
+	for {
+		trimmed := strings.TrimPrefix(strings.TrimPrefix(name, "[]"), "*")
+		if trimmed == name {
+			break
+		}
+		name = trimmed
+	}
+	dot := strings.LastIndex(name, ".")
+	if dot <= 0 {
+		return "", name
+	}
+	// Only an import path counts as a package here. A bare "clipkg.Command" (an
+	// alias, not a path) cannot be resolved without the import table, and
+	// treating the alias as a path would key the index on a package that does
+	// not exist.
+	if !strings.Contains(name[:dot], "/") {
+		return "", name[dot+1:]
+	}
+	return name[:dot], name[dot+1:]
 }
 
 // functionKeyFromName returns "pkg.name" when that names a recorded function.
