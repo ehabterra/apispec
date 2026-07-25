@@ -78,7 +78,7 @@ func DefaultEchoConfig() *APISpecConfig {
 				jsonUnmarshalRequestPattern("json"),
 			},
 			ResponsePatterns: responsePatterns,
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^Param$",
 					ParamIn:       "path",
@@ -103,7 +103,7 @@ func DefaultEchoConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
 				},
-			},
+			}, ctxMultipartParamPatterns("github\\.com/labstack/echo/v\\d\\.Context")...),
 			SecurityPatterns: echoSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{

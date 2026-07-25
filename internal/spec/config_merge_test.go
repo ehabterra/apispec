@@ -188,6 +188,60 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 		}
 	})
 
+	t.Run("every framework can see a multipart body (#207)", func(t *testing.T) {
+		// Detection has to be framework-agnostic (golden rule #5), and only
+		// net/http and gin have an end-to-end multipart fixture. This is what
+		// covers the rest: each framework's effective config — its own preset
+		// plus the always-on net/http scoped merge the engine applies — must be
+		// able to recognise a file part and a multipart marker, and both patterns
+		// must be receiver-scoped so they survive SecondaryView (#211).
+		for _, tc := range []struct {
+			name string
+			cfg  *APISpecConfig
+		}{
+			{"gin", DefaultGinConfig()},
+			{"chi", DefaultChiConfig()},
+			{"echo", DefaultEchoConfig()},
+			{"fiber", DefaultFiberConfig()},
+			{"mux", DefaultMuxConfig()},
+			{"http", DefaultHTTPConfig()},
+		} {
+			effective := MergeFrameworkConfigs(tc.cfg, HTTPSecondaryConfig())
+			var file, marker int
+			for _, p := range effective.Framework.ParamPatterns {
+				switch p.ParamIn {
+				case paramInFormFile:
+					file++
+				case paramInMultipart:
+					marker++
+				default:
+					continue
+				}
+				if p.RecvType == "" && p.RecvTypeRegex == "" {
+					t.Errorf("%s: multipart pattern %q is unscoped; it would be dropped from a secondary view",
+						tc.name, p.CallRegex)
+				}
+			}
+			if file == 0 {
+				t.Errorf("%s: no formFile pattern — file uploads cannot be documented", tc.name)
+			}
+			if marker == 0 {
+				t.Errorf("%s: no multipart marker pattern — a parsed multipart form with no named part reads as urlencoded", tc.name)
+			}
+			// Every framework also needs a form-value read, or a multipart body's
+			// text fields are invisible even when the file part resolves.
+			var form int
+			for _, p := range effective.Framework.ParamPatterns {
+				if p.ParamIn == paramInForm {
+					form++
+				}
+			}
+			if form == 0 {
+				t.Errorf("%s: no form-value pattern — text parts of a form body cannot be documented", tc.name)
+			}
+		}
+	})
+
 	t.Run("nil secondaries are ignored", func(t *testing.T) {
 		primary := DefaultMuxConfig()
 		before := len(primary.Framework.RoutePatterns)

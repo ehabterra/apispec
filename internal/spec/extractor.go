@@ -57,6 +57,13 @@ type RouteInfo struct {
 	Response    map[string]*ResponseInfo
 	Params      []Parameter
 
+	// Multipart records that the handler reads a multipart body — a file part
+	// (FormFile) or an explicit ParseMultipartForm/MultipartForm call. It is what
+	// separates multipart/form-data from application/x-www-form-urlencoded, a
+	// distinction no Go signature states (issue #207); the form reads themselves
+	// look identical in both.
+	Multipart bool
+
 	// OperationIDSuffix disambiguates the operationId when one handler yields
 	// several operations (e.g. an r.Method dispatch split into GET/POST). Empty
 	// for ordinary routes. Appended as "_<suffix>" to the computed operationId.
@@ -3227,6 +3234,18 @@ func (p *ParamPatternMatcherImpl) GetPriority() int {
 
 // ExtractParam extracts parameter information from a matched node
 func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route *RouteInfo) *Parameter {
+	// A marker call (ParseMultipartForm, MultipartForm) names no field: all it
+	// establishes is that the body is multipart, which is a fact about the route
+	// rather than a parameter. A handler that only calls ParseMultipartForm and
+	// then reads r.FormValue must still document multipart/form-data, so this
+	// records the fact and emits nothing (issue #207).
+	if p.pattern.ParamIn == paramInMultipart {
+		if route != nil {
+			route.Multipart = true
+		}
+		return nil
+	}
+
 	param := &Parameter{
 		In: p.pattern.ParamIn,
 	}
@@ -3234,6 +3253,19 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 	edge := node.GetEdge()
 	if len(edge.Args) > p.pattern.ParamArgIndex {
 		param.Name = p.contextProvider.GetArgumentInfo(edge.Args[p.pattern.ParamArgIndex])
+	}
+
+	// A file part implies the media type as well as the property: no framework
+	// exposes FormFile for anything but a multipart body.
+	if p.pattern.ParamIn == paramInFormFile {
+		if route != nil {
+			route.Multipart = true
+		}
+		// OpenAPI describes an uploaded file as a binary string, whatever the Go
+		// side hands back (multipart.File, *multipart.FileHeader, fiber's
+		// *multipart.FileHeader), so the argument type is not consulted.
+		param.Schema = &Schema{Type: "string", Format: "binary"}
+		return param
 	}
 
 	if p.pattern.TypeFromArg && len(edge.Args) > p.pattern.TypeArgIndex {
