@@ -253,6 +253,10 @@ type TrackerTree struct {
 	// with LazyTree so both engines resolve the same routes (issue #204).
 	handlerMethods []string
 
+	// funcFieldImpls resolves a call through a func-typed struct field to the
+	// functions that field holds, at parity with LazyTree (issue #143).
+	funcFieldImpls funcFieldDispatch
+
 	// logger receives traversal-time warnings (limit truncations, etc.).
 	// May be nil; callers should reach it via t.warn / t.info.
 	logger metadata.VerboseLogger
@@ -431,6 +435,8 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 		// Initialize performance optimization caches with pre-allocated capacity
 		nodeMap: make(map[string]*TrackerNode, 200),
 		idCache: make(map[string]string, 100),
+
+		funcFieldImpls: buildFuncFieldDispatch(meta),
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -1646,6 +1652,31 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 					}
 				}
 			}
+		}
+	}
+
+	// Handle calls made through a func-typed struct field (c.Action() on a
+	// cli.Command) by attaching the bodies of the functions that field holds —
+	// the eager counterpart to LazyTree's funcFieldImpls expansion (issue #143).
+	// Without it, a CLI-dispatched registration subtree is unreachable from main
+	// and the project documents zero routes.
+	for _, fnKey := range tree.funcFieldImpls.keysFor(meta, parentEdge) {
+		for _, fnEdge := range meta.Callers[fnKey] {
+			calleeID := fnEdge.Callee.ID()
+			if tree.nodeMap[calleeID] != nil {
+				continue
+			}
+			childNode := NewTrackerNode(tree, meta, id, calleeID, fnEdge, nil, visited, assignmentIndex, limits)
+			if childNode == nil {
+				continue
+			}
+			// The argument children have to be built here, exactly as the
+			// direct-callee loop does: a node builds its own CALLEES, but its
+			// arguments are the parent's job. Without this the registration is
+			// found and then documents nothing — no handler body means no
+			// request body, no responses, no params.
+			childNode.AddChildren(processArguments(tree, meta, childNode, fnEdge, visited, assignmentIndex, limits))
+			node.AddChild(childNode)
 		}
 	}
 
