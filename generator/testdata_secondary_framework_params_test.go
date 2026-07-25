@@ -78,6 +78,27 @@ func TestTestdata_SecondaryFrameworkParams(t *testing.T) {
 		t.Errorf("POST /items 201 = %q, want Item (#211)", ref)
 	}
 
+	// gin's own ExternalTypes entry for gin.H, which SecondaryView used to drop
+	// along with the rest of the non-pattern config (#212). noUnresolvedPlaceholders
+	// above is what actually fails when it regresses; this pins the mapped shape.
+	status := opFor(out.Paths["/items/status"], "GET")
+	if status == nil {
+		t.Fatalf("GET /items/status missing; have %v", mapPathKeys(out.Paths))
+	}
+	okResp, found := status.Responses["200"]
+	if !found {
+		t.Fatalf("GET /items/status: 200 response missing; have %v", responseCodes(status))
+	}
+	ref := bodyRef(okResp.Content)
+	if !strings.HasSuffix(ref, "_gin_H") {
+		t.Errorf("GET /items/status 200 = %q, want the gin.H component (#212)", ref)
+	}
+	if schema := out.Components.Schemas[strings.TrimPrefix(ref, "#/components/schemas/")]; schema == nil {
+		t.Errorf("gin.H component %q not defined (#212)", ref)
+	} else if schema.Type != "object" {
+		t.Errorf("gin.H component type = %q, want object (#212)", schema.Type)
+	}
+
 	// gin's Param, on the second operation.
 	get := opFor(out.Paths["/items/{id}"], "GET")
 	if get == nil {

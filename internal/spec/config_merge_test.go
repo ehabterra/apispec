@@ -135,6 +135,59 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 		}
 	})
 
+	t.Run("framework ExternalTypes survive and merge by name (#212)", func(t *testing.T) {
+		// gin.H and fiber.Map are known only to their own framework's preset. A
+		// secondary that loses them documents its map bodies as the generic
+		// "External or unresolved type" placeholder, which made the output
+		// depend on which framework the detector happened to see first.
+		if got := SecondaryView(DefaultGinConfig()).ExternalTypes; len(got) == 0 {
+			t.Error("gin: SecondaryView dropped ExternalTypes (gin.H)")
+		}
+		if got := SecondaryView(DefaultFiberConfig()).ExternalTypes; len(got) == 0 {
+			t.Error("fiber: SecondaryView dropped ExternalTypes (fiber.Map)")
+		}
+
+		// A chi-primary project that also imports gin must end up knowing gin.H.
+		primary := DefaultChiConfig()
+		MergeFrameworkConfigs(primary, SecondaryView(DefaultGinConfig()))
+		var foundGinH bool
+		for _, e := range primary.ExternalTypes {
+			if e.Name == "github.com/gin-gonic/gin.H" {
+				foundGinH = true
+			}
+		}
+		if !foundGinH {
+			t.Errorf("gin.H missing after merge into a chi primary; have %v", primary.ExternalTypes)
+		}
+
+		// Merging twice must not duplicate, and the primary's own entry wins a
+		// genuine name collision.
+		before := len(primary.ExternalTypes)
+		MergeFrameworkConfigs(primary, SecondaryView(DefaultGinConfig()))
+		if got := len(primary.ExternalTypes); got != before {
+			t.Errorf("ExternalTypes grew %d -> %d on a repeat merge; must dedupe by name", before, got)
+		}
+		primary.ExternalTypes = []ExternalType{{
+			Name:        "github.com/gin-gonic/gin.H",
+			Description: "primary's own entry",
+		}}
+		MergeFrameworkConfigs(primary, SecondaryView(DefaultGinConfig()))
+		if len(primary.ExternalTypes) != 1 || primary.ExternalTypes[0].Description != "primary's own entry" {
+			t.Errorf("secondary's entry overrode the primary's for the same type name: %v", primary.ExternalTypes)
+		}
+
+		// The view holds a copy, not an alias. Spare capacity in the source is
+		// what makes aliasing observable at all: an append through an aliased
+		// view would write into the source's backing array.
+		src := &APISpecConfig{ExternalTypes: make([]ExternalType, 1, 4)}
+		src.ExternalTypes[0] = ExternalType{Name: "own"}
+		//nolint:gocritic // appendAssign: writing through the view's slice is the test.
+		_ = append(SecondaryView(src).ExternalTypes, ExternalType{Name: "clobber"})
+		if spare := src.ExternalTypes[:2]; spare[1].Name == "clobber" {
+			t.Error("SecondaryView aliased the source config's ExternalTypes backing array")
+		}
+	})
+
 	t.Run("net/http FormValue and Cookie reach a non-http primary", func(t *testing.T) {
 		// The two patterns HTTPSecondaryConfig gained with this scoping. They are
 		// only useful through the merge — the net/http surface is layered under
