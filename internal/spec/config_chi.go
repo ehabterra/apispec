@@ -100,7 +100,7 @@ func DefaultChiConfig() *APISpecConfig {
 				jsonUnmarshalRequestPattern("json"),
 			},
 			ResponsePatterns: responsePatterns,
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^URLParam$",
 					ParamIn:       "path",
@@ -139,7 +139,7 @@ func DefaultChiConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvType:      "net/http.*Request",
 				},
-			},
+			}, requestMultipartParamPatterns()...),
 			SecurityPatterns: chiSecurityPatterns(),
 			// Receiver-scoped so these survive SecondaryView when chi is not the
 			// primary framework — an unscoped pattern is dropped from a

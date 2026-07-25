@@ -82,7 +82,7 @@ func DefaultGinConfig() *APISpecConfig {
 			// secondary gin documented its endpoints with no parameters at all
 			// (issue #211). The scope is gin's own Context, which is the only
 			// receiver these calls ever had.
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^Param$",
 					ParamIn:       "path",
@@ -107,7 +107,17 @@ func DefaultGinConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: ginContextRecv,
 				},
-			},
+				{
+					// gin's form-value read. The other configs all had their
+					// FormValue equivalent (#171); gin's was missing, so a gin
+					// form body documented no fields at all — including the text
+					// parts of a multipart upload (issue #207).
+					CallRegex:     "^(PostForm|DefaultPostForm)$",
+					ParamIn:       paramInForm,
+					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
+				},
+			}, ctxMultipartParamPatterns(ginContextRecv)...),
 			SecurityPatterns: ginSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{

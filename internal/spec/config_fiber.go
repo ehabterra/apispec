@@ -88,7 +88,7 @@ func DefaultFiberConfig() *APISpecConfig {
 				jsonUnmarshalRequestPattern("json"),
 			},
 			ResponsePatterns: responsePatterns,
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^Params$",
 					ParamIn:       "path",
@@ -113,7 +113,7 @@ func DefaultFiberConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
-			},
+			}, ctxMultipartParamPatterns(`^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`)...),
 			SecurityPatterns: fiberSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{

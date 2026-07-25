@@ -102,7 +102,7 @@ func DefaultMuxConfig() *APISpecConfig {
 			ResponsePatterns: append(netHTTPResponsePatterns(),
 				jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 			),
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				// gorilla/mux exposes path variables as a map: `mux.Vars(r)["id"]`.
 				// The parameter name is a map key, not a call argument, so names
 				// are recovered from the string-literal index keys used on the
@@ -114,7 +114,7 @@ func DefaultMuxConfig() *APISpecConfig {
 					NameFromMapKey: true,
 					RecvTypeRegex:  `^github\.com/gorilla/mux$`,
 				},
-			},
+			}, requestMultipartParamPatterns()...),
 			SecurityPatterns: muxSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{

@@ -27,6 +27,20 @@ const (
 	defaultRequestContentType  = "application/json"
 	defaultResponseContentType = "application/json"
 	defaultResponseStatus      = 200
+
+	// Request media types the mapper can synthesize from form reads. A Go
+	// handler never names either one — they are inferred from *how* it reads the
+	// body: FormValue alone is urlencoded, a file part or an explicit
+	// ParseMultipartForm/MultipartForm call makes it multipart (issue #207).
+	contentTypeFormURLEncoded = "application/x-www-form-urlencoded"
+	contentTypeMultipartForm  = "multipart/form-data"
+
+	// Sentinel ParamPattern.ParamIn values. These are not OpenAPI parameter
+	// locations: the mapper consumes them (resolveFormParams) and turns them
+	// into a request body, so none of them can reach the output as an `in:`.
+	paramInForm      = "form"
+	paramInFormFile  = "formFile"
+	paramInMultipart = "multipart"
 )
 
 // FrameworkConfig defines framework-specific extraction patterns
@@ -283,8 +297,16 @@ type ParamPattern struct {
 	RecvType          string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
 	RecvTypeRegex     string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 
-	// Parameter location and extraction
-	ParamIn       string `yaml:"paramIn,omitempty" json:"paramIn,omitempty"`             // path, query, header, cookie
+	// Parameter location and extraction. Besides the four OpenAPI locations,
+	// ParamIn accepts three sentinels that the mapper resolves into a request
+	// body rather than a parameter (see resolveFormParams):
+	//   paramInForm      — a form value, ambiguous between query and body until
+	//                      the HTTP method is known (issue #171)
+	//   paramInFormFile  — a file part; contributes a binary property and makes
+	//                      the body multipart (issue #207)
+	//   paramInMultipart — a marker call (ParseMultipartForm/MultipartForm) that
+	//                      only says "the body is multipart"; emits no parameter
+	ParamIn       string `yaml:"paramIn,omitempty" json:"paramIn,omitempty"`             // path, query, header, cookie, form, formFile, multipart
 	ParamArgIndex int    `yaml:"paramArgIndex,omitempty" json:"paramArgIndex,omitempty"` // Which arg contains parameter
 	TypeArgIndex  int    `yaml:"typeArgIndex,omitempty" json:"typeArgIndex,omitempty"`   // Which arg contains type info
 
@@ -894,6 +916,50 @@ func jsonUnmarshalRequestPattern(recvTypeRegex string) RequestBodyPattern {
 		RecvTypeRegex:        recvTypeRegex,
 		RequireRequestSource: true,
 		BodySourceArgIndex:   0,
+	}
+}
+
+// requestMultipartParamPatterns returns the multipart reads available on
+// *http.Request, shared by every net/http-based config (net/http, chi,
+// gorilla/mux) — `file, hdr, err := r.FormFile("avatar")` for a file part, and
+// `r.ParseMultipartForm(n)` / `r.MultipartReader()` as markers that say the body
+// is multipart even when no part is read by name (issue #207).
+//
+// Receiver-scoped, both because that is what these calls always were and so they
+// survive SecondaryView in a mixed-framework project (issue #211).
+func requestMultipartParamPatterns() []ParamPattern {
+	const requestRecv = "net/http.*Request"
+	return []ParamPattern{
+		{
+			CallRegex:     "^FormFile$",
+			ParamIn:       paramInFormFile,
+			ParamArgIndex: 0,
+			RecvType:      requestRecv,
+		},
+		{
+			CallRegex: "^(ParseMultipartForm|MultipartReader)$",
+			ParamIn:   paramInMultipart,
+			RecvType:  requestRecv,
+		},
+	}
+}
+
+// ctxMultipartParamPatterns returns the same two multipart reads for frameworks
+// that expose them on their own request context (gin, echo, fiber:
+// `c.FormFile("avatar")`, `c.MultipartForm()`), scoped to that context type.
+func ctxMultipartParamPatterns(recvTypeRegex string) []ParamPattern {
+	return []ParamPattern{
+		{
+			CallRegex:     "^FormFile$",
+			ParamIn:       paramInFormFile,
+			ParamArgIndex: 0,
+			RecvTypeRegex: recvTypeRegex,
+		},
+		{
+			CallRegex:     "^MultipartForm$",
+			ParamIn:       paramInMultipart,
+			RecvTypeRegex: recvTypeRegex,
+		},
 	}
 }
 

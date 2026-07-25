@@ -335,12 +335,13 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 		// r.FormValue-style reads carry the sentinel location "form", which is
 		// not a valid OpenAPI parameter location (issue #171). Resolve it to a
 		// real location from the HTTP method: for body-bearing methods
-		// (POST/PUT/PATCH) the values form an application/x-www-form-urlencoded
-		// request body; otherwise (GET/HEAD/DELETE/…) they are query params —
-		// Go's FormValue reads the URL query for those. A pre-existing request
-		// body (e.g. decoded JSON) is never clobbered: form params then fall
-		// back to query so we still emit a valid location.
-		params, formBody := resolveFormParams(route.Method, route.Params, operation.RequestBody != nil)
+		// (POST/PUT/PATCH) the values form a request body — urlencoded, or
+		// multipart/form-data when the handler reads a file part or parses a
+		// multipart form (issue #207); otherwise (GET/HEAD/DELETE/…) they are
+		// query params — Go's FormValue reads the URL query for those. A
+		// pre-existing request body (e.g. decoded JSON) is never clobbered: form
+		// params then fall back to query so we still emit a valid location.
+		params, formBody := resolveFormParams(route.Method, route.Params, operation.RequestBody != nil, route.Multipart)
 		if formBody != nil {
 			operation.RequestBody = formBody
 		}
@@ -582,35 +583,44 @@ func methodTakesRequestBody(method string) bool {
 	}
 }
 
-// resolveFormParams rewrites the sentinel "form" parameter location (emitted for
-// r.FormValue-style reads) into a valid OpenAPI shape (issue #171). Form values
-// are ambiguous in Go — FormValue reads the URL query for GET and the
-// urlencoded body for POST — so the HTTP method decides:
+// resolveFormParams rewrites the sentinel form locations (emitted for
+// r.FormValue/r.FormFile-style reads) into a valid OpenAPI shape (issues #171,
+// #207). Form values are ambiguous in Go — FormValue reads the URL query for GET
+// and the body for POST — so the HTTP method decides:
 //
 //   - body-bearing method (POST/PUT/PATCH) with no existing request body:
-//     the form params are folded into an application/x-www-form-urlencoded
-//     request body and removed from the parameter list.
+//     the form params are folded into a request body and removed from the
+//     parameter list. multipart says which media type: a file part or an
+//     explicit ParseMultipartForm/MultipartForm call makes it
+//     multipart/form-data, otherwise application/x-www-form-urlencoded.
 //   - otherwise: each form param is rewritten to `in: query`, a valid location.
+//
+// A file part has no query form, so on the fallback path file params are dropped
+// rather than mislabelled — a GET handler reading FormFile is describing a body
+// the method does not carry, and inventing `in: query, format: binary` for it
+// would be wrong rather than merely incomplete.
 //
 // hasRequestBody guards against clobbering an already-detected body (e.g.
 // decoded JSON); in that case the query-param fallback is used. Non-form
 // params pass through untouched. The input slice is never mutated.
-func resolveFormParams(method string, params []Parameter, hasRequestBody bool) ([]Parameter, *RequestBody) {
+func resolveFormParams(method string, params []Parameter, hasRequestBody, multipart bool) ([]Parameter, *RequestBody) {
 	hasForm := false
 	for i := range params {
-		if params[i].In == "form" {
+		if isFormSentinel(params[i].In) {
 			hasForm = true
 			break
 		}
 	}
-	if !hasForm {
+	// A multipart marker with no readable field still describes a multipart
+	// body, so it must not fall through to "no form params, nothing to do".
+	if !hasForm && !multipart {
 		return params, nil
 	}
 
 	kept := make([]Parameter, 0, len(params))
 	var formParams []Parameter
 	for _, p := range params {
-		if p.In == "form" {
+		if isFormSentinel(p.In) {
 			formParams = append(formParams, p)
 			continue
 		}
@@ -618,11 +628,20 @@ func resolveFormParams(method string, params []Parameter, hasRequestBody bool) (
 	}
 
 	if methodTakesRequestBody(method) && !hasRequestBody {
-		schema := &Schema{Type: "object", Properties: make(map[string]*Schema, len(formParams))}
+		schema := &Schema{Type: "object"}
 		for _, fp := range formParams {
+			// An unnamed field cannot become a property: the name is the wire
+			// key. This is a read whose argument could not be resolved to a
+			// literal, not a field called "".
+			if fp.Name == "" {
+				continue
+			}
 			s := fp.Schema
 			if s == nil {
 				s = &Schema{Type: "string"}
+			}
+			if schema.Properties == nil {
+				schema.Properties = make(map[string]*Schema, len(formParams))
 			}
 			schema.Properties[fp.Name] = s
 			if fp.Required {
@@ -630,9 +649,13 @@ func resolveFormParams(method string, params []Parameter, hasRequestBody bool) (
 			}
 		}
 		sort.Strings(schema.Required)
+		contentType := contentTypeFormURLEncoded
+		if multipart {
+			contentType = contentTypeMultipartForm
+		}
 		body := &RequestBody{
 			Content: map[string]MediaType{
-				"application/x-www-form-urlencoded": {Schema: schema},
+				contentType: {Schema: schema},
 			},
 		}
 		return kept, body
@@ -640,10 +663,19 @@ func resolveFormParams(method string, params []Parameter, hasRequestBody bool) (
 
 	// Query-param fallback (non-body methods, or a body already exists).
 	for _, fp := range formParams {
+		if fp.In == paramInFormFile {
+			continue
+		}
 		fp.In = "query"
 		kept = append(kept, fp)
 	}
 	return kept, nil
+}
+
+// isFormSentinel reports whether a parameter location is one of the form
+// sentinels the mapper consumes rather than emits.
+func isFormSentinel(in string) bool {
+	return in == paramInForm || in == paramInFormFile
 }
 
 func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {

@@ -80,7 +80,7 @@ func HTTPSecondaryConfig() *APISpecConfig {
 				jsonUnmarshalRequestPattern("json"),
 			},
 			ResponsePatterns: netHTTPResponsePatterns(),
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^Get$",
 					ParamIn:       "header",
@@ -114,7 +114,7 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvType:      "net/http.*Request",
 				},
-			},
+			}, requestMultipartParamPatterns()...),
 		},
 	}
 }

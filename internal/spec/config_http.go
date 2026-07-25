@@ -117,7 +117,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 				jsonUnmarshalRequestPattern(""),
 			},
 			ResponsePatterns: responsePatterns,
-			ParamPatterns: []ParamPattern{
+			ParamPatterns: append([]ParamPattern{
 				{
 					CallRegex:     "^FormValue$",
 					ParamIn:       "form",
@@ -159,7 +159,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvType:      "net/http.*Request",
 				},
-			},
+			}, requestMultipartParamPatterns()...),
 		},
 		Defaults: stdDefaults(http.StatusOK),
 	}
