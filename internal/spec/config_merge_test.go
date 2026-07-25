@@ -213,17 +213,12 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 			}
 		}
 
-		// gin declares no form or cookie read of its own, so anything present
-		// after the merge came from the layered net/http config — the same
-		// composition the engine performs for every non-net/http framework.
-		gin := DefaultGinConfig()
-		for _, p := range gin.Framework.ParamPatterns {
-			if p.ParamIn == "form" || p.ParamIn == "cookie" {
-				t.Fatalf("gin now declares a %s pattern (%s); this test no longer isolates the merged net/http one",
-					p.ParamIn, p.CallRegex)
-			}
-		}
-		merged := MergeFrameworkConfigs(gin, SecondaryView(HTTPSecondaryConfig()))
+		// Both must survive the view and land in a primary. The primary here is
+		// empty on purpose: a framework preset that happens to declare its own
+		// form or cookie read would mask the merged pattern, and which presets do
+		// that changes as configs grow — so isolation comes from the primary
+		// carrying nothing, not from picking today's framework that happens to.
+		merged := MergeFrameworkConfigs(&APISpecConfig{}, SecondaryView(HTTPSecondaryConfig()))
 		got := map[string]string{}
 		for _, p := range merged.Framework.ParamPatterns {
 			if p.ParamIn == "form" || p.ParamIn == "cookie" {
@@ -232,8 +227,22 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 		}
 		for regex, in := range want {
 			if got[regex] != in {
-				t.Errorf("after merge: %s -> in:%q, want %q; have %v", regex, got[regex], in, got)
+				t.Errorf("after merge into an empty primary: %s -> in:%q, want %q; have %v", regex, got[regex], in, got)
 			}
+		}
+
+		// And through the composition the engine actually performs: a gin
+		// primary with the net/http surface layered under it. gin declares no
+		// cookie read of its own, so a cookie pattern here came from the merge.
+		ginMerged := MergeFrameworkConfigs(DefaultGinConfig(), SecondaryView(HTTPSecondaryConfig()))
+		var cookieFromMerge bool
+		for _, p := range ginMerged.Framework.ParamPatterns {
+			if p.CallRegex == "^Cookie$" && p.ParamIn == "cookie" && p.RecvType == requestRecv {
+				cookieFromMerge = true
+			}
+		}
+		if !cookieFromMerge {
+			t.Error("gin primary + net/http secondary: the *http.Request Cookie pattern did not survive the merge")
 		}
 	})
 
