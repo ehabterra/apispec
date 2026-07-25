@@ -188,6 +188,55 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 		}
 	})
 
+	t.Run("net/http FormValue and Cookie reach a non-http primary", func(t *testing.T) {
+		// The two patterns HTTPSecondaryConfig gained with this scoping. They are
+		// only useful through the merge — the net/http surface is layered under
+		// every other framework — so all three steps are checked: the secondary
+		// config declares them scoped, SecondaryView keeps them (an unscoped
+		// pattern would be filtered), and they land in a primary that has neither.
+		const requestRecv = "net/http.*Request"
+		want := map[string]string{"^FormValue$": "form", "^Cookie$": "cookie"}
+
+		found := map[string]bool{}
+		for _, p := range HTTPSecondaryConfig().Framework.ParamPatterns {
+			if in, ok := want[p.CallRegex]; ok && p.ParamIn == in {
+				found[p.CallRegex] = true
+				if p.RecvType != requestRecv {
+					t.Errorf("%s pattern recvType = %q, want %q — an unscoped pattern is dropped from a secondary view",
+						p.CallRegex, p.RecvType, requestRecv)
+				}
+			}
+		}
+		for regex, in := range want {
+			if !found[regex] {
+				t.Errorf("HTTPSecondaryConfig is missing the %s -> in:%s pattern", regex, in)
+			}
+		}
+
+		// gin declares no form or cookie read of its own, so anything present
+		// after the merge came from the layered net/http config — the same
+		// composition the engine performs for every non-net/http framework.
+		gin := DefaultGinConfig()
+		for _, p := range gin.Framework.ParamPatterns {
+			if p.ParamIn == "form" || p.ParamIn == "cookie" {
+				t.Fatalf("gin now declares a %s pattern (%s); this test no longer isolates the merged net/http one",
+					p.ParamIn, p.CallRegex)
+			}
+		}
+		merged := MergeFrameworkConfigs(gin, SecondaryView(HTTPSecondaryConfig()))
+		got := map[string]string{}
+		for _, p := range merged.Framework.ParamPatterns {
+			if p.ParamIn == "form" || p.ParamIn == "cookie" {
+				got[p.CallRegex] = p.ParamIn
+			}
+		}
+		for regex, in := range want {
+			if got[regex] != in {
+				t.Errorf("after merge: %s -> in:%q, want %q; have %v", regex, got[regex], in, got)
+			}
+		}
+	})
+
 	t.Run("nil secondaries are ignored", func(t *testing.T) {
 		primary := DefaultMuxConfig()
 		before := len(primary.Framework.RoutePatterns)
