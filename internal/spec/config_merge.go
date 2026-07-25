@@ -132,6 +132,14 @@ func HTTPSecondaryConfig() *APISpecConfig {
 // not be traced — scoping those patterns in their home config is the
 // eventual fix (tracked with cross-framework mount composition in issue
 // #138). The receiving config is untouched; a filtered copy is returned.
+//
+// ExternalTypes survive unfiltered: they are keyed by a fully-qualified type
+// name (`github.com/gin-gonic/gin.H`), which is a scope no weaker than a
+// receiver constraint — the entry can only ever claim its own framework's
+// type. Dropping them was the last thing that still made the *output* depend
+// on which framework happened to be primary (issue #212): a gin.H body
+// documented as a config-mapped object when gin led, and as the generic
+// "External or unresolved type" fallback when it did not.
 func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	if cfg == nil {
 		return nil
@@ -139,6 +147,9 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	out := &APISpecConfig{Framework: FrameworkConfig{
 		RequestContext: cfg.Framework.RequestContext,
 	}}
+	// Copied rather than aliased so an append by a later caller cannot reach
+	// the source config's backing array.
+	out.ExternalTypes = append(out.ExternalTypes, cfg.ExternalTypes...)
 	for _, p := range cfg.Framework.RoutePatterns {
 		if p.RecvType != "" || p.RecvTypeRegex != "" {
 			out.Framework.RoutePatterns = append(out.Framework.RoutePatterns, p)
@@ -175,8 +186,11 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 // MergeFrameworkConfigs layers secondary framework configs under the primary:
 // pattern lists are appended in order with first-occurrence-wins dedupe (the
 // primary's variant of a pattern always beats a secondary's), and the request
-// context accumulates unique type regexes and body accessors. Info, Defaults,
-// overrides and mappings stay the primary's alone. The primary is mutated and
+// context accumulates unique type regexes and body accessors. ExternalTypes
+// merge the same way, keyed by type name (issue #212) — every other framework
+// preset carries only its own types, so the union is what "both frameworks are
+// present" means. Info, Defaults, overrides and mappings stay the primary's
+// alone. The primary is mutated and
 // returned; a nil primary returns nil (mirroring SecondaryView's guard, since
 // both are exported through the public spec package).
 func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig) *APISpecConfig {
@@ -206,6 +220,10 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 	seenSec := map[string]bool{}
 	for _, p := range primary.Framework.SecurityPatterns {
 		seenSec[patternKey(p.CallRegex, p.RecvTypeRegex, string(p.Scope))] = true
+	}
+	seenExt := map[string]bool{}
+	for _, e := range primary.ExternalTypes {
+		seenExt[e.Name] = true
 	}
 
 	for _, sec := range secondaries {
@@ -246,6 +264,14 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 			if k := patternKey(p.CallRegex, p.RecvTypeRegex, string(p.Scope)); !seenSec[k] {
 				seenSec[k] = true
 				primary.Framework.SecurityPatterns = append(primary.Framework.SecurityPatterns, p)
+			}
+		}
+		// Type-name-keyed, so a secondary's entry cannot shadow a type it does
+		// not own; the primary's entry still wins a genuine name collision.
+		for _, e := range sec.ExternalTypes {
+			if !seenExt[e.Name] {
+				seenExt[e.Name] = true
+				primary.ExternalTypes = append(primary.ExternalTypes, e)
 			}
 		}
 		primary.Framework.RequestContext.TypeRegexes = appendUniqueStrings(

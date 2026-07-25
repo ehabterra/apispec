@@ -568,12 +568,29 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// Detect frameworks and load configuration. The first-seen framework is
 	// the primary (whose Defaults/Info and unscoped helper patterns apply);
 	// any further recognised frameworks merge in below as scoped views.
+	//
+	// "First-seen" is file-walk order, so it is a property of the filenames
+	// rather than of the API (issue #212). That is only tolerable because the
+	// merge is symmetric for extraction: every framework's own patterns are
+	// receiver-scoped (#211) and its ExternalTypes are carried, so a framework
+	// documents the same surface whether or not it leads. What the primary
+	// still decides is Info/Defaults — identical across the built-in presets
+	// today. TestPrimaryFrameworkOrderInvariance pins the property, so a preset
+	// that reintroduces a primary-only asymmetry fails there rather than in
+	// someone's spec after a rename.
 	detector := core.NewFrameworkDetector()
 	frameworks, err := detector.DetectAll(e.config.moduleRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect framework: %w", err)
 	}
 	framework := frameworks[0]
+	if len(frameworks) > 1 {
+		// Which framework led was previously invisible; if a primary-only
+		// asymmetry ever does reach the output, this is what makes it
+		// diagnosable instead of mysterious.
+		NewVerboseLogger(e.config.Verbose).Printf("Frameworks detected: %v (primary: %s, merged as scoped views: %v)\n",
+			frameworks, framework, frameworks[1:])
+	}
 
 	var apispecConfig *spec.APISpecConfig
 	if e.config.APISpecConfig != nil {
