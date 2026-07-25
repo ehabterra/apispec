@@ -122,6 +122,9 @@ func DefaultHTTPConfig() *APISpecConfig {
 					CallRegex:     "^FormValue$",
 					ParamIn:       "form",
 					ParamArgIndex: 0,
+					// On *http.Request, not the router: scoping lets it survive
+					// SecondaryView (issue #211).
+					RecvType: "net/http.*Request",
 				},
 				{
 					// r.Header.Get("X-Foo") — scope to the http.Header
@@ -145,6 +148,9 @@ func DefaultHTTPConfig() *APISpecConfig {
 					CallRegex:     "^Cookie$",
 					ParamIn:       "cookie",
 					ParamArgIndex: 0,
+					// On *http.Request, not the router: scoping lets it survive
+					// SecondaryView (issue #211).
+					RecvType: "net/http.*Request",
 				},
 				{
 					// Go 1.22 ServeMux path wildcards: id := r.PathValue("id")

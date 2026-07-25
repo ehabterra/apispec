@@ -123,6 +123,9 @@ func DefaultFiberConfig() *APISpecConfig {
 					PathArgIndex:   0,
 					RouterArgIndex: 1,
 					IsMount:        true,
+					// Scoped like the sibling ^Group$ pattern, so it survives
+					// SecondaryView when fiber is not primary (issue #211).
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
 				},
 				{
 					CallRegex:      `^Group$`,

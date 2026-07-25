@@ -123,6 +123,9 @@ func DefaultChiConfig() *APISpecConfig {
 					CallRegex:     "^FormValue$",
 					ParamIn:       "form",
 					ParamArgIndex: 0,
+					// On *http.Request, not the router: scoping lets it survive
+					// SecondaryView (issue #211).
+					RecvType: "net/http.*Request",
 				},
 				{
 					CallRegex:     "^Get$",
