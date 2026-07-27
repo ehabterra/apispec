@@ -71,3 +71,6 @@ video-kit/parts/
 apispecui
 apispec
 apidiag
+
+# a `go build` inside a testdata fixture module drops its binary beside main.go
+testdata/cli_entrypoint_routes/cli_entrypoint_routes

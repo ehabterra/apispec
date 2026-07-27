@@ -72,6 +72,13 @@ type FrameworkConfig struct {
 	// Mount/subrouter patterns
 	MountPatterns []MountPattern `yaml:"mountPatterns" json:"mountPatterns,omitempty"`
 
+	// EntrypointPatterns name func-typed struct fields whose stored value is a
+	// program entrypoint invoked by a library dispatcher rather than by any call
+	// in this module — `&cli.Command{Action: runWeb}`, `&cobra.Command{RunE: …}`.
+	// A function parked in such a field has no incoming call edge, so tree
+	// expansion from main can never reach it (issue #220).
+	EntrypointPatterns []EntrypointPattern `yaml:"entrypointPatterns,omitempty" json:"entrypointPatterns,omitempty"`
+
 	// Security/auth middleware patterns. These recognise middleware-application
 	// calls (e.g. r.Use, r.With, Group(mw...), per-route middleware args, or
 	// handler-wrapping) and describe the SCOPE over which the middleware
@@ -91,6 +98,41 @@ type FrameworkConfig struct {
 	// is only treated as a response when x traces to the response writer. Used to
 	// gate ResponsePattern.RequireResponseDestination. See issue #170.
 	ResponseContext ResponseContextConfig `yaml:"responseContext,omitempty" json:"responseContext,omitempty"`
+}
+
+// EntrypointPattern declares that a function stored into a named struct field is
+// an entrypoint: something a library calls back, with no call edge from this
+// module to prove it (issue #220).
+//
+// This is what makes CLI-dispatched projects documentable. In gitea, photoprism
+// and any urfave/cli or cobra program, every route registration hangs off
+// `Action`/`RunE`, and the dispatcher that invokes it lives in the library — a
+// package apispec never loads. There is no call edge to follow, so the whole
+// registration subtree is unreachable from main and the project documents zero
+// routes.
+//
+// Matching deliberately needs nothing from the owning package. The *literal* is
+// written in the analysed module (`&cli.Command{Action: runWeb}`), so metadata
+// records its type name (`github.com/urfave/cli/v2.Command`) and the field's
+// value even though urfave/cli itself is never analysed. That is also why the
+// field's declared type is not consulted: for an external struct there is no
+// field list to consult, and `Action` is the named type `cli.ActionFunc` rather
+// than a literal `func(...)` anyway.
+//
+// Config-driven on purpose (golden rule #5): presets ship for the common command
+// libraries (config_entrypoints.go) keyed on the project's imports, and a project
+// with a house dispatcher declares its own field without touching apispec.
+type EntrypointPattern struct {
+	// FieldRegex matches the field name holding the function, e.g. `^Action$`
+	// or `^(Run|RunE)$`.
+	FieldRegex string `yaml:"fieldRegex,omitempty" json:"fieldRegex,omitempty"`
+
+	// RecvType / RecvTypeRegex constrain the struct type that owns the field, as
+	// rendered in metadata: `github.com/urfave/cli/v2.Command`. An unconstrained
+	// pattern would claim every same-named field in the project, so one of these
+	// should always be set.
+	RecvType      string `yaml:"recvType,omitempty" json:"recvType,omitempty"`
+	RecvTypeRegex string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 }
 
 // ResponseContextConfig identifies the HTTP response writer for a framework so

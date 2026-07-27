@@ -116,6 +116,17 @@ type LazyTree struct {
 	// style that left gitea with zero routes (issue #143).
 	funcFieldImpls funcFieldDispatch
 
+	// entrypointPatterns declare func-typed fields whose stored value a library
+	// calls back with no edge from this module, so the function must be rooted
+	// for its subtree to exist at all (issue #220). Empty unless the project
+	// imports a command library (or declares its own pattern).
+	entrypointPatterns []EntrypointPattern
+	// routeMatch gates which entrypoints earn a root: only those whose subtree
+	// can reach a route registration.
+	routeMatch func(*metadata.CallGraphEdge) bool
+	// logger reports how many entrypoints were rooted vs skipped.
+	logger metadata.VerboseLogger
+
 	// argInstanceIDs holds the exact (position-qualified) IDs of every
 	// top-level call argument in the graph. Used by edgesFor to skip a
 	// callee edge only when THAT call site is already represented as an
@@ -200,7 +211,9 @@ func (t *LazyTree) buildRelations() {
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
 	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
-	t.funcFieldImpls = buildFuncFieldDispatch(meta)
+	var entrypointKeys []string
+	t.funcFieldImpls, entrypointKeys = buildFuncFieldDispatch(meta, t.entrypointPatterns)
+	t.addEntrypointRoots(entrypointKeys)
 
 	for i := range meta.CallGraph {
 		for _, arg := range meta.CallGraph[i].Args {
@@ -380,6 +393,39 @@ func WithHandlerInterfaceMethods(methods []string) LazyTreeOption {
 	return func(t *LazyTree) { t.handlerMethods = methods }
 }
 
+// WithEntrypoints declares the func-typed fields whose stored functions a library
+// dispatcher invokes, plus the predicate that decides whether an entrypoint's
+// subtree reaches a route registration (issue #220). Without it the tree keeps
+// its main-only roots.
+func WithEntrypoints(patterns []EntrypointPattern, routeMatch func(*metadata.CallGraphEdge) bool, logger metadata.VerboseLogger) LazyTreeOption {
+	return func(t *LazyTree) {
+		t.entrypointPatterns = patterns
+		t.routeMatch = routeMatch
+		t.logger = logger
+	}
+}
+
+// addEntrypointRoots appends a root per qualifying entrypoint. Called from
+// buildRelations (which every expansion path already goes through) rather than
+// from the constructor, because the candidate set comes out of the same walk that
+// builds the func-field index.
+func (t *LazyTree) addEntrypointRoots(candidates []string) {
+	if len(candidates) == 0 || t.routeMatch == nil {
+		return
+	}
+	existing := make(map[string]bool, len(t.roots))
+	for _, r := range t.roots {
+		existing[metadata.StripToBase(r.GetKey())] = true
+	}
+	for _, key := range entrypointRoots(t.meta, candidates, t.routeMatch, t.logger) {
+		if existing[key] {
+			continue
+		}
+		existing[key] = true
+		t.roots = append(t.roots, &LazyNode{tree: t, key: key})
+	}
+}
+
 func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits, opts ...LazyTreeOption) *LazyTree {
 	t := &LazyTree{
 		meta:        meta,
@@ -428,10 +474,17 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 }
 
 // GetRoots implements TrackerTreeInterface.
+//
+// buildRelations runs here, not just on first expansion: entrypoint roots
+// (issue #220) come out of the same walk that builds the func-field index, and
+// the extractor asks for roots BEFORE it expands anything. Deferring left the
+// extra roots invisible — the tree had them, nobody ever saw them. The call is
+// memoized, so this only moves work that every expansion path pays anyway.
 func (t *LazyTree) GetRoots() []TrackerNodeInterface {
 	if t == nil {
 		return nil
 	}
+	t.buildRelations()
 	return t.roots
 }
 

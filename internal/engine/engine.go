@@ -630,6 +630,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// The engine stays framework-agnostic: this only augments config data.
 	intspec.ApplySecurityPresets(apispecConfig, meta)
 
+	// Entrypoint presets: which struct fields a command library dispatches
+	// through (urfave/cli's Action, cobra's Run/RunE, …), keyed on the project's
+	// imports. A function parked in such a field has no call edge from main, so
+	// without this the route-registration subtree of a CLI-dispatched program is
+	// unreachable and the project documents nothing (issue #220). Inert for a
+	// project that imports none of them; a user config keeps precedence and can
+	// declare its own field for a house dispatcher.
+	intspec.ApplyEntrypointPresets(apispecConfig, meta)
+
 	// Set info from configuration (only if not already set in APISpecConfig)
 	if apispecConfig.Info.Title == "" {
 		apispecConfig.Info.Title = e.config.Title
@@ -686,11 +695,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	var tree intspec.TrackerTreeInterface
 	if e.config.UseLazyTracker {
 		tree = intspec.NewLazyTree(meta, limits,
-			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
+			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
+			intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
+				intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)))
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
 	} else {
 		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose),
-			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
+			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
+			intspec.WithEagerEntrypoints(apispecConfig.Framework.EntrypointPatterns,
+				intspec.RouteRegistrationMatcher(apispecConfig, meta)))
 		e.reportPhase("tracker tree built", time.Since(tTree))
 	}
 	if err := e.ctx().Err(); err != nil {
