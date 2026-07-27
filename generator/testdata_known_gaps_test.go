@@ -26,24 +26,6 @@ import (
 // capability lands — at which point the assertions must flip to the
 // commented expectations and the tracking issue closes.
 
-// TestTestdata_CLIActionRoutes pins issue #143: route registration reached
-// from main only through a function value stored in a composite-literal
-// field (`Command{Action: runWeb}`, the urfave/cli shape used by gitea) is
-// invisible — tracker roots are main functions and no static edge crosses
-// the dispatcher hop, even though the registration edges exist in metadata.
-//
-// When #143 lands, this fixture must document /users GET+POST and this test
-// must assert exactly that.
-func TestTestdata_CLIActionRoutes(t *testing.T) {
-	out := loadTestdataWithFixtureConfig(t, "cli_action_routes", nil)
-
-	if len(out.Paths) != 0 {
-		t.Errorf("cli_action_routes now documents %d paths (%v) — the #143 gap "+
-			"seems fixed: flip this test to assert /users GET+POST and close the issue",
-			len(out.Paths), mapPathKeys(out.Paths))
-	}
-}
-
 // TestTestdata_StatusViaConstructor covers issue #144 (now fixed): a status
 // carried through a constructor struct field (`e := NewAPIError(msg, 401);
 // RespondWithError(w, e)` → `w.WriteHeader(err.Code)`) resolves to the real

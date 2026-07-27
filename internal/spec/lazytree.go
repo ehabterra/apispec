@@ -111,6 +111,11 @@ type LazyTree struct {
 	// later router wiring. Nested by scope to avoid a key concatenation per
 	// child instantiation (visible in profiles).
 	instanceCount map[string]map[string]int
+	// funcFieldImpls resolves a call through a func-typed struct field
+	// (c.Action()) to the functions that field holds — the urfave/cli wiring
+	// style that left gitea with zero routes (issue #143).
+	funcFieldImpls funcFieldDispatch
+
 	// argInstanceIDs holds the exact (position-qualified) IDs of every
 	// top-level call argument in the graph. Used by edgesFor to skip a
 	// callee edge only when THAT call site is already represented as an
@@ -195,6 +200,7 @@ func (t *LazyTree) buildRelations() {
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
 	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
+	t.funcFieldImpls = buildFuncFieldDispatch(meta)
 
 	for i := range meta.CallGraph {
 		for _, arg := range meta.CallGraph[i].Args {
@@ -740,6 +746,13 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 			for _, implKey := range t.implementerKeys(calleePkg, calleeRecv, calleeName) {
 				expandKey(implKey)
 			}
+		}
+		// Func-typed field callee (c.Action() on a cli.Command): the field is a
+		// dispatch point just like an interface method, and the functions
+		// recorded for it are the bodies to follow (issue #143). Without this,
+		// the whole registration subtree behind a CLI dispatcher is unreachable.
+		for _, fnKey := range t.funcFieldImpls.keysFor(meta, n.edge) {
+			expandKey(fnKey)
 		}
 	}
 	// Method-value handler (g.GET("/", h.GetUsers)): the argument is a
