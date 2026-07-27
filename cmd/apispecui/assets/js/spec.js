@@ -239,6 +239,12 @@ function Onboarding({ s, onGenerate, onBrowse }) {
             >
               ${s.supportedFrameworks.map((f) => html`<option value=${f}>${f}</option>`)}
             </select>
+            ${(s.detectedFrameworks || []).length > 1
+              ? html`<div class="muted sm" style="margin-top:4px">
+                  Also detected: ${s.detectedFrameworks.filter((f) => f !== s.framework).join(", ")} —
+                  merged in, so their routes are documented too. The selection only decides which one leads.
+                </div>`
+              : ""}
           </div>
           <div class="field">
             <label>Analysis engine <span class="muted">(lazy is recommended)</span></label>

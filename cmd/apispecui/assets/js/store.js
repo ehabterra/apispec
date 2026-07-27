@@ -10,6 +10,9 @@ const state = {
   modulePath: "",
   framework: "net/http",
   supportedFrameworks: ["gin", "chi", "echo", "fiber", "mux", "net/http"],
+  // Everything detection found, in first-seen order; the first leads and the
+  // rest merge under it (issue #212).
+  detectedFrameworks: [],
   openapiVersion: "3.1.0",
   legacyTracker: false, // analysis engine: false = lazy tracker (default), true = legacy eager
   // Full structured config edited by Configure mode. Seeded from

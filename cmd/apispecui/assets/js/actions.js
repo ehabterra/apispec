@@ -60,6 +60,10 @@ export function applyDetect(d) {
     moduleRoot: d.moduleRoot || "",
     modulePath: d.modulePath || "",
     framework: d.detectedFramework || getState().framework,
+    // Every framework the project uses, not just the one that leads: which one
+    // leads is decided by file-walk order (issue #212), so naming it alone
+    // reads as "this is a mux project" for a project that serves gin.
+    detectedFrameworks: d.detectedFrameworks || [],
     supportedFrameworks: d.supportedFrameworks || getState().supportedFrameworks,
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,

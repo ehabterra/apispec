@@ -726,10 +726,24 @@ func (s *UIServer) handleProject(w http.ResponseWriter, r *http.Request) {
 // reload the pattern editors when the user changes the framework selector.
 func (s *UIServer) handleDefaultFramework(w http.ResponseWriter, r *http.Request) {
 	fw := r.URL.Query().Get("framework")
-	if fw == "" {
-		fw = "net/http"
+
+	// Compose for THIS project rather than returning the framework's patterns
+	// in isolation. The UI posts whatever is in its pattern editors straight
+	// back, and those replace the composed lists on the server — so handing back
+	// a single framework here silently undoes the multi-framework merge the
+	// moment the user touches the selector, which is the same zero-routes bug
+	// one level down (a gin project whose primary detects as `mux` documents
+	// nothing). Selecting a framework decides which one LEADS; the rest still
+	// merge under it.
+	cfg, frameworks, err := engine.ComposeFrameworkConfigWithPrimary(s.currentDir(), fw)
+	if err != nil || cfg == nil {
+		if fw == "" {
+			fw = "net/http"
+		}
+		cfg = defaultConfigForFramework(fw)
+	} else if len(frameworks) > 0 {
+		fw = frameworks[0]
 	}
-	cfg := defaultConfigForFramework(fw)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"framework":       fw,
 		"frameworkConfig": cfg.Framework,
