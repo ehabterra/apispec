@@ -539,6 +539,14 @@ func ComposeFrameworkConfigWithPrimary(dir, primary string) (*spec.APISpecConfig
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to detect framework: %w", err)
 	}
+	cfg, ordered := ComposeFrameworkConfigFrom(frameworks, primary)
+	return cfg, ordered, nil
+}
+
+// ComposeFrameworkConfigFrom is the composition itself, for callers that have
+// already detected the frameworks — detection parses the imports of every Go file
+// in the project, so doing it twice for one run is pure waste.
+func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APISpecConfig, []string) {
 	if len(frameworks) == 0 {
 		frameworks = []string{"net/http"}
 	}
@@ -580,7 +588,7 @@ func ComposeFrameworkConfigWithPrimary(dir, primary string) (*spec.APISpecConfig
 	if primary != "net/http" {
 		cfg = spec.MergeFrameworkConfigs(cfg, spec.HTTPSecondaryConfig())
 	}
-	return cfg, frameworks, nil
+	return cfg, frameworks
 }
 
 func defaultFrameworkConfig(framework string) *spec.APISpecConfig {
@@ -671,11 +679,9 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 	} else {
-		// Detected frameworks, composed the one way everything composes them.
-		apispecConfig, _, err = ComposeFrameworkConfig(e.config.moduleRoot)
-		if err != nil {
-			return nil, err
-		}
+		// Composed the one way everything composes them — from the frameworks
+		// detected above, so the import scan happens once per run.
+		apispecConfig, _ = ComposeFrameworkConfigFrom(frameworks, "")
 	}
 
 	// Merge built-in auth/security library presets based on the project's
