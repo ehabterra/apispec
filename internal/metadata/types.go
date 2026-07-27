@@ -16,6 +16,7 @@ package metadata
 
 import (
 	"fmt"
+	"go/types"
 	"maps"
 	"regexp"
 	"slices"
@@ -135,7 +136,27 @@ type Metadata struct {
 	Callers         map[string][]*CallGraphEdge `yaml:"-"`
 	ParentFunctions map[string][]*CallGraphEdge `yaml:"-"`
 	Callees         map[string][]*CallGraphEdge `yaml:"-"`
-	Args            map[string][]*CallGraphEdge `yaml:"-"`
+	// calleeByNamePkg indexes edges by pooled (callee name, callee pkg) — see
+	// calleeEdgesByNamePkg. Not serialised; rebuilt by BuildCallGraphMaps.
+	calleeByNamePkg map[calleeNamePkg][]*CallGraphEdge
+	// calleeIndexEdges is len(CallGraph) when calleeByNamePkg was built; a
+	// mismatch means the graph has grown since and the index must not be used.
+	calleeIndexEdges int
+	// typeStrCache memoizes go/types rendering — see typeStringOf.
+	typeStrCache map[types.Type]string
+	typeStrMutex sync.RWMutex
+	// implementersCache memoizes ImplementersOf, which otherwise re-scans every
+	// package and type (with two sorts) on every call.
+	implementersCache map[string][]string
+	implementersMutex sync.RWMutex
+	// sortedFiles caches each package's file names in sorted order, with the
+	// file count they were sorted at. Kept here rather than on Package because
+	// Package is copied and serialised — a mutex on it would make it
+	// non-copyable (govet copylocks) and leak into the YAML goldens.
+	sortedFiles      map[string][]string
+	sortedFilesFor   map[string]int
+	sortedFilesMutex sync.RWMutex
+	Args             map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
 
@@ -201,11 +222,19 @@ type TraceVariableResult struct {
 	CallerFuncName string
 }
 
+// calleeNamePkg keys the callee (name, pkg) index by POOLED indices — the same
+// ints the callers compare, so a lookup needs no string work.
+type calleeNamePkg struct {
+	name int
+	pkg  int
+}
+
 // BuildCallGraphMaps builds the various lookup maps
 func (m *Metadata) BuildCallGraphMaps() {
 	m.Callers = make(map[string][]*CallGraphEdge)
 	m.Callees = make(map[string][]*CallGraphEdge)
 	m.Args = make(map[string][]*CallGraphEdge)
+	m.calleeByNamePkg = make(map[calleeNamePkg][]*CallGraphEdge)
 	m.callDepth = map[string]int{}
 
 	for i := range m.CallGraph {
@@ -216,6 +245,12 @@ func (m *Metadata) BuildCallGraphMaps() {
 
 		m.Callers[callerBase] = append(m.Callers[callerBase], edge)
 		m.Callees[calleeBase] = append(m.Callees[calleeBase], edge)
+		// Buckets are appended in CallGraph order, so iterating one yields the
+		// matching edges in exactly the order a linear scan would visit them.
+		// That is what lets the index replace the scan without changing which
+		// edge wins (see calleeEdgesByNamePkg).
+		nk := calleeNamePkg{name: edge.Callee.Name, pkg: edge.Callee.Pkg}
+		m.calleeByNamePkg[nk] = append(m.calleeByNamePkg[nk], edge)
 
 		// Index arguments by their base IDs
 		for _, arg := range edge.Args {
@@ -223,6 +258,113 @@ func (m *Metadata) BuildCallGraphMaps() {
 			m.Args[argBase] = append(m.Args[argBase], edge)
 		}
 	}
+	m.calleeIndexEdges = len(m.CallGraph)
+}
+
+// calleeEdgesByNamePkg returns the edges whose callee is (name, pkg), in
+// CallGraph order, and whether the index could answer at all.
+//
+// It exists to replace a linear scan of every edge — which cost 21% of total
+// runtime on a 76k-edge project, since the scan runs per traced variable. The
+// contract is deliberately narrow so that swapping it in cannot change results:
+//
+//   - buckets are built in CallGraph order, so "the first matching edge" means
+//     the same edge either way;
+//   - ok is false unless the index was built for EXACTLY the current edge count.
+//     TraceVariableOrigin runs during call-graph construction too, while edges
+//     are still being appended and no index exists yet; those callers keep
+//     scanning. The count check is what keeps a half-built graph from being
+//     answered from a stale index.
+//
+// Like Callers/Callees, this relies on edges not being mutated after
+// BuildCallGraphMaps — the invariant those maps already depend on.
+func (m *Metadata) calleeEdgesByNamePkg(name, pkg int) (edges []*CallGraphEdge, ok bool) {
+	if m.calleeByNamePkg == nil || m.calleeIndexEdges != len(m.CallGraph) {
+		return nil, false
+	}
+	return m.calleeByNamePkg[calleeNamePkg{name: name, pkg: pkg}], true
+}
+
+// SortedFileNames returns a package's file names in sorted order.
+//
+// Sorting IS the determinism guarantee (golden rule #1): several lookups pick
+// "the first file that declares X", so the order decides the answer. This removes
+// only the repeated sorting, never the order — what it returns is exactly what
+// sorting the keys produces, and the cache is rebuilt whenever the file count
+// changes, since metadata is still being assembled while some of these lookups
+// run.
+func (m *Metadata) SortedFileNames(pkgName string) []string {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	m.sortedFilesMutex.RLock()
+	names, cached := m.sortedFiles[pkgName]
+	builtFor := m.sortedFilesFor[pkgName]
+	m.sortedFilesMutex.RUnlock()
+	if cached && builtFor == len(pkg.Files) {
+		return names
+	}
+
+	m.sortedFilesMutex.Lock()
+	defer m.sortedFilesMutex.Unlock()
+	if names, ok := m.sortedFiles[pkgName]; ok && m.sortedFilesFor[pkgName] == len(pkg.Files) {
+		return names // another goroutine won the race
+	}
+	names = slices.Sorted(maps.Keys(pkg.Files))
+	if m.sortedFiles == nil {
+		m.sortedFiles = make(map[string][]string, len(m.Packages))
+		m.sortedFilesFor = make(map[string]int, len(m.Packages))
+	}
+	m.sortedFiles[pkgName] = names
+	m.sortedFilesFor[pkgName] = len(pkg.Files)
+	return names
+}
+
+// ImplementersOf returns "pkg.Type" for every recorded type that implements the
+// named interface, in sorted order, memoized per interface key.
+//
+// The relation is read from the concrete side (Type.Implements) because an
+// interface declared outside the analysed set — net/http.Handler — has no Type
+// entry of its own to carry ImplementedBy.
+//
+// This is a query over recorded facts, so it belongs here rather than in the
+// spec layer, and it is memoized because the uncached version scans every
+// package × every type and sorted both key sets on EVERY call: 474MB of
+// allocation on a large project, since handler-value resolution asks per node.
+//
+// Determinism: the result is built by iterating sorted keys, so it is identical
+// to the uncached computation, and the cache itself is never iterated. Callers
+// must treat the returned slice as read-only — it is shared.
+func (m *Metadata) ImplementersOf(ifaceKey string) []string {
+	if m == nil || ifaceKey == "" {
+		return nil
+	}
+	m.implementersMutex.RLock()
+	cached, ok := m.implementersCache[ifaceKey]
+	m.implementersMutex.RUnlock()
+	if ok {
+		return cached
+	}
+
+	want := m.StringPool.Get(ifaceKey)
+	var out []string
+	for _, pkgName := range slices.Sorted(maps.Keys(m.Packages)) {
+		p := m.Packages[pkgName]
+		for _, typeName := range slices.Sorted(maps.Keys(p.Types)) {
+			if slices.Contains(p.Types[typeName].Implements, want) {
+				out = append(out, pkgName+"."+typeName)
+			}
+		}
+	}
+
+	m.implementersMutex.Lock()
+	if m.implementersCache == nil {
+		m.implementersCache = make(map[string][]string, 8)
+	}
+	m.implementersCache[ifaceKey] = out
+	m.implementersMutex.Unlock()
+	return out
 }
 
 // IsSubset checks if array 'a' is a subset of array 'b'
@@ -1137,7 +1279,7 @@ func (m *Metadata) ProcessFunctionReturnTypes() {
 	// so map-range order here would leak into the serialized metadata.
 	for _, pkgName := range m.SortedPackageNames() {
 		pkg := m.Packages[pkgName]
-		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+		for _, fileName := range m.SortedFileNames(pkgName) {
 			file := pkg.Files[fileName]
 			// Process functions
 			for _, funcName := range slices.Sorted(maps.Keys(file.Functions)) {
@@ -1384,7 +1526,7 @@ func (m *Metadata) resolveSelectorReturnType(returnVar *CallArgument, pkgName st
 func (m *Metadata) FindFieldType(baseType, fieldName string) (string, bool) {
 	for _, pkgName := range m.SortedPackageNames() {
 		pkg := m.Packages[pkgName]
-		for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+		for _, fileName := range m.SortedFileNames(pkgName) {
 			file := pkg.Files[fileName]
 			typeNames := []string{baseType, pkgName + "." + baseType}
 			for _, typeName := range typeNames {

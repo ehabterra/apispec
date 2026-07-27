@@ -145,10 +145,10 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 					}
 				}
 				if typeStr == "" {
-					typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+					typeStr = strings.TrimPrefix(typeStringOf(meta, obj.Type()), pkg+defaultSep)
 				}
 
-				if obj.Type().String() == "untyped nil" {
+				if typeStringOf(meta, obj.Type()) == "untyped nil" {
 					typeStr = "nil"
 					pkg = ""
 				}
@@ -204,7 +204,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 					if method, ok := obj.(*types.Func); ok && method.Type() != nil {
 						if sig, ok := method.Type().(*types.Signature); ok && sig.Recv() != nil {
 							recv := sig.Recv()
-							receiverType := recv.Type().String()
+							receiverType := typeStringOf(meta, recv.Type())
 							// Remove pointer prefix if present
 							receiverType = strings.TrimPrefix(receiverType, "*")
 							// Remove package prefix to get just the type name
@@ -220,7 +220,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 					}
 
 				}
-				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+				typeStr = strings.TrimPrefix(typeStringOf(meta, obj.Type()), pkg+defaultSep)
 			}
 		}
 	}
@@ -280,7 +280,7 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	if info != nil {
 		if rt := info.TypeOf(e); rt != nil {
 			if _, isTuple := rt.(*types.Tuple); !isTuple {
-				arg.SetType(rt.String())
+				arg.SetType(typeStringOf(meta, rt))
 			}
 		}
 	}

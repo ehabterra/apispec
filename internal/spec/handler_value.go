@@ -15,8 +15,6 @@
 package spec
 
 import (
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -235,15 +233,7 @@ func implementersOfExternal(meta *metadata.Metadata, ifaceKey string) []string {
 	if meta == nil || ifaceKey == "" {
 		return nil
 	}
-	want := meta.StringPool.Get(ifaceKey)
-	var out []string
-	for _, pkgName := range slices.Sorted(maps.Keys(meta.Packages)) {
-		p := meta.Packages[pkgName]
-		for _, typeName := range slices.Sorted(maps.Keys(p.Types)) {
-			if slices.Contains(p.Types[typeName].Implements, want) {
-				out = append(out, pkgName+"."+typeName)
-			}
-		}
-	}
-	return out
+	// Memoized on the metadata: the scan below is over every package and type,
+	// and handler-value resolution asks for it per node.
+	return meta.ImplementersOf(ifaceKey)
 }

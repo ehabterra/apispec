@@ -165,7 +165,7 @@ type LazyTree struct {
 // multiply copies combinatorially and must be cut — the role the eager
 // tree's per-ID recursion cap plays.
 //
-// 40, not 10, because "approximately per handler" is optimistic: routes are
+// 25, not 10, because "approximately per handler" is optimistic: routes are
 // commonly registered inside a group closure (`r.Route("/x", func(r chi.Router)
 // {…})`), and that closure is itself an argument node — so it, not the handler,
 // becomes the scope for every route in the group. A response helper shared by
@@ -173,25 +173,25 @@ type LazyTree struct {
 // route in that group silently loses its response body: 274 of 350 success
 // bodies missing on a ~330-route service (issue #224).
 //
-// The value is measured, not guessed, on that service:
+// The value is measured, not guessed — and the measurement is a TRADE, because
+// raising the cap costs projects that gain nothing from it:
 //
-//	cap   bodies resolved   wall clock
-//	 10       76 / 390        14.2s
-//	 25      387 / 390        16.1s
-//	 40      390 / 390        16.4s
-//	 60      390 / 390        16.4s
-//	400      390 / 390        20.5s
+//	cap   that service        a 107-route gin service
+//	 10    76 / 390 bodies     42s  (107 paths)
+//	 25   387 / 390 bodies     66s  (107 paths)
+//	 40   390 / 390 bodies     82s  (107 paths)
+//	400   390 / 390 bodies    ~2x again
 //
-// 40 is the smallest value that resolves every body there, and it costs the same
-// as 25 — the price is paid for the copies actually materialised, and past ~40
-// nothing new is reached until a much larger ceiling starts inflating the walk
-// (400 costs +45% for nothing).
+// 25 recovers 99.2% of the bodies for +0.6s on the starved service, while 40
+// buys the last three and costs the second service another 16s for no extra
+// route at all. So 25, and the remaining three wait for the real fix.
 //
-// It remains a mitigation, not the fix: a group with more than ~40 routes
-// sharing one helper will starve again, silently. The fix is to scope the count
-// to the ROUTE rather than to any argument ancestor (#224), after which this can
-// go back down.
-const maxInstancesPerKey = 40
+// That asymmetry is the argument for #224: the cap is being applied to the wrong
+// UNIT. Scoped per route instead of per argument ancestor, a handful of copies
+// would be ample everywhere and no project would pay for another's shape. Until
+// then this stays a mitigation — a group with more than ~25 routes sharing one
+// helper still starves, silently.
+const maxInstancesPerKey = 25
 
 // budgetExhausted reports whether the cumulative node budget is spent.
 func (t *LazyTree) budgetExhausted() bool {
