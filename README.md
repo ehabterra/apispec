@@ -201,9 +201,23 @@ Endpoints exposed:
 | `/api/spec.yaml`            | Last-generated spec (YAML)                             |
 | `/api/config.yaml`          | Current effective config                               |
 | `/api/generate` (POST)      | Trigger spec generation with the current config        |
+| `/api/detect` (GET)         | Detected frameworks + a pre-filled config for the project |
 | `/api/diagram/*`            | Paginated diagram API (same surface as `apidiag`)      |
 
 The diagram lazily loads metadata on the first request and re-loads when the project directory is switched via the UI, so a single `apispecui` process covers both spec preview and graph debugging. The standalone `apidiag` binary is still shipped for headless use.
+
+**Framework selection matches the CLI.** The UI composes the same
+multi-framework config the CLI does — the detected primary, every other detected
+framework merged in receiver-scoped, and the `net/http` surface underneath — so a
+mixed project documents the same routes either way. The selector chooses which
+framework *leads*; the rest still merge under it, and the form lists them
+("Also detected: gin"). This matters more than it sounds: which framework is
+primary comes from file-walk order, so a single stray file importing another
+router can make a gin project detect as `mux`.
+
+> **Note:** both binaries are gitignored build artifacts. After switching
+> branches, rebuild *and restart* the server — a running `apispecui` keeps the
+> code it started with, and a browser refresh will not pick up a new build.
 
 Flags: `--host` (default `localhost`), `--port` (default `8088`), `--dir`/`-d` (project root, default `.`), `--config`/`-c` (initial config), `--verbose`.
 
@@ -266,9 +280,10 @@ catch-all would misread fiber's status-less `c.JSON(obj)`.
 | Framework API + plain `net/http` ServeMux endpoints in one binary | ✅ both documented |
 | Two frameworks side by side (e.g. gin API + mux admin router) | ✅ both documented, correct verbs |
 | Raw `*http.Request` reads (headers, query, `PathValue`) inside framework handlers | ✅ documented as parameters |
-| A framework router **mounted under** a `net/http` mux (`root.Handle("/api/", http.StripPrefix("/api", chiRouter))`) | ⚠️ the framework's routes are found, but the `/api` **mount prefix is not composed** (routes appear as `/users`, not `/api/users`) — tracked in [#138](https://github.com/ehabterra/apispec/issues/138) |
-| Mounts wired through a *secondary* framework's own `Mount`-style calls | ⚠️ not traced yet (those patterns are unscoped in their home configs) — also [#138](https://github.com/ehabterra/apispec/issues/138) |
-| A user-supplied `--config` | never auto-augmented — what you write is exactly what runs |
+| A framework router **mounted under** a `net/http` mux (`root.Handle("/api/", http.StripPrefix("/api", chiRouter))`) | ✅ the mount prefix composes across the boundary (`/api/users`) |
+| Mounts wired through a *secondary* framework's own `Mount`-style calls | ✅ those patterns are receiver-scoped in their home configs, so they survive the merge |
+| Which framework is *primary* changing the output (it is decided by file-walk order) | ✅ it doesn't — every framework keeps its own patterns and type mappings whether or not it leads, pinned by a rename-invariance test |
+| A user-supplied `--config` | framework **patterns** are never auto-augmented — what you write is what matches. Library *presets* still apply on top (auth-scheme mappings by import, and CLI entrypoint fields), since those add knowledge about dependencies rather than changing your patterns |
 
 ## Go Language Support
 
@@ -305,6 +320,8 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Function-local named types used as request/response bodies (`type Login struct{…}` declared inside a handler) — captured from the function body and emitted as real component schemas rather than dangling `$ref`s.
 - Request bodies bound through a custom wrapper (`util.ReadRequest(c, &dto)` → `ctx.Bind(dto)`) — the concrete type is traced through the wrapper's parameters.
 - Form and file-upload request bodies — form reads on a body-bearing method become a request body (query parameters on `GET`, where Go's `FormValue` reads the URL). The media type follows how the handler parses the body: a file part (`r.FormFile("avatar")`, `c.FormFile(…)`) or an explicit `r.ParseMultipartForm` / `c.MultipartForm()` makes it `multipart/form-data` with the file as `type: string, format: binary`, and plain form values alone stay `application/x-www-form-urlencoded`. See `testdata/multipart_upload/`, `testdata/multipart_upload_gin/`.
+- **CLI-dispatched services** — when the routing code hangs off a command library's callback (`&cli.Command{Action: runWeb}`, `&cobra.Command{RunE: runServe}`), the dispatcher that invokes it lives inside the library, so no call edge reaches the registration and such a project used to document **nothing**. APISpec treats those fields as *entrypoints*, roots the function they hold, and documents everything below it. Presets ship for **urfave/cli** v1/v2/v3, **spf13/cobra** (`Run`/`RunE` and the Pre/Post hooks) and **peterbourgon/ff** (ffcli `Exec`), keyed on the project's imports; a house dispatcher declares its own field via `entrypointPatterns`. Only entrypoints that are otherwise unreachable *and* whose subtree actually registers routes are rooted, so a CLI with 50 subcommands pays for the one that serves HTTP. See `testdata/cli_entrypoint_routes/` (real urfave/cli), `testdata/cobra_entrypoint_routes/` (real cobra).
+- Route registration behind a **func-typed struct field** invoked in-module (`app.Commands = []*Command{{Action: runWeb}}`, and the same shape for any house dispatcher) — the field's recorded values are followed into the functions they hold, including a package-level command var, a cross-package function value, a method value, and an inline closure. See `testdata/cli_action_routes/`, `testdata/cli_action_cross_package/`.
 - Authentication / security detection — see [Security & authentication detection](#security--authentication-detection). Protected routes get a per-operation `security` requirement and the scheme is registered under `components.securitySchemes`; explicitly-public routes render `security: []`. Middleware is followed across router-wide `Use`, group/subtree closures, per-route chains (chi `With`), and handler wrappers (`net/http`, mux), including look-through into wrapper bodies that call a known auth library.
 
 **Partial / not yet supported**
@@ -312,6 +329,9 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Same path + same status code with different schemas — not yet supported.
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
 - Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
+- Routes registered from a **table** rather than a call (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`) — the paths exist only as runtime values, so no pattern can recover them.
+- Router **wrappers** (a house `Router` type around chi/gin) need their own patterns, and a registration matched *inside* the wrapper currently yields an unresolved path — tracked in [#221](https://github.com/ehabterra/apispec/issues/221).
+- Command libraries that dispatch through a **factory map** (`mitchellh/cli`, `hashicorp/cli`) or through **reflection-invoked methods** (`alecthomas/kong`) are not covered by `entrypointPatterns`, which names struct fields.
 
 ### Selected capability highlights
 
@@ -381,7 +401,7 @@ External package types (e.g. `uuid.UUID`) are resolved to primitives automatical
 | `numeric`            | `pattern: "^[0-9]+$"`                 |
 | `containsany=chars`  | `pattern: ".*[chars].*"`              |
 | `e164`               | `pattern: "^\\+[1-9]\\d{1,14}$"`      |
-| `dive`               | ❌ not yet supported                  |
+| `dive`               | rules after it apply to the **elements** (`items.*`) |
 
 </details>
 
@@ -681,6 +701,34 @@ framework:
       paramIn: query
     - callRegex: ^GetHeader$
       paramIn: header
+```
+
+### Entrypoints (CLI-dispatched services)
+
+A function parked in a struct field and called back by a library has no call edge
+from your code, so nothing reaches the routes it registers. `entrypointPatterns`
+names those fields. Presets for urfave/cli, cobra and ffcli apply automatically
+from your imports — you only need this for a **house dispatcher**:
+
+```yaml
+framework:
+  entrypointPatterns:
+    # "a function stored in Cmd.Handle is invoked by something outside this
+    #  module — root it if nothing else reaches it"
+    - fieldRegex: ^Handle$
+      recvTypeRegex: ^example\.com/internal/cli\.Cmd$
+```
+
+The owner type is matched as metadata renders it (`example.com/internal/cli.Cmd`),
+and nothing is needed from the owning package — which is why this works for types
+declared in a third-party library that APISpec never analyses. Leaving the owner
+unconstrained is treated as a misconfiguration rather than a wildcard, since it
+would claim every same-named field in the project.
+
+Run with `--verbose` to see what it did:
+
+```
+Entrypoints: 53 declared, 1 rooted (0 already reachable, 52 register no routes)
 ```
 
 ### Custom type mapping
