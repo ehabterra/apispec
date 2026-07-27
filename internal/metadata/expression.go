@@ -144,11 +144,14 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 						typeStr = AnonStructKey(obj.Pos(), fset, pkg)
 					}
 				}
+				// Rendered once for both uses below: this is the hot identifier
+				// path, and even a cache hit costs an RLock plus a map lookup.
+				rendered := typeStringOf(meta, obj.Type())
 				if typeStr == "" {
-					typeStr = strings.TrimPrefix(typeStringOf(meta, obj.Type()), pkg+defaultSep)
+					typeStr = strings.TrimPrefix(rendered, pkg+defaultSep)
 				}
 
-				if typeStringOf(meta, obj.Type()) == "untyped nil" {
+				if rendered == "untyped nil" {
 					typeStr = "nil"
 					pkg = ""
 				}
