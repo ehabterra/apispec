@@ -34,7 +34,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ehabterra/apispec/internal/core"
 	"github.com/ehabterra/apispec/internal/diagserver"
 	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/insight"
@@ -118,10 +117,16 @@ type ServerConfig struct {
 // DetectResponse is what GET /api/detect returns: information the UI needs
 // to pre-fill the configuration form.
 type DetectResponse struct {
-	InputDir            string                         `json:"inputDir"`
-	ModuleRoot          string                         `json:"moduleRoot"`
-	ModulePath          string                         `json:"modulePath"`
-	DetectedFramework   string                         `json:"detectedFramework"`
+	InputDir          string `json:"inputDir"`
+	ModuleRoot        string `json:"moduleRoot"`
+	ModulePath        string `json:"modulePath"`
+	DetectedFramework string `json:"detectedFramework"`
+	// DetectedFrameworks is every framework found, in first-seen order. The
+	// first is the primary; the rest are merged as receiver-scoped views. The
+	// UI shows the whole set because a project's primary is decided by
+	// file-walk order (issue #212), so naming only the primary is misleading —
+	// photoprism reports `mux` while serving gin.
+	DetectedFrameworks  []string                       `json:"detectedFrameworks,omitempty"`
 	SupportedFrameworks []string                       `json:"supportedFrameworks"`
 	OpenAPIVersion      string                         `json:"openapiVersion"`
 	Info                spec.Info                      `json:"info"`
@@ -547,10 +552,16 @@ func validateProjectDir(dir string) (string, error) {
 func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 	root, modPath := findModuleRoot(dir)
 
-	det := core.NewFrameworkDetector()
-	framework, err := det.Detect(root)
-	if err != nil || framework == "" {
-		framework = "net/http"
+	// Compose exactly what the engine composes: the primary's config plus every
+	// other detected framework as a receiver-scoped view plus the net/http
+	// surface. Using the primary alone is what made a real project document zero
+	// routes here while the CLI documented all of them — photoprism's primary is
+	// `mux` (one dummy file imports gorilla/mux and sorts first, issue #212) but
+	// every route it serves is gin.
+	composed, frameworks, cerr := engine.ComposeFrameworkConfig(root)
+	framework := "net/http"
+	if cerr == nil && len(frameworks) > 0 {
+		framework = frameworks[0]
 	}
 
 	var base *spec.APISpecConfig
@@ -562,7 +573,11 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		}
 	}
 	if base == nil {
-		base = defaultConfigForFramework(framework)
+		if composed != nil {
+			base = composed
+		} else {
+			base = defaultConfigForFramework(framework)
+		}
 	}
 
 	if base.Info.Title == "" {
@@ -593,6 +608,7 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		ModuleRoot:          root,
 		ModulePath:          modPath,
 		DetectedFramework:   framework,
+		DetectedFrameworks:  frameworks,
 		SupportedFrameworks: supportedFrameworks,
 		OpenAPIVersion:      "3.1.0",
 		Info:                base.Info,
@@ -737,9 +753,9 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Framework == "" {
-		req.Framework = "net/http"
-	}
+	// An unspecified framework means "detect it", not net/http: defaulting to
+	// the stdlib made a gin or chi project analysed with net/http patterns and
+	// documented as empty. buildAPISpecConfig fills it in from detection.
 	if req.OpenAPIVersion == "" {
 		req.OpenAPIVersion = "3.1.0"
 	}
@@ -758,7 +774,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setDir(abs)
 
-	apiCfg, err := buildAPISpecConfig(&req)
+	apiCfg, err := buildAPISpecConfig(&req, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1383,10 +1399,13 @@ func sortedKeys(m map[string]struct{}) []string {
 // buildAPISpecConfig merges a GenerateRequest into a full *APISpecConfig
 // using the same rules as handleGenerate. Used by /api/generate (to drive
 // the engine) and /api/render-config (to render the YAML preview).
-func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
-	if req.Framework == "" {
-		req.Framework = "net/http"
-	}
+// buildAPISpecConfig turns a generate request into the config the engine runs
+// with. dir is the project being analysed: the framework patterns are composed
+// for it (detected set, scoped views, net/http underneath), not for the selected
+// framework alone. Selecting one framework and dropping the rest is what made a
+// gin project whose primary detects as `mux` document zero routes here while the
+// CLI documented 107 (issue #212's failure mode, reaching the UI).
+func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, error) {
 
 	if req.UseRawConfig && strings.TrimSpace(req.RawConfig) != "" {
 		cfg := &spec.APISpecConfig{}
@@ -1399,7 +1418,15 @@ func buildAPISpecConfig(req *GenerateRequest) (*spec.APISpecConfig, error) {
 		return cfg, nil
 	}
 
-	cfg := defaultConfigForFramework(req.Framework)
+	cfg, frameworks, err := engine.ComposeFrameworkConfigWithPrimary(dir, req.Framework)
+	if err != nil || cfg == nil {
+		// Detection failed (unreadable dir): fall back to the selection alone
+		// rather than failing the run.
+		cfg = defaultConfigForFramework(req.Framework)
+	}
+	if req.Framework == "" && len(frameworks) > 0 {
+		req.Framework = frameworks[0]
+	}
 	cfg.Info = req.Info
 	cfg.Servers = req.Servers
 	cfg.Security = req.Security
@@ -1477,7 +1504,7 @@ func (s *UIServer) handleRenderConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	cfg, err := buildAPISpecConfig(&req)
+	cfg, err := buildAPISpecConfig(&req, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1786,7 +1813,7 @@ func (s *UIServer) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cfg, err := buildAPISpecConfig(&req.GenerateRequest)
+	cfg, err := buildAPISpecConfig(&req.GenerateRequest, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
