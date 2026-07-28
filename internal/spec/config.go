@@ -363,6 +363,21 @@ type ParamPattern struct {
 	// appear as `{placeholder}` segments in the route path are emitted.
 	NameFromMapKey bool `yaml:"nameFromMapKey,omitempty" json:"nameFromMapKey,omitempty"`
 
+	// ExcludeRecvOriginRegex rejects the match when the receiver's ORIGIN — the
+	// calls it is chained onto, or the assignment a variable receiver came from —
+	// is a type matching this regex.
+	//
+	// It exists because some types sit on both sides of an exchange:
+	// `net/http.Header` is the header map of the request and of the response
+	// alike, so `Get` on it only reads a request parameter by provenance.
+	// `r.Header.Get(k)` reads what a client sent; `w.Header().Get(k)` and
+	// `c.Response().Header().Get(k)` read back what the server is about to send,
+	// and documenting those tells clients to send a header the API never looks at.
+	//
+	// Provenance, not type: an origin that does not resolve keeps the parameter
+	// (golden rule #7 — only a proven response origin drops it).
+	ExcludeRecvOriginRegex string `yaml:"excludeRecvOriginRegex,omitempty" json:"excludeRecvOriginRegex,omitempty"`
+
 	// Package/type filtering
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
@@ -422,6 +437,22 @@ const (
 	// the wrapping call's identity is the middleware (net/http, mux Handle).
 	SecurityScopeWrapper = "wrapper"
 )
+
+// responseWriterOriginRegex matches the types a `net/http.Header` read can come
+// FROM that make it a response header rather than a request parameter — the
+// server's own outgoing headers (`w.Header().Get(k)`,
+// `c.Response().Header().Get(k)`).
+//
+// Every framework's writer belongs in one regex because the header pattern
+// itself is shared: net/http's `Get` on `net/http.Header` is merged into every
+// project that imports net/http, so it fires inside echo and gin handlers too
+// (the SecondaryView merge, issue #211). Matching the pattern's own framework
+// only would leave exactly the case seen in the wild — an echo handler reading
+// `c.Response().Header()` — undetected. Both receiver spellings are accepted:
+// `pkg.*T` as a callee receiver renders it, `*pkg.T` as go/types renders it.
+const responseWriterOriginRegex = `^\*?(net/http\.\*?ResponseWriter` +
+	`|github\.com/labstack/echo(/v\d+)?\.\*?Response` +
+	`|github\.com/gin-gonic/gin\.\*?ResponseWriter)$`
 
 // SecurityPattern defines how to recognise an auth/security middleware
 // application and the scope over which it applies. It mirrors MountPattern's

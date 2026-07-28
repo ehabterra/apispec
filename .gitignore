@@ -67,10 +67,16 @@ playground*.go
 apispecui-demo.mp4
 apispecui-short.mp4
 video-kit/parts/
-# built binaries
-apispecui
-apispec
-apidiag
+# built binaries. Anchored and named in full on purpose: a bare `apispec` also
+# matches the DIRECTORY cmd/apispec, so every new file added under cmd/apispec,
+# cmd/apispecui or cmd/apidiag was silently ignored — `git add` said nothing and
+# the file simply never reached a commit.
+/apispecui
+/apispec
+/apidiag
+cmd/apispec/apispec
+cmd/apispecui/apispecui
+cmd/apidiag/apidiag
 
 # a `go build` inside a testdata fixture module drops its binary beside main.go
 testdata/cli_entrypoint_routes/cli_entrypoint_routes
@@ -78,3 +84,6 @@ testdata/cobra_entrypoint_routes/cobra_entrypoint_routes
 
 # a `go build` inside the param-name fixture drops its binary beside main.go
 testdata/param_name_resolution/param_name_resolution
+
+# a `go build` inside the response-header fixture drops its binary beside main.go
+testdata/response_header_param/response_header_param

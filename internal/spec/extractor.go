@@ -3241,6 +3241,20 @@ func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		return false
 	}
 
+	// The receiver type can be shared by both sides of an exchange
+	// (net/http.Header), so where the receiver came from decides whether this
+	// reads a request parameter at all.
+	if p.pattern.ExcludeRecvOriginRegex != "" {
+		re, err := cachedRegex(p.pattern.ExcludeRecvOriginRegex)
+		if err == nil {
+			for _, origin := range receiverOriginTypes(p.contextProvider, edge) {
+				if re.MatchString(origin) {
+					return false
+				}
+			}
+		}
+	}
+
 	return true
 }
 

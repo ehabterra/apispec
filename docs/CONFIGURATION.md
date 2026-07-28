@@ -258,14 +258,27 @@ framework:
       typeFromArg: true
   paramPatterns:
     - callRegex: ^Param$
-      paramIn: path        # path | query | header | cookie
+      # path | query | header | cookie, plus two requestBody facts:
+      # formFile (an uploaded file part) and multipart (the body IS multipart)
+      paramIn: path
     - callRegex: ^Query$
       paramIn: query
+    - callRegex: ^Get$
+      paramIn: header
+      recvType: net/http.Header
+      # net/http.Header is the header map of the request AND the response, so a
+      # read only documents a parameter by provenance: w.Header().Get(k) and
+      # c.Response().Header().Get(k) read headers the server SENDS. An origin
+      # that cannot be resolved keeps the parameter.
+      excludeRecvOriginRegex: ^\*?net/http\.\*?ResponseWriter$
   requestContext:          # disambiguate generic decoders (json.Decode, etc.)
     typeRegexes:
       - ^net/http\.\*Request$
     bodyAccessors:
       - ^Body$
+  responseContext:         # which types ARE the response writer (see below)
+    writerTypeRegexes:
+      - ^net/http\.ResponseWriter$
 ```
 
 Sub-keys of `framework`:
@@ -278,7 +291,10 @@ Sub-keys of `framework`:
 | `paramPatterns` | Calls that read a parameter, and its `in:` location. |
 | `mountPatterns` | Sub-router mounting (path-prefix composition). |
 | `securityPatterns` | Where/how auth middleware is applied (scope). |
+| `entrypointPatterns` | Struct fields holding a function a library calls back (a CLI `Action`/`RunE`), so routes registered there are reachable. Presets apply from your imports. |
+| `handlerInterfaceMethods` | Method names that make a type a handler (`ServeHTTP`), so a route registered with a handler *value* is followed into it. |
 | `requestContext` | Which receivers/accessors mark a "request body" source. |
+| `responseContext` | Which types are the response *writer*, for response patterns gated on write destination (`requireResponseDestination`). Parameter reads state their own exclusion per pattern (`excludeRecvOriginRegex`). |
 
 Because these patterns are numerous and framework-specific, the authoritative
 reference is the in-repo default configs (`internal/spec/config_*.go`) and the

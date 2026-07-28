@@ -86,6 +86,9 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					ParamIn:       "header",
 					ParamArgIndex: 0,
 					RecvType:      "net/http.Header",
+					// Response headers are not request parameters, whichever
+					// framework's writer they came from (see the primary config).
+					ExcludeRecvOriginRegex: responseWriterOriginRegex,
 				},
 				{
 					CallRegex:     "^Get$",
