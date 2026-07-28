@@ -527,6 +527,41 @@ next.
   still run over the *metadata* (syntactic) graph — switching them to the
   resolved graph (step 2's) is deferred until the resolved graph is on by
   default, since it changes which indirect calls resolve.
+- **Steps 1-3 joined up, 2026-07-29** (`internal/callgraph/callsites.go`,
+  `disagreement.go`, `internal/spec/resolved_callees.go`,
+  `internal/spec/resolved_facts.go`): the resolved graph now feeds the recorded
+  one, behind `--resolve-call-graph` (default **off**).
+
+  - **The join is on the call SITE, not on function identity.** Metadata names a
+    closure `FuncLit:<pos>` and SSA names it `pkg.parent$1`; measured overlap is
+    ZERO (0 of 1,625 closures on gitea, 0 of 103 on a 246-route service), and
+    routes/handlers/middleware are overwhelmingly closures. The key is
+    `file:line#BareName` — the column is dropped because metadata records a call
+    at the start of its statement and SSA at its own opening parenthesis, so a
+    column-exact join matched 0 of 49 edges on a fixture.
+  - **Join rates:** 85-92% on fixtures, 73.4% on a 246-route service, 84.5% on
+    gitea. What does not join is expected: metadata records calls into
+    dependencies whose bodies were never loaded, and VTA drops calls it proves
+    unreachable.
+  - **Disagreements are classified before being acted on.** Of gitea's 10,182:
+    4,492 promoted-through-embedding, 2,880 interface->concrete (72% actionable),
+    1,570 ambiguous and 1,240 unexplained (28% that must NOT be acted on — an
+    unexplained difference is a join that landed on the wrong call).
+  - **Cost:** +12% metadata stage on a 246-route service, +15% on gitea (5.6s on
+    37.6s). Whole-run on gitea at default limits: 46s -> 55s.
+  - **The default stays off, on memory.** Peak RSS on gitea goes 3.15GB -> 4.62GB
+    (+46%) for the SSA program and VTA graph. That is the gate this step set for
+    flipping the default, and it fails it. See the follow-up on releasing the SSA
+    program once the call-site index has been extracted.
+  - **What it buys, measured:** zero drift across all 71 fixtures and a 246-route
+    service (agreement with the hand-rolled compensations is what proves the
+    resolved answer), and on gitea 7,370 rewritten call sites take the spec from
+    **1 component to 15** at default limits.
+  - The condensation is now memoized on the metadata (`Metadata.CallGraphSCC`)
+    and the second copy of the bottom-up reachability pass in
+    `entrypoint_roots.go` is gone: both consumers had been building their own,
+    so every route-bearing project condensed its graph twice.
+
 - **Step 4 — IN PROGRESS 2026-07-09** (`internal/spec/lazytree.go` +
   `internal/spike/lazytree_diff_test.go`): `LazyTree`/`LazyNode` implement
   `TrackerTreeInterface`/`TrackerNodeInterface` as an on-demand unfolding.

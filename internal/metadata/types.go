@@ -151,6 +151,9 @@ type Metadata struct {
 	posCache map[token.Pos]int
 	posMutex sync.RWMutex
 
+	// sccOnce memoizes the call graph's SCC condensation; see CallGraphSCC.
+	sccOnce sccCache
+
 	// moduleDir is the filesystem root of the analysed module. It is not part of
 	// the recorded facts — it exists so a closure's identity can be stated
 	// relative to the module rather than to this machine (see stablePosition,
@@ -242,6 +245,10 @@ type calleeNamePkg struct {
 
 // BuildCallGraphMaps builds the various lookup maps
 func (m *Metadata) BuildCallGraphMaps() {
+	// The condensation is derived from the very edges about to be re-indexed, so
+	// a rebuild here is exactly when it stops being true.
+	m.invalidateSCC()
+
 	m.Callers = make(map[string][]*CallGraphEdge)
 	m.Callees = make(map[string][]*CallGraphEdge)
 	m.Args = make(map[string][]*CallGraphEdge)

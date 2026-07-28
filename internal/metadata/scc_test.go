@@ -148,3 +148,41 @@ func TestSCC_Deterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestCallGraphSCCIsMemoizedAndInvalidated pins the two properties the shared
+// condensation needs: consumers get the same instance instead of each building
+// their own (89ms per build over gitea's 82k edges, and it was being built
+// twice), and it stops being returned once the graph it describes has changed.
+func TestCallGraphSCCIsMemoizedAndInvalidated(t *testing.T) {
+	pool := NewStringPool()
+	meta := &Metadata{StringPool: pool}
+	meta.CallGraph = []CallGraphEdge{{
+		Caller: Call{Meta: meta, Name: pool.Get("main"), Pkg: pool.Get("app")},
+		Callee: Call{Meta: meta, Name: pool.Get("run"), Pkg: pool.Get("app")},
+	}}
+	meta.BuildCallGraphMaps()
+
+	first := meta.CallGraphSCC()
+	if first == nil || len(first.ComponentOf) == 0 {
+		t.Fatal("the condensation is empty for a graph with an edge")
+	}
+	if second := meta.CallGraphSCC(); second != first {
+		t.Error("a second consumer got its own condensation; the whole point is that they share one")
+	}
+
+	// Re-indexing the graph is exactly when the condensation stops being true —
+	// the resolved call graph repoints edges and then rebuilds the maps.
+	meta.BuildCallGraphMaps()
+	if again := meta.CallGraphSCC(); again == first {
+		t.Error("the condensation survived a graph rebuild; it would describe edges that no longer exist")
+	}
+}
+
+// TestCallGraphSCCOnNilMetadata pins that asking a nil metadata is answerable,
+// since the accessor is reached from gates that run before anything is loaded.
+func TestCallGraphSCCOnNilMetadata(t *testing.T) {
+	var meta *Metadata
+	if scc := meta.CallGraphSCC(); scc == nil || len(scc.ComponentOf) != 0 {
+		t.Error("nil metadata did not produce an empty condensation")
+	}
+}
