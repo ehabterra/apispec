@@ -75,3 +75,6 @@ apidiag
 # a `go build` inside a testdata fixture module drops its binary beside main.go
 testdata/cli_entrypoint_routes/cli_entrypoint_routes
 testdata/cobra_entrypoint_routes/cobra_entrypoint_routes
+
+# a `go build` inside the param-name fixture drops its binary beside main.go
+testdata/param_name_resolution/param_name_resolution

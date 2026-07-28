@@ -2942,6 +2942,38 @@ func (r *ResponsePatternMatcherImpl) statusCodeOfValue(value *metadata.CallArgum
 	return r.schemaMapper.MapStatusCode(impl.GetArgumentInfo(value))
 }
 
+// paramWireName resolves the name a client actually sends for this parameter.
+//
+// Only two things state it: a string literal (`c.QueryParam("page")`) or a
+// constant this project declares (`Header.Get(csrf.CSRFHeader)`, resolved to
+// "X-CSRF-Token" — what a client must actually send, not the Go identifier).
+//
+// Anything else leaves the name unknown: a constant from a package outside the
+// analysed set, a field selector, a variable, a computed string. GetArgumentInfo
+// renders those as the Go expression, which produced parameters like
+// `in: header, name: github.com/labstack/echo.HeaderXRequestID` — a name no
+// request can ever carry. Unknown means no parameter (golden rule #7), not a
+// guess dressed up as one.
+func (p *ParamPatternMatcherImpl) paramWireName(arg *metadata.CallArgument, node TrackerNodeInterface) (string, bool) {
+	if arg == nil {
+		return "", false
+	}
+	if value, ok := p.contextProvider.ConstantValue(arg); ok {
+		return value, true
+	}
+	// A wrapper passes the name down as a parameter — `ReadImage(ctx, field)`
+	// called as `ReadImage(c, "file")`. The literal is at the call site, so trace
+	// the parameter to the argument bound there, the same way request bodies are
+	// resolved through wrappers. Without this the name reads as the parameter's
+	// TYPE ("string"), which is how a file part came out named `string`.
+	if resolved, _ := resolveArgThroughParams(arg, node); resolved != nil && resolved != arg {
+		if value, ok := p.contextProvider.ConstantValue(resolved); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters
 func (r *ResponsePatternMatcherImpl) resolveTypeOrigin(arg *metadata.CallArgument, node TrackerNodeInterface, originalType string) string {
 	// NEW: If the argument has resolved type information, use it
@@ -3252,7 +3284,17 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 
 	edge := node.GetEdge()
 	if len(edge.Args) > p.pattern.ParamArgIndex {
-		param.Name = p.contextProvider.GetArgumentInfo(edge.Args[p.pattern.ParamArgIndex])
+		name, known := p.paramWireName(edge.Args[p.pattern.ParamArgIndex], node)
+		if !known {
+			// The wire name is what the client sends; when the argument does not
+			// state it — a constant from a package outside the analysed set, a
+			// variable, a computed string — there is no honest parameter to
+			// document. Emitting the Go expression instead produced parameters
+			// like `in: header, name: github.com/labstack/echo.HeaderXRequestID`,
+			// which no request can ever match (golden rule #7).
+			return nil
+		}
+		param.Name = name
 	}
 
 	// A file part implies the media type as well as the property: no framework

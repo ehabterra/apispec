@@ -57,6 +57,69 @@ func (c *ContextProviderImpl) GetArgumentInfo(arg *metadata.CallArgument) string
 	return c.callArgToString(arg, nil)
 }
 
+// ConstantValue implements ContextProvider.
+func (c *ContextProviderImpl) ConstantValue(arg *metadata.CallArgument) (string, bool) {
+	if arg == nil || c.meta == nil {
+		return "", false
+	}
+	switch arg.GetKind() {
+	case metadata.KindLiteral:
+		return strings.Trim(arg.GetValue(), "\""), true
+	case metadata.KindSelector:
+		if arg.X == nil || arg.Sel == nil {
+			return "", false
+		}
+		return c.constantInPackage(selectorPackageKey(arg.X), arg)
+	case metadata.KindIdent:
+		return c.constantInPackage(arg.GetPkg(), arg)
+	}
+	return "", false
+}
+
+// constantInPackage looks up the named constant's recorded value in one package.
+//
+// Files are visited in SORTED order: a name declared in more than one file of the
+// same package would otherwise resolve differently between runs, and this value
+// reaches the output (a parameter's name) — golden rule #1.
+func (c *ContextProviderImpl) constantInPackage(pkgKey string, arg *metadata.CallArgument) (string, bool) {
+	pkg, exists := c.meta.Packages[pkgKey]
+	if !exists || pkg == nil {
+		return "", false
+	}
+	name := arg.GetName()
+	if arg.GetKind() == metadata.KindSelector && arg.Sel != nil {
+		name = arg.Sel.GetName()
+		if arg.X != nil && arg.X.GetType() != "" {
+			name = arg.X.GetType() + "." + name
+		}
+	}
+	if name == "" {
+		return "", false
+	}
+	for _, fileName := range c.meta.SortedFileNames(pkgKey) {
+		file := pkg.Files[fileName]
+		if file == nil {
+			continue
+		}
+		if variable, ok := file.Variables[name]; ok && variable != nil {
+			return strings.Trim(c.GetString(variable.Value), "\""), true
+		}
+	}
+	return "", false
+}
+
+// selectorPackageKey derives the package a selector's base refers to, matching
+// how the renderer composes it.
+func selectorPackageKey(x *metadata.CallArgument) string {
+	if x == nil {
+		return ""
+	}
+	if x.Type == -1 && !strings.HasSuffix(x.GetPkg(), x.GetName()) {
+		return x.GetPkg() + "/" + x.GetName()
+	}
+	return x.GetPkg()
+}
+
 // callArgToString converts a call argument to a string representation
 func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *string) string {
 	// Use provided separator or default
@@ -179,27 +242,10 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 	case metadata.KindSelector:
 		// Handle selector expressions (e.g., pkg.X.Sel)
 		if arg.X != nil {
-			var pkgKey string
+			pkgKey := selectorPackageKey(arg.X)
 
-			if arg.X.Type == -1 && !strings.HasSuffix(arg.X.GetPkg(), arg.X.GetName()) {
-				pkgKey = arg.X.GetPkg() + "/" + arg.X.GetName()
-			} else {
-				pkgKey = arg.X.GetPkg()
-			}
-
-			if pkg, exists := c.meta.Packages[pkgKey]; exists {
-				for _, file := range pkg.Files {
-					var selName string
-
-					if arg.X.GetType() != "" {
-						selName = arg.X.GetType() + "." + selName
-					} else {
-						selName = arg.Sel.GetName()
-					}
-					if variable, exists := file.Variables[selName]; exists {
-						return strings.Trim(c.GetString(variable.Value), "\"")
-					}
-				}
+			if value, ok := c.constantInPackage(pkgKey, arg); ok {
+				return value
 			}
 			xResult := c.callArgToString(arg.X, strPtr("/"))
 			if xResult != "" {
