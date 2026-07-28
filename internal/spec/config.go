@@ -242,8 +242,20 @@ type RoutePattern struct {
 	MethodFromCall    bool `yaml:"methodFromCall,omitempty" json:"methodFromCall,omitempty"`       // Extract method from function name
 	MethodFromHandler bool `yaml:"methodFromHandler,omitempty" json:"methodFromHandler,omitempty"` // Extract method from handler function name
 	MethodFromPath    bool `yaml:"methodFromPath,omitempty" json:"methodFromPath,omitempty"`       // Extract method from a leading verb in the path arg (Go 1.22 ServeMux: "GET /users/{id}")
-	PathFromArg       bool `yaml:"pathFromArg,omitempty" json:"pathFromArg,omitempty"`             // Extract path from argument
-	HandlerFromArg    bool `yaml:"handlerFromArg,omitempty" json:"handlerFromArg,omitempty"`       // Extract handler from argument
+
+	// MethodFromArg reads the verb from the argument at MethodArgIndex, which may
+	// name SEVERAL, comma-separated: a house router's `Methods("GET,POST", path,
+	// h)` registers both, and one route per verb is emitted. Without this a
+	// registrar whose verb travels as an argument had no way to say so and fell
+	// back to the POST default (issue #221).
+	//
+	// It is worth stating explicitly even though MethodArgIndex was already read
+	// as a fallback: that read is implicit (the index defaults to 0, so it
+	// inspects the first argument of every verb-less pattern) and it accepts only
+	// a single verb.
+	MethodFromArg  bool `yaml:"methodFromArg,omitempty" json:"methodFromArg,omitempty"`
+	PathFromArg    bool `yaml:"pathFromArg,omitempty" json:"pathFromArg,omitempty"`       // Extract path from argument
+	HandlerFromArg bool `yaml:"handlerFromArg,omitempty" json:"handlerFromArg,omitempty"` // Extract handler from argument
 
 	// Method extraction configuration
 	MethodExtraction *MethodExtractionConfig `yaml:"methodExtraction,omitempty" json:"methodExtraction,omitempty"`
