@@ -34,11 +34,12 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// callGraphSCC lazily builds (and caches) the SCC condensation of the
-// metadata call graph.
+// callGraphSCC returns the condensation of the metadata call graph, memoized on
+// the metadata itself so the tree's entrypoint gate and these summaries share
+// one (issue: it used to be built once per consumer).
 func (e *Extractor) callGraphSCC(meta *metadata.Metadata) *metadata.CallGraphSCC {
 	if e.scc == nil {
-		e.scc = metadata.BuildCallGraphSCC(meta)
+		e.scc = meta.CallGraphSCC()
 	}
 	return e.scc
 }
@@ -55,7 +56,19 @@ func (e *Extractor) reachSet(meta *metadata.Metadata, cacheKey string, match fun
 		return cached
 	}
 
-	scc := e.callGraphSCC(meta)
+	set := reachSetOver(meta, e.callGraphSCC(meta), match)
+	if e.reachSets == nil {
+		e.reachSets = make(map[string]map[string]bool)
+	}
+	e.reachSets[cacheKey] = set
+	return set
+}
+
+// reachSetOver is the bottom-up pass itself: one sweep over the condensation,
+// callees-first, so a component is decided once and every caller of it reads a
+// final answer. Shared by the extractor's cached summaries and by the tree's
+// entrypoint gate, which used to carry a second copy of this loop.
+func reachSetOver(meta *metadata.Metadata, scc *metadata.CallGraphSCC, match func(*metadata.CallGraphEdge) bool) map[string]bool {
 	compReaches := make([]bool, len(scc.Components))
 	for c, comp := range scc.Components {
 		reached := false
@@ -84,10 +97,6 @@ func (e *Extractor) reachSet(meta *metadata.Metadata, cacheKey string, match fun
 			set[id] = true
 		}
 	}
-	if e.reachSets == nil {
-		e.reachSets = make(map[string]map[string]bool)
-	}
-	e.reachSets[cacheKey] = set
 	return set
 }
 
