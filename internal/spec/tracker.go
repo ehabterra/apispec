@@ -257,6 +257,14 @@ type TrackerTree struct {
 	// functions that field holds, at parity with LazyTree (issue #143).
 	funcFieldImpls funcFieldDispatch
 
+	// entrypointPatterns / routeMatch mirror LazyTree's: fields a library
+	// dispatcher calls back, and the gate deciding which of them earn a root
+	// (issue #220). Both engines must root the same set or they document
+	// different APIs for the same project.
+	entrypointPatterns []EntrypointPattern
+	routeMatch         func(*metadata.CallGraphEdge) bool
+	entrypointKeys     []string
+
 	// logger receives traversal-time warnings (limit truncations, etc.).
 	// May be nil; callers should reach it via t.warn / t.info.
 	logger metadata.VerboseLogger
@@ -421,6 +429,14 @@ func WithEagerHandlerInterfaceMethods(methods []string) TrackerTreeOption {
 	return func(t *TrackerTree) { t.handlerMethods = methods }
 }
 
+// WithEagerEntrypoints is WithEntrypoints for the eager tree (issue #220).
+func WithEagerEntrypoints(patterns []EntrypointPattern, routeMatch func(*metadata.CallGraphEdge) bool) TrackerTreeOption {
+	return func(t *TrackerTree) {
+		t.entrypointPatterns = patterns
+		t.routeMatch = routeMatch
+	}
+}
+
 func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logger metadata.VerboseLogger, opts ...TrackerTreeOption) *TrackerTree {
 	t := &TrackerTree{
 		meta:          meta,
@@ -435,12 +451,11 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 		// Initialize performance optimization caches with pre-allocated capacity
 		nodeMap: make(map[string]*TrackerNode, 200),
 		idCache: make(map[string]string, 100),
-
-		funcFieldImpls: buildFuncFieldDispatch(meta),
 	}
 	for _, opt := range opts {
 		opt(t)
 	}
+	t.funcFieldImpls, t.entrypointKeys = buildFuncFieldDispatch(meta, t.entrypointPatterns)
 
 	// Pre-allocate roots slice with estimated capacity
 	estimatedRoots := max(
@@ -589,6 +604,37 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 			if node := NewTrackerNode(t, meta, "", callerID, nil, nil, visited, &assignmentIndex, t.limits); node != nil {
 				node.key = callerID
 				t.roots = append(t.roots, node)
+			}
+		}
+	}
+
+	// Entrypoint roots (issue #220): a function a library dispatcher calls back
+	// has no edge from main, so it needs its own root or its whole subtree — the
+	// route registrations included — never exists. Same gates as the lazy tree,
+	// so both engines root the same set.
+	if t.routeMatch != nil {
+		existing := make(map[string]bool, len(t.roots))
+		for _, r := range t.roots {
+			existing[metadata.StripToBase(r.Key())] = true
+		}
+		for _, key := range entrypointRoots(meta, t.entrypointKeys, t.routeMatch, t.logger) {
+			if existing[key] {
+				continue
+			}
+			existing[key] = true
+			// One root per entrypoint, from the first call site that yields a
+			// node — NewTrackerNode returns nil under the traversal limits, so
+			// stopping at the first ATTEMPT would silently drop the entrypoint
+			// (and with it every route below it) whenever that attempt failed.
+			// Same shape as the main-root search above.
+			for _, edge := range meta.Callers[key] {
+				node := NewTrackerNode(t, meta, "", edge.Caller.ID(), nil, nil, visited, &assignmentIndex, t.limits)
+				if node == nil {
+					continue
+				}
+				node.key = edge.Caller.ID()
+				t.roots = append(t.roots, node)
+				break
 			}
 		}
 	}

@@ -77,7 +77,7 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 		position := getPosition(funcLit.Pos(), fset)
 		var signatureStr string
 		if fnType := info.TypeOf(funcLit.Type); fnType != nil {
-			signatureStr = fnType.String()
+			signatureStr = typeStringOf(meta, fnType)
 		}
 		return fmt.Sprintf("FuncLit:%s", position), "", signatureStr
 	}
@@ -291,6 +291,42 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 }
 
 // getReceiverTypeString gets a string representation of the receiver type
+
+// typeStringOf renders a go/types type, memoized per type identity.
+//
+// go/types.TypeString allocated 2.2GB (29% of all allocation) on a large
+// project: the metadata walk renders the same types over and over, and every
+// render builds a fresh string through a bytes.Buffer. Types are immutable and
+// every call site here uses the same (nil) qualifier, so the rendering is a pure
+// function of the type — caching it changes nothing about the result, only how
+// often it is computed.
+//
+// Deterministic by construction: one input, one output, and the cache is never
+// iterated. A structurally-equal type reached through a different pointer simply
+// misses the cache and renders again, which is a cost, never a difference.
+func typeStringOf(meta *Metadata, t types.Type) string {
+	if t == nil {
+		return ""
+	}
+	if meta == nil {
+		return t.String()
+	}
+	meta.typeStrMutex.RLock()
+	cached, ok := meta.typeStrCache[t]
+	meta.typeStrMutex.RUnlock()
+	if ok {
+		return cached
+	}
+	s := t.String()
+	meta.typeStrMutex.Lock()
+	if meta.typeStrCache == nil {
+		meta.typeStrCache = make(map[types.Type]string, 1024)
+	}
+	meta.typeStrCache[t] = s
+	meta.typeStrMutex.Unlock()
+	return s
+}
+
 func getReceiverTypeString(t types.Type) string {
 	switch t := t.(type) {
 	case *types.Named:
@@ -317,7 +353,7 @@ func analyzeAssignmentValue(expr ast.Expr, info *types.Info, funcName string, pk
 		if typ := info.TypeOf(expr); typ != nil {
 			arg := NewCallArgument(metadata)
 			arg.SetKind(KindIdent)
-			arg.SetType(typ.String())
+			arg.SetType(typeStringOf(metadata, typ))
 			return pkgName, arg
 		}
 	}
@@ -457,9 +493,27 @@ func traceVariableOriginHelper(
 	funcNameIndex := metadata.StringPool.Get(funcName)
 	pkgNameIndex := metadata.StringPool.Get(pkgName)
 
-	// Look for a call graph edge where this function is the callee
-	for _, edge := range metadata.CallGraph {
-		if edge.Callee.Name == funcNameIndex && edge.Callee.Pkg == pkgNameIndex {
+	// Look for a call graph edge where this function is the callee.
+	//
+	// The index answers this in one lookup once the call graph is complete; the
+	// scan below is the path taken while the graph is still being built (this
+	// function runs during construction too). Both visit matching edges in
+	// CallGraph order and stop at the first, so they cannot disagree — the scan
+	// just costs O(edges) per traced variable, which dominated the profile on
+	// large projects.
+	indexed, useIndex := metadata.calleeEdgesByNamePkg(funcNameIndex, pkgNameIndex)
+	edgeCount := len(metadata.CallGraph)
+	if useIndex {
+		edgeCount = len(indexed)
+	}
+	for i := 0; i < edgeCount; i++ {
+		var edge *CallGraphEdge
+		if useIndex {
+			edge = indexed[i]
+		} else {
+			edge = &metadata.CallGraph[i]
+		}
+		if useIndex || (edge.Callee.Name == funcNameIndex && edge.Callee.Pkg == pkgNameIndex) {
 			callerName := metadata.StringPool.GetString(edge.Caller.Name)
 			callerPkg := metadata.StringPool.GetString(edge.Caller.Pkg)
 

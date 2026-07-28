@@ -462,8 +462,20 @@ export function ConfigMode() {
           <${Section} title="Mounts / groups" help="How sub-router mounts/groups are recognised so nested routes inherit the right path prefix. Examples: Chi r.Mount('/api', sub) or r.Route('/v1', fn) · Gin r.Group('/v1'). Set 'Path from arg' (the prefix) and 'Router from arg' (the sub-router being mounted) and mark 'Is mount'." hint=${`${(fc.mountPatterns || []).length}`}>
             <${PatternList} items=${fc.mountPatterns} fields=${PATTERN_FIELDS.mountPatterns} onChange=${(a) => setFC("mountPatterns", a)} />
           <//>
+          <${Section} title="Auth middleware patterns" help="How the APPLICATION of auth middleware is recognised, which is what marks the routes it guards as protected: the call that applies it (e.g. ^Use$, ^With$, ^Group$), which argument carries the middleware, and how far it reaches — 'router' (routes registered on the same router afterwards), 'subtree' (a group/mount closure), 'route' (this registration only) or 'wrapper' (the handler argument is wrapped by an auth function). The middleware VALUE is then mapped to a scheme under Security mappings above; edit these patterns only for a router API the framework presets don't cover." hint=${`${(fc.securityPatterns || []).length}`}>
+            <${PatternList} items=${fc.securityPatterns} fields=${PATTERN_FIELDS.securityPatterns} onChange=${(a) => setFC("securityPatterns", a)} />
+          <//>
+          <${Section} title="Entrypoints" help="Where the program starts, for services whose routes are registered from a CLI command rather than from main — a urfave/cli Action, a cobra Run/RunE, an ffcli Exec. Those functions are values assigned to a struct field, so nothing calls them and the walk from main never reaches the routes. Each pattern names the field (Field regex, e.g. ^(Action|Run|RunE)$) on the command type (Receiver type). Presets for the known CLI libraries are applied automatically from the project's imports; add a pattern only for a custom command runner." hint=${`${(fc.entrypointPatterns || []).length}`}>
+            <${PatternList} items=${fc.entrypointPatterns} fields=${PATTERN_FIELDS.entrypointPatterns} onChange=${(a) => setFC("entrypointPatterns", a)} />
+          <//>
+          <${Section} title="Handler interface methods" help="Method names that make a type an HTTP handler, so a route registered with a handler VALUE (mux.Handle('/x', h)) is followed into the method that serves it. One per line, e.g. ServeHTTP." hint=${`${(fc.handlerInterfaceMethods || []).length}`}>
+            ${area("Method names (one per line)", lines(fc.handlerInterfaceMethods), (e) => setFC("handlerInterfaceMethods", toLines(e.target.value)), "ServeHTTP")}
+          <//>
           <${Section} title="Request context" help="Disambiguates generic decoders. json.Decode / json.Unmarshal / render.DecodeJSON decode request bodies AND unrelated data (config files, internal payloads). A decoder counts as a request body only when its source traces back to a body accessor on a request-context value. Type regexes = the request types to watch (e.g. ^\\*?net/http\\.Request$, ^.*gin\\.\\*Context$). Body accessors = methods that yield the body (e.g. ^Body$, ^GetRawData$). Leave empty to fall back to receiver-only matching.">
             <${RequestContextEditor} rc=${fc.requestContext} onChange=${(v) => setFC("requestContext", v)} />
+          <//>
+          <${Section} title="Response context" help="The mirror of Request context, for 'Require response destination' above: which types ARE the response writer, so an encode counts as the response only when it writes there. Writer types = the handler's writer (e.g. ^net/http\\.ResponseWriter$) — list only the writer the handler is HANDED, not writer-shaped types a handler can build itself (an httptest recorder is not the response). Writer-compatible types keep helpers whose destination stays an interface that could be the writer (e.g. ^io\\.Writer$).">
+            <${ResponseContextEditor} rc=${fc.responseContext} onChange=${(v) => setFC("responseContext", v)} />
           <//>
         </div>
       </div>
@@ -477,6 +489,7 @@ export function ConfigMode() {
 const COMMON_MATCH = [
   ["callRegex", "Call regex", "text", "Regex matching the called method/function name. Anchor with ^…$ and use (?i) for case-insensitive. e.g. ^(?i)(GET|POST|PUT|DELETE)$ matches Gin's verb methods; ^ShouldBindJSON$ matches one decoder."],
   ["recvTypeRegex", "Receiver type regex", "text", "Regex matching the fully-qualified receiver/owner type of the call. e.g. ^.*gin\\.\\*(Engine|RouterGroup)$ (Gin), ^github\\.com/go-chi/chi(/v\\d)?\\.\\*?(Router|Mux)$ (Chi), ^.*echo(/v\\d)?\\.(Echo|Group)$ (Echo). Leave blank to match any receiver."],
+  ["recvType", "Receiver type (exact)", "text", "Exact fully-qualified receiver type, as an alternative to the regex above — e.g. net/http.Header, net/http.*Request. Scoping a pattern to its receiver is what keeps it from firing on unrelated calls of the same name (http.Get vs r.Header.Get). Ignored when the regex is set."],
   ["functionNameRegex", "Function name regex", "text", "Optional — match by the ENCLOSING function's name instead of the call (e.g. only routes registered inside RegisterRoutes)."],
 ];
 
@@ -490,6 +503,7 @@ const PATTERN_FIELDS = {
     ["methodFromHandler", "Method from handler", "bool", "Derive the method from the handler function name."],
     ["pathFromArg", "Path from arg", "bool", "Read the path from the path argument."],
     ["handlerFromArg", "Handler from arg", "bool", "Resolve the handler from the handler argument."],
+    ["methodFromPath", "Method from path", "bool", "The path argument may carry the verb, Go 1.22 style: mux.HandleFunc('GET /users', h). An explicit verb here wins over every other source and suppresses switch-on-r.Method splitting."],
   ],
   requestBodyPatterns: [
     ...COMMON_MATCH,
@@ -511,14 +525,18 @@ const PATTERN_FIELDS = {
     ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type (e.g. *User → User)."],
     ["defaultStatus", "Default status", "int", "Status used when the writer has no explicit code. e.g. 200 for c.JSON-style writers, 204 for an empty response."],
     ["defaultContentType", "Default content-type", "text", "Content-type for this pattern when not otherwise known. e.g. text/plain; charset=utf-8 for a c.String writer."],
+    ["requireResponseDestination", "Require response destination", "bool", "Only classify as a response when the value being written traces to the response writer — keeps json.NewEncoder(&buf).Encode(v) or an encode to a file from being read as the response body. Pair with Response context below."],
+    ["destFromReceiver", "Destination from receiver", "bool", "Resolve that destination from the call RECEIVER's factory argument — the x in json.NewEncoder(x).Encode(v)."],
   ],
   paramPatterns: [
     ...COMMON_MATCH,
-    ["paramIn", "Parameter location", "select:path,query,header,cookie,form", "Where this parameter appears in the spec. e.g. c.Param→path, c.Query→query, c.GetHeader→header, c.Cookie→cookie, c.PostForm→form."],
+    ["paramIn", "Parameter location", "select:path,query,header,cookie,form,formFile,multipart", "Where this parameter appears in the spec. e.g. c.Param→path, c.Query→query, c.GetHeader→header, c.Cookie→cookie, c.PostForm→form. The last two are not parameter locations but requestBody facts: formFile is an uploaded file part (a binary property, body becomes multipart), and multipart marks a call that only says the body IS multipart (ParseMultipartForm) and emits no parameter."],
     ["paramArgIndex", "Param arg index", "int", "Index of the argument holding the parameter NAME. e.g. c.Query('q') → 0."],
     ["typeArgIndex", "Type arg index", "int", "Index of the argument whose type is the parameter type (for typed getters)."],
     ["typeFromArg", "Type from arg", "bool", "Use the matched argument's type as the parameter type (otherwise defaults to string)."],
     ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
+    ["nameFromMapKey", "Name from map key", "bool", "The name is a KEY used to index this call's map result, not an argument — the gorilla/mux idiom vars := mux.Vars(r); vars['id']. Only keys that also appear as {placeholders} in the route path are emitted."],
+    ["excludeRecvOriginRegex", "Exclude receiver origin", "text", "Drop the match when the receiver came FROM a type matching this regex. net/http.Header is the header map of the request AND the response, so a read is only a request parameter by provenance: w.Header().Get(k) and c.Response().Header().Get(k) read headers the server SENDS. An origin that cannot be resolved keeps the parameter."],
   ],
   mountPatterns: [
     ...COMMON_MATCH,
@@ -527,6 +545,21 @@ const PATTERN_FIELDS = {
     ["pathFromArg", "Path from arg", "bool", "Read the prefix from the path argument and prepend it to nested routes."],
     ["routerFromArg", "Router from arg", "bool", "Follow the sub-router argument so its routes are attached under the prefix."],
     ["isMount", "Is mount", "bool", "Treat this call as a router mount/group (e.g. Chi Mount/Route, Gin Group)."],
+    ["routerArgTypeRegex", "Router arg type regex", "text", "Only treat the router argument as a mounted ROUTER when its type matches. mux.Handle('/api', x) mounts a sub-router when x is a *chi.Mux but serves one handler when x is an http.Handler; without this every handler registration looks like a mount and its routes are emitted under every prefix."],
+  ],
+  securityPatterns: [
+    ...COMMON_MATCH,
+    ["scope", "Scope", "select:router,subtree,route,wrapper", "How far the matched middleware reaches. router = routes registered on the same router AFTER this call (chi/echo/gin/mux Use) · subtree = everything inside the mounted group/closure · route = this single registration (chi With, per-route middleware args) · wrapper = the handler argument is wrapped by an auth function (net/http, mux Handle)."],
+    ["middlewareArgIndex", "Middleware arg index", "int", "Index of the first middleware argument. e.g. r.Use(mw) → 0, r.Group('/v1', mw) → 1."],
+    ["middlewareVariadic", "Middleware variadic", "bool", "Collect every argument from that index to the end (Use(a, b, c))."],
+    ["middlewareExcludeLast", "Exclude last arg", "bool", "With variadic: skip the final argument because it is the handler, not middleware — gin/fiber per-route middleware."],
+    ["middlewareFromRecv", "Middleware from receiver", "bool", "The middleware value is the call's receiver rather than an argument (rare)."],
+    ["handlerArgIndex", "Handler arg index", "int", "Index of the guarded/wrapped handler argument, for scope route/wrapper."],
+  ],
+  entrypointPatterns: [
+    ["fieldRegex", "Field regex", "text", "Regex matching the struct FIELD the entrypoint function is assigned to. e.g. ^(Action|Run|RunE|Exec)$ — cobra's Run/RunE, urfave/cli's Action, ffcli's Exec."],
+    ["recvType", "Command type (exact)", "text", "Exact fully-qualified type declaring that field, e.g. github.com/spf13/cobra.Command. Scoping to the command type keeps an unrelated field of the same name from being treated as an entrypoint."],
+    ["recvTypeRegex", "Command type regex", "text", "Regex alternative to the exact type above, e.g. ^github\\.com/urfave/cli(/v\\d+)?\\.Command$."],
   ],
 };
 
@@ -583,6 +616,17 @@ function RequestContextEditor({ rc, onChange }) {
   return html`
     ${area("Handler param type regexes (one per line)", lines(rc?.typeRegexes), (e) => set("typeRegexes", toLines(e.target.value)), "^github.com/labstack/echo(/v\\d+)?\\.Context$")}
     ${area("Body accessors (one per line)", lines(rc?.bodyAccessors), (e) => set("bodyAccessors", toLines(e.target.value)), "Request().Body")}
+  `;
+}
+
+// ResponseContextEditor edits the writer-type lists only. Body transforms
+// (envelope unwrapping) are nested per-transform structures; those are edited in
+// YAML mode rather than duplicated here, and they round-trip untouched.
+function ResponseContextEditor({ rc, onChange }) {
+  const set = (k, v) => onChange({ ...(rc || {}), [k]: v });
+  return html`
+    ${area("Writer type regexes (one per line)", lines(rc?.writerTypeRegexes), (e) => set("writerTypeRegexes", toLines(e.target.value)), "^net/http\\.ResponseWriter$")}
+    ${area("Writer-compatible type regexes (one per line)", lines(rc?.writerCompatibleTypeRegexes), (e) => set("writerCompatibleTypeRegexes", toLines(e.target.value)), "^io\\.Writer$")}
   `;
 }
 

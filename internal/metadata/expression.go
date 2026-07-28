@@ -144,11 +144,14 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 						typeStr = AnonStructKey(obj.Pos(), fset, pkg)
 					}
 				}
+				// Rendered once for both uses below: this is the hot identifier
+				// path, and even a cache hit costs an RLock plus a map lookup.
+				rendered := typeStringOf(meta, obj.Type())
 				if typeStr == "" {
-					typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+					typeStr = strings.TrimPrefix(rendered, pkg+defaultSep)
 				}
 
-				if obj.Type().String() == "untyped nil" {
+				if rendered == "untyped nil" {
 					typeStr = "nil"
 					pkg = ""
 				}
@@ -204,7 +207,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 					if method, ok := obj.(*types.Func); ok && method.Type() != nil {
 						if sig, ok := method.Type().(*types.Signature); ok && sig.Recv() != nil {
 							recv := sig.Recv()
-							receiverType := recv.Type().String()
+							receiverType := typeStringOf(meta, recv.Type())
 							// Remove pointer prefix if present
 							receiverType = strings.TrimPrefix(receiverType, "*")
 							// Remove package prefix to get just the type name
@@ -220,7 +223,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 					}
 
 				}
-				typeStr = strings.TrimPrefix(obj.Type().String(), pkg+defaultSep)
+				typeStr = strings.TrimPrefix(typeStringOf(meta, obj.Type()), pkg+defaultSep)
 			}
 		}
 	}
@@ -280,7 +283,7 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	if info != nil {
 		if rt := info.TypeOf(e); rt != nil {
 			if _, isTuple := rt.(*types.Tuple); !isTuple {
-				arg.SetType(rt.String())
+				arg.SetType(typeStringOf(meta, rt))
 			}
 		}
 	}

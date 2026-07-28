@@ -1797,7 +1797,7 @@ func astFileFromFn(pkgName, fnName, recvType string, pkgs map[string]map[string]
 	// feeds fileToInfo/processAssignment — the wrong AST/info pair silently
 	// corrupts the extracted assignments.
 	var funcFallback, methodFallback *ast.File
-	for _, fileName := range slices.Sorted(maps.Keys(pkg.Files)) {
+	for _, fileName := range metadata.SortedFileNames(pkgName) {
 		f := pkg.Files[fileName]
 		if _, ok := f.Functions[fnName]; ok {
 			if recvType == "" {

@@ -514,6 +514,83 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 
 // defaultFrameworkConfig maps a detected framework name to its built-in
 // config; unknown names (and "net/http") get the net/http config.
+// ComposeFrameworkConfig builds the effective framework config for a directory:
+// the detected primary's config, every other detected framework merged in as a
+// receiver-scoped view, and the stdlib net/http surface layered underneath. It
+// returns the config and the detected frameworks in first-seen order.
+//
+// Exported because the UI must not compose this itself. It used to build a
+// config from the *primary alone* — and a project whose primary is decided by
+// file-walk order (issue #212) then loses every other framework's patterns: a
+// single dummy file importing gorilla/mux inside photoprism makes mux primary,
+// so a UI-built mux-only config documents zero of its gin routes while the CLI
+// documents 107. One composition path, one answer.
+func ComposeFrameworkConfig(dir string) (*spec.APISpecConfig, []string, error) {
+	return ComposeFrameworkConfigWithPrimary(dir, "")
+}
+
+// ComposeFrameworkConfigWithPrimary is ComposeFrameworkConfig with the primary
+// chosen by the caller — the UI's framework selector, where a user overrides
+// what detection picked. Every OTHER detected framework still merges in as a
+// scoped view, because overriding which framework leads must not silently
+// discard the ones the project also uses.
+func ComposeFrameworkConfigWithPrimary(dir, primary string) (*spec.APISpecConfig, []string, error) {
+	frameworks, err := core.NewFrameworkDetector().DetectAll(dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to detect framework: %w", err)
+	}
+	cfg, ordered := ComposeFrameworkConfigFrom(frameworks, primary)
+	return cfg, ordered, nil
+}
+
+// ComposeFrameworkConfigFrom is the composition itself, for callers that have
+// already detected the frameworks — detection parses the imports of every Go file
+// in the project, so doing it twice for one run is pure waste.
+func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APISpecConfig, []string) {
+	if len(frameworks) == 0 {
+		frameworks = []string{"net/http"}
+	}
+	if primary == "" {
+		primary = frameworks[0]
+	} else {
+		// The returned list always leads with the primary in effect — callers
+		// (the UI's selector, its "detected" label) read frameworks[0] as the
+		// one that leads. An explicit choice detection did not see (a house
+		// router, or a framework used somewhere the walk missed) is added
+		// rather than rejected; everything detected still merges under it.
+		rest := make([]string, 0, len(frameworks))
+		for _, fw := range frameworks {
+			if fw != primary {
+				rest = append(rest, fw)
+			}
+		}
+		frameworks = append([]string{primary}, rest...)
+	}
+
+	cfg := defaultFrameworkConfig(primary)
+	// Additional recognised frameworks (a gin API next to a gorilla/mux admin
+	// router, half-migrated projects): merge each one's receiver-scoped view so
+	// its registrations are traced too. Scoped patterns cannot claim another
+	// framework's calls, so the merge is inert where the secondary framework is
+	// imported but not routing.
+	for _, fw := range frameworks {
+		if fw == primary {
+			continue
+		}
+		cfg = spec.MergeFrameworkConfigs(cfg, spec.SecondaryView(defaultFrameworkConfig(fw)))
+	}
+	// Layer the stdlib net/http surface under the detected framework: mixed
+	// projects (a framework API plus plain ServeMux ops endpoints in one binary)
+	// are common, and net/http never appears in go.mod, so import-based
+	// detection cannot pick it as a second framework. Every merged pattern is
+	// receiver- or package-scoped, which keeps the merge inert for
+	// pure-framework projects.
+	if primary != "net/http" {
+		cfg = spec.MergeFrameworkConfigs(cfg, spec.HTTPSecondaryConfig())
+	}
+	return cfg, frameworks
+}
+
 func defaultFrameworkConfig(framework string) *spec.APISpecConfig {
 	switch framework {
 	case "gin":
@@ -578,8 +655,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// today. TestPrimaryFrameworkOrderInvariance pins the property, so a preset
 	// that reintroduces a primary-only asymmetry fails there rather than in
 	// someone's spec after a rename.
-	detector := core.NewFrameworkDetector()
-	frameworks, err := detector.DetectAll(e.config.moduleRoot)
+	frameworks, err := core.NewFrameworkDetector().DetectAll(e.config.moduleRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect framework: %w", err)
 	}
@@ -603,32 +679,24 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 	} else {
-		// Auto-detect framework and use defaults
-		apispecConfig = defaultFrameworkConfig(framework)
-		// Additional recognised frameworks (a gin API next to a gorilla/mux
-		// admin router, half-migrated projects): merge each one's
-		// receiver-scoped view so its registrations are traced too. Scoped
-		// patterns cannot claim another framework's calls, so the merge is
-		// inert where the secondary framework is imported but not routing.
-		for _, fw := range frameworks[1:] {
-			apispecConfig = spec.MergeFrameworkConfigs(apispecConfig, spec.SecondaryView(defaultFrameworkConfig(fw)))
-		}
-		// Layer the stdlib net/http surface under the detected framework:
-		// mixed projects (a framework API plus plain ServeMux ops endpoints
-		// in one binary) are common, and net/http never appears in go.mod,
-		// so import-based detection cannot pick it as a second framework.
-		// Every merged pattern is receiver- or package-scoped, which keeps
-		// the merge inert for pure-framework projects; user-supplied configs
-		// (the branches above) are never augmented.
-		if framework != "net/http" {
-			apispecConfig = spec.MergeFrameworkConfigs(apispecConfig, spec.HTTPSecondaryConfig())
-		}
+		// Composed the one way everything composes them — from the frameworks
+		// detected above, so the import scan happens once per run.
+		apispecConfig, _ = ComposeFrameworkConfigFrom(frameworks, "")
 	}
 
 	// Merge built-in auth/security library presets based on the project's
 	// imports (framework preset -> library presets -> user config; user wins).
 	// The engine stays framework-agnostic: this only augments config data.
 	intspec.ApplySecurityPresets(apispecConfig, meta)
+
+	// Entrypoint presets: which struct fields a command library dispatches
+	// through (urfave/cli's Action, cobra's Run/RunE, …), keyed on the project's
+	// imports. A function parked in such a field has no call edge from main, so
+	// without this the route-registration subtree of a CLI-dispatched program is
+	// unreachable and the project documents nothing (issue #220). Inert for a
+	// project that imports none of them; a user config keeps precedence and can
+	// declare its own field for a house dispatcher.
+	intspec.ApplyEntrypointPresets(apispecConfig, meta)
 
 	// Set info from configuration (only if not already set in APISpecConfig)
 	if apispecConfig.Info.Title == "" {
@@ -686,11 +754,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	var tree intspec.TrackerTreeInterface
 	if e.config.UseLazyTracker {
 		tree = intspec.NewLazyTree(meta, limits,
-			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
+			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
+			intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
+				intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)))
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
 	} else {
 		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose),
-			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods))
+			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
+			intspec.WithEagerEntrypoints(apispecConfig.Framework.EntrypointPatterns,
+				intspec.RouteRegistrationMatcher(apispecConfig, meta)))
 		e.reportPhase("tracker tree built", time.Since(tTree))
 	}
 	if err := e.ctx().Err(); err != nil {

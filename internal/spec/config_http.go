@@ -135,6 +135,9 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ParamIn:       "header",
 					ParamArgIndex: 0,
 					RecvType:      "net/http.Header",
+					// ...but only the REQUEST's headers: the same type carries the
+					// response's, and `w.Header().Get(k)` reads what the server sends.
+					ExcludeRecvOriginRegex: responseWriterOriginRegex,
 				},
 				{
 					// r.URL.Query().Get("q") — query parameter. Query()

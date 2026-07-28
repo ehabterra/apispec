@@ -164,6 +164,13 @@ type ContextProvider interface {
 
 	// GetArgumentInfo gets argument information
 	GetArgumentInfo(arg *metadata.CallArgument) string
+
+	// ConstantValue resolves an argument that NAMES a constant this project
+	// declares to that constant's value, reporting whether it resolved. Callers
+	// that need a value the client actually sends — a parameter's wire name —
+	// use this rather than GetArgumentInfo, which falls back to rendering the
+	// expression when nothing is known.
+	ConstantValue(arg *metadata.CallArgument) (string, bool)
 }
 
 // SchemaMapper defines the interface for schema mapping operations

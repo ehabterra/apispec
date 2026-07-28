@@ -113,7 +113,7 @@ func main() { app := &App{Commands: []*Command{{Name: "web", Action: runWeb}}}; 
 			field(meta, "Name", "string"), field(meta, "Action", "func"),
 		}
 
-		got := buildFuncFieldDispatch(meta)
+		got, _ := buildFuncFieldDispatch(meta, nil)
 		want := []string{dispatchPkg + ".runWeb"}
 		if diff := got[funcFieldKey(dispatchPkg, "Command", "Action")]; !reflect.DeepEqual(diff, want) {
 			t.Errorf("Command.Action = %v, want %v (whole index: %v)", diff, want, got)
@@ -130,7 +130,7 @@ func main() { var h func() error; app := &App{Commands: []*Command{{Name: "web",
 		meta.Packages[dispatchPkg].Files["cli.go"].Types["Command"].Fields = []metadata.Field{
 			field(meta, "Name", "string"), field(meta, "Action", "func"),
 		}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("expected no entries for a variable-valued field, got %v", got)
 		}
 	})
@@ -147,7 +147,7 @@ func main() { app := &App{Commands: []*Command{{Name: "web", Action: runWeb}}}; 
 		meta.Packages[dispatchPkg].Files["cli.go"].Types["Command"].Fields = []metadata.Field{
 			field(meta, "Name", "string"), field(meta, "Action", "string"), // NOT a func
 		}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("expected no entries when the field is not func-typed, got %v", got)
 		}
 	})
@@ -163,7 +163,7 @@ func main() { app := &App{Commands: []*Command{{Name: "web", Action: runWeb}}}; 
 		meta.Packages[dispatchPkg].Files["cli.go"].Types["Command"].Fields = []metadata.Field{
 			field(meta, "Name", "string"), field(meta, "Action", "func"),
 		}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("expected no entries for a function with no recorded calls, got %v", got)
 		}
 	})
@@ -184,7 +184,8 @@ func main() {
 		meta.Packages[dispatchPkg].Files["cli.go"].Types["Command"].Fields = []metadata.Field{
 			field(meta, "Name", "string"), field(meta, "Action", "func"),
 		}
-		got := buildFuncFieldDispatch(meta)[funcFieldKey(dispatchPkg, "Command", "Action")]
+		index, _ := buildFuncFieldDispatch(meta, nil)
+		got := index[funcFieldKey(dispatchPkg, "Command", "Action")]
 		want := []string{dispatchPkg + ".runAdmin", dispatchPkg + ".runWeb"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Command.Action = %v, want %v (sorted)", got, want)
@@ -200,7 +201,8 @@ func main() { app := &App{Commands: []*Command{{"web", runWeb}}}; _ = app }
 		meta.Packages[dispatchPkg].Files["cli.go"].Types["Command"].Fields = []metadata.Field{
 			field(meta, "Name", "string"), field(meta, "Action", "func"),
 		}
-		got := buildFuncFieldDispatch(meta)[funcFieldKey(dispatchPkg, "Command", "Action")]
+		index, _ := buildFuncFieldDispatch(meta, nil)
+		got := index[funcFieldKey(dispatchPkg, "Command", "Action")]
 		if want := []string{dispatchPkg + ".runWeb"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("Command.Action = %v, want %v", got, want)
 		}
@@ -241,7 +243,7 @@ func main() { app := &App{Commands: []*Command{{"web", runWeb}}}; _ = app }
 	})
 
 	t.Run("nil metadata is not a panic", func(t *testing.T) {
-		if got := buildFuncFieldDispatch(nil); got != nil {
+		if got, _ := buildFuncFieldDispatch(nil, nil); got != nil {
 			t.Errorf("buildFuncFieldDispatch(nil) = %v, want nil", got)
 		}
 	})
@@ -307,7 +309,7 @@ func TestFuncFieldDispatchGuards(t *testing.T) {
 				}},
 			},
 		}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("expected an empty index, got %v", got)
 		}
 	})
@@ -317,7 +319,7 @@ func TestFuncFieldDispatchGuards(t *testing.T) {
 			StringPool: metadata.NewStringPool(),
 			CallGraph:  []metadata.CallGraphEdge{{Args: []*metadata.CallArgument{nil}}},
 		}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("expected an empty index, got %v", got)
 		}
 	})
@@ -579,7 +581,7 @@ func TestFuncFieldDispatchPartialMetadata(t *testing.T) {
 			}},
 		}
 		meta.Packages = map[string]*metadata.Package{"p": {Files: map[string]*metadata.File{"f.go": file}}}
-		got := buildFuncFieldDispatch(meta)
+		got, _ := buildFuncFieldDispatch(meta, nil)
 		if want := []string{"p.runWeb"}; len(got) != 1 || !reflect.DeepEqual(got[funcFieldKey("p", "Command", "Action")], want) {
 			t.Errorf("index = %v, want only the named field to resolve", got)
 		}
@@ -635,7 +637,7 @@ func main() { app := App{Cmd: {Action: runWeb}}; _ = app }
 			}}},
 		}
 
-		got := buildFuncFieldDispatch(meta)
+		got, _ := buildFuncFieldDispatch(meta, nil)
 		want := []string{"p.runWeb"}
 		if key := funcFieldKey("other.example/pkg", "Command", "Action"); !reflect.DeepEqual(got[key], want) {
 			t.Errorf("%s = %v, want %v (whole index: %v)", key, got[key], want, got)
@@ -648,7 +650,7 @@ func main() { app := App{Cmd: {Action: runWeb}}; _ = app }
 		lit.SetKind(metadata.KindCompositeLit)
 		lit.Args = []*metadata.CallArgument{nil}
 		meta.CallGraph = []metadata.CallGraphEdge{{Args: []*metadata.CallArgument{lit}}}
-		if got := buildFuncFieldDispatch(meta); len(got) != 0 {
+		if got, _ := buildFuncFieldDispatch(meta, nil); len(got) != 0 {
 			t.Errorf("index = %v, want empty", got)
 		}
 	})

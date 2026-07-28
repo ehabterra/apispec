@@ -62,12 +62,16 @@ const maxCompositeLitDepth = 12
 //
 // Every map iteration is sorted: this index feeds tree expansion, which decides
 // which routes exist, so its order reaches the output (golden rule #1).
-func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
+func buildFuncFieldDispatch(meta *metadata.Metadata, entrypoints []EntrypointPattern) (funcFieldDispatch, []string) {
 	if meta == nil {
-		return nil
+		return nil, nil
 	}
 	d := funcFieldDispatch{}
 	known := knownFunctionKeys(meta)
+	// Function keys stored in a field declared as an entrypoint (issue #220).
+	// Collected during the same walk: the alternative is a second pass over
+	// every literal in the project, for a fact this one already computes.
+	entry := map[string]bool{}
 
 	for _, pkgName := range sortedMapKeys(meta.Packages) {
 		pkg := meta.Packages[pkgName]
@@ -79,7 +83,7 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 			if file == nil {
 				continue
 			}
-			d.addStructInstances(meta, known, pkgName, file)
+			d.addStructInstances(meta, known, entrypoints, entry, pkgName, file)
 			for _, fnName := range sortedMapKeys(file.Functions) {
 				fn := file.Functions[fnName]
 				if fn == nil {
@@ -88,7 +92,7 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 				for _, varName := range sortedMapKeys(fn.AssignmentMap) {
 					for i := range fn.AssignmentMap[varName] {
 						a := &fn.AssignmentMap[varName][i]
-						d.walkCompositeLits(meta, known, pkgName, &a.Value, litType{}, 0)
+						d.walkCompositeLits(meta, known, entrypoints, entry, pkgName, &a.Value, litType{}, 0)
 					}
 				}
 			}
@@ -102,7 +106,7 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 		edge := &meta.CallGraph[i]
 		ctxPkg := getString(meta, edge.Caller.Pkg)
 		for _, arg := range edge.Args {
-			d.walkCompositeLits(meta, known, ctxPkg, arg, litType{}, 0)
+			d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, arg, litType{}, 0)
 		}
 	}
 
@@ -110,7 +114,12 @@ func buildFuncFieldDispatch(meta *metadata.Metadata) funcFieldDispatch {
 		sort.Strings(vals)
 		d[key] = dedupeSortedStrings(vals)
 	}
-	return d
+	keys := make([]string, 0, len(entry))
+	for key := range entry {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return d, keys
 }
 
 // keysFor returns the function base keys reachable through an edge that calls a
@@ -148,7 +157,7 @@ func funcFieldKey(pkg, typeName, field string) string {
 // exactly the `Action: runWeb` case it exists to cover. A nested literal renders
 // as a type blob ("[]*Command{{string: web, func() error: func() error}}") and
 // contributes nothing here; the assignment walk is what catches those.
-func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map[string]bool, pkgName string, file *metadata.File) {
+func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map[string]bool, entrypoints []EntrypointPattern, entry map[string]bool, pkgName string, file *metadata.File) {
 	for i := range file.StructInstances {
 		inst := &file.StructInstances[i]
 		// The instance is recorded under the package that WRITES the literal,
@@ -160,7 +169,11 @@ func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map
 			typePkg = pkgName
 		}
 		fields := structFieldTypes(meta, typePkg, typeName)
-		if len(fields) == 0 || len(inst.Fields) == 0 {
+		ownerType := typePkg + "." + typeName
+		// An EXTERNAL owner (cli.Command) has no field list here, so a
+		// field-type test would reject every entrypoint. The declared
+		// entrypoint is the authority in that case.
+		if len(inst.Fields) == 0 || (len(fields) == 0 && len(entrypoints) == 0) {
 			continue
 		}
 		names := make([]string, 0, len(inst.Fields))
@@ -175,7 +188,8 @@ func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			if !isFuncTypeString(fields[name]) {
+			isEntry := matchesEntrypoint(entrypoints, ownerType, name)
+			if !isEntry && !isFuncTypeString(fields[name]) {
 				continue
 			}
 			// A rendered value is only usable when it names a function; a
@@ -186,6 +200,9 @@ func (d funcFieldDispatch) addStructInstances(meta *metadata.Metadata, known map
 			if key := functionKeyFromRendered(meta, known, pkgName, file, byName[name]); key != "" {
 				k := funcFieldKey(typePkg, typeName, name)
 				d[k] = append(d[k], key)
+				if isEntry {
+					entry[key] = true
+				}
 			}
 		}
 	}
@@ -208,7 +225,7 @@ type litType struct {
 //
 // expect carries the type a literal cannot state for itself: elements take it
 // from the enclosing slice/array/map, and a field's value literal from the field.
-func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[string]bool, ctxPkg string, arg *metadata.CallArgument, expect litType, depth int) {
+func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[string]bool, entrypoints []EntrypointPattern, entry map[string]bool, ctxPkg string, arg *metadata.CallArgument, expect litType, depth int) {
 	if arg == nil || depth > maxCompositeLitDepth {
 		return
 	}
@@ -216,10 +233,10 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 		// Not a literal itself, but one may sit underneath: &T{…} is a unary,
 		// f(T{…}) a call, and so on.
 		for _, child := range []*metadata.CallArgument{arg.X, arg.Fun, arg.Sel} {
-			d.walkCompositeLits(meta, known, ctxPkg, child, expect, depth+1)
+			d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, child, expect, depth+1)
 		}
 		for _, child := range arg.Args {
-			d.walkCompositeLits(meta, known, ctxPkg, child, litType{}, depth+1)
+			d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, child, litType{}, depth+1)
 		}
 		return
 	}
@@ -257,14 +274,15 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 				name = elt.X.GetName()
 			}
 			fieldType := fields[name]
-			if name != "" && isFuncTypeString(fieldType) {
-				d.record(known, lit.pkg, bare, name, elt.Fun, ctxPkg)
+			isEntry := matchesEntrypoint(entrypoints, lit.pkg+"."+bare, name)
+			if name != "" && (isEntry || isFuncTypeString(fieldType)) {
+				d.record(known, lit.pkg, bare, name, elt.Fun, ctxPkg, isEntry, entry)
 			}
 			next := litType{pkg: lit.pkg, name: fieldType}
 			if fieldType == "" {
 				next = elem
 			}
-			d.walkCompositeLits(meta, known, ctxPkg, elt.Fun, next, depth+1)
+			d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, elt.Fun, next, depth+1)
 			continue
 		}
 		// Positional: a struct literal binds elements to fields in declaration
@@ -272,21 +290,25 @@ func (d funcFieldDispatch) walkCompositeLits(meta *metadata.Metadata, known map[
 		// value list) binds them to the element type.
 		if i < len(ordered) && len(ordered) > 0 && elem.name == "" {
 			name := ordered[i]
-			if isFuncTypeString(fields[name]) {
-				d.record(known, lit.pkg, bare, name, elt, ctxPkg)
+			isEntry := matchesEntrypoint(entrypoints, lit.pkg+"."+bare, name)
+			if isEntry || isFuncTypeString(fields[name]) {
+				d.record(known, lit.pkg, bare, name, elt, ctxPkg, isEntry, entry)
 			}
-			d.walkCompositeLits(meta, known, ctxPkg, elt, litType{pkg: lit.pkg, name: fields[name]}, depth+1)
+			d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, elt, litType{pkg: lit.pkg, name: fields[name]}, depth+1)
 			continue
 		}
-		d.walkCompositeLits(meta, known, ctxPkg, elt, elem, depth+1)
+		d.walkCompositeLits(meta, known, entrypoints, entry, ctxPkg, elt, elem, depth+1)
 	}
 }
 
 // record resolves a field's value to a function base key and indexes it.
-func (d funcFieldDispatch) record(known map[string]bool, pkg, typeName, field string, value *metadata.CallArgument, ctxPkg string) {
+func (d funcFieldDispatch) record(known map[string]bool, pkg, typeName, field string, value *metadata.CallArgument, ctxPkg string, isEntry bool, entry map[string]bool) {
 	for _, key := range functionKeysOfValue(known, value, ctxPkg) {
 		k := funcFieldKey(pkg, typeName, field)
 		d[k] = append(d[k], key)
+		if isEntry {
+			entry[key] = true
+		}
 	}
 }
 
