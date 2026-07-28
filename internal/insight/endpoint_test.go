@@ -156,3 +156,53 @@ func TestParsePosAndSourceWindow(t *testing.T) {
 		t.Error("missing file should yield empty window")
 	}
 }
+
+// TestSameSourceFile covers the comparison that lets a module-relative closure
+// identity be matched against an absolute declaration file. Both forms occur in
+// one metadata set: a closure's key is relative so the generated spec is
+// reproducible (issue #216), while a recorded position is absolute.
+func TestSameSourceFile(t *testing.T) {
+	match := []struct{ a, b string }{
+		{"/src/app/internal/api/h.go", "internal/api/h.go"},
+		{"internal/api/h.go", "/src/app/internal/api/h.go"},
+		{"/src/app/main.go", "main.go"},
+		{"/src/app/main.go", "/src/app/main.go"},
+		{"main.go", "main.go"},
+	}
+	for _, c := range match {
+		if !sameSourceFile(c.a, c.b) {
+			t.Errorf("sameSourceFile(%q, %q) = false, want true", c.a, c.b)
+		}
+	}
+
+	// The suffix has to land on a path boundary, or unrelated files collide.
+	differ := []struct{ a, b string }{
+		{"/src/app/xapi/h.go", "api/h.go"},
+		{"/src/app/api/h.go", "other/h.go"},
+		{"/src/app/api/h.go", ""},
+		{"", "api/h.go"},
+		{"", ""},
+	}
+	for _, c := range differ {
+		if sameSourceFile(c.a, c.b) {
+			t.Errorf("sameSourceFile(%q, %q) = true, want false", c.a, c.b)
+		}
+	}
+}
+
+// TestExtractFilePosAcceptsRelativePaths pins that the position scanner reads
+// both forms. It required a leading slash, so a module-relative closure key
+// yielded nothing and the closure could not be located at all.
+func TestExtractFilePosAcceptsRelativePaths(t *testing.T) {
+	cases := map[string]string{
+		"pkg.FuncLit:internal/api/h.go:55:28":      "internal/api/h.go:55",
+		"pkg.FuncLit:/abs/src/internal/h.go:55:28": "/abs/src/internal/h.go:55",
+		"main.go:1:1":      "main.go:1",
+		"no position here": "",
+	}
+	for in, want := range cases {
+		if got := extractFilePos(in); got != want {
+			t.Errorf("extractFilePos(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

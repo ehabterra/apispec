@@ -74,16 +74,19 @@ func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *t
 	case *ast.TypeAssertExpr:
 		return handleTypeAssertExpr(e, info, pkgName, fset, meta)
 	case *ast.FuncLit:
-		position := meta.positionString(e.Pos(), fset)
+		// Two renderings of one location, deliberately: the closure's IDENTITY is
+		// module-relative so the generated spec is the same in every checkout
+		// (issue #216), while the position recorded on the node stays absolute
+		// because that is what opens the file.
 		arg := NewCallArgument(meta)
 		arg.SetKind(KindFuncLit)
-		arg.SetName(funcLitName(position))
+		arg.SetName(funcLitName(meta.stablePosition(e.Pos(), fset)))
 		arg.SetPkg(pkgName)
 		typ := ExprToCallArgument(e.Type, info, pkgName, fset, meta)
 		typeStr := callArgToString(typ, nil)
 		arg.SetType(typeStr)
 		arg.SetValue(valueFuncLit)
-		arg.SetPosition(position)
+		arg.SetPosition(meta.positionString(e.Pos(), fset))
 		return arg
 	case *ast.ChanType:
 		return handleChanType(e, info, pkgName, fset, meta)
