@@ -231,7 +231,9 @@ function Alerts({ rep }) {
 function AnalysisCard({ rep }) {
   const a = rep.analysis || {};
   const ep = a.entrypoints;
-  if (!a.frameworks.length && !a.primary && !ep) return "";
+  // Engine counts: it is the one fact always known about a run, and "which
+  // tracker" is the first question a surprising result raises.
+  if (!a.frameworks.length && !a.primary && !a.engine && !ep) return "";
 
   // The gate's outcome, said in words. "0 rooted" is the interesting case: it
   // means apispec DID look and found nothing that registers a route, which is a
@@ -255,7 +257,11 @@ function AnalysisCard({ rep }) {
                   </span>`,
                 )}
               </div>`
-          : html`<span class="muted" style="font-size:var(--fs-sm)">No framework detected — the configured patterns were used as-is.</span>`}
+          : a.primary
+            ? // Chosen rather than detected: a hand-authored config states its own
+              // patterns, so detection has no say in what was used.
+              html`<span class="muted" style="font-size:var(--fs-sm)">Framework <b>${a.primary}</b> <span style="opacity:.8">— configured, not auto-detected</span></span>`
+            : html`<span class="muted" style="font-size:var(--fs-sm)">No framework detected — the configured patterns were used as-is.</span>`}
         <span class="spacer"></span>
         ${a.engine ? html`<span class="muted" style="font-size:var(--fs-xs)">${a.engine} tracker</span>` : ""}
       </div>

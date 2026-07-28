@@ -50,6 +50,15 @@ func TestAnalysisLine(t *testing.T) {
 			want: "Analysed with framework echo, eager tracker.",
 		},
 		{
+			// A hand-authored config states its own patterns, so detection has no
+			// say in what was used and the run reports no framework at all. The
+			// engine is still worth saying — it is what a surprising result is
+			// first blamed on (CodeRabbit, PR #227).
+			name: "engine only",
+			info: AnalysisInfo{Engine: "lazy"},
+			want: "Analysed with lazy tracker.",
+		},
+		{
 			name: "entry points are spelled out, including why most were skipped",
 			info: AnalysisInfo{
 				Frameworks:  []string{"mux"},

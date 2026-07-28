@@ -925,7 +925,11 @@ func (r *OverviewReport) Summary() string {
 // AnalysisInfo).
 func (r *OverviewReport) AnalysisLine() string {
 	a := r.Analysis
-	if len(a.Frameworks) == 0 && a.Primary == "" && a.Entrypoints == nil {
+	// Every field this renders has to be in the guard, engine included: a run with
+	// a hand-authored config reports no framework at all (detection has no say in
+	// what was used), and dropping the line then would lose the one fact that is
+	// always known about it.
+	if len(a.Frameworks) == 0 && a.Primary == "" && a.Engine == "" && a.Entrypoints == nil {
 		return ""
 	}
 	var parts []string
