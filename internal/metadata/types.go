@@ -16,6 +16,7 @@ package metadata
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"maps"
 	"regexp"
@@ -145,6 +146,10 @@ type Metadata struct {
 	// typeStrCache memoizes go/types rendering — see typeStringOf.
 	typeStrCache map[types.Type]string
 	typeStrMutex sync.RWMutex
+
+	// posCache memoizes position rendering — see positionIndex.
+	posCache map[token.Pos]int
+	posMutex sync.RWMutex
 	// implementersCache memoizes ImplementersOf, which otherwise re-scans every
 	// package and type (with two sorts) on every call.
 	implementersCache map[string][]string

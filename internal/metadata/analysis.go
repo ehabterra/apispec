@@ -15,7 +15,6 @@
 package metadata
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -74,12 +73,12 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 	funcLit := findEnclosingFunctionLiteral(file, pos)
 	if funcLit != nil {
 		// Return the function literal identifier (e.g., "FuncLitmain.go:42:15")
-		position := getPosition(funcLit.Pos(), fset)
+		position := meta.positionString(funcLit.Pos(), fset)
 		var signatureStr string
 		if fnType := info.TypeOf(funcLit.Type); fnType != nil {
 			signatureStr = typeStringOf(meta, fnType)
 		}
-		return fmt.Sprintf("FuncLit:%s", position), "", signatureStr
+		return funcLitName(position), "", signatureStr
 	}
 
 	// Fallback to declared functions
@@ -211,7 +210,7 @@ func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 }
 
 // getCalleeFunctionNameAndPackage extracts function name, package, and receiver type from a call expression
-func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet) (string, string, string) {
+func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, meta *Metadata) (string, string, string) {
 	switch x := expr.(type) {
 	case *ast.Ident:
 		// Simple identifier - assume it's a function in the current package
@@ -272,19 +271,19 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		return x.Sel.Name, pkgName, ""
 
 	case *ast.CallExpr:
-		return getCalleeFunctionNameAndPackage(x.Fun, file, pkgName, fileToInfo, funcMap, fset)
+		return getCalleeFunctionNameAndPackage(x.Fun, file, pkgName, fileToInfo, funcMap, fset, meta)
 
 	case *ast.IndexExpr:
 		// Handle indexed expressions like array[index] or map[key]
 		// Recursively analyze the indexed expression (X) to find function calls
-		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
+		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset, meta)
 
 	case *ast.IndexListExpr:
 		// Handle generic function or type instantiations like Func[T1, T2]
 		// Recursively analyze the X field to find function calls
-		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset)
+		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset, meta)
 	case *ast.FuncLit:
-		return fmt.Sprintf("FuncLit:%s", getPosition(x.Pos(), fset)), pkgName, ""
+		return funcLitName(meta.positionString(x.Pos(), fset)), pkgName, ""
 
 	}
 	return "", "", ""

@@ -17,7 +17,6 @@ package metadata
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"go/types"
 	"strings"
 
@@ -66,30 +65,6 @@ func getTypeName(nd ast.Node, info *types.Info) string {
 		return typemodel.FromExpr(e, info).String()
 	}
 	return ""
-}
-
-// getPosition returns a string representation of a position
-func getPosition(pos token.Pos, fset *token.FileSet) string {
-	if !pos.IsValid() || fset == nil {
-		return ""
-	}
-	return fset.Position(pos).String()
-}
-
-// getFuncPosition returns the position of a function declaration
-func getFuncPosition(fn *ast.FuncDecl, fset *token.FileSet) string {
-	if fn == nil {
-		return ""
-	}
-	return getPosition(fn.Pos(), fset)
-}
-
-// getVarPosition returns the position of a variable identifier
-func getVarPosition(ident *ast.Ident, fset *token.FileSet) string {
-	if ident == nil {
-		return ""
-	}
-	return getPosition(ident.Pos(), fset)
 }
 
 // getComments extracts comments from AST nodes

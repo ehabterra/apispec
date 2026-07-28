@@ -174,20 +174,21 @@ func TestCovmetaGetImportPath(t *testing.T) {
 func TestCovmetaGetPositions(t *testing.T) {
 	file, fset := covmetaParse(t, covmetaHelperSrc)
 	fn, _, varSpec, _, _ := covmetaFindNodes(file)
+	m := &Metadata{StringPool: NewStringPool()}
 
-	if got := getFuncPosition(fn, fset); got == "" {
-		t.Error("func position should be non-empty")
+	if got := m.funcPositionIndex(fn, fset); got < 0 {
+		t.Error("func position should resolve to a pooled string")
 	}
-	if got := getFuncPosition(nil, fset); got != "" {
-		t.Errorf("nil func position should be empty, got %q", got)
+	if got := m.funcPositionIndex(nil, fset); got != -1 {
+		t.Errorf("nil func position = %d, want -1", got)
 	}
 
 	ident := varSpec.Names[0]
-	if got := getVarPosition(ident, fset); got == "" {
-		t.Error("var position should be non-empty")
+	if got := m.varPositionIndex(ident, fset); got < 0 {
+		t.Error("var position should resolve to a pooled string")
 	}
-	if got := getVarPosition(nil, fset); got != "" {
-		t.Errorf("nil var position should be empty, got %q", got)
+	if got := m.varPositionIndex(nil, fset); got != -1 {
+		t.Errorf("nil var position = %d, want -1", got)
 	}
 }
 
