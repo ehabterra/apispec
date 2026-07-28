@@ -139,9 +139,14 @@ type DetectResponse struct {
 	Defaults            spec.Defaults                  `json:"defaults"`
 	TypeMapping         []spec.TypeMapping             `json:"typeMapping"`
 	ExternalTypes       []spec.ExternalType            `json:"externalTypes"`
-	Overrides           []spec.Override                `json:"overrides"`
-	Include             spec.IncludeExclude            `json:"include"`
-	Exclude             spec.IncludeExclude            `json:"exclude"`
+
+	// TrackerDefaults reports the engine's expansion limits so the UI can show
+	// what a blank field means, rather than hardcoding numbers that would drift
+	// from Go (issue #233).
+	TrackerDefaults TrackerLimits       `json:"trackerDefaults"`
+	Overrides       []spec.Override     `json:"overrides"`
+	Include         spec.IncludeExclude `json:"include"`
+	Exclude         spec.IncludeExclude `json:"exclude"`
 	// Framework is the full default FrameworkConfig (route/requestBody/response/
 	// param/mount patterns) for the detected framework — pre-filled so the UI
 	// can render every pattern editor.
@@ -198,6 +203,62 @@ type GenerateRequest struct {
 	// LegacyTracker switches spec generation to the legacy (eager) tracker
 	// tree; the default is the lazy tracker.
 	LegacyTracker bool `json:"legacyTracker"`
+
+	// Limits bound tree expansion. Every field is optional: a zero keeps the
+	// engine default. They are here because a project can be large enough that
+	// the default budget stops expansion part-way through its routes, and the UI
+	// had no way to raise it — gitea documents 5 paths at the default node limit
+	// and 862 with it raised (issue #233).
+	Limits TrackerLimits `json:"limits"`
+}
+
+// TrackerLimits mirrors the engine's traversal bounds, as the UI sends them.
+// Zero means "use the engine default", so a client that knows nothing about
+// limits sends nothing and gets today's behaviour.
+type TrackerLimits struct {
+	MaxNodesPerTree    int `json:"maxNodesPerTree,omitempty"`
+	MaxChildrenPerNode int `json:"maxChildrenPerNode,omitempty"`
+	MaxArgsPerFunction int `json:"maxArgsPerFunction,omitempty"`
+	MaxNestedArgsDepth int `json:"maxNestedArgsDepth,omitempty"`
+	MaxRecursionDepth  int `json:"maxRecursionDepth,omitempty"`
+	MaxInstancesPerKey int `json:"maxInstancesPerKey,omitempty"`
+}
+
+// defaultTrackerLimits is what the engine uses when the request says nothing. The
+// UI shows these so a user can see what they are changing.
+func defaultTrackerLimits() TrackerLimits {
+	return TrackerLimits{
+		MaxNodesPerTree:    engine.DefaultMaxNodesPerTree,
+		MaxChildrenPerNode: engine.DefaultMaxChildrenPerNode,
+		MaxArgsPerFunction: engine.DefaultMaxArgsPerFunction,
+		MaxNestedArgsDepth: engine.DefaultMaxNestedArgsDepth,
+		MaxRecursionDepth:  engine.DefaultMaxRecursionDepth,
+		MaxInstancesPerKey: engine.DefaultMaxInstancesPerKey,
+	}
+}
+
+// resolved returns the limits with every unset field filled from the defaults.
+func (l TrackerLimits) resolved() TrackerLimits {
+	d := defaultTrackerLimits()
+	if l.MaxNodesPerTree <= 0 {
+		l.MaxNodesPerTree = d.MaxNodesPerTree
+	}
+	if l.MaxChildrenPerNode <= 0 {
+		l.MaxChildrenPerNode = d.MaxChildrenPerNode
+	}
+	if l.MaxArgsPerFunction <= 0 {
+		l.MaxArgsPerFunction = d.MaxArgsPerFunction
+	}
+	if l.MaxNestedArgsDepth <= 0 {
+		l.MaxNestedArgsDepth = d.MaxNestedArgsDepth
+	}
+	if l.MaxRecursionDepth <= 0 {
+		l.MaxRecursionDepth = d.MaxRecursionDepth
+	}
+	if l.MaxInstancesPerKey <= 0 {
+		l.MaxInstancesPerKey = d.MaxInstancesPerKey
+	}
+	return l
 }
 
 // GenerateResponse is the result of a successful generation.
@@ -217,6 +278,14 @@ type GenerateResponse struct {
 	// security scheme. The UI offers a picker to map each to a scheme, which is
 	// persisted into securityMappings for the next generation.
 	UnresolvedSecurity []spec.MiddlewareRef `json:"unresolvedSecurity,omitempty"`
+
+	// Truncated reports that expansion stopped at the node budget rather than
+	// because it was finished, so the spec is incomplete by an unknown amount.
+	// NodeLimit is the budget it stopped AT, so it is set only alongside
+	// Truncated: a completed run never stopped at one, and a number there would
+	// read as a bound that was hit (CodeRabbit, PR #234).
+	Truncated bool `json:"truncated,omitempty"`
+	NodeLimit int  `json:"nodeLimit,omitempty"`
 }
 
 // UIServer holds shared state across requests.
@@ -608,6 +677,7 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 	}
 
 	return DetectResponse{
+		TrackerDefaults:     defaultTrackerLimits(),
 		InputDir:            dir,
 		ModuleRoot:          root,
 		ModulePath:          modPath,
@@ -829,6 +899,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	s.genCancel = cancel
 	s.mu.Unlock()
 
+	limits := req.Limits.resolved()
 	engCfg := &engine.EngineConfig{
 		Context:                      genCtx,
 		InputDir:                     s.currentDir(),
@@ -837,11 +908,12 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		Description:                  req.Info.Description,
 		OpenAPIVersion:               req.OpenAPIVersion,
 		APISpecConfig:                apiCfg,
-		MaxNodesPerTree:              engine.DefaultMaxNodesPerTree,
-		MaxChildrenPerNode:           engine.DefaultMaxChildrenPerNode,
-		MaxArgsPerFunction:           engine.DefaultMaxArgsPerFunction,
-		MaxNestedArgsDepth:           engine.DefaultMaxNestedArgsDepth,
-		MaxRecursionDepth:            engine.DefaultMaxRecursionDepth,
+		MaxNodesPerTree:              limits.MaxNodesPerTree,
+		MaxChildrenPerNode:           limits.MaxChildrenPerNode,
+		MaxArgsPerFunction:           limits.MaxArgsPerFunction,
+		MaxNestedArgsDepth:           limits.MaxNestedArgsDepth,
+		MaxRecursionDepth:            limits.MaxRecursionDepth,
+		MaxInstancesPerKey:           limits.MaxInstancesPerKey,
 		SkipCGOPackages:              true,
 		AnalyzeFrameworkDependencies: true,
 		AutoIncludeFrameworkPackages: true,
@@ -962,12 +1034,13 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			summary = summarizeMetadata(genMeta, gen.ModuleRoot())
 		}
 
+		expansion := gen.GetExpansionStats()
 		now := time.Now()
 		s.mu.Lock()
 		s.currentSpec = out
 		s.currentCfg = apiCfg
 		s.currentMeta = genMeta
-		s.currentAnalysis = analysisInfo(req.Framework, detectedFrameworks, !req.LegacyTracker, gen.GetEntrypointStats())
+		s.currentAnalysis = analysisInfo(req.Framework, detectedFrameworks, !req.LegacyTracker, gen.GetEntrypointStats(), expansion)
 		s.lastGen = now
 		s.lastErr = ""
 		s.genPhase = ""
@@ -984,6 +1057,15 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if len(skipped) > 0 {
 			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
 		}
+		if expansion.Truncated {
+			// The failure mode this guards against is a run that LOOKS fine: the
+			// routes simply stop, with no error anywhere (issue #233).
+			trunc := fmt.Sprintf("Expansion stopped at the %d-node limit, so routes beyond that point are missing. Raise 'Max nodes' under Analysis engine and generate again.", expansion.Limit)
+			if msg != "" {
+				msg += " "
+			}
+			msg += trunc
+		}
 		resp := GenerateResponse{
 			OK:                 true,
 			Framework:          req.Framework,
@@ -993,6 +1075,10 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			Message:            msg,
 			SkippedPackages:    skipped,
 			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
+			Truncated:          expansion.Truncated,
+		}
+		if expansion.Truncated {
+			resp.NodeLimit = expansion.Limit
 		}
 		// Retain for /api/status so a page refresh can restore this result.
 		s.mu.Lock()
@@ -1063,16 +1149,17 @@ func (s *UIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"running":    running,
-		"stopping":   stopping,
-		"phase":      phase,
-		"sinceMs":    sinceMs,
-		"stoppingMs": stoppingMs,
-		"hasSpec":    hasSpec,
-		"lastGenAt":  lastGen,
-		"lastError":  lastErr,
-		"projectDir": dir,
-		"result":     result, // nil until the first successful generation
+		"running":         running,
+		"stopping":        stopping,
+		"phase":           phase,
+		"sinceMs":         sinceMs,
+		"stoppingMs":      stoppingMs,
+		"hasSpec":         hasSpec,
+		"lastGenAt":       lastGen,
+		"lastError":       lastErr,
+		"projectDir":      dir,
+		"trackerDefaults": defaultTrackerLimits(),
+		"result":          result, // nil until the first successful generation
 	})
 }
 
@@ -1515,8 +1602,11 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 // analysisInfo assembles what the Insight view reports about the run itself.
 // primary is the framework whose patterns led (the request's choice, or the first
 // detected one, which buildAPISpecConfig has already filled in).
-func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats) insight.AnalysisInfo {
+func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats, expansion spec.ExpansionStats) insight.AnalysisInfo {
 	info := insight.AnalysisInfo{Frameworks: detected, Primary: primary}
+	if expansion.Truncated {
+		info.Expansion = &insight.ExpansionInfo{NodesBuilt: expansion.NodesBuilt, Limit: expansion.Limit, Truncated: true}
+	}
 	if lazy {
 		info.Engine = "lazy"
 	} else {

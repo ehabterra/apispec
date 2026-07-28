@@ -95,6 +95,9 @@ const (
 	DefaultMaxArgsPerFunction = 100
 	DefaultMaxNestedArgsDepth = 100
 	DefaultMaxRecursionDepth  = 10
+	// DefaultMaxInstancesPerKey mirrors the lazy tree's own default, so the
+	// engine reports one number rather than two that can drift.
+	DefaultMaxInstancesPerKey = intspec.DefaultMaxInstancesPerKey
 	DefaultMetadataFile       = "metadata.yaml"
 	CopyrightNotice           = "apispec - Copyright 2026 Ehab Terra"
 	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
@@ -128,6 +131,9 @@ type EngineConfig struct {
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
 	MaxRecursionDepth  int
+	// MaxInstancesPerKey bounds copies of one callee within an instance scope.
+	// Zero uses DefaultMaxInstancesPerKey.
+	MaxInstancesPerKey int
 
 	// Include/exclude filters
 	IncludeFiles                 []string
@@ -249,6 +255,10 @@ type Engine struct {
 	// can warn that the spec may be incomplete. Keyed by package path → first
 	// error message.
 	skipped []SkippedPackage
+
+	// expansionStats records how far tree expansion got during the last
+	// generation, and whether the node budget cut it short (issue #233).
+	expansionStats intspec.ExpansionStats
 
 	// entrypointStats records what the entrypoint gate decided during the last
 	// generation (issue #220): how many field-stored functions were found and how
@@ -752,6 +762,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxArgsPerFunction: e.config.MaxArgsPerFunction,
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
+		MaxInstancesPerKey: e.config.MaxInstancesPerKey,
 	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
@@ -791,6 +802,16 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		EntrypointStats() intspec.EntrypointStats
 	}); ok {
 		e.entrypointStats = reporter.EntrypointStats()
+	}
+	if reporter, ok := tree.(interface {
+		ExpansionStats() intspec.ExpansionStats
+	}); ok {
+		e.expansionStats = reporter.ExpansionStats()
+		if e.expansionStats.Truncated {
+			// Louder than the tree's own stderr line: a truncated expansion means
+			// the spec is incomplete, which is a result, not a debug detail.
+			e.reportPhase(fmt.Sprintf("expansion truncated at the %d-node limit — the spec is incomplete", e.expansionStats.Limit), 0)
+		}
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
@@ -1143,6 +1164,12 @@ func (e *Engine) GetMetadata() *metadata.Metadata {
 // generation that matched no SecurityMapping (deduped). Empty when none.
 func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
+}
+
+// GetExpansionStats returns how far tree expansion got during the most recent
+// generation, including whether the node budget stopped it early.
+func (e *Engine) GetExpansionStats() intspec.ExpansionStats {
+	return e.expansionStats
 }
 
 // GetEntrypointStats returns what the entrypoint gate decided during the most

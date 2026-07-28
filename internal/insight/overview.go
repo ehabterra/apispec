@@ -126,6 +126,15 @@ type EntrypointInfo struct {
 	NoRoutes         int `json:"noRoutes"`         // ...skipped: their subtree registers no route
 }
 
+// ExpansionInfo reports that tree expansion stopped at its node budget instead of
+// finishing. Everything past that point is missing from the spec, so a route count
+// read without it can be wildly wrong (issue #233).
+type ExpansionInfo struct {
+	NodesBuilt int  `json:"nodesBuilt"`
+	Limit      int  `json:"limit"`
+	Truncated  bool `json:"truncated"`
+}
+
 // AnalysisInfo describes HOW the spec was produced rather than what is in it.
 // None of it is derivable from the spec, so BuildOverview leaves it empty and the
 // caller (the UI server, which ran the analysis) fills it in.
@@ -134,6 +143,10 @@ type AnalysisInfo struct {
 	Primary     string          `json:"primary,omitempty"`    // the one whose patterns lead
 	Engine      string          `json:"engine,omitempty"`     // tracker engine used
 	Entrypoints *EntrypointInfo `json:"entrypoints,omitempty"`
+
+	// Expansion is set only when expansion was cut short — its absence means the
+	// walk finished, which is the ordinary case.
+	Expansion *ExpansionInfo `json:"expansion,omitempty"`
 }
 
 // CoverMetric is a have-of-total coverage tally.

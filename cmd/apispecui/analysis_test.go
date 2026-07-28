@@ -29,7 +29,7 @@ import (
 // second is true of an ordinary web service.
 func TestAnalysisInfo(t *testing.T) {
 	t.Run("no entrypoints declared", func(t *testing.T) {
-		got := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{})
+		got := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{}, spec.ExpansionStats{})
 		want := insight.AnalysisInfo{Frameworks: []string{"chi"}, Primary: "chi", Engine: "lazy"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("analysisInfo = %+v, want %+v", got, want)
@@ -38,7 +38,7 @@ func TestAnalysisInfo(t *testing.T) {
 
 	t.Run("entrypoints declared", func(t *testing.T) {
 		got := analysisInfo("mux", []string{"mux", "gin"}, true,
-			spec.EntrypointStats{Declared: 53, Rooted: 1, AlreadyReachable: 0, NoRoutes: 52})
+			spec.EntrypointStats{Declared: 53, Rooted: 1, AlreadyReachable: 0, NoRoutes: 52}, spec.ExpansionStats{})
 		if got.Entrypoints == nil {
 			t.Fatal("entrypoints not reported")
 		}
@@ -49,7 +49,7 @@ func TestAnalysisInfo(t *testing.T) {
 	})
 
 	t.Run("the tracker engine is named", func(t *testing.T) {
-		if got := analysisInfo("chi", nil, false, spec.EntrypointStats{}); got.Engine != "eager" {
+		if got := analysisInfo("chi", nil, false, spec.EntrypointStats{}, spec.ExpansionStats{}); got.Engine != "eager" {
 			t.Errorf("engine = %q, want eager", got.Engine)
 		}
 	})
@@ -108,5 +108,67 @@ func TestBuildAPISpecConfigKeepsEverySection(t *testing.T) {
 	// count.
 	if len(fc.EntrypointPatterns) == 1 && fc.EntrypointPatterns[0].FieldRegex != "^Action$" {
 		t.Errorf("entrypoint fieldRegex = %q, want ^Action$", fc.EntrypointPatterns[0].FieldRegex)
+	}
+}
+
+// TestTrackerLimitsResolved pins the rule that lets a client say nothing about
+// limits and still get the engine's behaviour: a zero means "default", and a
+// value is passed through. Without this the UI could only ever run at the
+// defaults, which is not enough for a large project (issue #233).
+func TestTrackerLimitsResolved(t *testing.T) {
+	defaults := defaultTrackerLimits()
+
+	if got := (TrackerLimits{}).resolved(); got != defaults {
+		t.Errorf("an empty request resolved to %+v, want the defaults %+v", got, defaults)
+	}
+
+	// Every field is independent: raising one must not silently reset the rest.
+	raised := TrackerLimits{MaxNodesPerTree: 2_000_000}.resolved()
+	if raised.MaxNodesPerTree != 2_000_000 {
+		t.Errorf("max nodes = %d, want the requested 2000000", raised.MaxNodesPerTree)
+	}
+	if raised.MaxChildrenPerNode != defaults.MaxChildrenPerNode ||
+		raised.MaxRecursionDepth != defaults.MaxRecursionDepth ||
+		raised.MaxArgsPerFunction != defaults.MaxArgsPerFunction ||
+		raised.MaxNestedArgsDepth != defaults.MaxNestedArgsDepth ||
+		raised.MaxInstancesPerKey != defaults.MaxInstancesPerKey {
+		t.Errorf("raising one limit changed the others: %+v", raised)
+	}
+
+	// A negative is not a limit; it means the same as unset rather than "no
+	// bound", which would turn a typo into an unbounded walk.
+	if got := (TrackerLimits{MaxNodesPerTree: -5}).resolved(); got.MaxNodesPerTree != defaults.MaxNodesPerTree {
+		t.Errorf("negative max nodes = %d, want the default", got.MaxNodesPerTree)
+	}
+
+	all := TrackerLimits{
+		MaxNodesPerTree:    1,
+		MaxChildrenPerNode: 2,
+		MaxArgsPerFunction: 3,
+		MaxNestedArgsDepth: 4,
+		MaxRecursionDepth:  5,
+		MaxInstancesPerKey: 6,
+	}
+	if got := all.resolved(); got != all {
+		t.Errorf("fully specified limits were altered: %+v, want %+v", got, all)
+	}
+}
+
+// TestAnalysisInfoReportsTruncation covers what the Insight view is told when
+// expansion stopped early — and that it says nothing when the walk finished,
+// since an absent block is what "complete" means.
+func TestAnalysisInfoReportsTruncation(t *testing.T) {
+	finished := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{}, spec.ExpansionStats{NodesBuilt: 120, Limit: 50000})
+	if finished.Expansion != nil {
+		t.Errorf("a completed walk reported expansion %+v, want nothing", finished.Expansion)
+	}
+
+	cut := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{},
+		spec.ExpansionStats{NodesBuilt: 50000, Limit: 50000, Truncated: true})
+	if cut.Expansion == nil {
+		t.Fatal("a truncated walk reported nothing")
+	}
+	if !cut.Expansion.Truncated || cut.Expansion.Limit != 50000 || cut.Expansion.NodesBuilt != 50000 {
+		t.Errorf("expansion = %+v, want the truncation and its budget", *cut.Expansion)
 	}
 }

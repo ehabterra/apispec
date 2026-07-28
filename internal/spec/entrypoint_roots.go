@@ -222,3 +222,17 @@ func RouteRegistrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(
 		return false
 	}
 }
+
+// ExpansionStats reports how far tree expansion got.
+//
+// Truncated is the fact worth surfacing: expansion stopped because it ran out of
+// node budget, not because there was nothing left to expand, so the spec is
+// incomplete by an unknown amount. On a large project that reads as a working run
+// with a suspiciously short route list — gitea documents 5 paths at the default
+// limit and 862 with the budget raised — and the only sign was a line on stderr
+// (issue #233).
+type ExpansionStats struct {
+	NodesBuilt int
+	Limit      int
+	Truncated  bool
+}

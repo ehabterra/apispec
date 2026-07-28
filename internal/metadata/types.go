@@ -1281,6 +1281,11 @@ type TrackerLimits struct {
 	MaxArgsPerFunction int
 	MaxNestedArgsDepth int
 	MaxRecursionDepth  int
+
+	// MaxInstancesPerKey bounds copies of one callee within an instance scope —
+	// see the lazy tree's DefaultMaxInstancesPerKey for what the number trades
+	// off. Zero means that default.
+	MaxInstancesPerKey int
 }
 
 // ProcessFunctionReturnTypes processes all functions and methods in the metadata

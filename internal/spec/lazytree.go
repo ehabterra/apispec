@@ -62,6 +62,12 @@ type LazyTree struct {
 	// report it (the numbers otherwise live only in a --verbose line).
 	entrypointStats EntrypointStats
 
+	// truncated records that expansion stopped at the node budget rather than
+	// because there was nothing left to expand. It is the difference between a
+	// spec that is complete and one that simply ends, and it used to be visible
+	// only as a line on stderr (issue #233).
+	truncated bool
+
 	// calleeEdges memoizes, per function base key, the filtered+ordered call
 	// edges used to expand any node of that function. Computed once.
 	calleeEdges map[string][]*metadata.CallGraphEdge
@@ -109,7 +115,7 @@ type LazyTree struct {
 	nodesBuilt int
 
 	// instanceCount counts node copies per (instance scope, callee ID) —
-	// see maxInstancesPerKey. A node is (edge, parent), so a callee reached
+	// see DefaultMaxInstancesPerKey. A node is (edge, parent), so a callee reached
 	// along many paths gets many copies; business-layer diamonds make that
 	// exponential and would drain the node budget before traversal reaches
 	// later router wiring. Nested by scope to avoid a key concatenation per
@@ -161,7 +167,7 @@ type LazyTree struct {
 	seenKeys map[string]bool
 }
 
-// maxInstancesPerKey bounds node copies of the same callee WITHIN one
+// DefaultMaxInstancesPerKey bounds node copies of the same callee WITHIN one
 // instance scope (the subtree of the nearest argument-node ancestor —
 // approximately "per handler"). Scoping matters: a response helper shared by
 // every handler legitimately needs one copy per route for per-route value
@@ -195,7 +201,19 @@ type LazyTree struct {
 // would be ample everywhere and no project would pay for another's shape. Until
 // then this stays a mitigation — a group with more than ~25 routes sharing one
 // helper still starves, silently.
-const maxInstancesPerKey = 25
+const DefaultMaxInstancesPerKey = 25
+
+// instanceBudget is the cap in force for this tree: the configured value, or the
+// default. It is configurable because the right number depends on a project's
+// shape — a group closure holding 40 routes needs more than one holding 5, and
+// until the cap is scoped per route (issue #224) the only way to document such a
+// project is to raise it.
+func (t *LazyTree) instanceBudget() int {
+	if t.limits.MaxInstancesPerKey > 0 {
+		return t.limits.MaxInstancesPerKey
+	}
+	return DefaultMaxInstancesPerKey
+}
 
 // budgetExhausted reports whether the cumulative node budget is spent.
 func (t *LazyTree) budgetExhausted() bool {
@@ -513,6 +531,12 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 // the extractor asks for roots BEFORE it expands anything. Deferring left the
 // extra roots invisible — the tree had them, nobody ever saw them. The call is
 // memoized, so this only moves work that every expansion path pays anyway.
+// ExpansionStats reports how far expansion got, and whether it stopped early.
+func (t *LazyTree) ExpansionStats() ExpansionStats {
+	t.buildRelations()
+	return ExpansionStats{NodesBuilt: t.nodesBuilt, Limit: t.limits.MaxNodesPerTree, Truncated: t.truncated}
+}
+
 // EntrypointStats reports what the entrypoint gate decided during this tree's
 // build. Zero when the project declares no entrypoints.
 func (t *LazyTree) EntrypointStats() EntrypointStats {
@@ -596,7 +620,7 @@ func (n *LazyNode) GetTypeParamMap() map[string]string {
 
 // onPath reports whether key is already an ancestor of n (cycle guard: the
 // per-path state a lazy unfolding needs, in contrast to a global seen-set).
-// instanceScope identifies the counting scope for maxInstancesPerKey: the
+// instanceScope identifies the counting scope for the instance budget: the
 // key of the nearest argument-node ancestor (the handler/value subtree this
 // node belongs to), or "" at wiring level. Each scope gets its own copy
 // allowance, so shared helpers trace per route while intra-handler diamonds
@@ -661,6 +685,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		return n.children
 	}
 	if n.tree.budgetExhausted() {
+		n.tree.truncated = true
 		if !n.tree.budgetWarned {
 			n.tree.budgetWarned = true
 			fmt.Fprintf(os.Stderr,
@@ -688,7 +713,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if n.onPath(spec.key) {
 			continue // cycle: this call is already on the current path
 		}
-		if scopeCounts[spec.key] >= maxInstancesPerKey {
+		if scopeCounts[spec.key] >= n.tree.instanceBudget() {
 			// Diamond inside this scope: stop materializing further copies.
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
