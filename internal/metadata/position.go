@@ -51,7 +51,18 @@ func (m *Metadata) positionIndex(pos token.Pos, fset *token.FileSet) int {
 		return idx
 	}
 
-	idx = m.StringPool.Get(formatPosition(fset.Position(pos)))
+	// A Pos is only meaningful in the FileSet that issued it: for anything else
+	// — a Pos from another FileSet, or one past the end of this one —
+	// fset.Position returns the zero value, which renders as "-". Pooling that
+	// would record a position of "-" on the node, so it is treated as no position
+	// at all. The check is here rather than up front because Position already does
+	// the file lookup, and a location that resolves pays for it once.
+	p := fset.Position(pos)
+	if !p.IsValid() {
+		return -1
+	}
+
+	idx = m.StringPool.Get(formatPosition(p))
 
 	m.posMutex.Lock()
 	if m.posCache == nil {

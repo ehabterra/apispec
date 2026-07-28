@@ -100,6 +100,22 @@ func TestPositionIndexRejectsNothing(t *testing.T) {
 		t.Errorf("invalid position string = %q, want empty", got)
 	}
 
+	// A Pos only means something in the FileSet that issued it. An empty FileSet
+	// knows no positions, and a Pos past the end of a known file belongs to no
+	// file either; both render as "-" through token, which must not be recorded as
+	// a position (CodeRabbit, PR #228).
+	if got := m.positionIndex(token.Pos(1), token.NewFileSet()); got != -1 {
+		t.Errorf("position in an empty fileset = %d, want -1", got)
+	}
+	populated := token.NewFileSet()
+	f := populated.AddFile("p.go", -1, 10)
+	if got := m.positionIndex(f.Pos(3), populated); got < 0 {
+		t.Error("a position inside a known file did not resolve")
+	}
+	if got := m.positionIndex(token.Pos(f.Base()+1000), populated); got != -1 {
+		t.Errorf("position past the end of every file = %d, want -1", got)
+	}
+
 	var nilMeta *Metadata
 	if got := nilMeta.positionIndex(token.Pos(1), fset); got != -1 {
 		t.Errorf("nil metadata = %d, want -1", got)
