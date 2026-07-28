@@ -266,6 +266,10 @@ type TrackerTree struct {
 	entrypointKeys     []string
 	entrypointStats    EntrypointStats
 
+	// truncated records that the node budget stopped expansion — see
+	// LazyTree.truncated (issue #233).
+	truncated bool
+
 	// logger receives traversal-time warnings (limit truncations, etc.).
 	// May be nil; callers should reach it via t.warn / t.info.
 	logger metadata.VerboseLogger
@@ -1436,6 +1440,7 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	// synthetic tests that drive NewTrackerNode directly — the cumulative
 	// counter needs a tree, so it is simply disabled there.
 	if tree != nil && limits.MaxNodesPerTree > 0 && tree.nodesBuilt >= limits.MaxNodesPerTree {
+		tree.truncated = true
 		// A single global key: once the cumulative cap is hit it is a tree-wide
 		// condition, so warn exactly once rather than once per truncated node.
 		tree.warnOnce("maxnodes",
@@ -1742,6 +1747,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	}
 
 	return node
+}
+
+// ExpansionStats reports how far expansion got, and whether it stopped early.
+func (t *TrackerTree) ExpansionStats() ExpansionStats {
+	return ExpansionStats{NodesBuilt: t.nodesBuilt, Limit: t.limits.MaxNodesPerTree, Truncated: t.truncated}
 }
 
 // EntrypointStats reports what the entrypoint gate decided during this tree's

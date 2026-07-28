@@ -352,7 +352,7 @@ export function ConfigMode() {
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
           <//>
 
-          <${Section} title="Analysis engine" help="Which tracker tree powers the analysis. The lazy tracker (default) expands the call tree on demand — it covers the same wiring styles as the legacy tree, resolves some responses/bodies the legacy tree misses, and is bounded on very dense call graphs. Choose Legacy (eager) only to compare against the previous engine's output.">
+          <${Section} title="Analysis engine" help="Which tracker tree powers the analysis, and how far it is allowed to walk. The lazy tracker (default) expands the call tree on demand — it covers the same wiring styles as the legacy tree, resolves some responses/bodies the legacy tree misses, and is bounded on very dense call graphs. Choose Legacy (eager) only to compare against the previous engine's output. The limits below bound that walk; leave them blank to use the defaults shown.">
             <div class="field">
               <label>Tracker tree</label>
               <select class="input" value=${s.legacyTracker ? "legacy" : "lazy"} onChange=${(e) => setState({ legacyTracker: e.target.value === "legacy" })}>
@@ -360,6 +360,7 @@ export function ConfigMode() {
                 <option value="legacy">Legacy (eager)</option>
               </select>
             </div>
+            <${TrackerLimits} />
           <//>
 
           <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
@@ -815,5 +816,53 @@ function UnresolvedMiddleware({ c }) {
       )}
       <button class="btn sm" onClick=${() => generate()}>Re-generate with mappings</button>
     </div>
+  `;
+}
+
+// TrackerLimits edits the bounds on tree expansion.
+//
+// They matter more than they look: a project whose call tree is bigger than the
+// node budget stops expanding part-way through its routes, and the result reads as
+// a working run with a short route list. gitea documents 5 paths at the default
+// budget and 862 with it raised (issue #233). Blank means the default, which the
+// server reports rather than the UI hardcoding numbers that would drift from Go.
+function TrackerLimits() {
+  const s = useStore();
+  const limits = s.limits || {};
+  const defaults = s.trackerDefaults || {};
+  const set = (key, value) => {
+    const next = { ...limits };
+    const n = parseInt(value, 10);
+    if (!value || isNaN(n) || n <= 0) {
+      delete next[key];
+    } else {
+      next[key] = n;
+    }
+    setState({ limits: next });
+  };
+  const row = (key, label, help) => html`<div class="field">
+    <label>${label} <${Info} text=${help} /></label>
+    <input
+      class="input"
+      type="number"
+      min="1"
+      value=${limits[key] ?? ""}
+      placeholder=${defaults[key] ? `default ${defaults[key]}` : "default"}
+      onInput=${(e) => set(key, e.target.value)}
+    />
+  </div>`;
+
+  return html`
+    ${s.truncated
+      ? html`<p class="muted" style="font-size:var(--fs-sm);margin:0 0 var(--sp-2);color:var(--warn)">
+          The last run stopped at the ${s.nodeLimit}-node limit, so routes past that point are missing from the spec. Raise Max nodes and generate again.
+        </p>`
+      : ""}
+    ${row("maxNodesPerTree", "Max nodes", "Total tracker nodes the walk may build. Reaching it stops expansion, so anything not yet reached is absent from the spec — the one limit worth raising first on a large project.")}
+    ${row("maxChildrenPerNode", "Max children per node", "How many callees one node may expand. A router that registers hundreds of routes in a single function needs this above the default.")}
+    ${row("maxRecursionDepth", "Max recursion depth", "How deep a call chain may be followed through repeated frames. Deeply nested group closures need more.")}
+    ${row("maxInstancesPerKey", "Max instances per key", "How many copies of one callee are expanded within a scope (roughly per handler, but per GROUP closure in practice). A response helper shared by a group exhausts this budget after that many routes, and every later route in the group silently loses its response body — raise it for a project whose groups hold many routes.")}
+    ${row("maxArgsPerFunction", "Max args per function", "How many arguments of one call are expanded.")}
+    ${row("maxNestedArgsDepth", "Max nested arg depth", "How deep a composite argument (a struct literal holding a call holding a literal) is expanded.")}
   `;
 }

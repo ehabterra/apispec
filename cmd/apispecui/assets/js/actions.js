@@ -61,6 +61,7 @@ export function applyDetect(d) {
     modulePath: d.modulePath || "",
     framework: d.detectedFramework || getState().framework,
     supportedFrameworks: d.supportedFrameworks || getState().supportedFrameworks,
+    trackerDefaults: d.trackerDefaults || getState().trackerDefaults,
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,
     detected: d,
@@ -95,6 +96,8 @@ export async function detectInitial() {
 // applyStatusResult restores the last completed generation's result into the
 // store (so the spec viewer / insight / banners come back after a refresh).
 function applyStatusResult(st) {
+  // The engine's own limits, so a blank field can say what it defaults to.
+  if (st && st.trackerDefaults) setState({ trackerDefaults: st.trackerDefaults });
   const r = st && st.result;
   if (r && r.ok) {
     setState({
@@ -102,6 +105,8 @@ function applyStatusResult(st) {
       lastPaths: r.pathCount || 0,
       skipped: r.skippedPackages || [],
       unresolvedSecurity: r.unresolvedSecurity || [],
+      truncated: !!r.truncated,
+      nodeLimit: r.nodeLimit || 0,
       lastGenTick: Date.now(),
     });
   } else if (st && st.hasSpec) {
@@ -246,6 +251,7 @@ function fullGenerateRequest() {
     overrides: c.overrides,
     frameworkConfig: s.frameworkConfig || undefined,
     legacyTracker: !!s.legacyTracker,
+    limits: s.limits || {},
   };
 }
 
@@ -306,9 +312,13 @@ export async function generate(opts = {}) {
         specView: "swagger",
         skipped,
         unresolvedSecurity: res.unresolvedSecurity || [],
+        truncated: !!res.truncated,
+        nodeLimit: res.nodeLimit || 0,
         genBlocked: false,
       });
-      if (skipped.length) {
+      if (res.truncated) {
+        setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing · ${took}`, "warn");
+      } else if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
       } else {
         setStatus(`generated ${res.pathCount || 0} paths in ${took}`, "ok");

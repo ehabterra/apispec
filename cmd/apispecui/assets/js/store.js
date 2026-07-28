@@ -12,6 +12,17 @@ const state = {
   supportedFrameworks: ["gin", "chi", "echo", "fiber", "mux", "net/http"],
   openapiVersion: "3.1.0",
   legacyTracker: false, // analysis engine: false = lazy tracker (default), true = legacy eager
+  // Tree-expansion limits. Empty means "use the engine default" — the server
+  // fills any unset field, so the UI never has to hardcode a number that would
+  // then drift from Go (issue #233).
+  limits: {},
+  // trackerDefaults is what the server reports those defaults to be, shown as
+  // placeholders so a user can see what they are changing.
+  trackerDefaults: {},
+  // truncated/nodeLimit record that the last run stopped at the node budget, so
+  // the routes simply end — the failure that used to look like a clean result.
+  truncated: false,
+  nodeLimit: 0,
   // Full structured config edited by Configure mode. Seeded from
   // /api/detect and sent (structured) to /api/generate.
   config: {
@@ -51,7 +62,7 @@ const state = {
 
 // View prefs persisted across refreshes so a reload lands the user back where
 // they were (which tab, which spec viewer, panel layout).
-const PERSIST_KEYS = ["mode", "specView", "panelCollapsed", "legacyTracker"];
+const PERSIST_KEYS = ["mode", "specView", "panelCollapsed", "legacyTracker", "limits"];
 const PERSIST_LS_KEY = "apispecui.view";
 
 function loadPersistedView() {
