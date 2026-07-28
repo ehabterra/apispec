@@ -74,10 +74,10 @@ func ExprToCallArgument(expr ast.Expr, info *types.Info, pkgName string, fset *t
 	case *ast.TypeAssertExpr:
 		return handleTypeAssertExpr(e, info, pkgName, fset, meta)
 	case *ast.FuncLit:
-		position := getPosition(e.Pos(), fset)
+		position := meta.positionString(e.Pos(), fset)
 		arg := NewCallArgument(meta)
 		arg.SetKind(KindFuncLit)
-		arg.SetName(fmt.Sprintf("FuncLit:%s", position))
+		arg.SetName(funcLitName(position))
 		arg.SetPkg(pkgName)
 		typ := ExprToCallArgument(e.Type, info, pkgName, fset, meta)
 		typeStr := callArgToString(typ, nil)
@@ -164,7 +164,7 @@ func handleIdent(e *ast.Ident, info *types.Info, pkgName string, fset *token.Fil
 	arg.SetName(name)
 	arg.SetPkg(pkg)
 	arg.SetType(typeStr)
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	setConstStringValue(arg, e, info)
 	return arg
 }
@@ -234,7 +234,7 @@ func handleSelector(e *ast.SelectorExpr, info *types.Info, pkgName string, fset 
 	arg.Sel = sel
 	arg.SetPkg(pkg)
 	arg.SetType(typeStr)
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	arg.ReceiverType = receiverArg
 	setConstStringValue(arg, e, info)
 
@@ -253,7 +253,7 @@ func handleCallExpr(e *ast.CallExpr, info *types.Info, pkgName string, fset *tok
 	arg := NewCallArgument(meta)
 	arg.Fun = fun
 	arg.Args = args
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 
 	// Check if this is a type conversion rather than a function call
 	if isTypeConversion(e, info) {
@@ -299,7 +299,7 @@ func handleUnaryExpr(e *ast.UnaryExpr, info *types.Info, pkgName string, fset *t
 	arg.SetKind(KindUnary)
 	arg.X = x
 	arg.SetValue(op)
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -314,7 +314,7 @@ func handleBinaryExpr(e *ast.BinaryExpr, info *types.Info, pkgName string, fset 
 	arg.X = x
 	arg.Fun = y
 	arg.SetValue(op)
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -327,7 +327,7 @@ func handleIndexExpr(e *ast.IndexExpr, info *types.Info, pkgName string, fset *t
 	arg.SetKind(KindIndex)
 	arg.X = x
 	arg.Fun = index
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -344,7 +344,7 @@ func handleIndexListExpr(e *ast.IndexListExpr, info *types.Info, pkgName string,
 	arg.SetKind(KindIndexList)
 	arg.X = x
 	arg.Args = indices
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -355,7 +355,7 @@ func handleParenExpr(e *ast.ParenExpr, info *types.Info, pkgName string, fset *t
 	arg := NewCallArgument(meta)
 	arg.SetKind(KindParen)
 	arg.X = x
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -366,7 +366,7 @@ func handleStarExpr(e *ast.StarExpr, info *types.Info, pkgName string, fset *tok
 	arg := NewCallArgument(meta)
 	arg.SetKind(KindStar)
 	arg.X = x
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -385,7 +385,7 @@ func handleArrayType(e *ast.ArrayType, info *types.Info, pkgName string, fset *t
 	if lenArg != nil {
 		arg.SetValue(lenArg.GetValue())
 	}
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -410,7 +410,7 @@ func handleSliceExpr(e *ast.SliceExpr, info *types.Info, pkgName string, fset *t
 	arg.SetKind(KindSlice)
 	arg.X = x
 	arg.Args = args
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -426,7 +426,7 @@ func handleCompositeLit(e *ast.CompositeLit, info *types.Info, pkgName string, f
 	arg.SetKind(KindCompositeLit)
 	arg.X = typeExpr
 	arg.Args = elts
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -439,7 +439,7 @@ func handleKeyValueExpr(e *ast.KeyValueExpr, info *types.Info, pkgName string, f
 	arg.SetKind(KindKeyValue)
 	arg.X = key
 	arg.Fun = value
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -452,7 +452,7 @@ func handleTypeAssertExpr(e *ast.TypeAssertExpr, info *types.Info, pkgName strin
 	arg.SetKind(KindTypeAssert)
 	arg.X = x
 	arg.Fun = typeExpr
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -474,7 +474,7 @@ func handleChanType(e *ast.ChanType, info *types.Info, pkgName string, fset *tok
 	arg.SetKind(KindChanType)
 	arg.X = elt
 	arg.SetValue(dir)
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -487,7 +487,7 @@ func handleMapType(e *ast.MapType, info *types.Info, pkgName string, fset *token
 	arg.SetKind(KindMapType)
 	arg.X = key
 	arg.Fun = value
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -519,7 +519,7 @@ func handleStructType(e *ast.StructType, info *types.Info, pkgName string, fset 
 	arg := NewCallArgument(meta)
 	arg.SetKind(KindStructType)
 	arg.Args = fields
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 
@@ -548,7 +548,7 @@ func handleEllipsis(e *ast.Ellipsis, info *types.Info, pkgName string, fset *tok
 	arg := NewCallArgument(meta)
 	arg.SetKind(KindEllipsis)
 	arg.X = elt
-	arg.SetPosition(getPosition(e.Pos(), fset))
+	arg.SetPosition(meta.positionString(e.Pos(), fset))
 	return arg
 }
 

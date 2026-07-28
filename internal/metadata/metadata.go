@@ -314,7 +314,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 					Name:          metadata.StringPool.Get(fn.Name.Name),
 					Receiver:      metadata.StringPool.Get(recvType),
 					Signature:     *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
-					Position:      metadata.StringPool.Get(getFuncPosition(fn, fset)),
+					Position:      metadata.funcPositionIndex(fn, fset),
 					Scope:         metadata.StringPool.Get(getScope(fn.Name.Name)),
 					Comments:      metadata.StringPool.Get(getComments(fn)),
 					AssignmentMap: assignmentsInFunc,
@@ -1204,7 +1204,7 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			Name:           metadata.StringPool.Get(fn.Name.Name),
 			Pkg:            metadata.StringPool.Get(pkgName),
 			Signature:      *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
-			Position:       metadata.StringPool.Get(getFuncPosition(fn, fset)),
+			Position:       metadata.funcPositionIndex(fn, fset),
 			Scope:          metadata.StringPool.Get(getScope(fn.Name.Name)),
 			Comments:       metadata.StringPool.Get(comments),
 			TypeParams:     typeParams,
@@ -1251,7 +1251,7 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 					Pkg:        metadata.StringPool.Get(pkgName),
 					Tok:        metadata.StringPool.Get(tok),
 					Type:       metadata.StringPool.Get(getTypeName(vspec.Type, info)),
-					Position:   metadata.StringPool.Get(getVarPosition(name, fset)),
+					Position:   metadata.varPositionIndex(name, fset),
 					Comments:   metadata.StringPool.Get(comments),
 					GroupIndex: groupIndex,
 				}
@@ -1326,7 +1326,7 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 	f.StructInstances = append(f.StructInstances, StructInstance{
 		Type:     metadata.StringPool.Get(typeName),
 		Pkg:      metadata.StringPool.Get(pkgName),
-		Position: metadata.StringPool.Get(getPosition(cl.Pos(), fset)),
+		Position: metadata.positionIndex(cl.Pos(), fset),
 		Fields:   fields,
 	})
 }
@@ -1378,7 +1378,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 					VariableName: metadata.StringPool.Get(expr.Name),
 					Pkg:          metadata.StringPool.Get(pkgName),
 					ConcreteType: metadata.StringPool.Get(concreteType),
-					Position:     metadata.StringPool.Get(getPosition(assign.Pos(), fset)),
+					Position:     metadata.positionIndex(assign.Pos(), fset),
 					Scope:        metadata.StringPool.Get(getScope(expr.Name)),
 					Value:        val,
 					Lhs:          *ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata),
@@ -1386,7 +1386,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 				}
 				// If RHS is a function call, record callee info
 				if callExpr, ok := rhsExpr.(*ast.CallExpr); ok {
-					calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset)
+					calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 					assignment.CalleeFunc = calleeFunc
 					assignment.CalleePkg = calleePkg
 					assignment.ReturnIndex = 0 // For now, always first return value
@@ -1403,7 +1403,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 					VariableName: metadata.StringPool.Get(CallArgToString(&lhsArg)),
 					Pkg:          metadata.StringPool.Get(pkgName),
 					ConcreteType: lhsArg.Type,
-					Position:     metadata.StringPool.Get(getPosition(assign.Pos(), fset)),
+					Position:     metadata.positionIndex(assign.Pos(), fset),
 					Scope:        metadata.StringPool.Get("selector"),
 					Value:        *ExprToCallArgument(rhsExpr, info, pkgName, fset, metadata),
 					Lhs:          *ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata),
@@ -1416,7 +1416,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 					VariableName: metadata.StringPool.Get(CallArgToString(ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata))),
 					Pkg:          metadata.StringPool.Get(pkgName),
 					ConcreteType: metadata.StringPool.Get("index"),
-					Position:     metadata.StringPool.Get(getPosition(assign.Pos(), fset)),
+					Position:     metadata.positionIndex(assign.Pos(), fset),
 					Scope:        metadata.StringPool.Get("index"),
 					Value:        *ExprToCallArgument(rhsExpr, info, pkgName, fset, metadata),
 					Lhs:          *ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata),
@@ -1429,7 +1429,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 					VariableName: metadata.StringPool.Get(CallArgToString(ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata))),
 					Pkg:          metadata.StringPool.Get(pkgName),
 					ConcreteType: metadata.StringPool.Get("raw"),
-					Position:     metadata.StringPool.Get(getPosition(assign.Pos(), fset)),
+					Position:     metadata.positionIndex(assign.Pos(), fset),
 					Scope:        metadata.StringPool.Get("raw"),
 					Value:        *ExprToCallArgument(rhsExpr, info, pkgName, fset, metadata),
 					Lhs:          *ExprToCallArgument(lhsExpr, info, pkgName, fset, metadata),
@@ -1579,7 +1579,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	}
 
 	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
-	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset)
+	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 
 	// Skip mock calls
 	if isMockName(calleeFunc) || isMockName(calleePkg) || isMockName(callerFunc) {
@@ -1596,7 +1596,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		// Determine if the caller is a function literal
 		var parentFunction *Call
 
-		if strings.HasPrefix(callerFunc, "FuncLit:") {
+		if strings.HasPrefix(callerFunc, FuncLitPrefix) {
 			callerInstance := pkgName + "." + callerFunc + "@" + callerFunc[strings.Index(callerFunc, ":")+1:]
 
 			if _, ok := calleeMap[callerInstance]; !ok {
@@ -1635,7 +1635,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		cgEdge := &CallGraphEdge{
 			Args:           args,
-			Position:       metadata.StringPool.Get(getPosition(call.Pos(), fset)),
+			Position:       metadata.positionIndex(call.Pos(), fset),
 			ParamArgMap:    paramArgMap,
 			TypeParamMap:   typeParamMap,
 			ParentFunction: parentFunction,
@@ -1664,7 +1664,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		cgEdge.Callee = *cgEdge.NewCall(
 			metadata.StringPool.Get(calleeFunc),
 			metadata.StringPool.Get(calleePkg),
-			metadata.StringPool.Get(getPosition(call.Pos(), fset)),
+			metadata.positionIndex(call.Pos(), fset),
 			metadata.StringPool.Get(calleeParts),
 			metadata.StringPool.Get(calleeScope),
 		)
@@ -2304,7 +2304,7 @@ func registerEmbeddedInterfaceResolution(kv *ast.KeyValueExpr, structTypeName, p
 	}
 
 	if concreteType != "" && fieldName != "" {
-		position := getPosition(kv.Pos(), fset)
+		position := metadata.positionString(kv.Pos(), fset)
 		metadata.RegisterInterfaceResolution(fieldName, structTypeName, pkgName, concreteType, position)
 	}
 }
