@@ -15,6 +15,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +124,117 @@ func TestShouldIncludeFile(t *testing.T) {
 				t.Errorf("shouldIncludeFile(%q) = %v, want %v", c.file, got, c.want)
 			}
 		})
+	}
+}
+
+// TestApplyDetectedWrappersIsIdempotent pins that a second generation produces the
+// same config as the first.
+//
+// The config may be the CALLER's — the UI hands the same one to every run — and
+// derived patterns are prepended into it. Without a guard, every regeneration grew
+// the user's config another copy of everything derived (CodeRabbit, PR #236).
+func TestApplyDetectedWrappersIsIdempotent(t *testing.T) {
+	wrappers := []spec.DetectedWrapper{{
+		RecvType: "example.com/app.*Router",
+		Methods:  []string{"Get"},
+		Complete: true,
+		Pattern: spec.RoutePattern{
+			CallRegex:     "^(Get)$",
+			RecvTypeRegex: `^example\.com/app\.\*?Router$`,
+			PathFromArg:   true,
+		},
+	}}
+
+	cfg := &spec.APISpecConfig{}
+	if applied := applyDetectedWrappers(cfg, wrappers); applied != 1 {
+		t.Fatalf("first run applied %d, want 1", applied)
+	}
+	if applied := applyDetectedWrappers(cfg, wrappers); applied != 0 {
+		t.Errorf("second run applied %d more, want 0", applied)
+	}
+	if got := len(cfg.Framework.RoutePatterns); got != 1 {
+		t.Errorf("config holds %d route patterns after two runs, want 1", got)
+	}
+}
+
+// TestApplyDetectedWrappersAppliesEveryRole pins that a method carrying several
+// roles contributes all of them. Roles accumulate per method, so a context method
+// that writes a status and reads a parameter is one entry with two patterns — and
+// applying only the first would silently drop the other.
+func TestApplyDetectedWrappersAppliesEveryRole(t *testing.T) {
+	cfg := &spec.APISpecConfig{}
+	applied := applyDetectedWrappers(cfg, []spec.DetectedWrapper{{
+		RecvType: "example.com/app.*Ctx",
+		Methods:  []string{"Answer"},
+		Complete: true,
+		Response: &spec.ResponsePattern{CallRegex: "^(Answer)$", RecvTypeRegex: "^app.Ctx$", TypeFromArg: true},
+		Param:    &spec.ParamPattern{CallRegex: "^(Answer)$", RecvTypeRegex: "^app.Ctx$", ParamIn: "query"},
+	}})
+
+	if applied != 2 {
+		t.Errorf("applied %d patterns, want 2 (a response and a parameter)", applied)
+	}
+	if len(cfg.Framework.ResponsePatterns) != 1 || len(cfg.Framework.ParamPatterns) != 1 {
+		t.Errorf("responses=%d params=%d, want one of each",
+			len(cfg.Framework.ResponsePatterns), len(cfg.Framework.ParamPatterns))
+	}
+
+	// Every kind reaches its own list — a mount and a request body alongside the
+	// two above, so no role is silently dropped on the way to the engine.
+	all := &spec.APISpecConfig{}
+	applyDetectedWrappers(all, []spec.DetectedWrapper{
+		{Complete: true, Mount: &spec.MountPattern{CallRegex: "^(Group)$", RecvTypeRegex: "^app.Router$", IsMount: true}},
+		{Complete: true, Request: &spec.RequestBodyPattern{CallRegex: "^(Bind)$", RecvTypeRegex: "^app.Ctx$", TypeFromArg: true}},
+		// Incomplete derivations are reported, never applied.
+		{Complete: false, Pattern: spec.RoutePattern{CallRegex: "^(Combo)$"}},
+	})
+	if len(all.Framework.MountPatterns) != 1 || len(all.Framework.RequestBodyPatterns) != 1 {
+		t.Errorf("mounts=%d requests=%d, want one of each",
+			len(all.Framework.MountPatterns), len(all.Framework.RequestBodyPatterns))
+	}
+	if len(all.Framework.RoutePatterns) != 0 {
+		t.Errorf("an incomplete derivation was applied: %+v", all.Framework.RoutePatterns)
+	}
+
+	// A response derivation that resolved neither role describes nothing, so it is
+	// not applied at all.
+	empty := &spec.APISpecConfig{}
+	applyDetectedWrappers(empty, []spec.DetectedWrapper{{
+		Complete: true,
+		Response: &spec.ResponsePattern{CallRegex: "^(Nothing)$"},
+	}})
+	if len(empty.Framework.ResponsePatterns) != 0 {
+		t.Errorf("a response pattern with no status and no body was applied: %+v", empty.Framework.ResponsePatterns)
+	}
+}
+
+// TestWrapperSummary covers the line a run prints about what it derived. It is
+// the only place a user sees that a wrapper was found — including one that was
+// found but NOT applied, which is the case that explains a thin spec.
+func TestWrapperSummary(t *testing.T) {
+	got := wrapperSummary([]spec.DetectedWrapper{
+		{RecvType: "app.*Router", Methods: []string{"Get", "Post"}, Via: "chi.Method", Complete: true},
+		{RecvType: "app.*Router", Methods: []string{"Group"}, Via: "prefix", Complete: true, Mount: &spec.MountPattern{}},
+		{RecvType: "app.*Ctx", Methods: []string{"JSON"}, Via: "http.WriteHeader", Complete: true, Response: &spec.ResponsePattern{}},
+		{RecvType: "app.*Ctx", Methods: []string{"Bind"}, Via: "json.Decode", Complete: true, Request: &spec.RequestBodyPattern{}},
+		{RecvType: "app.*Ctx", Methods: []string{"Query"}, Via: "url.Get", Complete: true, Param: &spec.ParamPattern{}},
+		{RecvType: "app.*Combo", Methods: []string{"Get"}, Via: "app.Get", Complete: false},
+	})
+
+	for _, want := range []string{
+		"app.*Router [Get Post] route via chi.Method (applied)",
+		"app.*Router [Group] mount via prefix (applied)",
+		"app.*Ctx [JSON] response via http.WriteHeader (applied)",
+		"app.*Ctx [Bind] request via json.Decode (applied)",
+		"app.*Ctx [Query] param via url.Get (applied)",
+		"app.*Combo [Get] route via app.Get (incomplete, not applied)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary is missing %q:\n%s", want, got)
+		}
+	}
+
+	if got := wrapperSummary(nil); got != "" {
+		t.Errorf("nothing derived rendered %q, want empty", got)
 	}
 }

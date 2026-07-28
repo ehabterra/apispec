@@ -256,6 +256,10 @@ type Engine struct {
 	// error message.
 	skipped []SkippedPackage
 
+	// detectedWrappers lists the project's own router types whose registration
+	// patterns were derived from the parameter flow (issue #235).
+	detectedWrappers []intspec.DetectedWrapper
+
 	// expansionStats records how far tree expansion got during the last
 	// generation, and whether the node budget cut it short (issue #233).
 	expansionStats intspec.ExpansionStats
@@ -714,6 +718,17 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// declare its own field for a house dispatcher.
 	intspec.ApplyEntrypointPresets(apispecConfig, meta)
 
+	// A project's own router type registers nothing the framework's patterns can
+	// see: the framework call sits inside the wrapper, where the path and handler
+	// are the wrapper's parameters. Derive those patterns from that parameter flow
+	// and apply the ones that resolved completely (issue #235). Inert for a project
+	// that registers directly.
+	e.detectedWrappers = intspec.DetectRouterWrappers(meta, apispecConfig)
+	applyDetectedWrappers(apispecConfig, e.detectedWrappers)
+	if e.config.Verbose && len(e.detectedWrappers) > 0 {
+		NewVerboseLogger(e.config.Verbose).Printf("Router wrappers: %s\n", wrapperSummary(e.detectedWrappers))
+	}
+
 	// Set info from configuration (only if not already set in APISpecConfig)
 	if apispecConfig.Info.Title == "" {
 		apispecConfig.Info.Title = e.config.Title
@@ -1166,6 +1181,12 @@ func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
 }
 
+// GetDetectedWrappers returns the router wrappers derived during the most recent
+// generation, applied or not.
+func (e *Engine) GetDetectedWrappers() []intspec.DetectedWrapper {
+	return e.detectedWrappers
+}
+
 // GetExpansionStats returns how far tree expansion got during the most recent
 // generation, including whether the node budget stopped it early.
 func (e *Engine) GetExpansionStats() intspec.ExpansionStats {
@@ -1320,4 +1341,108 @@ func (e *Engine) filterToFrameworkPackages(
 	}
 
 	return filteredPkgsMetadata, filteredFileToInfo, filteredImportPaths
+}
+
+// applyDetectedWrappers adds the derived patterns that resolved completely and
+// returns how many were added.
+//
+// Incomplete derivations are deliberately left out: a pattern missing its path or
+// handler produces a route with the wrong values rather than no route, which is
+// worse than the project being undocumented (golden rule #7). They are still
+// reported, so a user can see what was found and finish it by hand.
+//
+// Applying is idempotent. The config may be the CALLER's — the UI hands the same
+// one to every run — so a second generation must not grow it a second copy of
+// everything derived.
+//
+// A method can carry several roles at once (a context method that both writes a
+// status and reads a parameter), so each role is considered on its own rather
+// than as alternatives.
+func applyDetectedWrappers(cfg *intspec.APISpecConfig, wrappers []intspec.DetectedWrapper) int {
+	applied := 0
+	for _, w := range wrappers {
+		if !w.Complete {
+			continue
+		}
+		roled := false
+		if w.Mount != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.MountPatterns, *w.Mount, func(p intspec.MountPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		// A response derivation with neither role resolved describes nothing.
+		if w.Response != nil && (w.Response.TypeFromArg || w.Response.StatusFromArg) {
+			roled = true
+			if addPatternOnce(&cfg.Framework.ResponsePatterns, *w.Response, func(p intspec.ResponsePattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if w.Request != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.RequestBodyPatterns, *w.Request, func(p intspec.RequestBodyPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if w.Param != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.ParamPatterns, *w.Param, func(p intspec.ParamPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if !roled {
+			if addPatternOnce(&cfg.Framework.RoutePatterns, w.Pattern, func(p intspec.RoutePattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+	}
+	return applied
+}
+
+// addPatternOnce prepends a derived pattern unless one matching the same calls on
+// the same receiver is already configured — which is what makes a second run on
+// the same config produce the same config.
+func addPatternOnce[T any](patterns *[]T, add T, identity func(T) (string, string)) bool {
+	call, recv := identity(add)
+	for _, existing := range *patterns {
+		if c, r := identity(existing); c == call && r == recv {
+			return false
+		}
+	}
+	*patterns = append([]T{add}, (*patterns)...)
+	return true
+}
+
+// wrapperSummary renders what was derived, for the run's log line.
+func wrapperSummary(wrappers []intspec.DetectedWrapper) string {
+	var parts []string
+	for _, w := range wrappers {
+		state := "applied"
+		if !w.Complete {
+			state = "incomplete, not applied"
+		}
+		kind := "route"
+		switch {
+		case w.Mount != nil:
+			kind = "mount"
+		case w.Response != nil:
+			kind = "response"
+		case w.Request != nil:
+			kind = "request"
+		case w.Param != nil:
+			kind = "param"
+		}
+		parts = append(parts, fmt.Sprintf("%s %v %s via %s (%s)", w.RecvType, w.Methods, kind, w.Via, state))
+	}
+	return strings.Join(parts, "; ")
 }

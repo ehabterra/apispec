@@ -71,6 +71,23 @@ func registerCRUD(m *chi.Mux, base string) {
 	m.Delete(base+"/{id}", deleteUser)
 }
 
+// updateItem answers through the project's own context: its body, its status and
+// its parameters are all read through Ctx rather than through net/http.
+func updateItem(w http.ResponseWriter, r *http.Request) {
+	c := &Ctx{Resp: w, Req: r}
+	var in Item
+	_ = c.Bind(&in)
+	_ = c.Query("dry-run")
+	c.JSON(http.StatusAccepted, in)
+}
+
+// listAPIItems answers through the LAYERED context: the responder is declared on
+// Ctx but reached through APICtx, which embeds it.
+func listAPIItems(w http.ResponseWriter, r *http.Request) {
+	c := &APICtx{Ctx: &Ctx{Resp: w, Req: r}}
+	c.JSON(http.StatusOK, []Item{})
+}
+
 func main() {
 	r := NewRouter()
 
@@ -85,6 +102,9 @@ func main() {
 		// The handler is behind a conversion.
 		r.Get("/items/count", http.HandlerFunc(countItems))
 	})
+
+	r.Put("/items", updateItem)
+	r.Get("/api-items", listAPIItems)
 
 	registerCRUD(r.chiRouter, "/users")
 
