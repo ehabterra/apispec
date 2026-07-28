@@ -30,7 +30,12 @@ import (
 // ("pkg.FuncLit:internal/api/h.go:55:28"). The path is not required to be
 // absolute: a closure's identity is module-relative so that the generated spec is
 // the same in every checkout (issue #216), while a recorded position is absolute.
-var filePosRe = regexp.MustCompile(`([^\s:]+\.go):(\d+)`)
+//
+// The optional `C:` head keeps Windows absolute paths whole. It is anchored on a
+// word boundary so it cannot bite into the text before the path: without that,
+// the "t:" ending "FuncLit:" reads as a drive letter and the match becomes
+// "t:internal/api/h.go".
+var filePosRe = regexp.MustCompile(`((?:\b[A-Za-z]:)?[^\s:]+\.go):(\d+)`)
 
 // extractFilePos returns "file.go:line" from any string containing one,
 // or "" if none is present.

@@ -17,6 +17,7 @@ package insight
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -186,6 +187,16 @@ func TestSameSourceFile(t *testing.T) {
 	for _, c := range differ {
 		if sameSourceFile(c.a, c.b) {
 			t.Errorf("sameSourceFile(%q, %q) = true, want false", c.a, c.b)
+		}
+	}
+
+	// On Windows the recorded position uses backslashes while the identity uses
+	// forward slashes, and filepath.ToSlash bridges them. It is deliberately
+	// platform-specific: on Unix a backslash is a legal character in a filename,
+	// so rewriting one there would corrupt the path rather than normalise it.
+	if runtime.GOOS == "windows" {
+		if !sameSourceFile(`C:\src\app\internal\api\h.go`, "internal/api/h.go") {
+			t.Error("a Windows position did not match its module-relative identity")
 		}
 	}
 }
