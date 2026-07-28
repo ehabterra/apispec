@@ -2338,10 +2338,16 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 		targetPkgName = goTypePkgName
 	}
 
-	// Collect all constants and group them
+	// Collect all constants and group them. Files in sorted order: a constant
+	// group can span files, and map order must never reach the output (golden
+	// rule #1).
 	if pkg, exist := meta.Packages[targetPkgName]; exist {
-		for _, file := range pkg.Files {
-			for _, variable := range file.Variables {
+		for _, fileName := range meta.SortedFileNames(targetPkgName) {
+			file := pkg.Files[fileName]
+			if file == nil {
+				continue
+			}
+			for _, variable := range sortedVariables(meta, file.Variables) {
 				if getStringFromPool(meta, variable.Tok) == "const" {
 					varType := getStringFromPool(meta, variable.Type)
 					resolvedType := getStringFromPool(meta, variable.ResolvedType)
@@ -2356,12 +2362,25 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 
 					// Check if this constant's type matches our target enum type
 					// For iota constants, we also need to check if they're in the same group as a typed constant
-					if typeMatches(targetType, goType, meta) ||
-						(varType == "" && isInSameGroupAsTypedConstant(variable.GroupIndex, goType, file.Variables, meta)) {
+					sameGroupAsTyped := varType == "" &&
+						isInSameGroupAsTypedConstant(variable.GroupIndex, goType, file.Variables, meta)
+					if typeMatches(targetType, goType, meta) || sameGroupAsTyped {
 						groupIndex := variable.GroupIndex
 
-						if constantGroups[targetType] == nil {
-							constantGroups[targetType] = make(map[int][]EnumConstant)
+						// Key on the type the constant BELONGS to, not on what its
+						// own declaration happens to say. Only the first member of
+						// an iota block carries the type (`Low Priority = iota`,
+						// then Medium, High, Critical); keying those by their
+						// resolved `int` split one enum across two keys, which cost
+						// `Priority` the value 0 — the typed member sat alone in its
+						// own group and lost the "biggest group" contest.
+						groupType := targetType
+						if sameGroupAsTyped {
+							groupType = goType
+						}
+
+						if constantGroups[groupType] == nil {
+							constantGroups[groupType] = make(map[int][]EnumConstant)
 						}
 
 						enumConst := EnumConstant{
@@ -2372,8 +2391,8 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 							Group:    groupIndex,
 						}
 
-						constantGroups[targetType][groupIndex] = append(
-							constantGroups[targetType][groupIndex],
+						constantGroups[groupType][groupIndex] = append(
+							constantGroups[groupType][groupIndex],
 							enumConst,
 						)
 					}
@@ -2382,13 +2401,24 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 		}
 	}
 
-	// Find the best enum group for this type
+	// One declared type, or none. Constants of two different declared types are
+	// not interchangeable, so if more than one type still qualifies here the
+	// values cannot be attributed and no enum is honest — documenting one of them
+	// would validate clients against the wrong value set (golden rule #7, issue
+	// #229). This happens when the target is reachable through several alias
+	// names; it is rare, and guessing was what produced a different enum per run.
+	if len(constantGroups) > 1 {
+		return nil
+	}
+
+	// The largest group of that type, chosen over sorted keys so the answer cannot
+	// depend on map order, and ties resolve to the earliest declaration.
 	var bestEnumValues []interface{}
 	var maxGroupSize int
-
-	for _, groups := range constantGroups {
-		for _, group := range groups {
-			if len(group) > maxGroupSize {
+	for _, declaredType := range slices.Sorted(maps.Keys(constantGroups)) {
+		groups := constantGroups[declaredType]
+		for _, groupIndex := range slices.Sorted(maps.Keys(groups)) {
+			if group := groups[groupIndex]; len(group) > maxGroupSize {
 				maxGroupSize = len(group)
 				bestEnumValues = extractEnumValues(group)
 			}
@@ -2396,6 +2426,19 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 	}
 
 	return bestEnumValues
+}
+
+// sortedVariables returns a file's variables in name order. Enum detection reads
+// them to build constant groups, and a group's membership must not depend on map
+// order.
+func sortedVariables(meta *metadata.Metadata, vars map[string]*metadata.Variable) []*metadata.Variable {
+	out := make([]*metadata.Variable, 0, len(vars))
+	for _, name := range slices.Sorted(maps.Keys(vars)) {
+		if v := vars[name]; v != nil {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // EnumConstant represents a constant that might be part of an enum
@@ -2490,16 +2533,18 @@ func typeMatches(constantType, targetType string, meta *metadata.Metadata) bool 
 		return true
 	}
 
-	// Check if constantType is an alias of targetType
+	// The constant's declared type may be an alias NAME for the target: a constant
+	// declared `Status` belongs to a field whose type resolves to `Status`.
+	//
+	// What is deliberately NOT accepted is a shared underlying type. `type Status
+	// string` and `type ApiFormat = string` both resolve to `string`, but they are
+	// different types and their constants are not interchangeable — accepting that
+	// made every string-based type in a package a candidate for every other, so a
+	// named type was documented with another type's values and the winner was
+	// picked by map order (issue #229).
 	if resolvedConstType := resolveUnderlyingType(constantType, meta); resolvedConstType != "" {
 		if resolvedConstType == targetType {
 			return true
-		}
-		// Also check if the resolved type matches the target's underlying type
-		if resolvedTargetType := resolveUnderlyingType(targetType, meta); resolvedTargetType != "" {
-			if resolvedConstType == resolvedTargetType {
-				return true
-			}
 		}
 	}
 
