@@ -10,9 +10,11 @@ import { Donut, Gauge, Info, TraceDiagram } from "/assets/js/components/charts.j
 
 function normalizeReport(d) {
   d = d || {};
-  for (const k of ["issues", "endpoints", "byMethod", "byStatus", "byContentType", "byTag", "topTypes", "taxonomy", "verbDispatch"]) {
+  for (const k of ["issues", "endpoints", "byMethod", "byStatus", "statusBodies", "byContentType", "byTag", "topTypes", "taxonomy", "verbDispatch"]) {
     if (!Array.isArray(d[k])) d[k] = [];
   }
+  d.analysis = d.analysis || {};
+  if (!Array.isArray(d.analysis.frameworks)) d.analysis.frameworks = [];
   d.health = d.health || { score: 0, cleanRoutes: 0, totalRoutes: 0 };
   d.callGraph = d.callGraph || { packages: 0, functions: 0, edges: 0 };
   d.security = d.security || { schemesDefined: 0, schemes: [], protected: 0, public: 0, unsecured: 0, bySchemeUsage: [] };
@@ -61,6 +63,12 @@ const INFO = {
   operations: "Method + path combinations (one path can have GET, POST, …).",
   methods: "HTTP methods across all operations.",
   status: "Response status codes declared across the API.",
+  statusbodies:
+    "For each status code: how many of its responses carry a resolved schema, how many were found but whose Go type could not be mapped, and how many document no body at all. At a 2xx an empty body usually means the write wasn't followed; an unresolved type means it was found but needs a type mapping.",
+  analysis:
+    "How this spec was produced rather than what's in it: the frameworks detected in the project, which one's patterns take precedence, the tracker engine, and what the entry-point gate did.",
+  entrypoints:
+    "Functions parked in a struct field that a library calls back — a urfave/cli Action, a cobra Run/RunE. Nothing in your code calls them, so their routes are only reachable if apispec roots them. It roots one only when its subtree actually registers a route.",
   ctype: "Request/response content types declared across the API.",
   tags: "OpenAPI tags grouping the routes.",
   toptypes: "Schemas referenced most often across request/response bodies.",
@@ -216,6 +224,132 @@ function Alerts({ rep }) {
   `;
 }
 
+// AnalysisCard answers "what was this spec read from?" — the frameworks found,
+// which one's patterns led, the tracker engine, and what the entrypoint gate did.
+// None of it is in the spec, so the server supplies it; and all of it is the first
+// thing you want when a route count looks wrong.
+function AnalysisCard({ rep }) {
+  const a = rep.analysis || {};
+  const ep = a.entrypoints;
+  if (!a.frameworks.length && !a.primary && !ep) return "";
+
+  // The gate's outcome, said in words. "0 rooted" is the interesting case: it
+  // means apispec DID look and found nothing that registers a route, which is a
+  // different problem from not looking.
+  const epStory = ep
+    ? ep.rooted > 0
+      ? `${ep.rooted} of ${ep.declared} led to route registration and ${ep.rooted === 1 ? "was" : "were"} analysed as${ep.rooted === 1 ? " an" : ""} extra entry point${ep.rooted === 1 ? "" : "s"}.`
+      : `none of the ${ep.declared} register a route, so no extra entry point was needed — if routes are missing, they are being registered somewhere this gate cannot see.`
+    : "";
+
+  return html`
+    ${SectionHead("How this was read", "Analysis", "what the spec was derived from", INFO.analysis)}
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      <div class="row" style="gap:var(--sp-2);flex-wrap:wrap;align-items:center">
+        ${a.frameworks.length
+          ? html`<span class="muted" style="font-size:var(--fs-sm)">Frameworks</span>
+              <div class="chips">
+                ${a.frameworks.map(
+                  (f) => html`<span class="chip" title=${f === a.primary ? "primary — its patterns lead where two frameworks could match the same call" : "secondary — merged in, receiver-scoped"}>
+                    ${f}${f === a.primary ? html`<span class="chip-count">primary</span>` : ""}
+                  </span>`,
+                )}
+              </div>`
+          : html`<span class="muted" style="font-size:var(--fs-sm)">No framework detected — the configured patterns were used as-is.</span>`}
+        <span class="spacer"></span>
+        ${a.engine ? html`<span class="muted" style="font-size:var(--fs-xs)">${a.engine} tracker</span>` : ""}
+      </div>
+      ${a.frameworks.length > 1
+        ? html`<p class="muted" style="font-size:var(--fs-xs);margin:var(--sp-2) 0 0">
+            More than one framework is in play: every one contributes its patterns, and the primary decides where they overlap.
+          </p>`
+        : ""}
+      ${ep
+        ? html`<div style="margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--border)">
+            <div class="row" style="gap:6px"><strong style="font-size:var(--fs-sm)">CLI-dispatched entry points</strong><${Info} text=${INFO.entrypoints} /></div>
+            <p class="muted" style="font-size:var(--fs-sm);margin:var(--sp-2) 0 0">
+              ${ep.declared} function${ep.declared === 1 ? "" : "s"} stored in a field a library calls back (a CLI
+              <span class="mono">Action</span>/<span class="mono">RunE</span>). ${epStory}
+            </p>
+            <div class="res-legend" style="margin-top:var(--sp-2)">
+              <span class="it"><span class="sw" style="background:var(--accent-2)"></span>Rooted <b>${ep.rooted}</b></span>
+              <span class="it"><span class="sw" style="background:var(--info)"></span>Already reachable <b>${ep.alreadyReachable}</b></span>
+              <span class="it"><span class="sw" style="background:var(--muted)"></span>Register no route <b>${ep.noRoutes}</b></span>
+            </div>
+          </div>`
+        : ""}
+    </div>
+  `;
+}
+
+// ResponseBodies breaks each status code into how well its body resolved. The
+// split is the diagnosis: at a 2xx, "no body" usually means the write was not
+// followed, while "unresolved" means it WAS found and the Go type could not be
+// mapped — different fixes, and the bare status histogram hides both.
+function ResponseBodies({ rep }) {
+  const rows = rep.statusBodies;
+  if (!rows.length) return "";
+
+  const is2xx = (s) => s[0] === "2";
+  const sum = (f, pred) => rows.filter((r) => (pred ? pred(r.status) : true)).reduce((a, r) => a + f(r), 0);
+  // 204/304 mean "no body" by definition, so they are not evidence of anything
+  // missing; a 200 that documents nothing is.
+  const bodyExpected = (s) => is2xx(s) && s !== "204";
+  const emptyOK = sum((r) => r.empty, (s) => !bodyExpected(s));
+  const emptySuspicious = sum((r) => r.empty, bodyExpected);
+  const unresolved = sum((r) => r.unresolved);
+  const freeForm = sum((r) => r.freeForm || 0);
+  const withSchema = sum((r) => r.withSchema);
+
+  const bar = (r) => {
+    const t = Math.max(1, r.total);
+    const seg = (n, color, title) => (n ? html`<span style=${`width:${(n / t) * 100}%;background:${color}`} title=${title}></span>` : "");
+    return html`<div class="resbar" style="height:8px">
+      ${seg(r.withSchema, "var(--accent-2)", `${r.withSchema} describe their fields`)}
+      ${seg(r.freeForm || 0, "var(--info)", `${r.freeForm || 0} free-form object (a Go map) — resolved, but no declared fields`)}
+      ${seg(r.unresolved, "var(--warn)", `${r.unresolved} body found, type unresolved`)}
+      ${seg(r.empty, bodyExpected(r.status) ? "var(--danger)" : "var(--muted)", `${r.empty} with no body`)}
+    </div>`;
+  };
+
+  return html`
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      <div class="row" style="gap:6px"><h3 style="margin:0">Response bodies by status</h3><${Info} text=${INFO.statusbodies} /></div>
+      <div class="status-bodies" style="margin-top:var(--sp-3);display:grid;grid-template-columns:auto 1fr auto;gap:var(--sp-2) var(--sp-3);align-items:center">
+        ${rows.map(
+          (r) => html`
+            <span class="mono" style=${`color:${statusColor(r.status)};font-weight:600`}>${r.status}</span>
+            ${bar(r)}
+            <span class="muted" style="font-size:var(--fs-xs);white-space:nowrap">
+              ${r.withSchema}/${r.total} typed${r.freeForm ? ` · ${r.freeForm} free-form` : ""}${r.unresolved ? ` · ${r.unresolved} unresolved` : ""}${r.empty ? ` · ${r.empty} empty` : ""}
+            </span>
+          `,
+        )}
+      </div>
+      <div class="res-legend" style="margin-top:var(--sp-3)">
+        <span class="it"><span class="sw" style="background:var(--accent-2)"></span>Fields described <b>${withSchema}</b></span>
+        <span class="it"><span class="sw" style="background:var(--info)"></span>Free-form object <b>${freeForm}</b></span>
+        <span class="it"><span class="sw" style="background:var(--warn)"></span>Type unresolved <b>${unresolved}</b></span>
+        <span class="it"><span class="sw" style="background:var(--danger)"></span>No body where one is expected <b>${emptySuspicious}</b></span>
+        <span class="it"><span class="sw" style="background:var(--muted)"></span>No body by design <b>${emptyOK}</b></span>
+      </div>
+      ${emptySuspicious || unresolved || freeForm
+        ? html`<p class="muted" style="font-size:var(--fs-xs);margin:var(--sp-2) 0 0;line-height:1.6">
+            ${emptySuspicious
+              ? html`<b>${emptySuspicious}</b> success response${emptySuspicious === 1 ? "" : "s"} document no body at all: the route was found but the value it writes was not — open the endpoint and read its trace. `
+              : ""}
+            ${unresolved
+              ? html`<b>${unresolved}</b> ${unresolved === 1 ? "body was" : "bodies were"} found but ${unresolved === 1 ? "its" : "their"} Go type did not become a schema — a type mapping or an external type fixes those, not more tracing. `
+              : ""}
+            ${freeForm
+              ? html`<b>${freeForm}</b> return a free-form object (a <span class="mono">map[string]any</span>): that IS the type, so nothing is missing — but clients learn nothing about the fields, which is a choice in the API rather than a gap here.`
+              : ""}
+          </p>`
+        : html`<p class="muted" style="font-size:var(--fs-xs);margin:var(--sp-2) 0 0">Every documented response describes its fields, or is empty by design.</p>`}
+    </div>
+  `;
+}
+
 // Meter — a coverage bar coloured by how complete it is.
 function Meter({ label, m, foot }) {
   const pct = m.total ? Math.round((m.have / m.total) * 100) : 0;
@@ -340,6 +474,7 @@ function Overview({ rep, onTag }) {
       <div class="stat"><div class="num">${rep.components}</div><div class="lbl">components <${Info} text=${INFO.components} /></div></div>
     </div>
 
+    <${AnalysisCard} rep=${rep} />
     <${Alerts} rep=${rep} />
     <${ResolutionQuality} rep=${rep} />
     <${TreeInsights} rep=${rep} />
@@ -363,6 +498,8 @@ function Overview({ rep, onTag }) {
           </div>`
         : ""}
     </div>
+
+    <${ResponseBodies} rep=${rep} />
 
     <${SecurityCard} rep=${rep} />
 
