@@ -1345,13 +1345,26 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 	if rhsLen > maxLen {
 		maxLen = rhsLen
 	}
+	// `a, b := f()` has one right-hand side for several variables. Pairing by
+	// position recorded `a` and dropped every later name, so anything assigned
+	// from the second result of a call had no recorded origin at all — the shape
+	// `middlewares, handlerFunc := wrap(...)` is ordinary Go, and its handler was
+	// invisible to every consumer that traces values (issue #235).
+	tupleCall := rhsLen == 1 && lhsLen > 1
 	for i := 0; i < maxLen; i++ {
 		var lhsExpr ast.Expr
 		var rhsExpr ast.Expr
+		returnIndex := 0
 		if i < lhsLen {
 			lhsExpr = assign.Lhs[i]
 		}
-		if i < rhsLen {
+		switch {
+		case tupleCall:
+			// Every name comes from the same call; which result it takes is what
+			// ReturnIndex records, so a consumer can resolve the right one.
+			rhsExpr = assign.Rhs[0]
+			returnIndex = i
+		case i < rhsLen:
 			rhsExpr = assign.Rhs[i]
 		}
 
@@ -1393,7 +1406,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 					calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 					assignment.CalleeFunc = calleeFunc
 					assignment.CalleePkg = calleePkg
-					assignment.ReturnIndex = 0 // For now, always first return value
+					assignment.ReturnIndex = returnIndex
 				}
 				assignments = append(assignments, assignment)
 				assignmentCount++

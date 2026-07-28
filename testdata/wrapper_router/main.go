@@ -71,6 +71,16 @@ func registerCRUD(m *chi.Mux, base string) {
 	m.Delete(base+"/{id}", deleteUser)
 }
 
+// updateItem answers through the project's own context: its body, its status and
+// its parameters are all read through Ctx rather than through net/http.
+func updateItem(w http.ResponseWriter, r *http.Request) {
+	c := &Ctx{Resp: w, Req: r}
+	var in Item
+	_ = c.Bind(&in)
+	_ = c.Query("dry-run")
+	c.JSON(http.StatusAccepted, in)
+}
+
 func main() {
 	r := NewRouter()
 
@@ -85,6 +95,8 @@ func main() {
 		// The handler is behind a conversion.
 		r.Get("/items/count", http.HandlerFunc(countItems))
 	})
+
+	r.Put("/items", updateItem)
 
 	registerCRUD(r.chiRouter, "/users")
 

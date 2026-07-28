@@ -256,6 +256,10 @@ type Engine struct {
 	// error message.
 	skipped []SkippedPackage
 
+	// detectedWrappers lists the project's own router types whose registration
+	// patterns were derived from the parameter flow (issue #235).
+	detectedWrappers []intspec.DetectedWrapper
+
 	// expansionStats records how far tree expansion got during the last
 	// generation, and whether the node budget cut it short (issue #233).
 	expansionStats intspec.ExpansionStats
@@ -714,6 +718,16 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// declare its own field for a house dispatcher.
 	intspec.ApplyEntrypointPresets(apispecConfig, meta)
 
+	// A project's own router type registers nothing the framework's patterns can
+	// see: the framework call sits inside the wrapper, where the path and handler
+	// are the wrapper's parameters. Derive those patterns from that parameter flow
+	// and apply the ones that resolved completely (issue #235). Inert for a project
+	// that registers directly.
+	e.detectedWrappers = intspec.DetectRouterWrappers(meta, apispecConfig)
+	if applied := applyDetectedWrappers(apispecConfig, e.detectedWrappers); applied > 0 || len(e.detectedWrappers) > 0 {
+		NewVerboseLogger(e.config.Verbose).Printf("Router wrappers: %s\n", wrapperSummary(e.detectedWrappers))
+	}
+
 	// Set info from configuration (only if not already set in APISpecConfig)
 	if apispecConfig.Info.Title == "" {
 		apispecConfig.Info.Title = e.config.Title
@@ -1166,6 +1180,12 @@ func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
 }
 
+// GetDetectedWrappers returns the router wrappers derived during the most recent
+// generation, applied or not.
+func (e *Engine) GetDetectedWrappers() []intspec.DetectedWrapper {
+	return e.detectedWrappers
+}
+
 // GetExpansionStats returns how far tree expansion got during the most recent
 // generation, including whether the node budget stopped it early.
 func (e *Engine) GetExpansionStats() intspec.ExpansionStats {
@@ -1320,4 +1340,58 @@ func (e *Engine) filterToFrameworkPackages(
 	}
 
 	return filteredPkgsMetadata, filteredFileToInfo, filteredImportPaths
+}
+
+// applyDetectedWrappers appends the derived patterns that resolved completely and
+// returns how many were applied.
+//
+// Incomplete derivations are deliberately left out: a pattern missing its path or
+// handler produces a route with the wrong values rather than no route, which is
+// worse than the project being undocumented (golden rule #7). They are still
+// reported, so a user can see what was found and finish it by hand.
+func applyDetectedWrappers(cfg *intspec.APISpecConfig, wrappers []intspec.DetectedWrapper) int {
+	applied := 0
+	for _, w := range wrappers {
+		if !w.Complete {
+			continue
+		}
+		switch {
+		case w.Mount != nil:
+			cfg.Framework.MountPatterns = append([]intspec.MountPattern{*w.Mount}, cfg.Framework.MountPatterns...)
+		case w.Response != nil:
+			cfg.Framework.ResponsePatterns = append([]intspec.ResponsePattern{*w.Response}, cfg.Framework.ResponsePatterns...)
+		case w.Request != nil:
+			cfg.Framework.RequestBodyPatterns = append([]intspec.RequestBodyPattern{*w.Request}, cfg.Framework.RequestBodyPatterns...)
+		case w.Param != nil:
+			cfg.Framework.ParamPatterns = append([]intspec.ParamPattern{*w.Param}, cfg.Framework.ParamPatterns...)
+		default:
+			cfg.Framework.RoutePatterns = append([]intspec.RoutePattern{w.Pattern}, cfg.Framework.RoutePatterns...)
+		}
+		applied++
+	}
+	return applied
+}
+
+// wrapperSummary renders what was derived, for the run's log line.
+func wrapperSummary(wrappers []intspec.DetectedWrapper) string {
+	var parts []string
+	for _, w := range wrappers {
+		state := "applied"
+		if !w.Complete {
+			state = "incomplete, not applied"
+		}
+		kind := "route"
+		switch {
+		case w.Mount != nil:
+			kind = "mount"
+		case w.Response != nil:
+			kind = "response"
+		case w.Request != nil:
+			kind = "request"
+		case w.Param != nil:
+			kind = "param"
+		}
+		parts = append(parts, fmt.Sprintf("%s %v %s via %s (%s)", w.RecvType, w.Methods, kind, w.Via, state))
+	}
+	return strings.Join(parts, "; ")
 }

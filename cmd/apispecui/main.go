@@ -998,7 +998,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			finishRun()
 		}()
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "cancelled": true, "message": "generation stopped"})
 		return
 
 	case res := <-done:
@@ -1006,7 +1006,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		// If a Force superseded this run, discard its results untouched — the
 		// newer run owns the shared state and the client reply.
 		if superseded() {
-			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "superseded by a newer generation"})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "cancelled": true, "message": "superseded by a newer generation"})
 			return
 		}
 		defer finishRun()
@@ -1020,7 +1020,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			}
 			s.mu.Unlock()
 			if cancelled {
-				writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "cancelled": true, "message": "generation stopped"})
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "cancelled": true, "message": "generation stopped"})
 				return
 			}
 			writeError(w, http.StatusInternalServerError, "generation failed: "+res.err.Error())

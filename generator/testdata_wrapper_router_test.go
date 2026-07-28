@@ -144,6 +144,57 @@ func TestTestdata_WrapperRouter(t *testing.T) {
 	}
 }
 
+// TestTestdata_WrapperRouterIsDetected is the same fixture with NO wrapper
+// patterns configured: chi's defaults only, exactly what a user gets by pointing
+// apispec at the project.
+//
+// The wrapper is derived from the parameter flow — a method of the project's own
+// type that forwards its own parameters into a framework registration is a
+// registrar, and the framework call it delegates to says which parameter plays
+// which role (issue #235). Before that, this run documented one junk route.
+func TestTestdata_WrapperRouterIsDetected(t *testing.T) {
+	out := loadTestdataWithFixtureConfig(t, "wrapper_router", intspec.DefaultChiConfig())
+	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
+
+	// The same set the hand-written config produces, including the group prefix
+	// (held in a field, so only the Group call states it) and both verbs of the
+	// one registration that names two.
+	want := []struct{ method, path, handler string }{
+		{"GET", "/users", "listUsers"},
+		{"POST", "/users", "createUser"},
+		{"GET", "/api/items", "getItem"},
+		{"GET", "/api/items/search", "searchItems"},
+		{"POST", "/api/items/search", "searchItems"},
+		{"GET", "/api/items/count", "countItems"},
+	}
+	for _, tc := range want {
+		op := opFor(out.Paths[tc.path], tc.method)
+		if op == nil {
+			t.Errorf("%s %s missing with detection only; have %v", tc.method, tc.path, mapPathKeys(out.Paths))
+			continue
+		}
+		if !strings.Contains(op.OperationID, tc.handler) {
+			t.Errorf("%s %s: operationId %q does not name %q", tc.method, tc.path, op.OperationID, tc.handler)
+		}
+	}
+
+	// The delegate must still not be documented as a route of its own.
+	for path := range out.Paths {
+		if path == "/{path}" || path == "/string" {
+			t.Errorf("path %q is the wrapper's own parameter, not a route; have %v", path, mapPathKeys(out.Paths))
+		}
+	}
+
+	// A plain function that registers on the framework router directly is NOT a
+	// wrapper — there is no type to scope a pattern to, and its inner call is the
+	// only registration. It must keep working, and must not gain a derived pattern
+	// that would fire elsewhere.
+	if op := opFor(out.Paths["/"], "DELETE"); op == nil {
+		t.Errorf("the helper-registrar route is gone; have %v", mapPathKeys(out.Paths))
+	}
+}
+
 // statusKeys lists an operation's documented statuses, for failure output.
 func statusKeys(op *intspec.Operation) []string {
 	out := make([]string, 0, len(op.Responses))
