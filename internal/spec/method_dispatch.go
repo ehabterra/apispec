@@ -150,3 +150,31 @@ func fileOfPosition(pos string) string {
 	}
 	return rest[:midColon]
 }
+
+// expandMultiVerbRoutes turns a registration that named several verbs into one
+// route per verb — a house router's `Methods("GET,POST", path, h)` registers both
+// (issue #221).
+//
+// The copy is shallow on purpose: every verb of one registration shares the same
+// handler, so it shares the handler's request, responses and parameters. What must
+// NOT be shared is the operationId, so each verb carries it as a suffix the way a
+// dispatch split does — neither verb is the primary one, and two operations
+// differing only in method would otherwise collide.
+func expandMultiVerbRoutes(routes []*RouteInfo) []*RouteInfo {
+	out := make([]*RouteInfo, 0, len(routes))
+	for _, route := range routes {
+		if len(route.ExtraMethods) == 0 {
+			out = append(out, route)
+			continue
+		}
+		methods := append([]string{route.Method}, route.ExtraMethods...)
+		for _, method := range methods {
+			nr := *route
+			nr.Method = method
+			nr.ExtraMethods = nil
+			nr.OperationIDSuffix = method
+			out = append(out, &nr)
+		}
+	}
+	return out
+}

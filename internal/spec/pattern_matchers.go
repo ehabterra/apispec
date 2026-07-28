@@ -224,7 +224,7 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeI
 	// Extract handler information
 	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
 		found = true
-		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
+		handlerArg := handlerArgValue(edge.Args[r.pattern.HandlerArgIndex])
 		if handlerArg.GetKind() == metadata.KindIdent || handlerArg.GetKind() == metadata.KindFuncLit {
 
 			handlerName := handlerArg.GetName()
@@ -271,6 +271,16 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			var matched bool
 			routeInfo.Method, matched = r.methodFromFunctionName(handlerName, r.pattern.MethodExtraction)
 			routeInfo.MethodExplicit = matched
+			found = true
+		}
+	} else if r.pattern.MethodFromArg && len(edge.Args) > r.pattern.MethodArgIndex {
+		// The verb travels as an argument, and may name several:
+		// `Methods("GET,POST", path, h)` registers both (issue #221). The rest are
+		// carried on the route and expanded once the set is collected.
+		if methods := r.verbsFromArg(edge.Args[r.pattern.MethodArgIndex]); len(methods) > 0 {
+			routeInfo.Method = methods[0]
+			routeInfo.ExtraMethods = methods[1:]
+			routeInfo.MethodExplicit = true
 			found = true
 		}
 	} else if r.pattern.MethodArgIndex >= 0 && len(edge.Args) > r.pattern.MethodArgIndex {
@@ -334,13 +344,14 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	}
 
 	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
-		routeInfo.Handler = r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.HandlerArgIndex])
-		routeInfo.Function = r.contextProvider.GetArgumentInfo(edge.Args[r.pattern.HandlerArgIndex])
+		handlerArg := handlerArgValue(edge.Args[r.pattern.HandlerArgIndex])
+		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
+		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
 
-		pkg := edge.Args[r.pattern.HandlerArgIndex].GetPkg()
+		pkg := handlerArg.GetPkg()
 		if pkg == "" {
-			if node != nil && edge != nil && edge.Args[r.pattern.HandlerArgIndex].Fun != nil {
-				pkg = edge.Args[r.pattern.HandlerArgIndex].Fun.GetPkg()
+			if node != nil && edge != nil && handlerArg.Fun != nil {
+				pkg = handlerArg.Fun.GetPkg()
 			}
 		}
 		routeInfo.Package = pkg
@@ -1245,4 +1256,64 @@ func splitNameWords(name string) []string {
 	}
 	flush()
 	return words
+}
+
+// verbsFromArg reads the HTTP verbs an argument names, in order, or nil.
+//
+// A registrar can name several in one call — gitea's `Methods("GET,POST", …)`
+// registers both — so the result is a list. Every element has to be a real verb:
+// a value that is only partly verb-like ("GET,everything") says the argument was
+// not understood, and inventing a route from half of it would be worse than
+// leaving the route with its default (golden rule #7).
+//
+// The value may be a literal or a constant this project declares
+// (`http.MethodGet` is not resolvable — that package is not analysed — and a
+// pattern relying on it keeps the older single-verb fallback path).
+func (r *RoutePatternMatcherImpl) verbsFromArg(arg *metadata.CallArgument) []string {
+	if arg == nil {
+		return nil
+	}
+	raw, ok := r.contextProvider.ConstantValue(arg)
+	if !ok || raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	methods := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		verb := strings.ToUpper(strings.TrimSpace(strings.Trim(part, "\"'")))
+		if verb == "" || !r.isValidHTTPMethod(verb) {
+			return nil
+		}
+		if !seen[verb] {
+			seen[verb] = true
+			methods = append(methods, verb)
+		}
+	}
+	return methods
+}
+
+// handlerArgValue returns the value a handler argument really names, looking
+// through a type conversion.
+//
+// `r.Get("/x", http.HandlerFunc(listItems))` passes a conversion, and taking it at
+// face value documented the operation as `net/http.HandlerFunc` with no body —
+// the conversion names a type, and a type has no doc comment, no request and no
+// responses. The handler is what was converted (issue #221).
+//
+// Only a conversion wrapping something that can BE a handler is peeled: an ident,
+// a selector (`pkg.Handler`, `h.ServeHTTP`) or a literal function. Anything else
+// stays as it is, since for a non-handler argument the conversion's own type is
+// usually the answer (a `[]byte(body)` request body, for instance).
+func handlerArgValue(arg *metadata.CallArgument) *metadata.CallArgument {
+	if arg == nil || arg.GetKind() != metadata.KindTypeConversion || len(arg.Args) != 1 {
+		return arg
+	}
+	switch inner := arg.Args[0]; inner.GetKind() {
+	case metadata.KindIdent, metadata.KindSelector, metadata.KindFuncLit:
+		return inner
+	default:
+		return arg
+	}
 }
