@@ -129,33 +129,35 @@ func printVersion() {
 
 // CLIConfig holds the configuration parsed from command line arguments
 type CLIConfig struct {
-	Verbose                      bool
-	InputDir                     string
-	OutputFile                   string
-	Title                        string
-	APIVersion                   string
-	Description                  string
-	TermsOfService               string
-	ContactName                  string
-	ContactURL                   string
-	ContactEmail                 string
-	LicenseName                  string
-	LicenseURL                   string
-	OpenAPIVersion               string
-	ConfigFile                   string
-	OutputConfig                 string
-	WriteMetadata                bool
-	SplitMetadata                bool
-	DiagramPath                  string
-	PaginatedDiagram             bool
-	DiagramPageSize              int
-	MaxNodesPerTree              int
-	MaxChildrenPerNode           int
-	MaxArgsPerFunction           int
-	MaxNestedArgsDepth           int
-	MaxRecursionDepth            int
-	MaxInstancesPerKey           int
-	LegacyTracker                bool
+	Verbose            bool
+	InputDir           string
+	OutputFile         string
+	Title              string
+	APIVersion         string
+	Description        string
+	TermsOfService     string
+	ContactName        string
+	ContactURL         string
+	ContactEmail       string
+	LicenseName        string
+	LicenseURL         string
+	OpenAPIVersion     string
+	ConfigFile         string
+	OutputConfig       string
+	WriteMetadata      bool
+	SplitMetadata      bool
+	DiagramPath        string
+	PaginatedDiagram   bool
+	DiagramPageSize    int
+	MaxNodesPerTree    int
+	MaxChildrenPerNode int
+	MaxArgsPerFunction int
+	MaxNestedArgsDepth int
+	MaxRecursionDepth  int
+	MaxInstancesPerKey int
+	LegacyTracker      bool
+
+	ResolveCallGraph             bool
 	ShowVersion                  bool
 	OutputFlagSet                bool
 	IncludeFiles                 []string
@@ -289,6 +291,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		"Maximum copies of one callee within an instance scope (raise it when a group closure holds more routes than the default budget covers)")
 
 	fs.BoolVar(&config.LegacyTracker, "legacy-tracker", false, "Use the legacy (eager) tracker tree instead of the default lazy tracker")
+	fs.BoolVar(&config.ResolveCallGraph, "resolve-call-graph", false,
+		"Resolve call targets with SSA+VTA: an interface method with one implementation, and a method reached through embedding, are documented as the function that actually runs (experimental)")
 
 	// Include/exclude flags
 	fs.Var((*stringSliceFlag)(&config.IncludeFiles), "include-file", "Include files matching pattern (can be specified multiple times)")
@@ -391,6 +395,7 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		MaxRecursionDepth:            config.MaxRecursionDepth,
 		MaxInstancesPerKey:           config.MaxInstancesPerKey,
 		UseLazyTracker:               !config.LegacyTracker,
+		ResolveCallGraph:             config.ResolveCallGraph,
 		IncludeFiles:                 config.IncludeFiles,
 		IncludePackages:              config.IncludePackages,
 		IncludeFunctions:             config.IncludeFunctions,
