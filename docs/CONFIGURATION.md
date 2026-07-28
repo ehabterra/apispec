@@ -296,6 +296,43 @@ Sub-keys of `framework`:
 | `requestContext` | Which receivers/accessors mark a "request body" source. |
 | `responseContext` | Which types are the response *writer*, for response patterns gated on write destination (`requireResponseDestination`). Parameter reads state their own exclusion per pattern (`excludeRecvOriginRegex`). |
 
+### Scoping a pattern to where the call is made
+
+Every pattern above also accepts four filters, shared by all six pattern types:
+
+| Field | Matches against |
+|-------|-----------------|
+| `callerPkgPatterns` | the package of the function containing the call |
+| `callerRecvTypePatterns` | the type whose method contains the call |
+| `calleePkgPatterns` | the package being called into |
+| `calleeRecvTypePatterns` | the owner type of the call (the list form of `recvTypeRegex`) |
+
+Each is a list of regexes; **any** entry admits the call, all four are ANDed with
+each other, and an empty list constrains nothing. A function with no receiver is
+addressed by its package, the same convention `recvTypeRegex` uses.
+
+The caller side answers a question nothing else can: two packages may register
+routes with the *identical* call, and only where the call is made separates them.
+
+```yaml
+framework:
+  routePatterns:
+    - callRegex: ^(?i)(Get|Post|Put|Delete)$
+      recvTypeRegex: ^github\.com/go-chi/chi(/v\d)?\.\*?(Router|Mux)$
+      methodFromCall: true
+      pathFromArg: true
+      handlerFromArg: true
+      handlerArgIndex: 1
+      # Document the public surface; the operator endpoints registered the same
+      # way from internal/debugroutes stay out of the spec.
+      callerPkgPatterns:
+        - /internal/api$
+```
+
+These are **include** filters — there is no "everything except", because Go's
+regexp engine has no negative lookahead. A pattern that must avoid one caller is
+written by naming the callers it wants.
+
 Because these patterns are numerous and framework-specific, the authoritative
 reference is the in-repo default configs (`internal/spec/config_*.go`) and the
 struct definitions with doc comments in `internal/spec/config.go`. The quickest

@@ -50,13 +50,6 @@ func TestConfigEditorCoversEveryField(t *testing.T) {
 		// Nested objects — see the doc comment.
 		"methodExtraction": "nested MethodExtractionConfig; defaults live in Go",
 		"bodyTransforms":   "nested BodyTransform list; edited in YAML mode",
-		// Declared on every pattern but read by nothing — no matcher consults them
-		// (issue #221). Offering them would advertise filtering that does not
-		// happen; they become editable when they become real.
-		"callerPkgPatterns":      "never read by any matcher (issue #221)",
-		"callerRecvTypePatterns": "never read by any matcher (issue #221)",
-		"calleePkgPatterns":      "never read by any matcher (issue #221)",
-		"calleeRecvTypePatterns": "never read by any matcher (issue #221)",
 	}
 
 	// Every config struct whose fields the structured editor is expected to reach.

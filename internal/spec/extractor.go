@@ -2236,6 +2236,13 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	edge := node.GetEdge()
+
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !r.matchCallScope(edge, r.pattern.scope()) {
+		return false
+	}
+
 	callName := r.contextProvider.GetString(edge.Callee.Name)
 	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
@@ -3282,6 +3289,13 @@ func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	edge := node.GetEdge()
+
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !p.matchCallScope(edge, p.pattern.scope()) {
+		return false
+	}
+
 	callName := p.contextProvider.GetString(edge.Callee.Name)
 	recvType := p.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := p.contextProvider.GetString(edge.Callee.Pkg)

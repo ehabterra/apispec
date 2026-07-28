@@ -135,6 +135,13 @@ func (r *RoutePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	edge := node.GetEdge()
+
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !r.matchCallScope(edge, r.pattern.scope()) {
+		return false
+	}
+
 	callName := r.contextProvider.GetString(edge.Callee.Name)
 	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
@@ -460,6 +467,13 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	edge := node.GetEdge()
+
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !m.matchCallScope(edge, m.pattern.scope()) {
+		return false
+	}
+
 	callName := m.contextProvider.GetString(edge.Callee.Name)
 	recvType := m.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := m.contextProvider.GetString(edge.Callee.Pkg)
@@ -614,6 +628,12 @@ func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) boo
 		return false
 	}
 
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !s.matchCallScope(edge, s.pattern.scope()) {
+		return false
+	}
+
 	callName := s.contextProvider.GetString(edge.Callee.Name)
 	recvType := s.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := s.contextProvider.GetString(edge.Callee.Pkg)
@@ -765,6 +785,13 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	edge := node.GetEdge()
+
+	// Where the call is MADE can be as decisive as what is called: an identical
+	// registration in another package may not belong in this spec (issue #238).
+	if !r.matchCallScope(edge, r.pattern.scope()) {
+		return false
+	}
+
 	callName := r.contextProvider.GetString(edge.Callee.Name)
 	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
 	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)

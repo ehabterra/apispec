@@ -260,7 +260,9 @@ type RoutePattern struct {
 	// Method extraction configuration
 	MethodExtraction *MethodExtractionConfig `yaml:"methodExtraction,omitempty" json:"methodExtraction,omitempty"`
 
-	// Package/type filtering
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
@@ -296,7 +298,9 @@ type RequestBodyPattern struct {
 	// Context-aware validation
 	AllowForGetMethods bool `yaml:"allowForGetMethods,omitempty" json:"allowForGetMethods,omitempty"` // Allow this pattern for GET/HEAD methods
 
-	// Package/type filtering
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
@@ -336,7 +340,9 @@ type ResponsePattern struct {
 	// NewEncoder's first argument x. Mirrors RequestBodyPattern.BodyFromReceiver.
 	DestFromReceiver bool `yaml:"destFromReceiver,omitempty" json:"destFromReceiver,omitempty"`
 
-	// Package/type filtering
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
@@ -390,7 +396,9 @@ type ParamPattern struct {
 	// (golden rule #7 — only a proven response origin drops it).
 	ExcludeRecvOriginRegex string `yaml:"excludeRecvOriginRegex,omitempty" json:"excludeRecvOriginRegex,omitempty"`
 
-	// Package/type filtering
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
@@ -423,7 +431,9 @@ type MountPattern struct {
 	// Empty means the pattern does not discriminate on the argument type.
 	RouterArgTypeRegex string `yaml:"routerArgTypeRegex,omitempty" json:"routerArgTypeRegex,omitempty"`
 
-	// Package/type filtering
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
@@ -488,7 +498,9 @@ type SecurityPattern struct {
 	MiddlewareFromRecv    bool `yaml:"middlewareFromRecv,omitempty" json:"middlewareFromRecv,omitempty"`       // the middleware value is the receiver (rare)
 	HandlerArgIndex       int  `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"`             // wrapped/guarded handler arg (scope=wrapper/route)
 
-	// Package/type filtering.
+	// Package/type filtering: narrow this pattern by where the call is MADE and
+	// what it is made on. Each list is a set of alternatives, an empty list is no
+	// constraint, and they are include filters. See callScope (call_scope.go).
 	CallerPkgPatterns      []string `yaml:"callerPkgPatterns,omitempty" json:"callerPkgPatterns,omitempty"`
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
