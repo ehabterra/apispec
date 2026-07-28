@@ -110,6 +110,20 @@ func BuildCallGraphSCC(m *Metadata) *CallGraphSCC {
 	return condenseSCC(nodes, adj)
 }
 
+// CondenseGraph condenses an arbitrary directed graph given as a node list and
+// adjacency map, so a caller can condense a graph this package does not own —
+// the SSA/VTA-resolved call graph being the one that matters (docs/
+// TRACKER_REDESIGN.md step 2). The algorithm never needed anything from
+// Metadata; only BuildCallGraphSCC did.
+//
+// nodes and each adjacency list must be sorted, and adjacency must not name a
+// node outside nodes: both are guaranteed by BuildCallGraphSCC and are the
+// caller's job otherwise, because the component numbering is derived from that
+// order and determinism depends on it.
+func CondenseGraph(nodes []string, adj map[string][]string) *CallGraphSCC {
+	return condenseSCC(nodes, adj)
+}
+
 // condenseSCC runs Tarjan's algorithm (iterative, so pathological call-chain
 // depth cannot overflow the goroutine stack) over a pre-sorted node list and
 // pre-sorted adjacency, then builds the condensed DAG. Tarjan finalizes a
