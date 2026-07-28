@@ -281,7 +281,9 @@ type GenerateResponse struct {
 
 	// Truncated reports that expansion stopped at the node budget rather than
 	// because it was finished, so the spec is incomplete by an unknown amount.
-	// NodeLimit is the budget it stopped at, for the message the UI shows.
+	// NodeLimit is the budget it stopped AT, so it is set only alongside
+	// Truncated: a completed run never stopped at one, and a number there would
+	// read as a bound that was hit (CodeRabbit, PR #234).
 	Truncated bool `json:"truncated,omitempty"`
 	NodeLimit int  `json:"nodeLimit,omitempty"`
 }
@@ -1074,7 +1076,9 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			SkippedPackages:    skipped,
 			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
 			Truncated:          expansion.Truncated,
-			NodeLimit:          expansion.Limit,
+		}
+		if expansion.Truncated {
+			resp.NodeLimit = expansion.Limit
 		}
 		// Retain for /api/status so a page refresh can restore this result.
 		s.mu.Lock()
