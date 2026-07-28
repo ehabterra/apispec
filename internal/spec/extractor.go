@@ -76,6 +76,13 @@ type RouteInfo struct {
 	// won't dispatch the other verbs to the handler.
 	MethodExplicit bool
 
+	// ExtraMethods carries the remaining verbs when one registration names
+	// several — a house router's `Methods("GET,POST", path, h)` (issue #221).
+	// Method holds the first; expandMultiVerbRoutes turns the rest into their own
+	// routes once the set is collected, so nothing downstream has to know that a
+	// registration can be plural.
+	ExtraMethods []string
+
 	UsedTypes map[string]*Schema
 	Metadata  *metadata.Metadata
 
@@ -303,6 +310,11 @@ func (e *Extractor) ExtractRoutes() []*RouteInfo {
 		e.traverseForRoutes(root, "", nil, nil, nil, &routes)
 	}
 	routes = dropSubsumedMountPrefixes(routes)
+
+	// One registration naming several verbs becomes one route per verb. Done
+	// before dispatch splitting so both passes see a set where a route has exactly
+	// one method (issue #221).
+	routes = expandMultiVerbRoutes(routes)
 
 	// Split handlers that dispatch on r.Method (switch/if) into one route per
 	// HTTP method, before the per-route diagnostics below run on the settled set.
@@ -1109,10 +1121,29 @@ func frameChainKey(chain []string, node TrackerNodeInterface) string {
 }
 
 func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate) {
+	e.extractRouteChildrenScoped(routeNode, route, mountTags, routes, visitedEdges, ci, chainID, respCandidates, true)
+}
+
+// extractRouteChildrenScoped is extractRouteChildren with the permission to
+// COMPLETE the route from a child. It is withdrawn as soon as the walk leaves the
+// registration — once inside a function the registration called, every deeper node
+// is part of an implementation rather than of the registration, and letting one
+// fill the route replaces resolved values with that function's parameters.
+// Everything else about the walk (request, responses, parameters) continues
+// unchanged, because those DO live in the handler's body.
+func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate, mayComplete bool) {
 	for _, child := range routeNode.GetChildren() {
-		// Check for route patterns in children nodes
-		if isRoute := e.executeRoutePattern(child, route); isRoute {
-			e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, nil, routes)
+		// Check for route patterns in children nodes — but only where a child can
+		// legitimately COMPLETE this route (see completesSameRegistration). A
+		// registration matched deeper, inside a function this route calls, is the
+		// same registration seen one level down, and extracting it here would
+		// overwrite the outer route's method, path and handler with the inner
+		// call's still-unresolved parameters (issue #221).
+		childMayComplete := mayComplete && e.completesSameRegistration(routeNode, child)
+		if childMayComplete {
+			if isRoute := e.executeRoutePattern(child, route); isRoute {
+				e.handleRouteNode(child, route, "", mountTags, route.DynamicParams, nil, routes)
+			}
 		}
 
 		// Extract request. A route's body may be matched at several nodes
@@ -1154,11 +1185,56 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 		if child != nil && child.GetArgument() == nil && child.GetEdge() != nil {
 			childChainID = ci.push(chainID, child.GetEdge().Callee.ID())
 		}
-		e.extractRouteChildren(child, route, mountTags, routes, visitedEdges, ci, childChainID, respCandidates)
+		e.extractRouteChildrenScoped(child, route, mountTags, routes, visitedEdges, ci, childChainID, respCandidates, childMayComplete)
 	}
 
 	// Extract parameters from the route node itself
 	route.Params = append(route.Params, e.extractParamsFromNode(routeNode, route)...)
+}
+
+// completesSameRegistration reports whether a child node can finish the route its
+// parent started, as opposed to being a different registration further in.
+//
+// A fluent chain is one registration written across several calls —
+// `Methods("GET").Path("/users").HandlerFunc(h)` arrives with the method on the
+// first call and the path and handler on later ones, so those later calls must be
+// allowed to fill the same route.
+//
+// A house router is the opposite case. `r.Get("/users", listUsers)` is complete
+// where it is written; the `chi.Mux.Method(...)` call inside the wrapper's body is
+// the same registration re-expressed, with the path and handler now parameters. If
+// that were allowed to fill the route it would replace `/users` with `{path}` and
+// `listUsers` with whatever local variable the wrapper built — which is what a
+// project with its own router type used to get out of the box (issue #221).
+//
+// The two are told apart by where the child is written: a chain continuation is a
+// call in the SAME function as the call it continues, while a delegate is a call
+// inside the callee's body. Comparing the caller identity says which, with no
+// guess about names or shapes.
+func (e *Extractor) completesSameRegistration(parent, child TrackerNodeInterface) bool {
+	if parent == nil || child == nil {
+		return false
+	}
+	// An argument is not a registration. An argument node carries the edge of the
+	// call it belongs to, so matching route patterns on it re-extracts that same
+	// call — and the second extraction reads the argument rather than the call,
+	// which is how a route's path became the *type* of a parameter ("string") and
+	// its handler "[]any" (issue #221).
+	if child.GetArgument() != nil {
+		return false
+	}
+	parentEdge, childEdge := parent.GetEdge(), child.GetEdge()
+	if parentEdge == nil || childEdge == nil {
+		return false
+	}
+	// An explicit chain link is decisive on its own.
+	if childEdge.ChainParent != nil {
+		return true
+	}
+	// BaseID, not ID: the question is whether both calls are written in the same
+	// FUNCTION, and an instance id carries a position that would make two calls in
+	// one function look like different callers.
+	return parentEdge.Caller.BaseID() == childEdge.Caller.BaseID()
 }
 
 // matchesResponsePattern reports whether any response matcher accepts the node.

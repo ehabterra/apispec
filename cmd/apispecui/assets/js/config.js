@@ -505,6 +505,7 @@ const PATTERN_FIELDS = {
     ["pathFromArg", "Path from arg", "bool", "Read the path from the path argument."],
     ["handlerFromArg", "Handler from arg", "bool", "Resolve the handler from the handler argument."],
     ["methodFromPath", "Method from path", "bool", "The path argument may carry the verb, Go 1.22 style: mux.HandleFunc('GET /users', h). An explicit verb here wins over every other source and suppresses switch-on-r.Method splitting."],
+    ["methodFromArg", "Method from arg", "bool", "The verb travels as the argument at 'Method arg index', and may name several: a house router's Methods('GET,POST', path, h) registers both, and one operation per verb is emitted. Use this for a registrar whose entry point takes the verb as a value."],
   ],
   requestBodyPatterns: [
     ...COMMON_MATCH,
