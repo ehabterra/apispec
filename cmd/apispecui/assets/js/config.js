@@ -494,6 +494,16 @@ const COMMON_MATCH = [
   ["functionNameRegex", "Function name regex", "text", "Optional — match by the ENCLOSING function's name instead of the call (e.g. only routes registered inside RegisterRoutes)."],
 ];
 
+// Where a call is MADE, as opposed to what is called. One regex per line; any
+// one of them admits the call, an empty box constrains nothing, and all four are
+// include filters (there is no 'everything except').
+const SCOPE_FILTERS = [
+  ["callerPkgPatterns", "Caller package filters", "lines", "Only match calls made from these packages. Two packages can register routes with the identical call, and this is the only fact that separates them — e.g. .*/internal/api$ documents the public surface and leaves operator endpoints out of the spec."],
+  ["callerRecvTypePatterns", "Caller type filters", "lines", "Only match calls made from a method on one of these types, fully qualified — e.g. ^example\\.com/app\\.\\*Server$. A plain function is addressed by its package, the same convention the receiver type regex uses."],
+  ["calleePkgPatterns", "Callee package filters", "lines", "Only match calls INTO these packages, e.g. ^github\\.com/go-chi/chi. The list form of scoping by receiver, for when several unrelated packages should be admitted."],
+  ["calleeRecvTypePatterns", "Callee type filters", "lines", "Only match calls on one of these owner types, fully qualified — the list form of 'Receiver type regex' above, so several owners can be admitted without one alternation."],
+];
+
 const PATTERN_FIELDS = {
   routePatterns: [
     ...COMMON_MATCH,
@@ -506,6 +516,7 @@ const PATTERN_FIELDS = {
     ["handlerFromArg", "Handler from arg", "bool", "Resolve the handler from the handler argument."],
     ["methodFromPath", "Method from path", "bool", "The path argument may carry the verb, Go 1.22 style: mux.HandleFunc('GET /users', h). An explicit verb here wins over every other source and suppresses switch-on-r.Method splitting."],
     ["methodFromArg", "Method from arg", "bool", "The verb travels as the argument at 'Method arg index', and may name several: a house router's Methods('GET,POST', path, h) registers both, and one operation per verb is emitted. Use this for a registrar whose entry point takes the verb as a value."],
+    ...SCOPE_FILTERS,
   ],
   requestBodyPatterns: [
     ...COMMON_MATCH,
@@ -517,6 +528,7 @@ const PATTERN_FIELDS = {
     ["bodyFromReceiver", "Body from receiver", "bool", "The body comes from the call RECEIVER, not an argument — e.g. a json.Decoder bound to r.Body: dec.Decode(&req)."],
     ["bodySourceArgIndex", "Body source arg index", "int", "Index of the argument carrying the request-body source (the io.Reader/request), used with Require request source."],
     ["allowForGetMethods", "Allow for GET/HEAD", "bool", "Permit a request body on GET/HEAD routes (off by default, since those rarely carry one)."],
+    ...SCOPE_FILTERS,
   ],
   responsePatterns: [
     ...COMMON_MATCH,
@@ -529,6 +541,7 @@ const PATTERN_FIELDS = {
     ["defaultContentType", "Default content-type", "text", "Content-type for this pattern when not otherwise known. e.g. text/plain; charset=utf-8 for a c.String writer."],
     ["requireResponseDestination", "Require response destination", "bool", "Only classify as a response when the value being written traces to the response writer — keeps json.NewEncoder(&buf).Encode(v) or an encode to a file from being read as the response body. Pair with Response context below."],
     ["destFromReceiver", "Destination from receiver", "bool", "Resolve that destination from the call RECEIVER's factory argument — the x in json.NewEncoder(x).Encode(v)."],
+    ...SCOPE_FILTERS,
   ],
   paramPatterns: [
     ...COMMON_MATCH,
@@ -539,6 +552,7 @@ const PATTERN_FIELDS = {
     ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
     ["nameFromMapKey", "Name from map key", "bool", "The name is a KEY used to index this call's map result, not an argument — the gorilla/mux idiom vars := mux.Vars(r); vars['id']. Only keys that also appear as {placeholders} in the route path are emitted."],
     ["excludeRecvOriginRegex", "Exclude receiver origin", "text", "Drop the match when the receiver came FROM a type matching this regex. net/http.Header is the header map of the request AND the response, so a read is only a request parameter by provenance: w.Header().Get(k) and c.Response().Header().Get(k) read headers the server SENDS. An origin that cannot be resolved keeps the parameter."],
+    ...SCOPE_FILTERS,
   ],
   mountPatterns: [
     ...COMMON_MATCH,
@@ -548,6 +562,7 @@ const PATTERN_FIELDS = {
     ["routerFromArg", "Router from arg", "bool", "Follow the sub-router argument so its routes are attached under the prefix."],
     ["isMount", "Is mount", "bool", "Treat this call as a router mount/group (e.g. Chi Mount/Route, Gin Group)."],
     ["routerArgTypeRegex", "Router arg type regex", "text", "Only treat the router argument as a mounted ROUTER when its type matches. mux.Handle('/api', x) mounts a sub-router when x is a *chi.Mux but serves one handler when x is an http.Handler; without this every handler registration looks like a mount and its routes are emitted under every prefix."],
+    ...SCOPE_FILTERS,
   ],
   securityPatterns: [
     ...COMMON_MATCH,
@@ -557,6 +572,7 @@ const PATTERN_FIELDS = {
     ["middlewareExcludeLast", "Exclude last arg", "bool", "With variadic: skip the final argument because it is the handler, not middleware — gin/fiber per-route middleware."],
     ["middlewareFromRecv", "Middleware from receiver", "bool", "The middleware value is the call's receiver rather than an argument (rare)."],
     ["handlerArgIndex", "Handler arg index", "int", "Index of the guarded/wrapped handler argument, for scope route/wrapper."],
+    ...SCOPE_FILTERS,
   ],
   entrypointPatterns: [
     ["fieldRegex", "Field regex", "text", "Regex matching the struct FIELD the entrypoint function is assigned to. e.g. ^(Action|Run|RunE|Exec)$ — cobra's Run/RunE, urfave/cli's Action, ffcli's Exec."],
@@ -580,6 +596,13 @@ function fieldEditor(p, f, set) {
   if (type === "int") {
     return html`<div class="field">
       ${lbl}<input class="input" type="number" value=${val ?? ""} onInput=${(e) => set(e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0)} />
+    </div>`;
+  }
+  if (type === "lines") {
+    // Stored as a list, edited one entry per line — an empty box means "no
+    // constraint", which is why blank lines are dropped rather than kept.
+    return html`<div class="field">
+      ${lbl}<textarea class="input" style="min-height:54px" value=${lines(val)} onInput=${(e) => set(toLines(e.target.value))}></textarea>
     </div>`;
   }
   if (type.startsWith("select:")) {

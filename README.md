@@ -33,6 +33,7 @@
 - [How It Works](#how-it-works)
   - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Configuration](#configuration)
+  - [Scoping a pattern to where the call is made](#scoping-a-pattern-to-where-the-call-is-made)
   - [Automatic wrapper detection](#automatic-wrapper-detection)
 - [Programmatic Usage](#programmatic-usage)
 - [Performance & Limits](#performance--limits)
@@ -726,6 +727,31 @@ framework:
     - callRegex: ^GetHeader$
       paramIn: header
 ```
+
+### Scoping a pattern to where the call is made
+
+Every pattern type also accepts `callerPkgPatterns`, `callerRecvTypePatterns`,
+`calleePkgPatterns` and `calleeRecvTypePatterns` — lists of regexes narrowing a
+pattern by *where a call is made*, not only by what is called. Two packages can
+register routes with the identical call, and that is the only fact separating
+them:
+
+```yaml
+framework:
+  routePatterns:
+    - callRegex: ^(?i)(Get|Post|Put|Delete)$
+      recvTypeRegex: ^github\.com/go-chi/chi(/v\d)?\.\*?(Router|Mux)$
+      methodFromCall: true
+      pathFromArg: true
+      handlerFromArg: true
+      handlerArgIndex: 1
+      callerPkgPatterns:
+        - /internal/api$      # operator endpoints stay out of the spec
+```
+
+Any entry in a list admits the call, an empty list constrains nothing, and all
+four are include filters. See
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#scoping-a-pattern-to-where-the-call-is-made).
 
 ### Entrypoints (CLI-dispatched services)
 
