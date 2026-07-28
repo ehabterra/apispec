@@ -143,16 +143,7 @@ func (r *RoutePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := r.contextProvider.GetString(edge.Callee.Name)
-	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(r.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {
@@ -475,16 +466,7 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := m.contextProvider.GetString(edge.Callee.Name)
-	recvType := m.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := m.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(m.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if m.pattern.CallRegex != "" && !m.matchPattern(m.pattern.CallRegex, callName) {
@@ -635,16 +617,7 @@ func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) boo
 	}
 
 	callName := s.contextProvider.GetString(edge.Callee.Name)
-	recvType := s.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := s.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(s.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	if s.pattern.CallRegex != "" && !s.matchPattern(s.pattern.CallRegex, callName) {
 		return false
@@ -793,16 +766,7 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := r.contextProvider.GetString(edge.Callee.Name)
-	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(r.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {

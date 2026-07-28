@@ -602,9 +602,7 @@ function fieldEditor(p, f, set) {
     // Stored as a list, edited one entry per line — an empty box means "no
     // constraint", which is why blank lines are dropped rather than kept.
     return html`<div class="field">
-      ${lbl}<textarea class="input" style="min-height:54px" onInput=${(e) => set(toLines(e.target.value))}>
-${lines(val)}</textarea
-      >
+      ${lbl}<textarea class="input" style="min-height:54px" value=${lines(val)} onInput=${(e) => set(toLines(e.target.value))}></textarea>
     </div>`;
   }
   if (type.startsWith("select:")) {

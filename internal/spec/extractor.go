@@ -2097,14 +2097,7 @@ func (e *Extractor) handlerReachesAccessor(route *RouteInfo, pattern ParamPatter
 // regex), mirroring ParamPatternMatcherImpl.MatchNode.
 func edgeMatchesAccessor(meta *metadata.Metadata, edge *metadata.CallGraphEdge, pattern ParamPattern) bool {
 	callName := getString(meta, edge.Callee.Name)
-	recvType := getString(meta, edge.Callee.RecvType)
-	recvPkg := getString(meta, edge.Callee.Pkg)
-	fq := recvPkg
-	if fq != "" && recvType != "" {
-		fq += "." + recvType
-	} else if recvType != "" {
-		fq = recvType
-	}
+	fq := qualifyOwner(getString(meta, edge.Callee.Pkg), getString(meta, edge.Callee.RecvType))
 	if pattern.CallRegex != "" {
 		if re, err := cachedRegex(pattern.CallRegex); err != nil || !re.MatchString(callName) {
 			return false
@@ -2244,16 +2237,7 @@ func (r *ResponsePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := r.contextProvider.GetString(edge.Callee.Name)
-	recvType := r.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := r.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(r.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {
@@ -3297,16 +3281,7 @@ func (p *ParamPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := p.contextProvider.GetString(edge.Callee.Name)
-	recvType := p.contextProvider.GetString(edge.Callee.RecvType)
-	recvPkg := p.contextProvider.GetString(edge.Callee.Pkg)
-
-	// Build fully qualified receiver type
-	fqRecvType := recvPkg
-	if fqRecvType != "" && recvType != "" {
-		fqRecvType += "." + recvType
-	} else if recvType != "" {
-		fqRecvType = recvType
-	}
+	fqRecvType := fqOwner(p.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if p.pattern.CallRegex != "" && !p.matchPattern(p.pattern.CallRegex, callName) {

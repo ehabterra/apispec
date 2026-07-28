@@ -96,8 +96,12 @@ func matchesAny(patterns []string, value string) bool {
 // function, so a package-level responder (`render.JSON`) is addressable by the
 // same field as a method on a router.
 func fqOwner(cp ContextProvider, pkgIdx, recvTypeIdx int) string {
-	pkg := cp.GetString(pkgIdx)
-	recvType := cp.GetString(recvTypeIdx)
+	return qualifyOwner(cp.GetString(pkgIdx), cp.GetString(recvTypeIdx))
+}
+
+// qualifyOwner is fqOwner over already-resolved strings, for the callers that
+// read the string pool directly.
+func qualifyOwner(pkg, recvType string) string {
 	switch {
 	case pkg != "" && recvType != "":
 		return pkg + "." + recvType
