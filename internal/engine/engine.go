@@ -282,12 +282,22 @@ type Engine struct {
 	// resolvedGraph is the SSA+VTA resolved call graph, built during
 	// GenerateMetadataOnly when config.ResolveCallGraph is set.
 	resolvedGraph *callgraph.Resolved
+
+	// resolvedCallees records what the resolved graph changed about the recorded
+	// call graph, for --verbose and for tests.
+	resolvedCallees intspec.ResolvedCalleeStats
 }
 
 // GetResolvedCallGraph returns the resolved call graph from the last
 // generation, or nil when config.ResolveCallGraph was off.
 func (e *Engine) GetResolvedCallGraph() *callgraph.Resolved {
 	return e.resolvedGraph
+}
+
+// GetResolvedCalleeStats reports what the resolved graph changed about the
+// recorded call graph on the last run.
+func (e *Engine) GetResolvedCalleeStats() intspec.ResolvedCalleeStats {
+	return e.resolvedCallees
 }
 
 // SkippedPackage is a package excluded from analysis due to compile/type
@@ -516,6 +526,12 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 		tResolved := time.Now()
 		e.resolvedGraph = callgraph.Build(filteredPkgs)
 		e.reportPhase(fmt.Sprintf("resolved call graph built (%d functions)", len(e.resolvedGraph.Graph.Nodes)), time.Since(tResolved))
+
+		// Point the recorded calls at the functions that actually run. Metadata
+		// stays the authority on the call sites and their arguments; the resolved
+		// graph is the authority on which callee a site reaches.
+		e.resolvedCallees = intspec.ApplyResolvedCallees(meta, e.resolvedGraph, logger)
+		meta.BuildCallGraphMaps()
 		if err := e.ctx().Err(); err != nil {
 			return nil, err
 		}

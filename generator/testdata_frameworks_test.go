@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ehabterra/apispec/internal/engine"
 	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/spec"
 )
@@ -331,4 +332,27 @@ func TestTestdata_MuxPathParamKeyMismatch(t *testing.T) {
 	if !strings.HasSuffix(m.Handler, "getTag") {
 		t.Errorf("mismatch handler = %q, want it to name getTag", m.Handler)
 	}
+}
+
+// loadTestdataResolved generates a fixture's spec with SSA+VTA call-target
+// resolution on, so a test can compare it against the syntactic run.
+func loadTestdataResolved(t *testing.T, name string, cfg *spec.APISpecConfig) *spec.OpenAPISpec {
+	t.Helper()
+	dir := filepath.Join("..", "testdata", name)
+
+	engineConfig := engine.DefaultEngineConfig()
+	engineConfig.InputDir = dir
+	engineConfig.ResolveCallGraph = true
+	if cfg != nil {
+		engineConfig.APISpecConfig = cfg
+	}
+
+	out, err := engine.NewEngine(engineConfig).GenerateOpenAPI()
+	if err != nil {
+		t.Fatalf("GenerateOpenAPI(%s) with the resolved call graph: %v", dir, err)
+	}
+	if out == nil || out.Paths == nil {
+		t.Fatalf("nil spec or paths for %s", name)
+	}
+	return out
 }
