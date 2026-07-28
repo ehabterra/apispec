@@ -39,8 +39,11 @@ type DetectedWrapper struct {
 	// Mount is set instead of Pattern when the method groups routes under a
 	// prefix rather than registering one.
 	Mount *MountPattern
-	// Response / Request / Param are set instead when the method is the project's
-	// own responder, decoder or parameter reader rather than a registrar.
+	// Response / Request / Param are set when the method is the project's own
+	// responder, decoder or parameter reader rather than a registrar. They are NOT
+	// mutually exclusive: roles are accumulated per method, so a context method
+	// that writes a status and reads a parameter carries both, and a consumer has
+	// to apply each one it finds rather than the first.
 	Response *ResponsePattern
 	Request  *RequestBodyPattern
 	Param    *ParamPattern
@@ -71,7 +74,14 @@ const wrapperDetectRounds = 4
 // Derivation is transitive, because a wrapper usually funnels its verb methods
 // through one registrar: `Get` forwards to `Methods`, which forwards to chi.
 func DetectRouterWrappers(meta *metadata.Metadata, cfg *APISpecConfig) []DetectedWrapper {
-	if meta == nil || cfg == nil || len(cfg.Framework.RoutePatterns) == 0 {
+	if meta == nil || cfg == nil {
+		return nil
+	}
+	// Route patterns seed the router half; the response/request/parameter halves
+	// stand on their own, so a config carrying only those still derives.
+	fw := cfg.Framework
+	if len(fw.RoutePatterns) == 0 && len(fw.ResponsePatterns) == 0 &&
+		len(fw.RequestBodyPatterns) == 0 && len(fw.ParamPatterns) == 0 {
 		return nil
 	}
 	cp := NewContextProvider(meta)

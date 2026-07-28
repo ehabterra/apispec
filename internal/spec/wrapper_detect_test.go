@@ -366,3 +366,95 @@ func TestSplitFQRecv(t *testing.T) {
 		}
 	}
 }
+
+// TestDetectValueWrappers covers the read/write twins of a router wrapper: the
+// project's own context, through which handlers answer, decode and read
+// parameters. A house router is rarely alone, and gitea documented 856 routes
+// with zero components until these were derived (issue #235).
+func TestDetectValueWrappers(t *testing.T) {
+	pool := metadata.NewStringPool()
+	m := &metadata.Metadata{StringPool: pool, CurrentModulePath: "example.com/app"}
+
+	ident := func(name, typ string) metadata.CallArgument {
+		a := metadata.NewCallArgument(m)
+		a.SetKind(metadata.KindIdent)
+		a.SetName(name)
+		if typ != "" {
+			a.SetType(typ)
+		}
+		return *a
+	}
+	arg := func(name string) *metadata.CallArgument { a := ident(name, ""); return &a }
+	sig := func(params ...metadata.CallArgument) metadata.CallArgument {
+		s := metadata.NewCallArgument(m)
+		s.SetKind(metadata.KindFuncType)
+		for i := range params {
+			s.Args = append(s.Args, &params[i])
+		}
+		return *s
+	}
+	call := func(name, pkg, recv string) metadata.Call {
+		c := metadata.Call{Meta: m, Name: pool.Get(name), Pkg: pool.Get(pkg), Position: -1, Scope: -1, SignatureStr: -1, RecvType: -1}
+		if recv != "" {
+			c.RecvType = pool.Get(recv)
+		}
+		return c
+	}
+
+	m.Packages = map[string]*metadata.Package{
+		"example.com/app": {Files: map[string]*metadata.File{
+			"ctx.go": {Types: map[string]*metadata.Type{
+				"Ctx": {Name: pool.Get("Ctx"), Methods: []metadata.Method{
+					{Name: pool.Get("JSON"), Signature: sig(ident("status", "int"), ident("body", "any"))},
+					{Name: pool.Get("Bind"), Signature: sig(ident("dst", "any"))},
+					{Name: pool.Get("Query"), Signature: sig(ident("name", "string"))},
+				}},
+			}},
+		}},
+	}
+	m.CallGraph = []metadata.CallGraphEdge{
+		// One responder, two roles: the status through one call, the body through
+		// another. Both have to end up on the same derived pattern.
+		{Caller: call("JSON", "example.com/app", "*Ctx"), Callee: call("WriteHeader", "net/http", "ResponseWriter"), Args: []*metadata.CallArgument{arg("status")}},
+		{Caller: call("JSON", "example.com/app", "*Ctx"), Callee: call("Encode", "encoding/json", "*Encoder"), Args: []*metadata.CallArgument{arg("body")}},
+		{Caller: call("Bind", "example.com/app", "*Ctx"), Callee: call("Decode", "encoding/json", "*Decoder"), Args: []*metadata.CallArgument{arg("dst")}},
+		{Caller: call("Query", "example.com/app", "*Ctx"), Callee: call("Get", "net/url", "Values"), Args: []*metadata.CallArgument{arg("name")}},
+	}
+	m.BuildCallGraphMaps()
+
+	cfg := &APISpecConfig{Framework: FrameworkConfig{
+		ResponsePatterns: []ResponsePattern{
+			{CallRegex: `^WriteHeader$`, StatusFromArg: true, StatusArgIndex: 0, TypeArgIndex: -1},
+			{CallRegex: `^Encode$`, TypeFromArg: true, TypeArgIndex: 0},
+		},
+		RequestBodyPatterns: []RequestBodyPattern{{CallRegex: `^Decode$`, TypeFromArg: true, TypeArgIndex: 0, Deref: true}},
+		ParamPatterns:       []ParamPattern{{CallRegex: `^Get$`, RecvType: "net/url.Values", ParamIn: "query", ParamArgIndex: 0}},
+	}}
+
+	byMethod := map[string]DetectedWrapper{}
+	for _, w := range DetectRouterWrappers(m, cfg) {
+		byMethod[w.Methods[0]] = w
+	}
+
+	resp, ok := byMethod["JSON"]
+	if !ok || resp.Response == nil {
+		t.Fatalf("no responder derived; have %v", byMethod)
+	}
+	if !resp.Response.StatusFromArg || resp.Response.StatusArgIndex != 0 {
+		t.Errorf("status role = (%v, %d), want the first parameter", resp.Response.StatusFromArg, resp.Response.StatusArgIndex)
+	}
+	if !resp.Response.TypeFromArg || resp.Response.TypeArgIndex != 1 {
+		t.Errorf("body role = (%v, %d), want the second parameter — merged from the other call",
+			resp.Response.TypeFromArg, resp.Response.TypeArgIndex)
+	}
+	if !resp.Complete {
+		t.Error("a responder with a body should be applicable")
+	}
+
+	if req, ok := byMethod["Bind"]; !ok || req.Request == nil || req.Request.TypeArgIndex != 0 {
+		t.Errorf("decoder not derived from its own parameter: %+v", req)
+	}
+	if par, ok := byMethod["Query"]; !ok || par.Param == nil || par.Param.ParamIn != "query" || par.Param.ParamArgIndex != 0 {
+		t.Errorf("parameter reader not derived, or lost its location: %+v", par)
+	}
+}

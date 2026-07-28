@@ -1350,7 +1350,12 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 	// from the second result of a call had no recorded origin at all — the shape
 	// `middlewares, handlerFunc := wrap(...)` is ordinary Go, and its handler was
 	// invisible to every consumer that traces values (issue #235).
-	tupleCall := rhsLen == 1 && lhsLen > 1
+	// Only a CALL distributes one right-hand side across several names in a way
+	// worth recording. `v, ok := x.(T)`, `a, b := m[k]` and `v, ok := <-ch` share
+	// the shape, but their second name is a bool whose "origin" would be the
+	// whole expression — recording that would hand `ok` the concrete type T.
+	_, isCall := assign.Rhs[0].(*ast.CallExpr)
+	tupleCall := rhsLen == 1 && lhsLen > 1 && isCall
 	for i := 0; i < maxLen; i++ {
 		var lhsExpr ast.Expr
 		var rhsExpr ast.Expr

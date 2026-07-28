@@ -724,7 +724,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	// and apply the ones that resolved completely (issue #235). Inert for a project
 	// that registers directly.
 	e.detectedWrappers = intspec.DetectRouterWrappers(meta, apispecConfig)
-	if applied := applyDetectedWrappers(apispecConfig, e.detectedWrappers); applied > 0 || len(e.detectedWrappers) > 0 {
+	applyDetectedWrappers(apispecConfig, e.detectedWrappers)
+	if e.config.Verbose && len(e.detectedWrappers) > 0 {
 		NewVerboseLogger(e.config.Verbose).Printf("Router wrappers: %s\n", wrapperSummary(e.detectedWrappers))
 	}
 
@@ -1342,34 +1343,84 @@ func (e *Engine) filterToFrameworkPackages(
 	return filteredPkgsMetadata, filteredFileToInfo, filteredImportPaths
 }
 
-// applyDetectedWrappers appends the derived patterns that resolved completely and
-// returns how many were applied.
+// applyDetectedWrappers adds the derived patterns that resolved completely and
+// returns how many were added.
 //
 // Incomplete derivations are deliberately left out: a pattern missing its path or
 // handler produces a route with the wrong values rather than no route, which is
 // worse than the project being undocumented (golden rule #7). They are still
 // reported, so a user can see what was found and finish it by hand.
+//
+// Applying is idempotent. The config may be the CALLER's — the UI hands the same
+// one to every run — so a second generation must not grow it a second copy of
+// everything derived.
+//
+// A method can carry several roles at once (a context method that both writes a
+// status and reads a parameter), so each role is considered on its own rather
+// than as alternatives.
 func applyDetectedWrappers(cfg *intspec.APISpecConfig, wrappers []intspec.DetectedWrapper) int {
 	applied := 0
 	for _, w := range wrappers {
 		if !w.Complete {
 			continue
 		}
-		switch {
-		case w.Mount != nil:
-			cfg.Framework.MountPatterns = append([]intspec.MountPattern{*w.Mount}, cfg.Framework.MountPatterns...)
-		case w.Response != nil:
-			cfg.Framework.ResponsePatterns = append([]intspec.ResponsePattern{*w.Response}, cfg.Framework.ResponsePatterns...)
-		case w.Request != nil:
-			cfg.Framework.RequestBodyPatterns = append([]intspec.RequestBodyPattern{*w.Request}, cfg.Framework.RequestBodyPatterns...)
-		case w.Param != nil:
-			cfg.Framework.ParamPatterns = append([]intspec.ParamPattern{*w.Param}, cfg.Framework.ParamPatterns...)
-		default:
-			cfg.Framework.RoutePatterns = append([]intspec.RoutePattern{w.Pattern}, cfg.Framework.RoutePatterns...)
+		roled := false
+		if w.Mount != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.MountPatterns, *w.Mount, func(p intspec.MountPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
 		}
-		applied++
+		// A response derivation with neither role resolved describes nothing.
+		if w.Response != nil && (w.Response.TypeFromArg || w.Response.StatusFromArg) {
+			roled = true
+			if addPatternOnce(&cfg.Framework.ResponsePatterns, *w.Response, func(p intspec.ResponsePattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if w.Request != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.RequestBodyPatterns, *w.Request, func(p intspec.RequestBodyPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if w.Param != nil {
+			roled = true
+			if addPatternOnce(&cfg.Framework.ParamPatterns, *w.Param, func(p intspec.ParamPattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
+		if !roled {
+			if addPatternOnce(&cfg.Framework.RoutePatterns, w.Pattern, func(p intspec.RoutePattern) (string, string) {
+				return p.CallRegex, p.RecvTypeRegex
+			}) {
+				applied++
+			}
+		}
 	}
 	return applied
+}
+
+// addPatternOnce prepends a derived pattern unless one matching the same calls on
+// the same receiver is already configured — which is what makes a second run on
+// the same config produce the same config.
+func addPatternOnce[T any](patterns *[]T, add T, identity func(T) (string, string)) bool {
+	call, recv := identity(add)
+	for _, existing := range *patterns {
+		if c, r := identity(existing); c == call && r == recv {
+			return false
+		}
+	}
+	*patterns = append([]T{add}, (*patterns)...)
+	return true
 }
 
 // wrapperSummary renders what was derived, for the run's log line.
