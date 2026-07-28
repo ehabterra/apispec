@@ -23,6 +23,7 @@ import (
 	"github.com/ehabterra/apispec/internal/callgraph"
 	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/spec"
 )
 
 // joinReport is what the two graphs agree and disagree about, per project.
@@ -31,6 +32,12 @@ type joinReport struct {
 	joined    int // …whose position VTA also has a call at
 	agreed    int // …where VTA names the callee metadata named
 	resolved  int // …where VTA names a DIFFERENT callee (the interesting ones)
+
+	// classes counts why the disagreements disagree — the spec for what phase 2
+	// is allowed to act on.
+	classes map[callgraph.Disagreement]int
+	// examples keeps one sample per class, for the report.
+	examples map[callgraph.Disagreement]string
 }
 
 // TestVTACallSiteJoin measures the join the whole SSA/VTA migration rests on:
@@ -68,6 +75,15 @@ func TestVTACallSiteJoin(t *testing.T) {
 			t.Logf("%s: %d positioned metadata edges, %d joined (%.1f%%) — %d agree, %d resolved differently",
 				filepath.Base(dir), report.metaEdges, report.joined, rate, report.agreed, report.resolved)
 
+			for _, class := range []callgraph.Disagreement{
+				callgraph.DisagreeInterface, callgraph.DisagreePromoted,
+				callgraph.DisagreeAmbiguous, callgraph.DisagreeUnknown,
+			} {
+				if n := report.classes[class]; n > 0 {
+					t.Logf("  %-26s %5d   e.g. %s", class, n, report.examples[class])
+				}
+			}
+
 			if rate < 25 {
 				t.Errorf("only %.1f%% of positioned edges joined; a systematic position mismatch would look exactly like this", rate)
 			}
@@ -99,8 +115,12 @@ func joinAt(t *testing.T, dir string) joinReport {
 	}
 
 	byPosition := resolved.CalleesAt()
+	facts := spec.TypeFactsFor(meta)
 
-	var report joinReport
+	report := joinReport{
+		classes:  map[callgraph.Disagreement]int{},
+		examples: map[callgraph.Disagreement]string{},
+	}
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 		position := meta.StringPool.GetString(edge.Position)
@@ -117,8 +137,13 @@ func joinAt(t *testing.T, dir string) joinReport {
 
 		if containsID(targets, edge.Callee.BaseID()) {
 			report.agreed++
-		} else {
-			report.resolved++
+			continue
+		}
+		report.resolved++
+		class := callgraph.Classify(edge.Callee.BaseID(), targets, facts)
+		report.classes[class]++
+		if _, seen := report.examples[class]; !seen {
+			report.examples[class] = edge.Callee.BaseID() + "  ->  " + strings.Join(targets, ", ")
 		}
 	}
 	return report

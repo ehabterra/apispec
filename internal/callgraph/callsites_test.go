@@ -14,7 +14,11 @@
 
 package callgraph
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 // TestSiteKey pins the join key both graphs have to agree on.
 func TestSiteKey(t *testing.T) {
@@ -100,5 +104,51 @@ func TestCallSitesOnNilGraph(t *testing.T) {
 	}
 	if index := (&Resolved{}).CalleesAt(); len(index) != 0 {
 		t.Errorf("CalleesAt on an unbuilt Resolved returned %d entries", len(index))
+	}
+}
+
+// TestCallSitesOverRealGraph pins the accessor against a built graph: every
+// resolved call must carry a position in a real file, the order must be stable,
+// and CalleesAt must be able to answer for a call the fixture actually makes.
+func TestCallSitesOverRealGraph(t *testing.T) {
+	r := Build(loadFixture(t, muxFixture))
+
+	sites := r.CallSites()
+	if len(sites) == 0 {
+		t.Fatal("no call sites in a fixture that plainly makes calls")
+	}
+
+	for _, site := range sites {
+		if !site.Position.IsValid() {
+			t.Errorf("site %s -> %s has no position; it could never be joined to", site.CallerID, site.CalleeID)
+			break
+		}
+		if site.CallerID == "" || site.CalleeID == "" {
+			t.Errorf("site at %s has an empty end: caller=%q callee=%q", site.Position, site.CallerID, site.CalleeID)
+			break
+		}
+	}
+
+	// Determinism: the join is built from this, and anything feeding output must
+	// be ordered (golden rule #1).
+	again := r.CallSites()
+	if !reflect.DeepEqual(sites, again) {
+		t.Error("CallSites is not deterministic across calls on the same graph")
+	}
+
+	// mux.Vars is the call this fixture exists for; it must be findable by key.
+	index := r.CalleesAt()
+	found := false
+	for key, targets := range index {
+		if strings.HasSuffix(key, "#Vars") {
+			for _, target := range targets {
+				if strings.Contains(target, "mux") {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no `#Vars` site resolving into gorilla/mux; %d keys indexed", len(index))
 	}
 }
