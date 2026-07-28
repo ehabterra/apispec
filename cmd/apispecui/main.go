@@ -228,8 +228,12 @@ type UIServer struct {
 	currentSpec *pubspec.OpenAPISpec
 	currentCfg  *spec.APISpecConfig
 	currentMeta *metadata.Metadata // retained for the insight view (call-graph stats)
-	lastGen     time.Time
-	lastErr     string
+	// currentAnalysis describes HOW the last spec was produced — detected
+	// frameworks, the tracker engine, what the entrypoint gate did. None of it is
+	// recoverable from the spec, so the Insight view is served it from here.
+	currentAnalysis insight.AnalysisInfo
+	lastGen         time.Time
+	lastErr         string
 
 	// metaCache is keyed by absolute input dir. Cleared on project switch.
 	metaCache map[string]*MetadataSummary
@@ -774,7 +778,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setDir(abs)
 
-	apiCfg, err := buildAPISpecConfig(&req, s.currentDir())
+	apiCfg, detectedFrameworks, err := buildAPISpecConfig(&req, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -963,6 +967,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		s.currentSpec = out
 		s.currentCfg = apiCfg
 		s.currentMeta = genMeta
+		s.currentAnalysis = analysisInfo(req.Framework, detectedFrameworks, !req.LegacyTracker, gen.GetEntrypointStats())
 		s.lastGen = now
 		s.lastErr = ""
 		s.genPhase = ""
@@ -1405,17 +1410,19 @@ func sortedKeys(m map[string]struct{}) []string {
 // framework alone. Selecting one framework and dropping the rest is what made a
 // gin project whose primary detects as `mux` document zero routes here while the
 // CLI documented 107 (issue #212's failure mode, reaching the UI).
-func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, error) {
+func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, []string, error) {
 
 	if req.UseRawConfig && strings.TrimSpace(req.RawConfig) != "" {
 		cfg := &spec.APISpecConfig{}
 		if err := yaml.Unmarshal([]byte(req.RawConfig), cfg); err != nil {
-			return nil, fmt.Errorf("invalid YAML in rawConfig: %w", err)
+			return nil, nil, fmt.Errorf("invalid YAML in rawConfig: %w", err)
 		}
 		if err := cfg.ValidateSecurity(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return cfg, nil
+		// A hand-authored config states its own patterns, so detection has no say
+		// in what was used — reporting a detected list here would misdescribe it.
+		return cfg, nil, nil
 	}
 
 	cfg, frameworks, err := engine.ComposeFrameworkConfigWithPrimary(dir, req.Framework)
@@ -1476,19 +1483,57 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 		if fc.MountPatterns != nil {
 			cfg.Framework.MountPatterns = fc.MountPatterns
 		}
+		if fc.SecurityPatterns != nil {
+			cfg.Framework.SecurityPatterns = fc.SecurityPatterns
+		}
+		if fc.EntrypointPatterns != nil {
+			cfg.Framework.EntrypointPatterns = fc.EntrypointPatterns
+		}
+		if fc.HandlerInterfaceMethods != nil {
+			cfg.Framework.HandlerInterfaceMethods = fc.HandlerInterfaceMethods
+		}
 		// Request-context describes how to detect the request body source
 		// for generic decoders (json.Decode / Unmarshal / render.DecodeJSON).
 		// Only override defaults when the UI submitted something.
 		if len(fc.RequestContext.TypeRegexes) > 0 || len(fc.RequestContext.BodyAccessors) > 0 {
 			cfg.Framework.RequestContext = fc.RequestContext
 		}
+		// Response-context is its mirror: which types are the response writer,
+		// for patterns gated on write destination.
+		if len(fc.ResponseContext.WriterTypeRegexes) > 0 || len(fc.ResponseContext.WriterCompatibleTypeRegexes) > 0 {
+			cfg.Framework.ResponseContext = fc.ResponseContext
+		}
 	}
 	// Enforce the same security-config checks LoadAPISpecConfig applies, so
 	// structured securityMappings from the UI can't bypass validation.
 	if err := cfg.ValidateSecurity(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return cfg, nil
+	return cfg, frameworks, nil
+}
+
+// analysisInfo assembles what the Insight view reports about the run itself.
+// primary is the framework whose patterns led (the request's choice, or the first
+// detected one, which buildAPISpecConfig has already filled in).
+func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats) insight.AnalysisInfo {
+	info := insight.AnalysisInfo{Frameworks: detected, Primary: primary}
+	if lazy {
+		info.Engine = "lazy"
+	} else {
+		info.Engine = "eager"
+	}
+	// Only when the project actually declares entrypoints: a zeroed block would
+	// read as "the gate ran and found nothing", which is a different claim from
+	// "this project has no dispatcher-called functions at all".
+	if ep.Declared > 0 {
+		info.Entrypoints = &insight.EntrypointInfo{
+			Declared:         ep.Declared,
+			Rooted:           ep.Rooted,
+			AlreadyReachable: ep.AlreadyReachable,
+			NoRoutes:         ep.NoRoutes,
+		}
+	}
+	return info
 }
 
 // handleRenderConfig accepts the same body as /api/generate and returns the
@@ -1504,7 +1549,7 @@ func (s *UIServer) handleRenderConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	cfg, err := buildAPISpecConfig(&req, s.currentDir())
+	cfg, _, err := buildAPISpecConfig(&req, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1552,7 +1597,13 @@ func (s *UIServer) handleInsightOverview(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, "no spec yet — generate first")
 		return
 	}
-	writeJSON(w, http.StatusOK, insight.BuildOverview(sp, mt))
+	rep := insight.BuildOverview(sp, mt)
+	// Supplied rather than derived: the spec does not record which frameworks
+	// were detected or what the entrypoint gate did.
+	s.mu.RLock()
+	rep.Analysis = s.currentAnalysis
+	s.mu.RUnlock()
+	writeJSON(w, http.StatusOK, rep)
 }
 
 // handleInsightEndpoint returns the per-route insight report for
@@ -1723,6 +1774,11 @@ func (s *UIServer) handleInsightExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rep := insight.BuildOverview(sp, mt)
+	// The export is what gets handed to an AI or pasted into an issue, so it
+	// carries the same analysis context the view shows.
+	s.mu.RLock()
+	rep.Analysis = s.currentAnalysis
+	s.mu.RUnlock()
 	if jsonFmt {
 		writeJSON(w, http.StatusOK, rep)
 		return
@@ -1813,7 +1869,7 @@ func (s *UIServer) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cfg, err := buildAPISpecConfig(&req.GenerateRequest, s.currentDir())
+	cfg, _, err := buildAPISpecConfig(&req.GenerateRequest, s.currentDir())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

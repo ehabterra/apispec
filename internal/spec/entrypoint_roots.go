@@ -44,34 +44,47 @@ import (
 //
 // Returned keys are sorted: they become tree roots, and root order reaches the
 // output (golden rule #1).
-func entrypointRoots(meta *metadata.Metadata, candidates []string, routeMatch func(*metadata.CallGraphEdge) bool, logger metadata.VerboseLogger) []string {
+func entrypointRoots(meta *metadata.Metadata, candidates []string, routeMatch func(*metadata.CallGraphEdge) bool, logger metadata.VerboseLogger) ([]string, EntrypointStats) {
 	if meta == nil || len(candidates) == 0 {
-		return nil
+		return nil, EntrypointStats{}
 	}
 
 	reachedFromMain := functionsReachableFromMains(meta)
 	registers := reachesMatch(meta, routeMatch)
 
 	var out []string
-	var skippedReachable, skippedNoRoutes int
+	stats := EntrypointStats{Declared: len(candidates)}
 	for _, key := range candidates {
 		switch {
 		case reachedFromMain[key]:
-			skippedReachable++
+			stats.AlreadyReachable++
 		case !registers[key]:
-			skippedNoRoutes++
+			stats.NoRoutes++
 		default:
 			out = append(out, key)
 		}
 	}
 	sort.Strings(out)
-	if logger != nil && len(candidates) > 0 {
+	stats.Rooted = len(out)
+	if logger != nil {
 		// Bounded is fine; silent is not. A project whose routes hang off a
 		// dispatcher should be able to see that apispec noticed.
 		logger.Printf("Entrypoints: %d declared, %d rooted (%d already reachable, %d register no routes)\n",
-			len(candidates), len(out), skippedReachable, skippedNoRoutes)
+			stats.Declared, stats.Rooted, stats.AlreadyReachable, stats.NoRoutes)
 	}
-	return out
+	return out, stats
+}
+
+// EntrypointStats records what the entrypoint gate decided, so the same numbers
+// the --verbose line reports can be shown in the UI: a project whose routes hang
+// off a CLI dispatcher stands or falls on this, and "0 rooted, N register no
+// routes" is the difference between "apispec never looked" and "apispec looked
+// and nothing there registers a route".
+type EntrypointStats struct {
+	Declared         int
+	Rooted           int
+	AlreadyReachable int
+	NoRoutes         int
 }
 
 // functionsReachableFromMains returns every function base key reachable from a

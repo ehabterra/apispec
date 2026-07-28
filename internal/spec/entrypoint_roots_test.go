@@ -87,17 +87,23 @@ func TestEntrypointRoots(t *testing.T) {
 		key("reachableCmd"), // registers but main reaches it   -> skipped
 		pkg + ".missingCmd", // not in the graph at all         -> skipped
 	}
-	got := entrypointRoots(meta, candidates, match, nil)
+	got, stats := entrypointRoots(meta, candidates, match, nil)
 	if want := []string{key("webCmd")}; !reflect.DeepEqual(got, want) {
 		t.Errorf("entrypointRoots = %v, want %v", got, want)
 	}
+	// The same numbers the UI reports: every candidate is accounted for in
+	// exactly one bucket, so "0 rooted" can be read as a reason.
+	want := EntrypointStats{Declared: 4, Rooted: 1, AlreadyReachable: 1, NoRoutes: 2}
+	if stats != want {
+		t.Errorf("stats = %+v, want %+v", stats, want)
+	}
 
 	t.Run("no candidates, no metadata, no matcher", func(t *testing.T) {
-		if got := entrypointRoots(meta, nil, match, nil); got != nil {
-			t.Errorf("no candidates = %v, want nil", got)
+		if got, stats := entrypointRoots(meta, nil, match, nil); got != nil || stats != (EntrypointStats{}) {
+			t.Errorf("no candidates = (%v, %+v), want (nil, zero)", got, stats)
 		}
-		if got := entrypointRoots(nil, candidates, match, nil); got != nil {
-			t.Errorf("nil metadata = %v, want nil", got)
+		if got, stats := entrypointRoots(nil, candidates, match, nil); got != nil || stats != (EntrypointStats{}) {
+			t.Errorf("nil metadata = (%v, %+v), want (nil, zero)", got, stats)
 		}
 	})
 }

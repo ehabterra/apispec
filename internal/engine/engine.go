@@ -250,6 +250,12 @@ type Engine struct {
 	// error message.
 	skipped []SkippedPackage
 
+	// entrypointStats records what the entrypoint gate decided during the last
+	// generation (issue #220): how many field-stored functions were found and how
+	// many earned a root. Surfaced in the UI, where "0 rooted" is the difference
+	// between "never looked" and "looked, nothing registers a route".
+	entrypointStats intspec.EntrypointStats
+
 	// unresolvedSecurity lists auth middleware detected during the last
 	// generation that matched no SecurityMapping. Surfaced to callers (the UI)
 	// so the user can map it to a scheme.
@@ -779,6 +785,13 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
 		e.pathParamMismatches = secDiag.PathParamMismatches
 	}
+	// Read after mapping: with the lazy tree the entrypoint gate runs during
+	// expansion, which mapping is what triggers.
+	if reporter, ok := tree.(interface {
+		EntrypointStats() intspec.EntrypointStats
+	}); ok {
+		e.entrypointStats = reporter.EntrypointStats()
+	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
 	// Handle metadata writing if requested
@@ -1130,6 +1143,12 @@ func (e *Engine) GetMetadata() *metadata.Metadata {
 // generation that matched no SecurityMapping (deduped). Empty when none.
 func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
+}
+
+// GetEntrypointStats returns what the entrypoint gate decided during the most
+// recent generation. Zero when the project declares no entrypoints.
+func (e *Engine) GetEntrypointStats() intspec.EntrypointStats {
+	return e.entrypointStats
 }
 
 // GetPathParamMismatches returns map-key path-variable reads (e.g.

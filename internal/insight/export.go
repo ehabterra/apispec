@@ -55,6 +55,15 @@ func BuildExportMarkdown(rep *OverviewReport, opts ExportOptions) string {
 	var b strings.Builder
 	b.WriteString("# apispec — issues to resolve\n\n")
 	fmt.Fprintf(&b, "%s\n\n", rep.Summary())
+	// Context before problems: which frameworks were read, and which KIND of body
+	// gap is in play. Both change the right fix, and neither is visible from the
+	// issue list alone.
+	if line := rep.AnalysisLine(); line != "" {
+		fmt.Fprintf(&b, "%s\n\n", red(line))
+	}
+	if line := rep.BodyLine(); line != "" {
+		fmt.Fprintf(&b, "%s\n\n", line)
+	}
 
 	// Nothing to fix → don't emit an AI prompt or dump the config. A clean
 	// spec needs no action, so the export is just a one-line clean bill.

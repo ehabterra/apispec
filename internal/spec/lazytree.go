@@ -58,6 +58,10 @@ type LazyTree struct {
 	// handlerValueKeys and issue #204. Empty for func-handler frameworks.
 	handlerMethods []string
 
+	// entrypointStats records what the entrypoint gate decided, so the UI can
+	// report it (the numbers otherwise live only in a --verbose line).
+	entrypointStats EntrypointStats
+
 	// calleeEdges memoizes, per function base key, the filtered+ordered call
 	// edges used to expand any node of that function. Computed once.
 	calleeEdges map[string][]*metadata.CallGraphEdge
@@ -444,7 +448,9 @@ func (t *LazyTree) addEntrypointRoots(candidates []string) {
 	for _, r := range t.roots {
 		existing[metadata.StripToBase(r.GetKey())] = true
 	}
-	for _, key := range entrypointRoots(t.meta, candidates, t.routeMatch, t.logger) {
+	rooted, stats := entrypointRoots(t.meta, candidates, t.routeMatch, t.logger)
+	t.entrypointStats = stats
+	for _, key := range rooted {
 		if existing[key] {
 			continue
 		}
@@ -507,6 +513,13 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 // the extractor asks for roots BEFORE it expands anything. Deferring left the
 // extra roots invisible — the tree had them, nobody ever saw them. The call is
 // memoized, so this only moves work that every expansion path pays anyway.
+// EntrypointStats reports what the entrypoint gate decided during this tree's
+// build. Zero when the project declares no entrypoints.
+func (t *LazyTree) EntrypointStats() EntrypointStats {
+	t.buildRelations() // the gate runs there; asking first would report zeros
+	return t.entrypointStats
+}
+
 func (t *LazyTree) GetRoots() []TrackerNodeInterface {
 	if t == nil {
 		return nil
