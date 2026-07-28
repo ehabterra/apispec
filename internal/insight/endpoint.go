@@ -180,7 +180,7 @@ func BuildEndpointWithSource(s *spec.OpenAPISpec, meta *metadata.Metadata, cfg *
 
 	// issues for this operation
 	comps := componentsMap(s)
-	rep.Issues = collectOperationIssues(rep.Method, path, op, comps, map[string]int{}, map[string]int{}, map[string]int{})
+	rep.Issues = collectOperationIssues(rep.Method, path, op, comps, map[string]int{}, map[string]int{}, map[string]int{}, map[string]StatusBody{})
 	if rep.Issues == nil {
 		rep.Issues = []Issue{}
 	}

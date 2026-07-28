@@ -89,6 +89,53 @@ type SecurityStats struct {
 	BySchemeUsage  []Count  `json:"bySchemeUsage"`  // operations requiring each scheme
 }
 
+// StatusBody is per-status response-body resolution: of the responses documented
+// at one status code, how many carry a usable schema, how many document no body
+// at all, and how many have a body whose type did not resolve.
+//
+// The buckets are separated because they mean different things to whoever reads
+// the spec, and they have different fixes:
+//
+//   - `empty` is correct for 204 and suspicious for 200 — a handler that
+//     certainly returns data but whose write apispec could not follow shows up
+//     exactly there (which is how the per-key instance cap was found).
+//   - `freeForm` is an object with no declared fields but unconstrained values:
+//     what a `map[string]any` response genuinely is. It resolved — that IS the
+//     type — so it is not a defect, but a client still learns nothing about the
+//     fields, which is a fact about the API rather than about apispec.
+//   - `unresolved` is a body that WAS found but whose Go type did not become a
+//     schema, so the fix is a type mapping or an external-type entry rather than
+//     more tracing.
+type StatusBody struct {
+	Status     string `json:"status"`
+	Total      int    `json:"total"`      // responses documented at this status
+	WithSchema int    `json:"withSchema"` // ...of which describe their fields
+	FreeForm   int    `json:"freeForm"`   // ...are an unconstrained object (a Go map)
+	Empty      int    `json:"empty"`      // ...document no content at all
+	Unresolved int    `json:"unresolved"` // ...have content, but the type didn't resolve
+}
+
+// EntrypointInfo reports what the entrypoint gate did: how many functions parked
+// in a struct field a library calls back were found, and how many became tree
+// roots. A project whose routes hang off a CLI dispatcher lives or dies on this,
+// so it is worth showing rather than leaving in a --verbose line.
+type EntrypointInfo struct {
+	Declared         int `json:"declared"`         // candidate field-stored functions found
+	Rooted           int `json:"rooted"`           // ...expanded as roots
+	AlreadyReachable int `json:"alreadyReachable"` // ...skipped: main already reaches them
+	NoRoutes         int `json:"noRoutes"`         // ...skipped: their subtree registers no route
+}
+
+// AnalysisInfo describes HOW the spec was produced rather than what is in it.
+// None of it is derivable from the spec, so BuildOverview leaves it empty and the
+// caller (the UI server, which ran the analysis) fills it in.
+type AnalysisInfo struct {
+	Frameworks  []string        `json:"frameworks,omitempty"` // detected, in config-composition order
+	Primary     string          `json:"primary,omitempty"`    // the one whose patterns lead
+	Engine      string          `json:"engine,omitempty"`     // tracker engine used
+	Entrypoints *EntrypointInfo `json:"entrypoints,omitempty"`
+}
+
 // CoverMetric is a have-of-total coverage tally.
 type CoverMetric struct {
 	Have  int `json:"have"`
@@ -140,6 +187,7 @@ type OverviewReport struct {
 	ByMethod      []Count        `json:"byMethod"`
 	ByTag         []Count        `json:"byTag"`
 	ByStatus      []Count        `json:"byStatus"`
+	StatusBodies  []StatusBody   `json:"statusBodies"` // per-status body resolution
 	ByContentType []Count        `json:"byContentType"`
 	Components    int            `json:"components"`
 	TopTypes      []Count        `json:"topTypes"`
@@ -152,6 +200,9 @@ type OverviewReport struct {
 	Interfaces    InterfaceStats `json:"interfaces"`   // tree insight: interface resolution (cheap read)
 	VerbDispatch  []VerbDispatch `json:"verbDispatch"` // tree insight: handlers split by verb (cheap read)
 	CallGraph     CallGraphStats `json:"callGraph"`
+
+	// Analysis is filled in by the caller — see AnalysisInfo.
+	Analysis AnalysisInfo `json:"analysis"`
 }
 
 // operationsOf returns the (method, *Operation) pairs declared on a path.
@@ -200,6 +251,7 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 	methodC := map[string]int{}
 	tagC := map[string]int{}
 	statusC := map[string]int{}
+	bodyC := map[string]StatusBody{}
 	ctC := map[string]int{}
 	typeC := map[string]int{}
 
@@ -225,7 +277,7 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 			}
 			rep.Endpoints = append(rep.Endpoints, RouteRef{Method: mo.Method, Path: p, Tags: mo.Op.Tags})
 
-			routeIssues := collectOperationIssues(mo.Method, p, mo.Op, componentNames, statusC, ctC, typeC)
+			routeIssues := collectOperationIssues(mo.Method, p, mo.Op, componentNames, statusC, ctC, typeC, bodyC)
 			rep.Issues = append(rep.Issues, routeIssues...)
 			if !hasWarn(routeIssues) {
 				clean++
@@ -257,6 +309,7 @@ func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport
 	rep.ByMethod = sortedCounts(methodC, true)
 	rep.ByTag = sortedCounts(tagC, true)
 	rep.ByStatus = sortedCounts(statusC, false) // status: by name (numeric-ish) asc
+	rep.StatusBodies = sortedStatusBodies(bodyC)
 	rep.ByContentType = sortedCounts(ctC, true)
 	rep.TopTypes = topN(sortedCounts(typeC, true), 10)
 
@@ -523,7 +576,7 @@ func securityStats(s *spec.OpenAPISpec) SecurityStats {
 	return st
 }
 
-func collectOperationIssues(method, path string, op *spec.Operation, comps map[string]*spec.Schema, statusC, ctC, typeC map[string]int) []Issue {
+func collectOperationIssues(method, path string, op *spec.Operation, comps map[string]*spec.Schema, statusC, ctC, typeC map[string]int, bodyC map[string]StatusBody) []Issue {
 	var issues []Issue
 
 	if len(op.Responses) == 0 {
@@ -544,6 +597,7 @@ func collectOperationIssues(method, path string, op *spec.Operation, comps map[s
 	// responses
 	for status, resp := range op.Responses {
 		statusC[status]++
+		bodyC[status] = addStatusBody(bodyC[status], resp, comps)
 		for ct, mt := range resp.Content {
 			ctC[ct]++
 			issues = append(issues, refIssues(method, path, "response "+status, mt.Schema, comps, typeC)...)
@@ -571,6 +625,89 @@ func collectOperationIssues(method, path string, op *spec.Operation, comps map[s
 		issues = append(issues, refIssues(method, path, "parameter "+prm.Name, prm.Schema, comps, typeC)...)
 	}
 	return issues
+}
+
+// addStatusBody folds one response into its status's body tally. A response is
+// counted once, in the state that describes it best: no content at all, a schema
+// that resolved, or a body whose type did not.
+func addStatusBody(acc StatusBody, resp spec.Response, comps map[string]*spec.Schema) StatusBody {
+	acc.Total++
+	if len(resp.Content) == 0 {
+		acc.Empty++
+		return acc
+	}
+	// One response, one bucket: the best state any of its media types reaches.
+	best := bodyUnresolved
+	for _, mt := range resp.Content {
+		if state := bodyResolution(mt.Schema, comps); bodyRank[state] > bodyRank[best] {
+			best = state
+		}
+	}
+	switch best {
+	case bodySchema:
+		acc.WithSchema++
+	case bodyFreeForm:
+		acc.FreeForm++
+	default:
+		acc.Unresolved++
+	}
+	return acc
+}
+
+// How well a body describes itself, best first.
+const (
+	bodySchema     = "schema"     // fields, an element type, a scalar, a composition
+	bodyFreeForm   = "freeform"   // an object with unconstrained values — a Go map
+	bodyUnresolved = "unresolved" // nothing usable: a bare object, a dangling ref, a placeholder
+)
+
+var bodyRank = map[string]int{bodyUnresolved: 0, bodyFreeForm: 1, bodySchema: 2}
+
+// bodyResolution classifies what a schema says about the body it describes.
+//
+// The distinction that matters is between "apispec could not read this type" and
+// "the type genuinely has no declared fields". Both render as an object, but only
+// the first is a defect: `map[string]any` really is an object with unconstrained
+// values, and calling that unresolved would blame apispec for the API's own shape.
+func bodyResolution(sc *spec.Schema, comps map[string]*spec.Schema) string {
+	if sc == nil {
+		return bodyUnresolved
+	}
+	if name := strings.TrimPrefix(sc.Ref, refPrefix); name != "" && name != sc.Ref {
+		target, ok := comps[name]
+		if !ok || strings.Contains(target.Description, placeholderMarker) {
+			return bodyUnresolved
+		}
+		// A named, non-placeholder component means the Go type resolved: the name
+		// itself is the answer. Its schema is not re-judged, because an empty one
+		// is as likely to be an empty struct — a real, documented shape — as a
+		// mapping gap, and reading it as a gap would blame resolution for the
+		// type's own shape.
+		return bodySchema
+	}
+	// A list is only as resolved as its element type: `type: array` with no items
+	// says a list comes back, but not of what.
+	if sc.Type == "array" {
+		if sc.Items == nil {
+			return bodyUnresolved
+		}
+		return bodyResolution(sc.Items, comps)
+	}
+	if len(sc.OneOf) > 0 || len(sc.AnyOf) > 0 || len(sc.AllOf) > 0 || len(sc.Properties) > 0 || len(sc.Enum) > 0 {
+		return bodySchema
+	}
+	if sc.Type == "object" {
+		// additionalProperties is what a map's value type renders to; without it,
+		// a bare `type: object` is what an unreadable type collapses to.
+		if sc.AdditionalProperties != nil {
+			return bodyFreeForm
+		}
+		return bodyUnresolved
+	}
+	if sc.Type != "" {
+		return bodySchema
+	}
+	return bodyUnresolved
 }
 
 // refIssues records every component ref reachable from a schema, tallies
@@ -744,6 +881,26 @@ func sortedCounts(m map[string]int, byCount bool) []Count {
 	return out
 }
 
+// sortedStatusBodies orders the per-status tallies by status code, with
+// `default` last — it is not a code, and it reads as the residue it is when it
+// follows the concrete ones. Sorting is what keeps the report deterministic
+// (golden rule #1).
+func sortedStatusBodies(m map[string]StatusBody) []StatusBody {
+	out := make([]StatusBody, 0, len(m))
+	for status, sb := range m {
+		sb.Status = status
+		out = append(out, sb)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Status, out[j].Status
+		if (a == "default") != (b == "default") {
+			return b == "default"
+		}
+		return a < b
+	})
+	return out
+}
+
 func topN(c []Count, n int) []Count {
 	if len(c) > n {
 		return c[:n]
@@ -761,4 +918,57 @@ func (r *OverviewReport) Summary() string {
 	}
 	return fmt.Sprintf("%d routes, %d ops, health %d%%, %d warnings",
 		r.Routes, r.Operations, r.Health.Score, warns)
+}
+
+// AnalysisLine states how the spec was produced, for the export. Empty when the
+// caller supplied no analysis context (nothing is inferred here — see
+// AnalysisInfo).
+func (r *OverviewReport) AnalysisLine() string {
+	a := r.Analysis
+	if len(a.Frameworks) == 0 && a.Primary == "" && a.Entrypoints == nil {
+		return ""
+	}
+	var parts []string
+	if len(a.Frameworks) > 0 {
+		frameworks := strings.Join(a.Frameworks, " + ")
+		if a.Primary != "" && len(a.Frameworks) > 1 {
+			frameworks += " (primary: " + a.Primary + ")"
+		}
+		parts = append(parts, "frameworks "+frameworks)
+	} else if a.Primary != "" {
+		parts = append(parts, "framework "+a.Primary)
+	}
+	if a.Engine != "" {
+		parts = append(parts, a.Engine+" tracker")
+	}
+	if ep := a.Entrypoints; ep != nil {
+		parts = append(parts, fmt.Sprintf("%d CLI entry point(s) declared, %d rooted (%d already reachable, %d register no route)",
+			ep.Declared, ep.Rooted, ep.AlreadyReachable, ep.NoRoutes))
+	}
+	return "Analysed with " + strings.Join(parts, ", ") + "."
+}
+
+// BodyLine summarises response-body resolution across every status, so the
+// export says which kind of gap is in play: bodies never found, bodies found but
+// unmapped, or an API that is simply free-form. Empty when no response is
+// documented at all.
+func (r *OverviewReport) BodyLine() string {
+	var typed, freeForm, unresolved, emptyExpected, emptyByDesign int
+	for _, sb := range r.StatusBodies {
+		typed += sb.WithSchema
+		freeForm += sb.FreeForm
+		unresolved += sb.Unresolved
+		// 204/304 mean "no body" by definition; an empty 200 is a body that was
+		// never found.
+		if strings.HasPrefix(sb.Status, "2") && sb.Status != "204" {
+			emptyExpected += sb.Empty
+		} else {
+			emptyByDesign += sb.Empty
+		}
+	}
+	if typed+freeForm+unresolved+emptyExpected+emptyByDesign == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Response bodies: %d describe their fields, %d free-form (a Go map), %d found but unresolved, %d missing where one is expected, %d empty by design.",
+		typed, freeForm, unresolved, emptyExpected, emptyByDesign)
 }

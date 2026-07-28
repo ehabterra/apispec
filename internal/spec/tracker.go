@@ -264,6 +264,7 @@ type TrackerTree struct {
 	entrypointPatterns []EntrypointPattern
 	routeMatch         func(*metadata.CallGraphEdge) bool
 	entrypointKeys     []string
+	entrypointStats    EntrypointStats
 
 	// logger receives traversal-time warnings (limit truncations, etc.).
 	// May be nil; callers should reach it via t.warn / t.info.
@@ -617,7 +618,9 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 		for _, r := range t.roots {
 			existing[metadata.StripToBase(r.Key())] = true
 		}
-		for _, key := range entrypointRoots(meta, t.entrypointKeys, t.routeMatch, t.logger) {
+		rooted, stats := entrypointRoots(meta, t.entrypointKeys, t.routeMatch, t.logger)
+		t.entrypointStats = stats
+		for _, key := range rooted {
 			if existing[key] {
 				continue
 			}
@@ -1739,6 +1742,13 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 	}
 
 	return node
+}
+
+// EntrypointStats reports what the entrypoint gate decided during this tree's
+// build (the eager build runs it up front). Zero when the project declares no
+// entrypoints.
+func (t *TrackerTree) EntrypointStats() EntrypointStats {
+	return t.entrypointStats
 }
 
 // GetRoots returns the root nodes of the tracker tree.
