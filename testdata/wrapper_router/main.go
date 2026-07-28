@@ -81,6 +81,13 @@ func updateItem(w http.ResponseWriter, r *http.Request) {
 	c.JSON(http.StatusAccepted, in)
 }
 
+// listAPIItems answers through the LAYERED context: the responder is declared on
+// Ctx but reached through APICtx, which embeds it.
+func listAPIItems(w http.ResponseWriter, r *http.Request) {
+	c := &APICtx{Ctx: &Ctx{Resp: w, Req: r}}
+	c.JSON(http.StatusOK, []Item{})
+}
+
 func main() {
 	r := NewRouter()
 
@@ -97,6 +104,7 @@ func main() {
 	})
 
 	r.Put("/items", updateItem)
+	r.Get("/api-items", listAPIItems)
 
 	registerCRUD(r.chiRouter, "/users")
 

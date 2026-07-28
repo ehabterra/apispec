@@ -458,3 +458,56 @@ func TestDetectValueWrappers(t *testing.T) {
 		t.Errorf("parameter reader not derived, or lost its location: %+v", par)
 	}
 }
+
+// TestEmbeddingRecvRegex pins the receiver constraint a derived value pattern
+// carries.
+//
+// Go promotes an embedded type's methods, and a call is recorded against the type
+// the CALLER used. gitea declares its responder on `context.Base` while every
+// handler answers through `*Context` or `*APIContext`, which embed it — so a
+// pattern scoped to the declaring type alone matched almost nothing, and the
+// project came out with 894 routes and 8 components (issue #235).
+func TestEmbeddingRecvRegex(t *testing.T) {
+	pool := metadata.NewStringPool()
+	m := &metadata.Metadata{StringPool: pool, CurrentModulePath: "example.com/app"}
+	m.Packages = map[string]*metadata.Package{
+		"example.com/app": {Files: map[string]*metadata.File{
+			"ctx.go": {Types: map[string]*metadata.Type{
+				"Base":    {Name: pool.Get("Base")},
+				"Context": {Name: pool.Get("Context"), Embeds: []int{pool.Get("*Base")}},
+				// Transitive: embeds the type that embeds Base.
+				"APIContext": {Name: pool.Get("APIContext"), Embeds: []int{pool.Get("*Context")}},
+				// Unrelated, and must not be swept in.
+				"Renderer": {Name: pool.Get("Renderer"), Embeds: []int{pool.Get("*bytes.Buffer")}},
+			}},
+		}},
+	}
+
+	re := regexp.MustCompile(embeddingRecvRegex(m, &wrapperMethod{pkg: "example.com/app", recvType: "*Base", name: "JSON"}))
+
+	for _, match := range []string{
+		"example.com/app.*Base",
+		"example.com/app.*Context",
+		"example.com/app.*APIContext",
+		"example.com/app.Context",
+	} {
+		if !re.MatchString(match) {
+			t.Errorf("%q calls the promoted method but does not match the derived pattern", match)
+		}
+	}
+	for _, differ := range []string{
+		"example.com/app.*Renderer",
+		"example.com/other.*Context",
+	} {
+		if re.MatchString(differ) {
+			t.Errorf("%q matched, but it does not embed the declaring type", differ)
+		}
+	}
+
+	// A package the metadata does not hold falls back to the declaring type alone
+	// rather than to something wider.
+	lone := embeddingRecvRegex(m, &wrapperMethod{pkg: "example.com/missing", recvType: "*Base"})
+	if !regexp.MustCompile(lone).MatchString("example.com/missing.*Base") {
+		t.Errorf("an unknown package lost its own type: %s", lone)
+	}
+}

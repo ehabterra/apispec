@@ -383,8 +383,78 @@ func innerVerbArgIndex(inner RoutePattern) int {
 // recvTypeRegexFor renders the receiver constraint the way pattern matching reads
 // it: `pkg.*Router`, with the pointer optional so a value receiver matches too.
 func recvTypeRegexFor(w *wrapperMethod) string {
+	return recvTypeRegexForNames(w.pkg, []string{strings.TrimPrefix(w.recvType, "*")})
+}
+
+// recvTypeRegexForNames builds the same constraint over several type names.
+func recvTypeRegexForNames(pkg string, names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, n := range names {
+		quoted = append(quoted, regexp.QuoteMeta(n))
+	}
+	alt := quoted[0]
+	if len(quoted) > 1 {
+		alt = "(" + strings.Join(quoted, "|") + ")"
+	}
+	return "^" + regexp.QuoteMeta(pkg) + `\.\*?` + alt + "$"
+}
+
+// embeddingRecvRegex is recvTypeRegexFor widened to the types that EMBED the
+// declaring one.
+//
+// Go promotes an embedded type's methods, and a call is recorded against the type
+// the caller used: gitea declares its responder on `services/context.Base` but
+// every handler calls it through `*Context` or `*APIContext`, which embed Base. A
+// pattern scoped to the declaring type alone therefore matched almost nothing —
+// gitea documented 894 routes and 8 components, because the responder that
+// produces every schema was never recognised at its call sites (issue #235).
+func embeddingRecvRegex(meta *metadata.Metadata, w *wrapperMethod) string {
 	bare := strings.TrimPrefix(w.recvType, "*")
-	return "^" + regexp.QuoteMeta(w.pkg) + `\.\*?` + regexp.QuoteMeta(bare) + "$"
+	names := []string{bare}
+
+	// Transitively: a type embedding a type that embeds the declaring one gets
+	// the method too.
+	pkg, ok := meta.Packages[w.pkg]
+	if !ok {
+		return recvTypeRegexForNames(w.pkg, names)
+	}
+	for round := 0; round < wrapperDetectRounds; round++ {
+		grew := false
+		for _, fileName := range meta.SortedFileNames(w.pkg) {
+			file := pkg.Files[fileName]
+			if file == nil {
+				continue
+			}
+			for typeName, typ := range file.Types {
+				if containsName(names, typeName) {
+					continue
+				}
+				for _, embedded := range typ.Embeds {
+					embeddedName := strings.TrimPrefix(strings.TrimPrefix(meta.StringPool.GetString(embedded), "*"), w.pkg+".")
+					if containsName(names, embeddedName) {
+						names = append(names, typeName)
+						grew = true
+						break
+					}
+				}
+			}
+		}
+		if !grew {
+			break
+		}
+	}
+	sort.Strings(names)
+	return recvTypeRegexForNames(w.pkg, names)
+}
+
+// containsName reports whether names holds one.
+func containsName(names []string, want string) bool {
+	for _, n := range names {
+		if n == want {
+			return true
+		}
+	}
+	return false
 }
 
 // groupWrappers merges methods whose derived roles are identical into one pattern
@@ -531,19 +601,22 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		node := &TrackerNode{CallGraphEdge: edge}
 		key := w.fqRecv() + "." + w.name
 
+		// Widened once per method: the pattern has to match where handlers CALL
+		// this method, which is through whatever type embeds it.
+		recvRegex := embeddingRecvRegex(meta, w)
 		for j, m := range respMatchers {
 			if m.MatchNode(node) {
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge)
+				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex)
 			}
 		}
 		for j, m := range reqMatchers {
 			if m.MatchNode(node) {
-				deriveRequestWrapper(byMethod, key, w, cp, params, cfg.Framework.RequestBodyPatterns[j], edge)
+				deriveRequestWrapper(byMethod, key, w, cp, params, cfg.Framework.RequestBodyPatterns[j], edge, recvRegex)
 			}
 		}
 		for j, m := range paramMatchers {
 			if m.MatchNode(node) {
-				deriveParamWrapper(byMethod, key, w, cp, params, cfg.Framework.ParamPatterns[j], edge)
+				deriveParamWrapper(byMethod, key, w, cp, params, cfg.Framework.ParamPatterns[j], edge, recvRegex)
 			}
 		}
 	}
@@ -567,12 +640,12 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // mergeResponseRoles folds one inner response call into the method's derived
 // pattern: the status from a `WriteHeader(status)`, the body from an
 // `Encode(content)`, both of which the same responder performs.
-func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge) {
+func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string) {
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	if entry.Response == nil {
 		entry.Response = &ResponsePattern{
 			CallRegex:     "^" + regexp.QuoteMeta(w.name) + "$",
-			RecvTypeRegex: recvTypeRegexFor(w),
+			RecvTypeRegex: recvRegex,
 			TypeArgIndex:  -1,
 		}
 	}
@@ -599,7 +672,7 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —
 // `func (c *Ctx) Bind(dst any) error { json.NewDecoder(c.r.Body).Decode(dst) }`.
-func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner RequestBodyPattern, edge *metadata.CallGraphEdge) {
+func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner RequestBodyPattern, edge *metadata.CallGraphEdge, recvRegex string) {
 	if !inner.TypeFromArg {
 		return
 	}
@@ -610,7 +683,7 @@ func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *w
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	entry.Request = &RequestBodyPattern{
 		CallRegex:     "^" + regexp.QuoteMeta(w.name) + "$",
-		RecvTypeRegex: recvTypeRegexFor(w),
+		RecvTypeRegex: recvRegex,
 		TypeFromArg:   true,
 		TypeArgIndex:  i,
 		Deref:         inner.Deref,
@@ -621,7 +694,7 @@ func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *w
 // deriveParamWrapper derives a parameter pattern from a reader wrapper —
 // `func (c *Ctx) Param(name string) string { return chi.URLParam(c.r, name) }`.
 // The location comes from the inner pattern: the wrapper reads whatever it reads.
-func deriveParamWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ParamPattern, edge *metadata.CallGraphEdge) {
+func deriveParamWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ParamPattern, edge *metadata.CallGraphEdge, recvRegex string) {
 	if inner.ParamIn == "" || inner.NameFromMapKey {
 		return
 	}
@@ -632,7 +705,7 @@ func deriveParamWrapper(byMethod map[string]*DetectedWrapper, key string, w *wra
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	entry.Param = &ParamPattern{
 		CallRegex:     "^" + regexp.QuoteMeta(w.name) + "$",
-		RecvTypeRegex: recvTypeRegexFor(w),
+		RecvTypeRegex: recvRegex,
 		ParamIn:       inner.ParamIn,
 		ParamArgIndex: i,
 	}

@@ -30,6 +30,13 @@ func (c *Ctx) Bind(dst any) error {
 	return json.NewDecoder(c.Req.Body).Decode(dst)
 }
 
+// APICtx layers another context on top, the way a project separates its API
+// surface from its web surface — Go promotes Ctx's methods, so a handler calls
+// APICtx.JSON and the call is recorded against APICtx, not Ctx.
+type APICtx struct {
+	*Ctx
+}
+
 // Query reads a query parameter by name.
 func (c *Ctx) Query(name string) string {
 	return c.Req.URL.Query().Get(name)

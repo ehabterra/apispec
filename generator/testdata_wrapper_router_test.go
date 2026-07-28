@@ -179,6 +179,17 @@ func TestTestdata_WrapperRouterIsDetected(t *testing.T) {
 		}
 	}
 
+	// A responder declared on one context type but reached through the type that
+	// EMBEDS it: Go promotes the method, and the call is recorded against the
+	// embedding type, so a pattern scoped to the declaring type alone matches
+	// nothing at the call sites. That is what left gitea with 894 routes and 8
+	// components (issue #235).
+	if op := opFor(out.Paths["/api-items"], "GET"); op == nil {
+		t.Errorf("GET /api-items missing; have %v", mapPathKeys(out.Paths))
+	} else if _, ok := op.Responses["200"]; !ok {
+		t.Errorf("GET /api-items: expected the status its responder sets, have %v — the layered context was not recognised", statusKeys(op))
+	}
+
 	// The delegate must still not be documented as a route of its own.
 	for path := range out.Paths {
 		if path == "/{path}" || path == "/string" {
