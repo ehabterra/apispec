@@ -150,6 +150,12 @@ type Metadata struct {
 	// posCache memoizes position rendering — see positionIndex.
 	posCache map[token.Pos]int
 	posMutex sync.RWMutex
+
+	// moduleDir is the filesystem root of the analysed module. It is not part of
+	// the recorded facts — it exists so a closure's identity can be stated
+	// relative to the module rather than to this machine (see stablePosition,
+	// issue #216). Empty when unknown, which leaves paths as they are.
+	moduleDir string
 	// implementersCache memoizes ImplementersOf, which otherwise re-scans every
 	// package and type (with two sorts) on every call.
 	implementersCache map[string][]string

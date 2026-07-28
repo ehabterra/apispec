@@ -73,7 +73,7 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 	funcLit := findEnclosingFunctionLiteral(file, pos)
 	if funcLit != nil {
 		// Return the function literal identifier (e.g., "FuncLitmain.go:42:15")
-		position := meta.positionString(funcLit.Pos(), fset)
+		position := meta.stablePosition(funcLit.Pos(), fset)
 		var signatureStr string
 		if fnType := info.TypeOf(funcLit.Type); fnType != nil {
 			signatureStr = typeStringOf(meta, fnType)
@@ -283,7 +283,7 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		// Recursively analyze the X field to find function calls
 		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset, meta)
 	case *ast.FuncLit:
-		return funcLitName(meta.positionString(x.Pos(), fset)), pkgName, ""
+		return funcLitName(meta.stablePosition(x.Pos(), fset)), pkgName, ""
 
 	}
 	return "", "", ""

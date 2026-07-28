@@ -17,6 +17,8 @@ package metadata
 import (
 	"go/parser"
 	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +137,107 @@ func TestFuncLitName(t *testing.T) {
 	}
 	if got := funcLitName(""); got != FuncLitPrefix {
 		t.Errorf("funcLitName(\"\") = %q, want %q", got, FuncLitPrefix)
+	}
+}
+
+// TestStableFilename covers the path normalisation a closure's identity depends
+// on. Each case is a class of source file apispec actually analyses, and the last
+// one is the honest refusal: a path that belongs to neither the module nor the
+// cache is left alone rather than rewritten into something that only looks stable.
+func TestStableFilename(t *testing.T) {
+	m := &Metadata{StringPool: NewStringPool(), moduleDir: filepath.FromSlash("/home/dev/project")}
+
+	cases := []struct {
+		name string
+		file string
+		want string
+	}{
+		{
+			name: "inside the module becomes relative",
+			file: filepath.FromSlash("/home/dev/project/internal/api/handler.go"),
+			want: "internal/api/handler.go",
+		},
+		{
+			name: "the module root itself",
+			file: filepath.FromSlash("/home/dev/project/main.go"),
+			want: "main.go",
+		},
+		{
+			// A dependency's file: the cache path already carries the module and
+			// its version, which is the same everywhere.
+			name: "module cache keeps module and version",
+			file: filepath.FromSlash("/home/dev/go/pkg/mod/github.com/labstack/echo/v4@v4.11.4/echo.go"),
+			want: "github.com/labstack/echo/v4@v4.11.4/echo.go",
+		},
+		{
+			// Outside both: relativising would produce a `../../..` chain whose
+			// depth depends on where the module sits, which is not more stable
+			// than the absolute path — so it is left as it is.
+			name: "elsewhere is left alone",
+			file: filepath.FromSlash("/opt/vendor/lib/thing.go"),
+			want: filepath.FromSlash("/opt/vendor/lib/thing.go"),
+		},
+		{
+			name: "empty stays empty",
+			file: "",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := m.stableFilename(tc.file); got != tc.want {
+				t.Errorf("stableFilename(%q) = %q, want %q", tc.file, got, tc.want)
+			}
+		})
+	}
+
+	// With no module root known, an in-module path cannot be relativised — and is
+	// not guessed at.
+	noRoot := &Metadata{StringPool: NewStringPool()}
+	abs := filepath.FromSlash("/home/dev/project/main.go")
+	if got := noRoot.stableFilename(abs); got != abs {
+		t.Errorf("without a module root: %q, want it unchanged", got)
+	}
+}
+
+// TestStablePositionKeepsLineAndColumn pins that only the filename is normalised:
+// the line and column are what separate two closures in one file, so a fixture
+// with two handlers would collapse into one operation if they were dropped.
+func TestStablePositionKeepsLineAndColumn(t *testing.T) {
+	fset := token.NewFileSet()
+	dir := filepath.FromSlash("/home/dev/project")
+	src := "package p\n\nvar a = 1\nvar b = 2\n"
+	file, err := parser.ParseFile(fset, filepath.Join(dir, "main.go"), src, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	m := &Metadata{StringPool: NewStringPool(), moduleDir: dir}
+
+	first := m.stablePosition(file.Decls[0].Pos(), fset)
+	second := m.stablePosition(file.Decls[1].Pos(), fset)
+
+	if want := "main.go:3:1"; first != want {
+		t.Errorf("stablePosition = %q, want %q", first, want)
+	}
+	if first == second {
+		t.Errorf("two locations rendered identically (%q) — closures in one file would collide", first)
+	}
+
+	// The position RECORDED on a node is a different thing: it stays absolute,
+	// because that is what opens the file.
+	if recorded := m.positionString(file.Decls[0].Pos(), fset); !filepath.IsAbs(recorded[:strings.Index(recorded, ":")]) {
+		t.Errorf("recorded position %q is not absolute; source lookups need the real path", recorded)
+	}
+
+	// Guards.
+	if got := m.stablePosition(token.NoPos, fset); got != "" {
+		t.Errorf("invalid position = %q, want empty", got)
+	}
+	if got := m.stablePosition(file.Decls[0].Pos(), nil); got != "" {
+		t.Errorf("nil fileset = %q, want empty", got)
+	}
+	var nilMeta *Metadata
+	if got := nilMeta.stablePosition(file.Decls[0].Pos(), fset); got != "" {
+		t.Errorf("nil metadata = %q, want empty", got)
 	}
 }

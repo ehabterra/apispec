@@ -146,7 +146,7 @@ var processAssignmentCount int
 
 // GenerateMetadata extracts all metadata and call graph info
 func GenerateMetadata(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet) *Metadata {
-	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil, "")
+	return GenerateMetadataWithLogger(pkgs, fileToInfo, importPaths, fset, nil, "", "")
 }
 
 // VerboseLogger is the cross-cutting logging contract for the analyzer
@@ -165,7 +165,7 @@ type VerboseLogger interface {
 // go.mod by the caller). It's preferred over inferring the path from import
 // paths, which is only a heuristic and mis-detects when third-party packages
 // are analyzed alongside the project (see the inference block below).
-func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger, modulePath string) *Metadata {
+func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo map[*ast.File]*types.Info, importPaths map[string]string, fset *token.FileSet, logger VerboseLogger, modulePath, moduleDir string) *Metadata {
 	funcMap := BuildFuncMap(pkgs)
 
 	if logger != nil {
@@ -245,6 +245,10 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 
 		// Set the current module path
 		CurrentModulePath: currentModulePath,
+
+		// Where the module lives, so a closure's identity can be stated relative
+		// to it rather than to this machine (issue #216).
+		moduleDir: moduleDir,
 
 		// External-type facts discovered during the type walk.
 		ExternalTypes: make(map[string]ExternalTypeFact),

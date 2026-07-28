@@ -145,6 +145,16 @@ func TestTestdata_Frameworks(t *testing.T) {
 			},
 		},
 		{
+			// Closure handlers: the shared structural checks here, the
+			// cross-checkout reproducibility of their operationIds in
+			// TestTestdata_ClosureOperationIDsAreReproducible (issue #216).
+			name:     "closure_operation_ids",
+			fallback: spec.DefaultHTTPConfig(),
+			routes: []route{
+				{"/items", []string{"GET", "POST"}},
+			},
+		},
+		{
 			name:     "interface_response",
 			fallback: spec.DefaultHTTPConfig(),
 			routes: []route{

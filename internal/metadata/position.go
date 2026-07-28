@@ -17,7 +17,9 @@ package metadata
 import (
 	"go/ast"
 	"go/token"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // positionIndex returns the string-pool index of a source position, formatting it
@@ -94,6 +96,58 @@ const FuncLitPrefix = "FuncLit:"
 func funcLitName(position string) string {
 	return FuncLitPrefix + position
 }
+
+// stablePosition renders a position the way a closure is identified by it: the
+// same `file:line:column`, but with a filename that does not depend on where the
+// checkout lives.
+//
+// A closure has no declared name, so `FuncLit:<position>` IS its identity — and
+// that identity reaches the generated spec as a route's operationId. With the
+// absolute filename in it, the same source produced a different spec on every
+// machine, so the output could not be diffed, reviewed or committed (issue #216).
+// The identity is what gets normalised; the Position recorded on each node stays
+// absolute, because that is what a reader needs to open the file.
+func (m *Metadata) stablePosition(pos token.Pos, fset *token.FileSet) string {
+	if m == nil || !pos.IsValid() || fset == nil {
+		return ""
+	}
+	p := fset.Position(pos)
+	if !p.IsValid() {
+		return ""
+	}
+	p.Filename = m.stableFilename(p.Filename)
+	return formatPosition(p)
+}
+
+// stableFilename maps a source path to a form that is the same in every checkout.
+//
+// Three cases, in order:
+//
+//   - inside the analysed module: relative to its root, with forward slashes so
+//     the answer does not depend on the OS either;
+//   - inside the module cache: the part after `pkg/mod/`, which already carries
+//     the module and its version (`github.com/x/y@v1.2.3/f.go`);
+//   - anything else: unchanged. A path outside both is left alone rather than
+//     rewritten into something that looks stable but is not (the depth of a
+//     `../../..` chain depends on where the module sits).
+func (m *Metadata) stableFilename(file string) string {
+	if file == "" {
+		return file
+	}
+	if m.moduleDir != "" {
+		if rel, err := filepath.Rel(m.moduleDir, file); err == nil && !strings.HasPrefix(rel, "..") {
+			return filepath.ToSlash(rel)
+		}
+	}
+	if idx := strings.LastIndex(file, modCacheMarker); idx >= 0 {
+		return filepath.ToSlash(file[idx+len(modCacheMarker):])
+	}
+	return file
+}
+
+// modCacheMarker is the path segment every module-cache file sits under, whatever
+// GOMODCACHE is set to.
+const modCacheMarker = "pkg/mod/"
 
 // funcPositionIndex is positionIndex for a function declaration.
 func (m *Metadata) funcPositionIndex(fn *ast.FuncDecl, fset *token.FileSet) int {

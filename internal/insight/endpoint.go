@@ -15,6 +15,7 @@
 package insight
 
 import (
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -24,10 +25,17 @@ import (
 	"github.com/ehabterra/apispec/internal/spec"
 )
 
-// filePosRe finds a "<path>.go:<line>" inside a larger string — handles
-// both a bare position index and a func-literal base-ID that embeds its
-// position (e.g. "pkg.FuncLit:/abs/file.go:55:28").
-var filePosRe = regexp.MustCompile(`(/[^\s:]+\.go):(\d+)`)
+// filePosRe finds a "<path>.go:<line>" inside a larger string — handles both a
+// bare position index and a func-literal base-ID that embeds its position
+// ("pkg.FuncLit:internal/api/h.go:55:28"). The path is not required to be
+// absolute: a closure's identity is module-relative so that the generated spec is
+// the same in every checkout (issue #216), while a recorded position is absolute.
+//
+// The optional `C:` head keeps Windows absolute paths whole. It is anchored on a
+// word boundary so it cannot bite into the text before the path: without that,
+// the "t:" ending "FuncLit:" reads as a drive letter and the match becomes
+// "t:internal/api/h.go".
+var filePosRe = regexp.MustCompile(`((?:\b[A-Za-z]:)?[^\s:]+\.go):(\d+)`)
 
 // extractFilePos returns "file.go:line" from any string containing one,
 // or "" if none is present.
@@ -424,17 +432,44 @@ func candidateHandlerKeys(meta *metadata.Metadata, operationID string) (keys []s
 	return keys, file, line
 }
 
+// sameSourceFile reports whether two paths name the same file when one of them
+// may be module-relative and the other absolute — the two forms positions and
+// closure identities are written in.
+func sameSourceFile(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	a, b = filepath.ToSlash(a), filepath.ToSlash(b)
+	if a == b {
+		return true
+	}
+	// A relative path matches an absolute one that ends with it, on a path
+	// boundary: "api/h.go" matches "/src/app/api/h.go" but not "/src/xapi/h.go".
+	if strings.HasSuffix(a, "/"+b) {
+		return true
+	}
+	return strings.HasSuffix(b, "/"+a)
+}
+
 // findFuncLitInFile returns the FuncLit caller key declared in file at or
 // after afterLine (closest), or "".
 func findFuncLitInFile(meta *metadata.Metadata, file string, afterLine int) string {
 	best := ""
 	bestLine := 1 << 30
+	// Sorted, so two closures on the same line cannot be separated by map order.
+	keys := make([]string, 0, len(meta.Callers))
 	for k := range meta.Callers {
-		if !strings.Contains(k, "FuncLit:") {
-			continue
+		if strings.Contains(k, metadata.FuncLitPrefix) {
+			keys = append(keys, k)
 		}
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		// The location has to come from the key: a closure's caller edge often
+		// records no position of its own, which is why the key embeds one.
 		f, l := parsePos(extractFilePos(k))
-		if f != file || l < afterLine {
+		if !sameSourceFile(file, f) || l < afterLine {
 			continue
 		}
 		if l < bestLine {

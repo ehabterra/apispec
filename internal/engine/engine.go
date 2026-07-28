@@ -491,7 +491,7 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 
 	// Generate metadata (now only on framework packages if auto-include is enabled)
 	tMeta := time.Now()
-	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger, e.moduleImportPath())
+	meta := metadata.GenerateMetadataWithLogger(pkgsMetadata, fileToInfo, importPaths, fset, logger, e.moduleImportPath(), e.config.moduleRoot)
 	e.reportPhase(fmt.Sprintf("metadata generated (%d call edges, %d pkgs)", len(meta.CallGraph), len(meta.Packages)), time.Since(tMeta))
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
