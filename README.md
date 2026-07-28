@@ -33,6 +33,7 @@
 - [How It Works](#how-it-works)
   - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Configuration](#configuration)
+  - [Automatic wrapper detection](#automatic-wrapper-detection)
 - [Programmatic Usage](#programmatic-usage)
 - [Performance & Limits](#performance--limits)
 - [Development](#development)
@@ -180,6 +181,13 @@ See also: [`cmd/apispec/README.md`](cmd/apispec/README.md).
 
 `apispecui` is a small local web server that lets you configure APISpec interactively, generate a spec on demand, immediately preview it through embedded **Swagger UI**, **Redoc**, or **Scalar** viewers, *and* explore the project's call graph at `/diagram` — the same interactive, paginated visualization that `apidiag` provides, hosted on the same port and project.
 
+Two things worth knowing before a first run on a large project:
+
+- **Analysis engine** edits the expansion limits (see [Limits](#limits)), with the engine's defaults shown as placeholders. A project whose call tree is bigger than the default budget needs them raised.
+- When expansion does stop early, the result says so — *"Expansion stopped at the 50000-node limit, so routes beyond that point are missing"* — so a truncated run no longer reads as a complete one with a short route list.
+
+**Insight** (the ◷ tab) reports how the spec was produced, not just what is in it: which frameworks were detected and which one's patterns lead, what the CLI entry-point gate decided, and — per status code — how many responses describe their fields, are a free-form object, were found with an unresolved type, or document no body at all. The last split is the useful one: an empty body at `200` means the write was never followed, while an unresolved type means it was found and needs a type mapping.
+
 ```bash
 # Build and run
 go build -o apispecui ./cmd/apispecui
@@ -323,7 +331,8 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Form and file-upload request bodies — form reads on a body-bearing method become a request body (query parameters on `GET`, where Go's `FormValue` reads the URL). The media type follows how the handler parses the body: a file part (`r.FormFile("avatar")`, `c.FormFile(…)`) or an explicit `r.ParseMultipartForm` / `c.MultipartForm()` makes it `multipart/form-data` with the file as `type: string, format: binary`, and plain form values alone stay `application/x-www-form-urlencoded`. See `testdata/multipart_upload/`, `testdata/multipart_upload_gin/`.
 - **CLI-dispatched services** — when the routing code hangs off a command library's callback (`&cli.Command{Action: runWeb}`, `&cobra.Command{RunE: runServe}`), the dispatcher that invokes it lives inside the library, so no call edge reaches the registration and such a project used to document **nothing**. APISpec treats those fields as *entrypoints*, roots the function they hold, and documents everything below it. Presets ship for **urfave/cli** v1/v2/v3, **spf13/cobra** (`Run`/`RunE` and the Pre/Post hooks) and **peterbourgon/ff** (ffcli `Exec`), keyed on the project's imports; a house dispatcher declares its own field via `entrypointPatterns`. Only entrypoints that are otherwise unreachable *and* whose subtree actually registers routes are rooted, so a CLI with 50 subcommands pays for the one that serves HTTP. See `testdata/cli_entrypoint_routes/` (real urfave/cli), `testdata/cobra_entrypoint_routes/` (real cobra).
 - Route registration behind a **func-typed struct field** invoked in-module (`app.Commands = []*Command{{Action: runWeb}}`, and the same shape for any house dispatcher) — the field's recorded values are followed into the functions they hold, including a package-level command var, a cross-package function value, a method value, and an inline closure. See `testdata/cli_action_routes/`, `testdata/cli_action_cross_package/`.
-- Authentication / security detection — see [Security & authentication detection](#security--authentication-detection). Protected routes get a per-operation `security` requirement and the scheme is registered under `components.securitySchemes`; explicitly-public routes render `security: []`. Middleware is followed across router-wide `Use`, group/subtree closures, per-route chains (chi `With`), and handler wrappers (`net/http`, mux), including look-through into wrapper bodies that call a known auth library.
+- **House routers and house contexts, detected automatically** — a project that puts its own type in front of the framework (`func (r *Router) Get(pattern string, h ...any)` delegating to chi, and a `Ctx` whose `JSON`/`Bind`/`Query` methods answer, decode and read parameters) is documented with **no configuration**. See [Automatic wrapper detection](#automatic-wrapper-detection).
+- Authentication / security detection — see [Security & authentication detection](#security--authentication). Protected routes get a per-operation `security` requirement and the scheme is registered under `components.securitySchemes`; explicitly-public routes render `security: []`. Middleware is followed across router-wide `Use`, group/subtree closures, per-route chains (chi `With`), and handler wrappers (`net/http`, mux), including look-through into wrapper bodies that call a known auth library.
 
 **Partial / not yet supported**
 
@@ -331,7 +340,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
 - Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
 - Routes registered from a **table** rather than a call (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`) — the paths exist only as runtime values, so no pattern can recover them.
-- Router **wrappers** (a house `Router` type around chi/gin) need their own patterns, and a registration matched *inside* the wrapper currently yields an unresolved path — tracked in [#221](https://github.com/ehabterra/apispec/issues/221).
+- House routers whose registration is **chained through a returned object** (gitea's `Combo("/x").Get(h).Post(h)`, where the path is held by the object rather than passed to each call) are reported as detected-but-incomplete and left unapplied, rather than guessed at.
 - Command libraries that dispatch through a **factory map** (`mitchellh/cli`, `hashicorp/cli`) or through **reflection-invoked methods** (`alecthomas/kong`) are not covered by `entrypointPatterns`, which names struct fields.
 
 ### Selected capability highlights
@@ -356,6 +365,8 @@ type User struct {
     ID UserID // → integer / int64
 }
 ```
+
+A field's enum is built from the constants declared with **that** type. Two types sharing an underlying type (`type Status string` and `type Band string`, or two `= string` aliases) are different types, so one never lends its values to the other — and where the values genuinely cannot be attributed to one type, no enum is emitted rather than a guess. See `testdata/enum_alias_ambiguity/`.
 
 </details>
 
@@ -686,6 +697,18 @@ framework:
       methodFromCall: true
       pathFromArg: true
       handlerFromArg: true
+    # A registrar whose verb travels as an ARGUMENT, and may name several:
+    # `Methods("GET,POST", "/search", h)` registers both. A house router like
+    # this is derived automatically (see "Automatic wrapper detection"), so
+    # write it out only to override what was derived.
+    - callRegex: ^Methods$
+      recvTypeRegex: ^example\.com/app\.\*?Router$
+      methodFromArg: true
+      methodArgIndex: 0
+      pathFromArg: true
+      pathArgIndex: 1
+      handlerFromArg: true
+      handlerArgIndex: 2
   requestBodyPatterns:
     - callRegex: ^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$
       typeFromArg: true
@@ -731,6 +754,53 @@ Run with `--verbose` to see what it did:
 ```
 Entrypoints: 53 declared, 1 rooted (0 already reachable, 52 register no routes)
 ```
+
+### Automatic wrapper detection
+
+Plenty of projects do not call the framework directly. They put their own router in front of it, and answer through their own context:
+
+```go
+func (r *Router) Get(pattern string, h ...any) { r.Methods("GET", pattern, h...) }
+func (r *Router) Methods(methods, pattern string, h ...any) {
+	r.chiRouter.Method(methods, r.getPattern(pattern), unwrap(h))     // the framework call is in HERE
+}
+
+func (c *Ctx) JSON(status int, body any) { c.Resp.WriteHeader(status); json.NewEncoder(c.Resp).Encode(body) }
+func (c *Ctx) Bind(dst any) error       { return json.NewDecoder(c.Req.Body).Decode(dst) }
+```
+
+The framework's own patterns cannot see any of it: by the time the chi call happens, the path and handler are the wrapper's *parameters*, not literals. Such a project used to document nothing until someone wrote patterns for it by hand.
+
+APISpec now derives those patterns, from one fact — **a method of a project type that forwards its own parameters into a call APISpec already recognises**:
+
+| written as | derived as |
+|---|---|
+| `Get(pattern, h...)` → `Methods("GET", …)` → chi | a route pattern, verb from the method name |
+| `Methods(verb, pattern, h...)` | a route pattern, verb from the argument (`GET,POST` registers both) |
+| `Group(prefix, func(){…})` | a mount pattern — the prefix applies to everything inside |
+| `Ctx.JSON(status, body)` | a response pattern, status and body merged from the two calls it makes |
+| `Ctx.Bind(dst)` | a request-body pattern |
+| `Ctx.Query(name)` | a parameter pattern, location taken from what it reads |
+
+Derivation is transitive (verb methods → one registrar → the framework, and a context that encodes through the project's own json package), and it follows a value through a call, an index or a chain of assignments — so a router that unwraps a variadic `...any` resolves like one that forwards directly.
+
+What it deliberately does **not** do is guess:
+
+- a method that names its route with literals (`func (s *Server) routes() { r.Get("/users", h) }`) is a registration, not a way of registering, and derives nothing;
+- a plain function is skipped — there is no type to scope a pattern to;
+- a dependency's method is skipped — describing it would not document your project;
+- a derivation that cannot resolve every role it needs is **reported but not applied**, because a pattern missing its path produces routes at the wrong path.
+
+Everything derived is listed with `--verbose` and lands in `--output-config`, so it can be reviewed, pinned into a config file, or corrected:
+
+```text
+Router wrappers: example.com/app.*Router [Delete Get Post Put] route via example.com/app.Methods (applied);
+                 example.com/app.*Router [Group] mount via prefix held by example.com/app.*Router (applied);
+                 example.com/app.*Ctx [JSON] response via net/http.WriteHeader (applied);
+                 example.com/app.*Combo [Get] route via example.com/app.Get (incomplete, not applied)
+```
+
+Measured on gitea (its `modules/web.Router` around chi): **3 paths → 856**, with no config at all. See `testdata/wrapper_router/`.
 
 ### Custom type mapping
 
@@ -784,7 +854,7 @@ When omitted, APISpec falls back to its prior receiver-only matching, so existin
 
 ### Security / authentication
 
-Most auth setups are detected with no config (see [Security & authentication detection](#security--authentication-detection)). When you use a custom middleware, map its identity to a scheme with `securityMappings`, and — if needed — describe how it's applied with `framework.securityPatterns`:
+Most auth setups are detected with no config (see [Security & authentication detection](#security--authentication)). When you use a custom middleware, map its identity to a scheme with `securityMappings`, and — if needed — describe how it's applied with `framework.securityPatterns`:
 
 ```yaml
 framework:
