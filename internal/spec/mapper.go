@@ -1260,6 +1260,57 @@ func substituteTypeParams(fieldType string, genericTypes map[string]string) stri
 	return fieldType
 }
 
+// qualifyFieldType attaches the declaring package to an unqualified field
+// type. A package qualifier belongs on a *name*, so it has to be pushed all
+// the way down to the named leaf, through every container constructor. The
+// regex this replaces peeled at most one "[]" and glued the package onto
+// whatever remained, so a nested container came out as "[]pkg.[][]string" — a
+// container wearing a package qualifier. Nothing downstream can model that:
+// it parses as a named type whose name happens to contain brackets, so the
+// $ref fast-paths treat it as a nameable component and emit a reference to a
+// component no one ever defines (issue #259). Types that already carry a
+// qualifier, primitives, and anonymous struct literals (nameless, and their
+// bodies aren't a type the model can rebuild) keep their previous handling.
+func qualifyFieldType(fieldType, pkgName string) string {
+	if fieldType == "" || pkgName == "" {
+		return fieldType
+	}
+	if isAnonStructLiteral(fieldType) {
+		// Legacy shape: the anon-struct paths document (and ignore) a package
+		// path glued on the front, so keep producing exactly that.
+		if strings.Contains(fieldType, ".") {
+			return fieldType
+		}
+		return pkgName + "." + fieldType
+	}
+
+	ref := typemodel.Parse(fieldType)
+	leaf := namedLeaf(ref)
+	if leaf == nil || leaf.Name == "" || leaf.Pkg != "" || metadata.IsPrimitiveType(leaf.Name) {
+		return fieldType
+	}
+	leaf.Pkg = pkgName
+
+	return ref.String()
+}
+
+// namedLeaf descends through every container constructor — including a map's
+// value, which TypeRef.Core deliberately does not unwrap (a map's element is
+// not "the" core type) — and returns the named type at the bottom, or nil when
+// there isn't one.
+func namedLeaf(t *typemodel.TypeRef) *typemodel.TypeRef {
+	for t != nil {
+		switch t.Kind {
+		case typemodel.KindPointer, typemodel.KindSlice, typemodel.KindArray,
+			typemodel.KindChan, typemodel.KindMap:
+			t = t.Elem
+		default:
+			return t
+		}
+	}
+	return nil
+}
+
 // generateStructSchema generates a schema for a struct type
 func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	schemas := map[string]*Schema{}
@@ -1359,12 +1410,8 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		} else {
 			isPrimitive := metadata.IsPrimitiveType(fieldType)
 
-			if !isPrimitive && !strings.Contains(fieldType, ".") {
-				re := mustCachedRegex(`((\[\])?\*?)(.+)$`)
-				matches := re.FindStringSubmatch(fieldType)
-				if len(matches) >= 4 {
-					fieldType = matches[1] + pkgName + "." + matches[3]
-				}
+			if !isPrimitive {
+				fieldType = qualifyFieldType(fieldType, pkgName)
 			}
 
 			derivedFieldType := strings.TrimPrefix(fieldType, "*")
