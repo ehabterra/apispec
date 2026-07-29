@@ -89,6 +89,15 @@ function TopBar({ s }) {
         <option value="lazy">⚡ Lazy</option>
         <option value="legacy">Legacy</option>
       </select>
+      <button
+        class="btn ghost sm resolve-toggle ${s.resolveCallGraph ? "active" : ""}"
+        title="Resolve indirect calls (experimental). Builds an SSA+VTA call graph alongside the syntactic one and points each call at the function that actually runs: an interface method with exactly one implementation becomes that implementation, and a method reached through embedding is attributed to the type that declares it. An interface with several implementations is left alone — picking one would invent a concrete type your program may never use. Costs roughly +19% time and +46% memory on a large module."
+        disabled=${s.generating}
+        aria-pressed=${s.resolveCallGraph ? "true" : "false"}
+        onClick=${() => setState({ resolveCallGraph: !s.resolveCallGraph })}
+      >
+        ${s.resolveCallGraph ? "◉" : "○"} Resolve
+      </button>
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
         ${s.generating
           ? html`Generating…${s.genPhase ? html` ${s.genPhase}` : ""}${s.genElapsed ? html` <span class="gen-elapsed">${fmtDur(s.genElapsed)}</span>` : ""}`

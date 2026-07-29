@@ -808,8 +808,10 @@ Turn it on when a project answers through interfaces or embedded contexts and th
 spec is missing schemas because of it — on one such project it took the output
 from 1 component to 15.
 
-In `apispecui` the same option is the **Resolve indirect calls (experimental)**
-checkbox under the analysis engine, and the choice is remembered between runs.
+In `apispecui` the same option is the **◉ Resolve** toggle in the header, beside
+the analysis-engine selector — and a matching checkbox in the generate panel. The
+header is where it stays reachable after a generation, so a spec can be produced
+both ways and compared. The choice is remembered between runs.
 
 ### Automatic wrapper detection
 
