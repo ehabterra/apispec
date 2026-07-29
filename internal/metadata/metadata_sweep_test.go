@@ -289,7 +289,11 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 		return &ast.SelectorExpr{X: x, Sel: ast.NewIdent(name)}
 	}
 
-	// Ident receiver typed as a bare interface.
+	// Ident receiver typed as a bare interface. An UNNAMED interface has no name
+	// to record: "interface" reads like a type name, is not one, and cannot be
+	// looked up or matched by a receiver-scoped pattern (issue #249). A named
+	// interface never reaches this arm — it is a Named whose underlying type is
+	// the interface.
 	identX := ast.NewIdent("r")
 	ifaceType := types.NewInterfaceType(nil, nil)
 	ifaceType.Complete()
@@ -298,8 +302,8 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	}}
 	name, pkg, recv := getCalleeFunctionNameAndPackage(mkSel(identX, "Read"), file, "p",
 		map[*ast.File]*types.Info{file: infoVar}, nil, fset, sweepMeta())
-	if name != "Read" || pkg != "p" || recv != "interface" {
-		t.Errorf("iface var receiver: got (%q,%q,%q)", name, pkg, recv)
+	if name != "Read" || pkg != "p" || recv != "" {
+		t.Errorf("iface var receiver: got (%q,%q,%q), want (\"Read\",\"p\",\"\")", name, pkg, recv)
 	}
 
 	// Complex receiver whose type is a Named with a nil package (error).
@@ -320,8 +324,8 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	}}
 	name, pkg, recv = getCalleeFunctionNameAndPackage(mkSel(callX2, "Do"), file, "p",
 		map[*ast.File]*types.Info{file: infoIface}, nil, fset, sweepMeta())
-	if name != "Do" || pkg != "p" || recv != "interface" {
-		t.Errorf("iface complex receiver: got (%q,%q,%q)", name, pkg, recv)
+	if name != "Do" || pkg != "p" || recv != "" {
+		t.Errorf("iface complex receiver: got (%q,%q,%q), want (\"Do\",\"p\",\"\")", name, pkg, recv)
 	}
 
 	// Complex receiver typed as a basic type: no switch arm matches.

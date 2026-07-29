@@ -235,6 +235,40 @@ func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 }
 
 // getCalleeFunctionNameAndPackage extracts function name, package, and receiver type from a call expression
+// calleeFromSelection resolves a method call the way go/types already has:
+// info.Selections records, for every selector, which method it selects and on
+// what. Reading it answers questions the shape of the expression cannot.
+//
+// The type switches below enumerate the receiver shapes they know — Named,
+// Pointer, Interface — and anything else falls through to "a function of the
+// calling package". A local `type Alias = other.Service` is exactly that
+// anything else, so `h.field.Method()` through an alias was recorded as
+// `caller/pkg.Method` with no receiver at all: unmatchable by any pattern scoped
+// on its type, and attributed to the wrong package (issue #249).
+//
+// The method's own declared receiver is used rather than the type of the
+// expression, so an alias, an embedded field or a type argument all report the
+// type that actually declares the method.
+func calleeFromSelection(x *ast.SelectorExpr, info *types.Info) (name, pkg, recv string, ok bool) {
+	if info == nil {
+		return "", "", "", false
+	}
+	sel := info.Selections[x]
+	if sel == nil || sel.Kind() != types.MethodVal {
+		return "", "", "", false
+	}
+	fn, isFunc := sel.Obj().(*types.Func)
+	if !isFunc || fn.Pkg() == nil {
+		return "", "", "", false
+	}
+
+	recvType := sel.Recv()
+	if sig, isSig := fn.Type().(*types.Signature); isSig && sig.Recv() != nil {
+		recvType = sig.Recv().Type()
+	}
+	return fn.Name(), fn.Pkg().Path(), getReceiverTypeString(recvType), true
+}
+
 func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, meta *Metadata) (string, string, string) {
 	switch x := expr.(type) {
 	case *ast.Ident:
@@ -242,6 +276,11 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		return x.Name, pkgName, ""
 
 	case *ast.SelectorExpr:
+		// What go/types already resolved beats re-deriving it from the syntax.
+		if name, pkg, recv, ok := calleeFromSelection(x, fileToInfo[file]); ok {
+			return name, pkg, recv
+		}
+
 		if ident, ok := x.X.(*ast.Ident); ok {
 
 			// If not an import, try to resolve as variable/method
@@ -359,8 +398,17 @@ func getReceiverTypeString(t types.Type) string {
 	case *types.Pointer:
 		// Handle pointer types like *MyStruct
 		return "*" + getReceiverTypeString(t.Elem())
+	case *types.Alias:
+		// An alias is a second name for a type, not a type of its own. Record
+		// what it stands for, or a local `type X = other.Y` makes every call
+		// through it look like a call on a type of the calling package.
+		return getReceiverTypeString(types.Unalias(t))
 	case *types.Interface:
-		return "interface"
+		// An unnamed interface has no name to record. "interface" looks like a
+		// type name and is not one: nothing can look it up, and a pattern scoped
+		// by receiver can never match it. A NAMED interface never reaches here —
+		// it is a *types.Named whose underlying type is this (issue #249).
+		return ""
 	default:
 		return ""
 	}
