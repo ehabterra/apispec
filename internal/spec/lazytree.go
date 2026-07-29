@@ -93,6 +93,19 @@ type LazyTree struct {
 	relationsBuilt bool
 	budgetWarned   bool
 
+	// instanceTruncations counts the copies the per-scope instance cap refused,
+	// and instanceFirst* records the first refusal. Unlike MaxNodesPerTree, this
+	// cap used to say nothing at all when it fired, so a starved response body
+	// looked like a type the mapper could not resolve (issue #224). Naming the
+	// SCOPE is the point: whether the scope that ran out is a handler (the cap
+	// working as intended on a deep diamond) or something that spans many routes
+	// (a group closure, where one route's expansion is eating another's budget)
+	// is exactly the distinction the number alone cannot make.
+	instanceTruncations int
+	instanceFirstScope  string
+	instanceFirstKey    string
+	instanceWarned      bool
+
 	// assignIndex mirrors the eager tree's assignmentIndex byte-for-byte: the
 	// SAME assignmentKey composition (name, pkg, concrete type, container —
 	// with the selector-Lhs container override) mapping to the producing
@@ -190,13 +203,23 @@ type LazyTree struct {
 // multiply copies combinatorially and must be cut — the role the eager
 // tree's per-ID recursion cap plays.
 //
-// 25, not 10, because "approximately per handler" is optimistic: routes are
-// commonly registered inside a group closure (`r.Route("/x", func(r chi.Router)
-// {…})`), and that closure is itself an argument node — so it, not the handler,
-// becomes the scope for every route in the group. A response helper shared by
-// the group then exhausts a 10-copy budget after ~10 routes and every later
-// route in that group silently loses its response body: 274 of 350 success
-// bodies missing on a ~330-route service (issue #224).
+// 25, not 10, because 10 measurably starved a real ~330-route chi service: 274
+// of 350 success bodies came out with no schema, and raising the cap recovered
+// them (issue #224).
+//
+// WHY that service starved is not settled, and the comment here used to assert
+// an explanation it could not support — that a `r.Route("/x", func(r chi.Router)
+// {…})` group closure, being itself an argument node, becomes the scope for
+// every route in the group. That mechanism does not reproduce:
+// testdata/group_closure_instances registers 15 routes inside one group closure,
+// all writing through one shared helper, and every route keeps its body down to
+// `--max-instances-per-key 1` — because the handler argument node, not the group
+// closure, is the nearest argument ancestor and therefore the scope.
+//
+// So the cap is per-handler in that shape, and the starving service has a shape
+// not yet reproduced. Rather than guess again, noteInstanceTruncation now names
+// the scope that ran out whenever the cap fires, which is the one fact that
+// distinguishes a bounded diamond from a starved route.
 //
 // The value is measured, not guessed — and the measurement is a TRADE, because
 // raising the cap costs projects that gain nothing from it:
@@ -228,6 +251,43 @@ func (t *LazyTree) instanceBudget() int {
 		return t.limits.MaxInstancesPerKey
 	}
 	return DefaultMaxInstancesPerKey
+}
+
+// noteInstanceTruncation records — and, once, reports — a copy the instance cap
+// refused.
+//
+// It warns rather than staying quiet because this cap is the one limit in the
+// tree that used to truncate in silence: MaxNodesPerTree prints when it stops,
+// and a starved response body from THIS cap was indistinguishable from a type
+// the mapper could not resolve. Measured on a large real project, the cap fires
+// 902,332 times in a default run, so the warning is deliberately once-only and
+// carries the count in the stats instead.
+//
+// Scope and key are both named. The scope answers the question the count cannot:
+// a handler scope that runs out is the cap doing its job on a deep diamond, while
+// a scope spanning several routes means one route's expansion is consuming
+// another's budget.
+func (t *LazyTree) noteInstanceTruncation(scope, key string) {
+	t.instanceTruncations++
+	if t.instanceFirstKey == "" {
+		t.instanceFirstScope = scope
+		t.instanceFirstKey = key
+	}
+	if !t.instanceWarned {
+		t.instanceWarned = true
+		fmt.Fprintf(os.Stderr,
+			"Warning: MaxInstancesPerKey limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
+			t.instanceBudget(), key, scopeLabel(scope))
+	}
+}
+
+// scopeLabel renders an instance scope for a human. The empty scope is the
+// wiring level — above any argument node — and "" would read as missing data.
+func scopeLabel(scope string) string {
+	if scope == "" {
+		return "<router wiring>"
+	}
+	return scope
 }
 
 // budgetExhausted reports whether the cumulative node budget is spent.
@@ -550,10 +610,14 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 func (t *LazyTree) ExpansionStats() ExpansionStats {
 	t.buildRelations()
 	return ExpansionStats{
-		NodesBuilt:        t.nodesBuilt,
-		NodesMaterialized: t.nodesMaterialized,
-		Limit:             t.limits.MaxNodesPerTree,
-		Truncated:         t.truncated,
+		NodesBuilt:          t.nodesBuilt,
+		NodesMaterialized:   t.nodesMaterialized,
+		Limit:               t.limits.MaxNodesPerTree,
+		Truncated:           t.truncated,
+		InstanceTruncations: t.instanceTruncations,
+		InstanceLimit:       t.instanceBudget(),
+		InstanceFirstScope:  t.instanceFirstScope,
+		InstanceFirstKey:    t.instanceFirstKey,
 	}
 }
 
@@ -742,6 +806,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
 			// bound is a skip — the role the eager per-ID recursion cap plays.
+			n.tree.noteInstanceTruncation(scope, spec.key)
 			continue
 		}
 		child := n.tree.newNode()
