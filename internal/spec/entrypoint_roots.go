@@ -215,4 +215,19 @@ type ExpansionStats struct {
 	NodesMaterialized int
 	Limit             int
 	Truncated         bool
+
+	// InstanceTruncations counts copies the per-scope instance cap refused, and
+	// InstanceFirstScope/Key name the first refusal. This is a SECOND, separate
+	// way expansion can come up short, and until now the only silent one: a
+	// response body starved by this cap looked exactly like a type the mapper
+	// could not resolve (issue #224).
+	//
+	// A non-zero count is not by itself a defect — bounding a deep diamond
+	// inside one handler is the cap's job. The scope is what distinguishes that
+	// from the failure case, where a scope spanning several routes means one
+	// route's expansion is consuming another's budget.
+	InstanceTruncations int
+	InstanceLimit       int
+	InstanceFirstScope  string
+	InstanceFirstKey    string
 }
