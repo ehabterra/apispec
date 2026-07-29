@@ -152,15 +152,6 @@ type ExpansionInfo struct {
 	InstanceLimit       int    `json:"instanceLimit,omitempty"`
 	InstanceFirstScope  string `json:"instanceFirstScope,omitempty"`
 	InstanceFirstKey    string `json:"instanceFirstKey,omitempty"`
-
-	// RouteTruncations is the LOCAL shortfall: route subtrees cut short by their
-	// own allowance. Unlike Truncated, it costs those routes some detail and
-	// leaves every other route intact, so it is a much milder statement about
-	// the spec (issue #264). RoutesScoped gives it a denominator.
-	RouteTruncations    int    `json:"routeTruncations,omitempty"`
-	RouteLimit          int    `json:"routeLimit,omitempty"`
-	RouteFirstTruncated string `json:"routeFirstTruncated,omitempty"`
-	RoutesScoped        int    `json:"routesScoped,omitempty"`
 }
 
 // AnalysisInfo describes HOW the spec was produced rather than what is in it.
