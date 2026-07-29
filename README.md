@@ -797,7 +797,7 @@ An interface with several implementations stays the interface — picking one wo
 invent a concrete type your program may never use — and a difference the analysis
 cannot explain is left exactly as recorded.
 
-```
+```console
 $ apispec --dir . --resolve-call-graph --verbose
 Resolved call graph: 5860 call sites joined, 17 rewritten (17 interface, 0 promoted), 1 left ambiguous, 10 unexplained
 ```

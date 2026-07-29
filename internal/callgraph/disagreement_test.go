@@ -16,9 +16,10 @@ package callgraph
 
 import "testing"
 
-// TestClassify pins which disagreements may be acted on. Measured over gitea,
-// the four classes cover 10,182 real disagreements: 2,880 interface calls,
-// 4,492 promoted methods, 1,570 ambiguous sites and 1,240 unexplained.
+// TestClassify pins which disagreements may be acted on. Measured over gitea in
+// a single run, the four classes cover 10,170 real disagreements: 2,880
+// interface calls, 4,490 promoted methods, 1,570 ambiguous sites and 1,230
+// unexplained.
 func TestClassify(t *testing.T) {
 	facts := TypeFacts{
 		IsInterface: func(q string) bool { return q == "app.Storage" },

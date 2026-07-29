@@ -105,6 +105,15 @@ func (r *Resolved) CallSites() []CallSite {
 // implementation. Keeping all of them is the honest answer (golden rule #7) and
 // the caller decides what to do with an ambiguous site; collapsing to "the first
 // one" here would silently pick a concrete type the program may never use.
+//
+// Because the key is per LINE, two distinct calls to the same bare name written
+// on one line — `a.Read(); b.Read()` — share a key and pool their targets, so a
+// call that VTA resolved unambiguously can be reported as ambiguous. That errs in
+// the safe direction: the caller leaves an ambiguous site exactly as recorded, so
+// the cost is a rewrite not made, never a wrong one. It cannot be fixed by
+// keeping the column, which is the one thing the two graphs never agree on (see
+// SiteKey); distinguishing those calls would need the caller to match on
+// something else about the site, such as its receiver.
 func (r *Resolved) CalleesAt() map[string][]string {
 	sites := r.CallSites()
 	index := make(map[string][]string, len(sites))
