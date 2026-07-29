@@ -192,3 +192,69 @@ func TestOrderTowardRoutesLeavesUniformPlansAlone(t *testing.T) {
 		}
 	})
 }
+
+// TestRouteBudgetIsPerRegistrationNotGlobal is the property that turns 12
+// documented paths into 210: a route's detail is charged to that route, so a
+// handler too deep to expand fully costs its own detail and nothing else's.
+//
+// With one global budget, truncation is TOTAL — expansion is depth-first, so the
+// routes not yet reached when it runs out are lost outright rather than
+// documented in less detail.
+func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
+	m := closureMeta(t)
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m)}
+
+	// A node that is not a registration stays in the wiring scope.
+	wiring := &LazyNode{tree: tree, key: "example.com/app.main"}
+	if got := tree.scopeOf(wiring); got != 0 {
+		t.Errorf("a non-registration node opened scope %d, want the shared wiring scope 0", got)
+	}
+
+	// Each registration opens its OWN scope, so two routes never share a budget.
+	regEdge := &m.CallGraph[2] // the chi Get edge
+	first := &LazyNode{tree: tree, key: "route-1", edge: regEdge}
+	second := &LazyNode{tree: tree, key: "route-2", edge: regEdge}
+	a, b := tree.scopeOf(first), tree.scopeOf(second)
+	if a == 0 || b == 0 {
+		t.Fatalf("a registration did not open its own scope: got %d and %d", a, b)
+	}
+	if a == b {
+		t.Errorf("two registrations share scope %d; one route's expansion could then starve the other", a)
+	}
+
+	// Spending one route's allowance must not touch the other's, nor the wiring
+	// walk's.
+	tree.limits.MaxNodesPerRoute = 2
+	tree.routeScopeNodes[a] = 2
+	if !tree.routeBudgetExhausted(a) {
+		t.Error("a route that spent its allowance was not reported as exhausted")
+	}
+	if tree.routeBudgetExhausted(b) {
+		t.Error("one route's exhausted budget also exhausted another's — the budgets are not independent")
+	}
+	if tree.routeBudgetExhausted(0) {
+		t.Error("the wiring scope must be bounded by MaxNodesPerTree, not by the per-route limit")
+	}
+}
+
+// TestRouteTruncationNamesTheRoute keeps the report actionable: the count alone
+// cannot tell you which endpoint is under-documented.
+func TestRouteTruncationNamesTheRoute(t *testing.T) {
+	m := closureMeta(t)
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m)}
+	regEdge := &m.CallGraph[2]
+	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: regEdge})
+
+	tree.noteRouteTruncation(scope)
+	tree.noteRouteTruncation(scope)
+
+	if tree.routeTruncations != 2 {
+		t.Errorf("counted %d route truncations, want 2", tree.routeTruncations)
+	}
+	if tree.routeFirstTruncated != "GET /things" {
+		t.Errorf("first truncated route = %q, want the registration's key", tree.routeFirstTruncated)
+	}
+	if !tree.routeWarned {
+		t.Error("a truncated route produced no warning")
+	}
+}

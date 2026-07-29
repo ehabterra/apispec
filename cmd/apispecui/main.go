@@ -1607,7 +1607,7 @@ func analysisInfo(primary string, detected []string, lazy bool, ep spec.Entrypoi
 	// Either shortfall is worth reporting, and they are independent: the
 	// instance cap can starve response bodies on a run whose node budget was
 	// never reached (issue #224).
-	if expansion.Truncated || expansion.InstanceTruncations > 0 {
+	if expansion.Truncated || expansion.InstanceTruncations > 0 || expansion.RouteTruncations > 0 {
 		info.Expansion = &insight.ExpansionInfo{
 			NodesBuilt:          expansion.NodesBuilt,
 			NodesMaterialized:   expansion.NodesMaterialized,
@@ -1617,6 +1617,10 @@ func analysisInfo(primary string, detected []string, lazy bool, ep spec.Entrypoi
 			InstanceLimit:       expansion.InstanceLimit,
 			InstanceFirstScope:  expansion.InstanceFirstScope,
 			InstanceFirstKey:    expansion.InstanceFirstKey,
+			RouteTruncations:    expansion.RouteTruncations,
+			RouteLimit:          expansion.RouteLimit,
+			RouteFirstTruncated: expansion.RouteFirstTruncated,
+			RoutesScoped:        expansion.RoutesScoped,
 		}
 	}
 	if lazy {

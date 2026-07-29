@@ -155,6 +155,7 @@ type CLIConfig struct {
 	MaxNestedArgsDepth           int
 	MaxRecursionDepth            int
 	MaxInstancesPerKey           int
+	MaxNodesPerRoute             int
 	LegacyTracker                bool
 	ShowVersion                  bool
 	OutputFlagSet                bool
@@ -287,6 +288,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.MaxRecursionDepth, "mrd", engine.DefaultMaxRecursionDepth, "Shorthand for --max-recursion-depth")
 	fs.IntVar(&config.MaxInstancesPerKey, "max-instances-per-key", engine.DefaultMaxInstancesPerKey,
 		"Maximum copies of one callee within an instance scope (raise it when a group closure holds more routes than the default budget covers)")
+	fs.IntVar(&config.MaxNodesPerRoute, "max-nodes-per-route", engine.DefaultMaxNodesPerRoute,
+		"Maximum tree nodes expanded below one route registration (bounds a route's detail without starving the others)")
 
 	fs.BoolVar(&config.LegacyTracker, "legacy-tracker", false, "Use the legacy (eager) tracker tree instead of the default lazy tracker")
 
@@ -390,6 +393,7 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		MaxNestedArgsDepth:           config.MaxNestedArgsDepth,
 		MaxRecursionDepth:            config.MaxRecursionDepth,
 		MaxInstancesPerKey:           config.MaxInstancesPerKey,
+		MaxNodesPerRoute:             config.MaxNodesPerRoute,
 		UseLazyTracker:               !config.LegacyTracker,
 		IncludeFiles:                 config.IncludeFiles,
 		IncludePackages:              config.IncludePackages,

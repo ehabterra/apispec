@@ -159,6 +159,21 @@ type LazyTree struct {
 	// to drop any. Built once, on first use.
 	routeReach     map[string]bool
 	routeReachOnce bool
+
+	// routeScopeNodes counts nodes materialised under each route registration,
+	// indexed by scope id (0 is the shared wiring walk above every
+	// registration). Slice rather than map: ids are dense and handed out in
+	// order, and this is read on every materialised node.
+	routeScopeNodes []int
+	// routeScopeKeys names the registration each id stands for, for reporting.
+	routeScopeKeys []string
+	// routeTruncations counts route subtrees cut short by their own budget, and
+	// routeFirstTruncated names the first. Unlike the whole-walk truncation this
+	// is LOCAL — the rest of the routes are unaffected — so it is reported
+	// separately rather than folded into Truncated.
+	routeTruncations    int
+	routeFirstTruncated string
+	routeWarned         bool
 	// logger reports how many entrypoints were rooted vs skipped.
 	logger metadata.VerboseLogger
 
@@ -352,9 +367,85 @@ func (t *LazyTree) orderTowardRoutes(plan []childSpec, from int) {
 	copy(seg[len(leading):], trailing)
 }
 
-// budgetExhausted reports whether the cumulative node budget is spent.
+// DefaultMaxNodesPerRoute bounds the nodes materialised below ONE route
+// registration.
+//
+// It exists because a single global budget makes truncation total: expansion is
+// depth-first, so the routes not yet reached when it runs out are lost outright
+// rather than documented in less detail. Measured on a ~900-route project, that
+// was 12 paths of ~900 — the budget spent inside modules/setting before the walk
+// reached the routers at all.
+//
+// Per route, a handler too deep to document fully costs its own detail and
+// nothing else's, which is the difference between a spec that is missing 98% of
+// its endpoints and one where a few endpoints are missing a schema.
+const DefaultMaxNodesPerRoute = 20000
+
+// routeBudget is the per-registration cap in force for this tree.
+func (t *LazyTree) routeBudget() int {
+	if t.limits.MaxNodesPerRoute > 0 {
+		return t.limits.MaxNodesPerRoute
+	}
+	return DefaultMaxNodesPerRoute
+}
+
+// scopeOf returns the budget scope a child of n belongs to: a new one when n is
+// itself a route registration, otherwise n's own.
+//
+// A registration opens a scope rather than joining one, so everything the route
+// pulls in — its handler, that handler's helpers, their types — is charged to
+// that route and to nothing else.
+func (t *LazyTree) scopeOf(n *LazyNode) int {
+	if n == nil {
+		return 0
+	}
+	if n.routeScope != 0 || t.routeMatch == nil || n.edge == nil || !t.routeMatch(n.edge) {
+		return n.routeScope
+	}
+	// First registration on this path: open a scope for it.
+	if len(t.routeScopeNodes) == 0 {
+		t.routeScopeNodes = []int{0} // id 0 is the wiring walk
+		t.routeScopeKeys = []string{""}
+	}
+	t.routeScopeNodes = append(t.routeScopeNodes, 0)
+	t.routeScopeKeys = append(t.routeScopeKeys, n.key)
+	return len(t.routeScopeNodes) - 1
+}
+
+// budgetExhausted reports whether the WIRING budget is spent — the walk that
+// finds route registrations in the first place.
+//
+// It no longer bounds the whole tree. Detail below a registration is bounded per
+// route (routeBudget), so a deep handler cannot consume the allowance the
+// undiscovered routes still need (issue #264).
 func (t *LazyTree) budgetExhausted() bool {
 	return t.limits.MaxNodesPerTree > 0 && t.nodesBuilt >= t.limits.MaxNodesPerTree
+}
+
+// routeBudgetExhausted reports whether this node's route has spent its own
+// allowance. Scope 0 — the wiring walk — is bounded by budgetExhausted instead.
+func (t *LazyTree) routeBudgetExhausted(scope int) bool {
+	return scope > 0 && scope < len(t.routeScopeNodes) && t.routeScopeNodes[scope] >= t.routeBudget()
+}
+
+// noteRouteTruncation records a route subtree cut short by its own budget, and
+// warns once. The route's own key is named: unlike the whole-walk truncation,
+// this says exactly which endpoint is under-documented.
+func (t *LazyTree) noteRouteTruncation(scope int) {
+	t.routeTruncations++
+	key := ""
+	if scope < len(t.routeScopeKeys) {
+		key = t.routeScopeKeys[scope]
+	}
+	if t.routeFirstTruncated == "" {
+		t.routeFirstTruncated = key
+	}
+	if !t.routeWarned {
+		t.routeWarned = true
+		fmt.Fprintf(os.Stderr,
+			"Warning: MaxNodesPerRoute limit (%d) reached, truncating one route's detail (first at %s)\n",
+			t.routeBudget(), key)
+	}
 }
 
 // genericTypesOf is a memoized metadata.ExtractGenericTypes.
@@ -680,6 +771,10 @@ func (t *LazyTree) ExpansionStats() ExpansionStats {
 		InstanceLimit:       t.instanceBudget(),
 		InstanceFirstScope:  t.instanceFirstScope,
 		InstanceFirstKey:    t.instanceFirstKey,
+		RouteTruncations:    t.routeTruncations,
+		RouteLimit:          t.routeBudget(),
+		RouteFirstTruncated: t.routeFirstTruncated,
+		RoutesScoped:        max(len(t.routeScopeNodes)-1, 0),
 	}
 }
 
@@ -718,6 +813,16 @@ type LazyNode struct {
 
 	children []TrackerNodeInterface // nil = not yet expanded
 	expanded bool
+
+	// routeScope identifies which budget this node's expansion is charged to:
+	// the id of the nearest route-registration ancestor, or 0 for the wiring
+	// walk above every registration (issue #264).
+	//
+	// Computed once, at creation, by inheriting the parent's — walking up to
+	// find it per expansion would be O(depth) work on every child, which goes
+	// quadratic over deep graphs and is the shape that shows up in profiles as
+	// GC dominance rather than as the guilty frame.
+	routeScope int
 }
 
 // GetKey implements TrackerNodeInterface.
@@ -830,17 +935,29 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	if n.expanded {
 		return n.children
 	}
-	if n.tree.budgetExhausted() {
+	// Two budgets, and which one applies depends on where this node sits. Above
+	// every route registration the WIRING budget bounds the walk that finds them;
+	// below one, that route's own allowance bounds its detail. Splitting them is
+	// what makes truncation local instead of total (issue #264).
+	if n.routeScope == 0 && n.tree.budgetExhausted() {
 		n.tree.truncated = true
 		if !n.tree.budgetWarned {
 			n.tree.budgetWarned = true
 			fmt.Fprintf(os.Stderr,
-				"Warning: MaxNodesPerTree limit (%d) reached, truncating lazy expansion (first at %s)\n",
+				"Warning: MaxNodesPerTree limit (%d) reached, truncating the walk that finds routes (first at %s)\n",
 				n.tree.limits.MaxNodesPerTree, n.key)
 		}
 		return nil // budget spent: further expansion yields leaves (cheap unwind)
 	}
+	if n.tree.routeBudgetExhausted(n.routeScope) {
+		n.tree.noteRouteTruncation(n.routeScope)
+		return nil // this route is documented in less detail; the others are not affected
+	}
 	n.expanded = true
+
+	// A registration opens its own scope, so everything it pulls in is charged
+	// to that route. Resolved once here rather than per child.
+	childScope := n.tree.scopeOf(n)
 
 	scope := n.instanceScope()
 	if n.tree.instanceCount == nil {
@@ -876,6 +993,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		child.key = spec.key
 		child.parent = n
 		child.edge = spec.edge
+		child.routeScope = childScope
 		if spec.arg != nil {
 			child.edge = spec.argEdge
 			child.arg = spec.arg
@@ -904,6 +1022,9 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		// #224; what this counter can honestly do meanwhile is report the work
 		// instead of hiding it.
 		n.tree.nodesMaterialized++
+		if childScope > 0 && childScope < len(n.tree.routeScopeNodes) {
+			n.tree.routeScopeNodes[childScope]++
+		}
 		if n.tree.seenKeys == nil {
 			n.tree.seenKeys = map[string]bool{}
 		}

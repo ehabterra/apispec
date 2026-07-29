@@ -1323,6 +1323,18 @@ type TrackerLimits struct {
 	// see the lazy tree's DefaultMaxInstancesPerKey for what the number trades
 	// off. Zero means that default.
 	MaxInstancesPerKey int
+
+	// MaxNodesPerRoute bounds the nodes materialised BELOW one route
+	// registration, so a single deep handler cannot consume the allowance the
+	// rest of the routes still need. MaxNodesPerTree then bounds only the
+	// wiring walk that finds registrations in the first place.
+	//
+	// The split is the point (issue #264): with one global budget spent
+	// depth-first, truncation is total — the routes not yet discovered are lost
+	// outright. Per route it is local: a handler too deep to document fully
+	// costs its own detail and nothing else's. Zero means
+	// DefaultMaxNodesPerRoute.
+	MaxNodesPerRoute int
 }
 
 // ProcessFunctionReturnTypes processes all functions and methods in the metadata
