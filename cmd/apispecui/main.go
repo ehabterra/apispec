@@ -1605,7 +1605,12 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats, expansion spec.ExpansionStats) insight.AnalysisInfo {
 	info := insight.AnalysisInfo{Frameworks: detected, Primary: primary}
 	if expansion.Truncated {
-		info.Expansion = &insight.ExpansionInfo{NodesBuilt: expansion.NodesBuilt, Limit: expansion.Limit, Truncated: true}
+		info.Expansion = &insight.ExpansionInfo{
+			NodesBuilt:        expansion.NodesBuilt,
+			NodesMaterialized: expansion.NodesMaterialized,
+			Limit:             expansion.Limit,
+			Truncated:         true,
+		}
 	}
 	if lazy {
 		info.Engine = "lazy"
