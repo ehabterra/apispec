@@ -98,6 +98,13 @@ function TopBar({ s }) {
       >
         ${s.resolveCallGraph ? "◉" : "○"} Resolve
       </button>
+      ${s.resolveCallGraph && (s.limits?.maxNodesPerTree || 0) > 50000
+        ? html`<span
+            class="resolve-warn"
+            title="Resolution and a raised node budget compete for the same time. Resolution makes more of the program analysable, so the mapping stage roughly doubles at a raised budget — on a 3,000-file project, 1m30s becomes 2m56s at 100k nodes. Expect minutes, not seconds."
+            >⚠ slow combo</span
+          >`
+        : ""}
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
         ${s.generating
           ? html`Generating…${s.genPhase ? html` ${s.genPhase}` : ""}${s.genElapsed ? html` <span class="gen-elapsed">${fmtDur(s.genElapsed)}</span>` : ""}`

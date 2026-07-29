@@ -1600,3 +1600,13 @@ h3 + .info {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* Shown when indirect-call resolution is combined with a raised node budget:
+   the two compete for the same time, and the combination is what turns a
+   generation into a multi-minute run with no obvious cause. */
+.topbar .resolve-warn {
+  font-size: var(--fs-sm);
+  color: var(--warn, #d9a441);
+  white-space: nowrap;
+  cursor: help;
+}

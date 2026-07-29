@@ -802,11 +802,27 @@ $ apispec --dir . --resolve-call-graph --verbose
 Resolved call graph: 5860 call sites joined, 17 rewritten (17 interface, 0 promoted), 1 left ambiguous, 10 unexplained
 ```
 
-It is **off by default** and stays that way for now: on a 3,000-file module it
-costs about +19% wall clock and **+46% peak memory** to hold the SSA program.
-Turn it on when a project answers through interfaces or embedded contexts and the
-spec is missing schemas because of it — on one such project it took the output
-from 1 component to 15.
+It is **off by default**, and the cost is not a flat percentage — it grows with
+your node budget:
+
+| gitea, `--max-nodes` | mapping stage | components |
+|---|---|---|
+| 50,000 (default), off | 10s | 1 |
+| 50,000 (default), on | 11s | 15 |
+| 100,000, off | 1m30s | 41 |
+| 100,000, on | **2m56s** | **87** |
+
+Building the SSA graph is a small part of that (about 6s on gitea); the rest is
+that **resolution makes more of your program analysable**. A call the syntactic
+graph left pointing at an interface now points at a real function body, so there
+is more to expand. That is the feature working, and it is why the extra time
+buys schemas — at the 100k budget above, 340 of 389 operations gained response or
+request detail.
+
+Plan for roughly **double the mapping stage** on a large project, plus **+46%
+peak memory** for the SSA program. If you already raise `--max-nodes` to reach
+all your routes, try resolution at a *lower* budget first rather than on top of
+your highest one: it changes what the budget is spent on.
 
 In `apispecui` the same option is the **◉ Resolve** toggle in the header, beside
 the analysis-engine selector — and a matching checkbox in the generate panel. The
