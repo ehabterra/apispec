@@ -98,10 +98,12 @@ const (
 	// DefaultMaxInstancesPerKey mirrors the lazy tree's own default, so the
 	// engine reports one number rather than two that can drift.
 	DefaultMaxInstancesPerKey = intspec.DefaultMaxInstancesPerKey
-	DefaultMetadataFile       = "metadata.yaml"
-	CopyrightNotice           = "apispec - Copyright 2026 Ehab Terra"
-	LicenseNotice             = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
-	FullLicenseNotice         = "\n\nCopyright 2026 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+	// DefaultMaxNodesPerRoute mirrors the lazy tree's own default.
+	DefaultMaxNodesPerRoute = intspec.DefaultMaxNodesPerRoute
+	DefaultMetadataFile     = "metadata.yaml"
+	CopyrightNotice         = "apispec - Copyright 2026 Ehab Terra"
+	LicenseNotice           = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
+	FullLicenseNotice       = "\n\nCopyright 2026 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 )
 
 // EngineConfig holds configuration for the OpenAPI generation engine
@@ -134,6 +136,10 @@ type EngineConfig struct {
 	// MaxInstancesPerKey bounds copies of one callee within an instance scope.
 	// Zero uses DefaultMaxInstancesPerKey.
 	MaxInstancesPerKey int
+	// MaxNodesPerRoute bounds the nodes expanded below ONE route registration,
+	// so a deep handler cannot consume the allowance the undiscovered routes
+	// still need. Zero uses DefaultMaxNodesPerRoute.
+	MaxNodesPerRoute int
 
 	// Include/exclude filters
 	IncludeFiles                 []string
@@ -778,6 +784,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
 		MaxRecursionDepth:  e.config.MaxRecursionDepth,
 		MaxInstancesPerKey: e.config.MaxInstancesPerKey,
+		MaxNodesPerRoute:   e.config.MaxNodesPerRoute,
 	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
@@ -826,6 +833,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			// Louder than the tree's own stderr line: a truncated expansion means
 			// the spec is incomplete, which is a result, not a debug detail.
 			e.reportPhase(fmt.Sprintf("expansion truncated at the %d-node limit — the spec is incomplete", e.expansionStats.Limit), 0)
+		}
+		if n := e.expansionStats.RouteTruncations; n > 0 {
+			// Local, unlike the whole-walk truncation above: these routes are
+			// documented in less detail and no other route is affected (#264).
+			e.reportPhase(fmt.Sprintf("per-route limit (%d) truncated %d of %d route subtrees — those routes are less detailed (first at %s)",
+				e.expansionStats.RouteLimit, n, e.expansionStats.RoutesScoped, e.expansionStats.RouteFirstTruncated), 0)
 		}
 		if n := e.expansionStats.InstanceTruncations; n > 0 {
 			// The other, quieter shortfall, reported separately because it is a
