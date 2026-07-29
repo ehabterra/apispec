@@ -96,10 +96,6 @@ string_pool:
   - 'func() '
   - Container[T]
   - '[]string'
-  - generic/generic.go:21:9
-  - generic/generic.go:21:5
-  - len
-  - func([]T) int
   - '*Container'
   - "100"
   - generic/generic.go:30:2
@@ -388,7 +384,7 @@ packages:
               pkg: -1
               type: -1
               position: -1
-              resolved_type: 105
+              resolved_type: 101
               generic_type_name: -1
             signature_str: 50
             position: 49
@@ -1157,32 +1153,6 @@ packages:
           - T
 call_graph:
   - caller:
-      name: 58
-      pkg: 2
-      position: -1
-      recv_type: -1
-      scope: 15
-      signature_str: 66
-    callee:
-      name: 99
-      pkg: 2
-      position: 98
-      recv_type: -1
-      scope: 75
-      signature_str: 100
-    position: 98
-    args:
-      - kind: 0
-        name: 53
-        value: -1
-        raw: -1
-        pkg: 2
-        type: 54
-        position: 97
-        resolved_type: -1
-        generic_type_name: -1
-    callee_recv_var_name: generic.Container[T].Value
-  - caller:
       name: 76
       pkg: 2
       position: -1
@@ -1302,7 +1272,7 @@ call_graph:
       name: 9
       pkg: 2
       position: 77
-      recv_type: 101
+      recv_type: 97
       scope: 15
       signature_str: 78
     position: 77
@@ -1389,15 +1359,15 @@ call_graph:
     callee:
       name: 24
       pkg: 2
-      position: 103
-      recv_type: 101
+      position: 99
+      recv_type: 97
       scope: 15
-      signature_str: 104
-    position: 103
+      signature_str: 100
+    position: 99
     args:
       - kind: 56
         name: -1
-        value: 102
+        value: 98
         raw: -1
         pkg: -1
         type: -1
@@ -1408,7 +1378,7 @@ call_graph:
       value:
         kind: 56
         name: -1
-        value: 102
+        value: 98
         raw: -1
         pkg: -1
         type: -1
