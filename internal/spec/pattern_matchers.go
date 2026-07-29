@@ -143,7 +143,6 @@ func (r *RoutePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := r.contextProvider.GetString(edge.Callee.Name)
-	fqRecvType := fqOwner(r.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {
@@ -158,13 +157,9 @@ func (r *RoutePatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		}
 	}
 
-	// Check receiver type
-	if r.pattern.RecvTypeRegex != "" {
-		re, err := cachedRegex(r.pattern.RecvTypeRegex)
-		if err != nil || !re.MatchString(fqRecvType) {
-			return false
-		}
-	} else if r.pattern.RecvType != "" && r.pattern.RecvType != fqRecvType {
+	// Check receiver type. Both the recorded receiver and the one the call
+	// was written against are accepted — see recvForms (issue #260).
+	if !matchesRecvType(r.contextProvider, &edge.Callee, r.pattern.RecvType, r.pattern.RecvTypeRegex) {
 		return false
 	}
 
@@ -466,7 +461,6 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := m.contextProvider.GetString(edge.Callee.Name)
-	fqRecvType := fqOwner(m.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if m.pattern.CallRegex != "" && !m.matchPattern(m.pattern.CallRegex, callName) {
@@ -481,13 +475,9 @@ func (m *MountPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 		}
 	}
 
-	// Check receiver type
-	if m.pattern.RecvTypeRegex != "" {
-		re, err := cachedRegex(m.pattern.RecvTypeRegex)
-		if err != nil || !re.MatchString(fqRecvType) {
-			return false
-		}
-	} else if m.pattern.RecvType != "" && m.pattern.RecvType != fqRecvType {
+	// Check receiver type. Both the recorded receiver and the one the call
+	// was written against are accepted — see recvForms (issue #260).
+	if !matchesRecvType(m.contextProvider, &edge.Callee, m.pattern.RecvType, m.pattern.RecvTypeRegex) {
 		return false
 	}
 
@@ -617,7 +607,6 @@ func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) boo
 	}
 
 	callName := s.contextProvider.GetString(edge.Callee.Name)
-	fqRecvType := fqOwner(s.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	if s.pattern.CallRegex != "" && !s.matchPattern(s.pattern.CallRegex, callName) {
 		return false
@@ -630,12 +619,9 @@ func (s *SecurityPatternMatcherImpl) MatchEdge(edge *metadata.CallGraphEdge) boo
 		}
 	}
 
-	if s.pattern.RecvTypeRegex != "" {
-		re, err := cachedRegex(s.pattern.RecvTypeRegex)
-		if err != nil || !re.MatchString(fqRecvType) {
-			return false
-		}
-	} else if s.pattern.RecvType != "" && s.pattern.RecvType != fqRecvType {
+	// Check receiver type. Both the recorded receiver and the one the call
+	// was written against are accepted — see recvForms (issue #260).
+	if !matchesRecvType(s.contextProvider, &edge.Callee, s.pattern.RecvType, s.pattern.RecvTypeRegex) {
 		return false
 	}
 
@@ -766,7 +752,6 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 	}
 
 	callName := r.contextProvider.GetString(edge.Callee.Name)
-	fqRecvType := fqOwner(r.contextProvider, edge.Callee.Pkg, edge.Callee.RecvType)
 
 	// Check call regex
 	if r.pattern.CallRegex != "" && !r.matchPattern(r.pattern.CallRegex, callName) {
@@ -782,13 +767,9 @@ func (r *RequestPatternMatcherImpl) MatchNode(node TrackerNodeInterface) bool {
 
 	}
 
-	// Check receiver type
-	if r.pattern.RecvTypeRegex != "" {
-		re, err := cachedRegex(r.pattern.RecvTypeRegex)
-		if err != nil || !re.MatchString(fqRecvType) {
-			return false
-		}
-	} else if r.pattern.RecvType != "" && r.pattern.RecvType != fqRecvType {
+	// Check receiver type. Both the recorded receiver and the one the call
+	// was written against are accepted — see recvForms (issue #260).
+	if !matchesRecvType(r.contextProvider, &edge.Callee, r.pattern.RecvType, r.pattern.RecvTypeRegex) {
 		return false
 	}
 
