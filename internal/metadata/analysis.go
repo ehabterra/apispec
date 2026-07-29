@@ -169,6 +169,11 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 }
 
 // isTypeConversion checks if a CallExpr represents a type conversion rather than a function call
+// builtinFilterEnabled gates isBuiltinCall at its call site. Off because the fix
+// is correct and unaffordable until the node budget stops counting keys — see
+// the call site in metadata.go.
+const builtinFilterEnabled = false
+
 // isBuiltinCall reports whether a call goes to a Go builtin (make, len, append,
 // new, …) rather than to a declared function.
 //

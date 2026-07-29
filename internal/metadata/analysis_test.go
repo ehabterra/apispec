@@ -602,6 +602,13 @@ func caller() int      { return helper(1) }
 // belongs to no package, so recording one invents a function — `p.len` — that
 // nothing declares, which then joins the SCC condensation and every reach set.
 func TestBuiltinsAreNotRecordedAsCallees(t *testing.T) {
+	// The filter this asserts is gated off (builtinFilterEnabled): correct, and
+	// unaffordable while MaxNodesPerTree counts keys — builtin callees are cheap
+	// leaf keys, and removing them frees budget the walk spends expanding ~4x as
+	// many nodes (gitea: 12 paths -> 1, 3.0GB -> 6.7GB). Kept as a change-detector
+	// for the day the budget is scoped per route (#224).
+	t.Skip("blocked on #224: the filter is gated off until the node budget stops counting keys")
+
 	src := `package p
 
 func size(xs []int) int {
