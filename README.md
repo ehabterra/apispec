@@ -34,6 +34,7 @@
   - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Configuration](#configuration)
   - [Scoping a pattern to where the call is made](#scoping-a-pattern-to-where-the-call-is-made)
+  - [Resolving indirect calls (experimental)](#resolving-indirect-calls-experimental)
   - [Automatic wrapper detection](#automatic-wrapper-detection)
 - [Programmatic Usage](#programmatic-usage)
 - [Performance & Limits](#performance--limits)
@@ -780,6 +781,32 @@ Run with `--verbose` to see what it did:
 ```
 Entrypoints: 53 declared, 1 rooted (0 already reachable, 52 register no routes)
 ```
+
+### Resolving indirect calls (experimental)
+
+`--resolve-call-graph` builds an SSA + VTA call graph alongside the syntactic one
+and repoints each recorded call at the function that actually runs:
+
+- an **interface method with exactly one implementation** becomes that
+  implementation, so the concrete type's patterns and schemas apply;
+- a method reached **through embedding** is attributed to the type that declares
+  it, which is how a pattern scoped there matches a call written on the embedding
+  type.
+
+An interface with several implementations stays the interface — picking one would
+invent a concrete type your program may never use — and a difference the analysis
+cannot explain is left exactly as recorded.
+
+```
+$ apispec --dir . --resolve-call-graph --verbose
+Resolved call graph: 5860 call sites joined, 17 rewritten (17 interface, 0 promoted), 1 left ambiguous, 10 unexplained
+```
+
+It is **off by default** and stays that way for now: on a 3,000-file module it
+costs about +19% wall clock and **+46% peak memory** to hold the SSA program.
+Turn it on when a project answers through interfaces or embedded contexts and the
+spec is missing schemas because of it — on one such project it took the output
+from 1 component to 15.
 
 ### Automatic wrapper detection
 
