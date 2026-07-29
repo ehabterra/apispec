@@ -795,7 +795,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		tree = intspec.NewLazyTree(meta, limits,
 			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
 			intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
-				intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)))
+				intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)),
+			intspec.WithTerminalRouteMatcher(intspec.TerminalRouteMatcher(apispecConfig, meta)))
 		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
 	} else {
 		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose),

@@ -153,6 +153,11 @@ type LazyTree struct {
 	// routeMatch gates which entrypoints earn a root: only those whose subtree
 	// can reach a route registration.
 	routeMatch func(*metadata.CallGraphEdge) bool
+	// terminalRouteMatch matches only the calls that register ONE route. It is
+	// what opens a budget scope; routeMatch (which also matches mounts and
+	// groups) must not, or every route inside a group shares one allowance —
+	// see TerminalRouteMatcher.
+	terminalRouteMatch func(*metadata.CallGraphEdge) bool
 	// routeReach is routeMatch's transitive closure — the functions whose
 	// expansion leads to a route registration. Used to ORDER a node's callee
 	// children so the budget is spent on routing code first (issue #264); never
@@ -167,6 +172,10 @@ type LazyTree struct {
 	routeScopeNodes []int
 	// routeScopeKeys names the registration each id stands for, for reporting.
 	routeScopeKeys []string
+	// routeScopeCut marks scopes already counted as truncated, so the report
+	// counts ROUTES rather than blocked expansion attempts — a truncated scope is
+	// re-entered many times as the walk unwinds, which read as "58 of 6".
+	routeScopeCut []bool
 	// routeTruncations counts route subtrees cut short by their own budget, and
 	// routeFirstTruncated names the first. Unlike the whole-walk truncation this
 	// is LOCAL — the rest of the routes are unaffected — so it is reported
@@ -399,7 +408,7 @@ func (t *LazyTree) scopeOf(n *LazyNode) int {
 	if n == nil {
 		return 0
 	}
-	if n.routeScope != 0 || t.routeMatch == nil || n.edge == nil || !t.routeMatch(n.edge) {
+	if n.routeScope != 0 || t.terminalRouteMatch == nil || n.edge == nil || !t.terminalRouteMatch(n.edge) {
 		return n.routeScope
 	}
 	// First registration on this path: open a scope for it.
@@ -432,6 +441,13 @@ func (t *LazyTree) routeBudgetExhausted(scope int) bool {
 // warns once. The route's own key is named: unlike the whole-walk truncation,
 // this says exactly which endpoint is under-documented.
 func (t *LazyTree) noteRouteTruncation(scope int) {
+	for len(t.routeScopeCut) <= scope {
+		t.routeScopeCut = append(t.routeScopeCut, false)
+	}
+	if t.routeScopeCut[scope] {
+		return // already counted: one route, however often its subtree is re-entered
+	}
+	t.routeScopeCut[scope] = true
 	t.routeTruncations++
 	key := ""
 	if scope < len(t.routeScopeKeys) {
@@ -680,6 +696,14 @@ func WithEntrypoints(patterns []EntrypointPattern, routeMatch func(*metadata.Cal
 		t.routeMatch = routeMatch
 		t.logger = logger
 	}
+}
+
+// WithTerminalRouteMatcher supplies the predicate that decides which node opens a
+// per-route budget scope: a single route registration, never a mount or group
+// (issue #264). Without it no scope is opened and expansion is bounded only by
+// MaxNodesPerTree, as it was before.
+func WithTerminalRouteMatcher(match func(*metadata.CallGraphEdge) bool) LazyTreeOption {
+	return func(t *LazyTree) { t.terminalRouteMatch = match }
 }
 
 // addEntrypointRoots appends a root per qualifying entrypoint. Called from

@@ -166,6 +166,29 @@ func reachesMatch(meta *metadata.Metadata, match func(*metadata.CallGraphEdge) b
 // pattern's receiver instead. What it will not do is invent a root for a
 // subcommand that calls `cache.Get`.
 func RouteRegistrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(*metadata.CallGraphEdge) bool {
+	// Mounts count too: a subcommand whose only routing act is mounting a
+	// sub-router still leads to routes.
+	return registrationMatcher(cfg, meta, true)
+}
+
+// TerminalRouteMatcher matches only the calls that register ONE route — a verb
+// call — and not the mount or group calls that contain many.
+//
+// The distinction exists because the two questions are different. "Does this
+// subtree lead to a route?" must say yes for `r.Route("/api", …)`, or the whole
+// group is written off. "Is this node the route whose detail I am budgeting?"
+// must say NO for it, or every route inside the group shares one allowance and
+// the ones past it are never discovered.
+//
+// Measured: scoping the per-route budget on the mount-inclusive predicate took a
+// 246-route chi service down to 32 paths, the budget for a whole `Mux.Route`
+// group being spent inside its first few routes. That is the #224 mistake in a
+// new place — a limit applied to a group where it was meant to apply to a route.
+func TerminalRouteMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(*metadata.CallGraphEdge) bool {
+	return registrationMatcher(cfg, meta, false)
+}
+
+func registrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata, includeMounts bool) func(*metadata.CallGraphEdge) bool {
 	if cfg == nil || meta == nil {
 		return func(*metadata.CallGraphEdge) bool { return false }
 	}
@@ -176,11 +199,11 @@ func RouteRegistrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(
 			gates = append(gates, gate{p.CallRegex, p.RecvTypeRegex, p.RecvType})
 		}
 	}
-	// Mounts count too: a subcommand whose only routing act is mounting a
-	// sub-router still leads to routes.
-	for _, p := range cfg.Framework.MountPatterns {
-		if p.CallRegex != "" {
-			gates = append(gates, gate{p.CallRegex, p.RecvTypeRegex, p.RecvType})
+	if includeMounts {
+		for _, p := range cfg.Framework.MountPatterns {
+			if p.CallRegex != "" {
+				gates = append(gates, gate{p.CallRegex, p.RecvTypeRegex, p.RecvType})
+			}
 		}
 	}
 	if len(gates) == 0 {
