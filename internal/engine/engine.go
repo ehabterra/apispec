@@ -82,14 +82,18 @@ func (vl *VerboseLogger) Warnf(format string, args ...interface{}) {
 
 const (
 	// Default values for OpenAPI generation
-	DefaultOutputFile         = "openapi.json"
-	DefaultInputDir           = "."
-	DefaultTitle              = "Generated API"
-	DefaultAPIVersion         = "1.0.0"
-	DefaultContactName        = "Ehab"
-	DefaultContactURL         = "https://ehabterra.github.io/"
-	DefaultContactEmail       = "ehabterra@hotmail.com"
-	DefaultOpenAPIVersion     = "3.1.1"
+	DefaultOutputFile     = "openapi.json"
+	DefaultInputDir       = "."
+	DefaultTitle          = "Generated API"
+	DefaultAPIVersion     = "1.0.0"
+	DefaultContactName    = "Ehab"
+	DefaultContactURL     = "https://ehabterra.github.io/"
+	DefaultContactEmail   = "ehabterra@hotmail.com"
+	DefaultOpenAPIVersion = "3.1.1"
+	// DefaultMaxNodesPerTree bounds the distinct callee keys a tracker tree may
+	// expand — NOT the nodes it materialises, which is far larger (a 246-route
+	// service builds 208,394 nodes across 20,198 keys). The two are reported
+	// separately rather than one being made to mean the other; see issue #247.
 	DefaultMaxNodesPerTree    = 50000
 	DefaultMaxChildrenPerNode = 500
 	DefaultMaxArgsPerFunction = 100

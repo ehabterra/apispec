@@ -497,3 +497,45 @@ func contains(s, substr string) bool {
 				return false
 			}())))
 }
+
+// TestGetExpansionStatsReportsWorkNotJustBudget pins that a run can tell how much
+// the tree actually did, not only how much of its budget it spent. Reporting the
+// budgeted number alone made a run look an order of magnitude cheaper than it
+// was: a 246-route service builds 208,394 nodes across 20,198 distinct calls,
+// against a 50,000 budget that therefore never fires (issue #247).
+func TestGetExpansionStatsReportsWorkNotJustBudget(t *testing.T) {
+	cfg := DefaultEngineConfig()
+	cfg.InputDir = filepath.Join("..", "..", "testdata", "complex_chi_router")
+
+	eng := NewEngine(cfg)
+	if _, err := eng.GenerateOpenAPI(); err != nil {
+		t.Fatalf("GenerateOpenAPI: %v", err)
+	}
+
+	stats := eng.GetExpansionStats()
+	if stats.NodesBuilt == 0 {
+		t.Fatal("no calls expanded for a fixture with routes")
+	}
+	if stats.NodesMaterialized < stats.NodesBuilt {
+		t.Errorf("materialized %d nodes across %d distinct calls — one node per call is the floor",
+			stats.NodesMaterialized, stats.NodesBuilt)
+	}
+	if stats.Limit != DefaultMaxNodesPerTree {
+		t.Errorf("reported limit %d, want the default %d", stats.Limit, DefaultMaxNodesPerTree)
+	}
+	if stats.Truncated {
+		t.Errorf("a fixture truncated at the default budget (%d calls, %d nodes) — the default is meant to clear every fixture",
+			stats.NodesBuilt, stats.NodesMaterialized)
+	}
+
+	// The rest of the "what did this run do" surface, which the UI reads to
+	// explain a result and which nothing else exercises.
+	if entry := eng.GetEntrypointStats(); entry.Rooted > entry.Declared {
+		t.Errorf("rooted %d entrypoints out of %d declared", entry.Rooted, entry.Declared)
+	}
+	for _, w := range eng.GetDetectedWrappers() {
+		if w.RecvType == "" {
+			t.Error("a detected wrapper has no receiver type, so nothing could be scoped to it")
+		}
+	}
+}

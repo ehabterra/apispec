@@ -107,24 +107,18 @@ type LazyTree struct {
 	// value that was stored (CartAPIs(...) above).
 	producerArgs map[string][]string
 
-	// nodesBuilt does NOT count every LazyNode created — it counts distinct callee
-	// keys, because the increment sits behind a seenKeys check below. Measured on
-	// a 246-route service, the tree materialised 659,041 nodes while this read
-	// 20,198 against a 50,000 budget, so the limit never fired and no truncation
-	// was reported.
-	//
-	// That is not only a reporting problem, it makes the budget behave chaotically
-	// under unrelated changes: removing builtin callees from the graph (#248) took
-	// gitea from 12 paths to 1 at the default limit, because those cheap leaf keys
-	// had been soaking up budget that then funded deeper expansion elsewhere. Two
-	// correctness fixes are blocked behind it. See issue #247.
-	//
-	// Original comment: counts every LazyNode created. The per-path cycle guard
+	// nodesBuilt counts distinct callee keys — what MaxNodesPerTree bounds. It is
+	// NOT the number of nodes: see nodesMaterialized, and issue #247 for why the
+	// two are reported separately rather than one being made to mean the other. The per-path cycle guard
 	// bounds each path, but a dense cyclic graph still has exponentially many
 	// distinct acyclic paths — the same blow-up MaxNodesPerTree exists to
 	// stop in the eager tree. Once the budget is spent, expansion returns
 	// leaves.
 	nodesBuilt int
+
+	// nodesMaterialized counts every LazyNode created, which is the work the
+	// unfolding actually does. Reported, not budgeted (#247).
+	nodesMaterialized int
 
 	// instanceCount counts node copies per (instance scope, callee ID) —
 	// see DefaultMaxInstancesPerKey. A node is (edge, parent), so a callee reached
@@ -555,7 +549,12 @@ func (t *LazyTree) edgesFor(baseKey string) []*metadata.CallGraphEdge {
 // ExpansionStats reports how far expansion got, and whether it stopped early.
 func (t *LazyTree) ExpansionStats() ExpansionStats {
 	t.buildRelations()
-	return ExpansionStats{NodesBuilt: t.nodesBuilt, Limit: t.limits.MaxNodesPerTree, Truncated: t.truncated}
+	return ExpansionStats{
+		NodesBuilt:        t.nodesBuilt,
+		NodesMaterialized: t.nodesMaterialized,
+		Limit:             t.limits.MaxNodesPerTree,
+		Truncated:         t.truncated,
+	}
 }
 
 // EntrypointStats reports what the entrypoint gate decided during this tree's
@@ -762,12 +761,28 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			childCount++
 		}
 		scopeCounts[spec.key]++
+		// Two different quantities, deliberately kept apart (issue #247).
+		//
+		// nodesMaterialized is the WORK: one node per path a call is reached along,
+		// which is what costs time and memory. nodesBuilt is what the budget
+		// bounds — distinct callee keys — and the two differ by more than an order
+		// of magnitude: a 246-route service builds 208,394 nodes across 20,198
+		// keys.
+		//
+		// The budget stays on keys because switching it to nodes, though truthful,
+		// starves route discovery: a global budget is spent depth-first on whatever
+		// is expanded first, and on gitea that is modules/setting and modules/log.
+		// Measured, gitea documents 900 paths at a raised KEY budget and 1 path at
+		// a node budget of fifteen million. The unit is the real problem and it is
+		// #224; what this counter can honestly do meanwhile is report the work
+		// instead of hiding it.
+		n.tree.nodesMaterialized++
 		if n.tree.seenKeys == nil {
 			n.tree.seenKeys = map[string]bool{}
 		}
 		if !n.tree.seenKeys[spec.key] {
 			n.tree.seenKeys[spec.key] = true
-			n.tree.nodesBuilt++ // budget counts globally distinct keys, like the eager shared-node cap
+			n.tree.nodesBuilt++
 		}
 		n.children = append(n.children, child)
 	}

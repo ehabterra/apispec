@@ -205,7 +205,14 @@ func RouteRegistrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(
 // limit and 862 with the budget raised — and the only sign was a line on stderr
 // (issue #233).
 type ExpansionStats struct {
+	// NodesBuilt is the distinct callee keys expanded — what Limit bounds.
 	NodesBuilt int
-	Limit      int
-	Truncated  bool
+	// NodesMaterialized is the nodes actually created, which is the work the
+	// unfolding does and is typically an order of magnitude larger: a 246-route
+	// service builds 208,394 nodes across 20,198 keys. Reported rather than
+	// budgeted, because a global node budget starves route discovery — see
+	// issue #247, and #224 for the unit problem underneath.
+	NodesMaterialized int
+	Limit             int
+	Truncated         bool
 }
