@@ -130,6 +130,13 @@ func applyResolvedCallees(meta *metadata.Metadata, byPosition map[string][]strin
 // A fresh Call is built rather than the fields patched in place because Call
 // memoizes its own identifiers: mutating Pkg or RecvType behind a populated
 // baseIDCache would leave the edge answering with its old identity forever.
+//
+// The receiver being replaced is CARRIED, not discarded. A pattern config is
+// scoped to interface names, and resolving is precisely the act of replacing
+// those names with concrete ones — so a rewrite that dropped the written
+// receiver would silently stop every interface-scoped pattern from matching and
+// every interface-scoped exclusion from excluding (issue #260). Both facts are
+// true of the call and matching accepts either; see recvForms.
 func rewriteCallee(meta *metadata.Metadata, callee *metadata.Call, target string) bool {
 	pkg, recvType, name := splitTarget(target)
 	if pkg == "" || name == "" {
@@ -147,6 +154,13 @@ func rewriteCallee(meta *metadata.Metadata, callee *metadata.Call, target string
 	}
 	if recvType != "" {
 		replacement.RecvType = meta.StringPool.Get(recvType)
+	}
+	// Only when it actually differs: recording an identical second form would
+	// make every receiver test compare the same string twice.
+	if written := callee.RecvType; written >= 0 && written != replacement.RecvType {
+		replacement.SetWrittenRecvType(written)
+	} else {
+		replacement.SetWrittenRecvType(callee.WrittenRecvType())
 	}
 	*callee = replacement
 	return true

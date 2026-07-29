@@ -165,3 +165,72 @@ func TestApplyResolvedCalleesClassRules(t *testing.T) {
 		}
 	}
 }
+
+// TestRewriteCalleeCarriesTheWrittenReceiver is the change-detector for the
+// second half of issue #260.
+//
+// Resolving is the act of replacing the interface a call names with the concrete
+// type that runs. The pattern configs are scoped to those interface names, so a
+// rewrite that DROPPED the written receiver would silently stop every
+// interface-scoped pattern from matching and every interface-scoped exclusion
+// from excluding — the defect being fixed, arriving through the rewrite rather
+// than through the recorder.
+func TestRewriteCalleeCarriesTheWrittenReceiver(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+
+	callee := metadata.Call{
+		Meta:     meta,
+		Name:     pool.Get("Header"),
+		Pkg:      pool.Get("net/http"),
+		RecvType: pool.Get("ResponseWriter"),
+	}
+	if !rewriteCallee(meta, &callee, "net/http.*recorder.Header") {
+		t.Fatal("rewriteCallee refused a well-formed target")
+	}
+
+	if got := pool.GetString(callee.RecvType); got != "*recorder" {
+		t.Errorf("recorded receiver = %q, want the resolved concrete type", got)
+	}
+	written := callee.WrittenRecvType()
+	if written < 0 {
+		t.Fatal("the written receiver was dropped; every pattern scoped to net/http.ResponseWriter now fails to match")
+	}
+	if got := pool.GetString(written); got != "ResponseWriter" {
+		t.Errorf("written receiver = %q, want the interface the call names in source", got)
+	}
+
+	// End of the chain: both forms must reach the matchers.
+	forms := recvForms(NewContextProvider(meta), &callee)
+	if len(forms) != 2 || forms[0] != "net/http.*recorder" || forms[1] != "net/http.ResponseWriter" {
+		t.Errorf("recvForms = %v, want the concrete type then the written interface", forms)
+	}
+}
+
+// TestRewriteCalleeDoesNotInventASecondForm keeps the carry honest: a rewrite
+// that does not change the receiver has nothing to remember, and recording an
+// identical second form would make every receiver test compare the same string
+// twice.
+func TestRewriteCalleeDoesNotInventASecondForm(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+
+	// Same receiver, different package — an interface resolved to an
+	// implementation that happens to share the type name.
+	callee := metadata.Call{
+		Meta:     meta,
+		Name:     pool.Get("List"),
+		Pkg:      pool.Get("example.com/app"),
+		RecvType: pool.Get("Storage"),
+	}
+	if !rewriteCallee(meta, &callee, "example.com/drivers.Storage.List") {
+		t.Fatal("rewriteCallee refused a well-formed target")
+	}
+	if callee.WrittenRecvType() >= 0 {
+		t.Errorf("recorded a written receiver %q identical to the resolved one",
+			pool.GetString(callee.WrittenRecvType()))
+	}
+	if forms := recvForms(NewContextProvider(meta), &callee); len(forms) != 1 {
+		t.Errorf("recvForms = %v, want one form", forms)
+	}
+}
