@@ -202,7 +202,7 @@ func TestOrderTowardRoutesLeavesUniformPlansAlone(t *testing.T) {
 // documented in less detail.
 func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
 	m := closureMeta(t)
-	tree := &LazyTree{meta: m, routeMatch: registersRoute(m)}
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
 
 	// A node that is not a registration stays in the wiring scope.
 	wiring := &LazyNode{tree: tree, key: "example.com/app.main"}
@@ -241,20 +241,66 @@ func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
 // cannot tell you which endpoint is under-documented.
 func TestRouteTruncationNamesTheRoute(t *testing.T) {
 	m := closureMeta(t)
-	tree := &LazyTree{meta: m, routeMatch: registersRoute(m)}
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
 	regEdge := &m.CallGraph[2]
 	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: regEdge})
 
 	tree.noteRouteTruncation(scope)
-	tree.noteRouteTruncation(scope)
 
-	if tree.routeTruncations != 2 {
-		t.Errorf("counted %d route truncations, want 2", tree.routeTruncations)
+	if tree.routeTruncations != 1 {
+		t.Errorf("counted %d route truncations, want 1", tree.routeTruncations)
 	}
 	if tree.routeFirstTruncated != "GET /things" {
 		t.Errorf("first truncated route = %q, want the registration's key", tree.routeFirstTruncated)
 	}
 	if !tree.routeWarned {
 		t.Error("a truncated route produced no warning")
+	}
+}
+
+// TestGroupCallDoesNotOpenARouteScope is the regression guard for the worst bug
+// this work produced, caught on a real 246-route chi service.
+//
+// The reach predicate deliberately matches mounts and groups too — "does this
+// subtree lead to a route?" must say yes for `r.Route("/api", …)`, or the whole
+// group is written off. Using that same predicate to open a BUDGET scope means
+// every route inside the group shares one allowance, and the routes past the
+// first few are never discovered at all: 246 paths became 32.
+//
+// So scoping uses a terminal-route predicate, and a group must not open a scope.
+func TestGroupCallDoesNotOpenARouteScope(t *testing.T) {
+	m := closureMeta(t)
+	// routeMatch matches the group call as well (it is the reach predicate);
+	// terminalRouteMatch matches only the verb call.
+	groupOrRoute := func(edge *metadata.CallGraphEdge) bool {
+		name := m.StringPool.GetString(edge.Callee.Name)
+		return name == "Get" || name == "Route"
+	}
+	tree := &LazyTree{meta: m, routeMatch: groupOrRoute, terminalRouteMatch: registersRoute(m)}
+
+	groupEdge := &m.CallGraph[1] // chi.Router.Route — a group
+	if got := tree.scopeOf(&LazyNode{tree: tree, key: "group", edge: groupEdge}); got != 0 {
+		t.Errorf("a group call opened budget scope %d; every route inside it would then share one allowance (#264)", got)
+	}
+
+	routeEdge := &m.CallGraph[2] // chi.Router.Get — one route
+	if got := tree.scopeOf(&LazyNode{tree: tree, key: "route", edge: routeEdge}); got == 0 {
+		t.Error("a terminal route registration did not open its own budget scope")
+	}
+}
+
+// TestRouteTruncationCountsRoutesNotAttempts pins that the report counts routes.
+// A truncated subtree is re-entered many times as the walk unwinds, which once
+// read as "truncated 58 of 6 route subtrees".
+func TestRouteTruncationCountsRoutesNotAttempts(t *testing.T) {
+	m := closureMeta(t)
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
+	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: &m.CallGraph[2]})
+
+	for i := 0; i < 20; i++ {
+		tree.noteRouteTruncation(scope)
+	}
+	if tree.routeTruncations != 1 {
+		t.Errorf("counted %d truncations for one route re-entered 20 times, want 1", tree.routeTruncations)
 	}
 }
