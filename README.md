@@ -808,6 +808,9 @@ Turn it on when a project answers through interfaces or embedded contexts and th
 spec is missing schemas because of it — on one such project it took the output
 from 1 component to 15.
 
+In `apispecui` the same option is the **Resolve indirect calls (experimental)**
+checkbox under the analysis engine, and the choice is remembered between runs.
+
 ### Automatic wrapper detection
 
 Plenty of projects do not call the framework directly. They put their own router in front of it, and answer through their own context:

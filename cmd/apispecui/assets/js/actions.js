@@ -251,6 +251,7 @@ function fullGenerateRequest() {
     overrides: c.overrides,
     frameworkConfig: s.frameworkConfig || undefined,
     legacyTracker: !!s.legacyTracker,
+    resolveCallGraph: !!s.resolveCallGraph,
     limits: s.limits || {},
   };
 }

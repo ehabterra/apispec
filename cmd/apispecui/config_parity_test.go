@@ -127,3 +127,45 @@ func jsonFieldName(f reflect.StructField) string {
 	}
 	return tag
 }
+
+// TestGenerateRequestOptionsReachTheUI is the same guard as the config editor's,
+// one level out: an analysis option the server accepts but the UI never sends is
+// invisible to a user, which is how --resolve-call-graph shipped in the first
+// place (CLI only, discoverable through --help alone).
+//
+// It checks the option is wired at both ends — the request struct declares it and
+// the browser sends it — not that it behaves correctly; that is the engine's
+// tests. Its job is to fail when the next option is added on one side only.
+func TestGenerateRequestOptionsReachTheUI(t *testing.T) {
+	actions, err := os.ReadFile("assets/js/actions.js")
+	if err != nil {
+		t.Fatalf("read actions.js: %v", err)
+	}
+	store, err := os.ReadFile("assets/js/store.js")
+	if err != nil {
+		t.Fatalf("read store.js: %v", err)
+	}
+
+	// Analysis options the UI is expected to offer, by their JSON name.
+	options := []string{"legacyTracker", "resolveCallGraph"}
+
+	typ := reflect.TypeOf(GenerateRequest{})
+	declared := map[string]bool{}
+	for i := 0; i < typ.NumField(); i++ {
+		if name := jsonFieldName(typ.Field(i)); name != "" {
+			declared[name] = true
+		}
+	}
+
+	for _, option := range options {
+		if !declared[option] {
+			t.Errorf("GenerateRequest has no %q field; the UI would send an option the server ignores", option)
+		}
+		if !strings.Contains(string(actions), option) {
+			t.Errorf("%q is never sent by the browser — the server accepts it and no user can reach it", option)
+		}
+		if !strings.Contains(string(store), option) {
+			t.Errorf("%q has no state in the store, so it cannot be toggled or remembered", option)
+		}
+	}
+}
