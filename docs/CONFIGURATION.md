@@ -380,7 +380,7 @@ as independent knobs.
 
 `--verbose` reports what it changed:
 
-```
+```text
 Resolved call graph: 69230 call sites joined, 7370 rewritten (2880 interface, 4490 promoted), 1570 left ambiguous, 1230 unexplained
 ```
 

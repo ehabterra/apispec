@@ -257,11 +257,12 @@ function Onboarding({ s, onGenerate, onBrowse }) {
               <input
                 type="checkbox"
                 checked=${!!s.resolveCallGraph}
+                disabled=${s.generating}
                 onChange=${(e) => setState({ resolveCallGraph: e.target.checked })}
               />
               <span>Resolve indirect calls (experimental)</span>
               <${Info}
-                text="Builds an SSA+VTA call graph alongside the syntactic one and points each call at the function that actually runs: an interface method with exactly one implementation becomes that implementation, and a method reached through embedding is attributed to the type that declares it. An interface with several implementations is left as the interface — picking one would invent a concrete type your program may never use. Costs roughly +19% time and +46% memory on a large module, so turn it on when your handlers answer through interfaces or an embedded context type and schemas are missing."
+                text="Builds an SSA+VTA call graph alongside the syntactic one and points each call at the function that actually runs: an interface method with exactly one implementation becomes that implementation, and a method reached through embedding is attributed to the type that declares it. An interface with several implementations is left as the interface — picking one would invent a concrete type your program may never use. Cost grows with the node budget rather than being a flat percentage: on a 3,000-file project the mapping stage goes 1m30s to 2m56s at a 100k node budget, because resolution makes more of the program analysable. Turn it on when your handlers answer through interfaces or an embedded context type and schemas are missing."
               />
             </label>
           </div>

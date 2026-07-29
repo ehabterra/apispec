@@ -50,14 +50,14 @@ func (s ResolvedCalleeStats) Line() string {
 //     patterns and schemas apply (2,880 sites on gitea);
 //   - a method reached through embedding, rewritten to the type that declares it,
 //     which is how a pattern scoped to the declaring type matches a call written
-//     on the embedding one (4,492 sites on gitea — the shape #236 had to emulate
+//     on the embedding one (4,490 sites on gitea — the shape #236 had to emulate
 //     by widening receiver regexes by hand).
 //
 // Two are deliberately NOT acted on. An interface with several implementations
 // stays as the interface, because choosing one would invent a concrete type the
 // program may never use (golden rule #7). A difference no relation explains is a
 // join that landed on the wrong call, and acting on it would corrupt the graph
-// (1,240 sites on gitea — 12%, far too many to wave through).
+// (1,230 sites on gitea — 12%, far too many to wave through).
 //
 // The edge's arguments, assignments and chain links are untouched: the resolved
 // graph is the authority on WHICH function a site calls, and metadata remains the

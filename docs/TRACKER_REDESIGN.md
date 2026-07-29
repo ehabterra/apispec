@@ -543,10 +543,12 @@ next.
     gitea. What does not join is expected: metadata records calls into
     dependencies whose bodies were never loaded, and VTA drops calls it proves
     unreachable.
-  - **Disagreements are classified before being acted on.** Of gitea's 10,182:
-    4,492 promoted-through-embedding, 2,880 interface->concrete (72% actionable),
-    1,570 ambiguous and 1,240 unexplained (28% that must NOT be acted on — an
-    unexplained difference is a join that landed on the wrong call).
+  - **Disagreements are classified before being acted on.** Of gitea's 10,170
+    (all four counts from one `--resolve-call-graph --verbose` run, so they add
+    up): 4,490 promoted-through-embedding, 2,880 interface->concrete (72%
+    actionable), 1,570 ambiguous and 1,230 unexplained (28% that must NOT be
+    acted on — an unexplained difference is a join that landed on the wrong
+    call).
   - **Cost:** +12% metadata stage on a 246-route service, +15% on gitea (5.6s on
     37.6s). Whole-run on gitea at default limits: 46s -> 55s.
   - **The default stays off, on memory.** Peak RSS on gitea goes 3.15GB -> 4.62GB
