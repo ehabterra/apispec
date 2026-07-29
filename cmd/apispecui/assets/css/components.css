@@ -1585,3 +1585,18 @@ h3 + .info {
 .disp-row:first-child {
   border-top: 0;
 }
+
+/* Indirect-call resolution toggle in the top bar. It sits next to the engine
+   selector because it is the same kind of choice — how the next generation
+   analyses the project — and it has to be reachable AFTER a generation, which
+   the start panel is not. */
+.topbar .resolve-toggle {
+  padding: 3px 8px;
+  font-size: var(--fs-sm);
+  height: auto;
+  white-space: nowrap;
+}
+.topbar .resolve-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
