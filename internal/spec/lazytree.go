@@ -153,6 +153,12 @@ type LazyTree struct {
 	// routeMatch gates which entrypoints earn a root: only those whose subtree
 	// can reach a route registration.
 	routeMatch func(*metadata.CallGraphEdge) bool
+	// routeReach is routeMatch's transitive closure — the functions whose
+	// expansion leads to a route registration. Used to ORDER a node's callee
+	// children so the budget is spent on routing code first (issue #264); never
+	// to drop any. Built once, on first use.
+	routeReach     map[string]bool
+	routeReachOnce bool
 	// logger reports how many entrypoints were rooted vs skipped.
 	logger metadata.VerboseLogger
 
@@ -288,6 +294,62 @@ func scopeLabel(scope string) string {
 		return "<router wiring>"
 	}
 	return scope
+}
+
+// leadsToRoute reports whether expanding a callee key can reach a route
+// registration. Unknown answers "yes": this orders work, and a wrong "no" would
+// push real routing code behind everything else.
+func (t *LazyTree) leadsToRoute(key string) bool {
+	if t.routeMatch == nil {
+		return true
+	}
+	if !t.routeReachOnce {
+		t.routeReachOnce = true
+		t.routeReach = routeReachSet(t.meta, t.routeMatch)
+	}
+	if t.routeReach == nil {
+		return true
+	}
+	return t.routeReach[metadata.StripToBase(key)]
+}
+
+// orderTowardRoutes moves the callee children that lead to a route registration
+// ahead of those that do not, leaving each group's relative order alone.
+//
+// This is the whole of issue #264 at the tree level. The node budget is one
+// allowance for the entire walk, and the extractor's traversal is depth-first:
+// whatever is expanded first spends it. On a ~900-route project that was
+// `modules/setting` and `modules/log`, and the run documented 12 paths before
+// truncating — not because routing code is expensive, but because the budget was
+// gone before the walk reached it.
+//
+// Ordering rather than pruning is the safe half of that fix. Nothing is dropped,
+// so a subtree the reach set misses — and it will miss some, since reachability
+// through data flow is undecidable in general — is merely expanded later. Pruning
+// was tried and reverted: it deleted 124 of 312 operations.
+//
+// ARGUMENT children are deliberately left in place at the front. A route group's
+// closure is an argument, not a callee, and it is the single most route-dense
+// child a node can have; reordering around it could only hurt.
+func (t *LazyTree) orderTowardRoutes(plan []childSpec, from int) {
+	if t.routeMatch == nil || from >= len(plan) {
+		return
+	}
+	seg := plan[from:]
+	leading := make([]childSpec, 0, len(seg))
+	trailing := make([]childSpec, 0, len(seg))
+	for _, spec := range seg {
+		if t.leadsToRoute(spec.key) {
+			leading = append(leading, spec)
+		} else {
+			trailing = append(trailing, spec)
+		}
+	}
+	if len(leading) == 0 || len(trailing) == 0 {
+		return // nothing to reorder; keep the slice untouched
+	}
+	copy(seg, leading)
+	copy(seg[len(leading):], trailing)
 }
 
 // budgetExhausted reports whether the cumulative node budget is spent.
@@ -947,6 +1009,9 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	}
 
 	// Callee children: the function's own calls, then relation-derived ones.
+	// calleeStart marks where they begin, so orderTowardRoutes can reorder them
+	// without disturbing the argument children ahead of them (issue #264).
+	calleeStart := len(plan)
 	added := map[string]bool{}
 	appendCalleeOpts := func(edge *metadata.CallGraphEdge, chainParented, genericFilter bool) {
 		calleeID := strings.TrimPrefix(edge.Callee.ID(), "*")
@@ -1040,6 +1105,9 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	for _, edge := range t.receiverChildren[n.key] {
 		appendCallee(edge, false)
 	}
+
+	// Spend the budget on routing code first — see orderTowardRoutes.
+	t.orderTowardRoutes(plan, calleeStart)
 	return plan
 }
 
