@@ -138,6 +138,20 @@ type ExpansionInfo struct {
 	NodesMaterialized int  `json:"nodesMaterialized,omitempty"`
 	Limit             int  `json:"limit"`
 	Truncated         bool `json:"truncated"`
+
+	// InstanceTruncations is the SECOND way expansion can come up short, and the
+	// one that used to be silent: copies refused by the per-scope instance cap.
+	// A starved response body from that cap is indistinguishable, in the spec,
+	// from a type the mapper could not resolve — so it is reported here even
+	// when the node budget itself was never reached (issue #224).
+	//
+	// InstanceFirstScope is the diagnostic that matters: a handler scope means
+	// the cap bounded a deep diamond, which is its job; a scope spanning several
+	// routes means one route's expansion ate another's budget.
+	InstanceTruncations int    `json:"instanceTruncations,omitempty"`
+	InstanceLimit       int    `json:"instanceLimit,omitempty"`
+	InstanceFirstScope  string `json:"instanceFirstScope,omitempty"`
+	InstanceFirstKey    string `json:"instanceFirstKey,omitempty"`
 }
 
 // AnalysisInfo describes HOW the spec was produced rather than what is in it.

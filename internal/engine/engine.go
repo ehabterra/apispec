@@ -827,6 +827,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			// the spec is incomplete, which is a result, not a debug detail.
 			e.reportPhase(fmt.Sprintf("expansion truncated at the %d-node limit — the spec is incomplete", e.expansionStats.Limit), 0)
 		}
+		if n := e.expansionStats.InstanceTruncations; n > 0 {
+			// The other, quieter shortfall, reported separately because it is a
+			// different claim: the walk may have finished the node budget fine and
+			// still dropped call copies, which is how a response body goes missing
+			// with nothing in the output to say so (issue #224). The scope is named
+			// because it is what tells a bounded diamond from a starved route.
+			e.reportPhase(fmt.Sprintf("instance cap (%d) dropped %d call copies — first: %s in scope %s",
+				e.expansionStats.InstanceLimit, n, e.expansionStats.InstanceFirstKey, e.expansionStats.InstanceFirstScope), 0)
+		}
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 

@@ -209,3 +209,43 @@ func TestBudgetCountsKeysWhileStatsReportWork(t *testing.T) {
 			"or the counters are measuring the same thing and the distinction is lost", stats.NodesBuilt)
 	}
 }
+
+// TestInstanceTruncationIsRecordedAndNamed pins the reporting contract for the
+// instance cap: it counts every copy it refuses, remembers the FIRST one, and
+// warns once rather than per drop.
+//
+// The count alone is not actionable — a bounded diamond inside one handler and a
+// route starved by a scope it shares with other routes produce the same number.
+// The scope is what separates them, so it is recorded, and the empty scope (the
+// router wiring, above any argument node) is rendered rather than left blank
+// where it would read as missing data (issue #224).
+func TestInstanceTruncationIsRecordedAndNamed(t *testing.T) {
+	tree := &LazyTree{limits: metadata.TrackerLimits{MaxInstancesPerKey: 3}}
+
+	tree.noteInstanceTruncation("pkg.handler", "pkg.helper@a.go:1:1")
+	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:2:1")
+
+	if tree.instanceTruncations != 2 {
+		t.Errorf("counted %d truncations, want 2", tree.instanceTruncations)
+	}
+	if tree.instanceFirstScope != "pkg.handler" || tree.instanceFirstKey != "pkg.helper@a.go:1:1" {
+		t.Errorf("first truncation recorded as (%q, %q), want the FIRST one",
+			tree.instanceFirstScope, tree.instanceFirstKey)
+	}
+	if !tree.instanceWarned {
+		t.Error("the cap fired without warning; a silent truncation is the defect this fixes")
+	}
+
+	// ExpansionStats' propagation of these is asserted end to end by
+	// TestGroupClosureInstanceCapIsReported, which has a real tree; calling it
+	// here would only exercise relation-building.
+}
+
+func TestScopeLabelRendersTheWiringLevel(t *testing.T) {
+	if got := scopeLabel(""); got != "<router wiring>" {
+		t.Errorf("scopeLabel(\"\") = %q — an empty scope is the wiring level, not missing data", got)
+	}
+	if got := scopeLabel("pkg.handler"); got != "pkg.handler" {
+		t.Errorf("scopeLabel(%q) = %q, want it unchanged", "pkg.handler", got)
+	}
+}

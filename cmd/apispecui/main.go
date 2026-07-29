@@ -1604,12 +1604,19 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 // detected one, which buildAPISpecConfig has already filled in).
 func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats, expansion spec.ExpansionStats) insight.AnalysisInfo {
 	info := insight.AnalysisInfo{Frameworks: detected, Primary: primary}
-	if expansion.Truncated {
+	// Either shortfall is worth reporting, and they are independent: the
+	// instance cap can starve response bodies on a run whose node budget was
+	// never reached (issue #224).
+	if expansion.Truncated || expansion.InstanceTruncations > 0 {
 		info.Expansion = &insight.ExpansionInfo{
-			NodesBuilt:        expansion.NodesBuilt,
-			NodesMaterialized: expansion.NodesMaterialized,
-			Limit:             expansion.Limit,
-			Truncated:         true,
+			NodesBuilt:          expansion.NodesBuilt,
+			NodesMaterialized:   expansion.NodesMaterialized,
+			Limit:               expansion.Limit,
+			Truncated:           expansion.Truncated,
+			InstanceTruncations: expansion.InstanceTruncations,
+			InstanceLimit:       expansion.InstanceLimit,
+			InstanceFirstScope:  expansion.InstanceFirstScope,
+			InstanceFirstKey:    expansion.InstanceFirstKey,
 		}
 	}
 	if lazy {
