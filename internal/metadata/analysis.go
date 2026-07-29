@@ -291,7 +291,7 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		// long before the routes are, taking a 100k-node run from 2m06 to over ten
 		// minutes and the default-limit output from 12 paths to 1. It goes back in
 		// when expansion is bounded by what the spec asks for rather than by a node
-		// count (issues #247, #224, TRACKER_REDESIGN §5).
+		// count (issue #264, TRACKER_REDESIGN §5).
 		if calleeSelectionEnabled {
 			if name, pkg, recv, ok := calleeFromSelection(x, fileToInfo[file]); ok {
 				return name, pkg, recv

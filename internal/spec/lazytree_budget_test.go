@@ -174,7 +174,7 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 // The budget deliberately stays on keys. Switching it to nodes is truthful and
 // starves route discovery: a global budget is spent depth-first on whatever
 // expands first, and gitea documents 900 paths at a raised key budget against 1
-// path at a node budget of fifteen million. The unit is the real problem (#224).
+// path at a node budget of fifteen million. The unit is the real problem (#264).
 func TestBudgetCountsKeysWhileStatsReportWork(t *testing.T) {
 	// A diamond: several callers reach one shared call site, so that site is
 	// materialised once per path while remaining a single key.

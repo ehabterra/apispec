@@ -1608,7 +1608,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	// as many nodes. Measured on gitea: mapping 10s -> 37s, peak RSS 3.0GB ->
 	// 6.7GB, allocation 5.8GB -> 10.1GB, and the documented output falls from 12
 	// paths to 1. It goes back in when the budget is scoped to the route being
-	// resolved rather than to the whole walk (#224).
+	// resolved rather than to the whole walk (#264).
 	if builtinFilterEnabled && isBuiltinCall(call, info) {
 		return
 	}

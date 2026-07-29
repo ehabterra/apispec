@@ -211,7 +211,7 @@ type ExpansionStats struct {
 	// unfolding does and is typically an order of magnitude larger: a 246-route
 	// service builds 208,394 nodes across 20,198 keys. Reported rather than
 	// budgeted, because a global node budget starves route discovery — see
-	// issue #247, and #224 for the unit problem underneath.
+	// issue #247, and #264 for the unit problem underneath.
 	NodesMaterialized int
 	Limit             int
 	Truncated         bool

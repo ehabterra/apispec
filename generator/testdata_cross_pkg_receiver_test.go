@@ -118,8 +118,8 @@ func TestCrossPkgReceiverIsRecordedWithItsReceiver(t *testing.T) {
 	// correct and unaffordable, taking a 100k-node gitea run from 2m06 to over ten
 	// minutes because it makes far more code reachable than the node budget can
 	// fund. Kept as a change-detector so the day the budget stops counting keys
-	// (#247) and the gate is opened, this passes and proves it.
-	t.Skip("blocked on #247: the fix is gated off until expansion is bounded by what the spec asks for")
+	// (#264) and the gate is opened, this passes and proves it.
+	t.Skip("blocked on #264: the fix is gated off until expansion is bounded by what the spec asks for")
 
 	cfg := engine.DefaultEngineConfig()
 	cfg.InputDir = filepath.Join("..", "testdata", "cross_pkg_receiver")
