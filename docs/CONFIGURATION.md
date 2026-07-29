@@ -361,10 +361,22 @@ Left alone on purpose: an interface with several implementations (choosing one
 would invent a concrete type the program may never use), and any difference the
 analysis cannot explain.
 
-Cost, measured on a 3,000-file module: **+19% wall clock, +46% peak memory** —
-which is why it is off by default. Use it when a project answers through
-interfaces or an embedded context type and the spec is missing schemas as a
-result.
+Cost is **not** a flat percentage: it scales with how much the tracker is allowed
+to expand, because resolution makes more of the program analysable. Measured on a
+3,000-file module:
+
+| `--max-nodes` | mapping stage off | mapping stage on | components off / on |
+|---|---|---|---|
+| 50,000 (default) | 10s | 11s | 1 / 15 |
+| 100,000 | 1m30s | 2m56s | 41 / 87 |
+
+Building SSA and running VTA is ~6s of that; the rest is the extra program that
+becomes reachable once calls point at real function bodies. Peak memory is +46%
+for the SSA program itself.
+
+So: expect roughly **double the mapping stage** on a large project, and treat a
+raised `--max-nodes` and this flag as competing for the same budget rather than
+as independent knobs.
 
 `--verbose` reports what it changed:
 
