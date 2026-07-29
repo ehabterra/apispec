@@ -257,15 +257,4 @@ type ExpansionStats struct {
 	InstanceLimit       int
 	InstanceFirstScope  string
 	InstanceFirstKey    string
-
-	// RouteTruncations counts route subtrees cut short by their OWN budget, and
-	// RouteFirstTruncated names the first. This shortfall is local: the route is
-	// documented in less detail and no other route is affected, which is the
-	// whole point of splitting the budget (issue #264). RoutesScoped is how many
-	// registrations got their own allowance, so the two numbers can be read
-	// against each other.
-	RouteTruncations    int
-	RouteLimit          int
-	RouteFirstTruncated string
-	RoutesScoped        int
 }
