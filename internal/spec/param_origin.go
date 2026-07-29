@@ -47,9 +47,7 @@ func receiverOriginTypes(cp ContextProvider, edge *metadata.CallGraphEdge) []str
 	// invoked on: for `c.Response().Header().Get(k)` those are `*echo.Response`
 	// (Header's receiver) and `echo.Context` (Response's receiver).
 	for parent, depth := edge.ChainParent, 0; parent != nil && depth < receiverOriginDepth; parent, depth = parent.ChainParent, depth+1 {
-		if fq := fqCalleeRecvType(cp, parent); fq != "" {
-			types = append(types, fq)
-		}
+		types = append(types, fqCalleeRecvTypes(cp, parent)...)
 	}
 
 	// A variable receiver (`wh := w.Header(); wh.Get(k)`) has no chain parent —
@@ -67,17 +65,17 @@ func receiverOriginTypes(cp ContextProvider, edge *metadata.CallGraphEdge) []str
 	return types
 }
 
-// fqCalleeRecvType renders an edge's callee receiver the way the pattern
+// fqCalleeRecvTypes renders an edge's callee receiver the way the pattern
 // matchers do (`pkg` + `.` + `RecvType`), so one regex form works for both.
-func fqCalleeRecvType(cp ContextProvider, edge *metadata.CallGraphEdge) string {
-	recvType := cp.GetString(edge.Callee.RecvType)
-	if recvType == "" {
-		return ""
-	}
-	if pkg := cp.GetString(edge.Callee.Pkg); pkg != "" {
-		return pkg + "." + recvType
-	}
-	return recvType
+//
+// It returns every form the receiver legitimately has: the recorded one and,
+// when a resolved call graph replaced it, the one the call was written against.
+// An origin exclusion is scoped to an INTERFACE — `net/http.ResponseWriter` is
+// what `w.Header()` reads as in source — and resolving that call to the concrete
+// writer the program uses would otherwise make the exclusion match nothing, so a
+// response header would be documented as a request parameter (issue #260).
+func fqCalleeRecvTypes(cp ContextProvider, edge *metadata.CallGraphEdge) []string {
+	return recvForms(cp, &edge.Callee)
 }
 
 // argOriginTypes collects the types down an expression's spine, nearest first:
