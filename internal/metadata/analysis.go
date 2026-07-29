@@ -169,6 +169,31 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 }
 
 // isTypeConversion checks if a CallExpr represents a type conversion rather than a function call
+// isBuiltinCall reports whether a call goes to a Go builtin (make, len, append,
+// new, …) rather than to a declared function.
+//
+// A builtin belongs to no package, so recording one produces a callee that names
+// a function nothing declares — `pkg/queue.make`, `pkg/charset.append`. Those
+// were being attributed to whichever package made the call, where they inflated
+// the call graph, joined the SCC condensation, entered every reachability set,
+// and could never be joined to a resolved call graph because SSA has no call site
+// for them either.
+//
+// The question is asked of go/types rather than of the name: a package may
+// legitimately declare `func make(...)` of its own, and a name-based filter would
+// silently drop it.
+func isBuiltinCall(call *ast.CallExpr, info *types.Info) bool {
+	if info == nil {
+		return false
+	}
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	_, isBuiltin := info.ObjectOf(ident).(*types.Builtin)
+	return isBuiltin
+}
+
 func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 	if info == nil {
 		return false

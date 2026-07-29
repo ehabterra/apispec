@@ -19,6 +19,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 )
 
@@ -541,5 +542,87 @@ func TestImplementsInterface_QualifierNormalization(t *testing.T) {
 	// everything and pollute interface resolution).
 	if implementsInterface(structMethods, &Type{Kind: pool.Get("interface")}, pool, map[int]string{}) {
 		t.Fatal("empty interface should not be considered implemented")
+	}
+}
+
+// TestIsBuiltinCall pins that a builtin is told apart from a declared function by
+// asking go/types, not by matching the name — a package may declare `func len`
+// of its own, and a name-based filter would silently drop it (issue #248).
+func TestIsBuiltinCall(t *testing.T) {
+	src := `package p
+
+type box struct{ items []int }
+
+func size(b box) int { return len(b.items) }
+func grow(b *box)    { b.items = append(b.items, 0) }
+func fresh() *box    { return new(box) }
+func mk() []int      { return make([]int, 0) }
+
+func helper(n int) int { return n }
+func caller() int      { return helper(1) }
+`
+	file, info, _ := sweepTypeCheck(t, src)
+
+	builtins, declared := 0, 0
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if isBuiltinCall(call, info) {
+			builtins++
+		} else {
+			declared++
+		}
+		return true
+	})
+
+	// len, append, new, make.
+	if builtins != 4 {
+		t.Errorf("found %d builtin calls, want 4 (len, append, new, make)", builtins)
+	}
+	// helper(1) is the only declared call.
+	if declared != 1 {
+		t.Errorf("found %d declared calls, want 1 — a declared function must not be filtered", declared)
+	}
+
+	t.Run("no type info answers false rather than guessing", func(t *testing.T) {
+		ast.Inspect(file, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if isBuiltinCall(call, nil) {
+					t.Error("a call was called a builtin with no type information to say so")
+				}
+			}
+			return true
+		})
+	})
+}
+
+// TestBuiltinsAreNotRecordedAsCallees is the end of the same story: a builtin
+// belongs to no package, so recording one invents a function — `p.len` — that
+// nothing declares, which then joins the SCC condensation and every reach set.
+func TestBuiltinsAreNotRecordedAsCallees(t *testing.T) {
+	src := `package p
+
+func size(xs []int) int {
+	n := len(xs)
+	ys := append(xs, n)
+	return len(ys)
+}
+`
+	file, info, fset := sweepTypeCheck(t, src)
+	meta := GenerateMetadata(
+		map[string]map[string]*ast.File{"p": {"p.go": file}},
+		map[*ast.File]*types.Info{file: info},
+		map[string]string{"p": "p"},
+		fset,
+	)
+	for i := range meta.CallGraph {
+		callee := meta.CallGraph[i].Callee.BaseID()
+		for _, builtin := range []string{"len", "append", "make", "new"} {
+			if strings.HasSuffix(callee, "."+builtin) {
+				t.Errorf("callee %q is a builtin recorded as a function of the calling package", callee)
+			}
+		}
 	}
 }

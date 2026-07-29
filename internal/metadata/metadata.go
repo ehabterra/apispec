@@ -1600,6 +1600,12 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		return
 	}
 
+	// A builtin is not a function of the calling package — see isBuiltinCall
+	// (issue #248).
+	if isBuiltinCall(call, info) {
+		return
+	}
+
 	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 
