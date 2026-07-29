@@ -107,7 +107,19 @@ type LazyTree struct {
 	// value that was stored (CartAPIs(...) above).
 	producerArgs map[string][]string
 
-	// nodesBuilt counts every LazyNode created. The per-path cycle guard
+	// nodesBuilt does NOT count every LazyNode created — it counts distinct callee
+	// keys, because the increment sits behind a seenKeys check below. Measured on
+	// a 246-route service, the tree materialised 659,041 nodes while this read
+	// 20,198 against a 50,000 budget, so the limit never fired and no truncation
+	// was reported.
+	//
+	// That is not only a reporting problem, it makes the budget behave chaotically
+	// under unrelated changes: removing builtin callees from the graph (#248) took
+	// gitea from 12 paths to 1 at the default limit, because those cheap leaf keys
+	// had been soaking up budget that then funded deeper expansion elsewhere. Two
+	// correctness fixes are blocked behind it. See issue #247.
+	//
+	// Original comment: counts every LazyNode created. The per-path cycle guard
 	// bounds each path, but a dense cyclic graph still has exponentially many
 	// distinct acyclic paths — the same blow-up MaxNodesPerTree exists to
 	// stop in the eager tree. Once the budget is spent, expansion returns
@@ -159,6 +171,15 @@ type LazyTree struct {
 	// CPU profile when re-run for every per-path node copy of the same
 	// argument (var, caller fn, caller pkg) -> (originVar, originPkg, originFunc).
 	traceCache map[string][3]string
+
+	// nodeSlab hands out LazyNodes in chunks instead of one heap object each.
+	// Unfolding a DAG into paths is inherently allocation-heavy — a call reached
+	// along many paths gets a node per path — and on a large project those
+	// individual allocations dominated both the allocator and the collector: 4.1GB
+	// of the 11.5GB a gitea run allocated came from this one site, with GC frames
+	// (madvise, scanObjectsSmall) taking ~60% of CPU. A slab keeps the same node
+	// lifetime and identity, and simply stops asking the allocator per node.
+	nodeSlab []LazyNode
 
 	// seenKeys backs the node budget: distinct callee IDs ever materialized,
 	// the same graph-sized unit as the eager tree's shared-node cap —
@@ -705,8 +726,12 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		scopeCounts = map[string]int{}
 		n.tree.instanceCount[scope] = scopeCounts
 	}
+	plan := n.tree.planFor(n)
+	if cap(n.children) < len(plan) {
+		n.children = make([]TrackerNodeInterface, 0, len(plan))
+	}
 	childCount := 0
-	for _, spec := range n.tree.planFor(n) {
+	for _, spec := range plan {
 		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
 			continue
 		}
@@ -720,12 +745,11 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// bound is a skip — the role the eager per-ID recursion cap plays.
 			continue
 		}
-		child := &LazyNode{
-			tree:   n.tree,
-			key:    spec.key,
-			parent: n,
-			edge:   spec.edge,
-		}
+		child := n.tree.newNode()
+		child.tree = n.tree
+		child.key = spec.key
+		child.parent = n
+		child.edge = spec.edge
 		if spec.arg != nil {
 			child.edge = spec.argEdge
 			child.arg = spec.arg
@@ -748,6 +772,24 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		n.children = append(n.children, child)
 	}
 	return n.children
+}
+
+// nodeSlabChunk is how many nodes are carved at once. Large enough that the
+// allocation is rare, small enough that a tree which stops early has not
+// reserved much it will never use.
+const nodeSlabChunk = 4096
+
+// newNode returns a zeroed node from the current slab, carving a new one when
+// the current is spent. The returned pointer is stable: a slab is never grown in
+// place (append would copy and invalidate every pointer already handed out), it
+// is replaced.
+func (t *LazyTree) newNode() *LazyNode {
+	if len(t.nodeSlab) == 0 {
+		t.nodeSlab = make([]LazyNode, nodeSlabChunk)
+	}
+	node := &t.nodeSlab[0]
+	t.nodeSlab = t.nodeSlab[1:]
+	return node
 }
 
 // planFor returns (building on first use) the memoized expansion plan for

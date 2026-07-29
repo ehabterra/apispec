@@ -130,3 +130,37 @@ func TestInstanceBudgetCapsTraversal(t *testing.T) {
 		})
 	}
 }
+
+// TestNewNodeSlabHandsOutStablePointers pins the property the slab must keep: a
+// node's address never moves. Nodes reference their parent, so a slab that grew
+// in place (append) would copy the backing array and leave every pointer already
+// handed out pointing at a stale copy.
+func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
+	tree := &LazyTree{}
+
+	// Cross a chunk boundary: the failure only appears when a second slab is
+	// carved.
+	nodes := make([]*LazyNode, 0, nodeSlabChunk+16)
+	for i := 0; i < nodeSlabChunk+16; i++ {
+		node := tree.newNode()
+		node.key = "node"
+		nodes = append(nodes, node)
+	}
+
+	seen := make(map[*LazyNode]bool, len(nodes))
+	for i, node := range nodes {
+		if seen[node] {
+			t.Fatalf("node %d reuses an address already handed out", i)
+		}
+		seen[node] = true
+		if node.key != "node" {
+			t.Fatalf("node %d was mutated after being handed out: key=%q", i, node.key)
+		}
+	}
+
+	// A freshly carved node must be zero, not whatever the previous tenant left.
+	fresh := tree.newNode()
+	if fresh.key != "" || fresh.parent != nil || fresh.edge != nil || fresh.expanded {
+		t.Errorf("a new node is not zeroed: %+v", *fresh)
+	}
+}

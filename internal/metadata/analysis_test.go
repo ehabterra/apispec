@@ -626,3 +626,89 @@ func size(xs []int) int {
 		}
 	}
 }
+
+// TestCalleeFromSelection covers the resolver that fixes issue #249. It is
+// currently gated off at its call site (calleeSelectionEnabled) because it is
+// correct and unaffordable — see the comment there — so this is what keeps it
+// honest until the gate opens.
+func TestCalleeFromSelection(t *testing.T) {
+	src := `package p
+
+type Service struct{}
+
+func (s *Service) List() int { return 0 }
+
+type Alias = Service
+
+type holder struct {
+	direct  *Service
+	aliased *Alias
+	inline  interface{ Do() int }
+}
+
+func use(h holder) int {
+	return h.direct.List() + h.aliased.List() + h.inline.Do()
+}
+
+func plain() int { return 0 }
+func caller() int { return plain() }
+`
+	file, info, _ := sweepTypeCheck(t, src)
+	if len(info.Selections) == 0 {
+		t.Skip("this Go version's type checker did not record selections")
+	}
+
+	got := map[string][3]string{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		name, pkg, recv, resolved := calleeFromSelection(sel, info)
+		if resolved {
+			got[sel.Sel.Name+"@"+exprText(sel.X)] = [3]string{name, pkg, recv}
+		}
+		return true
+	})
+
+	// A call through a local alias must report the type that DECLARES the method,
+	// not resolve in the calling package — the shape that was recorded as
+	// `caller/pkg.List` with no receiver at all.
+	for _, field := range []string{"direct", "aliased"} {
+		entry, ok := got["List@h."+field]
+		if !ok {
+			t.Errorf("h.%s.List() was not resolved through its selection", field)
+			continue
+		}
+		if entry != [3]string{"List", "p", "*Service"} {
+			t.Errorf("h.%s.List() = %v, want [List p *Service]", field, entry)
+		}
+	}
+
+	// An unnamed interface has no name to record; empty beats a name nothing can
+	// look up.
+	if entry, ok := got["Do@h.inline"]; ok && entry[2] != "" {
+		t.Errorf("h.inline.Do() recorded receiver %q, want empty", entry[2])
+	}
+
+	t.Run("a plain function call is not a method selection", func(t *testing.T) {
+		if _, _, _, ok := calleeFromSelection(&ast.SelectorExpr{Sel: ast.NewIdent("plain")}, info); ok {
+			t.Error("a selector with no recorded selection reported a resolved method")
+		}
+		if _, _, _, ok := calleeFromSelection(&ast.SelectorExpr{Sel: ast.NewIdent("plain")}, nil); ok {
+			t.Error("nil type info reported a resolved method")
+		}
+	})
+}
+
+// exprText renders a simple selector receiver for use as a test key.
+func exprText(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.SelectorExpr:
+		return exprText(x.X) + "." + x.Sel.Name
+	default:
+		return "?"
+	}
+}

@@ -66,10 +66,11 @@ func sweepTypeCheck(t *testing.T, src string) (*ast.File, *types.Info, *token.Fi
 		t.Fatalf("ParseFile: %v", err)
 	}
 	info := &types.Info{
-		Types:     map[ast.Expr]types.TypeAndValue{},
-		Defs:      map[*ast.Ident]types.Object{},
-		Uses:      map[*ast.Ident]types.Object{},
-		Instances: map[*ast.Ident]types.Instance{},
+		Types:      map[ast.Expr]types.TypeAndValue{},
+		Defs:       map[*ast.Ident]types.Object{},
+		Uses:       map[*ast.Ident]types.Object{},
+		Instances:  map[*ast.Ident]types.Instance{},
+		Selections: map[*ast.SelectorExpr]*types.Selection{},
 	}
 	conf := types.Config{Importer: importer.Default()}
 	if _, err := conf.Check("p", fset, []*ast.File{file}, info); err != nil {
@@ -1097,9 +1098,10 @@ func TestSweepExtractParamsAndTypeParams(t *testing.T) {
 		argSig := types.NewSignatureType(nil, nil, []*types.TypeParam{argTP},
 			types.NewTuple(types.NewParam(token.NoPos, nil, "x", argTP)), nil, false)
 		info := &types.Info{
-			Uses:      map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
-			Types:     map[ast.Expr]types.TypeAndValue{argIdent: {Type: argSig}},
-			Instances: map[*ast.Ident]types.Instance{},
+			Uses:       map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
+			Types:      map[ast.Expr]types.TypeAndValue{argIdent: {Type: argSig}},
+			Instances:  map[*ast.Ident]types.Instance{},
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
 		}
 		_, tpm := run(call, info, []*CallArgument{arg(m, KindIdent)})
 		if len(tpm) == 0 {
@@ -1114,9 +1116,10 @@ func TestSweepExtractParamsAndTypeParams(t *testing.T) {
 		plainSig := types.NewSignatureType(nil, nil, nil,
 			types.NewTuple(types.NewParam(token.NoPos, nil, "x", types.Typ[types.Int])), nil, false)
 		info := &types.Info{
-			Uses:      map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
-			Types:     map[ast.Expr]types.TypeAndValue{argIdent: {Type: plainSig}},
-			Instances: map[*ast.Ident]types.Instance{},
+			Uses:       map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
+			Types:      map[ast.Expr]types.TypeAndValue{argIdent: {Type: plainSig}},
+			Instances:  map[*ast.Ident]types.Instance{},
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
 		}
 		pam, _ := run(call, info, []*CallArgument{arg(m, KindIdent)})
 		if _, ok := pam["pT"]; !ok {

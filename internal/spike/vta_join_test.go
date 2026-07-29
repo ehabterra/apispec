@@ -104,10 +104,18 @@ func TestVTACallSiteJoin(t *testing.T) {
 func joinAt(t *testing.T, dir string) joinReport {
 	t.Helper()
 
-	eng := engine.NewEngine(&engine.EngineConfig{InputDir: dir, ResolveCallGraph: true})
-	meta, err := eng.GenerateMetadataOnly()
+	// The metadata has to come from a run with resolution OFF. With it on, the
+	// engine has already repointed the very edges this test compares, so every
+	// disagreement reads as agreement and the interesting column measures nothing.
+	plain := engine.NewEngine(&engine.EngineConfig{InputDir: dir})
+	meta, err := plain.GenerateMetadataOnly()
 	if err != nil {
 		t.Fatalf("metadata for %s: %v", dir, err)
+	}
+
+	eng := engine.NewEngine(&engine.EngineConfig{InputDir: dir, ResolveCallGraph: true})
+	if _, err := eng.GenerateMetadataOnly(); err != nil {
+		t.Fatalf("resolved metadata for %s: %v", dir, err)
 	}
 	resolved := eng.GetResolvedCallGraph()
 	if resolved == nil {

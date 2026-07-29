@@ -114,6 +114,13 @@ func TestTestdata_CrossPkgReceiver(t *testing.T) {
 // CALLING package, the graph named a function that exists nowhere — which also
 // made the call unjoinable to a resolved call graph.
 func TestCrossPkgReceiverIsRecordedWithItsReceiver(t *testing.T) {
+	// The fix this asserts is currently gated off (calleeSelectionEnabled): it is
+	// correct and unaffordable, taking a 100k-node gitea run from 2m06 to over ten
+	// minutes because it makes far more code reachable than the node budget can
+	// fund. Kept as a change-detector so the day the budget stops counting keys
+	// (#247) and the gate is opened, this passes and proves it.
+	t.Skip("blocked on #247: the fix is gated off until expansion is bounded by what the spec asks for")
+
 	cfg := engine.DefaultEngineConfig()
 	cfg.InputDir = filepath.Join("..", "testdata", "cross_pkg_receiver")
 
