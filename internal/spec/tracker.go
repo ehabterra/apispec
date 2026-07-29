@@ -1751,7 +1751,14 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 
 // ExpansionStats reports how far expansion got, and whether it stopped early.
 func (t *TrackerTree) ExpansionStats() ExpansionStats {
-	return ExpansionStats{NodesBuilt: t.nodesBuilt, Limit: t.limits.MaxNodesPerTree, Truncated: t.truncated}
+	// The eager tree materialises one node per distinct key, so the two counts
+	// coincide here; they diverge in the lazy tree, which unfolds per path.
+	return ExpansionStats{
+		NodesBuilt:        t.nodesBuilt,
+		NodesMaterialized: t.nodesBuilt,
+		Limit:             t.limits.MaxNodesPerTree,
+		Truncated:         t.truncated,
+	}
 }
 
 // EntrypointStats reports what the entrypoint gate decided during this tree's

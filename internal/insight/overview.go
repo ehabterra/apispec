@@ -130,9 +130,14 @@ type EntrypointInfo struct {
 // finishing. Everything past that point is missing from the spec, so a route count
 // read without it can be wildly wrong (issue #233).
 type ExpansionInfo struct {
-	NodesBuilt int  `json:"nodesBuilt"`
-	Limit      int  `json:"limit"`
-	Truncated  bool `json:"truncated"`
+	// NodesBuilt is the distinct calls expanded — what Limit bounds.
+	NodesBuilt int `json:"nodesBuilt"`
+	// NodesMaterialized is the tree nodes those calls actually produced, which is
+	// the work done and is typically an order of magnitude larger. Reporting only
+	// the budgeted number made a run look far cheaper than it was (issue #247).
+	NodesMaterialized int  `json:"nodesMaterialized,omitempty"`
+	Limit             int  `json:"limit"`
+	Truncated         bool `json:"truncated"`
 }
 
 // AnalysisInfo describes HOW the spec was produced rather than what is in it.

@@ -130,3 +130,82 @@ func TestInstanceBudgetCapsTraversal(t *testing.T) {
 		})
 	}
 }
+
+// TestNewNodeSlabHandsOutStablePointers pins the property the slab must keep: a
+// node's address never moves. Nodes reference their parent, so a slab that grew
+// in place (append) would copy the backing array and leave every pointer already
+// handed out pointing at a stale copy.
+func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
+	tree := &LazyTree{}
+
+	// Cross a chunk boundary: the failure only appears when a second slab is
+	// carved.
+	nodes := make([]*LazyNode, 0, nodeSlabChunk+16)
+	for i := 0; i < nodeSlabChunk+16; i++ {
+		node := tree.newNode()
+		node.key = "node"
+		nodes = append(nodes, node)
+	}
+
+	seen := make(map[*LazyNode]bool, len(nodes))
+	for i, node := range nodes {
+		if seen[node] {
+			t.Fatalf("node %d reuses an address already handed out", i)
+		}
+		seen[node] = true
+		if node.key != "node" {
+			t.Fatalf("node %d was mutated after being handed out: key=%q", i, node.key)
+		}
+	}
+
+	// A freshly carved node must be zero, not whatever the previous tenant left.
+	fresh := tree.newNode()
+	if fresh.key != "" || fresh.parent != nil || fresh.edge != nil || fresh.expanded {
+		t.Errorf("a new node is not zeroed: %+v", *fresh)
+	}
+}
+
+// TestBudgetCountsKeysWhileStatsReportWork pins the distinction issue #247 is
+// about: MaxNodesPerTree bounds distinct callee KEYS, while the tree materialises
+// a node per path a call is reached along. Reporting only the budgeted number
+// made a run look an order of magnitude cheaper than it was — a 246-route service
+// builds 208,394 nodes across 20,198 keys.
+//
+// The budget deliberately stays on keys. Switching it to nodes is truthful and
+// starves route discovery: a global budget is spent depth-first on whatever
+// expands first, and gitea documents 900 paths at a raised key budget against 1
+// path at a node budget of fifteen million. The unit is the real problem (#224).
+func TestBudgetCountsKeysWhileStatsReportWork(t *testing.T) {
+	// A diamond: several callers reach one shared call site, so that site is
+	// materialised once per path while remaining a single key.
+	meta := sharedHelperGraph(6)
+	tree := NewLazyTree(meta, metadata.TrackerLimits{MaxNodesPerTree: 100000, MaxChildrenPerNode: 100})
+
+	var walk func(n TrackerNodeInterface, depth int)
+	walk = func(n TrackerNodeInterface, depth int) {
+		if n == nil || depth > 12 {
+			return
+		}
+		for _, child := range n.GetChildren() {
+			walk(child, depth+1)
+		}
+	}
+	for _, root := range tree.GetRoots() {
+		walk(root, 0)
+	}
+
+	stats := tree.ExpansionStats()
+	if stats.NodesBuilt == 0 {
+		t.Fatal("no keys expanded; the fixture builds no tree")
+	}
+	if stats.NodesMaterialized < stats.NodesBuilt {
+		t.Errorf("materialized %d nodes across %d keys — a node per key is the floor, not the ceiling",
+			stats.NodesMaterialized, stats.NodesBuilt)
+	}
+	// A diamond reaches the same callee along several paths, which is precisely
+	// the difference the two counters exist to show.
+	if stats.NodesMaterialized == stats.NodesBuilt {
+		t.Errorf("materialized == built (%d): the diamond in this fixture must produce more nodes than keys, "+
+			"or the counters are measuring the same thing and the distinction is lost", stats.NodesBuilt)
+	}
+}
