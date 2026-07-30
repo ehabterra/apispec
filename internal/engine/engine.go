@@ -294,8 +294,18 @@ type Engine struct {
 
 // GetResolvedCallGraph returns the resolved call graph from the last
 // generation, or nil when config.ResolveCallGraph was off.
+//
+// A full GenerateOpenAPI releases the graph once it has repointed the recorded
+// calls (issue #244), so this answers non-nil only after GenerateMetadataOnly.
 func (e *Engine) GetResolvedCallGraph() *callgraph.Resolved {
 	return e.resolvedGraph
+}
+
+// releaseResolvedGraph drops the SSA program and VTA graph. What the rest of the
+// run needs from resolution is already recorded in the metadata's call edges; the
+// graph itself is only an input to that rewrite.
+func (e *Engine) releaseResolvedGraph() {
+	e.resolvedGraph = nil
 }
 
 // GetResolvedCalleeStats reports what the resolved graph changed about the
@@ -654,6 +664,17 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// The resolved graph has done its job: ApplyResolvedCallees has already
+	// repointed the recorded calls, and nothing downstream consults the SSA
+	// program. Holding it through tree expansion and mapping — the stage where a
+	// large project's memory is tightest — costs an ssa.Program and a VTA graph
+	// for nothing (issue #244).
+	//
+	// Released here rather than inside GenerateMetadataOnly because that entry
+	// point is the one whose callers legitimately want the graph afterwards, via
+	// GetResolvedCallGraph.
+	e.releaseResolvedGraph()
 
 	// Generate diagram if requested
 	if e.config.DiagramPath != "" {

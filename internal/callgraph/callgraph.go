@@ -41,7 +41,6 @@ import (
 	"go/types"
 
 	xgraph "golang.org/x/tools/go/callgraph"
-	"golang.org/x/tools/go/callgraph/cha"
 	"golang.org/x/tools/go/callgraph/vta"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -58,7 +57,7 @@ type Resolved struct {
 }
 
 // Build constructs SSA (with generics instantiated) from already-loaded
-// packages and resolves the call graph with VTA seeded by CHA.
+// packages and resolves the call graph with VTA.
 //
 // The packages must have been loaded with at least NeedName, NeedFiles,
 // NeedCompiledGoFiles, NeedImports, NeedTypes, NeedTypesSizes, NeedTypesInfo
@@ -69,7 +68,16 @@ func Build(pkgs []*packages.Package) *Resolved {
 	prog, _ := ssautil.AllPackages(pkgs, ssa.InstantiateGenerics)
 	prog.Build()
 
-	graph := vta.CallGraph(ssautil.AllFunctions(prog), cha.CallGraph(prog))
+	// nil initial graph, NOT cha.CallGraph(prog). vta.CallGraph documents that
+	// "if initial is nil, VTA uses a more efficient approach to construct a CHA
+	// call graph" — it derives the class-hierarchy information it needs itself
+	// instead of us materialising a whole-program CHA graph first, and the
+	// soundness guarantee is unchanged.
+	//
+	// That matters because CHA was the single most expensive phase of resolution:
+	// measured on a 3,000-file module it accounted for 918MB of cumulative
+	// allocation, and it existed only to seed this call (issue #244).
+	graph := vta.CallGraph(ssautil.AllFunctions(prog), nil)
 
 	r := &Resolved{
 		Prog:  prog,
