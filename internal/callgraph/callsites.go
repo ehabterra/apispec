@@ -16,9 +16,12 @@ package callgraph
 
 import (
 	"go/token"
+	"go/types"
 	"slices"
 	"sort"
 	"strings"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 // CallSite is one resolved call, identified by WHERE it is written rather than
@@ -127,6 +130,84 @@ func (r *Resolved) CalleesAt() map[string][]string {
 		}
 	}
 	return index
+}
+
+// FunctionsAt indexes the resolved target FUNCTIONS by SiteKey, for callers that
+// need more about a callee than its FunctionID carries.
+//
+// FunctionID is a join key: it strips the receiver's pointer star so that a
+// method recorded on `*Encoder` and one resolved on `Encoder` compare equal.
+// That is right for matching and wrong for recording — metadata's RecvType keeps
+// the star, and patterns match on it — so anything using the resolved graph as a
+// SOURCE of identity rather than as a comparand must render from the function
+// itself. Hence this returns functions, not IDs.
+func (r *Resolved) FunctionsAt() map[string][]*ssa.Function {
+	if r == nil || r.Graph == nil {
+		return nil
+	}
+	index := make(map[string][]*ssa.Function)
+	for fn, node := range r.Graph.Nodes {
+		if FunctionID(fn) == "" {
+			continue
+		}
+		for _, edge := range node.Out {
+			if edge.Site == nil || edge.Callee == nil || edge.Callee.Func == nil {
+				continue
+			}
+			pos := edge.Site.Pos()
+			if !pos.IsValid() {
+				continue
+			}
+			callee := edge.Callee.Func
+			calleeID := FunctionID(callee)
+			if calleeID == "" {
+				continue
+			}
+			key := SiteKey(r.Prog.Fset.Position(pos).String(), calleeID)
+			if key == "" {
+				continue
+			}
+			if !slices.Contains(index[key], callee) {
+				index[key] = append(index[key], callee)
+			}
+		}
+	}
+	for _, fns := range index {
+		sortFunctions(fns)
+	}
+	return index
+}
+
+// RecordedCallee renders fn the way metadata records a callee: the package path,
+// the receiver type with its pointer star and without package qualifier or type
+// arguments, and the bare function name.
+//
+// It differs from FunctionID in exactly one way — the star is kept — and that
+// difference is the whole reason this exists. See FunctionsAt.
+func RecordedCallee(fn *ssa.Function) (pkg, recvType, name string) {
+	if fn == nil {
+		return "", "", ""
+	}
+	if origin := fn.Origin(); origin != nil && origin != fn {
+		fn = origin
+	}
+	if fn.Pkg != nil && fn.Pkg.Pkg != nil {
+		pkg = fn.Pkg.Pkg.Path()
+	} else if obj := fn.Object(); obj != nil && obj.Pkg() != nil {
+		pkg = obj.Pkg().Path()
+	}
+	if pkg == "" {
+		return "", "", ""
+	}
+	if recv := fn.Signature.Recv(); recv != nil {
+		t := recv.Type()
+		if ptr, isPtr := t.(*types.Pointer); isPtr {
+			recvType = "*" + bareRecvName(ptr.Elem())
+		} else {
+			recvType = bareRecvName(t)
+		}
+	}
+	return pkg, recvType, fn.Name()
 }
 
 // SiteKey builds the join key shared by both graphs: the line a call is written
