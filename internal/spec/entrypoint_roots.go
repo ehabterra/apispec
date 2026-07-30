@@ -117,37 +117,10 @@ func functionsReachableFromMains(meta *metadata.Metadata) map[string]bool {
 }
 
 // reachesMatch returns the set of function base keys from which an edge matching
-// match is transitively reachable — the tree-side twin of Extractor.reachSet,
-// same one-pass-over-the-condensation shape, without needing an extractor.
+// match is transitively reachable — the same one-pass-over-the-condensation the
+// extractor's summaries use, over the condensation memoized on the metadata.
 func reachesMatch(meta *metadata.Metadata, match func(*metadata.CallGraphEdge) bool) map[string]bool {
-	scc := metadata.BuildCallGraphSCC(meta)
-	compReaches := make([]bool, len(scc.Components))
-	for c, comp := range scc.Components {
-		reached := false
-		for _, member := range comp {
-			for _, edge := range meta.Callers[member] {
-				if match(edge) {
-					reached = true
-					break
-				}
-				if calleeComp, ok := scc.ComponentOf[edge.Callee.BaseID()]; ok && calleeComp != c && compReaches[calleeComp] {
-					reached = true
-					break
-				}
-			}
-			if reached {
-				break
-			}
-		}
-		compReaches[c] = reached
-	}
-	set := make(map[string]bool)
-	for id, c := range scc.ComponentOf {
-		if compReaches[c] {
-			set[id] = true
-		}
-	}
-	return set
+	return reachSetOver(meta, meta.CallGraphSCC(), match)
 }
 
 // RouteRegistrationMatcher builds the predicate for gate 2 from the effective
@@ -238,7 +211,7 @@ type ExpansionStats struct {
 	// unfolding does and is typically an order of magnitude larger: a 246-route
 	// service builds 208,394 nodes across 20,198 keys. Reported rather than
 	// budgeted, because a global node budget starves route discovery — see
-	// issue #247, and #224 for the unit problem underneath.
+	// issue #247, and #264 for the unit problem underneath.
 	NodesMaterialized int
 	Limit             int
 	Truncated         bool

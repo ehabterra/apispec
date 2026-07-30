@@ -1600,6 +1600,19 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		return
 	}
 
+	// A builtin is not a function of the calling package — see isBuiltinCall
+	// (issue #248). DISABLED, like the receiver fix in analysis.go and for the
+	// same reason: it is correct and the node budget cannot afford it. Builtin
+	// callees are cheap leaf KEYS, and MaxNodesPerTree counts keys, so removing
+	// them frees budget the walk immediately spends expanding roughly four times
+	// as many nodes. Measured on gitea: mapping 10s -> 37s, peak RSS 3.0GB ->
+	// 6.7GB, allocation 5.8GB -> 10.1GB, and the documented output falls from 12
+	// paths to 1. It goes back in when the budget is scoped to the route being
+	// resolved rather than to the whole walk (#264).
+	if builtinFilterEnabled && isBuiltinCall(call, info) {
+		return
+	}
+
 	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 

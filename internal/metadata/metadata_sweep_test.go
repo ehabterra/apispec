@@ -66,10 +66,11 @@ func sweepTypeCheck(t *testing.T, src string) (*ast.File, *types.Info, *token.Fi
 		t.Fatalf("ParseFile: %v", err)
 	}
 	info := &types.Info{
-		Types:     map[ast.Expr]types.TypeAndValue{},
-		Defs:      map[*ast.Ident]types.Object{},
-		Uses:      map[*ast.Ident]types.Object{},
-		Instances: map[*ast.Ident]types.Instance{},
+		Types:      map[ast.Expr]types.TypeAndValue{},
+		Defs:       map[*ast.Ident]types.Object{},
+		Uses:       map[*ast.Ident]types.Object{},
+		Instances:  map[*ast.Ident]types.Instance{},
+		Selections: map[*ast.SelectorExpr]*types.Selection{},
 	}
 	conf := types.Config{Importer: importer.Default()}
 	if _, err := conf.Check("p", fset, []*ast.File{file}, info); err != nil {
@@ -289,7 +290,11 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 		return &ast.SelectorExpr{X: x, Sel: ast.NewIdent(name)}
 	}
 
-	// Ident receiver typed as a bare interface.
+	// Ident receiver typed as a bare interface. An UNNAMED interface has no name
+	// to record: "interface" reads like a type name, is not one, and cannot be
+	// looked up or matched by a receiver-scoped pattern (issue #249). A named
+	// interface never reaches this arm — it is a Named whose underlying type is
+	// the interface.
 	identX := ast.NewIdent("r")
 	ifaceType := types.NewInterfaceType(nil, nil)
 	ifaceType.Complete()
@@ -298,8 +303,8 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	}}
 	name, pkg, recv := getCalleeFunctionNameAndPackage(mkSel(identX, "Read"), file, "p",
 		map[*ast.File]*types.Info{file: infoVar}, nil, fset, sweepMeta())
-	if name != "Read" || pkg != "p" || recv != "interface" {
-		t.Errorf("iface var receiver: got (%q,%q,%q)", name, pkg, recv)
+	if name != "Read" || pkg != "p" || recv != "" {
+		t.Errorf("iface var receiver: got (%q,%q,%q), want (\"Read\",\"p\",\"\")", name, pkg, recv)
 	}
 
 	// Complex receiver whose type is a Named with a nil package (error).
@@ -320,8 +325,8 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	}}
 	name, pkg, recv = getCalleeFunctionNameAndPackage(mkSel(callX2, "Do"), file, "p",
 		map[*ast.File]*types.Info{file: infoIface}, nil, fset, sweepMeta())
-	if name != "Do" || pkg != "p" || recv != "interface" {
-		t.Errorf("iface complex receiver: got (%q,%q,%q)", name, pkg, recv)
+	if name != "Do" || pkg != "p" || recv != "" {
+		t.Errorf("iface complex receiver: got (%q,%q,%q), want (\"Do\",\"p\",\"\")", name, pkg, recv)
 	}
 
 	// Complex receiver typed as a basic type: no switch arm matches.
@@ -1093,9 +1098,10 @@ func TestSweepExtractParamsAndTypeParams(t *testing.T) {
 		argSig := types.NewSignatureType(nil, nil, []*types.TypeParam{argTP},
 			types.NewTuple(types.NewParam(token.NoPos, nil, "x", argTP)), nil, false)
 		info := &types.Info{
-			Uses:      map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
-			Types:     map[ast.Expr]types.TypeAndValue{argIdent: {Type: argSig}},
-			Instances: map[*ast.Ident]types.Instance{},
+			Uses:       map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
+			Types:      map[ast.Expr]types.TypeAndValue{argIdent: {Type: argSig}},
+			Instances:  map[*ast.Ident]types.Instance{},
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
 		}
 		_, tpm := run(call, info, []*CallArgument{arg(m, KindIdent)})
 		if len(tpm) == 0 {
@@ -1110,9 +1116,10 @@ func TestSweepExtractParamsAndTypeParams(t *testing.T) {
 		plainSig := types.NewSignatureType(nil, nil, nil,
 			types.NewTuple(types.NewParam(token.NoPos, nil, "x", types.Typ[types.Int])), nil, false)
 		info := &types.Info{
-			Uses:      map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
-			Types:     map[ast.Expr]types.TypeAndValue{argIdent: {Type: plainSig}},
-			Instances: map[*ast.Ident]types.Instance{},
+			Uses:       map[*ast.Ident]types.Object{funIdent: sweepGenericFunc("Generic", "T")},
+			Types:      map[ast.Expr]types.TypeAndValue{argIdent: {Type: plainSig}},
+			Instances:  map[*ast.Ident]types.Instance{},
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
 		}
 		pam, _ := run(call, info, []*CallArgument{arg(m, KindIdent)})
 		if _, ok := pam["pT"]; !ok {

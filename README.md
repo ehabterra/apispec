@@ -34,6 +34,7 @@
   - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Configuration](#configuration)
   - [Scoping a pattern to where the call is made](#scoping-a-pattern-to-where-the-call-is-made)
+  - [Resolving indirect calls (experimental)](#resolving-indirect-calls-experimental)
   - [Automatic wrapper detection](#automatic-wrapper-detection)
 - [Programmatic Usage](#programmatic-usage)
 - [Performance & Limits](#performance--limits)
@@ -780,6 +781,53 @@ Run with `--verbose` to see what it did:
 ```
 Entrypoints: 53 declared, 1 rooted (0 already reachable, 52 register no routes)
 ```
+
+### Resolving indirect calls (experimental)
+
+`--resolve-call-graph` builds an SSA + VTA call graph alongside the syntactic one
+and repoints each recorded call at the function that actually runs:
+
+- an **interface method with exactly one implementation** becomes that
+  implementation, so the concrete type's patterns and schemas apply;
+- a method reached **through embedding** is attributed to the type that declares
+  it, which is how a pattern scoped there matches a call written on the embedding
+  type.
+
+An interface with several implementations stays the interface — picking one would
+invent a concrete type your program may never use — and a difference the analysis
+cannot explain is left exactly as recorded.
+
+```console
+$ apispec --dir . --resolve-call-graph --verbose
+Resolved call graph: 5860 call sites joined, 17 rewritten (17 interface, 0 promoted), 1 left ambiguous, 10 unexplained
+```
+
+It is **off by default**, and the cost is not a flat percentage — it grows with
+your node budget:
+
+| gitea, `--max-nodes` | mapping stage | components |
+|---|---|---|
+| 50,000 (default), off | 10s | 1 |
+| 50,000 (default), on | 11s | 15 |
+| 100,000, off | 1m30s | 41 |
+| 100,000, on | **2m56s** | **87** |
+
+Building the SSA graph is a small part of that (about 6s on gitea); the rest is
+that **resolution makes more of your program analysable**. A call the syntactic
+graph left pointing at an interface now points at a real function body, so there
+is more to expand. That is the feature working, and it is why the extra time
+buys schemas — at the 100k budget above, 340 of 389 operations gained response or
+request detail.
+
+Plan for roughly **double the mapping stage** on a large project, plus **+46%
+peak memory** for the SSA program. If you already raise `--max-nodes` to reach
+all your routes, try resolution at a *lower* budget first rather than on top of
+your highest one: it changes what the budget is spent on.
+
+In `apispecui` the same option is the **◉ Resolve** toggle in the header, beside
+the analysis-engine selector — and a matching checkbox in the generate panel. The
+header is where it stays reachable after a generation, so a spec can be produced
+both ways and compared. The choice is remembered between runs.
 
 ### Automatic wrapper detection
 

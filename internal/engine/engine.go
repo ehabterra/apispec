@@ -82,14 +82,18 @@ func (vl *VerboseLogger) Warnf(format string, args ...interface{}) {
 
 const (
 	// Default values for OpenAPI generation
-	DefaultOutputFile         = "openapi.json"
-	DefaultInputDir           = "."
-	DefaultTitle              = "Generated API"
-	DefaultAPIVersion         = "1.0.0"
-	DefaultContactName        = "Ehab"
-	DefaultContactURL         = "https://ehabterra.github.io/"
-	DefaultContactEmail       = "ehabterra@hotmail.com"
-	DefaultOpenAPIVersion     = "3.1.1"
+	DefaultOutputFile     = "openapi.json"
+	DefaultInputDir       = "."
+	DefaultTitle          = "Generated API"
+	DefaultAPIVersion     = "1.0.0"
+	DefaultContactName    = "Ehab"
+	DefaultContactURL     = "https://ehabterra.github.io/"
+	DefaultContactEmail   = "ehabterra@hotmail.com"
+	DefaultOpenAPIVersion = "3.1.1"
+	// DefaultMaxNodesPerTree bounds the distinct callee keys a tracker tree may
+	// expand — NOT the nodes it materialises, which is far larger (a 246-route
+	// service builds 208,394 nodes across 20,198 keys). The two are reported
+	// separately rather than one being made to mean the other; see issue #247.
 	DefaultMaxNodesPerTree    = 50000
 	DefaultMaxChildrenPerNode = 500
 	DefaultMaxArgsPerFunction = 100
@@ -282,12 +286,32 @@ type Engine struct {
 	// resolvedGraph is the SSA+VTA resolved call graph, built during
 	// GenerateMetadataOnly when config.ResolveCallGraph is set.
 	resolvedGraph *callgraph.Resolved
+
+	// resolvedCallees records what the resolved graph changed about the recorded
+	// call graph, for --verbose and for tests.
+	resolvedCallees intspec.ResolvedCalleeStats
 }
 
 // GetResolvedCallGraph returns the resolved call graph from the last
 // generation, or nil when config.ResolveCallGraph was off.
+//
+// A full GenerateOpenAPI releases the graph once it has repointed the recorded
+// calls (issue #244), so this answers non-nil only after GenerateMetadataOnly.
 func (e *Engine) GetResolvedCallGraph() *callgraph.Resolved {
 	return e.resolvedGraph
+}
+
+// releaseResolvedGraph drops the SSA program and VTA graph. What the rest of the
+// run needs from resolution is already recorded in the metadata's call edges; the
+// graph itself is only an input to that rewrite.
+func (e *Engine) releaseResolvedGraph() {
+	e.resolvedGraph = nil
+}
+
+// GetResolvedCalleeStats reports what the resolved graph changed about the
+// recorded call graph on the last run.
+func (e *Engine) GetResolvedCalleeStats() intspec.ResolvedCalleeStats {
+	return e.resolvedCallees
 }
 
 // SkippedPackage is a package excluded from analysis due to compile/type
@@ -516,6 +540,12 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 		tResolved := time.Now()
 		e.resolvedGraph = callgraph.Build(filteredPkgs)
 		e.reportPhase(fmt.Sprintf("resolved call graph built (%d functions)", len(e.resolvedGraph.Graph.Nodes)), time.Since(tResolved))
+
+		// Point the recorded calls at the functions that actually run. Metadata
+		// stays the authority on the call sites and their arguments; the resolved
+		// graph is the authority on which callee a site reaches.
+		e.resolvedCallees = intspec.ApplyResolvedCallees(meta, e.resolvedGraph, logger)
+		meta.BuildCallGraphMaps()
 		if err := e.ctx().Err(); err != nil {
 			return nil, err
 		}
@@ -634,6 +664,17 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// The resolved graph has done its job: ApplyResolvedCallees has already
+	// repointed the recorded calls, and nothing downstream consults the SSA
+	// program. Holding it through tree expansion and mapping — the stage where a
+	// large project's memory is tightest — costs an ssa.Program and a VTA graph
+	// for nothing (issue #244).
+	//
+	// Released here rather than inside GenerateMetadataOnly because that entry
+	// point is the one whose callers legitimately want the graph afterwards, via
+	// GetResolvedCallGraph.
+	e.releaseResolvedGraph()
 
 	// Generate diagram if requested
 	if e.config.DiagramPath != "" {

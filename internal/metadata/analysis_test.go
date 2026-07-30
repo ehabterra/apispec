@@ -19,6 +19,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 )
 
@@ -541,5 +542,180 @@ func TestImplementsInterface_QualifierNormalization(t *testing.T) {
 	// everything and pollute interface resolution).
 	if implementsInterface(structMethods, &Type{Kind: pool.Get("interface")}, pool, map[int]string{}) {
 		t.Fatal("empty interface should not be considered implemented")
+	}
+}
+
+// TestIsBuiltinCall pins that a builtin is told apart from a declared function by
+// asking go/types, not by matching the name — a package may declare `func len`
+// of its own, and a name-based filter would silently drop it (issue #248).
+func TestIsBuiltinCall(t *testing.T) {
+	src := `package p
+
+type box struct{ items []int }
+
+func size(b box) int { return len(b.items) }
+func grow(b *box)    { b.items = append(b.items, 0) }
+func fresh() *box    { return new(box) }
+func mk() []int      { return make([]int, 0) }
+
+func helper(n int) int { return n }
+func caller() int      { return helper(1) }
+`
+	file, info, _ := sweepTypeCheck(t, src)
+
+	builtins, declared := 0, 0
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if isBuiltinCall(call, info) {
+			builtins++
+		} else {
+			declared++
+		}
+		return true
+	})
+
+	// len, append, new, make.
+	if builtins != 4 {
+		t.Errorf("found %d builtin calls, want 4 (len, append, new, make)", builtins)
+	}
+	// helper(1) is the only declared call.
+	if declared != 1 {
+		t.Errorf("found %d declared calls, want 1 — a declared function must not be filtered", declared)
+	}
+
+	t.Run("no type info answers false rather than guessing", func(t *testing.T) {
+		ast.Inspect(file, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if isBuiltinCall(call, nil) {
+					t.Error("a call was called a builtin with no type information to say so")
+				}
+			}
+			return true
+		})
+	})
+}
+
+// TestBuiltinsAreNotRecordedAsCallees is the end of the same story: a builtin
+// belongs to no package, so recording one invents a function — `p.len` — that
+// nothing declares, which then joins the SCC condensation and every reach set.
+func TestBuiltinsAreNotRecordedAsCallees(t *testing.T) {
+	// The filter this asserts is gated off (builtinFilterEnabled): correct, and
+	// unaffordable while MaxNodesPerTree counts keys — builtin callees are cheap
+	// leaf keys, and removing them frees budget the walk spends expanding ~4x as
+	// many nodes (gitea: 12 paths -> 1, 3.0GB -> 6.7GB). Kept as a change-detector
+	// for the day the budget is scoped per route (#264).
+	t.Skip("blocked on #264: the filter is gated off until the node budget stops counting keys")
+
+	src := `package p
+
+func size(xs []int) int {
+	n := len(xs)
+	ys := append(xs, n)
+	return len(ys)
+}
+`
+	file, info, fset := sweepTypeCheck(t, src)
+	meta := GenerateMetadata(
+		map[string]map[string]*ast.File{"p": {"p.go": file}},
+		map[*ast.File]*types.Info{file: info},
+		map[string]string{"p": "p"},
+		fset,
+	)
+	for i := range meta.CallGraph {
+		callee := meta.CallGraph[i].Callee.BaseID()
+		for _, builtin := range []string{"len", "append", "make", "new"} {
+			if strings.HasSuffix(callee, "."+builtin) {
+				t.Errorf("callee %q is a builtin recorded as a function of the calling package", callee)
+			}
+		}
+	}
+}
+
+// TestCalleeFromSelection covers the resolver that fixes issue #249. It is
+// currently gated off at its call site (calleeSelectionEnabled) because it is
+// correct and unaffordable — see the comment there — so this is what keeps it
+// honest until the gate opens.
+func TestCalleeFromSelection(t *testing.T) {
+	src := `package p
+
+type Service struct{}
+
+func (s *Service) List() int { return 0 }
+
+type Alias = Service
+
+type holder struct {
+	direct  *Service
+	aliased *Alias
+	inline  interface{ Do() int }
+}
+
+func use(h holder) int {
+	return h.direct.List() + h.aliased.List() + h.inline.Do()
+}
+
+func plain() int { return 0 }
+func caller() int { return plain() }
+`
+	file, info, _ := sweepTypeCheck(t, src)
+	if len(info.Selections) == 0 {
+		t.Skip("this Go version's type checker did not record selections")
+	}
+
+	got := map[string][3]string{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		name, pkg, recv, resolved := calleeFromSelection(sel, info)
+		if resolved {
+			got[sel.Sel.Name+"@"+exprText(sel.X)] = [3]string{name, pkg, recv}
+		}
+		return true
+	})
+
+	// A call through a local alias must report the type that DECLARES the method,
+	// not resolve in the calling package — the shape that was recorded as
+	// `caller/pkg.List` with no receiver at all.
+	for _, field := range []string{"direct", "aliased"} {
+		entry, ok := got["List@h."+field]
+		if !ok {
+			t.Errorf("h.%s.List() was not resolved through its selection", field)
+			continue
+		}
+		if entry != [3]string{"List", "p", "*Service"} {
+			t.Errorf("h.%s.List() = %v, want [List p *Service]", field, entry)
+		}
+	}
+
+	// An unnamed interface has no name to record; empty beats a name nothing can
+	// look up.
+	if entry, ok := got["Do@h.inline"]; ok && entry[2] != "" {
+		t.Errorf("h.inline.Do() recorded receiver %q, want empty", entry[2])
+	}
+
+	t.Run("a plain function call is not a method selection", func(t *testing.T) {
+		if _, _, _, ok := calleeFromSelection(&ast.SelectorExpr{Sel: ast.NewIdent("plain")}, info); ok {
+			t.Error("a selector with no recorded selection reported a resolved method")
+		}
+		if _, _, _, ok := calleeFromSelection(&ast.SelectorExpr{Sel: ast.NewIdent("plain")}, nil); ok {
+			t.Error("nil type info reported a resolved method")
+		}
+	})
+}
+
+// exprText renders a simple selector receiver for use as a test key.
+func exprText(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.SelectorExpr:
+		return exprText(x.X) + "." + x.Sel.Name
+	default:
+		return "?"
 	}
 }

@@ -29,7 +29,10 @@ package metadata
 // before traversal, so identical metadata always yields identical components,
 // numbering, and DAG.
 
-import "sort"
+import (
+	"sort"
+	"sync"
+)
 
 // CallGraphSCC is the condensation of the call graph into strongly-connected
 // components.
@@ -71,6 +74,44 @@ func (s *CallGraphSCC) InCycle(fn string) bool {
 	return ok && s.Recursive[c]
 }
 
+// sccCache memoizes one metadata's condensation. Two callers needed the same
+// answer and each built its own: the extractor's reachability summaries and the
+// tree's entrypoint gate, so every route-bearing project condensed its graph
+// twice (89ms per build over gitea's 82k edges).
+//
+// Invalidated by BuildCallGraphMaps, which is what runs whenever the graph
+// itself changes — notably after the resolved graph repoints call edges.
+type sccCache struct {
+	mu  sync.Mutex
+	scc *CallGraphSCC
+}
+
+// CallGraphSCC returns the condensation of m's call graph, building it once.
+//
+// Prefer this over BuildCallGraphSCC: the condensation is a derived fact about
+// m's own data, and rebuilding it per consumer is pure waste.
+func (m *Metadata) CallGraphSCC() *CallGraphSCC {
+	if m == nil {
+		return &CallGraphSCC{ComponentOf: map[string]int{}}
+	}
+	m.sccOnce.mu.Lock()
+	defer m.sccOnce.mu.Unlock()
+	if m.sccOnce.scc == nil {
+		m.sccOnce.scc = BuildCallGraphSCC(m)
+	}
+	return m.sccOnce.scc
+}
+
+// invalidateSCC drops the memoized condensation after the graph changes.
+func (m *Metadata) invalidateSCC() {
+	if m == nil {
+		return
+	}
+	m.sccOnce.mu.Lock()
+	m.sccOnce.scc = nil
+	m.sccOnce.mu.Unlock()
+}
+
 // BuildCallGraphSCC condenses m's call graph. It reads m.CallGraph directly
 // and does not require BuildCallGraphMaps to have run.
 func BuildCallGraphSCC(m *Metadata) *CallGraphSCC {
@@ -107,6 +148,20 @@ func BuildCallGraphSCC(m *Metadata) *CallGraphSCC {
 		adj[u] = out
 	}
 
+	return condenseSCC(nodes, adj)
+}
+
+// CondenseGraph condenses an arbitrary directed graph given as a node list and
+// adjacency map, so a caller can condense a graph this package does not own —
+// the SSA/VTA-resolved call graph being the one that matters (docs/
+// TRACKER_REDESIGN.md step 2). The algorithm never needed anything from
+// Metadata; only BuildCallGraphSCC did.
+//
+// nodes and each adjacency list must be sorted, and adjacency must not name a
+// node outside nodes: both are guaranteed by BuildCallGraphSCC and are the
+// caller's job otherwise, because the component numbering is derived from that
+// order and determinism depends on it.
+func CondenseGraph(nodes []string, adj map[string][]string) *CallGraphSCC {
 	return condenseSCC(nodes, adj)
 }
 

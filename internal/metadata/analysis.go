@@ -169,6 +169,36 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 }
 
 // isTypeConversion checks if a CallExpr represents a type conversion rather than a function call
+// builtinFilterEnabled gates isBuiltinCall at its call site. Off because the fix
+// is correct and unaffordable until the node budget stops counting keys — see
+// the call site in metadata.go.
+const builtinFilterEnabled = false
+
+// isBuiltinCall reports whether a call goes to a Go builtin (make, len, append,
+// new, …) rather than to a declared function.
+//
+// A builtin belongs to no package, so recording one produces a callee that names
+// a function nothing declares — `pkg/queue.make`, `pkg/charset.append`. Those
+// were being attributed to whichever package made the call, where they inflated
+// the call graph, joined the SCC condensation, entered every reachability set,
+// and could never be joined to a resolved call graph because SSA has no call site
+// for them either.
+//
+// The question is asked of go/types rather than of the name: a package may
+// legitimately declare `func make(...)` of its own, and a name-based filter would
+// silently drop it.
+func isBuiltinCall(call *ast.CallExpr, info *types.Info) bool {
+	if info == nil {
+		return false
+	}
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	_, isBuiltin := info.ObjectOf(ident).(*types.Builtin)
+	return isBuiltin
+}
+
 func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 	if info == nil {
 		return false
@@ -210,6 +240,44 @@ func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 }
 
 // getCalleeFunctionNameAndPackage extracts function name, package, and receiver type from a call expression
+// calleeSelectionEnabled gates calleeFromSelection. It is off because the fix is
+// correct and too expensive to impose today — see the call site.
+const calleeSelectionEnabled = false
+
+// calleeFromSelection resolves a method call the way go/types already has:
+// info.Selections records, for every selector, which method it selects and on
+// what. Reading it answers questions the shape of the expression cannot.
+//
+// The type switches below enumerate the receiver shapes they know — Named,
+// Pointer, Interface — and anything else falls through to "a function of the
+// calling package". A local `type Alias = other.Service` is exactly that
+// anything else, so `h.field.Method()` through an alias was recorded as
+// `caller/pkg.Method` with no receiver at all: unmatchable by any pattern scoped
+// on its type, and attributed to the wrong package (issue #249).
+//
+// The method's own declared receiver is used rather than the type of the
+// expression, so an alias, an embedded field or a type argument all report the
+// type that actually declares the method.
+func calleeFromSelection(x *ast.SelectorExpr, info *types.Info) (name, pkg, recv string, ok bool) {
+	if info == nil {
+		return "", "", "", false
+	}
+	sel := info.Selections[x]
+	if sel == nil || sel.Kind() != types.MethodVal {
+		return "", "", "", false
+	}
+	fn, isFunc := sel.Obj().(*types.Func)
+	if !isFunc || fn.Pkg() == nil {
+		return "", "", "", false
+	}
+
+	recvType := sel.Recv()
+	if sig, isSig := fn.Type().(*types.Signature); isSig && sig.Recv() != nil {
+		recvType = sig.Recv().Type()
+	}
+	return fn.Name(), fn.Pkg().Path(), getReceiverTypeString(recvType), true
+}
+
 func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, meta *Metadata) (string, string, string) {
 	switch x := expr.(type) {
 	case *ast.Ident:
@@ -217,6 +285,19 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		return x.Name, pkgName, ""
 
 	case *ast.SelectorExpr:
+		// DISABLED, not deleted — see calleeFromSelection. Resolving every call
+		// through the selection is CORRECT and, measured on gitea, unaffordable:
+		// it makes so much more code reachable that the tracker's budget is spent
+		// long before the routes are, taking a 100k-node run from 2m06 to over ten
+		// minutes and the default-limit output from 12 paths to 1. It goes back in
+		// when expansion is bounded by what the spec asks for rather than by a node
+		// count (issue #264, TRACKER_REDESIGN §5).
+		if calleeSelectionEnabled {
+			if name, pkg, recv, ok := calleeFromSelection(x, fileToInfo[file]); ok {
+				return name, pkg, recv
+			}
+		}
+
 		if ident, ok := x.X.(*ast.Ident); ok {
 
 			// If not an import, try to resolve as variable/method
@@ -334,8 +415,17 @@ func getReceiverTypeString(t types.Type) string {
 	case *types.Pointer:
 		// Handle pointer types like *MyStruct
 		return "*" + getReceiverTypeString(t.Elem())
+	case *types.Alias:
+		// An alias is a second name for a type, not a type of its own. Record
+		// what it stands for, or a local `type X = other.Y` makes every call
+		// through it look like a call on a type of the calling package.
+		return getReceiverTypeString(types.Unalias(t))
 	case *types.Interface:
-		return "interface"
+		// An unnamed interface has no name to record. "interface" looks like a
+		// type name and is not one: nothing can look it up, and a pattern scoped
+		// by receiver can never match it. A NAMED interface never reaches here —
+		// it is a *types.Named whose underlying type is this (issue #249).
+		return ""
 	default:
 		return ""
 	}

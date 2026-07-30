@@ -81,3 +81,38 @@ func TestResolveCallGraph_Wiring(t *testing.T) {
 		t.Error("resolved graph built despite ResolveCallGraph=false")
 	}
 }
+
+// TestResolvedCalleeStatsAreReported pins that a run says what the resolved
+// graph changed. A migration that silently documents a different program than
+// the one before it is exactly the failure mode this reporting exists to prevent
+// (docs/TRACKER_REDESIGN.md §8.4, bounded != silent).
+func TestResolvedCalleeStatsAreReported(t *testing.T) {
+	cfg := DefaultEngineConfig()
+	cfg.InputDir = filepath.Join("..", "..", "testdata", "wrapper_router")
+	cfg.ResolveCallGraph = true
+
+	eng := NewEngine(cfg)
+	if _, err := eng.GenerateOpenAPI(); err != nil {
+		t.Fatalf("GenerateOpenAPI: %v", err)
+	}
+
+	stats := eng.GetResolvedCalleeStats()
+	if stats.Joined == 0 {
+		t.Fatal("no call sites joined; the resolved graph reached nothing and every later phase would be a no-op")
+	}
+	// The fixture layers a context over another so a promoted method exists to
+	// resolve — the gitea shape, 4,492 sites there.
+	if stats.Promoted == 0 {
+		t.Errorf("no promoted method resolved in a fixture written to contain one (joined %d)", stats.Joined)
+	}
+
+	off := DefaultEngineConfig()
+	off.InputDir = cfg.InputDir
+	offEngine := NewEngine(off)
+	if _, err := offEngine.GenerateOpenAPI(); err != nil {
+		t.Fatalf("GenerateOpenAPI without the resolved graph: %v", err)
+	}
+	if stats := offEngine.GetResolvedCalleeStats(); stats.Joined != 0 {
+		t.Errorf("the resolved graph is off by default but reported %d joined sites", stats.Joined)
+	}
+}

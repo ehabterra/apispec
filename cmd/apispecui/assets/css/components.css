@@ -1585,3 +1585,28 @@ h3 + .info {
 .disp-row:first-child {
   border-top: 0;
 }
+
+/* Indirect-call resolution toggle in the top bar. It sits next to the engine
+   selector because it is the same kind of choice — how the next generation
+   analyses the project — and it has to be reachable AFTER a generation, which
+   the start panel is not. */
+.topbar .resolve-toggle {
+  padding: 3px 8px;
+  font-size: var(--fs-sm);
+  height: auto;
+  white-space: nowrap;
+}
+.topbar .resolve-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Shown when indirect-call resolution is combined with a raised node budget:
+   the two compete for the same time, and the combination is what turns a
+   generation into a multi-minute run with no obvious cause. */
+.topbar .resolve-warn {
+  font-size: var(--fs-sm);
+  color: var(--warn, #d9a441);
+  white-space: nowrap;
+  cursor: help;
+}

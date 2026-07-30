@@ -89,6 +89,22 @@ function TopBar({ s }) {
         <option value="lazy">⚡ Lazy</option>
         <option value="legacy">Legacy</option>
       </select>
+      <button
+        class="btn ghost sm resolve-toggle ${s.resolveCallGraph ? "active" : ""}"
+        title="Resolve indirect calls (experimental). Builds an SSA+VTA call graph alongside the syntactic one and points each call at the function that actually runs: an interface method with exactly one implementation becomes that implementation, and a method reached through embedding is attributed to the type that declares it. An interface with several implementations is left alone — picking one would invent a concrete type your program may never use. Costs roughly +19% time and +46% memory on a large module."
+        disabled=${s.generating}
+        aria-pressed=${s.resolveCallGraph ? "true" : "false"}
+        onClick=${() => setState({ resolveCallGraph: !s.resolveCallGraph })}
+      >
+        ${s.resolveCallGraph ? "◉" : "○"} Resolve
+      </button>
+      ${s.resolveCallGraph && (s.limits?.maxNodesPerTree || 0) > 50000
+        ? html`<span
+            class="resolve-warn"
+            title="Resolution and a raised node budget compete for the same time. Resolution makes more of the program analysable, so the mapping stage roughly doubles at a raised budget — on a 3,000-file project, 1m30s becomes 2m56s at 100k nodes. Expect minutes, not seconds."
+            >⚠ slow combo</span
+          >`
+        : ""}
       <button class="btn" disabled=${s.generating || !s.project} onClick=${generate}>
         ${s.generating
           ? html`Generating…${s.genPhase ? html` ${s.genPhase}` : ""}${s.genElapsed ? html` <span class="gen-elapsed">${fmtDur(s.genElapsed)}</span>` : ""}`

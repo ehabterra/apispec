@@ -214,3 +214,44 @@ func statusKeys(op *intspec.Operation) []string {
 	}
 	return out
 }
+
+// TestTestdata_WrapperRouterResolvedCallGraph pins that resolving call targets
+// with SSA+VTA does not disturb a spec the syntactic graph already gets right.
+//
+// The fixture's `APICtx.JSON` is a promoted method: it is written on the type
+// that EMBEDS the one declaring it, so the resolved graph rewrites the call to
+// the declaring type. That is the same fact #236 encodes by widening derived
+// receiver patterns over Type.Embeds, so with both in play the output must be
+// identical — the migration's safety property, checked here on the one fixture
+// where a rewrite actually fires.
+func TestTestdata_WrapperRouterResolvedCallGraph(t *testing.T) {
+	plain := loadTestdataWithFixtureConfig(t, "wrapper_router", wrapperRouterConfig())
+	resolved := loadTestdataResolved(t, "wrapper_router", wrapperRouterConfig())
+
+	if len(resolved.Paths) != len(plain.Paths) {
+		t.Fatalf("resolved run documents %d paths, plain run %d: %v vs %v",
+			len(resolved.Paths), len(plain.Paths), mapPathKeys(resolved.Paths), mapPathKeys(plain.Paths))
+	}
+	for path, item := range plain.Paths {
+		other, ok := resolved.Paths[path]
+		if !ok {
+			t.Errorf("%s disappeared when call targets were resolved", path)
+			continue
+		}
+		for _, method := range []string{"GET", "POST", "PUT", "DELETE"} {
+			op, resolvedOp := opFor(item, method), opFor(other, method)
+			if (op == nil) != (resolvedOp == nil) {
+				t.Errorf("%s %s: present=%v with the syntactic graph, present=%v with the resolved one",
+					method, path, op != nil, resolvedOp != nil)
+				continue
+			}
+			if op == nil {
+				continue
+			}
+			if len(op.Responses) != len(resolvedOp.Responses) {
+				t.Errorf("%s %s: responses %v -> %v when call targets were resolved",
+					method, path, statusKeys(op), statusKeys(resolvedOp))
+			}
+		}
+	}
+}

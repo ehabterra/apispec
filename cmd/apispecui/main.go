@@ -204,6 +204,14 @@ type GenerateRequest struct {
 	// tree; the default is the lazy tracker.
 	LegacyTracker bool `json:"legacyTracker"`
 
+	// ResolveCallGraph builds an SSA+VTA call graph alongside the syntactic one
+	// and repoints each call at the function that actually runs — an interface
+	// method with one implementation, and a method reached through embedding. Off
+	// by default: it costs about +19% wall clock and +46% peak memory on a large
+	// module, which is a lot to spend on a project that does not answer through
+	// interfaces or an embedded context.
+	ResolveCallGraph bool `json:"resolveCallGraph"`
+
 	// Limits bound tree expansion. Every field is optional: a zero keeps the
 	// engine default. They are here because a project can be large enough that
 	// the default budget stops expansion part-way through its routes, and the UI
@@ -921,6 +929,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		AutoExcludeMocks:             true,
 		Verbose:                      s.cfg.Verbose,
 		UseLazyTracker:               !req.LegacyTracker,
+		ResolveCallGraph:             req.ResolveCallGraph,
 		OnPhase: func(phase string, elapsed time.Duration) {
 			// Pushed by the engine at each major phase boundary. The UI
 			// polls /api/generate/progress to surface this as the live
