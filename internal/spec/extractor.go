@@ -1121,7 +1121,7 @@ func frameChainKey(chain []string, node TrackerNodeInterface) string {
 }
 
 func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate) {
-	e.extractRouteChildrenScoped(routeNode, route, mountTags, routes, visitedEdges, ci, chainID, respCandidates, true)
+	e.extractRouteChildrenScoped(routeNode, route, mountTags, routes, visitedEdges, ci, chainID, respCandidates, true, true, 0)
 }
 
 // extractRouteChildrenScoped is extractRouteChildren with the permission to
@@ -1131,7 +1131,7 @@ func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *
 // fill the route replaces resolved values with that function's parameters.
 // Everything else about the walk (request, responses, parameters) continues
 // unchanged, because those DO live in the handler's body.
-func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate, mayComplete bool) {
+func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[chainStep]bool, ci *chainInterner, chainID int, respCandidates *[]responseCandidate, mayComplete, bodyScope bool, depth int) {
 	for _, child := range routeNode.GetChildren() {
 		// Check for route patterns in children nodes — but only where a child can
 		// legitimately COMPLETE this route (see completesSameRegistration). A
@@ -1151,7 +1151,11 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 		// keep the most specific result so a concrete type isn't clobbered by
 		// a later generic `object` — which happens when one path resolves the
 		// type through a binding wrapper and another doesn't.
-		if req := e.extractRequestFromNode(child, route); req != nil {
+		// Only where the walk got here by executing the route. A body reached
+		// through a lateral relation link belongs to another route's handler,
+		// and taking it documents a confidently wrong schema (issue #269).
+		childBodyScope := bodyScope && e.followsControlFlow(routeNode, child, depth)
+		if req := e.extractRequestFromNode(child, route); req != nil && childBodyScope {
 			// Record the call site so a method-dispatch handler can attribute
 			// this request body to the right verb branch by line range.
 			if f, l, _ := calleePosition(child); req.File == "" {
@@ -1185,7 +1189,7 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 		if child != nil && child.GetArgument() == nil && child.GetEdge() != nil {
 			childChainID = ci.push(chainID, child.GetEdge().Callee.ID())
 		}
-		e.extractRouteChildrenScoped(child, route, mountTags, routes, visitedEdges, ci, childChainID, respCandidates, childMayComplete)
+		e.extractRouteChildrenScoped(child, route, mountTags, routes, visitedEdges, ci, childChainID, respCandidates, childMayComplete, childBodyScope, depth+1)
 	}
 
 	// Extract parameters from the route node itself
