@@ -641,6 +641,13 @@ func (t *LazyTree) GetMetadata() *metadata.Metadata { return t.meta }
 
 // LazyNode implements TrackerNodeInterface. Identity is (content, parent):
 // node objects are per-path, so Parent is always the actual expansion parent.
+// FIELD ORDER: the pointer-shaped fields come first and the two bools sit
+// together at the end, so they share one padding word instead of each rounding
+// the struct up on its own. That is worth stating because the natural grouping
+// — argType with isArgument, expanded with children — costs 8 bytes per node,
+// and nodes are the single most numerous allocation in a large run (they are
+// slab-allocated in newNode for the same reason). See
+// `go vet -vettool=$(which fieldalignment)`.
 type LazyNode struct {
 	tree   *LazyTree
 	key    string
@@ -649,13 +656,13 @@ type LazyNode struct {
 	edge *metadata.CallGraphEdge
 	arg  *metadata.CallArgument
 
-	argType    ArgumentType
-	isArgument bool
-
 	typeParams map[string]string // GetTypeParamMap cache
 
 	children []TrackerNodeInterface // nil = not yet expanded
-	expanded bool
+
+	argType    ArgumentType
+	isArgument bool
+	expanded   bool
 }
 
 // GetKey implements TrackerNodeInterface.
@@ -733,16 +740,19 @@ func (n *LazyNode) onPath(key string) bool {
 // childSpec is one planned child of a node: either an argument child (arg
 // set) or a callee child (arg nil). Specs carry everything needed to
 // materialize a LazyNode except the parent, which is per-path.
+// FIELD ORDER: pointers first, then the int and the bool together at the end —
+// a plan holds one of these per child of every expanded node.
 type childSpec struct {
-	key string
-
 	// argument child
 	arg     *metadata.CallArgument
 	argEdge *metadata.CallGraphEdge
-	argType ArgumentType
 
 	// callee child
 	edge *metadata.CallGraphEdge
+
+	key string
+
+	argType ArgumentType
 	// chainParented children are listed under this node but parented at the
 	// call-site scope (processChainRelationships' rule), so chained-call
 	// arguments trace through the enclosing call's ParamArgMap.
@@ -753,10 +763,13 @@ type childSpec struct {
 // per-path copies of the same call (same key, edge, argument) share one
 // expansion plan; relevant generic bindings are embedded in the instance key
 // itself ("fn[T=User]@pos"), so binding-distinct instances get distinct plans.
+//
+// FIELD ORDER: the two pointers lead, so the pointer-scan prefix ends before
+// the string's length word rather than spanning the whole struct.
 type planKey struct {
-	key   string
 	edge  *metadata.CallGraphEdge
 	arg   *metadata.CallArgument
+	key   string
 	isArg bool
 }
 

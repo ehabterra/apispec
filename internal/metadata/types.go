@@ -1239,37 +1239,37 @@ const (
 
 // VariableOrigin represents the origin of a variable
 type VariableOrigin struct {
+	OriginArg  *CallArgument
 	OriginVar  string
 	OriginPkg  string
 	OriginFunc string
-	OriginArg  *CallArgument
 }
 
 // AssignmentLink represents a link between an assignment and a call graph edge
 type AssignmentLink struct {
-	AssignmentKey AssignmentKey
 	Assignment    *Assignment
 	Edge          *CallGraphEdge
+	AssignmentKey AssignmentKey
 }
 
 // VariableLink represents a link between a variable and a call graph edge
 type VariableLink struct {
+	Edge       *CallGraphEdge
+	Argument   *CallArgument
 	ParamKey   ParamKey
 	OriginVar  string
 	OriginPkg  string
 	OriginFunc string
-	Edge       *CallGraphEdge
-	Argument   *CallArgument
 }
 
 // ProcessedArgument represents a processed argument with enhanced information
 type ProcessedArgument struct {
 	Argument   *CallArgument
 	Edge       *CallGraphEdge
-	ArgType    ArgumentType
-	ArgIndex   int
 	ArgContext string
 	Children   []*ProcessedArgument
+	ArgType    ArgumentType
+	ArgIndex   int
 }
 
 // AssignmentKey represents a key for assignment relationships

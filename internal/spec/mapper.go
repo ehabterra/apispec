@@ -1958,14 +1958,16 @@ type ValidationConstraints struct {
 	MaxLength *int
 	Min       *float64
 	Max       *float64
-	Format    string
-	Pattern   string
-	Required  bool
-	Enum      []interface{}
 	// Dive holds the constraints that follow a `dive` token in a validator tag;
 	// they apply to the ELEMENTS of a slice/map rather than the container
 	// (issue #165). Nil when the tag has no `dive`.
 	Dive *ValidationConstraints
+
+	Format  string
+	Pattern string
+	Enum    []interface{}
+
+	Required bool
 }
 
 // splitOnDive splits a go-playground/validator rule string on the first `dive`
@@ -2490,10 +2492,10 @@ func sortedVariables(meta *metadata.Metadata, vars map[string]*metadata.Variable
 
 // EnumConstant represents a constant that might be part of an enum
 type EnumConstant struct {
+	Value    interface{}
 	Name     string
 	Type     string
 	Resolved string
-	Value    interface{}
 	Group    int
 }
 

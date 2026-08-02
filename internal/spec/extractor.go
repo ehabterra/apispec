@@ -57,24 +57,10 @@ type RouteInfo struct {
 	Response    map[string]*ResponseInfo
 	Params      []Parameter
 
-	// Multipart records that the handler reads a multipart body — a file part
-	// (FormFile) or an explicit ParseMultipartForm/MultipartForm call. It is what
-	// separates multipart/form-data from application/x-www-form-urlencoded, a
-	// distinction no Go signature states (issue #207); the form reads themselves
-	// look identical in both.
-	Multipart bool
-
 	// OperationIDSuffix disambiguates the operationId when one handler yields
 	// several operations (e.g. an r.Method dispatch split into GET/POST). Empty
 	// for ordinary routes. Appended as "_<suffix>" to the computed operationId.
 	OperationIDSuffix string
-
-	// MethodExplicit is true when Method was resolved from the registration
-	// (a verb-carrying call/arg/path, e.g. router.GET or "GET /x"), and false
-	// when it fell back to the default. Only verb-less routes are eligible for
-	// r.Method-dispatch splitting — a router that registers a concrete verb
-	// won't dispatch the other verbs to the handler.
-	MethodExplicit bool
 
 	// ExtraMethods carries the remaining verbs when one registration names
 	// several — a house router's `Methods("GET,POST", path, h)` (issue #221).
@@ -97,6 +83,23 @@ type RouteInfo struct {
 	//                   `security: []`.
 	//   non-empty    -> the operation is protected by these requirements.
 	Security []SecurityRequirement
+
+	// FIELD ORDER: the bools live together at the end so they share one padding
+	// word rather than each rounding the struct up on its own.
+
+	// Multipart records that the handler reads a multipart body — a file part
+	// (FormFile) or an explicit ParseMultipartForm/MultipartForm call. It is what
+	// separates multipart/form-data from application/x-www-form-urlencoded, a
+	// distinction no Go signature states (issue #207); the form reads themselves
+	// look identical in both.
+	Multipart bool
+
+	// MethodExplicit is true when Method was resolved from the registration
+	// (a verb-carrying call/arg/path, e.g. router.GET or "GET /x"), and false
+	// when it fell back to the default. Only verb-less routes are eligible for
+	// r.Method-dispatch splitting — a router that registers a concrete verb
+	// won't dispatch the other verbs to the handler.
+	MethodExplicit bool
 
 	// DynamicParams names path placeholders synthesized from unresolvable
 	// call expressions (issue #34). The mapper uses these to emit one
@@ -132,9 +135,7 @@ func (r *RouteInfo) IsValid() bool {
 
 // RequestInfo represents request information
 type RequestInfo struct {
-	ContentType string
-	BodyType    string
-	Schema      *Schema
+	Schema *Schema
 
 	// OneOfTypes holds the concrete types a polymorphic body resolves to
 	// (issue #201). BodyType stays the interface — it is the Go type, and
@@ -142,6 +143,9 @@ type RequestInfo struct {
 	// instead, so the interface is not emitted as a component that nothing
 	// references.
 	OneOfTypes []string
+
+	ContentType string
+	BodyType    string
 
 	// File and Line locate the call site that produced this request body, used
 	// to attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
@@ -151,10 +155,7 @@ type RequestInfo struct {
 
 // ResponseInfo represents response information
 type ResponseInfo struct {
-	StatusCode  int
-	ContentType string
-	BodyType    string
-	Schema      *Schema
+	Schema *Schema
 
 	// OneOfTypes holds the concrete types a polymorphic body resolves to
 	// (issue #201). BodyType stays the interface — it is the Go type, and
@@ -163,10 +164,15 @@ type ResponseInfo struct {
 	// references.
 	OneOfTypes []string
 
+	ContentType string
+	BodyType    string
+
 	// File and Line locate the call site that produced this response, used to
 	// attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
 	File string
 	Line int
+
+	StatusCode int
 }
 
 // Extractor provides a cleaner, more modular approach to extraction
@@ -1056,9 +1062,12 @@ const chainSep = "\x1f"
 // each step one map operation while preserving value equality exactly, so
 // dedupe behaviour is unchanged. chainStep doubles as the response-candidate
 // dedupe key (parent = frame handle, callee = statement's call-site ID).
+// FIELD ORDER: the string leads so the pointer-scan prefix is 8 bytes rather
+// than 16. The size is unchanged; what drops is how far the collector has to
+// scan each key, and these are map keys in the hottest walk there is.
 type chainStep struct {
-	parent int
 	callee string
+	parent int
 }
 
 // chainInterner assigns stable small handles to recursion chains within one

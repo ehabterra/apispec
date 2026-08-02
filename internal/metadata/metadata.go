@@ -43,14 +43,14 @@ const (
 
 // CallIdentifier manages different identifier formats for calls
 type CallIdentifier struct {
+	generics map[string]string
+	// Performance optimization: cache for different ID types
+	idCache map[CallIdentifierType]string
+
 	pkg      string
 	name     string
 	recvType string
 	position string
-	generics map[string]string
-
-	// Performance optimization: cache for different ID types
-	idCache map[CallIdentifierType]string
 }
 
 func NewCallIdentifier(pkg, name, recvType, position string, generics map[string]string) *CallIdentifier {
