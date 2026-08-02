@@ -48,8 +48,8 @@ func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, 
 // "/api"), sub)) cannot be statically evaluated without interpreting
 // the Go body — see issue #34 — so they surface as a {placeholder}
 // named after the called function. The second return value, dynamicName,
-// is the placeholder name when one was synthesized (so the caller can
-// register a shared component parameter) and the empty string otherwise.
+// are the placeholder names synthesized for this path (so the caller can
+// register a shared component parameter for each) and nil when none were.
 //
 // A concatenation (`opts.BaseURL + "/things"`) folds to the joined value —
 // see resolveConcatenatedPath, which is what generated servers need (#274).
@@ -57,17 +57,26 @@ func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, 
 // All other kinds fall through to GetArgumentInfo for backwards
 // compatibility — handling KindIdent (non-const variable) similarly is a
 // possible follow-up.
-func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node TrackerNodeInterface) (path, dynamicName string) {
+func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node TrackerNodeInterface) (path string, dynamicNames []string) {
 	if arg == nil {
-		return "", ""
+		return "", nil
 	}
 	switch arg.GetKind() {
 	case metadata.KindBinary:
 		return b.resolveConcatenatedPath(arg, node)
 	case metadata.KindCall:
-		return placeholderFor(arg)
+		p, name := placeholderFor(arg)
+		return p, dynamicNameList(name)
 	}
-	return b.contextProvider.GetArgumentInfo(arg), ""
+	return b.contextProvider.GetArgumentInfo(arg), nil
+}
+
+// dynamicNameList wraps a single synthesized name, or nil when there is none.
+func dynamicNameList(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return []string{name}
 }
 
 // placeholderFor names an argument that cannot be evaluated statically, so the
@@ -97,23 +106,28 @@ func placeholderFor(arg *metadata.CallArgument) (path, dynamicName string) {
 // order. An operand that cannot be evaluated becomes a {placeholder} rather
 // than disappearing: an unresolved prefix must leave the route addressable and
 // visibly incomplete, not silently shorten its path.
-func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument, node TrackerNodeInterface) (path, dynamicName string) {
+func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument, node TrackerNodeInterface) (path string, dynamicNames []string) {
 	operands := flattenConcat(arg, nil)
 	if operands == nil {
 		// Not a `+` chain (no other operator builds a path); treat the whole
 		// expression as one unresolvable value.
-		return placeholderFor(arg)
+		p, name := placeholderFor(arg)
+		return p, dynamicNameList(name)
 	}
 
 	var sb strings.Builder
 	for _, operand := range operands {
 		value, name := b.resolvePathOperand(operand, node)
 		sb.WriteString(value)
-		if name != "" && dynamicName == "" {
-			dynamicName = name
+		// EVERY placeholder needs its name reported: each one becomes a declared
+		// path parameter, and a `{name}` left undeclared is an invalid path
+		// template — which is what `a() + b() + "/x"` would produce if only the
+		// first were returned.
+		if name != "" {
+			dynamicNames = appendUniqueStrings(dynamicNames, name)
 		}
 	}
-	return sb.String(), dynamicName
+	return sb.String(), dynamicNames
 }
 
 // flattenConcat returns the operands of a `+` chain left to right, or nil when
@@ -186,8 +200,17 @@ func (b *BasePatternMatcher) structFieldValue(arg *metadata.CallArgument, node T
 	}
 
 	for _, elt := range base.Args {
-		if elt == nil || elt.GetKind() != metadata.KindKeyValue || elt.X == nil || elt.Fun == nil {
+		if elt == nil {
 			continue
+		}
+		if elt.GetKind() != metadata.KindKeyValue || elt.X == nil || elt.Fun == nil {
+			// A positional literal (`ChiServerOptions{"/api", nil}`) sets fields
+			// without naming them, so "absent from the keys" would NOT mean the
+			// zero value — concluding "" here is exactly the silent shortening
+			// this function exists to avoid. Resolving it would mean matching the
+			// element index against the struct's field order; until then the
+			// honest answer is that the operand is unresolved.
+			return "", false
 		}
 		if elt.X.GetName() != field {
 			continue
@@ -577,7 +600,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	}
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
-		path, dynName := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex], node)
+		path, dynNames := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex], node)
 		// Go 1.22's net/http.ServeMux carries the HTTP method on the
 		// registration pattern itself: mux.HandleFunc("GET /users/{id}", h).
 		// When MethodFromPath is set, split the leading verb off the path and
@@ -594,9 +617,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		if routeInfo.Path == "" {
 			routeInfo.Path = "/"
 		}
-		if dynName != "" {
-			routeInfo.DynamicParams = append(routeInfo.DynamicParams, dynName)
-		}
+		routeInfo.DynamicParams = appendUniqueStrings(routeInfo.DynamicParams, dynNames...)
 		found = true
 	}
 
@@ -816,11 +837,9 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 	edge := node.GetEdge()
 	// Extract path if available
 	if m.pattern.PathFromArg && len(edge.Args) > m.pattern.PathArgIndex {
-		path, dynName := m.resolvePathArg(edge.Args[m.pattern.PathArgIndex], node)
+		path, dynNames := m.resolvePathArg(edge.Args[m.pattern.PathArgIndex], node)
 		mountInfo.Path = path
-		if dynName != "" {
-			mountInfo.DynamicParams = append(mountInfo.DynamicParams, dynName)
-		}
+		mountInfo.DynamicParams = appendUniqueStrings(mountInfo.DynamicParams, dynNames...)
 	}
 
 	// Extract router argument if available

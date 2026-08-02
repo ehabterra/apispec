@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -71,15 +72,16 @@ func TestTestdata_ConcatPath(t *testing.T) {
 
 	// An operand that cannot be evaluated keeps the literal part and names the
 	// unknown, instead of silently shortening the path.
-	var dynamic string
+	var dynamic []string
 	for path := range out.Paths {
 		if strings.HasSuffix(path, "/dyn") {
-			dynamic = path
+			dynamic = append(dynamic, path)
 		}
 	}
-	if dynamic == "" {
+	sort.Strings(dynamic) // out.Paths is a map: sort so a failure reports the same path every run
+	if len(dynamic) == 0 {
 		t.Errorf("the route with an unresolvable prefix is gone; have %v", mapPathKeys(out.Paths))
-	} else if !strings.Contains(dynamic, "{") {
-		t.Errorf("unresolvable prefix resolved to %q; it must degrade to a placeholder, not to a shorter path", dynamic)
+	} else if !strings.Contains(dynamic[0], "{") {
+		t.Errorf("unresolvable prefix resolved to %q; it must degrade to a placeholder, not to a shorter path", dynamic[0])
 	}
 }

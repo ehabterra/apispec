@@ -48,8 +48,8 @@ func TestResolveConcatenatedPath(t *testing.T) {
 
 	t.Run("two literals fold", func(t *testing.T) {
 		arg := concatOf(meta, concatLit(meta, "/api"), concatLit(meta, "/things"))
-		if path, dyn := b.resolvePathArg(arg, nil); path != "/api/things" || dyn != "" {
-			t.Errorf("got (%q, %q), want (\"/api/things\", \"\")", path, dyn)
+		if path, dyn := b.resolvePathArg(arg, nil); path != "/api/things" || len(dyn) != 0 {
+			t.Errorf("got (%q, %v), want (\"/api/things\", no placeholders)", path, dyn)
 		}
 	})
 
@@ -82,8 +82,8 @@ func TestResolveConcatenatedPath(t *testing.T) {
 		if path != "{dynamicBase}/dyn" {
 			t.Errorf("got %q, want \"{dynamicBase}/dyn\"", path)
 		}
-		if dyn != "dynamicBase" {
-			t.Errorf("dynamic name = %q, want \"dynamicBase\" so the caller can register the parameter", dyn)
+		if len(dyn) != 1 || dyn[0] != "dynamicBase" {
+			t.Errorf("dynamic names = %v, want [dynamicBase] so the caller can register the parameter", dyn)
 		}
 	})
 
@@ -98,8 +98,8 @@ func TestResolveConcatenatedPath(t *testing.T) {
 	})
 
 	t.Run("a plain literal path is unchanged", func(t *testing.T) {
-		if path, dyn := b.resolvePathArg(concatLit(meta, "/users"), nil); path != "/users" || dyn != "" {
-			t.Errorf("got (%q, %q), want (\"/users\", \"\")", path, dyn)
+		if path, dyn := b.resolvePathArg(concatLit(meta, "/users"), nil); path != "/users" || len(dyn) != 0 {
+			t.Errorf("got (%q, %v), want (\"/users\", no placeholders)", path, dyn)
 		}
 	})
 }
@@ -139,6 +139,146 @@ func TestFlattenConcat(t *testing.T) {
 		arg.SetValue("*")
 		if got := flattenConcat(arg, nil); got != nil {
 			t.Errorf("got %v, want nil so the caller falls back to a placeholder", got)
+		}
+	})
+}
+
+// pathNode is a tracker node carrying an edge and a parent, which is what the
+// operand resolvers walk.
+type pathNode struct {
+	edge   *metadata.CallGraphEdge
+	arg    *metadata.CallArgument
+	parent TrackerNodeInterface
+}
+
+func (n *pathNode) GetKey() string                                         { return "" }
+func (n *pathNode) GetChildren() []TrackerNodeInterface                    { return nil }
+func (n *pathNode) GetCallGraphEdge() *metadata.CallGraphEdge              { return n.edge }
+func (n *pathNode) GetCallArgument() *metadata.CallArgument                { return n.arg }
+func (n *pathNode) GetArgContext() string                                  { return "" }
+func (n *pathNode) GetArgIndex() int                                       { return 0 }
+func (n *pathNode) GetArgType() metadata.ArgumentType                      { return metadata.ArgTypeDirectCallee }
+func (n *pathNode) GetArgument() *metadata.CallArgument                    { return n.arg }
+func (n *pathNode) GetEdge() *metadata.CallGraphEdge                       { return n.edge }
+func (n *pathNode) GetParent() TrackerNodeInterface                        { return n.parent }
+func (n *pathNode) GetTypeParamMap() map[string]string                     { return nil }
+func (n *pathNode) GetRootAssignmentMap() map[string][]metadata.Assignment { return nil }
+
+// concatIdent builds a bare ident.
+func concatIdent(meta *metadata.Metadata, name string) *metadata.CallArgument {
+	a := metadata.NewCallArgument(meta)
+	a.SetKind(metadata.KindIdent)
+	a.SetName(name)
+	return a
+}
+
+// concatSelector builds `base.Field`.
+func concatSelector(meta *metadata.Metadata, base, field string) *metadata.CallArgument {
+	a := metadata.NewCallArgument(meta)
+	a.SetKind(metadata.KindSelector)
+	a.X = concatIdent(meta, base)
+	a.Sel = concatIdent(meta, field)
+	return a
+}
+
+// concatComposite builds a composite literal from the given elements.
+func concatComposite(meta *metadata.Metadata, elts ...*metadata.CallArgument) *metadata.CallArgument {
+	a := metadata.NewCallArgument(meta)
+	a.SetKind(metadata.KindCompositeLit)
+	a.Args = elts
+	return a
+}
+
+// concatKeyValue builds `Key: value` for a composite literal.
+func concatKeyValue(meta *metadata.Metadata, key string, value *metadata.CallArgument) *metadata.CallArgument {
+	a := metadata.NewCallArgument(meta)
+	a.SetKind(metadata.KindKeyValue)
+	a.X = concatIdent(meta, key)
+	a.Fun = value
+	return a
+}
+
+// nodeWithCallerArg returns a node whose parent binds paramName to arg, the
+// shape argViaParent reads when a helper's parameter is resolved to the value
+// its caller passed.
+func nodeWithCallerArg(meta *metadata.Metadata, paramName string, arg *metadata.CallArgument) TrackerNodeInterface {
+	parentEdge := &metadata.CallGraphEdge{
+		Caller:      metadata.Call{Meta: meta, Name: meta.StringPool.Get("main"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
+		Callee:      metadata.Call{Meta: meta, Name: meta.StringPool.Get("register"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
+		ParamArgMap: map[string]metadata.CallArgument{paramName: *arg},
+	}
+	childEdge := &metadata.CallGraphEdge{
+		Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("register"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
+		Callee: metadata.Call{Meta: meta, Name: meta.StringPool.Get("Post"), Pkg: meta.StringPool.Get("chi"), RecvType: -1},
+	}
+	return &pathNode{edge: childEdge, parent: &pathNode{edge: parentEdge}}
+}
+
+// TestResolveConcatenatedPathWithNode covers the operands that can only be
+// resolved from the call site — the ones the fixture exercises end to end.
+func TestResolveConcatenatedPathWithNode(t *testing.T) {
+	meta := newTestMeta()
+	b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+
+	t.Run("a parameter resolves to the caller's literal", func(t *testing.T) {
+		node := nodeWithCallerArg(meta, "prefix", concatLit(meta, "/v2"))
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, dyn := b.resolvePathArg(arg, node); path != "/v2/items" || len(dyn) != 0 {
+			t.Errorf("got (%q, %v), want (\"/v2/items\", no placeholders)", path, dyn)
+		}
+	})
+
+	t.Run("a struct field the caller left unset is the zero value", func(t *testing.T) {
+		// The generated shape: `HandlerWithOptions(si, ChiServerOptions{})`.
+		node := nodeWithCallerArg(meta, "options", concatComposite(meta))
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		if path, _ := b.resolvePathArg(arg, node); path != "/things" {
+			t.Errorf("got %q, want \"/things\" — an unset field contributes nothing", path)
+		}
+	})
+
+	t.Run("a struct field the caller set resolves to its value", func(t *testing.T) {
+		lit := concatComposite(meta, concatKeyValue(meta, "BaseURL", concatLit(meta, "/v2")))
+		node := nodeWithCallerArg(meta, "options", lit)
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		if path, _ := b.resolvePathArg(arg, node); path != "/v2/things" {
+			t.Errorf("got %q, want \"/v2/things\"", path)
+		}
+	})
+
+	t.Run("a POSITIONAL literal is not read as all-zero fields", func(t *testing.T) {
+		// `ChiServerOptions{"/api", nil}` names no fields, so "absent from the
+		// keys" cannot mean the zero value. Concluding "" would silently shorten
+		// the path, which is the defect this whole change exists to prevent.
+		lit := concatComposite(meta, concatLit(meta, "/api"), concatIdent(meta, "nil"))
+		node := nodeWithCallerArg(meta, "options", lit)
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		path, dyn := b.resolvePathArg(arg, node)
+		if path != "{BaseURL}/things" {
+			t.Errorf("got %q, want \"{BaseURL}/things\" — an unnamed field must degrade to a placeholder", path)
+		}
+		if len(dyn) != 1 || dyn[0] != "BaseURL" {
+			t.Errorf("dynamic names = %v, want [BaseURL]", dyn)
+		}
+	})
+
+	t.Run("every unresolvable operand is named", func(t *testing.T) {
+		// Each placeholder becomes a declared path parameter; reporting only the
+		// first would leave the second undeclared in the path template.
+		first := metadata.NewCallArgument(meta)
+		first.SetKind(metadata.KindCall)
+		first.SetName("baseOf")
+		second := metadata.NewCallArgument(meta)
+		second.SetKind(metadata.KindCall)
+		second.SetName("versionOf")
+
+		arg := concatOf(meta, concatOf(meta, first, second), concatLit(meta, "/things"))
+		path, dyn := b.resolvePathArg(arg, nil)
+		if path != "{baseOf}{versionOf}/things" {
+			t.Errorf("got %q, want both placeholders kept", path)
+		}
+		if len(dyn) != 2 || dyn[0] != "baseOf" || dyn[1] != "versionOf" {
+			t.Errorf("dynamic names = %v, want [baseOf versionOf] so both are declared", dyn)
 		}
 	})
 }

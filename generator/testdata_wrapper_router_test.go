@@ -149,6 +149,11 @@ func TestTestdata_WrapperRouter(t *testing.T) {
 	} else if !strings.Contains(op.OperationID, "deleteUser") {
 		t.Errorf("helper-registrar operationId = %q, want it to name deleteUser", op.OperationID)
 	}
+	// ...and only there: the old root entry must not survive alongside it, or the
+	// spec would claim the handler answers at two paths.
+	if op := opFor(out.Paths["/"], "DELETE"); op != nil {
+		t.Errorf("DELETE / is still documented (%q); the folded path replaces it", op.OperationID)
+	}
 }
 
 // TestTestdata_WrapperRouterIsDetected is the same fixture with NO wrapper
@@ -213,6 +218,9 @@ func TestTestdata_WrapperRouterIsDetected(t *testing.T) {
 	// resolves to /users/{id}; it was documented at "/" before #274.
 	if op := opFor(out.Paths["/users/{id}"], "DELETE"); op == nil {
 		t.Errorf("the helper-registrar route is gone; have %v", mapPathKeys(out.Paths))
+	}
+	if op := opFor(out.Paths["/"], "DELETE"); op != nil {
+		t.Errorf("DELETE / is still documented (%q); the folded path replaces it", op.OperationID)
 	}
 }
 
