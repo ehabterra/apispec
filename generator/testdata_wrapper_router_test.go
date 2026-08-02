@@ -137,10 +137,22 @@ func TestTestdata_WrapperRouter(t *testing.T) {
 	// A helper handed the framework router directly must keep working: its inner
 	// call is the only registration there is, so the fix must not reject it for
 	// being inside another function.
-	if op := opFor(out.Paths["/"], "DELETE"); op == nil {
+	//
+	// The helper builds its path by concatenation — `m.Delete(base+"/{id}", h)`
+	// with `base` a parameter — and the caller passes "/users". That used to
+	// resolve to nothing at all, documenting the route at "/", which said the
+	// handler answers at the root. Concatenated paths now fold and the parameter
+	// is followed to the caller's literal, so the route is documented where it
+	// actually is (issue #274).
+	if op := opFor(out.Paths["/users/{id}"], "DELETE"); op == nil {
 		t.Errorf("the helper-registrar route is gone; have %v", mapPathKeys(out.Paths))
 	} else if !strings.Contains(op.OperationID, "deleteUser") {
 		t.Errorf("helper-registrar operationId = %q, want it to name deleteUser", op.OperationID)
+	}
+	// ...and only there: the old root entry must not survive alongside it, or the
+	// spec would claim the handler answers at two paths.
+	if op := opFor(out.Paths["/"], "DELETE"); op != nil {
+		t.Errorf("DELETE / is still documented (%q); the folded path replaces it", op.OperationID)
 	}
 }
 
@@ -201,8 +213,14 @@ func TestTestdata_WrapperRouterIsDetected(t *testing.T) {
 	// wrapper — there is no type to scope a pattern to, and its inner call is the
 	// only registration. It must keep working, and must not gain a derived pattern
 	// that would fire elsewhere.
-	if op := opFor(out.Paths["/"], "DELETE"); op == nil {
+	//
+	// Its concatenated path (`base+"/{id}"`, with the caller passing "/users")
+	// resolves to /users/{id}; it was documented at "/" before #274.
+	if op := opFor(out.Paths["/users/{id}"], "DELETE"); op == nil {
 		t.Errorf("the helper-registrar route is gone; have %v", mapPathKeys(out.Paths))
+	}
+	if op := opFor(out.Paths["/"], "DELETE"); op != nil {
+		t.Errorf("DELETE / is still documented (%q); the folded path replaces it", op.OperationID)
 	}
 }
 

@@ -127,9 +127,13 @@ func TestSweepResolvePathArg(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, dyn := b.resolvePathArg(tt.arg)
-			if path != tt.wantPath || dyn != tt.wantDyn {
-				t.Errorf("resolvePathArg() = (%q, %q), want (%q, %q)", path, dyn, tt.wantPath, tt.wantDyn)
+			path, dyn := b.resolvePathArg(tt.arg, nil)
+			got := ""
+			if len(dyn) > 0 {
+				got = dyn[0]
+			}
+			if path != tt.wantPath || got != tt.wantDyn || len(dyn) > 1 {
+				t.Errorf("resolvePathArg() = (%q, %v), want (%q, %q)", path, dyn, tt.wantPath, tt.wantDyn)
 			}
 		})
 	}
