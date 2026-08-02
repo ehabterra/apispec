@@ -81,9 +81,14 @@ const (
 //	KindArray:   Len, Elem
 //	KindMap:     Key, Elem
 //	KindChan:    Dir, Elem
+//
+// FIELD ORDER: Kind reads most naturally at the top — it selects which of the
+// other fields mean anything — but it is a uint8, and leading with it costs a
+// whole word to padding. It sits with Dir at the end instead, where the two
+// share one word: 128 bytes rather than 136. Every parsed type string becomes
+// one of these, memoized per pooled string, so the grouping is deliberate;
+// `go vet -vettool=$(which fieldalignment)` catches a regression.
 type TypeRef struct {
-	Kind Kind
-
 	// Pkg is the import path qualifying Name; empty for builtins, local
 	// names, and type parameters.
 	Pkg string
@@ -105,12 +110,16 @@ type TypeRef struct {
 	Elem *TypeRef
 	// Len is the literal array-length text (KindArray only).
 	Len string
-	// Dir is the channel direction (KindChan only).
-	Dir ChanDir
 
 	// raw is the exact input substring this ref was parsed from; empty when
 	// the ref was constructed programmatically.
 	raw string
+
+	// Kind selects which of the fields above carry meaning — see the table on
+	// the doc comment. Grouped with Dir; see the field-order note.
+	Kind Kind
+	// Dir is the channel direction (KindChan only).
+	Dir ChanDir
 }
 
 // Parse builds a TypeRef from any of the string encodings in use across the
