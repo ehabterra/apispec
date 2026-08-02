@@ -282,3 +282,322 @@ func TestResolveConcatenatedPathWithNode(t *testing.T) {
 		}
 	})
 }
+
+// edgeBetween builds a caller -> callee edge.
+func edgeBetween(meta *metadata.Metadata, callerPkg, callerName, calleePkg, calleeName string) *metadata.CallGraphEdge {
+	sp := meta.StringPool
+	return &metadata.CallGraphEdge{
+		Caller: metadata.Call{Meta: meta, Name: sp.Get(callerName), Pkg: sp.Get(callerPkg), RecvType: -1},
+		Callee: metadata.Call{Meta: meta, Name: sp.Get(calleeName), Pkg: sp.Get(calleePkg), RecvType: -1},
+	}
+}
+
+// TestConcatPathResolutionEdges covers the paths where an operand CANNOT be
+// resolved. They matter more than the happy ones: every one of them has to end
+// at a placeholder, because a resolver that guesses produces a path the handler
+// does not serve (golden rule #7).
+func TestConcatPathResolutionEdges(t *testing.T) {
+	meta := newTestMeta()
+	b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+
+	t.Run("a nil argument resolves to nothing", func(t *testing.T) {
+		if path, dyn := b.resolvePathArg(nil, nil); path != "" || dyn != nil {
+			t.Errorf("got (%q, %v), want (\"\", nil)", path, dyn)
+		}
+	})
+
+	t.Run("an unnamed operand falls back to the generic name", func(t *testing.T) {
+		anon := metadata.NewCallArgument(meta)
+		anon.SetKind(metadata.KindCall)
+		if path, _ := b.resolvePathArg(concatOf(meta, anon, concatLit(meta, "/x")), nil); path != "{path}/x" {
+			t.Errorf("got %q, want \"{path}/x\"", path)
+		}
+	})
+
+	t.Run("unwrapComposite looks through & and *", func(t *testing.T) {
+		lit := concatComposite(meta)
+		ref := metadata.NewCallArgument(meta)
+		ref.SetKind(metadata.KindUnary)
+		ref.X = lit
+		if got := unwrapComposite(ref); got != lit {
+			t.Error("&T{...} must unwrap to the literal")
+		}
+		if got := unwrapComposite(nil); got != nil {
+			t.Error("nil must stay nil")
+		}
+	})
+
+	t.Run("a selector on something that is not a composite literal is unresolved", func(t *testing.T) {
+		node := nodeWithCallerArg(meta, "options", concatIdent(meta, "elsewhere"))
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{BaseURL}/things" {
+			t.Errorf("got %q, want the field to degrade to a placeholder", path)
+		}
+	})
+
+	t.Run("a field set to a non-constant is unresolved", func(t *testing.T) {
+		lit := concatComposite(meta, concatKeyValue(meta, "BaseURL", concatIdent(meta, "runtimeValue")))
+		node := nodeWithCallerArg(meta, "options", lit)
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{BaseURL}/things" {
+			t.Errorf("got %q, want a placeholder: the field is set, but to a value we cannot evaluate", path)
+		}
+	})
+
+	t.Run("a selector with no field name is unresolved", func(t *testing.T) {
+		sel := metadata.NewCallArgument(meta)
+		sel.SetKind(metadata.KindSelector)
+		sel.X = concatIdent(meta, "options")
+		sel.Sel = concatIdent(meta, "")
+		if _, ok := b.structFieldValue(sel, nodeWithCallerArg(meta, "options", concatComposite(meta))); ok {
+			t.Error("a nameless field cannot resolve")
+		}
+	})
+
+	t.Run("call sites that disagree leave the value ambiguous", func(t *testing.T) {
+		// Two callers passing different prefixes: neither is THE value, so the
+		// honest answer is the placeholder rather than whichever comes first.
+		first := edgeBetween(meta, "app", "main", "app", "register")
+		first.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/a")}
+		second := edgeBetween(meta, "app", "other", "app", "register")
+		second.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/b")}
+		meta.Callees = map[string][]*metadata.CallGraphEdge{"app.register": {first, second}}
+		defer func() { meta.Callees = nil }()
+
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{prefix}/items" {
+			t.Errorf("got %q, want \"{prefix}/items\" — disagreeing callers are ambiguous", path)
+		}
+	})
+
+	t.Run("a single call site resolves the parameter", func(t *testing.T) {
+		only := edgeBetween(meta, "app", "main", "app", "register")
+		only.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/v3")}
+		meta.Callees = map[string][]*metadata.CallGraphEdge{"app.register": {only}}
+		defer func() { meta.Callees = nil }()
+
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "/v3/items" {
+			t.Errorf("got %q, want \"/v3/items\"", path)
+		}
+	})
+
+	t.Run("a call site that does not bind the parameter is unresolved", func(t *testing.T) {
+		bare := edgeBetween(meta, "app", "main", "app", "register")
+		meta.Callees = map[string][]*metadata.CallGraphEdge{"app.register": {bare}}
+		defer func() { meta.Callees = nil }()
+
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{prefix}/items" {
+			t.Errorf("got %q, want a placeholder", path)
+		}
+	})
+
+	t.Run("no call sites at all leaves the parameter unresolved", func(t *testing.T) {
+		node := &pathNode{edge: edgeBetween(meta, "app", "orphan", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{prefix}/items" {
+			t.Errorf("got %q, want a placeholder", path)
+		}
+	})
+
+	t.Run("enclosingFuncID prefers the function that defines a closure", func(t *testing.T) {
+		if got := enclosingFuncID(&pathNode{}); got != "" {
+			t.Errorf("a node with no edge names no function, got %q", got)
+		}
+		edge := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		if got := enclosingFuncID(&pathNode{edge: edge}); got != "app.FuncLit:main.go:10:9" {
+			t.Errorf("got %q, want the caller when there is no parent function", got)
+		}
+		edge.ParentFunction = &metadata.Call{Meta: meta, Name: meta.StringPool.Get("Register"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+		if got := enclosingFuncID(&pathNode{edge: edge}); got != "app.Register" {
+			t.Errorf("got %q, want the defining function", got)
+		}
+	})
+
+	t.Run("paramArgOfEnclosingFunc needs a frame for that function", func(t *testing.T) {
+		edge := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		edge.ParentFunction = &metadata.Call{Meta: meta, Name: meta.StringPool.Get("Register"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+
+		// An ancestor that is not the defining function's call is not the frame.
+		unrelated := &pathNode{edge: edgeBetween(meta, "app", "main", "app", "somethingElse")}
+		if _, ok := paramArgOfEnclosingFunc(concatIdent(meta, "options"), &pathNode{edge: edge, parent: unrelated}); ok {
+			t.Error("resolved from an unrelated frame")
+		}
+
+		// No edge, and a non-ident argument, resolve nothing.
+		if _, ok := paramArgOfEnclosingFunc(concatIdent(meta, "options"), &pathNode{}); ok {
+			t.Error("a node with no edge has no frame")
+		}
+		if _, ok := paramArgOfEnclosingFunc(concatLit(meta, "/x"), &pathNode{edge: edge}); ok {
+			t.Error("only an ident names a parameter")
+		}
+	})
+}
+
+// stubContextProvider is a ContextProvider that is NOT the standard
+// implementation, so metadata() cannot reach a call graph through it.
+type stubContextProvider struct{ ContextProvider }
+
+// TestConcatPathHelpers covers the small helpers directly, including the
+// branches the resolver only reaches through code paths another test already
+// exercises from the outside.
+func TestConcatPathHelpers(t *testing.T) {
+	meta := newTestMeta()
+	b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+
+	t.Run("no name means no placeholder is declared", func(t *testing.T) {
+		if got := dynamicNameList(""); got != nil {
+			t.Errorf("got %v, want nil: nothing was synthesized, so nothing is declared", got)
+		}
+		if got := dynamicNameList("base"); len(got) != 1 || got[0] != "base" {
+			t.Errorf("got %v, want [base]", got)
+		}
+	})
+
+	t.Run("a nil operand contributes nothing", func(t *testing.T) {
+		if value, name := b.resolvePathOperand(nil, nil); value != "" || name != "" {
+			t.Errorf("got (%q, %q), want empties", value, name)
+		}
+	})
+
+	t.Run("a bad operator anywhere abandons the whole chain", func(t *testing.T) {
+		// The nested chain is walked left first, so a rejection there has to
+		// propagate rather than being retried on the right.
+		bad := concatOf(meta, concatLit(meta, "/a"), concatLit(meta, "/b"))
+		bad.SetValue("%")
+		if got := flattenConcat(concatOf(meta, bad, concatLit(meta, "/c")), nil); got != nil {
+			t.Errorf("got %v, want nil", got)
+		}
+	})
+
+	t.Run("a nil element in a literal is skipped, not read as a field", func(t *testing.T) {
+		lit := concatComposite(meta, nil, concatKeyValue(meta, "BaseURL", concatLit(meta, "/v9")))
+		node := nodeWithCallerArg(meta, "options", lit)
+		if v, ok := b.structFieldValue(concatSelector(meta, "options", "BaseURL"), node); !ok || v != "/v9" {
+			t.Errorf("got (%q, %v), want (\"/v9\", true)", v, ok)
+		}
+	})
+
+	t.Run("without the standard provider there is no call graph to consult", func(t *testing.T) {
+		stub := &BasePatternMatcher{contextProvider: &stubContextProvider{}}
+		if stub.metadata() != nil {
+			t.Error("a foreign provider exposes no metadata")
+		}
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		if _, ok := stub.uniqueCallerArg(concatIdent(meta, "prefix"), node); ok {
+			t.Error("no metadata means no call sites to agree")
+		}
+	})
+
+	t.Run("an unnamed parameter resolves nothing", func(t *testing.T) {
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		if _, ok := b.uniqueCallerArg(concatIdent(meta, ""), node); ok {
+			t.Error("a nameless ident cannot be looked up")
+		}
+		if _, ok := b.uniqueCallerArg(concatIdent(meta, "prefix"), nil); ok {
+			t.Error("a nil node names no enclosing function")
+		}
+	})
+
+	t.Run("a parameter captured by a closure resolves through the defining frame", func(t *testing.T) {
+		// The positive path of paramArgOfEnclosingFunc: the ancestor whose callee
+		// is the function that DEFINES the closure carries the binding.
+		lit := concatComposite(meta, concatKeyValue(meta, "BaseURL", concatLit(meta, "/v4")))
+		defining := edgeBetween(meta, "app", "main", "app", "Register")
+		defining.ParamArgMap = map[string]metadata.CallArgument{"options": *lit}
+
+		inner := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		inner.ParentFunction = &metadata.Call{Meta: meta, Name: meta.StringPool.Get("Register"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+
+		node := &pathNode{edge: inner, parent: &pathNode{edge: defining}}
+		arg := concatOf(meta, concatSelector(meta, "options", "BaseURL"), concatLit(meta, "/things"))
+		if path, _ := b.resolvePathArg(arg, node); path != "/v4/things" {
+			t.Errorf("got %q, want \"/v4/things\"", path)
+		}
+	})
+}
+
+// TestConcatPathRemainingBranches closes the last resolution branches: the ones
+// where a frame exists but does not bind the name, and where a literal sets a
+// field that is not the one being read.
+func TestConcatPathRemainingBranches(t *testing.T) {
+	meta := newTestMeta()
+	b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+
+	t.Run("the defining frame exists but binds no such parameter", func(t *testing.T) {
+		defining := edgeBetween(meta, "app", "main", "app", "Register")
+		defining.ParamArgMap = map[string]metadata.CallArgument{"other": *concatLit(meta, "/v5")}
+
+		inner := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		inner.ParentFunction = &metadata.Call{Meta: meta, Name: meta.StringPool.Get("Register"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+
+		node := &pathNode{edge: inner, parent: &pathNode{edge: defining}}
+		if _, ok := paramArgOfEnclosingFunc(concatIdent(meta, "options"), node); ok {
+			t.Error("a frame that does not bind the name resolves nothing")
+		}
+	})
+
+	t.Run("the defining frame has no parameter bindings at all", func(t *testing.T) {
+		defining := edgeBetween(meta, "app", "main", "app", "Register")
+
+		inner := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		inner.ParentFunction = &metadata.Call{Meta: meta, Name: meta.StringPool.Get("Register"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+
+		node := &pathNode{edge: inner, parent: &pathNode{edge: defining}}
+		if _, ok := paramArgOfEnclosingFunc(concatIdent(meta, "options"), node); ok {
+			t.Error("a frame with no ParamArgMap resolves nothing")
+		}
+	})
+
+	t.Run("a literal that sets other fields still yields the zero value", func(t *testing.T) {
+		lit := concatComposite(meta, concatKeyValue(meta, "Timeout", concatLit(meta, "30")))
+		node := nodeWithCallerArg(meta, "options", lit)
+		if v, ok := b.structFieldValue(concatSelector(meta, "options", "BaseURL"), node); !ok || v != "" {
+			t.Errorf("got (%q, %v), want (\"\", true): the field is unset, so it is the zero value", v, ok)
+		}
+	})
+
+	t.Run("a call site binding a non-constant is unresolved", func(t *testing.T) {
+		// The caller passes something computed at run time, so no path is known.
+		only := edgeBetween(meta, "app", "main", "app", "register")
+		only.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatIdent(meta, "computed")}
+		meta.Callees = map[string][]*metadata.CallGraphEdge{"app.register": {only}}
+		defer func() { meta.Callees = nil }()
+
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "{prefix}/items" {
+			t.Errorf("got %q, want a placeholder", path)
+		}
+	})
+
+	t.Run("a parent function with no identity resolves nothing", func(t *testing.T) {
+		inner := edgeBetween(meta, "app", "FuncLit:main.go:10:9", "chi", "Post")
+		inner.ParentFunction = &metadata.Call{Meta: meta, Name: -1, Pkg: -1, RecvType: -1}
+		node := &pathNode{edge: inner, parent: &pathNode{edge: edgeBetween(meta, "app", "main", "app", "Register")}}
+		if _, ok := paramArgOfEnclosingFunc(concatIdent(meta, "options"), node); ok {
+			t.Error("an unnamed parent function names no frame")
+		}
+	})
+
+	t.Run("call sites that agree on the same value resolve", func(t *testing.T) {
+		// Two callers passing the SAME prefix is not ambiguity — the value is
+		// determined, so the path resolves rather than degrading.
+		first := edgeBetween(meta, "app", "main", "app", "register")
+		first.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/same")}
+		second := edgeBetween(meta, "app", "other", "app", "register")
+		second.ParamArgMap = map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/same")}
+		meta.Callees = map[string][]*metadata.CallGraphEdge{"app.register": {first, second}}
+		defer func() { meta.Callees = nil }()
+
+		node := &pathNode{edge: edgeBetween(meta, "app", "register", "chi", "Post")}
+		arg := concatOf(meta, concatIdent(meta, "prefix"), concatLit(meta, "/items"))
+		if path, _ := b.resolvePathArg(arg, node); path != "/same/items" {
+			t.Errorf("got %q, want \"/same/items\"", path)
+		}
+	})
+}
