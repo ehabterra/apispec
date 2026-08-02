@@ -51,25 +51,289 @@ func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, 
 // is the placeholder name when one was synthesized (so the caller can
 // register a shared component parameter) and the empty string otherwise.
 //
+// A concatenation (`opts.BaseURL + "/things"`) folds to the joined value —
+// see resolveConcatenatedPath, which is what generated servers need (#274).
+//
 // All other kinds fall through to GetArgumentInfo for backwards
-// compatibility — handling KindIdent (non-const variable) and
-// KindBinary (`prefix + "/x"`) similarly is a possible follow-up but
-// is out of scope for the initial fix.
-func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument) (path, dynamicName string) {
+// compatibility — handling KindIdent (non-const variable) similarly is a
+// possible follow-up.
+func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node TrackerNodeInterface) (path, dynamicName string) {
 	if arg == nil {
 		return "", ""
 	}
-	if arg.GetKind() == metadata.KindCall {
-		name := arg.GetName()
-		if name == "" && arg.Fun != nil {
-			name = arg.Fun.GetName()
-		}
-		if name == "" {
-			name = "path"
-		}
-		return "{" + name + "}", name
+	switch arg.GetKind() {
+	case metadata.KindBinary:
+		return b.resolveConcatenatedPath(arg, node)
+	case metadata.KindCall:
+		return placeholderFor(arg)
 	}
 	return b.contextProvider.GetArgumentInfo(arg), ""
+}
+
+// placeholderFor names an argument that cannot be evaluated statically, so the
+// route stays addressable instead of losing the segment (issue #34).
+func placeholderFor(arg *metadata.CallArgument) (path, dynamicName string) {
+	name := arg.GetName()
+	if name == "" && arg.Fun != nil {
+		name = arg.Fun.GetName()
+	}
+	if name == "" && arg.Sel != nil {
+		name = arg.Sel.GetName()
+	}
+	if name == "" {
+		name = "path"
+	}
+	return "{" + name + "}", name
+}
+
+// resolveConcatenatedPath folds a `+` chain into one path (issue #274).
+//
+// This is the shape every oapi-codegen-generated server registers with —
+// `r.Post(options.BaseURL+"/things", h)` — and before this the whole argument
+// resolved to nothing, so the route was documented at its mount prefix alone
+// (or at "/"), losing the only part of the path that was written literally.
+//
+// Each operand is resolved independently and the results are joined in source
+// order. An operand that cannot be evaluated becomes a {placeholder} rather
+// than disappearing: an unresolved prefix must leave the route addressable and
+// visibly incomplete, not silently shorten its path.
+func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument, node TrackerNodeInterface) (path, dynamicName string) {
+	operands := flattenConcat(arg, nil)
+	if operands == nil {
+		// Not a `+` chain (no other operator builds a path); treat the whole
+		// expression as one unresolvable value.
+		return placeholderFor(arg)
+	}
+
+	var sb strings.Builder
+	for _, operand := range operands {
+		value, name := b.resolvePathOperand(operand, node)
+		sb.WriteString(value)
+		if name != "" && dynamicName == "" {
+			dynamicName = name
+		}
+	}
+	return sb.String(), dynamicName
+}
+
+// flattenConcat returns the operands of a `+` chain left to right, or nil when
+// the expression contains any other operator.
+func flattenConcat(arg *metadata.CallArgument, acc []*metadata.CallArgument) []*metadata.CallArgument {
+	if arg == nil {
+		return acc
+	}
+	if arg.GetKind() != metadata.KindBinary {
+		return append(acc, arg)
+	}
+	if arg.GetValue() != "+" || arg.X == nil || arg.Fun == nil {
+		return nil
+	}
+	left := flattenConcat(arg.X, acc)
+	if left == nil {
+		return nil
+	}
+	return flattenConcat(arg.Fun, left)
+}
+
+// resolvePathOperand evaluates one operand of a concatenated path. It returns
+// the value to append and, when the operand had to be approximated, the
+// placeholder name the caller registers as a parameter.
+func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node TrackerNodeInterface) (value, dynamicName string) {
+	if arg == nil {
+		return "", ""
+	}
+	// Literals and constants, including a const declared in another package.
+	if v, ok := b.contextProvider.ConstantValue(arg); ok {
+		return v, ""
+	}
+	// A prefix the caller passed in: `registerCRUD(r, "/users")` reaching
+	// `m.Delete(base+"/{id}", h)`, or a generated server handed its base URL.
+	if caller, ok := b.callerArgFor(arg, node); ok {
+		if v, ok := b.contextProvider.ConstantValue(caller); ok {
+			return v, ""
+		}
+	}
+	// A field read off a struct the caller passed in, which is how a generated
+	// server takes its base URL: `HandlerWithOptions(si, ChiServerOptions{})`
+	// leaves BaseURL at its zero value, and the correct contribution is the
+	// empty string rather than a placeholder standing in for nothing.
+	if v, ok := b.structFieldValue(arg, node); ok {
+		return v, ""
+	}
+	return placeholderFor(arg)
+}
+
+// structFieldValue resolves `x.Field` when x traces back to a composite literal
+// at the call site. A field the literal does not set has its zero value, which
+// for the string fields a path is built from is "" — that is a resolution, not
+// a failure, so it reports ok.
+func (b *BasePatternMatcher) structFieldValue(arg *metadata.CallArgument, node TrackerNodeInterface) (string, bool) {
+	if node == nil || arg.GetKind() != metadata.KindSelector || arg.X == nil || arg.Sel == nil {
+		return "", false
+	}
+	field := arg.Sel.GetName()
+	if field == "" {
+		return "", false
+	}
+
+	base := arg.X
+	if resolved, ok := b.callerArgFor(base, node); ok {
+		base = resolved
+	}
+	base = unwrapComposite(base)
+	if base == nil || base.GetKind() != metadata.KindCompositeLit {
+		return "", false
+	}
+
+	for _, elt := range base.Args {
+		if elt == nil || elt.GetKind() != metadata.KindKeyValue || elt.X == nil || elt.Fun == nil {
+			continue
+		}
+		if elt.X.GetName() != field {
+			continue
+		}
+		if v, ok := b.contextProvider.ConstantValue(elt.Fun); ok {
+			return v, true
+		}
+		return "", false // set, but to something we cannot evaluate
+	}
+	// Not among the literal's fields: the zero value.
+	return "", true
+}
+
+// callerArgFor follows a parameter ident to the argument its caller passed.
+//
+// It tries the ordinary wrapper resolution first, and falls back to the
+// enclosing-function lookup for a call written inside a closure — which is
+// where a generated server registers its routes.
+func (b *BasePatternMatcher) callerArgFor(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, bool) {
+	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
+		return nil, false
+	}
+	if resolved, _ := resolveArgThroughParams(arg, node); resolved != nil && resolved != arg {
+		if resolved.GetKind() != metadata.KindIdent {
+			return resolved, true
+		}
+		arg = resolved
+	}
+	if captured, ok := paramArgOfEnclosingFunc(arg, node); ok {
+		return captured, true
+	}
+	return b.uniqueCallerArg(arg, node)
+}
+
+// uniqueCallerArg resolves a parameter from the call sites of the function that
+// declares it, used when the ancestor chain holds no frame for that function.
+//
+// It has to exist because a registration made on a router PARAMETER is re-homed
+// under the producer of that router — `registerItems(r, "/v2")` reaching
+// `r.Get(prefix+"/items", h)` hangs under `chi.NewRouter()` in main, so the call
+// that binds `prefix` is nowhere on the path.
+//
+// Every call site must agree. One caller (the common case) resolves; two callers
+// passing different prefixes leave the value genuinely ambiguous, and the honest
+// answer there is the placeholder, not whichever literal happens to be first
+// (golden rule #7).
+func (b *BasePatternMatcher) uniqueCallerArg(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, bool) {
+	meta := b.metadata()
+	if meta == nil || node == nil {
+		return nil, false
+	}
+	name := arg.GetName()
+	enclosing := enclosingFuncID(node)
+	if name == "" || enclosing == "" {
+		return nil, false
+	}
+
+	var chosen *metadata.CallArgument
+	var chosenValue string
+	for _, edge := range meta.Callees[enclosing] {
+		callerArg, ok := edge.ParamArgMap[name]
+		if !ok {
+			return nil, false
+		}
+		value, ok := b.contextProvider.ConstantValue(&callerArg)
+		if !ok {
+			return nil, false
+		}
+		if chosen != nil && value != chosenValue {
+			return nil, false // call sites disagree
+		}
+		bound := callerArg
+		chosen, chosenValue = &bound, value
+	}
+	return chosen, chosen != nil
+}
+
+// enclosingFuncID names the function a call is written in, preferring the named
+// function that defines a closure over the literal itself.
+func enclosingFuncID(node TrackerNodeInterface) string {
+	edge := node.GetEdge()
+	if edge == nil {
+		return ""
+	}
+	if edge.ParentFunction != nil {
+		if id := edge.ParentFunction.BaseID(); id != "" {
+			return id
+		}
+	}
+	return edge.Caller.BaseID()
+}
+
+// metadata returns the metadata behind the context provider, or nil when the
+// provider is not the standard implementation (mocks in tests).
+func (b *BasePatternMatcher) metadata() *metadata.Metadata {
+	if ctxImpl, ok := b.contextProvider.(*ContextProviderImpl); ok {
+		return ctxImpl.meta
+	}
+	return nil
+}
+
+// paramArgOfEnclosingFunc resolves a parameter of the function that lexically
+// encloses this call, following closures outward.
+//
+// argViaParent matches the frame whose callee is the call's immediate caller,
+// which is exactly right for a wrapper helper and cannot work for a closure: a
+// call inside `func(r chi.Router){...}` has the FUNC LITERAL as its caller, and
+// no edge calls that literal by name. The parameter it reads (`options`) is
+// captured from the function that defines the literal, so the frame to look for
+// is the one whose callee is that PARENT function (issue #274).
+func paramArgOfEnclosingFunc(arg *metadata.CallArgument, node TrackerNodeInterface) (*metadata.CallArgument, bool) {
+	if arg == nil || arg.GetKind() != metadata.KindIdent || node == nil {
+		return nil, false
+	}
+	edge := node.GetEdge()
+	if edge == nil || edge.ParentFunction == nil {
+		return nil, false
+	}
+	enclosing := edge.ParentFunction.BaseID()
+	if enclosing == "" {
+		return nil, false
+	}
+	for p := node.GetParent(); p != nil; p = p.GetParent() {
+		pe := p.GetEdge()
+		if pe == nil || pe.Callee.BaseID() != enclosing || pe.ParamArgMap == nil {
+			continue
+		}
+		if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
+			return &callerArg, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// unwrapComposite looks through &T{...} and *T{...} to the literal itself.
+func unwrapComposite(arg *metadata.CallArgument) *metadata.CallArgument {
+	for arg != nil {
+		switch arg.GetKind() {
+		case metadata.KindUnary, metadata.KindStar, metadata.KindParen:
+			arg = arg.X
+		default:
+			return arg
+		}
+	}
+	return nil
 }
 
 // serveMuxTrailingWildcard matches Go 1.22 ServeMux trailing wildcards
@@ -313,7 +577,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	}
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
-		path, dynName := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex])
+		path, dynName := r.resolvePathArg(edge.Args[r.pattern.PathArgIndex], node)
 		// Go 1.22's net/http.ServeMux carries the HTTP method on the
 		// registration pattern itself: mux.HandleFunc("GET /users/{id}", h).
 		// When MethodFromPath is set, split the leading verb off the path and
@@ -552,7 +816,7 @@ func (m *MountPatternMatcherImpl) ExtractMount(node TrackerNodeInterface) MountI
 	edge := node.GetEdge()
 	// Extract path if available
 	if m.pattern.PathFromArg && len(edge.Args) > m.pattern.PathArgIndex {
-		path, dynName := m.resolvePathArg(edge.Args[m.pattern.PathArgIndex])
+		path, dynName := m.resolvePathArg(edge.Args[m.pattern.PathArgIndex], node)
 		mountInfo.Path = path
 		if dynName != "" {
 			mountInfo.DynamicParams = append(mountInfo.DynamicParams, dynName)

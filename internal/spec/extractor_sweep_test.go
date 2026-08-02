@@ -127,7 +127,7 @@ func TestSweepResolvePathArg(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, dyn := b.resolvePathArg(tt.arg)
+			path, dyn := b.resolvePathArg(tt.arg, nil)
 			if path != tt.wantPath || dyn != tt.wantDyn {
 				t.Errorf("resolvePathArg() = (%q, %q), want (%q, %q)", path, dyn, tt.wantPath, tt.wantDyn)
 			}
