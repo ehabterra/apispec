@@ -181,7 +181,6 @@ type Extractor struct {
 	cfg             *APISpecConfig
 	contextProvider ContextProvider
 	schemaMapper    SchemaMapper
-	typeResolver    TypeResolver
 	overrideApplier OverrideApplier
 
 	// Pattern matchers
@@ -252,7 +251,6 @@ type Extractor struct {
 func NewExtractor(tree TrackerTreeInterface, cfg *APISpecConfig) *Extractor {
 	contextProvider := NewContextProvider(tree.GetMetadata())
 	schemaMapper := NewSchemaMapper(cfg)
-	typeResolver := NewTypeResolver(tree.GetMetadata(), cfg, schemaMapper)
 	overrideApplier := NewOverrideApplier(cfg)
 
 	extractor := &Extractor{
@@ -260,7 +258,6 @@ func NewExtractor(tree TrackerTreeInterface, cfg *APISpecConfig) *Extractor {
 		cfg:             cfg,
 		contextProvider: contextProvider,
 		schemaMapper:    schemaMapper,
-		typeResolver:    typeResolver,
 		overrideApplier: overrideApplier,
 	}
 
@@ -274,37 +271,37 @@ func NewExtractor(tree TrackerTreeInterface, cfg *APISpecConfig) *Extractor {
 func (e *Extractor) initializePatternMatchers() {
 	// Initialize route matchers
 	for _, pattern := range e.cfg.Framework.RoutePatterns {
-		matcher := NewRoutePatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewRoutePatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.routeMatchers = append(e.routeMatchers, matcher)
 	}
 
 	// Initialize mount matchers
 	for _, pattern := range e.cfg.Framework.MountPatterns {
-		matcher := NewMountPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewMountPatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.mountMatchers = append(e.mountMatchers, matcher)
 	}
 
 	// Initialize security matchers
 	for _, pattern := range e.cfg.Framework.SecurityPatterns {
-		matcher := NewSecurityPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewSecurityPatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.securityMatchers = append(e.securityMatchers, matcher)
 	}
 
 	// Initialize request matchers
 	for _, pattern := range e.cfg.Framework.RequestBodyPatterns {
-		matcher := NewRequestPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewRequestPatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.requestMatchers = append(e.requestMatchers, matcher)
 	}
 
 	// Initialize response matchers
 	for _, pattern := range e.cfg.Framework.ResponsePatterns {
-		matcher := NewResponsePatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewResponsePatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.responseMatchers = append(e.responseMatchers, matcher)
 	}
 
 	// Initialize param matchers
 	for _, pattern := range e.cfg.Framework.ParamPatterns {
-		matcher := NewParamPatternMatcher(pattern, e.cfg, e.contextProvider, e.typeResolver)
+		matcher := NewParamPatternMatcher(pattern, e.cfg, e.contextProvider)
 		e.paramMatchers = append(e.paramMatchers, matcher)
 	}
 }
@@ -2198,9 +2195,9 @@ type ResponsePatternMatcherImpl struct {
 }
 
 // NewResponsePatternMatcher creates a new response pattern matcher
-func NewResponsePatternMatcher(pattern ResponsePattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ResponsePatternMatcherImpl {
+func NewResponsePatternMatcher(pattern ResponsePattern, cfg *APISpecConfig, contextProvider ContextProvider) *ResponsePatternMatcherImpl {
 	return &ResponsePatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 		destResolver:       newResponseDestResolver(cfg, contextProvider),
 	}
@@ -3267,9 +3264,9 @@ type ParamPatternMatcherImpl struct {
 }
 
 // NewParamPatternMatcher creates a new param pattern matcher
-func NewParamPatternMatcher(pattern ParamPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *ParamPatternMatcherImpl {
+func NewParamPatternMatcher(pattern ParamPattern, cfg *APISpecConfig, contextProvider ContextProvider) *ParamPatternMatcherImpl {
 	return &ParamPatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 	}
 }

@@ -207,7 +207,7 @@ func TestParamMatchNodeExcludesResponseOrigin(t *testing.T) {
 		RecvType:               "net/http.Header",
 		ExcludeRecvOriginRegex: responseWriterOriginRegex,
 	}
-	matcher := NewParamPatternMatcher(pattern, &APISpecConfig{}, NewContextProvider(m), nil)
+	matcher := NewParamPatternMatcher(pattern, &APISpecConfig{}, NewContextProvider(m))
 
 	tests := []struct {
 		name  string
@@ -234,7 +234,7 @@ func TestParamMatchNodeExcludesResponseOrigin(t *testing.T) {
 	// per pattern.
 	plain := NewParamPatternMatcher(
 		ParamPattern{CallRegex: "^Get$", ParamIn: "header", RecvType: "net/http.Header"},
-		&APISpecConfig{}, NewContextProvider(m), nil,
+		&APISpecConfig{}, NewContextProvider(m),
 	)
 	node := &TrackerNode{CallGraphEdge: headerGetEdge(m, "", "net/http", "ResponseWriter")}
 	if !plain.MatchNode(node) {

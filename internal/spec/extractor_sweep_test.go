@@ -100,7 +100,7 @@ func sweepInterfaceMeta() *metadata.Metadata {
 
 func TestSweepResolvePathArg(t *testing.T) {
 	meta := exSweepMeta()
-	b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(meta), nil)
+	b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(meta))
 
 	callNamed := metadata.NewCallArgument(meta)
 	callNamed.SetKind(metadata.KindCall)
@@ -183,7 +183,7 @@ func TestSweepRouteMatcherMatchNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewRoutePatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewRoutePatternMatcher(tt.pattern, cfg, cp)
 			if got := m.MatchNode(sweepNode(tt.edge)); got != tt.want {
 				t.Errorf("MatchNode() = %v, want %v", got, tt.want)
 			}
@@ -197,7 +197,7 @@ func TestSweepRouteMatcherExtractRoute(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("file falls back to argument position", func(t *testing.T) {
-		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1}, cfg, cp)
 		edge := sweepEdge(meta, "main", "app", "Get", "app", "", "")
 		arg := sweepIdent(meta, "h")
 		arg.SetPosition("app/main.go:5:2")
@@ -210,7 +210,7 @@ func TestSweepRouteMatcherExtractRoute(t *testing.T) {
 	})
 
 	t.Run("nil edge takes metadata from argument node", func(t *testing.T) {
-		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1}, cfg, cp)
 		arg := sweepIdent(meta, "h")
 		node := &TrackerNode{CallArgument: arg}
 		route := &RouteInfo{
@@ -224,7 +224,7 @@ func TestSweepRouteMatcherExtractRoute(t *testing.T) {
 	})
 
 	t.Run("handler ident is traced to its origin package", func(t *testing.T) {
-		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1, HandlerFromArg: true, HandlerArgIndex: 0}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: -1, HandlerFromArg: true, HandlerArgIndex: 0}, cfg, cp)
 		edge := sweepEdge(meta, "setupRoutes", "app", "Handle", "app", "", "", sweepIdent(meta, "myHandler"))
 		route := NewRouteInfo()
 		found := m.ExtractRoute(sweepNode(edge), route)
@@ -248,7 +248,7 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 		cp := NewContextProvider(meta)
 		m := NewRoutePatternMatcher(RoutePattern{
 			MethodFromHandler: true, HandlerFromArg: true, HandlerArgIndex: 0, MethodArgIndex: -1,
-		}, cfg, cp, nil)
+		}, cfg, cp)
 		edge := sweepEdge(meta, "main", "app", "Handle", "app", "", "", sweepIdent(meta, "deleteWidget"))
 		route := NewRouteInfo()
 		if !m.extractRouteDetails(sweepNode(edge), route) {
@@ -272,7 +272,7 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 			}},
 		}
 		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: 0}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodArgIndex: 0}, cfg, cp)
 		arg := sweepIdent(meta, "MethodDelete")
 		arg.SetPkg("net/http")
 		arg.SetValue("http.MethodDelete") // raw value: not a valid method by itself
@@ -291,7 +291,7 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 		cp := NewContextProvider(meta)
 		m := NewRoutePatternMatcher(RoutePattern{
 			MethodArgIndex: 0, MethodExtraction: DefaultMethodExtractionConfig(),
-		}, cfg, cp, nil)
+		}, cfg, cp)
 		arg := sweepIdent(meta, "someVerb")
 		arg.SetValue("someVerb")
 		edge := sweepEdge(meta, "listThings", "app", "Handle", "app", "", "", arg)
@@ -307,7 +307,7 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 	t.Run("dynamic path arg records a placeholder param", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{PathFromArg: true, PathArgIndex: 0, MethodArgIndex: -1}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{PathFromArg: true, PathArgIndex: 0, MethodArgIndex: -1}, cfg, cp)
 		pathCall := metadata.NewCallArgument(meta)
 		pathCall.SetKind(metadata.KindCall)
 		pathCall.SetName("mountPoint")
@@ -337,7 +337,7 @@ func TestSweepInferMethodFromContext(t *testing.T) {
 			}},
 		}
 		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
 
 		methodArg := sweepIdent(meta, "MethodPut")
 		methodArg.SetPkg("net/http")
@@ -358,7 +358,7 @@ func TestSweepInferMethodFromContext(t *testing.T) {
 	t.Run("caller name yields the method", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
 		// "deleteWidget" pins the word-boundary fix: the old substring
 		// matcher spotted "get" inside "widget" and returned GET.
 		edge := sweepEdge(meta, "deleteWidget", "app", "HandleFunc", "mux", "", "")
@@ -370,7 +370,7 @@ func TestSweepInferMethodFromContext(t *testing.T) {
 	t.Run("handler argument yields the method when caller maps to POST", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp, nil)
+		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
 		// "updateWidget" pins the word-boundary fix on the handler-arg path:
 		// the old substring matcher resolved "widget" to GET before the
 		// "update" prefix could map to PUT.
@@ -426,7 +426,7 @@ func TestSweepMountMatcherMatchNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewMountPatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewMountPatternMatcher(tt.pattern, cfg, cp)
 			if got := m.MatchNode(sweepNode(tt.edge)); got != tt.want {
 				t.Errorf("MatchNode() = %v, want %v", got, tt.want)
 			}
@@ -440,7 +440,7 @@ func TestSweepSecurityMatcher(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("nil node and nil edge", func(t *testing.T) {
-		m := NewSecurityPatternMatcher(SecurityPattern{CallRegex: "^Use$"}, cfg, cp, nil)
+		m := NewSecurityPatternMatcher(SecurityPattern{CallRegex: "^Use$"}, cfg, cp)
 		if m.MatchNode(nil) {
 			t.Error("MatchNode(nil) = true, want false")
 		}
@@ -463,7 +463,7 @@ func TestSweepSecurityMatcher(t *testing.T) {
 			{"exact recv type", SecurityPattern{RecvType: "chi.Mux"}, sweepEdge(meta, "main", "app", "Use", "other", "Router", "")},
 		}
 		for _, tt := range tests {
-			m := NewSecurityPatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewSecurityPatternMatcher(tt.pattern, cfg, cp)
 			if m.MatchEdge(tt.edge) {
 				t.Errorf("%s: MatchEdge() = true, want false", tt.name)
 			}
@@ -471,14 +471,14 @@ func TestSweepSecurityMatcher(t *testing.T) {
 	})
 
 	t.Run("priority counts function name regex", func(t *testing.T) {
-		m := NewSecurityPatternMatcher(SecurityPattern{CallRegex: "x", FunctionNameRegex: "y", RecvType: "z"}, cfg, cp, nil)
+		m := NewSecurityPatternMatcher(SecurityPattern{CallRegex: "x", FunctionNameRegex: "y", RecvType: "z"}, cfg, cp)
 		if got := m.GetPriority(); got != 18 {
 			t.Errorf("GetPriority() = %d, want 18", got)
 		}
 	})
 
 	t.Run("negative middleware arg index clamps to zero", func(t *testing.T) {
-		m := NewSecurityPatternMatcher(SecurityPattern{Scope: SecurityScopeRouter, MiddlewareArgIndex: -1}, cfg, cp, nil)
+		m := NewSecurityPatternMatcher(SecurityPattern{Scope: SecurityScopeRouter, MiddlewareArgIndex: -1}, cfg, cp)
 		mw := sweepIdent(meta, "authMW")
 		mw.SetPkg("app")
 		edge := sweepEdge(meta, "main", "app", "Use", "chi", "Mux", "", mw)
@@ -495,7 +495,7 @@ func TestSweepRequestMatcherMatchNodeAndPriority(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("nil node", func(t *testing.T) {
-		m := NewRequestPatternMatcher(RequestBodyPattern{CallRegex: "^Bind$"}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{CallRegex: "^Bind$"}, cfg, cp)
 		if m.MatchNode(nil) {
 			t.Error("MatchNode(nil) = true, want false")
 		}
@@ -513,7 +513,7 @@ func TestSweepRequestMatcherMatchNodeAndPriority(t *testing.T) {
 	}
 	for _, tt := range rejections {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewRequestPatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewRequestPatternMatcher(tt.pattern, cfg, cp)
 			if m.MatchNode(sweepNode(tt.edge)) {
 				t.Errorf("MatchNode() = true, want false")
 			}
@@ -521,7 +521,7 @@ func TestSweepRequestMatcherMatchNodeAndPriority(t *testing.T) {
 	}
 
 	t.Run("priority branches", func(t *testing.T) {
-		m := NewRequestPatternMatcher(RequestBodyPattern{FunctionNameRegex: "y", RecvTypeRegex: "z"}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{FunctionNameRegex: "y", RecvTypeRegex: "z"}, cfg, cp)
 		if got := m.GetPriority(); got != 8 {
 			t.Errorf("GetPriority() = %d, want 8", got)
 		}
@@ -534,14 +534,14 @@ func TestSweepRequestBodySource(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("nil node", func(t *testing.T) {
-		m := NewRequestPatternMatcher(RequestBodyPattern{}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{}, cfg, cp)
 		if got, _ := m.bodySource(nil); got != nil {
 			t.Error("bodySource(nil) != nil")
 		}
 	})
 
 	t.Run("body from receiver resolves via chain parent", func(t *testing.T) {
-		m := NewRequestPatternMatcher(RequestBodyPattern{BodyFromReceiver: true}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{BodyFromReceiver: true}, cfg, cp)
 		src := sweepIdent(meta, "r")
 		edge := sweepEdge(meta, "h", "app", "Decode", "json", "Decoder", "")
 		edge.ChainParent = sweepEdge(meta, "h", "app", "NewDecoder", "json", "", "", src)
@@ -559,7 +559,7 @@ func TestSweepRequestExtractRequest(t *testing.T) {
 	t.Run("call arg uses its return type", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp)
 		arg := metadata.NewCallArgument(meta)
 		arg.SetKind(metadata.KindCall)
 		arg.Fun = sweepIdent(meta, "readUser")
@@ -574,7 +574,7 @@ func TestSweepRequestExtractRequest(t *testing.T) {
 	t.Run("resolved type wins", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp)
 		arg := sweepIdent(meta, "v")
 		arg.SetResolvedType("app.Widget")
 		edge := sweepEdge(meta, "h", "app", "Decode", "json", "", "", arg)
@@ -587,7 +587,7 @@ func TestSweepRequestExtractRequest(t *testing.T) {
 	t.Run("generic arg resolves through type param map", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, cp)
 		arg := sweepIdent(meta, "v")
 		arg.IsGenericType = true
 		arg.GenericTypeName = meta.StringPool.Get("T")
@@ -606,7 +606,7 @@ func TestSweepRequestExtractRequest(t *testing.T) {
 	t.Run("deref strips pointer and param rebinds through wrapper", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
-		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0, Deref: true}, cfg, cp, nil)
+		m := NewRequestPatternMatcher(RequestBodyPattern{TypeFromArg: true, TypeArgIndex: 0, Deref: true}, cfg, cp)
 
 		concrete := metadata.NewCallArgument(meta)
 		concrete.SetKind(metadata.KindIdent)
@@ -632,7 +632,7 @@ func TestSweepRequestExtractRequest(t *testing.T) {
 func TestSweepRequestResolveTypeOrigin(t *testing.T) {
 	meta := exSweepMeta()
 	cp := NewContextProvider(meta)
-	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, cp, nil)
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, cp)
 
 	t.Run("selector fast path uses recorded type", func(t *testing.T) {
 		sel := metadata.NewCallArgument(meta)
@@ -666,14 +666,14 @@ func TestSweepRequestResolveTypeOrigin(t *testing.T) {
 
 func TestSweepBaseMatcherGuards(t *testing.T) {
 	t.Run("empty pattern never matches", func(t *testing.T) {
-		b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(exSweepMeta()), nil)
+		b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(exSweepMeta()))
 		if b.matchPattern("", "anything") {
 			t.Error("matchPattern(\"\") = true, want false")
 		}
 	})
 
 	t.Run("trace and assignment lookups degrade without metadata", func(t *testing.T) {
-		b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(nil), nil)
+		b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(nil))
 		v, p, typ, fn := b.traceVariable("x", "f", "pkg")
 		if v != "x" || p != "pkg" || typ != nil || fn != "" {
 			t.Errorf("traceVariable = (%q,%q,%v,%q), want passthrough", v, p, typ, fn)
@@ -686,7 +686,7 @@ func TestSweepBaseMatcherGuards(t *testing.T) {
 }
 
 func TestSweepExtractMethodFromFunctionNameWithConfig(t *testing.T) {
-	b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(exSweepMeta()), nil)
+	b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(exSweepMeta()))
 
 	if got := b.extractMethodFromFunctionNameWithConfig("", nil); got != "" {
 		t.Errorf("empty func name: got %q, want empty", got)
@@ -1031,7 +1031,7 @@ func TestSweepResponseMatcherMatchNodeAndPriority(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("nil node", func(t *testing.T) {
-		m := NewResponsePatternMatcher(ResponsePattern{CallRegex: "^JSON$"}, cfg, cp, nil)
+		m := NewResponsePatternMatcher(ResponsePattern{CallRegex: "^JSON$"}, cfg, cp)
 		if m.MatchNode(nil) {
 			t.Error("MatchNode(nil) = true")
 		}
@@ -1048,7 +1048,7 @@ func TestSweepResponseMatcherMatchNodeAndPriority(t *testing.T) {
 	}
 	for _, tt := range rejections {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewResponsePatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewResponsePatternMatcher(tt.pattern, cfg, cp)
 			if m.MatchNode(sweepNode(tt.edge)) {
 				t.Errorf("MatchNode() = true, want false")
 			}
@@ -1056,7 +1056,7 @@ func TestSweepResponseMatcherMatchNodeAndPriority(t *testing.T) {
 	}
 
 	t.Run("priority branches", func(t *testing.T) {
-		m := NewResponsePatternMatcher(ResponsePattern{FunctionNameRegex: "y", RecvType: "z"}, cfg, cp, nil)
+		m := NewResponsePatternMatcher(ResponsePattern{FunctionNameRegex: "y", RecvType: "z"}, cfg, cp)
 		if got := m.GetPriority(); got != 8 {
 			t.Errorf("GetPriority() = %d, want 8", got)
 		}
@@ -1068,7 +1068,7 @@ func TestSweepExtractResponse(t *testing.T) {
 
 	t.Run("unresolved status steps below the least existing", func(t *testing.T) {
 		meta := exSweepMeta()
-		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta))
 		route := NewRouteInfo()
 		route.Response["-1"] = &ResponseInfo{StatusCode: -1}
 		node := sweepNode(sweepEdge(meta, "h", "app", "JSON", "gin", "", ""))
@@ -1079,7 +1079,7 @@ func TestSweepExtractResponse(t *testing.T) {
 
 	t.Run("body adopts the lowest bodyless status", func(t *testing.T) {
 		meta := exSweepMeta()
-		m := NewResponsePatternMatcher(ResponsePattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, NewContextProvider(meta), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, NewContextProvider(meta))
 		route := NewRouteInfo()
 		route.Response["400"] = &ResponseInfo{StatusCode: 400}
 		route.Response["200"] = &ResponseInfo{StatusCode: 200}
@@ -1094,7 +1094,7 @@ func TestSweepExtractResponse(t *testing.T) {
 
 	t.Run("no bodyless status leaves the unknown slot", func(t *testing.T) {
 		meta := exSweepMeta()
-		m := NewResponsePatternMatcher(ResponsePattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, NewContextProvider(meta), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{TypeFromArg: true, TypeArgIndex: 0}, cfg, NewContextProvider(meta))
 		route := NewRouteInfo()
 		route.Response["200"] = &ResponseInfo{StatusCode: 200, BodyType: "app.Existing"}
 		arg := sweepIdent(meta, "u")
@@ -1111,7 +1111,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 	cfg := &APISpecConfig{}
 
 	t.Run("nil metadata", func(t *testing.T) {
-		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(nil), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(nil))
 		meta := exSweepMeta()
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
 		if got, _ := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
@@ -1121,7 +1121,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 
 	t.Run("caller function not found", func(t *testing.T) {
 		meta := exSweepMeta()
-		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta))
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
 		if got, _ := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge); got != nil {
 			t.Errorf("got %v, want nil", got)
@@ -1152,7 +1152,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 				}},
 			}},
 		}
-		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta), nil)
+		m := NewResponsePatternMatcher(ResponsePattern{}, cfg, NewContextProvider(meta))
 		edge := sweepEdge(meta, "h", "app", "JSON", "gin", "", "")
 		got, residue := m.expandStatusesFromIdent(sweepIdent(meta, "code"), edge)
 		if len(got) != 2 || got[0] != 400 || got[1] != 500 {
@@ -1166,7 +1166,7 @@ func TestSweepExpandStatusesFromIdent(t *testing.T) {
 
 func TestSweepResponseResolveTypeOrigin(t *testing.T) {
 	meta := exSweepMeta()
-	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta))
 
 	t.Run("generic concrete resolution", func(t *testing.T) {
 		arg := sweepIdent(meta, "v")
@@ -1226,7 +1226,7 @@ func TestSweepConcreteFromEnclosingFunc(t *testing.T) {
 			},
 		},
 	}
-	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	arg := sweepIdent(meta, "a")
 
 	t.Run("nil edge", func(t *testing.T) {
@@ -1262,7 +1262,7 @@ func TestSweepConcreteFromEnclosingFunc(t *testing.T) {
 
 func TestSweepConcreteFromParamBinding(t *testing.T) {
 	meta := sweepInterfaceMeta()
-	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	arg := sweepIdent(meta, "v")
 
 	newChain := func(paramArg *metadata.CallArgument, mapName string) *TrackerNode {
@@ -1326,7 +1326,7 @@ func TestSweepConcreteFromCalleeReturn(t *testing.T) {
 		ReturnVars: []metadata.CallArgument{returnVar("app.Dog"), returnVar("app.Cat")},
 	}
 
-	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewResponsePatternMatcher(ResponsePattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	edge := sweepEdge(meta, "handler", "app", "Encode", "json", "", "")
 
 	newCallArg := func(selName string) *metadata.CallArgument {
@@ -1383,7 +1383,7 @@ func TestSweepParamMatcher(t *testing.T) {
 			{"exact recv type", ParamPattern{RecvType: "gin.Context"}, sweepNode(sweepEdge(meta, "h", "app", "Param", "other", "Ctx", ""))},
 		}
 		for _, tt := range tests {
-			m := NewParamPatternMatcher(tt.pattern, cfg, cp, nil)
+			m := NewParamPatternMatcher(tt.pattern, cfg, cp)
 			if m.MatchNode(tt.node) {
 				t.Errorf("%s: MatchNode() = true, want false", tt.name)
 			}
@@ -1391,14 +1391,14 @@ func TestSweepParamMatcher(t *testing.T) {
 	})
 
 	t.Run("priority branches", func(t *testing.T) {
-		m := NewParamPatternMatcher(ParamPattern{CallRegex: "x", FunctionNameRegex: "y", RecvTypeRegex: "z"}, cfg, cp, nil)
+		m := NewParamPatternMatcher(ParamPattern{CallRegex: "x", FunctionNameRegex: "y", RecvTypeRegex: "z"}, cfg, cp)
 		if got := m.GetPriority(); got != 18 {
 			t.Errorf("GetPriority() = %d, want 18", got)
 		}
 	})
 
 	t.Run("extract param with literal type arg", func(t *testing.T) {
-		m := NewParamPatternMatcher(ParamPattern{ParamIn: "path", ParamArgIndex: 0, TypeFromArg: true, TypeArgIndex: 1}, cfg, cp, nil)
+		m := NewParamPatternMatcher(ParamPattern{ParamIn: "path", ParamArgIndex: 0, TypeFromArg: true, TypeArgIndex: 1}, cfg, cp)
 		edge := sweepEdge(meta, "h", "app", "Param", "gin", "", "", sweepLit(meta, `"id"`), sweepLit(meta, "42"))
 		param := m.ExtractParam(sweepNode(edge), NewRouteInfo())
 		if param == nil || param.Name != "id" || !param.Required {
@@ -1410,7 +1410,7 @@ func TestSweepParamMatcher(t *testing.T) {
 	})
 
 	t.Run("extract param derefs resolved pointer type", func(t *testing.T) {
-		m := NewParamPatternMatcher(ParamPattern{ParamIn: "query", ParamArgIndex: 0, TypeFromArg: true, TypeArgIndex: 1, Deref: true}, cfg, cp, nil)
+		m := NewParamPatternMatcher(ParamPattern{ParamIn: "query", ParamArgIndex: 0, TypeFromArg: true, TypeArgIndex: 1, Deref: true}, cfg, cp)
 		typed := sweepIdent(meta, "v")
 		typed.SetResolvedType("*string")
 		edge := sweepEdge(meta, "h", "app", "Query", "gin", "", "", sweepLit(meta, `"q"`), typed)
@@ -1426,7 +1426,7 @@ func TestSweepParamMatcher(t *testing.T) {
 
 func TestSweepParamResolveTypeOrigin(t *testing.T) {
 	meta := exSweepMeta()
-	m := NewParamPatternMatcher(ParamPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewParamPatternMatcher(ParamPattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	node := sweepNode(sweepEdge(meta, "h", "app", "Param", "gin", "", ""))
 
 	t.Run("resolved type fast path", func(t *testing.T) {

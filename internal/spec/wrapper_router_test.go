@@ -38,7 +38,7 @@ func TestVerbsFromArg(t *testing.T) {
 	m := wireNameMeta()
 	matcher := NewRoutePatternMatcher(
 		RoutePattern{CallRegex: "^Methods$", MethodFromArg: true},
-		&APISpecConfig{}, NewContextProvider(m), nil,
+		&APISpecConfig{}, NewContextProvider(m),
 	)
 
 	tests := []struct {

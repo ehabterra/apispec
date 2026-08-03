@@ -28,16 +28,14 @@ type BasePatternMatcher struct {
 	contextProvider ContextProvider
 	cfg             *APISpecConfig
 	schemaMapper    SchemaMapper
-	typeResolver    TypeResolver
 }
 
 // NewBasePatternMatcher creates a new base pattern matcher
-func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *BasePatternMatcher {
+func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider) *BasePatternMatcher {
 	return &BasePatternMatcher{
 		contextProvider: contextProvider,
 		cfg:             cfg,
 		schemaMapper:    NewSchemaMapper(cfg),
-		typeResolver:    typeResolver,
 	}
 }
 
@@ -408,9 +406,9 @@ type RoutePatternMatcherImpl struct {
 }
 
 // NewRoutePatternMatcher creates a new route pattern matcher
-func NewRoutePatternMatcher(pattern RoutePattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RoutePatternMatcherImpl {
+func NewRoutePatternMatcher(pattern RoutePattern, cfg *APISpecConfig, contextProvider ContextProvider) *RoutePatternMatcherImpl {
 	return &RoutePatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 	}
 }
@@ -724,9 +722,9 @@ type MountPatternMatcherImpl struct {
 }
 
 // NewMountPatternMatcher creates a new mount pattern matcher
-func NewMountPatternMatcher(pattern MountPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *MountPatternMatcherImpl {
+func NewMountPatternMatcher(pattern MountPattern, cfg *APISpecConfig, contextProvider ContextProvider) *MountPatternMatcherImpl {
 	return &MountPatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 	}
 }
@@ -862,9 +860,9 @@ type SecurityPatternMatcherImpl struct {
 }
 
 // NewSecurityPatternMatcher creates a new security pattern matcher
-func NewSecurityPatternMatcher(pattern SecurityPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *SecurityPatternMatcherImpl {
+func NewSecurityPatternMatcher(pattern SecurityPattern, cfg *APISpecConfig, contextProvider ContextProvider) *SecurityPatternMatcherImpl {
 	return &SecurityPatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 	}
 }
@@ -1012,9 +1010,9 @@ type RequestPatternMatcherImpl struct {
 }
 
 // NewRequestPatternMatcher creates a new request pattern matcher
-func NewRequestPatternMatcher(pattern RequestBodyPattern, cfg *APISpecConfig, contextProvider ContextProvider, typeResolver TypeResolver) *RequestPatternMatcherImpl {
+func NewRequestPatternMatcher(pattern RequestBodyPattern, cfg *APISpecConfig, contextProvider ContextProvider) *RequestPatternMatcherImpl {
 	return &RequestPatternMatcherImpl{
-		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider, typeResolver),
+		BasePatternMatcher: NewBasePatternMatcher(cfg, contextProvider),
 		pattern:            pattern,
 		bodyResolver:       newBodySourceResolver(cfg, contextProvider),
 	}

@@ -47,7 +47,7 @@ func TestRequestResolveTypeOriginInterface(t *testing.T) {
 		},
 	}
 
-	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta))
 
 	// unary wraps an ident the way `&a` does in Decode(&a).
 	unaryOf := func(name string) *metadata.CallArgument {
@@ -151,7 +151,7 @@ func TestConcreteSetFromEnclosingFunc(t *testing.T) {
 			},
 		},
 	}
-	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	arg := sweepIdent(meta, "a")
 
 	for _, tc := range []struct {
@@ -214,7 +214,7 @@ func TestAmbiguousConcreteSet(t *testing.T) {
 			"a": {{ConcreteType: pool.Get("app.Dog")}},
 		},
 	}
-	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewRequestPatternMatcher(RequestBodyPattern{}, &APISpecConfig{}, NewContextProvider(meta))
 	unary := metadata.NewCallArgument(meta)
 	unary.SetKind(metadata.KindUnary)
 	unary.X = sweepIdent(meta, "a")

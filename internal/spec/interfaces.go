@@ -93,15 +93,6 @@ type ParamPatternMatcher interface {
 	ExtractParam(node TrackerNodeInterface, route *RouteInfo) *Parameter
 }
 
-// TypeResolver defines the interface for type resolution operations
-type TypeResolver interface {
-	// ResolveType resolves a Go type to its concrete type
-	ResolveType(arg metadata.CallArgument, context TrackerNodeInterface) string
-
-	// MapToOpenAPISchema maps a Go type to OpenAPI schema
-	MapToOpenAPISchema(goType string) *Schema
-}
-
 // VariableTracer defines the interface for variable tracing operations
 type VariableTracer interface {
 	// TraceVariable traces a variable back to its origin

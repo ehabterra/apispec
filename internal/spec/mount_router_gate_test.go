@@ -53,7 +53,7 @@ func TestMountRouterArgTypeGate(t *testing.T) {
 		IsMount:            true,
 		RouterArgTypeRegex: routerRe,
 	}
-	m := NewMountPatternMatcher(pattern, &APISpecConfig{}, NewContextProvider(meta), nil)
+	m := NewMountPatternMatcher(pattern, &APISpecConfig{}, NewContextProvider(meta))
 
 	for _, tc := range []struct {
 		name string
@@ -85,7 +85,7 @@ func TestMountRouterArgTypeGate(t *testing.T) {
 	t.Run("invalid regex does not match", func(t *testing.T) {
 		bad := NewMountPatternMatcher(
 			MountPattern{RouterArgIndex: 1, RouterArgTypeRegex: `^([`},
-			&APISpecConfig{}, NewContextProvider(meta), nil)
+			&APISpecConfig{}, NewContextProvider(meta))
 		edge := sweepEdge(meta, "main", "app", "Handle", "net/http", "*ServeMux", "",
 			sweepLit(meta, `"/api/"`), typedIdent("api", "*github.com/go-chi/chi/v5.Mux"))
 		if bad.routerArgIsRouter(edge) {
@@ -98,7 +98,7 @@ func TestMountRouterArgTypeGate(t *testing.T) {
 	t.Run("no gate means no discrimination", func(t *testing.T) {
 		ungated := NewMountPatternMatcher(
 			MountPattern{CallRegex: `^Mount$`, RouterArgIndex: 1, IsMount: true},
-			&APISpecConfig{}, NewContextProvider(meta), nil)
+			&APISpecConfig{}, NewContextProvider(meta))
 		if ungated.pattern.RouterArgTypeRegex != "" {
 			t.Fatal("fixture error: expected an ungated pattern")
 		}

@@ -103,8 +103,6 @@ func TestPatternMatchersWithMockNodes(t *testing.T) {
 
 	// Create config and schema mapper
 	cfg := &APISpecConfig{}
-	schemaMapper := NewSchemaMapper(cfg)
-	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
 
 	// Test route pattern matcher
 	routePattern := RoutePattern{
@@ -114,7 +112,7 @@ func TestPatternMatchersWithMockNodes(t *testing.T) {
 		PathArgIndex:   0,
 	}
 
-	matcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider, typeResolver)
+	matcher := NewRoutePatternMatcher(routePattern, cfg, contextProvider)
 
 	// Create a mock node for testing
 	mockNode := &TrackerNode{
@@ -136,47 +134,6 @@ func TestPatternMatchersWithMockNodes(t *testing.T) {
 	matches := matcher.MatchNode(mockNode)
 	// Expected result depends on implementation, but should not panic
 	_ = matches
-}
-
-// TestTypeResolverWithMockNodes tests type resolver with mock nodes
-func TestTypeResolverWithMockNodes(t *testing.T) {
-	stringPool := metadata.NewStringPool()
-	meta := &metadata.Metadata{
-		StringPool: stringPool,
-	}
-
-	cfg := &APISpecConfig{}
-	schemaMapper := NewSchemaMapper(cfg)
-	typeResolver := NewTypeResolver(meta, cfg, schemaMapper)
-
-	// Create a mock node for type resolution context
-	mockNode := &TrackerNode{
-		key: "mock-type-node",
-		typeParamMap: map[string]string{
-			"T": "string",
-			"U": "int",
-		},
-	}
-
-	// Create test arguments for type resolution
-	testArg := metadata.NewCallArgument(meta)
-	testArg.SetKind("ident")
-	testArg.SetName("testVar")
-	testArg.SetType("T")
-
-	// Test type resolution with mock context
-	resolvedType := typeResolver.ResolveType(*testArg, mockNode)
-	// Should handle mock node gracefully
-	_ = resolvedType
-
-	// Test with nil node - should not panic
-	testArg2 := metadata.NewCallArgument(meta)
-	testArg2.SetKind("ident")
-	testArg2.SetType("string")
-	resolvedType = typeResolver.ResolveType(*testArg2, nil)
-	if resolvedType == "" {
-		t.Error("Expected type resolver to handle nil node gracefully")
-	}
 }
 
 // TestContextProviderWithMockNodes tests context provider with mock nodes
