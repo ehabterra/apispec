@@ -755,7 +755,11 @@ func TestSweepGenerateMetadataModulePathInference(t *testing.T) {
 	}
 }
 
-func TestSweepGenerateMetadataSkipsMockReceivers(t *testing.T) {
+// A receiver whose name merely reads like a test double is still a fact:
+// metadata records every declaration, and excluding test scaffolding is the
+// engine's file-level job (--auto-exclude-tests/-mocks), not a substring test
+// on identifiers (issue #279).
+func TestSweepGenerateMetadataRecordsMockNamedReceivers(t *testing.T) {
 	src := "package p\n\ntype MockSvc struct{}\n\nfunc (m MockSvc) Do() {}\n\ntype Svc struct{}\n\nfunc (s Svc) Run() {}\n"
 	file, info, fset := sweepTypeCheck(t, src)
 	md := GenerateMetadata(
@@ -768,15 +772,15 @@ func TestSweepGenerateMetadataSkipsMockReceivers(t *testing.T) {
 	if pkg == nil {
 		t.Fatal("package p missing")
 	}
-	var sawSvcRun, sawMock bool
+	var sawSvcRun, sawMockDo bool
 	for _, f := range pkg.Files {
-		for name, typ := range f.Types {
-			if strings.Contains(strings.ToLower(name), "mock") {
-				sawMock = true
-			}
+		for _, typ := range f.Types {
 			for _, meth := range typ.Methods {
-				if md.StringPool.GetString(meth.Name) == "Run" {
+				switch md.StringPool.GetString(meth.Name) {
+				case "Run":
 					sawSvcRun = true
+				case "Do":
+					sawMockDo = true
 				}
 			}
 		}
@@ -784,8 +788,8 @@ func TestSweepGenerateMetadataSkipsMockReceivers(t *testing.T) {
 	if !sawSvcRun {
 		t.Error("Svc.Run not recorded")
 	}
-	if sawMock {
-		t.Error("mock type should have been skipped")
+	if !sawMockDo {
+		t.Error("MockSvc.Do not recorded: a name is not grounds for dropping a declaration")
 	}
 }
 
@@ -809,14 +813,15 @@ func TestSweepCollectConstantsNonValueSpec(t *testing.T) {
 	}
 }
 
-func TestSweepProcessTypeSpecSkips(t *testing.T) {
+// A function-local type must not shadow a package-level type of the same name
+// already recorded for the file.
+func TestSweepProcessTypeSpecSkipsLocalShadow(t *testing.T) {
 	m := sweepMeta()
 	f := &File{Types: map[string]*Type{"User": {}}}
 
-	processTypeSpec(&ast.TypeSpec{Name: ast.NewIdent("MockUser")}, nil, "p", nil, f, nil, nil, m, false)
 	processTypeSpec(&ast.TypeSpec{Name: ast.NewIdent("User")}, nil, "p", nil, f, nil, nil, m, true)
 	if len(f.Types) != 1 {
-		t.Errorf("both specs should be skipped, got %d types", len(f.Types))
+		t.Errorf("local spec should be skipped, got %d types", len(f.Types))
 	}
 }
 
@@ -905,13 +910,15 @@ func TestSweepProcessStructFieldsEmbedded(t *testing.T) {
 	}
 }
 
-func TestSweepProcessFunctionsMockAndConstDecl(t *testing.T) {
+func TestSweepProcessFunctionsMockNamedAndConstDecl(t *testing.T) {
 	m := sweepMeta()
 	file, fset := sweepParseFile(t, "package p\n\nfunc MockThing() {}\n\nfunc realFn() { const c = 1 }\n")
 	f := &File{Functions: map[string]*Function{}}
 	processFunctions(file, nil, "p", fset, f, nil, nil, m)
-	if _, ok := f.Functions["MockThing"]; ok {
-		t.Error("mock function should be skipped")
+	// A "Mock"-prefixed name is recorded like any other (issue #279): the name
+	// says nothing about whether the function is part of the served API.
+	if _, ok := f.Functions["MockThing"]; !ok {
+		t.Error("MockThing should be recorded")
 	}
 	if _, ok := f.Functions["realFn"]; !ok {
 		t.Error("realFn should be recorded")
@@ -979,9 +986,12 @@ func TestSweepGetTypeWithGenericsParen(t *testing.T) {
 	}
 }
 
-func TestSweepProcessCallExpressionSkipsMock(t *testing.T) {
+// A call to a "Mock"-named callee is an edge like any other. Dropping it used
+// to erase the entire body of the calling function from the call graph, which
+// is what emptied real handlers named after what they do (issue #279).
+func TestSweepProcessCallExpressionRecordsMockNamedCallee(t *testing.T) {
 	m := sweepMeta()
-	file, fset := sweepParseFile(t, "package p\n\nfunc h() { MockDo() }\n")
+	file, info, fset := sweepTypeCheck(t, "package p\n\nfunc MockDo() {}\n\nfunc h() { MockDo() }\n")
 	var call *ast.CallExpr
 	ast.Inspect(file, func(n ast.Node) bool {
 		if c, ok := n.(*ast.CallExpr); ok {
@@ -992,9 +1002,11 @@ func TestSweepProcessCallExpressionSkipsMock(t *testing.T) {
 	if call == nil {
 		t.Fatal("call not found")
 	}
-	processCallExpression(call, file, nil, "p", nil, map[*ast.File]*types.Info{}, nil, fset, m, nil, nil, nil)
-	if len(m.CallGraph) != 0 {
-		t.Errorf("mock callee must not create edges, got %d", len(m.CallGraph))
+	processCallExpression(call, file, nil, "p", nil,
+		map[*ast.File]*types.Info{file: info}, nil, fset, m, info,
+		map[string]*CallGraphEdge{}, map[string]*CallArgument{})
+	if len(m.CallGraph) != 1 {
+		t.Errorf("expected 1 edge for the MockDo call, got %d", len(m.CallGraph))
 	}
 }
 

@@ -280,11 +280,6 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 				}
 				recvType := getTypeName(fn.Recv.List[0].Type, info)
 
-				// Skip mock/fake/stub methods
-				if isMockName(recvType) || isMockName(fn.Name.Name) {
-					continue
-				}
-
 				// Extract type parameter names for generics
 				typeParams := []string{}
 				if fn.Type != nil && fn.Type.TypeParams != nil {
@@ -615,14 +610,6 @@ func collectConstants(file *ast.File, info *types.Info, pkgName string, fset *to
 	return constMap
 }
 
-// isMockName checks if a name contains mock-related patterns
-func isMockName(name string) bool {
-	lower := strings.ToLower(name)
-	return strings.Contains(lower, "mock") || strings.Contains(lower, "fake") ||
-		strings.Contains(lower, "stub") || strings.HasPrefix(lower, "mock") ||
-		strings.HasSuffix(lower, "mock") || strings.Contains(lower, "mocked")
-}
-
 // processTypes processes all type declarations in a file
 func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, f *File, allTypeMethods map[string][]Method, allTypes map[string]*Type, metadata *Metadata) {
 	for _, decl := range file.Decls {
@@ -650,10 +637,6 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 // only added if its name isn't already taken by a package-level type in this
 // file, so a real package type is never shadowed by a function-local one.
 func processTypeSpec(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset *token.FileSet, f *File, allTypeMethods map[string][]Method, allTypes map[string]*Type, metadata *Metadata, local bool) {
-	// Skip mock/fake/stub types
-	if isMockName(tspec.Name.Name) {
-		return
-	}
 	if local {
 		if _, exists := f.Types[tspec.Name.Name]; exists {
 			return
@@ -1139,11 +1122,6 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			continue
 		}
 
-		// Skip mock/fake/stub functions
-		if isMockName(fn.Name.Name) {
-			continue
-		}
-
 		comments := getComments(fn)
 
 		// Extract type parameter names for generics
@@ -1602,11 +1580,6 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
 	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
-
-	// Skip mock calls
-	if isMockName(calleeFunc) || isMockName(calleePkg) || isMockName(callerFunc) {
-		return
-	}
 
 	var calleeSignatureStr string
 	calleeType := getTypeWithGenerics(call.Fun, info)
