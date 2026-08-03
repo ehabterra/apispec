@@ -212,10 +212,9 @@ func TestIsValidHTTPMethodAndGetPattern(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	cp := NewContextProvider(meta)
 	cfg := &APISpecConfig{}
-	trv := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
 
 	rp := RoutePattern{CallRegex: "Get"}
-	rm := NewRoutePatternMatcher(rp, cfg, cp, trv)
+	rm := NewRoutePatternMatcher(rp, cfg, cp)
 	if !rm.isValidHTTPMethod("get") || rm.isValidHTTPMethod("FETCH") {
 		t.Error("isValidHTTPMethod misclassifies")
 	}
@@ -223,7 +222,7 @@ func TestIsValidHTTPMethodAndGetPattern(t *testing.T) {
 		t.Error("route GetPattern nil")
 	}
 
-	pm := NewParamPatternMatcher(ParamPattern{ParamIn: "path"}, cfg, cp, trv)
+	pm := NewParamPatternMatcher(ParamPattern{ParamIn: "path"}, cfg, cp)
 	if pm.GetPattern() == nil {
 		t.Error("param GetPattern nil")
 	}
@@ -258,7 +257,6 @@ func TestInferMethodFromContext_Siblings(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
 	cp := NewContextProvider(meta)
 	cfg := &APISpecConfig{}
-	trv := NewTypeResolver(meta, cfg, NewSchemaMapper(cfg))
 	sp := meta.StringPool
 
 	routeEdge := &metadata.CallGraphEdge{
@@ -266,7 +264,7 @@ func TestInferMethodFromContext_Siblings(t *testing.T) {
 		Callee: metadata.Call{Meta: meta, Name: sp.Get("HandleFunc"), Pkg: sp.Get("mux")},
 	}
 
-	disabled := NewRoutePatternMatcher(RoutePattern{CallRegex: "HandleFunc"}, cfg, cp, trv)
+	disabled := NewRoutePatternMatcher(RoutePattern{CallRegex: "HandleFunc"}, cfg, cp)
 	if got := disabled.inferMethodFromContext(buildMethodsSibling(meta, `"GET"`), routeEdge); got != "" {
 		t.Errorf("disabled inference = %q, want empty", got)
 	}
@@ -274,7 +272,7 @@ func TestInferMethodFromContext_Siblings(t *testing.T) {
 	enabled := NewRoutePatternMatcher(RoutePattern{
 		CallRegex:        "HandleFunc",
 		MethodExtraction: &MethodExtractionConfig{InferFromContext: true},
-	}, cfg, cp, trv)
+	}, cfg, cp)
 
 	if got := enabled.inferMethodFromContext(buildMethodsSibling(meta, `"delete"`), routeEdge); got != "DELETE" {
 		t.Errorf("sibling Methods(delete) = %q, want DELETE", got)

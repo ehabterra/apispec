@@ -246,7 +246,7 @@ func TestResponsePatternMatcher_Destination(t *testing.T) {
 	cp := NewContextProvider(meta)
 	cfg := &APISpecConfig{Framework: FrameworkConfig{ResponseContext: netHTTPResponseContext}}
 
-	off := NewResponsePatternMatcher(ResponsePattern{DestFromReceiver: false}, cfg, cp, nil)
+	off := NewResponsePatternMatcher(ResponsePattern{DestFromReceiver: false}, cfg, cp)
 	if got, _ := off.destination(&fakeNode{edge: &metadata.CallGraphEdge{}}); got != nil {
 		t.Errorf("DestFromReceiver=false should yield nil, got %v", got)
 	}
@@ -254,7 +254,7 @@ func TestResponsePatternMatcher_Destination(t *testing.T) {
 		t.Errorf("destination(nil) should be nil, got %v", got)
 	}
 
-	on := NewResponsePatternMatcher(ResponsePattern{DestFromReceiver: true}, cfg, cp, nil)
+	on := NewResponsePatternMatcher(ResponsePattern{DestFromReceiver: true}, cfg, cp)
 	w := mkIdent(meta, "w", "net/http.ResponseWriter")
 	edge := &metadata.CallGraphEdge{
 		ChainParent: &metadata.CallGraphEdge{Args: []*metadata.CallArgument{w}},

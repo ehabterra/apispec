@@ -113,7 +113,7 @@ func TestParamWireNameRejectsUnknown(t *testing.T) {
 	m := wireNameMeta()
 	p := NewParamPatternMatcher(
 		ParamPattern{CallRegex: "^Get$", ParamIn: "header"},
-		&APISpecConfig{}, NewContextProvider(m), nil,
+		&APISpecConfig{}, NewContextProvider(m),
 	)
 
 	lit := metadata.NewCallArgument(m)

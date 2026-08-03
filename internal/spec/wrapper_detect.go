@@ -241,7 +241,7 @@ func splitFQRecv(fq string) (pkg, recv string, ok bool) {
 func derivationRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, seeds []RoutePattern, found map[string]DetectedWrapper) []RoutePattern {
 	matchers := make([]*RoutePatternMatcherImpl, 0, len(seeds))
 	for _, p := range seeds {
-		matchers = append(matchers, NewRoutePatternMatcher(p, &APISpecConfig{}, cp, nil))
+		matchers = append(matchers, NewRoutePatternMatcher(p, &APISpecConfig{}, cp))
 	}
 
 	var derived []RoutePattern
@@ -581,15 +581,15 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 
 	respMatchers := make([]*ResponsePatternMatcherImpl, 0, len(cfg.Framework.ResponsePatterns))
 	for _, p := range cfg.Framework.ResponsePatterns {
-		respMatchers = append(respMatchers, NewResponsePatternMatcher(p, cfg, cp, nil))
+		respMatchers = append(respMatchers, NewResponsePatternMatcher(p, cfg, cp))
 	}
 	reqMatchers := make([]*RequestPatternMatcherImpl, 0, len(cfg.Framework.RequestBodyPatterns))
 	for _, p := range cfg.Framework.RequestBodyPatterns {
-		reqMatchers = append(reqMatchers, NewRequestPatternMatcher(p, cfg, cp, nil))
+		reqMatchers = append(reqMatchers, NewRequestPatternMatcher(p, cfg, cp))
 	}
 	paramMatchers := make([]*ParamPatternMatcherImpl, 0, len(cfg.Framework.ParamPatterns))
 	for _, p := range cfg.Framework.ParamPatterns {
-		paramMatchers = append(paramMatchers, NewParamPatternMatcher(p, cfg, cp, nil))
+		paramMatchers = append(paramMatchers, NewParamPatternMatcher(p, cfg, cp))
 	}
 
 	for i := range meta.CallGraph {

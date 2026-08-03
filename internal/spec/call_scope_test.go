@@ -35,7 +35,7 @@ func scopeEdge(meta *metadata.Metadata, callerPkg, callerRecv string) *metadata.
 // warning and no way to tell (issue #238).
 func TestMatchCallScope(t *testing.T) {
 	meta := exSweepMeta()
-	base := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(meta), nil)
+	base := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(meta))
 	edge := scopeEdge(meta, "example.com/app/internal/api", "*Registrar")
 
 	tests := []struct {
@@ -167,23 +167,23 @@ func TestCallScopeIsAppliedByEveryMatcher(t *testing.T) {
 
 	matchers := map[string]func(filter string) bool{
 		"route": func(f string) bool {
-			return NewRoutePatternMatcher(RoutePattern{CallerPkgPatterns: []string{f}}, cfg, cp, nil).MatchNode(node)
+			return NewRoutePatternMatcher(RoutePattern{CallerPkgPatterns: []string{f}}, cfg, cp).MatchNode(node)
 		},
 		"requestBody": func(f string) bool {
-			return NewRequestPatternMatcher(RequestBodyPattern{CallerPkgPatterns: []string{f}}, cfg, cp, nil).MatchNode(node)
+			return NewRequestPatternMatcher(RequestBodyPattern{CallerPkgPatterns: []string{f}}, cfg, cp).MatchNode(node)
 		},
 		"response": func(f string) bool {
-			return NewResponsePatternMatcher(ResponsePattern{CallerPkgPatterns: []string{f}}, cfg, cp, nil).MatchNode(node)
+			return NewResponsePatternMatcher(ResponsePattern{CallerPkgPatterns: []string{f}}, cfg, cp).MatchNode(node)
 		},
 		"param": func(f string) bool {
-			return NewParamPatternMatcher(ParamPattern{CallerPkgPatterns: []string{f}}, cfg, cp, nil).MatchNode(node)
+			return NewParamPatternMatcher(ParamPattern{CallerPkgPatterns: []string{f}}, cfg, cp).MatchNode(node)
 		},
 		"mount": func(f string) bool {
 			// IsMount is what a mount pattern returns when everything else passes.
-			return NewMountPatternMatcher(MountPattern{CallerPkgPatterns: []string{f}, IsMount: true}, cfg, cp, nil).MatchNode(node)
+			return NewMountPatternMatcher(MountPattern{CallerPkgPatterns: []string{f}, IsMount: true}, cfg, cp).MatchNode(node)
 		},
 		"security": func(f string) bool {
-			return NewSecurityPatternMatcher(SecurityPattern{CallerPkgPatterns: []string{f}}, cfg, cp, nil).MatchNode(node)
+			return NewSecurityPatternMatcher(SecurityPattern{CallerPkgPatterns: []string{f}}, cfg, cp).MatchNode(node)
 		},
 	}
 
