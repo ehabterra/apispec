@@ -588,13 +588,6 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 				}
 			}
 		}
-
-		// If we still don't have a method, try to infer from context (if enabled)
-		if routeInfo.Method == "" && r.pattern.MethodExtraction != nil && r.pattern.MethodExtraction.InferFromContext {
-			routeInfo.Method = r.inferMethodFromContext(node, edge)
-			routeInfo.MethodExplicit = true
-			found = true
-		}
 	}
 
 	if r.pattern.PathFromArg && len(edge.Args) > r.pattern.PathArgIndex {
@@ -650,69 +643,6 @@ func (r *RoutePatternMatcherImpl) isValidHTTPMethod(method string) bool {
 		}
 	}
 	return false
-}
-
-// inferMethodFromContext attempts to infer HTTP method from context
-func (r *RoutePatternMatcherImpl) inferMethodFromContext(node TrackerNodeInterface, edge *metadata.CallGraphEdge) string {
-	// Check if context inference is enabled
-	if r.pattern.MethodExtraction == nil || !r.pattern.MethodExtraction.InferFromContext {
-		return ""
-	}
-
-	// Try to find method from chained calls (like Mux .Methods("GET"))
-	if node != nil {
-		// Look for parent or sibling nodes that might contain method info
-		parent := node.GetParent()
-		if parent != nil {
-			// Check if parent has method information
-			for _, child := range parent.GetChildren() {
-				if child != node && child.GetEdge() != nil {
-					childEdge := child.GetEdge()
-					callName := r.contextProvider.GetString(childEdge.Callee.Name)
-
-					// Look for Methods call
-					if callName == "Methods" && len(childEdge.Args) > 0 {
-						methodArg := childEdge.Args[0]
-						methodValue := strings.Trim(methodArg.GetValue(), "\"'")
-						if r.isValidHTTPMethod(methodValue) {
-							return strings.ToUpper(methodValue)
-						}
-
-						// Try argument info as well
-						argInfo := r.contextProvider.GetArgumentInfo(methodArg)
-						cleanArgInfo := strings.Trim(argInfo, "\"'")
-						if r.isValidHTTPMethod(cleanArgInfo) {
-							return strings.ToUpper(cleanArgInfo)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Try to infer from handler function name using pattern's method extraction config
-	handlerName := r.contextProvider.GetString(edge.Caller.Name)
-	if handlerName != "" {
-		method := r.extractMethodFromFunctionNameWithConfig(handlerName, r.pattern.MethodExtraction)
-		if method != "" && method != "POST" { // Don't use POST as default
-			return method
-		}
-	}
-
-	// Also try the handler from the arguments if available
-	if len(edge.Args) > 1 {
-		handlerArg := edge.Args[1] // Typically the handler is the second argument
-		argInfo := r.contextProvider.GetArgumentInfo(handlerArg)
-		if argInfo != "" {
-			method := r.extractMethodFromFunctionNameWithConfig(argInfo, r.pattern.MethodExtraction)
-			if method != "" && method != "POST" {
-				return method
-			}
-		}
-	}
-
-	// Default fallback
-	return "GET"
 }
 
 // MountPatternMatcherImpl implements MountPatternMatcher

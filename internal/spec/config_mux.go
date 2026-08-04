@@ -30,11 +30,10 @@ func DefaultMethodExtractionConfig() *MethodExtractionConfig {
 			{Patterns: []string{"options"}, Method: "OPTIONS", Priority: 10},
 			{Patterns: []string{"head"}, Method: "HEAD", Priority: 10},
 		},
-		UsePrefix:        true,
-		UseContains:      true,
-		CaseSensitive:    false,
-		DefaultMethod:    "GET",
-		InferFromContext: true,
+		UsePrefix:     true,
+		UseContains:   true,
+		CaseSensitive: false,
+		DefaultMethod: "GET",
 	}
 }
 

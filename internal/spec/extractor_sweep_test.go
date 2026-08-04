@@ -286,24 +286,6 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 		}
 	})
 
-	t.Run("unresolvable method infers from context", func(t *testing.T) {
-		meta := exSweepMeta()
-		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{
-			MethodArgIndex: 0, MethodExtraction: DefaultMethodExtractionConfig(),
-		}, cfg, cp)
-		arg := sweepIdent(meta, "someVerb")
-		arg.SetValue("someVerb")
-		edge := sweepEdge(meta, "listThings", "app", "Handle", "app", "", "", arg)
-		route := NewRouteInfo()
-		if !m.extractRouteDetails(sweepNode(edge), route) {
-			t.Fatal("expected details to be found")
-		}
-		if route.Method != "GET" {
-			t.Errorf("Method = %q, want GET inferred from caller name", route.Method)
-		}
-	})
-
 	t.Run("dynamic path arg records a placeholder param", func(t *testing.T) {
 		meta := exSweepMeta()
 		cp := NewContextProvider(meta)
@@ -323,63 +305,35 @@ func TestSweepExtractRouteDetails(t *testing.T) {
 	})
 }
 
-func TestSweepInferMethodFromContext(t *testing.T) {
-	cfg := &APISpecConfig{}
+// TestSweepMethodFromFunctionNameWordBoundary pins golden rule #8's
+// word-boundary requirement: a mapping pattern only ever matches a whole
+// camelCase word, so the "get" inside "widget" must not claim the route. The
+// old substring matcher returned GET for every one of these.
+func TestSweepMethodFromFunctionNameWordBoundary(t *testing.T) {
+	b := NewBasePatternMatcher(&APISpecConfig{}, NewContextProvider(exSweepMeta()))
+	cfg := DefaultMethodExtractionConfig()
 
-	t.Run("sibling Methods call resolved via argument info", func(t *testing.T) {
-		meta := exSweepMeta()
-		pool := meta.StringPool
-		meta.Packages = map[string]*metadata.Package{
-			"net/http": {Files: map[string]*metadata.File{
-				"h.go": {Variables: map[string]*metadata.Variable{
-					"MethodPut": {Tok: pool.Get("const"), Value: pool.Get(`"PUT"`)},
-				}},
-			}},
+	cases := []struct {
+		name, want string
+		matched    bool
+	}{
+		// Leading word wins (UsePrefix).
+		{"deleteWidget", "DELETE", true},
+		{"updateWidget", "PUT", true},
+		// Non-leading whole word still matches (UseContains).
+		{"handleWidgetDelete", "DELETE", true},
+		// No whole word maps: the DefaultMethod is a fallback, not evidence, so
+		// the route stays open to r.Method dispatch splitting.
+		{"widget", "GET", false},
+		{"budgetReport", "GET", false},
+	}
+	for _, tc := range cases {
+		got, matched := b.methodFromFunctionName(tc.name, cfg)
+		if got != tc.want || matched != tc.matched {
+			t.Errorf("methodFromFunctionName(%q) = (%q,%v), want (%q,%v)",
+				tc.name, got, matched, tc.want, tc.matched)
 		}
-		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
-
-		methodArg := sweepIdent(meta, "MethodPut")
-		methodArg.SetPkg("net/http")
-		methodArg.SetValue("http.MethodPut")
-		siblingEdge := sweepEdge(meta, "main", "app", "Methods", "mux", "", "", methodArg)
-
-		parent := &TrackerNode{}
-		self := &TrackerNode{Parent: parent}
-		sibling := &TrackerNode{CallGraphEdge: siblingEdge, Parent: parent}
-		parent.Children = []*TrackerNode{self, sibling}
-
-		edge := sweepEdge(meta, "main", "app", "HandleFunc", "mux", "", "")
-		if got := m.inferMethodFromContext(self, edge); got != "PUT" {
-			t.Errorf("inferMethodFromContext() = %q, want PUT", got)
-		}
-	})
-
-	t.Run("caller name yields the method", func(t *testing.T) {
-		meta := exSweepMeta()
-		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
-		// "deleteWidget" pins the word-boundary fix: the old substring
-		// matcher spotted "get" inside "widget" and returned GET.
-		edge := sweepEdge(meta, "deleteWidget", "app", "HandleFunc", "mux", "", "")
-		if got := m.inferMethodFromContext(&TrackerNode{}, edge); got != "DELETE" {
-			t.Errorf("inferMethodFromContext() = %q, want DELETE", got)
-		}
-	})
-
-	t.Run("handler argument yields the method when caller maps to POST", func(t *testing.T) {
-		meta := exSweepMeta()
-		cp := NewContextProvider(meta)
-		m := NewRoutePatternMatcher(RoutePattern{MethodExtraction: DefaultMethodExtractionConfig()}, cfg, cp)
-		// "updateWidget" pins the word-boundary fix on the handler-arg path:
-		// the old substring matcher resolved "widget" to GET before the
-		// "update" prefix could map to PUT.
-		edge := sweepEdge(meta, "createThing", "app", "HandleFunc", "mux", "", "",
-			sweepLit(meta, `"/x"`), sweepIdent(meta, "updateWidget"))
-		if got := m.inferMethodFromContext(&TrackerNode{}, edge); got != "PUT" {
-			t.Errorf("inferMethodFromContext() = %q, want PUT from handler arg", got)
-		}
-	})
+	}
 }
 
 func TestSweepMountMatcherMatchNode(t *testing.T) {
