@@ -228,65 +228,6 @@ func TestIsValidHTTPMethodAndGetPattern(t *testing.T) {
 	}
 }
 
-// buildMethodsSibling builds a parent node with a route node and a sibling
-// `.Methods(<value>)` call node, the tree shape mux chained registration
-// produces, so inferMethodFromContext's sibling scan can be exercised.
-func buildMethodsSibling(meta *metadata.Metadata, methodValue string) (routeNode TrackerNodeInterface) {
-	sp := meta.StringPool
-
-	methodArg := metadata.NewCallArgument(meta)
-	methodArg.SetKind(metadata.KindLiteral)
-	methodArg.SetValue(methodValue)
-
-	methodsEdge := &metadata.CallGraphEdge{
-		Caller: metadata.Call{Meta: meta, Name: sp.Get("main"), Pkg: sp.Get("main")},
-		Callee: metadata.Call{Meta: meta, Name: sp.Get("Methods"), Pkg: sp.Get("mux")},
-		Args:   []*metadata.CallArgument{methodArg},
-	}
-
-	parent := &TrackerNode{key: "parent"}
-	route := &TrackerNode{key: "route"}
-	methods := &TrackerNode{key: "methods", CallGraphEdge: methodsEdge}
-	parent.Children = []*TrackerNode{route, methods}
-	route.Parent = parent
-	methods.Parent = parent
-	return route
-}
-
-func TestInferMethodFromContext_Siblings(t *testing.T) {
-	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
-	cp := NewContextProvider(meta)
-	cfg := &APISpecConfig{}
-	sp := meta.StringPool
-
-	routeEdge := &metadata.CallGraphEdge{
-		Caller: metadata.Call{Meta: meta, Name: sp.Get("main"), Pkg: sp.Get("main")},
-		Callee: metadata.Call{Meta: meta, Name: sp.Get("HandleFunc"), Pkg: sp.Get("mux")},
-	}
-
-	disabled := NewRoutePatternMatcher(RoutePattern{CallRegex: "HandleFunc"}, cfg, cp)
-	if got := disabled.inferMethodFromContext(buildMethodsSibling(meta, `"GET"`), routeEdge); got != "" {
-		t.Errorf("disabled inference = %q, want empty", got)
-	}
-
-	enabled := NewRoutePatternMatcher(RoutePattern{
-		CallRegex:        "HandleFunc",
-		MethodExtraction: &MethodExtractionConfig{InferFromContext: true},
-	}, cfg, cp)
-
-	if got := enabled.inferMethodFromContext(buildMethodsSibling(meta, `"delete"`), routeEdge); got != "DELETE" {
-		t.Errorf("sibling Methods(delete) = %q, want DELETE", got)
-	}
-	// An invalid sibling method falls through the scan to the GET default.
-	if got := enabled.inferMethodFromContext(buildMethodsSibling(meta, `"NOTAMETHOD"`), routeEdge); got != "GET" {
-		t.Errorf("invalid sibling method = %q, want GET default", got)
-	}
-	// No parent at all: straight to the fallback chain.
-	if got := enabled.inferMethodFromContext(&TrackerNode{key: "orphan"}, routeEdge); got != "GET" {
-		t.Errorf("orphan node = %q, want GET default", got)
-	}
-}
-
 // TestFindTargetNodeAndRouterAssignment covers the mount router-assignment
 // path: BFS lookup of the assignment's node, then traversal of its children.
 func TestFindTargetNodeAndRouterAssignment(t *testing.T) {

@@ -221,8 +221,7 @@ type MethodExtractionConfig struct {
 	CaseSensitive bool `yaml:"caseSensitive,omitempty" json:"caseSensitive,omitempty"` // Case sensitive matching
 
 	// Fallback behavior
-	DefaultMethod    string `yaml:"defaultMethod,omitempty" json:"defaultMethod,omitempty"`       // Default method when none found
-	InferFromContext bool   `yaml:"inferFromContext,omitempty" json:"inferFromContext,omitempty"` // Try to infer from call context
+	DefaultMethod string `yaml:"defaultMethod,omitempty" json:"defaultMethod,omitempty"` // Default method when none found
 }
 
 // RoutePattern defines how to extract route information

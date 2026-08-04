@@ -110,27 +110,6 @@ func TestIsValidHTTPMethod(t *testing.T) {
 	}
 }
 
-func TestInferMethodFromContext(t *testing.T) {
-	matcher := &RoutePatternMatcherImpl{
-		pattern: RoutePattern{
-			MethodExtraction: &MethodExtractionConfig{
-				InferFromContext: true,
-			},
-		},
-	}
-
-	// Test with nil node - this might cause a panic, so we use defer recover
-	defer func() {
-		if r := recover(); r != nil {
-			// Expected behavior for nil node
-			t.Logf("Recovered from panic: %v", r)
-		}
-	}()
-
-	result := matcher.inferMethodFromContext(nil, nil)
-	_ = result // Use result to avoid unused variable warning
-}
-
 func TestGetCachedRegex(t *testing.T) {
 	// Test with empty pattern
 	regex, err := cachedRegex("")
