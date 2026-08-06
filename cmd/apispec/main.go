@@ -272,7 +272,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.DiagramPageSize, "diagram-page-size", 100, "Number of nodes per page in paginated diagram (50-500)")
 	fs.IntVar(&config.DiagramPageSize, "dps", 100, "Shorthand for --diagram-page-size")
 
-	fs.IntVar(&config.MaxNodesPerTree, "max-nodes", engine.DefaultMaxNodesPerTree, "Maximum nodes per tracker tree")
+	fs.IntVar(&config.MaxNodesPerTree, "max-nodes", engine.DefaultMaxNodesPerTree,
+		"Maximum nodes in the walk that finds route registrations (eager tracker: nodes per tree). Spending it costs whole routes; see --max-nodes-per-route for a route's detail")
 	fs.IntVar(&config.MaxNodesPerTree, "mn", engine.DefaultMaxNodesPerTree, "Shorthand for --max-nodes")
 
 	fs.IntVar(&config.MaxChildrenPerNode, "max-children", engine.DefaultMaxChildrenPerNode, "Maximum children per node")

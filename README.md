@@ -145,7 +145,8 @@ apispec --output openapi.yaml --skip-cgo
 | `--diagram`                 | `-g`      | Write call-graph HTML to this path                     | `""`                            |
 | `--paginated-diagram`       | `-pd`     | Use paginated rendering for the diagram                | `false`                         |
 | `--diagram-page-size`       | `-dps`    | Nodes per page in paginated diagram (50–500)           | `100`                           |
-| `--max-nodes`               | `-mn`     | Max nodes in the call graph                            | `50000`                         |
+| `--max-nodes`               | `-mn`     | Max nodes in the walk that finds route registrations   | `50000`                         |
+| `--max-nodes-per-route`     |           | Max nodes expanded below one route registration (lazy engine) | `1000000`                |
 | `--max-children`            | `-mc`     | Max children per node                                  | `500`                           |
 | `--max-args`                | `-ma`     | Max arguments per function                             | `100`                           |
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
@@ -652,7 +653,7 @@ APISpec turns Go source into an OpenAPI document through a fixed sequence of sta
 - *Importance:* Nothing downstream touches the raw AST again — metadata is the substrate. String-pooling plus sorted iteration at every boundary make the output **deterministic** (clean release diffs and reliable golden tests), and `--write-metadata` dumps this model so a missed route can be debugged.
 
 **6. Build the tracker tree**
-- *Role:* Starting from each route-registration call site, expand the call graph down to the actual handler and the calls made inside it — through wrappers, groups, mounts, handler factories, and helper functions — bounded by engine-specific limits (see [Performance & Limits](#performance--limits)). The default **lazy** tree expands subtrees on demand and is bounded by `--max-nodes`/`--max-children`/`--max-args`/`--max-instances-per-key`; the eager tree (`--legacy-tracker`) materializes them up front and additionally honors `--max-recursion-depth` and `--max-nested-args`.
+- *Role:* Starting from each route-registration call site, expand the call graph down to the actual handler and the calls made inside it — through wrappers, groups, mounts, handler factories, and helper functions — bounded by engine-specific limits (see [Performance & Limits](#performance--limits)). The default **lazy** tree expands subtrees on demand and is bounded by `--max-nodes` (finding registrations) / `--max-nodes-per-route` (detail below one) / `--max-children`/`--max-args`/`--max-instances-per-key`; the eager tree (`--legacy-tracker`) materializes them up front and additionally honors `--max-recursion-depth` and `--max-nested-args`.
 - *Purpose:* Connect a route to the concrete code that actually serves it, following real control flow rather than assuming the handler lives where the route is declared.
 - *Importance:* In real codebases the handler is rarely at the registration site — it's behind middleware, a group closure, a mounted sub-router, or a factory. This traversal is what makes detection work across those styles. The bounds are the safety brake that turns a pathological (deep or cyclic) call graph into a truncation warning instead of a hang or out-of-memory.
 
@@ -940,16 +941,24 @@ Choose with `--legacy-tracker` on the CLI, or the analysis-engine selector in th
 
 ### Limits
 
-APISpec applies safeguards to prevent runaway analysis. **Not every knob applies to both engines** — the eager engine bounds recursion with explicit depth caps, while the lazy engine replaces those with a cumulative node budget plus an internal per-scope instance cap:
+APISpec applies safeguards to prevent runaway analysis. **Not every knob applies to both engines** — the eager engine bounds recursion with explicit depth caps, while the lazy engine replaces those with node budgets plus an internal per-scope instance cap:
 
 | Parameter            | Default  | CLI flag                | Applies to                                                                 |
 |----------------------|----------|-------------------------|----------------------------------------------------------------------------|
-| Max nodes / tree     | 50,000   | `--max-nodes`           | **both** — eager: nodes per route tree; lazy: cumulative budget of distinct callees materialized across the whole on-demand expansion (then leaf stubs) |
+| Max nodes / tree     | 50,000   | `--max-nodes`           | **both** — eager: nodes per route tree; lazy: distinct callees materialized by the walk that *finds* route registrations |
+| Max nodes / route    | 1,000,000 | `--max-nodes-per-route` | **lazy only** — nodes expanded *below* one registration                   |
 | Max children / node  | 500      | `--max-children`        | both                                                                       |
 | Max args / function  | 100      | `--max-args`            | both                                                                       |
 | Max nested arg depth | 100      | `--max-nested-args`     | **eager only**                                                             |
 | Max recursion depth  | 10       | `--max-recursion-depth` | **eager only**                                                             |
 | Max instances / key  | 25       | `--max-instances-per-key` | **lazy only**                                                            |
+
+The lazy engine's node budget is **two budgets, and they are independent**. That split is what keeps truncation local (issue #264). With one global budget the walk is depth-first, so whatever expands first spends it and every route not yet *reached* is lost outright — on a ~900-route project the allowance was gone inside configuration and logging packages, and the run documented **12 paths**. Bounding a route's detail separately, and charging its keys only to its own allowance, took the same project to **640**.
+
+So the two flags fail in different ways, and the warnings say which happened:
+
+- `--max-nodes` spent → routes are **missing**. Raise it.
+- `--max-nodes-per-route` spent → a named route is **less detailed** (a schema or body may be absent), and no other route is affected. Raise it, or ignore it for endpoints you don't need in full.
 
 Instead of the recursion-depth / nested-args caps, the lazy engine bounds copies of one callee **within an instance scope**: it keeps a copy of a shared helper per route so per-route value tracing stays accurate, but cuts the combinatorial copies a call diamond inside a single handler would otherwise create — the role the eager tree's per-ID recursion cap plays.
 

@@ -222,8 +222,36 @@ type LazyTree struct {
 	// the same graph-sized unit as the eager tree's shared-node cap —
 	// deliberately NOT scoped, or many scopes would exhaust the budget with
 	// copies of the same graph.
-	seenKeys map[string]bool
+	//
+	// The value is a bit set, not a bool, because two counts are needed over the
+	// same keys and a second map would double the largest allocation in the run:
+	// seenAny is the reported total (nodesBuilt), seenWiring the subset first
+	// reached ABOVE any route registration — the only keys the wiring budget may
+	// be charged for. Keeping those apart is what makes the two budgets of #264
+	// independent; see wiringNodesBuilt.
+	seenKeys map[string]uint8
+
+	// wiringNodesBuilt counts distinct callee keys reached by the WIRING walk —
+	// the keys above every route registration. MaxNodesPerTree bounds this, not
+	// nodesBuilt.
+	//
+	// Charging the wiring budget for keys discovered INSIDE route subtrees makes
+	// the two budgets one budget again, and inverts the whole fix: expanding a
+	// route in more detail then costs the walk its ability to find the NEXT
+	// route. Measured on a ~900-route project before the split was completed,
+	// raising the per-route allowance made the spec smaller — 181 paths at
+	// 20,000, 163 at 200,000, 103 at 1,000,000 — which is the same "improving
+	// expansion makes the spec worse" defect #264 exists to remove, reintroduced
+	// one level down.
+	wiringNodesBuilt int
 }
+
+// Bits in seenKeys. seenAny is every key ever materialized; seenWiring marks the
+// keys the wiring walk reached, which is the subset MaxNodesPerTree bounds.
+const (
+	seenAny uint8 = 1 << iota
+	seenWiring
+)
 
 // DefaultMaxInstancesPerKey bounds node copies of the same callee WITHIN one
 // instance scope (the subtree of the nearest argument-node ancestor —
@@ -388,7 +416,26 @@ func (t *LazyTree) orderTowardRoutes(plan []childSpec, from int) {
 // Per route, a handler too deep to document fully costs its own detail and
 // nothing else's, which is the difference between a spec that is missing 98% of
 // its endpoints and one where a few endpoints are missing a schema.
-const DefaultMaxNodesPerRoute = 20000
+//
+// THE VALUE IS SET BY WHAT IT MUST NOT COST, not by what it saves. A per-route
+// cap is a NEW restriction: before it, a route's detail was bounded only by the
+// global budget, so every project that never hit that budget was effectively
+// unbounded below its registrations. Anything low enough to be a useful ceiling
+// is therefore a regression for those projects, and a silent one — a truncated
+// route loses a request body or a response schema, not a path, so the spec still
+// looks complete. Measured against per-project snapshots: at 20,000 three real
+// projects lost detail on endpoints they had always documented; 200,000 cleared
+// all but one endpoint, whose four responses need somewhere past 400,000; a
+// million restores exact parity everywhere.
+//
+// It buys the ceiling cheaply because deep routes are rare. On the project with
+// that endpoint, a million costs nothing measurable (9.0s either way) — only the
+// one deep route expands further. Where routes ARE deep it is the whole trade:
+// a ~900-route project documents 491 paths at 20,000, 581 at 200,000 and 640 at
+// a million, for 66s / 112s / 166s. Paying that by default is the right way
+// round, because a project with no deep route does not pay it at all, and one
+// that has them was losing endpoints silently.
+const DefaultMaxNodesPerRoute = 1000000
 
 // routeBudget is the per-registration cap in force for this tree.
 func (t *LazyTree) routeBudget() int {
@@ -426,9 +473,32 @@ func (t *LazyTree) scopeOf(n *LazyNode) int {
 //
 // It no longer bounds the whole tree. Detail below a registration is bounded per
 // route (routeBudget), so a deep handler cannot consume the allowance the
-// undiscovered routes still need (issue #264).
+// undiscovered routes still need (issue #264) — which is why the count it reads
+// is wiringNodesBuilt and not the global nodesBuilt.
 func (t *LazyTree) budgetExhausted() bool {
-	return t.limits.MaxNodesPerTree > 0 && t.nodesBuilt >= t.limits.MaxNodesPerTree
+	return t.limits.MaxNodesPerTree > 0 && t.wiringNodesBuilt >= t.limits.MaxNodesPerTree
+}
+
+// countKey records that a callee key was materialised in the given budget
+// scope, keeping the two counts the two budgets read.
+//
+// The wiring bit is set on its own occasion rather than only the first time a
+// key is seen at all: a key can be reached below a route first and by the wiring
+// walk afterwards, and skipping it then would let a walk that happens to descend
+// into a route early understate its own cost without bound.
+func (t *LazyTree) countKey(key string, scope int) {
+	if t.seenKeys == nil {
+		t.seenKeys = map[string]uint8{}
+	}
+	seen := t.seenKeys[key]
+	if seen&seenAny == 0 {
+		t.nodesBuilt++
+	}
+	if scope == 0 && seen&seenWiring == 0 {
+		seen |= seenWiring
+		t.wiringNodesBuilt++
+	}
+	t.seenKeys[key] = seen | seenAny
 }
 
 // routeBudgetExhausted reports whether this node's route has spent its own
@@ -1062,13 +1132,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if childScope > 0 && childScope < len(n.tree.routeScopeNodes) {
 			n.tree.routeScopeNodes[childScope]++
 		}
-		if n.tree.seenKeys == nil {
-			n.tree.seenKeys = map[string]bool{}
-		}
-		if !n.tree.seenKeys[spec.key] {
-			n.tree.seenKeys[spec.key] = true
-			n.tree.nodesBuilt++
-		}
+		n.tree.countKey(spec.key, childScope)
 		n.children = append(n.children, child)
 	}
 	return n.children

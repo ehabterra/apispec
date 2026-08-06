@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -302,5 +303,75 @@ func TestRouteTruncationCountsRoutesNotAttempts(t *testing.T) {
 	}
 	if tree.routeTruncations != 1 {
 		t.Errorf("counted %d truncations for one route re-entered 20 times, want 1", tree.routeTruncations)
+	}
+}
+
+// TestWiringBudgetIsNotChargedForRouteDetail pins that the two budgets of #264
+// are actually two.
+//
+// Splitting the limit is only half the fix. The keys a route's own subtree
+// discovers were still counted into the single global nodesBuilt that
+// MaxNodesPerTree reads, so expanding one route in more detail spent the
+// allowance the walk needed to FIND the next route. That inverts the whole
+// point: measured on a ~900-route project, raising the per-route allowance made
+// the spec smaller — 181 paths at 20,000, 163 at 200,000, 103 at 1,000,000 —
+// which is "improving expansion makes the spec worse" all over again, one level
+// down from where #264 found it.
+//
+// The invariant: only keys the WIRING walk reaches may exhaust MaxNodesPerTree.
+func TestWiringBudgetIsNotChargedForRouteDetail(t *testing.T) {
+	m := closureMeta(t)
+	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
+	tree.limits.MaxNodesPerTree = 2
+
+	// Two keys reached by the wiring walk, and two more reached only below a
+	// route registration — the shape of any handler with a helper under it.
+	tree.countKey("example.com/app.main", 0)
+	tree.countKey("example.com/app.registerAPI", 0)
+	tree.countKey("example.com/app.decodeBody", 7)
+	tree.countKey("example.com/app.respond", 7)
+
+	if tree.nodesBuilt != 4 {
+		t.Errorf("nodesBuilt = %d, want all 4 distinct keys — it is the reported total", tree.nodesBuilt)
+	}
+	if tree.wiringNodesBuilt != 2 {
+		t.Errorf("wiringNodesBuilt = %d, want only the 2 keys above a registration; "+
+			"charging route detail to the wiring budget makes deeper expansion cost route DISCOVERY (#264)",
+			tree.wiringNodesBuilt)
+	}
+	if !tree.budgetExhausted() {
+		t.Error("the wiring budget of 2 was not reported as spent by 2 wiring keys")
+	}
+
+	// Route detail beyond the wiring budget must not push it further.
+	for i := 0; i < 50; i++ {
+		tree.countKey(fmt.Sprintf("example.com/app.deep%d", i), 7)
+	}
+	if tree.wiringNodesBuilt != 2 {
+		t.Errorf("50 keys reached below a route moved the wiring count to %d; "+
+			"a route's detail must never spend the walk's allowance", tree.wiringNodesBuilt)
+	}
+}
+
+// TestWiringKeyCountedWhenReachedLater pins the ordering case: a key first seen
+// inside a route subtree, later reached by the wiring walk, still counts for the
+// wiring budget. Marking it "already seen" and skipping it would let a walk that
+// happens to descend a route first understate its own cost without bound.
+func TestWiringKeyCountedWhenReachedLater(t *testing.T) {
+	m := closureMeta(t)
+	tree := &LazyTree{meta: m}
+
+	tree.countKey("example.com/app.shared", 3) // first seen under a route
+	if tree.wiringNodesBuilt != 0 {
+		t.Fatalf("wiringNodesBuilt = %d after a route-only key, want 0", tree.wiringNodesBuilt)
+	}
+	tree.countKey("example.com/app.shared", 0) // then reached by the wiring walk
+
+	if tree.wiringNodesBuilt != 1 {
+		t.Errorf("wiringNodesBuilt = %d, want 1 — a key the wiring walk reaches counts for it "+
+			"whenever that happens, not only if it was seen there first", tree.wiringNodesBuilt)
+	}
+	if tree.nodesBuilt != 1 {
+		t.Errorf("nodesBuilt = %d, want 1 — the same key twice is still one distinct key", tree.nodesBuilt)
 	}
 }
