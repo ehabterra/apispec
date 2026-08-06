@@ -138,7 +138,9 @@ type EngineConfig struct {
 	MaxInstancesPerKey int
 	// MaxNodesPerRoute bounds the nodes expanded below ONE route registration,
 	// so a deep handler cannot consume the allowance the undiscovered routes
-	// still need. Zero uses DefaultMaxNodesPerRoute.
+	// still need. Zero uses DefaultMaxNodesPerRoute. Lazy tracker only: the
+	// eager tree bounds a route with MaxRecursionDepth instead and never reads
+	// this.
 	MaxNodesPerRoute int
 
 	// Include/exclude filters

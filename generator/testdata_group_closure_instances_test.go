@@ -158,9 +158,11 @@ func TestGroupClosurePerRouteBudgetIsScopedPerRoute(t *testing.T) {
 		routes  = 15
 	)
 
-	// 5 is far below one route's needs (every subtree truncates); 20000 is the
-	// shipped default and truncates nothing. The assertions hold at both ends.
-	for _, budget := range []int{5, 50, 500, 20000} {
+	// 5 is far below one route's needs, so every subtree truncates; the shipped
+	// default is read from the constant rather than written out, so raising or
+	// lowering it re-runs this sweep at the value that actually ships. The
+	// assertions hold at both ends.
+	for _, budget := range []int{5, 50, 500, intspec.DefaultMaxNodesPerRoute} {
 		t.Run(fmt.Sprintf("budget=%d", budget), func(t *testing.T) {
 			cfg := engine.DefaultEngineConfig()
 			cfg.InputDir = filepath.Join("..", "testdata", fixture)
@@ -193,10 +195,10 @@ func TestGroupClosurePerRouteBudgetIsScopedPerRoute(t *testing.T) {
 			if budget == 5 && stats.RouteTruncations == 0 {
 				t.Error("a budget of 5 truncated nothing; the fixture is not exercising the per-route limit")
 			}
-			if budget == 20000 && stats.RouteTruncations != 0 {
-				t.Errorf("the shipped default truncated %d of this fixture's route subtrees — "+
+			if budget == intspec.DefaultMaxNodesPerRoute && stats.RouteTruncations != 0 {
+				t.Errorf("the shipped default (%d) truncated %d of this fixture's route subtrees — "+
 					"a default that starves a 15-route fixture starves every real project",
-					stats.RouteTruncations)
+					budget, stats.RouteTruncations)
 			}
 		})
 	}

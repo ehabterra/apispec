@@ -1334,6 +1334,10 @@ type TrackerLimits struct {
 	// outright. Per route it is local: a handler too deep to document fully
 	// costs its own detail and nothing else's. Zero means
 	// DefaultMaxNodesPerRoute.
+	//
+	// Read by the lazy tree only. The eager tree has no notion of a route scope
+	// and bounds a route with MaxRecursionDepth, so setting this changes nothing
+	// under --legacy-tracker.
 	MaxNodesPerRoute int
 }
 

@@ -69,6 +69,21 @@ func registersRoute(m *metadata.Metadata) func(*metadata.CallGraphEdge) bool {
 	}
 }
 
+// edgeTo returns the fixture edge whose callee is named name. Addressing
+// closureMeta's edges by position instead would keep compiling — and often keep
+// passing — if an edge were ever inserted ahead of the one a test means, while
+// silently asserting nothing about a route registration.
+func edgeTo(t *testing.T, m *metadata.Metadata, name string) *metadata.CallGraphEdge {
+	t.Helper()
+	for i := range m.CallGraph {
+		if m.StringPool.GetString(m.CallGraph[i].Callee.Name) == name {
+			return &m.CallGraph[i]
+		}
+	}
+	t.Fatalf("fixture has no edge calling %q", name)
+	return nil
+}
+
 // TestRouteReachSetFollowsFuncLiterals is the property the whole of #264 rests
 // on, and the one a plain call-graph walk gets wrong.
 //
@@ -212,7 +227,7 @@ func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
 	}
 
 	// Each registration opens its OWN scope, so two routes never share a budget.
-	regEdge := &m.CallGraph[2] // the chi Get edge
+	regEdge := edgeTo(t, m, "Get")
 	first := &LazyNode{tree: tree, key: "route-1", edge: regEdge}
 	second := &LazyNode{tree: tree, key: "route-2", edge: regEdge}
 	a, b := tree.scopeOf(first), tree.scopeOf(second)
@@ -243,7 +258,7 @@ func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
 func TestRouteTruncationNamesTheRoute(t *testing.T) {
 	m := closureMeta(t)
 	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
-	regEdge := &m.CallGraph[2]
+	regEdge := edgeTo(t, m, "Get")
 	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: regEdge})
 
 	tree.noteRouteTruncation(scope)
@@ -279,12 +294,12 @@ func TestGroupCallDoesNotOpenARouteScope(t *testing.T) {
 	}
 	tree := &LazyTree{meta: m, routeMatch: groupOrRoute, terminalRouteMatch: registersRoute(m)}
 
-	groupEdge := &m.CallGraph[1] // chi.Router.Route — a group
+	groupEdge := edgeTo(t, m, "Route") // a group
 	if got := tree.scopeOf(&LazyNode{tree: tree, key: "group", edge: groupEdge}); got != 0 {
 		t.Errorf("a group call opened budget scope %d; every route inside it would then share one allowance (#264)", got)
 	}
 
-	routeEdge := &m.CallGraph[2] // chi.Router.Get — one route
+	routeEdge := edgeTo(t, m, "Get") // one route
 	if got := tree.scopeOf(&LazyNode{tree: tree, key: "route", edge: routeEdge}); got == 0 {
 		t.Error("a terminal route registration did not open its own budget scope")
 	}
@@ -296,7 +311,7 @@ func TestGroupCallDoesNotOpenARouteScope(t *testing.T) {
 func TestRouteTruncationCountsRoutesNotAttempts(t *testing.T) {
 	m := closureMeta(t)
 	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
-	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: &m.CallGraph[2]})
+	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: edgeTo(t, m, "Get")})
 
 	for i := 0; i < 20; i++ {
 		tree.noteRouteTruncation(scope)
