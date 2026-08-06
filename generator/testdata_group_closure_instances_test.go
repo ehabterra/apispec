@@ -129,6 +129,81 @@ func TestGroupClosureInstanceCapIsReported(t *testing.T) {
 	}
 }
 
+// TestGroupClosurePerRouteBudgetIsScopedPerRoute pins WHAT OPENS A PER-ROUTE
+// BUDGET SCOPE, which is the question issue #264 turns on — the same question
+// as #224 above, one limit further down.
+//
+// The reach predicate that answers "does this subtree lead to a route?" has to
+// say yes for `r.Route("/api", …)`, or the entire group is written off. Using
+// that same predicate to open a BUDGET scope makes the group the scope, so
+// every route inside shares one allowance and the routes past the first few are
+// never discovered. That took a real 246-route chi service to 32 paths, which is
+// why the two questions now have two predicates: RouteRegistrationMatcher for
+// reachability, TerminalRouteMatcher for scoping.
+//
+// This fixture is the shape that separates them: 15 routes in ONE group
+// closure. The budget is driven far below what a single route needs — at 5 all
+// 15 subtrees truncate — and the assertions are the two facts a per-route
+// budget must have:
+//
+//   - every route is still DISCOVERED. Truncation costs a route its detail; it
+//     must never cost a sibling its existence. A group-scoped budget fails here
+//     immediately, since one exhausted allowance would swallow the rest.
+//   - the run reports 15 scopes, not 1. The path count alone cannot tell a
+//     correctly-scoped budget from one that was simply never reached, so the
+//     scope count is asserted directly.
+func TestGroupClosurePerRouteBudgetIsScopedPerRoute(t *testing.T) {
+	const (
+		fixture = "group_closure_instances"
+		routes  = 15
+	)
+
+	// 5 is far below one route's needs, so every subtree truncates; the shipped
+	// default is read from the constant rather than written out, so raising or
+	// lowering it re-runs this sweep at the value that actually ships. The
+	// assertions hold at both ends.
+	for _, budget := range []int{5, 50, 500, intspec.DefaultMaxNodesPerRoute} {
+		t.Run(fmt.Sprintf("budget=%d", budget), func(t *testing.T) {
+			cfg := engine.DefaultEngineConfig()
+			cfg.InputDir = filepath.Join("..", "testdata", fixture)
+			cfg.MaxNodesPerRoute = budget
+
+			eng := engine.NewEngine(cfg)
+			out, err := eng.GenerateOpenAPI()
+			if err != nil {
+				t.Fatalf("GenerateOpenAPI: %v", err)
+			}
+
+			if got := len(out.Paths); got != routes {
+				t.Errorf("documented %d paths at --max-nodes-per-route %d, want all %d — "+
+					"a per-route budget bounds a route's DETAIL; if routes disappear it is being "+
+					"charged to a scope that spans them (the group closure, #264)",
+					got, budget, routes)
+			}
+
+			stats := eng.GetExpansionStats()
+			if stats.RoutesScoped != routes {
+				t.Errorf("%d budget scopes for %d routes — one scope per terminal route is the "+
+					"whole point; %d would mean the group opened it",
+					stats.RoutesScoped, routes, 1)
+			}
+			if stats.RouteLimit != budget {
+				t.Errorf("reported per-route limit %d, want the configured %d", stats.RouteLimit, budget)
+			}
+			// The harshest setting must actually exercise the limit, or the
+			// assertions above prove nothing about truncation.
+			if budget == 5 && stats.RouteTruncations == 0 {
+				t.Error("a budget of 5 truncated nothing; the fixture is not exercising the per-route limit")
+			}
+			if budget == intspec.DefaultMaxNodesPerRoute && stats.RouteTruncations != 0 {
+				t.Errorf("the shipped default (%d) truncated %d of this fixture's route subtrees — "+
+					"a default that starves a 15-route fixture starves every real project",
+					budget, stats.RouteTruncations)
+			}
+		})
+	}
+}
+
 // namesAComponent reports whether a response body resolves to a component,
 // directly or as an array's element type.
 func namesAComponent(content map[string]intspec.MediaType) bool {

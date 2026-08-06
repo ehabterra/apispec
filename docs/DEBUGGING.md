@@ -31,8 +31,11 @@ Every run prints per-stage progress:
   wasn't loaded (separate module, build tags, cgo). See `--skip-cgo`,
   `--include-package`, and make sure you point `--dir` at the module root.
 - **Fewer paths than expected?** Continue below.
-- A stderr warning like `MaxNodesPerTree limit (50000) reached, truncating
-  lazy expansion` means case 4: raise `--max-nodes`.
+- A stderr warning like `MaxNodesPerTree limit (50000) reached, truncating the
+  walk that finds routes` means case 4: raise `--max-nodes`. The sibling warning
+  `MaxNodesPerRoute limit (…) reached` is a different symptom — the routes are
+  all there, but the named one is documented in less detail; raise
+  `--max-nodes-per-route`.
 
 ## Step 1 — check which config actually ran
 
@@ -115,7 +118,8 @@ issues, and a Markdown export you can attach to a bug report as-is.
 | Framework router mounted under a `net/http` mux: routes present but missing the mount prefix (`/users` instead of `/api/users`) | cross-framework mount composition not implemented yet | tracked in [#138](https://github.com/ehabterra/apispec/issues/138); until then apply the prefix via a config override or mount inside one framework |
 | Routes behind `for … range routeTable` missing | runtime values, statically unknowable | register statically, or accept the gap |
 | Verb-less registrations show POST | historic default for unknown method | handlers that `switch r.Method` split automatically; otherwise the default applies |
-| Deep/dense project: some routes missing + truncation warning | node budget hit | raise `--max-nodes` |
+| Deep/dense project: some routes missing + truncation warning | the budget for the walk that *finds* registrations is spent | raise `--max-nodes` |
+| Named route present but under-detailed + `MaxNodesPerRoute` warning | that one route's own allowance is spent; no other route is affected | raise `--max-nodes-per-route` |
 | Route present, body/params empty | handler not located / binding style unrecognised | insight report (Step 4), check `handlerFound` |
 | Path shows `{someFunc}` placeholder | path built by a function call | statically unknowable; name comes from the called function |
 

@@ -67,21 +67,34 @@ func TestTestdata_SharedBodyHelper(t *testing.T) {
 		want["/api/"+name] = strings.ToUpper(name[:1]) + name[1:] + "Request"
 	}
 
-	// Each pair starves resolution differently: the instance cap bounds copies
+	// Each triple starves resolution differently: the instance cap bounds copies
 	// of the shared helper, the node budget cuts expansion short. Both are ways
 	// a route can lose its own binding, which is when substitution was observed.
+	//
+	// perRoute sweeps the OTHER direction, and it is the reason this fixture is
+	// swept at all. #269 was found by expanding MORE, not less: #264's per-route
+	// budget stopped the global limit applying below a registration, route
+	// subtrees went deeper than any shipped version had reached, and four
+	// endpoints flipped to a sibling's DTO. Depth is a starvation setting in
+	// reverse — more of it gives a wrong candidate more chances to win — so the
+	// same assertion has to hold with the budget raised far past the default.
 	for _, tc := range []struct {
 		instanceCap int
 		maxNodes    int
+		perRoute    int
 	}{
-		{0, 0},     // defaults
-		{1, 0},     // harshest cap: one copy of the shared helper
-		{5, 0},     // fewer copies than routes
-		{0, 20000}, // budget above what the fixture needs
-		{0, 400},   // budget that truncates most routes
-		{0, 150},   // budget that truncates nearly everything
+		{0, 0, 0},         // defaults
+		{1, 0, 0},         // harshest cap: one copy of the shared helper
+		{5, 0, 0},         // fewer copies than routes
+		{0, 20000, 0},     // budget above what the fixture needs
+		{0, 400, 0},       // budget that truncates most routes
+		{0, 150, 0},       // budget that truncates nearly everything
+		{0, 0, 10},        // per-route budget that truncates every route
+		{0, 0, 2000000},   // per-route budget far past the default: expand everything
+		{1, 0, 2000000},   // deepest expansion with the copies capped to one
+		{0, 150, 2000000}, // wiring truncated, route subtrees unbounded
 	} {
-		t.Run(fmt.Sprintf("cap=%d/nodes=%d", tc.instanceCap, tc.maxNodes), func(t *testing.T) {
+		t.Run(fmt.Sprintf("cap=%d/nodes=%d/perRoute=%d", tc.instanceCap, tc.maxNodes, tc.perRoute), func(t *testing.T) {
 			cfg := engine.DefaultEngineConfig()
 			cfg.InputDir = filepath.Join("..", "testdata", fixture)
 			if tc.instanceCap > 0 {
@@ -89,6 +102,9 @@ func TestTestdata_SharedBodyHelper(t *testing.T) {
 			}
 			if tc.maxNodes > 0 {
 				cfg.MaxNodesPerTree = tc.maxNodes
+			}
+			if tc.perRoute > 0 {
+				cfg.MaxNodesPerRoute = tc.perRoute
 			}
 
 			out, err := engine.NewEngine(cfg).GenerateOpenAPI()
