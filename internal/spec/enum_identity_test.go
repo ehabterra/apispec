@@ -16,6 +16,7 @@ package spec
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -105,5 +106,121 @@ func TestTypeMatchesRejectsSharedUnderlyingType(t *testing.T) {
 	}
 	if !typeMatches("Status", "Status", meta) {
 		t.Error("a type no longer matches itself")
+	}
+}
+
+// splitBlockMeta declares ONE type whose constants sit in three `const (...)`
+// blocks of sizes 3, 2 and 3 — the ordinary way an enum with more than a handful
+// of members is written, grouped by meaning under its own comment.
+//
+// Two blocks are tied for largest on purpose: that is the state a real 32-value
+// type was in when two constants were appended to the tied block, which silently
+// replaced the whole documented enum with the other block's values.
+func splitBlockMeta() *metadata.Metadata {
+	sp := metadata.NewStringPool()
+	constant := func(name, declaredType, value string, group int) *metadata.Variable {
+		return &metadata.Variable{
+			Name:          sp.Get(name),
+			Type:          sp.Get(declaredType),
+			ResolvedType:  sp.Get("string"),
+			Tok:           sp.Get("const"),
+			Value:         sp.Get(value),
+			ComputedValue: value,
+			GroupIndex:    group,
+		}
+	}
+	return &metadata.Metadata{
+		StringPool: sp,
+		Packages: map[string]*metadata.Package{
+			"app": {Files: map[string]*metadata.File{
+				"reason.go": {
+					Types: map[string]*metadata.Type{"Reason": {Name: sp.Get("Reason"), Kind: sp.Get("string")}},
+					Variables: map[string]*metadata.Variable{
+						// Block 1 — 3 values.
+						"ReasonLessonCompleted": constant("ReasonLessonCompleted", "Reason", "lesson_completed", 1),
+						"ReasonHWCompleted":     constant("ReasonHWCompleted", "Reason", "hw_completed", 1),
+						"ReasonQuizAnnounced":   constant("ReasonQuizAnnounced", "Reason", "quiz_announced", 1),
+						// Block 2 — 2 values, the smallest.
+						"ReasonWithinTarget": constant("ReasonWithinTarget", "Reason", "within_target", 2),
+						"ReasonOverMaximum":  constant("ReasonOverMaximum", "Reason", "over_maximum", 2),
+						// Block 3 — 3 values, tied with block 1.
+						"ReasonDeadlinePassed": constant("ReasonDeadlinePassed", "Reason", "deadline_passed", 3),
+						"ReasonQuizBoundary":   constant("ReasonQuizBoundary", "Reason", "quiz_boundary", 3),
+						"ReasonUnenrolled":     constant("ReasonUnenrolled", "Reason", "unenrolled", 3),
+					},
+				},
+			}},
+		},
+	}
+}
+
+// TestDetectEnumUnionsEveryConstBlock pins that a `const (...)` block is source
+// arrangement, not membership.
+//
+// Detection used to document the largest block and silently drop the others, so
+// a type's enum was a subset chosen by how its source happened to be laid out.
+// Every constant here declares Reason, which is a fact about each one; nothing
+// in the source says a block is authoritative, because none of them is.
+func TestDetectEnumUnionsEveryConstBlock(t *testing.T) {
+	meta := splitBlockMeta()
+
+	want := []interface{}{
+		"deadline_passed", "hw_completed", "lesson_completed", "over_maximum",
+		"quiz_announced", "quiz_boundary", "unenrolled", "within_target",
+	}
+	got := detectEnumFromConstants("Reason", "app", meta)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Reason enum =\n  %v\nwant all 8 constants\n  %v", got, want)
+	}
+}
+
+// TestDetectEnumIsStableWhenABlockGrows is the regression guard for how this was
+// FOUND: as unexplained spec drift.
+//
+// With the largest block winning and ties going to the earliest, appending a
+// constant to a tied block did not add a value — it swapped the entire enum for
+// a different block's. The values already documented must never depend on the
+// relative sizes of the blocks.
+func TestDetectEnumIsStableWhenABlockGrows(t *testing.T) {
+	meta := splitBlockMeta()
+	before := detectEnumFromConstants("Reason", "app", meta)
+
+	// Append two constants to block 3, breaking the tie it had with block 1.
+	sp := meta.StringPool
+	file := meta.Packages["app"].Files["reason.go"]
+	for name, value := range map[string]string{
+		"ReasonReenrolled":      "reenrolled",
+		"ReasonMidtermBoundary": "midterm_boundary",
+	} {
+		file.Variables[name] = &metadata.Variable{
+			Name: sp.Get(name), Type: sp.Get("Reason"), ResolvedType: sp.Get("string"),
+			Tok: sp.Get("const"), Value: sp.Get(value), ComputedValue: value, GroupIndex: 3,
+		}
+	}
+
+	after := detectEnumFromConstants("Reason", "app", meta)
+	if len(after) != len(before)+2 {
+		t.Fatalf("after adding 2 constants the enum went from %d to %d values:\n  %v\n"+
+			"growing one block must ADD to the enum, never replace it", len(before), len(after), after)
+	}
+	for _, v := range before {
+		if !slices.Contains(after, v) {
+			t.Errorf("%v was documented before a constant was added elsewhere and is gone now", v)
+		}
+	}
+}
+
+// TestExtractEnumValuesDeduplicates keeps the union from producing an invalid
+// schema: OpenAPI requires enum members to be unique, and two constants of one
+// type may legitimately share a value (a renamed member kept as a deprecated
+// alias) — which unioning the blocks now brings together.
+func TestExtractEnumValuesDeduplicates(t *testing.T) {
+	got := extractEnumValues([]EnumConstant{
+		{Name: "A", Value: "active"},
+		{Name: "ALegacy", Value: "active"},
+		{Name: "R", Value: "retired"},
+	})
+	if want := []interface{}{"active", "retired"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("enum values = %v, want %v — duplicates make the schema invalid", got, want)
 	}
 }

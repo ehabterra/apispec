@@ -90,3 +90,6 @@ testdata/response_header_param/response_header_param
 
 # a `go build` inside the wrapper-router fixture drops its binary beside main.go
 testdata/wrapper_router/wrapper_router
+
+# a `go build` inside the split-const-block enum fixture drops its binary beside main.go
+testdata/enum_split_const_blocks/enum_split_const_blocks

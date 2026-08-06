@@ -2460,21 +2460,35 @@ func detectEnumFromConstants(goType string, pkgName string, meta *metadata.Metad
 		return nil
 	}
 
-	// The largest group of that type, chosen over sorted keys so the answer cannot
-	// depend on map order, and ties resolve to the earliest declaration.
-	var bestEnumValues []interface{}
-	var maxGroupSize int
+	// EVERY group of that type, not the biggest one.
+	//
+	// A `const (...)` block is a way of arranging source, not a statement about
+	// membership: any enum with more than a handful of values is written as
+	// several blocks grouped by meaning, each under its own comment. Every
+	// constant that reached this point declares the target type (typeMatches
+	// demands identity, not a shared underlying type — issue #229) or sits in a
+	// block with one that does, so all of them belong to it and taking one block
+	// is data loss.
+	//
+	// It was also unstable in the worst way. The winner was the largest block with
+	// ties going to the earliest, so ADDING a constant to one block could flip the
+	// entire enum to a different block's values: a real 30-value type documented 6
+	// creation triggers until two constants were appended to a tied block, after
+	// which it documented 8 terminal transitions instead and neither set was ever
+	// complete. Nothing in the source says which block is authoritative, because
+	// none of them is — and the drift arrives with no source change that explains
+	// it.
+	//
+	// Sorted keys throughout, so map order cannot reach the output (golden rule #1).
+	var all []EnumConstant
 	for _, declaredType := range slices.Sorted(maps.Keys(constantGroups)) {
 		groups := constantGroups[declaredType]
 		for _, groupIndex := range slices.Sorted(maps.Keys(groups)) {
-			if group := groups[groupIndex]; len(group) > maxGroupSize {
-				maxGroupSize = len(group)
-				bestEnumValues = extractEnumValues(group)
-			}
+			all = append(all, groups[groupIndex]...)
 		}
 	}
 
-	return bestEnumValues
+	return extractEnumValues(all)
 }
 
 // sortedVariables returns a file's variables in name order. Enum detection reads
@@ -2529,6 +2543,20 @@ func extractEnumValues(constants []EnumConstant) []interface{} {
 		valJ := fmt.Sprintf("%v", values[j])
 		return valI < valJ
 	})
+
+	// OpenAPI requires enum members to be unique, and two constants of one type
+	// may legitimately share a value (a renamed member kept as a deprecated
+	// alias). Deduplicating after the sort keeps that a documentation detail
+	// rather than an invalid schema.
+	if len(values) > 1 {
+		unique := values[:1]
+		for _, v := range values[1:] {
+			if fmt.Sprintf("%v", unique[len(unique)-1]) != fmt.Sprintf("%v", v) {
+				unique = append(unique, v)
+			}
+		}
+		values = unique
+	}
 
 	return values
 }
