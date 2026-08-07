@@ -1535,11 +1535,29 @@ func requestIsConcrete(r *RequestInfo) bool {
 
 // preferResponseInfo deterministically picks between two responses competing
 // for the same status slot — used for the "default" collapse, where several
-// unresolved-status bodies (a success type and a framework error map) land
-// together. A concrete schema (named-type $ref, object with properties, allOf,
-// or array) beats a generic {type: object}; among equally concrete bodies a
-// success type beats an error-named DTO; finally a stable BodyType tie-break
-// keeps runs in agreement regardless of visitation order.
+// unresolved-status bodies land together. A concrete schema (named-type $ref,
+// object with properties, allOf, or array) beats a generic {type: object};
+// beyond that a stable BodyType comparison keeps runs in agreement regardless
+// of visitation order.
+//
+// There is deliberately NO error-vs-success preference. It used to be decided by
+// looking for the letters "error" in the type name, which is wrong in both
+// directions: it misses the error DTOs that do not spell it (RFC 7807
+// ProblemDetails, Failure, Fault, Rejection) and claims ordinary domain types
+// that do (ErrorBudgetReport, ErrorRateReport — and, as a substring, MirrorConfig
+// and TerrorAlert). Losing here means being dropped from the spec entirely, so
+// that guess silently replaced a handler's real response with another (issue
+// #287, golden rule #9).
+//
+// Nothing honest was available to replace it with. Every competitor at this point
+// has an unresolved status by construction — the mapper collapses onto "default"
+// only when StatusCode < 0 — so the status a body was written with, which is the
+// fact that would actually answer the question, is precisely what is missing.
+// Measured before removing it: this line is reached 10,347 times across three
+// large real projects and the two competitors have the SAME BodyType every single
+// time, so the name test decided nothing on any measured code. It was a trap
+// waiting for the first project whose handler writes two differently-named
+// bodies, not a working heuristic.
 func preferResponseInfo(cur, next *ResponseInfo) *ResponseInfo {
 	if cur == nil {
 		return next
@@ -1553,13 +1571,6 @@ func preferResponseInfo(cur, next *ResponseInfo) *ResponseInfo {
 			return next
 		}
 		return cur
-	}
-	curErr, nextErr := isErrorBodyType(cur.BodyType), isErrorBodyType(next.BodyType)
-	if curErr != nextErr {
-		if nextErr {
-			return cur
-		}
-		return next
 	}
 	if next.BodyType < cur.BodyType {
 		return next
@@ -1575,12 +1586,6 @@ func responseIsConcrete(r *ResponseInfo) bool {
 	}
 	s := r.Schema
 	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
-}
-
-// isErrorBodyType reports whether a body type name looks like an error DTO
-// (e.g. ErrorResponse, APIError). Used only as a tie-break for the default slot.
-func isErrorBodyType(bodyType string) bool {
-	return strings.Contains(strings.ToLower(bodyType), "error")
 }
 
 // extractRequestFromNode extracts request information from a node

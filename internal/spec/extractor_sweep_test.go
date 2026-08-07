@@ -730,15 +730,8 @@ func TestSweepSmallHelpers(t *testing.T) {
 
 	t.Run("preferResponseInfo", func(t *testing.T) {
 		cur := &ResponseInfo{BodyType: "app.User", Schema: &Schema{Ref: "#/u"}}
-		errResp := &ResponseInfo{BodyType: "app.ErrorDTO", Schema: &Schema{Ref: "#/e"}}
 		if got := preferResponseInfo(cur, nil); got != cur {
 			t.Error("nil next must keep cur")
-		}
-		if got := preferResponseInfo(cur, errResp); got != cur {
-			t.Error("error-named next must lose")
-		}
-		if got := preferResponseInfo(errResp, cur); got != cur {
-			t.Error("error-named cur must lose")
 		}
 		a := &ResponseInfo{BodyType: "app.A", Schema: &Schema{Ref: "#/a"}}
 		b := &ResponseInfo{BodyType: "app.B", Schema: &Schema{Ref: "#/b"}}
@@ -747,6 +740,21 @@ func TestSweepSmallHelpers(t *testing.T) {
 		}
 		if got := preferResponseInfo(a, b); got != a {
 			t.Error("lexicographic tie-break must keep the smaller BodyType")
+		}
+
+		// A NAME must not decide which body survives. Losing here means being
+		// dropped from the spec, and "error" appears in plenty of ordinary domain
+		// types (ErrorBudgetReport) while plenty of real error DTOs never spell it
+		// (ProblemDetails) — issue #287.
+		domain := &ResponseInfo{BodyType: "app.ErrorBudgetReport", Schema: &Schema{Ref: "#/ebr"}}
+		problem := &ResponseInfo{BodyType: "app.ProblemDetails", Schema: &Schema{Ref: "#/pd"}}
+		if got := preferResponseInfo(domain, problem); got != domain {
+			t.Errorf("got %q; the lexicographic rule must decide, not the letters "+
+				"'error' in ErrorBudgetReport", got.BodyType)
+		}
+		if got := preferResponseInfo(problem, domain); got != domain {
+			t.Errorf("got %q; the same pair must resolve the same way whichever "+
+				"arrives first", got.BodyType)
 		}
 	})
 
