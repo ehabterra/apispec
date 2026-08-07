@@ -54,6 +54,9 @@ func TestTestdata_ErrorNamedDomainType(t *testing.T) {
 		t.Fatalf("GenerateOpenAPI: %v", err)
 	}
 
+	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
+
 	for _, tc := range []struct {
 		path   string
 		status string
@@ -82,8 +85,17 @@ func TestTestdata_ErrorNamedDomainType(t *testing.T) {
 			}
 			ref := refOf(resp.Content)
 			if !strings.HasSuffix(ref, "_"+tc.want) {
-				t.Errorf("%s %s documents %q, want %s — %s",
+				t.Fatalf("%s %s documents %q, want %s — %s",
 					tc.path, tc.status, ref, tc.want, tc.why)
+			}
+			// Naming the right type is only half of it: the $ref has to land on a
+			// component that exists, with the fields the Go type declares.
+			comp := componentByName(out, "_"+tc.want)
+			if comp == nil {
+				t.Fatalf("%s resolves to no component schema", ref)
+			}
+			if len(comp.Properties) == 0 {
+				t.Errorf("component for %s has no properties — the type was named but never resolved", tc.want)
 			}
 		})
 	}
