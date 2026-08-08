@@ -217,6 +217,7 @@ type GenerateRequest struct {
 // limits sends nothing and gets today's behaviour.
 type TrackerLimits struct {
 	MaxNodesPerTree    int `json:"maxNodesPerTree,omitempty"`
+	MaxNodesPerRoute   int `json:"maxNodesPerRoute,omitempty"`
 	MaxChildrenPerNode int `json:"maxChildrenPerNode,omitempty"`
 	MaxArgsPerFunction int `json:"maxArgsPerFunction,omitempty"`
 	MaxNestedArgsDepth int `json:"maxNestedArgsDepth,omitempty"`
@@ -229,6 +230,7 @@ type TrackerLimits struct {
 func defaultTrackerLimits() TrackerLimits {
 	return TrackerLimits{
 		MaxNodesPerTree:    engine.DefaultMaxNodesPerTree,
+		MaxNodesPerRoute:   engine.DefaultMaxNodesPerRoute,
 		MaxChildrenPerNode: engine.DefaultMaxChildrenPerNode,
 		MaxArgsPerFunction: engine.DefaultMaxArgsPerFunction,
 		MaxNestedArgsDepth: engine.DefaultMaxNestedArgsDepth,
@@ -242,6 +244,9 @@ func (l TrackerLimits) resolved() TrackerLimits {
 	d := defaultTrackerLimits()
 	if l.MaxNodesPerTree <= 0 {
 		l.MaxNodesPerTree = d.MaxNodesPerTree
+	}
+	if l.MaxNodesPerRoute <= 0 {
+		l.MaxNodesPerRoute = d.MaxNodesPerRoute
 	}
 	if l.MaxChildrenPerNode <= 0 {
 		l.MaxChildrenPerNode = d.MaxChildrenPerNode
@@ -909,6 +914,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		OpenAPIVersion:               req.OpenAPIVersion,
 		APISpecConfig:                apiCfg,
 		MaxNodesPerTree:              limits.MaxNodesPerTree,
+		MaxNodesPerRoute:             limits.MaxNodesPerRoute,
 		MaxChildrenPerNode:           limits.MaxChildrenPerNode,
 		MaxArgsPerFunction:           limits.MaxArgsPerFunction,
 		MaxNestedArgsDepth:           limits.MaxNestedArgsDepth,

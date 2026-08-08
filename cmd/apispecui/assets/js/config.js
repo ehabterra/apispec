@@ -882,7 +882,8 @@ function TrackerLimits() {
           The last run stopped at the ${s.nodeLimit}-node limit, so routes past that point are missing from the spec. Raise Max nodes and generate again.
         </p>`
       : ""}
-    ${row("maxNodesPerTree", "Max nodes", "Total tracker nodes the walk may build. Reaching it stops expansion, so anything not yet reached is absent from the spec — the one limit worth raising first on a large project.")}
+    ${row("maxNodesPerTree", "Max nodes (route discovery)", "Nodes the walk that FINDS route registrations may build. Reaching it means routes are missing from the spec entirely — the one limit worth raising first on a large project.")}
+    ${row("maxNodesPerRoute", "Max nodes per route", "Nodes expanded BELOW one route registration. Reaching it costs that route some detail — a schema or a body — and no other route: a named endpoint comes out less detailed rather than the spec losing endpoints.")}
     ${row("maxChildrenPerNode", "Max children per node", "How many callees one node may expand. A router that registers hundreds of routes in a single function needs this above the default.")}
     ${row("maxRecursionDepth", "Max recursion depth", "How deep a call chain may be followed through repeated frames. Deeply nested group closures need more.")}
     ${row("maxInstancesPerKey", "Max instances per key", "How many copies of one callee are expanded within a scope (roughly per handler, but per GROUP closure in practice). A response helper shared by a group exhausts this budget after that many routes, and every later route in the group silently loses its response body — raise it for a project whose groups hold many routes.")}
