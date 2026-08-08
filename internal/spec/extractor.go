@@ -2149,6 +2149,93 @@ func joinPaths(a, b string) string {
 	return a + "/" + b
 }
 
+// resolveArgType turns a response-body argument into the Go type to map, and
+// reports the concrete types behind it when it is an interface with more than
+// one (the `oneOf` case, issue #201).
+//
+// Extracted so a value inside a map envelope resolves the SAME way as a value
+// written on its own (issue #295). The steps are not interchangeable and each
+// exists for a recorded reason — a literal has no type, a const ident renders as
+// its value, a call carries its return type, an interface needs its origin
+// traced — so a second copy of the sequence for envelope values would drift from
+// this one the first time any of them is corrected.
+//
+// typeNode is the node whose scope the argument was resolved in, which is not
+// necessarily the node being extracted: after a multi-hop parameter trace the
+// scope-dependent lookups have to read the function the value actually came
+// from.
+func (r *ResponsePatternMatcherImpl) resolveArgType(arg *metadata.CallArgument, typeNode TrackerNodeInterface) (string, []string) {
+	var bodyType string
+	var oneOfTypes []string
+	if arg.GetKind() == metadata.KindTypeConversion && arg.Fun != nil {
+		bodyType = r.contextProvider.GetArgumentInfo(arg.Fun)
+	} else {
+		bodyType = r.contextProvider.GetArgumentInfo(arg)
+	}
+
+	// Check if this is a literal value - if so, determine appropriate type
+	if arg.GetKind() == metadata.KindLiteral {
+		// For literal values, determine the appropriate type based on the value
+		bodyType = determineLiteralType(bodyType)
+	} else {
+		// For ident arguments referring to a `const` declaration, the
+		// context-provider rendering above returns the constant's
+		// *value* (its literal contents — e.g. an embedded HTML
+		// string), which then leaks into the schema as a $ref. Replace
+		// it with the const's declared Go type when we can find it.
+		if arg.GetKind() == metadata.KindIdent {
+			if t := constIdentDeclaredType(arg, r.contextProvider); t != "" {
+				bodyType = t
+			}
+		}
+
+		// Call-expression body args (e.g. err.Error() in
+		// http.Error(w, err.Error(), 400), or any helper(x) used
+		// directly as a response payload) carry their *return* type on
+		// the CallArgument — see metadata.handleCallExpr. Prefer it
+		// over the stringified call, which would otherwise produce
+		// an unresolvable name like "error.Error" or "pkg.Helper".
+		resolvedConcrete := false
+		if arg.GetKind() == metadata.KindCall {
+			if t := arg.GetType(); t != "" {
+				bodyType = t
+				// When the call's return type is an interface, trace the
+				// callee's return value to the concrete type it actually
+				// returns (`Encode(makeAnimal())` where
+				// makeAnimal() Animal { return Dog{} } → Dog). Mark it
+				// resolved so resolveTypeOrigin's GetResolvedType fast-path
+				// (which would restore the interface) is skipped.
+				if concrete := r.concreteFromCalleeReturn(arg, typeNode.GetEdge(), t); concrete != "" {
+					bodyType = concrete
+					resolvedConcrete = true
+				}
+			}
+		}
+
+		// Trace type origin for non-literal arguments
+		if !resolvedConcrete {
+			resolved := r.resolveTypeOrigin(arg, typeNode, bodyType)
+			if resolved == bodyType {
+				// Unchanged means the type did not narrow — when that is
+				// because several concrete types are assigned, the body is
+				// polymorphic and `oneOf` says so (issue #201).
+				oneOfTypes = r.ambiguousConcreteSet(arg, typeNode, bodyType)
+			}
+			bodyType = resolved
+		}
+
+		// Apply dereferencing if needed
+		if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
+			bodyType = strings.TrimPrefix(bodyType, "*")
+		}
+	}
+
+	// Inferred generic instantiations arrive as the go/types string
+	// (pkg.Envelope[pkg.Product]); fold them into the internal form so they
+	// key to the same clean component as a written Envelope[Product].
+	return normalizeGenericInstanceName(bodyType), oneOfTypes
+}
+
 // determineLiteralType determines the appropriate Go type for a literal value
 func determineLiteralType(literalValue string) string {
 	// Remove quotes if present
@@ -2430,77 +2517,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// receives, not the type of the inner value. Use the conversion's
 		// Fun directly rather than peeling to the inner ident — otherwise a
 		// const ident's literal value can leak into the schema as a $ref.
-		var bodyType string
 		// Concrete types assigned to an interface-typed body, when there is more
 		// than one — see oneOfSchemaFor (issue #201).
-		var oneOfTypes []string
-		if arg.GetKind() == metadata.KindTypeConversion && arg.Fun != nil {
-			bodyType = r.contextProvider.GetArgumentInfo(arg.Fun)
-		} else {
-			bodyType = r.contextProvider.GetArgumentInfo(arg)
-		}
-
-		// Check if this is a literal value - if so, determine appropriate type
-		if arg.GetKind() == metadata.KindLiteral {
-			// For literal values, determine the appropriate type based on the value
-			bodyType = determineLiteralType(bodyType)
-		} else {
-			// For ident arguments referring to a `const` declaration, the
-			// context-provider rendering above returns the constant's
-			// *value* (its literal contents — e.g. an embedded HTML
-			// string), which then leaks into the schema as a $ref. Replace
-			// it with the const's declared Go type when we can find it.
-			if arg.GetKind() == metadata.KindIdent {
-				if t := constIdentDeclaredType(arg, r.contextProvider); t != "" {
-					bodyType = t
-				}
-			}
-
-			// Call-expression body args (e.g. err.Error() in
-			// http.Error(w, err.Error(), 400), or any helper(x) used
-			// directly as a response payload) carry their *return* type on
-			// the CallArgument — see metadata.handleCallExpr. Prefer it
-			// over the stringified call, which would otherwise produce
-			// an unresolvable name like "error.Error" or "pkg.Helper".
-			resolvedConcrete := false
-			if arg.GetKind() == metadata.KindCall {
-				if t := arg.GetType(); t != "" {
-					bodyType = t
-					// When the call's return type is an interface, trace the
-					// callee's return value to the concrete type it actually
-					// returns (`Encode(makeAnimal())` where
-					// makeAnimal() Animal { return Dog{} } → Dog). Mark it
-					// resolved so resolveTypeOrigin's GetResolvedType fast-path
-					// (which would restore the interface) is skipped.
-					if concrete := r.concreteFromCalleeReturn(arg, typeNode.GetEdge(), t); concrete != "" {
-						bodyType = concrete
-						resolvedConcrete = true
-					}
-				}
-			}
-
-			// Trace type origin for non-literal arguments
-			if !resolvedConcrete {
-				resolved := r.resolveTypeOrigin(arg, typeNode, bodyType)
-				if resolved == bodyType {
-					// Unchanged means the type did not narrow — when that is
-					// because several concrete types are assigned, the body is
-					// polymorphic and `oneOf` says so (issue #201).
-					oneOfTypes = r.ambiguousConcreteSet(arg, typeNode, bodyType)
-				}
-				bodyType = resolved
-			}
-
-			// Apply dereferencing if needed
-			if r.pattern.Deref && strings.HasPrefix(bodyType, "*") {
-				bodyType = strings.TrimPrefix(bodyType, "*")
-			}
-		}
-
-		// Inferred generic instantiations arrive as the go/types string
-		// (pkg.Envelope[pkg.Product]); fold them into the internal form so they
-		// key to the same clean component as a written Envelope[Product].
-		bodyType = normalizeGenericInstanceName(bodyType)
+		bodyType, oneOfTypes := r.resolveArgType(arg, typeNode)
 
 		respInfo.BodyType = preprocessingBodyType(bodyType)
 
@@ -2511,6 +2530,14 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		schema := oneOfSchemaFor(route.UsedTypes, oneOfTypes, route.Metadata, r.cfg)
 		if schema != nil {
 			respInfo.OneOfTypes = oneOfTypes
+		} else if lit := mapLiteralSchema(arg, func(v *metadata.CallArgument) string {
+			t, _ := r.resolveArgType(v, typeNode)
+			return t
+		}, route.UsedTypes, route.Metadata, r.cfg); lit != nil {
+			// A string-keyed map literal knows its own keys and each value's
+			// type; mapping `map[string]any` from the type alone can only say
+			// `additionalProperties: {type: object}` (issue #295).
+			schema = lit
 		} else {
 			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
 		}
