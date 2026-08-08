@@ -541,6 +541,7 @@ const PATTERN_FIELDS = {
     ["defaultContentType", "Default content-type", "text", "Content-type for this pattern when not otherwise known. e.g. text/plain; charset=utf-8 for a c.String writer."],
     ["requireResponseDestination", "Require response destination", "bool", "Only classify as a response when the value being written traces to the response writer — keeps json.NewEncoder(&buf).Encode(v) or an encode to a file from being read as the response body. Pair with Response context below."],
     ["destFromReceiver", "Destination from receiver", "bool", "Resolve that destination from the call RECEIVER's factory argument — the x in json.NewEncoder(x).Encode(v)."],
+    ["destFromAnyArg", "Destination from any argument", "bool", "Satisfy the destination requirement when ANY argument traces to the response writer. For catch-all patterns matching helpers with no agreed signature, where no single argument position is the writer."],
     ...SCOPE_FILTERS,
   ],
   paramPatterns: [

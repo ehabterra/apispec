@@ -87,11 +87,11 @@ func TestUnanchoredResponsePatternsReportsBareCallNames(t *testing.T) {
 // that matters most: it must not become noise a user cannot act on. Every pattern
 // APISpec itself ships is anchored, so a default run reports nothing.
 //
-// The net/http catch-all is the one exception, and it is a real one rather than a
-// tolerated false positive — it matches JSON/String/Data/File/Redirect by bare
-// name in any reached package (issue #302). It is asserted here as the CURRENT
-// state so this test flips the moment it is fixed, instead of the exception
-// quietly outliving the defect.
+// The net/http catch-all was the one exception when this check landed — it
+// matched JSON/String/Data/File/Redirect by bare name in any reached package. It
+// was asserted here as the current state precisely so this test would fail when
+// it was fixed, which is what happened: #302 anchored it on the writer being
+// somewhere in the call, and the exception is gone.
 func TestPresetsAnchorTheirResponsePatterns(t *testing.T) {
 	for name, cfg := range map[string]*APISpecConfig{
 		"chi":   DefaultChiConfig(),
@@ -99,6 +99,7 @@ func TestPresetsAnchorTheirResponsePatterns(t *testing.T) {
 		"echo":  DefaultEchoConfig(),
 		"fiber": DefaultFiberConfig(),
 		"mux":   DefaultMuxConfig(),
+		"http":  DefaultHTTPConfig(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := cfg.UnanchoredResponsePatterns(); len(got) != 0 {
@@ -107,14 +108,4 @@ func TestPresetsAnchorTheirResponsePatterns(t *testing.T) {
 		})
 	}
 
-	t.Run("http (known gap, issue #302)", func(t *testing.T) {
-		got := DefaultHTTPConfig().UnanchoredResponsePatterns()
-		if len(got) != 1 {
-			t.Fatalf("got %d unanchored patterns, want exactly the known net/http catch-all; "+
-				"if #302 is fixed, delete this subtest and add http to the table above", len(got))
-		}
-		if !strings.Contains(got[0], "JSON|String|XML") {
-			t.Errorf("the unanchored net/http pattern is %q, not the catch-all this exception covers", got[0])
-		}
-	})
 }
