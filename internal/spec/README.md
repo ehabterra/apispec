@@ -61,8 +61,7 @@ The extractor walks the tracker tree, dispatching each node to the
 configured pattern matchers (routes, mounts, request bodies, responses,
 params). Each matcher is a small struct backed by a regex/index pattern
 from `FrameworkConfig`. Cross-cutting helpers live in companion files:
-`context_provider.go`, `schema_mapper.go`, `type_resolver.go`,
-`body_source.go`.
+`context_provider.go`, `schema_mapper.go`, `body_source.go`.
 
 ```go
 type Extractor struct {
@@ -70,7 +69,6 @@ type Extractor struct {
     cfg             *APISpecConfig
     contextProvider ContextProvider
     schemaMapper    SchemaMapper
-    typeResolver    TypeResolver
     overrideApplier OverrideApplier
 
     routeMatchers    []RoutePatternMatcher
