@@ -2402,7 +2402,14 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// concrete value at THIS route's call site and drop the encode only when
 	// that value provably does not trace to the response writer.
 	if r.pattern.RequireResponseDestination && r.destResolver != nil && r.destResolver.Enabled() {
-		if dst, dstEdge := r.destination(node); dst != nil && r.destResolver.ShouldDrop(dst, dstEdge) {
+		if r.pattern.DestFromAnyArg {
+			// A catch-all matches helpers with no agreed signature, so there is no
+			// destination position to name; what anchors it is that a helper writing
+			// the response must have been handed the writer somewhere (issue #302).
+			if !r.destResolver.AnyArgReachesWriter(node.GetEdge()) {
+				return nil
+			}
+		} else if dst, dstEdge := r.destination(node); dst != nil && r.destResolver.ShouldDrop(dst, dstEdge) {
 			return nil
 		}
 	}

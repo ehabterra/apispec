@@ -96,3 +96,6 @@ testdata/enum_split_const_blocks/enum_split_const_blocks
 
 # a `go build` inside the map-envelope fixture drops its binary beside main.go
 testdata/map_literal_envelope/map_literal_envelope
+
+# a `go build` inside the http-catchall fixture drops its binary beside main.go
+testdata/http_catchall_anchor/http_catchall_anchor

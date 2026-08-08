@@ -334,6 +334,20 @@ type ResponsePattern struct {
 	// (json.NewEncoder(x).Encode(v)) that may write to a bytes.Buffer, a hash, a
 	// log — not the response. Symmetric with RequestBodyPattern.RequireRequestSource.
 	RequireResponseDestination bool `yaml:"requireResponseDestination,omitempty" json:"requireResponseDestination,omitempty"`
+	// DestFromAnyArg satisfies RequireResponseDestination when ANY argument of the
+	// call traces to the response writer, instead of one named position.
+	//
+	// It exists for catch-all patterns, which match helpers with no agreed
+	// signature — `render.JSON(w, r, v)`, `writeJSON(w, status, v)`, `c.JSON(status,
+	// v)` — so no single DestArgIndex describes them. What IS true of all of them is
+	// that a helper which writes the response must have been handed the writer
+	// somewhere. A call where no argument reaches it is not writing this response
+	// (issue #302).
+	//
+	// Deliberately conservative in the same way ShouldDrop is: an argument whose
+	// provenance cannot be resolved counts as possibly-the-writer, so the pattern
+	// keeps matching rather than dropping a real response on ignorance.
+	DestFromAnyArg bool `yaml:"destFromAnyArg,omitempty" json:"destFromAnyArg,omitempty"`
 	// DestFromReceiver resolves the write destination from the encoder factory
 	// receiver — for json.NewEncoder(x).Encode(v), the destination is
 	// NewEncoder's first argument x. Mirrors RequestBodyPattern.BodyFromReceiver.

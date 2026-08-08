@@ -84,6 +84,31 @@ func (r *responseDestResolver) ShouldDrop(arg *metadata.CallArgument, edge *meta
 	return true // resolved to something with no provenance to w — drop
 }
 
+// AnyArgReachesWriter reports whether any of the call's arguments traces to the
+// handler's response writer — the gate for a catch-all pattern that matches
+// helpers with no agreed signature (issue #302).
+//
+// An argument that cannot be resolved counts as possibly-the-writer: the whole
+// resolver is built to drop only what it can prove is NOT the response, and a
+// catch-all must not become the one place that guesses the other way.
+func (r *responseDestResolver) AnyArgReachesWriter(edge *metadata.CallGraphEdge) bool {
+	if !r.Enabled() || edge == nil {
+		return true // no writer types configured: gate is off, keep everything
+	}
+	for _, arg := range edge.Args {
+		if arg == nil {
+			continue
+		}
+		if r.reachesWriter(arg, edge, make(map[string]bool, 4)) {
+			return true
+		}
+		if t := r.leafType(arg, edge, make(map[string]bool, 4)); t == "" || matchAny(r.compatibleREs, t) {
+			return true // unresolved, or writer-compatible — cannot rule it out
+		}
+	}
+	return false
+}
+
 // reachesWriter reports whether the destination's provenance includes a value
 // of a response-writer type. It follows address-of/deref, local assignments
 // (dst := w), parameter boundaries (a helper's io.Writer param → the caller's
