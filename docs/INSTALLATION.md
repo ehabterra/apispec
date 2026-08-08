@@ -4,14 +4,74 @@ This guide covers all the ways to install and use apispec.
 
 ## Prerequisites
 
-- **Go 1.24 or later** - [Download from golang.org](https://golang.org/doc/install)
-- **Git** - For cloning the repository
+**None** for the pre-built binaries below — they are self-contained.
+
+For the `go install` and from-source methods:
+
+- **Go 1.26 or later** — [Download from golang.org](https://golang.org/doc/install) (the module declares `go 1.26.0`)
+- **Git** — for cloning the repository
 
 ## Installation Methods
 
-### 1. Go Install (Recommended)
+### 1. Download a Pre-built Binary (Recommended)
 
-The easiest way to install apispec is using Go's built-in install command:
+No Go toolchain required. Every release publishes a binary per platform, each with a SHA256 checksum.
+
+**macOS (Apple Silicon)**
+
+```bash
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
+chmod +x apispec-darwin-arm64 && sudo install -m 0755 apispec-darwin-arm64 /usr/local/bin/apispec
+```
+
+**macOS (Intel)** — replace `darwin-arm64` with `darwin-amd64`.
+
+**Linux (x86_64)**
+
+```bash
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-linux-amd64
+chmod +x apispec-linux-amd64 && sudo install -m 0755 apispec-linux-amd64 /usr/local/bin/apispec
+```
+
+**Linux (arm64)** — replace `linux-amd64` with `linux-arm64`.
+
+**Windows (PowerShell)**
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/ehabterra/apispec/releases/latest/download/apispec-windows-amd64.exe -OutFile apispec.exe
+# then move apispec.exe somewhere on your PATH
+```
+
+Windows on ARM: use `apispec-windows-arm64.exe`.
+
+**Verify before installing** (recommended). Download the binary under its
+original name — the checksum file names the asset, so `curl -o apispec` would
+rename it out from under the check:
+
+```bash
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64.sha256
+
+shasum -a 256 -c apispec-darwin-arm64.sha256      # macOS
+sha256sum -c apispec-linux-amd64.sha256           # Linux
+```
+
+Expect `apispec-darwin-arm64: OK`. Then install it under the name you want, as
+the commands above do with `install -m 0755 … /usr/local/bin/apispec`.
+
+To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
+
+**Pros:**
+- No Go toolchain needed
+- Exact, reproducible version with a published checksum
+
+**Cons:**
+- Manual updates (re-download to upgrade)
+- Only `apispec` is published as a binary — `apispecui` and `apidiag` are built from source
+
+### 2. Go Install
+
+If you already have Go:
 
 ```bash
 go install github.com/ehabterra/apispec/cmd/apispec@latest
@@ -26,7 +86,7 @@ go install github.com/ehabterra/apispec/cmd/apispec@latest
 - Requires Go to be installed
 - Binary is stored in Go's module cache
 
-### 2. From Source
+### 3. From Source
 
 If you want to build from source or contribute to the project:
 
@@ -51,7 +111,7 @@ make install
 - More complex setup
 - Need to manually update
 
-### 3. Using Installation Script
+### 4. Using Installation Script
 
 We provide a convenient installation script:
 
@@ -60,55 +120,56 @@ We provide a convenient installation script:
 curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/install.sh | bash -s go-install
 ```
 
+Supported arguments: `go-install` (default), `source-local`, `source-system`, `help`.
+
 **Pros:**
-- Automated installation process
-- Multiple installation options
-- Error checking and validation
+- Automated, with error checking and validation
 
 **Cons:**
-- Requires curl/wget
-- Downloads and executes scripts from the internet
+- Requires curl/wget, and downloads and executes a script from the internet
+- **Every mode requires Go** — the script builds from source and does not download
+  a pre-built binary. Use method 1 if you have no Go toolchain.
 
 ## Platform-Specific Instructions
+
+> There is no Homebrew tap. `brew install apispec` will not work.
 
 ### macOS
 
 ```bash
-# Using Homebrew (if available)
-brew install ehabterra/tap/apispec
+# Pre-built binary (Apple Silicon; use darwin-amd64 on Intel)
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
+chmod +x apispec-darwin-arm64 && sudo install -m 0755 apispec-darwin-arm64 /usr/local/bin/apispec
 
-# Using Go install
+# Or with Go
 go install github.com/ehabterra/apispec/cmd/apispec@latest
+```
 
-# From source
-git clone https://github.com/ehabterra/apispec.git
-cd apispec
-make install-local
+macOS may quarantine a downloaded binary. If Gatekeeper blocks it:
+
+```bash
+xattr -d com.apple.quarantine /usr/local/bin/apispec
 ```
 
 ### Linux
 
 ```bash
-# Using Go install
-go install github.com/ehabterra/apispec/cmd/apispec@latest
+# Pre-built binary (use linux-arm64 on arm64)
+curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-linux-amd64
+chmod +x apispec-linux-amd64 && sudo install -m 0755 apispec-linux-amd64 /usr/local/bin/apispec
 
-# From source
-git clone https://github.com/ehabterra/apispec.git
-cd apispec
-make install-local
+# Or with Go
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 ### Windows
 
-```bash
-# Using Go install
-go install github.com/ehabterra/apispec/cmd/apispec@latest
+```powershell
+# Pre-built binary (use windows-arm64.exe on ARM)
+Invoke-WebRequest -Uri https://github.com/ehabterra/apispec/releases/latest/download/apispec-windows-amd64.exe -OutFile apispec.exe
 
-# From source
-git clone https://github.com/ehabterra/apispec.git
-cd apispec
-go build -o apispec.exe ./cmd/apispec
-# Copy apispec.exe to a directory in your PATH
+# Or with Go
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 ## Setting Up PATH
@@ -139,10 +200,11 @@ You should see output like:
 
 **When installed from a tagged release:**
 ```
-apispec version: v1.0.0
-Commit: abc123
-Build date: 2024-01-01T00:00:00Z
-Go version: go1.21.0
+apispec - Copyright 2026 Ehab Terra
+apispec version: 0.5.6
+Commit: 37ef463
+Build date: 2026-08-08T05:10:14Z
+Go version: go1.26.0
 ```
 
 **When installed via `go install` from latest main:**
@@ -165,9 +227,12 @@ Go version: go1.21.0
 
 ## Updating
 
+### Pre-built Binary
+Re-download it — the same command as installation, which always fetches the newest release.
+
 ### Go Install Method
 ```bash
-go install github.com/ehabterra/apispec/cmd/apispec@latest@latest
+go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 ### From Source
@@ -178,6 +243,11 @@ make install-local
 ```
 
 ## Uninstalling
+
+### Pre-built Binary
+```bash
+sudo rm /usr/local/bin/apispec
+```
 
 ### Go Install Method
 ```bash
@@ -207,9 +277,10 @@ make uninstall
    - Check file permissions
    - Ensure you have write access to the target directory
 
-3. **Go version compatibility**
-   - Ensure you have Go 1.24 or later
+3. **Go version compatibility** (source / `go install` only)
+   - Ensure you have Go 1.26 or later — the module declares `go 1.26.0`
    - Run `go version` to check
+   - Not applicable to the pre-built binaries, which bundle their runtime
 
 4. **Build failures**
    - Ensure all dependencies are installed
@@ -247,15 +318,17 @@ make release
 
 ## Release Downloads
 
-Pre-built binaries are available for each release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases).
+Every release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases) publishes these assets — see [Installation Method 1](#1-download-a-pre-built-binary-recommended) for the commands.
 
-Supported platforms:
-- Linux (amd64, arm64)
-- macOS (amd64, arm64)
-- Windows (amd64, arm64)
+| Platform | Asset |
+|---|---|
+| macOS arm64 (Apple Silicon) | `apispec-darwin-arm64` |
+| macOS amd64 (Intel) | `apispec-darwin-amd64` |
+| Linux amd64 | `apispec-linux-amd64` |
+| Linux arm64 | `apispec-linux-arm64` |
+| Windows amd64 | `apispec-windows-amd64.exe` |
+| Windows arm64 | `apispec-windows-arm64.exe` |
 
-Each release includes:
-- Platform-specific binaries
-- SHA256 checksums for verification
-- Source code archives
-- Release notes
+Each binary ships a matching `<asset>.sha256` checksum file, plus a source archive (`apispec-<version>.tar.gz`) and release notes.
+
+Only the `apispec` CLI is published as a binary. `apispecui` (browser config & preview) and `apidiag` (call-graph server) are built from source — see [Development Installation](#development-installation).

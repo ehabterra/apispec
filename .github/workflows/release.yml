@@ -70,7 +70,10 @@ jobs:
           
           # Update VERSION in scripts/release.sh if it exists
           if [ -f "scripts/release.sh" ]; then
-            sed -i "s/VERSION=\"[^\"]*\"/VERSION=\"${{ steps.version.outputs.version }}\"/g" scripts/release.sh
+            # ^VERSION= anchored: "VERSION=" is a substring of "GO_VERSION=", and an
+            # unanchored /g rewrote scripts/release.sh line 12 too — which is why
+            # v0.5.6 ships reporting `Go version: 0.5.6`.
+            sed -i "s/^VERSION=\"[^\"]*\"/VERSION=\"${{ steps.version.outputs.version }}\"/" scripts/release.sh
           fi
 
       - name: Update version constants in main.go
