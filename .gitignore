@@ -99,3 +99,6 @@ testdata/map_literal_envelope/map_literal_envelope
 
 # a `go build` inside the http-catchall fixture drops its binary beside main.go
 testdata/http_catchall_anchor/http_catchall_anchor
+
+# a `go build` inside the mount-via-helper fixture drops its binary beside main.go
+testdata/mount_via_helper/mount_via_helper

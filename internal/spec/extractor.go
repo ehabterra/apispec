@@ -847,6 +847,31 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 		e.handleRouterAssignment(mountInfo, mountPath, mountTags, childDynParams, subtreeMW, routes, visited)
 	}
 
+	// The mounted sub-router may have been built at the CALLER and passed in, with
+	// the Mount written one function deeper (issue #275):
+	//
+	//	func MountServer(r *chi.Mux, server http.Handler) { r.Mount("/api", server) }
+	//	MountServer(root, Server())
+	//
+	// The prefix reaches nested routes by tree containment, and here it cannot:
+	// the sub-router's routes hang under the argument at the CALL SITE, while the
+	// Mount node sits in the helper's body — siblings, not ancestor and
+	// descendant. So the routes were documented, at the wrong paths, without
+	// their prefix.
+	//
+	// Resolving the parameter back to the caller's argument gives the subtree the
+	// prefix belongs to. The plain traversal still reaches that subtree with no
+	// prefix, which is what makes the un-prefixed copy appear; it is dropped by
+	// dropSubsumedMountPrefixes, whose whole job is that a route reached through
+	// several contexts keeps only its most-mounted form.
+	if mountInfo.RouterArg != nil {
+		if callerArg, _ := resolveArgThroughParams(mountInfo.RouterArg, node); callerArg != nil && callerArg != mountInfo.RouterArg {
+			if target := e.findTargetNode(callerArg); target != nil {
+				e.mountRouterSubtree(target, mountPath, mountTags, childDynParams, subtreeMW, routes, visited)
+			}
+		}
+	}
+
 	// Continue traversing children
 	for _, child := range node.GetChildren() {
 		var newTags []string
@@ -969,23 +994,27 @@ func mergeRouteExtraction(existing, next *RouteInfo) {
 // handleRouterAssignment handles router assignment for mounts
 func (e *Extractor) handleRouterAssignment(mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
 	// Find the target node for the assignment
-	targetNode := e.findTargetNode(mountInfo.Assignment)
-	if targetNode != nil {
-		// Router-scope middleware among the assigned router's children (e.g.
-		// a `Use` registered on the sub-router) guards its routes, correlated
-		// per caller.
-		children := targetNode.GetChildren()
-		routerByCaller := e.collectRouterSecurityByCaller(children)
-		for _, child := range children {
-			var newTags []string
-			if mountPath != "" {
-				newTags = []string{mountPath}
-			} else {
-				newTags = mountTags
-			}
-			childMW := mergeMW(mountMW, routerByCaller[e.callerKey(child)])
-			e.traverseForRoutesWithVisited(child, mountPath, newTags, mountDynParams, childMW, routes, visited)
+	if targetNode := e.findTargetNode(mountInfo.Assignment); targetNode != nil {
+		e.mountRouterSubtree(targetNode, mountPath, mountTags, mountDynParams, mountMW, routes, visited)
+	}
+}
+
+// mountRouterSubtree walks a sub-router's subtree as if it were nested under the
+// mount, so its routes inherit the prefix. Shared by the two ways a mounted
+// router can live outside the mount node's own subtree: assigned to a variable
+// (`api := r.Group(...)`) and passed in as a parameter (issue #275).
+func (e *Extractor) mountRouterSubtree(target TrackerNodeInterface, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
+	// Router-scope middleware among the sub-router's children (e.g. a `Use`
+	// registered on it) guards its routes, correlated per caller.
+	children := target.GetChildren()
+	routerByCaller := e.collectRouterSecurityByCaller(children)
+	for _, child := range children {
+		newTags := mountTags
+		if mountPath != "" {
+			newTags = []string{mountPath}
 		}
+		childMW := mergeMW(mountMW, routerByCaller[e.callerKey(child)])
+		e.traverseForRoutesWithVisited(child, mountPath, newTags, mountDynParams, childMW, routes, visited)
 	}
 }
 
