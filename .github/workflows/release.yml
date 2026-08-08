@@ -64,30 +64,47 @@ jobs:
           echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update version in Makefile
+        # VERSION comes from the pushed tag, so it is untrusted input. It is passed
+        # through env rather than interpolated into the script with ${{ }}, or a tag
+        # named `v1.0.0"; rm -rf /; #` would execute on the runner.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # Update VERSION in Makefile
-          sed -i "s/^VERSION = .*/VERSION = ${{ steps.version.outputs.version }}/" Makefile
+          # `|` as the sed delimiter, not `/`: a git tag may legally contain a
+          # slash, which would otherwise end the substitution early.
+          sed -i "s|^VERSION = .*|VERSION = $VERSION|" Makefile
           
           # Update VERSION in scripts/release.sh if it exists
           if [ -f "scripts/release.sh" ]; then
-            sed -i "s/VERSION=\"[^\"]*\"/VERSION=\"${{ steps.version.outputs.version }}\"/g" scripts/release.sh
+            # ^VERSION= anchored: "VERSION=" is a substring of "GO_VERSION=", and an
+            # unanchored /g rewrote scripts/release.sh line 12 too — which is why
+            # v0.5.6 ships reporting `Go version: 0.5.6`.
+            sed -i "s|^VERSION=\"[^\"]*\"|VERSION=\"$VERSION\"|" scripts/release.sh
           fi
 
       - name: Update version constants in main.go
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          BUILD_DATE: ${{ steps.version.outputs.build_date }}
+          GO_VERSION: ${{ steps.version.outputs.go_version }}
         run: |
           # Update version constants in cmd/apispec/main.go
-          sed -i "s/Version   = \"[^\"]*\"/Version   = \"${{ steps.version.outputs.version }}\"/" cmd/apispec/main.go
-          sed -i "s/Commit    = \"[^\"]*\"/Commit    = \"${{ steps.version.outputs.commit }}\"/" cmd/apispec/main.go
-          sed -i "s/BuildDate = \"[^\"]*\"/BuildDate = \"${{ steps.version.outputs.build_date }}\"/" cmd/apispec/main.go
-          sed -i "s/GoVersion = \"[^\"]*\"/GoVersion = \"${{ steps.version.outputs.go_version }}\"/" cmd/apispec/main.go
+          sed -i "s|Version   = \"[^\"]*\"|Version   = \"$VERSION\"|" cmd/apispec/main.go
+          sed -i "s|Commit    = \"[^\"]*\"|Commit    = \"$COMMIT\"|" cmd/apispec/main.go
+          sed -i "s|BuildDate = \"[^\"]*\"|BuildDate = \"$BUILD_DATE\"|" cmd/apispec/main.go
+          sed -i "s|GoVersion = \"[^\"]*\"|GoVersion = \"$GO_VERSION\"|" cmd/apispec/main.go
 
       - name: Build for multiple platforms
+        # The Makefile declares these with `?=`, so the environment wins and no
+        # command line has to be built out of untrusted values at all.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          BUILD_DATE: ${{ steps.version.outputs.build_date }}
+          GO_VERSION: ${{ steps.version.outputs.go_version }}
         run: |
           # Build with updated version info
-          VERSION=${{ steps.version.outputs.version }} \
-          COMMIT=${{ steps.version.outputs.commit }} \
-          BUILD_DATE=${{ steps.version.outputs.build_date }} \
-          GO_VERSION=${{ steps.version.outputs.go_version }} \
           make release
           
           # List built files
