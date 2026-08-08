@@ -287,7 +287,7 @@ Sub-keys of `framework`:
 |-----|---------|
 | `routePatterns` | How routes are registered (method/path/handler extraction). |
 | `requestBodyPatterns` | Calls that bind a request body to a Go type. |
-| `responsePatterns` | Calls that write a response (status + body type). |
+| `responsePatterns` | Calls that write a response (status + body type). **Anchor any pattern that extracts a body type** — see below. |
 | `paramPatterns` | Calls that read a parameter, and its `in:` location. |
 | `mountPatterns` | Sub-router mounting (path-prefix composition). |
 | `securityPatterns` | Where/how auth middleware is applied (scope). |
@@ -295,6 +295,49 @@ Sub-keys of `framework`:
 | `handlerInterfaceMethods` | Method names that make a type a handler (`ServeHTTP`), so a route registered with a handler *value* is followed into it. |
 | `requestContext` | Which receivers/accessors mark a "request body" source. |
 | `responseContext` | Which types are the response *writer*, for response patterns gated on write destination (`requireResponseDestination`). Parameter reads state their own exclusion per pattern (`excludeRecvOriginRegex`). |
+
+### Anchoring a response pattern
+
+A `responsePattern` matches by **call name**. If it also sets `typeFromArg` and is
+anchored to nothing else, it documents that call's argument as the endpoint's
+response body *wherever the call appears in the handler's call graph* — including
+where a client marshals a body for an **outbound** request. The endpoint then
+carries a response it can never return, and nothing in the spec indicates why.
+
+```yaml
+# Wrong: matches every json.Marshal reached from the handler, including the one
+# an HTTP client uses to build its own request body.
+- callRegex: ^Marshal$
+  typeFromArg: true
+```
+
+Any one of these anchors it — pick whichever describes the real constraint:
+
+| anchor | use when |
+|---|---|
+| `recvType` / `recvTypeRegex` | the call is made **on** the response writer or a framework renderer |
+| `requireResponseDestination` | it is a generic encoder whose destination must trace to the response writer (`json.NewEncoder(w).Encode(v)`, with `destFromReceiver`) |
+| `callerPkgPatterns` / `calleePkgPatterns` | only calls made in, or landing in, particular packages count |
+| `functionNameRegex` | the enclosing function identifies it |
+
+APISpec reports unanchored patterns at config load:
+
+```
+[config] 1 response pattern(s) match a bare call name anywhere in the call graph
+and may document an outbound request body as a response: responsePatterns[7]
+(callRegex "^Marshal$") — scope with recvType/recvTypeRegex, or set
+requireResponseDestination
+```
+
+It is advisory, not an error: a project whose serializer really is only reached
+from a response path is entitled to keep the pattern. Every shipped preset is
+anchored, so a default run never reports this.
+
+> A serializer that *returns* bytes (`json.Marshal`) has no destination for
+> `requireResponseDestination` to check. The supported way to document
+> `b, _ := json.Marshal(v); w.Write(b)` is not a `Marshal` response pattern at
+> all — it is `responseContext.bodyTransforms`, which traces the marshalled bytes
+> to the write on the response writer.
 
 ### Scoping a pattern to where the call is made
 

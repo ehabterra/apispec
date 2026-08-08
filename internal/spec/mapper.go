@@ -108,6 +108,18 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 		return nil, err
 	}
 
+	// Advisory, and only for a config the user wrote — the presets never trip it
+	// (issue #294). Reported at load rather than at extraction because the fix is
+	// an edit to this file, and because the symptom it produces (a response body
+	// the endpoint can never return) looks like a resolution bug, not a config
+	// one, to anyone reading the generated spec.
+	if bare := config.UnanchoredResponsePatterns(); len(bare) > 0 {
+		log.Printf("[config] %d response pattern(s) match a bare call name anywhere in the call graph "+
+			"and may document an outbound request body as a response: %s — scope with "+
+			"recvType/recvTypeRegex, or set requireResponseDestination",
+			len(bare), strings.Join(bare, ", "))
+	}
+
 	return &config, nil
 }
 

@@ -1069,3 +1069,51 @@ func stdDefaults(responseStatus int) Defaults {
 		ResponseStatus:      responseStatus,
 	}
 }
+
+// UnanchoredResponsePatterns reports response patterns that extract a body type
+// but are anchored to nothing, so they match a bare call NAME anywhere in the
+// handler's call graph (issue #294).
+//
+// The shape that motivated this is a hand-written or exported-then-frozen
+// pattern for a serializer:
+//
+//	responsePatterns:
+//	  - callRegex: ^Marshal$
+//	    typeFromArg: true
+//
+// json.Marshal returns bytes. It has no destination argument, so
+// RequireResponseDestination cannot gate it and no receiver type distinguishes
+// one call from another — which means the pattern also matches the body a client
+// marshals for an OUTBOUND request. Measured on a ~500-route service, one such
+// pattern put a third-party provider's request struct on 16 operations as their
+// response, and accounted for 40 of the 41 spurious `default:` blocks in that
+// spec; removing it took the count to 1.
+//
+// Every shipped framework preset anchors its response patterns — to the response
+// writer's type, to the framework's render package, or (for the generic encoder)
+// to requireResponseDestination — so this reports nothing for a default config.
+// It is advisory rather than an error: a pattern like this is usually a mistake,
+// but a project whose serializer really is only ever reached from a response
+// path is entitled to keep it, and refusing to run would be worse than saying so.
+//
+// The test is structural, NOT a list of serializer names: the question is whether
+// the pattern has ANY way to tell a response from an unrelated call, and a
+// name-based test of the user's own regex would be the guessing this exists to
+// stop.
+func (c *APISpecConfig) UnanchoredResponsePatterns() []string {
+	var out []string
+	for i, p := range c.Framework.ResponsePatterns {
+		if !p.TypeFromArg {
+			continue // claims no body type, so it cannot misattribute one
+		}
+		anchored := p.RecvType != "" || p.RecvTypeRegex != "" || p.FunctionNameRegex != "" ||
+			p.RequireResponseDestination ||
+			len(p.CallerPkgPatterns) > 0 || len(p.CallerRecvTypePatterns) > 0 ||
+			len(p.CalleePkgPatterns) > 0 || len(p.CalleeRecvTypePatterns) > 0
+		if anchored {
+			continue
+		}
+		out = append(out, fmt.Sprintf("responsePatterns[%d] (callRegex %q)", i, p.CallRegex))
+	}
+	return out
+}
