@@ -127,7 +127,8 @@ func TestTrackerLimitsResolved(t *testing.T) {
 	if raised.MaxNodesPerTree != 2_000_000 {
 		t.Errorf("max nodes = %d, want the requested 2000000", raised.MaxNodesPerTree)
 	}
-	if raised.MaxChildrenPerNode != defaults.MaxChildrenPerNode ||
+	if raised.MaxNodesPerRoute != defaults.MaxNodesPerRoute ||
+		raised.MaxChildrenPerNode != defaults.MaxChildrenPerNode ||
 		raised.MaxRecursionDepth != defaults.MaxRecursionDepth ||
 		raised.MaxArgsPerFunction != defaults.MaxArgsPerFunction ||
 		raised.MaxNestedArgsDepth != defaults.MaxNestedArgsDepth ||
@@ -141,8 +142,20 @@ func TestTrackerLimitsResolved(t *testing.T) {
 		t.Errorf("negative max nodes = %d, want the default", got.MaxNodesPerTree)
 	}
 
+	// The two node budgets are independent: raising a route's DETAIL allowance
+	// must not touch the budget that FINDS routes, or the UI would reproduce the
+	// coupling #264 removed.
+	perRoute := TrackerLimits{MaxNodesPerRoute: 5_000_000}.resolved()
+	if perRoute.MaxNodesPerRoute != 5_000_000 {
+		t.Errorf("max nodes per route = %d, want the requested 5000000", perRoute.MaxNodesPerRoute)
+	}
+	if perRoute.MaxNodesPerTree != defaults.MaxNodesPerTree {
+		t.Errorf("raising the per-route budget changed the discovery budget to %d", perRoute.MaxNodesPerTree)
+	}
+
 	all := TrackerLimits{
 		MaxNodesPerTree:    1,
+		MaxNodesPerRoute:   7,
 		MaxChildrenPerNode: 2,
 		MaxArgsPerFunction: 3,
 		MaxNestedArgsDepth: 4,
