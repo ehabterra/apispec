@@ -141,7 +141,9 @@ brew test <tap>/apispec                           # passes
 brew audit --new --strict --formula <tap>/apispec # clean
 ```
 
-### Submitting
+### Submitting (once)
+
+This is a one-time submission — see [Do I resubmit every release?](#do-i-resubmit-every-release).
 
 ```bash
 brew tap --force homebrew/core
@@ -162,6 +164,32 @@ gh pr create --repo Homebrew/homebrew-core
 
 `--online` matters: it checks the URL resolves and the checksum matches, which
 the offline audit cannot.
+
+### Do I resubmit every release?
+
+**No.** The sequence above is for the **initial** new-formula submission, once.
+After that core keeps itself up to date:
+
+- **Autobump is the default.** `Formula#autobump?` is true unless a formula opts
+  out with `no_autobump!` (`Library/Homebrew/formula.rb`), so apispec would be on
+  the autobump list automatically. Homebrew's scheduled job notices a new
+  upstream release and BrewTestBot opens the version-bump PR itself.
+- **Detection already works with no `livecheck` block** — the default strategy
+  reads tags from the GitHub URL. Checked against the candidate formula:
+  `brew livecheck` reports `apispec: 0.5.6 ==> 0.5.6`, i.e. it found the current
+  release and agreed with it. When 0.5.7 is tagged that becomes
+  `0.5.6 ==> 0.5.7`, and the bump PR follows.
+- **To push a release in yourself** — a bot outage, or wanting it in core the
+  same day — it is one command, not the fork sequence:
+
+  ```bash
+  brew bump-formula-pr --version=0.5.7 apispec
+  ```
+
+  It forks, branches, updates `url` and `sha256`, commits and opens the PR.
+
+So the ongoing cost of being in core is close to zero: the one-time submission,
+plus reviewing the occasional bot PR when something breaks.
 
 ### What changes if it is accepted
 
