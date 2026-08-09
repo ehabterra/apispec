@@ -11,9 +11,30 @@ so it needs no Go toolchain and takes seconds.
 | `apispec.rb.tmpl` | the same formula with `__VERSION__` / `__SHA_*__` placeholders |
 
 The formula users install from lives in a separate repository, because Homebrew
-requires a tap to be named `homebrew-<name>`:
+requires a tap repo to be named `homebrew-<name>`:
 
-    ehabterra/homebrew-tap → Formula/apispec.rb
+    ehabterra/homebrew-tap
+    └── Formula/
+        └── apispec.rb        → brew install ehabterra/tap/apispec
+
+## Why one tap, not one per tool
+
+A tap is a repo with a `Formula/` directory, and it holds **any number** of
+formulae. Adding a second tool means adding a second file, not a second repo:
+
+    ehabterra/homebrew-tap
+    └── Formula/
+        ├── apispec.rb        → brew install ehabterra/tap/apispec
+        └── apidiag.rb        → brew install ehabterra/tap/apidiag
+
+A repo per tool (`homebrew-apispec`, `homebrew-apidiag`) would mean one PAT,
+one secret and one workflow step each, users tapping every one separately, and
+an install string that stutters — `brew install ehabterra/apispec/apispec`,
+because the tap name sits between the owner and the formula. The single-tap
+layout is what goreleaser, hashicorp and charmbracelet use.
+
+A tool that needs its own release cadence can still get its own tap later
+without changing the command for anyone already on this one.
 
 `.github/workflows/release.yml` renders the template and pushes it there on every
 tag. The checksums are computed from the artifacts that job just built, so the
