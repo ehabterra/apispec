@@ -102,3 +102,8 @@ testdata/http_catchall_anchor/http_catchall_anchor
 
 # a `go build` inside the mount-via-helper fixture drops its binary beside main.go
 testdata/mount_via_helper/mount_via_helper
+
+# release binaries downloaded while testing the install instructions
+apispec-darwin-*
+apispec-linux-*
+apispec-windows-*
