@@ -11,6 +11,11 @@ class Apispec < Formula
   homepage "https://github.com/ehabterra/apispec"
   license "Apache-2.0"
 
+  # apispec analyses a project by loading its packages through go/packages, which
+  # shells out to `go list`. The pre-built binary still needs the go toolchain on
+  # PATH at RUNTIME — without it every run exits with "go command required".
+  depends_on "go"
+
   on_macos do
     on_arm do
       url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispec-darwin-arm64"

@@ -27,7 +27,11 @@ class Apispec < Formula
   license "Apache-2.0"
   head "https://github.com/ehabterra/apispec.git", branch: "main"
 
-  depends_on "go" => :build
+  # RUNTIME, not :build. apispec analyses a project by loading its packages
+  # through go/packages, which shells out to `go list` — without the go binary on
+  # PATH it exits with "go command required, not found". A :build dependency is
+  # also absent from `brew test`, so the test block would fail on CI.
+  depends_on "go"
 
   def install
     # A core formula builds from a release tarball, which carries no git data, so
