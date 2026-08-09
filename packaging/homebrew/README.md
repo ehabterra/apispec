@@ -155,7 +155,11 @@ cp /path/to/apispec/packaging/homebrew/apispec-homebrew-core.rb Formula/a/apispe
 #   curl -sL https://github.com/ehabterra/apispec/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
 
 brew audit --new --strict --online --formula apispec
-brew install --build-from-source apispec && brew test apispec
+
+# HOMEBREW_NO_INSTALL_FROM_API=1 is REQUIRED when the formula is in your local
+# homebrew/core checkout — without it brew ignores your file and uses the API.
+HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source apispec
+brew test apispec
 
 gh repo fork Homebrew/homebrew-core --remote
 git commit -am "apispec 0.5.6 (new formula)"     # the REAL version, not a placeholder
@@ -165,6 +169,18 @@ gh pr create --repo Homebrew/homebrew-core
 
 `--online` matters: it checks the URL resolves and the checksum matches, which
 the offline audit cannot.
+
+`HOMEBREW_NO_INSTALL_FROM_API=1` matters more. Homebrew installs from its API by
+default, and its own FAQ is blunt about the consequence:
+
+> if you are editing a core formula or cask you must set
+> `HOMEBREW_NO_INSTALL_FROM_API=1` before using `brew install` or `brew update`
+> otherwise they will ignore your local changes and default to the API
+
+Without it the install step quietly tests something other than the file you are
+about to submit — the worst kind of green. It is only needed for a formula inside
+the **homebrew/core** checkout; a third-party tap like `ehabterra/tap` is always
+read from disk, which is why the tap instructions above do not use it.
 
 **The commit message is a convention, not a formality.** homebrew-core expects
 `<formula> <version> (new formula)` with the real version, and it becomes the PR

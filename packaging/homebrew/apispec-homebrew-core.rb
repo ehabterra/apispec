@@ -7,10 +7,15 @@
 # Submitting this is what puts apispec in the formulae.brew.sh search — a tap is
 # never indexed there. See README.md, "Getting into homebrew-core".
 #
-# Verified locally before committing:
-#   brew install --build-from-source <tap>/apispec   → builds, binary reports 0.5.6
-#   brew test <tap>/apispec                          → passes
+# Verified locally before committing, from a scratch tap (a third-party tap is
+# always read from disk, so no env var is needed there):
+#   brew install --build-from-source <tap>/apispec    → builds, binary reports 0.5.6
+#   brew test <tap>/apispec                           → passes
 #   brew audit --new --strict --formula <tap>/apispec → clean
+#
+# Testing it inside the homebrew/core checkout is NOT the same: set
+# HOMEBREW_NO_INSTALL_FROM_API=1 or brew ignores the local file and uses the API.
+# See README.md, "Submitting (once)".
 #
 # Bump `url` and `sha256` to the release being submitted:
 #   curl -sL https://github.com/ehabterra/apispec/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
