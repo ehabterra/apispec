@@ -158,12 +158,25 @@ brew audit --new --strict --online --formula apispec
 brew install --build-from-source apispec && brew test apispec
 
 gh repo fork Homebrew/homebrew-core --remote
-git commit -am "apispec X.Y.Z (new formula)" && git push -u origin apispec
+git commit -am "apispec 0.5.6 (new formula)"     # the REAL version, not a placeholder
+git push -u origin apispec
 gh pr create --repo Homebrew/homebrew-core
 ```
 
 `--online` matters: it checks the URL resolves and the checksum matches, which
 the offline audit cannot.
+
+**The commit message is a convention, not a formality.** homebrew-core expects
+`<formula> <version> (new formula)` with the real version, and it becomes the PR
+title:
+
+    apispec 0.5.6 (new formula)      ✅
+    apispec X.Y.Z (new formula)      ❌ placeholder left in
+    Add apispec formula              ❌ wrong shape
+
+Recent core merges look exactly like this — `oxvg 0.0.7 (new formula)`,
+`network-doctor 1.10.7 (new formula)`. Later version bumps drop the suffix and
+are just `apispec 0.5.7`, which is what BrewTestBot will open on your behalf.
 
 ### Do I resubmit every release?
 
