@@ -45,7 +45,11 @@ func TestHomebrewFormulaMatchesTemplate(t *testing.T) {
 
 	// Render the template the way release.yml does: substitute placeholders with
 	// whatever the formula currently carries. What must match is everything else.
-	version := captureOne(t, formula, `version "([^"]+)"`)
+	//
+	// The version is read out of a URL because the formula deliberately has no
+	// `version` stanza: Homebrew scans it from the download path, and declaring
+	// it as well is a `brew audit --strict` failure.
+	version := captureOne(t, formula, `releases/download/v([^/]+)/`)
 	rendered := strings.ReplaceAll(tmpl, "__VERSION__", version)
 
 	shas := regexp.MustCompile(`sha256 "([0-9a-f]{64})"`).FindAllStringSubmatch(formula, -1)
@@ -103,6 +107,13 @@ func TestHomebrewFormulaTargetsThePublishedAssets(t *testing.T) {
 	}
 	if strings.Contains(formula, "windows") {
 		t.Error("formula references a windows asset; Homebrew does not install those")
+	}
+
+	// `brew audit --strict` rejects an explicit version when the URL already
+	// carries one, and every URL here does.
+	if regexp.MustCompile(`(?m)^\s*version "`).MatchString(formula) {
+		t.Error("formula declares a version stanza; it is redundant with the version " +
+			"scanned from the download URL and fails brew audit --strict")
 	}
 }
 

@@ -9,27 +9,26 @@
 class Apispec < Formula
   desc "Generate OpenAPI 3.1 specs from Go source by static analysis"
   homepage "https://github.com/ehabterra/apispec"
-  version "__VERSION__"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/ehabterra/apispec/releases/download/v#{version}/apispec-darwin-arm64"
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispec-darwin-arm64"
       sha256 "__SHA_DARWIN_ARM64__"
     end
     on_intel do
-      url "https://github.com/ehabterra/apispec/releases/download/v#{version}/apispec-darwin-amd64"
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispec-darwin-amd64"
       sha256 "__SHA_DARWIN_AMD64__"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/ehabterra/apispec/releases/download/v#{version}/apispec-linux-arm64"
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispec-linux-arm64"
       sha256 "__SHA_LINUX_ARM64__"
     end
     on_intel do
-      url "https://github.com/ehabterra/apispec/releases/download/v#{version}/apispec-linux-amd64"
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispec-linux-amd64"
       sha256 "__SHA_LINUX_AMD64__"
     end
   end

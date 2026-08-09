@@ -235,6 +235,28 @@ Go version: go1.21.0
 
 > **Note:** Version information depends on how `apispec` was built. When using `go install`, Go automatically embeds VCS information when available, providing accurate version details.
 
+## Which apispec am I running?
+
+Do this before updating or uninstalling anything. More than one copy can be
+installed at once, and the **first on your PATH wins** — so an upgrade can appear
+to do nothing while a stale copy keeps answering.
+
+```bash
+which -a apispec     # every copy, in the order your shell searches
+apispec --version    # the one that actually runs
+```
+
+Typical locations:
+
+| path | came from |
+|---|---|
+| `$(brew --prefix)/bin/apispec` | Homebrew (a symlink into `Cellar/`) |
+| `/usr/local/bin/apispec` | the pre-built binary block, or `make install` |
+| `$(go env GOPATH)/bin/apispec` | `go install`, or `make install-local` |
+
+If `apispec --version` disagrees with the version you just installed, you have
+more than one — see [Switching between methods](#switching-between-installation-methods).
+
 ## Updating
 
 ### Homebrew
@@ -243,45 +265,79 @@ brew upgrade apispec
 ```
 
 ### Pre-built Binary
-Re-run the install block — it always fetches the newest release.
+Re-run the install block from [Method 2](#2-download-a-pre-built-binary); it always
+fetches the newest release and overwrites in place.
 
-### Go Install Method
+### Go Install
 ```bash
 go install github.com/ehabterra/apispec/cmd/apispec@latest
 ```
 
 ### From Source
 ```bash
-cd apispec
-git pull
-make install-local
+cd apispec && git pull && make install-local
 ```
 
 ## Uninstalling
 
+Each method has to be undone its own way — removing one does not remove another.
+
 ### Homebrew
 ```bash
 brew uninstall apispec
+brew untap ehabterra/tap    # optional, if you want the tap gone too
 ```
 
 ### Pre-built Binary
 ```bash
-sudo rm /usr/local/bin/apispec
+sudo rm /usr/local/bin/apispec      # or wherever you installed it
 ```
 
-### Go Install Method
+### Go Install
 ```bash
-go clean -i github.com/ehabterra/apispec/cmd/apispec
+rm "$(go env GOPATH)/bin/apispec"
 ```
+
+> `go clean -i github.com/ehabterra/apispec/cmd/apispec` is **not** a reliable
+> uninstall: run outside a module it fails with "go.mod file not found", which is
+> the normal situation after `go install …@latest`. Remove the binary directly.
 
 ### From Source
 ```bash
-# If installed locally
-make uninstall-local
-
-# If installed system-wide
-make uninstall
+make uninstall-local    # if installed to ~/go/bin
+make uninstall          # if installed system-wide
 ```
+
+## Switching between installation methods
+
+Installing a second way does not replace the first — it just adds another copy,
+and the PATH order decides which one you get. Two symptoms:
+
+**`apispec --version` shows the old version.** An earlier copy is ahead on your
+PATH. Find them all and remove the ones you do not want:
+
+```bash
+which -a apispec
+rm "$(go env GOPATH)/bin/apispec"     # e.g. a stale go install build
+sudo rm /usr/local/bin/apispec        # e.g. an earlier manual install
+```
+
+**Homebrew installed it but `apispec` is still the old one.** Homebrew will not
+overwrite a file it does not own, so if `/usr/local/bin/apispec` already exists
+as a plain file, the formula installs into `Cellar/` but never gets linked:
+
+```bash
+brew list --versions apispec          # installed?
+brew link apispec                     # reports the conflicting path
+sudo rm /usr/local/bin/apispec        # remove it, then
+brew link apispec
+```
+
+`brew link --overwrite apispec` does the removal for you; run it with
+`--dry-run` first to see what it would delete.
+
+To go the other way — from Homebrew back to a manual install — `brew uninstall
+apispec` first, or the manual binary will be the one that gets shadowed.
 
 ## Troubleshooting
 
@@ -292,17 +348,22 @@ make uninstall
    - Verify the installation location
    - Restart your terminal after PATH changes
 
-2. **Permission denied errors**
+2. **`apispec --version` shows a version you did not install**
+   - More than one copy is installed; the first on your PATH wins
+   - `which -a apispec` lists them all — see
+     [Switching between methods](#switching-between-installation-methods)
+
+3. **Permission denied errors**
    - Use `make install-local` instead of `make install`
    - Check file permissions
    - Ensure you have write access to the target directory
 
-3. **Go version compatibility** (source / `go install` only)
+4. **Go version compatibility** (source / `go install` only)
    - Ensure you have Go 1.26 or later — the module declares `go 1.26.0`
    - Run `go version` to check
    - Not applicable to the pre-built binaries, which bundle their runtime
 
-4. **Build failures**
+5. **Build failures**
    - Ensure all dependencies are installed
    - Run `go mod download` and `go mod tidy`
    - Check Go environment variables
@@ -338,7 +399,7 @@ make release
 
 ## Release Downloads
 
-Every release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases) publishes these assets — see [Installation Method 1](#1-download-a-pre-built-binary-recommended) for the commands.
+Every release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases) publishes these assets — see [Installation Method 2](#2-download-a-pre-built-binary) for the commands.
 
 | Platform | Asset |
 |---|---|
