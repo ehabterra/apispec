@@ -42,16 +42,58 @@ formula cannot point at a digest the release does not have.
 
 ## One-time setup
 
-1. Create a **public** repo `ehabterra/homebrew-tap` (any description; no files needed).
-2. Create a fine-grained PAT with **Contents: read and write** on that repo only.
-3. Add it to *this* repo as the secret `HOMEBREW_TAP_TOKEN`.
+The tap repo already exists and is seeded. What is left is the token that lets
+the release workflow push to it.
 
-Until the secret exists the release workflow skips the step, so releases keep
-working — a fork will never fail here either.
+### 1. Create the token
+
+Go to **<https://github.com/settings/personal-access-tokens/new>**
+(GitHub → your avatar → Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → *Generate new token*), then set:
+
+| field | value |
+|---|---|
+| Token name | `apispec-homebrew-tap` |
+| Expiration | your call — a dated token is a dead release step on the day it expires; 1 year with a calendar reminder is a reasonable trade |
+| Resource owner | `ehabterra` |
+| Repository access | **Only select repositories** → `ehabterra/homebrew-tap` |
+| Permissions → Repository permissions → **Contents** | **Read and write** |
+
+`Metadata: Read-only` is added automatically and is required — leave it.
+
+Grant nothing else. This token only needs to commit one file to one repo; it
+should not be able to touch `apispec` itself.
+
+Click **Generate token** and copy it. GitHub shows it once.
+
+### 2. Add it to the apispec repo
+
+Paste it into
+**<https://github.com/ehabterra/apispec/settings/secrets/actions/new>**
+with the name `HOMEBREW_TAP_TOKEN`.
+
+Or from a terminal, which avoids the clipboard:
+
+```bash
+gh secret set HOMEBREW_TAP_TOKEN --repo ehabterra/apispec
+# paste the token at the prompt, then press Ctrl-D
+```
+
+Verify it registered (this prints the name and date, never the value):
+
+```bash
+gh secret list --repo ehabterra/apispec
+```
+
+### 3. Nothing else
+
+The next tag pushes an updated `Formula/apispec.rb` automatically. Until the
+secret exists the step is skipped, so releases and forks keep working.
 
 ## Seeding the tap by hand
 
-Only needed once, or to fix the tap without cutting a release:
+The tap is already seeded with 0.5.6. This is how to re-seed it, or to fix it
+without cutting a release:
 
 ```bash
 git clone https://github.com/ehabterra/homebrew-tap.git

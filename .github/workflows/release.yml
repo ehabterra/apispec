@@ -11,6 +11,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Hoisted to the JOB so the tap step can test it in an `if:`. The `secrets`
+    # context is not available in a step-level `if` — written that way the step is
+    # skipped even when the secret IS set, which fails silently and looks like the
+    # tap simply never updates.
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     permissions:
       contents: write  # Required to create releases and upload assets
       pull-requests: read
@@ -120,10 +126,9 @@ jobs:
       - name: Update the Homebrew tap
         # Skipped automatically when the tap token is not configured, so the
         # release still succeeds on a fork or before the tap exists.
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        if: env.HOMEBREW_TAP_TOKEN != ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           set -euo pipefail
           # Checksums come from the artifacts THIS job just built, so the formula
@@ -137,7 +142,7 @@ jobs:
               -e "s|__SHA_LINUX_AMD64__|$(sha linux-amd64)|" \
               packaging/homebrew/apispec.rb.tmpl > /tmp/apispec.rb
 
-          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/ehabterra/homebrew-tap.git" /tmp/tap
+          git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/ehabterra/homebrew-tap.git" /tmp/tap
           mkdir -p /tmp/tap/Formula
           cp /tmp/apispec.rb /tmp/tap/Formula/apispec.rb
           cd /tmp/tap
