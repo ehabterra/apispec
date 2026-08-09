@@ -113,9 +113,66 @@ brew audit --strict --formula ./packaging/homebrew/apispec.rb
 `brew audit` is worth running before a release: it catches a stale `version`,
 an unreachable `url`, and a `sha256` that does not match what the URL serves.
 
-## Why not homebrew-core?
+## Getting into homebrew-core (the formulae.brew.sh search)
 
-homebrew-core has notability requirements (roughly: a meaningful number of
-stars/forks/watchers, or demonstrable wide use). A tap has none and can be
-submitted to core later without changing the install command for anyone who
-already used the tap.
+<https://formulae.brew.sh/formula/> indexes **homebrew-core only**. A tap is never
+listed there, however it is configured — so appearing in that search means getting
+the formula accepted into core.
+
+### Where apispec stands
+
+| requirement | status |
+|---|---|
+| Notable enough — Homebrew's heuristic is 75 stars **or** 30 forks **or** 30 watchers | **83 stars** — clears it |
+| Open-source with an OSI licence | Apache-2.0 |
+| Stable, versioned releases | v0.5.6, tagged and signed |
+| Maintained, not a duplicate of an existing formula | yes |
+| **Builds from source** | this is the work — see below |
+
+### The one blocking difference
+
+core formulae **build from source**; the tap formula downloads a pre-built
+binary, which core does not accept. `apispec-homebrew-core.rb` in this directory
+is the source-building version, verified locally:
+
+```bash
+brew install --build-from-source <tap>/apispec    # compiles with Go, binary reports its version
+brew test <tap>/apispec                           # passes
+brew audit --new --strict --formula <tap>/apispec # clean
+```
+
+### Submitting
+
+```bash
+brew tap --force homebrew/core
+cd "$(brew --repository homebrew/core)"
+git checkout -b apispec
+
+cp /path/to/apispec/packaging/homebrew/apispec-homebrew-core.rb Formula/a/apispec.rb
+# update url + sha256 to the release you are submitting:
+#   curl -sL https://github.com/ehabterra/apispec/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
+
+brew audit --new --strict --online --formula apispec
+brew install --build-from-source apispec && brew test apispec
+
+gh repo fork Homebrew/homebrew-core --remote
+git commit -am "apispec X.Y.Z (new formula)" && git push -u origin apispec
+gh pr create --repo Homebrew/homebrew-core
+```
+
+`--online` matters: it checks the URL resolves and the checksum matches, which
+the offline audit cannot.
+
+### What changes if it is accepted
+
+- apispec appears in the formulae.brew.sh search, and `brew install apispec`
+  works with no tap
+- **Homebrew maintainers own the formula.** Their bots open version-bump PRs when
+  they notice a new tag; you no longer control when an update ships, and a
+  breaking change to flags is their problem to discover
+- the tap keeps working, so anyone already on `ehabterra/tap/apispec` is
+  unaffected. Keeping both is normal: the tap can ship a release the same day,
+  core lands when it lands
+
+Nothing about the tap has to change to try this, and a rejection costs only the
+PR.
