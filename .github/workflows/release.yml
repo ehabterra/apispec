@@ -117,6 +117,36 @@ jobs:
           echo "=== Current working directory ==="
           pwd
 
+      - name: Update the Homebrew tap
+        # Skipped automatically when the tap token is not configured, so the
+        # release still succeeds on a fork or before the tap exists.
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Checksums come from the artifacts THIS job just built, so the formula
+          # can never point at a digest the release does not have.
+          sha() { shasum -a 256 "dist/apispec-$1" | awk '{print $1}'; }
+
+          sed -e "s|__VERSION__|$VERSION|g" \
+              -e "s|__SHA_DARWIN_ARM64__|$(sha darwin-arm64)|" \
+              -e "s|__SHA_DARWIN_AMD64__|$(sha darwin-amd64)|" \
+              -e "s|__SHA_LINUX_ARM64__|$(sha linux-arm64)|" \
+              -e "s|__SHA_LINUX_AMD64__|$(sha linux-amd64)|" \
+              packaging/homebrew/apispec.rb.tmpl > /tmp/apispec.rb
+
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/ehabterra/homebrew-tap.git" /tmp/tap
+          mkdir -p /tmp/tap/Formula
+          cp /tmp/apispec.rb /tmp/tap/Formula/apispec.rb
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/apispec.rb
+          git diff --staged --quiet || git commit -m "apispec $VERSION"
+          git push
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1

@@ -13,51 +13,71 @@ For the `go install` and from-source methods:
 
 ## Installation Methods
 
-### 1. Download a Pre-built Binary (Recommended)
-
-No Go toolchain required. Every release publishes a binary per platform, each with a SHA256 checksum.
-
-**macOS (Apple Silicon)**
+### 1. Homebrew (macOS and Linux)
 
 ```bash
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
-chmod +x apispec-darwin-arm64 && sudo install -m 0755 apispec-darwin-arm64 /usr/local/bin/apispec
+brew install ehabterra/tap/apispec
 ```
 
-**macOS (Intel)** — replace `darwin-arm64` with `darwin-amd64`.
+Upgrade with `brew upgrade apispec`, remove with `brew uninstall apispec`.
+Homebrew picks the right build for your machine and puts `apispec` on your PATH.
 
-**Linux (x86_64)**
+### 2. Download a Pre-built Binary
+
+No Go toolchain and no Homebrew required. **Copy the whole block** — it detects
+your platform, verifies the checksum, and installs `apispec` onto your PATH.
+
+**macOS / Linux**
 
 ```bash
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-linux-amd64
-chmod +x apispec-linux-amd64 && sudo install -m 0755 apispec-linux-amd64 /usr/local/bin/apispec
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case "$ARCH" in x86_64|amd64) ARCH=amd64 ;; arm64|aarch64) ARCH=arm64 ;; esac
+ASSET="apispec-${OS}-${ARCH}"
+BASE="https://github.com/ehabterra/apispec/releases/latest/download"
+
+curl -fsSL -O "$BASE/$ASSET"
+curl -fsSL -O "$BASE/$ASSET.sha256"
+shasum -a 256 -c "$ASSET.sha256" 2>/dev/null || sha256sum -c "$ASSET.sha256"
+
+sudo install -m 0755 "$ASSET" /usr/local/bin/apispec
+rm -f "$ASSET" "$ASSET.sha256"
+
+apispec --version
 ```
 
-**Linux (arm64)** — replace `linux-amd64` with `linux-arm64`.
+The checksum step prints `apispec-darwin-arm64: OK` (or your platform's name). If
+it prints `FAILED`, stop — do not install the file.
+
+> The binary is **downloaded under the asset's own name** because the published
+> `.sha256` file names the asset; `curl -o apispec` would rename it out from
+> under the check. The `install` line is what gives it the short name and puts it
+> on your PATH — the `rm` afterwards is why nothing is left in your working
+> directory.
+
+Installing somewhere else, e.g. no `sudo`:
+
+```bash
+mkdir -p ~/.local/bin && install -m 0755 "$ASSET" ~/.local/bin/apispec
+# ensure ~/.local/bin is on your PATH
+```
 
 **Windows (PowerShell)**
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/ehabterra/apispec/releases/latest/download/apispec-windows-amd64.exe -OutFile apispec.exe
-# then move apispec.exe somewhere on your PATH
+$asset = "apispec-windows-amd64.exe"   # or apispec-windows-arm64.exe on ARM
+$base  = "https://github.com/ehabterra/apispec/releases/latest/download"
+
+Invoke-WebRequest -Uri "$base/$asset" -OutFile $asset
+Invoke-WebRequest -Uri "$base/$asset.sha256" -OutFile "$asset.sha256"
+$expected = (Get-Content "$asset.sha256").Split(" ")[0]
+if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw "checksum mismatch" }
+
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\apispec" | Out-Null
+Move-Item -Force $asset "$env:LOCALAPPDATA\Programs\apispec\apispec.exe"
+# add that directory to your PATH, then:
+apispec --version
 ```
-
-Windows on ARM: use `apispec-windows-arm64.exe`.
-
-**Verify before installing** (recommended). Download the binary under its
-original name — the checksum file names the asset, so `curl -o apispec` would
-rename it out from under the check:
-
-```bash
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64.sha256
-
-shasum -a 256 -c apispec-darwin-arm64.sha256      # macOS
-sha256sum -c apispec-linux-amd64.sha256           # Linux
-```
-
-Expect `apispec-darwin-arm64: OK`. Then install it under the name you want, as
-the commands above do with `install -m 0755 … /usr/local/bin/apispec`.
 
 To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
 
@@ -66,10 +86,10 @@ To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
 - Exact, reproducible version with a published checksum
 
 **Cons:**
-- Manual updates (re-download to upgrade)
+- Manual updates (re-run the block to upgrade)
 - Only `apispec` is published as a binary — `apispecui` and `apidiag` are built from source
 
-### 2. Go Install
+### 3. Go Install
 
 If you already have Go:
 
@@ -86,7 +106,7 @@ go install github.com/ehabterra/apispec/cmd/apispec@latest
 - Requires Go to be installed
 - Binary is stored in Go's module cache
 
-### 3. From Source
+### 4. From Source
 
 If you want to build from source or contribute to the project:
 
@@ -111,7 +131,7 @@ make install
 - More complex setup
 - Need to manually update
 
-### 4. Using Installation Script
+### 5. Using Installation Script
 
 We provide a convenient installation script:
 
@@ -132,20 +152,17 @@ Supported arguments: `go-install` (default), `source-local`, `source-system`, `h
 
 ## Platform-Specific Instructions
 
-> There is no Homebrew tap. `brew install apispec` will not work.
-
 ### macOS
 
 ```bash
-# Pre-built binary (Apple Silicon; use darwin-amd64 on Intel)
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-darwin-arm64
-chmod +x apispec-darwin-arm64 && sudo install -m 0755 apispec-darwin-arm64 /usr/local/bin/apispec
-
-# Or with Go
-go install github.com/ehabterra/apispec/cmd/apispec@latest
+brew install ehabterra/tap/apispec
 ```
 
-macOS may quarantine a downloaded binary. If Gatekeeper blocks it:
+Or use the copy-paste block in [Installation Method 2](#2-download-a-pre-built-binary), which
+detects Apple Silicon vs Intel for you.
+
+macOS may quarantine a downloaded binary (Homebrew installs are unaffected). If
+Gatekeeper blocks it:
 
 ```bash
 xattr -d com.apple.quarantine /usr/local/bin/apispec
@@ -154,23 +171,16 @@ xattr -d com.apple.quarantine /usr/local/bin/apispec
 ### Linux
 
 ```bash
-# Pre-built binary (use linux-arm64 on arm64)
-curl -L -O https://github.com/ehabterra/apispec/releases/latest/download/apispec-linux-amd64
-chmod +x apispec-linux-amd64 && sudo install -m 0755 apispec-linux-amd64 /usr/local/bin/apispec
-
-# Or with Go
-go install github.com/ehabterra/apispec/cmd/apispec@latest
+brew install ehabterra/tap/apispec        # if you use Homebrew on Linux
 ```
+
+Otherwise use the copy-paste block in [Installation Method 2](#2-download-a-pre-built-binary),
+which detects amd64 vs arm64 for you.
 
 ### Windows
 
-```powershell
-# Pre-built binary (use windows-arm64.exe on ARM)
-Invoke-WebRequest -Uri https://github.com/ehabterra/apispec/releases/latest/download/apispec-windows-amd64.exe -OutFile apispec.exe
-
-# Or with Go
-go install github.com/ehabterra/apispec/cmd/apispec@latest
-```
+Use the PowerShell block in [Installation Method 2](#2-download-a-pre-built-binary), or
+`go install github.com/ehabterra/apispec/cmd/apispec@latest` if you have Go.
 
 ## Setting Up PATH
 
@@ -227,8 +237,13 @@ Go version: go1.21.0
 
 ## Updating
 
+### Homebrew
+```bash
+brew upgrade apispec
+```
+
 ### Pre-built Binary
-Re-download it — the same command as installation, which always fetches the newest release.
+Re-run the install block — it always fetches the newest release.
 
 ### Go Install Method
 ```bash
@@ -243,6 +258,11 @@ make install-local
 ```
 
 ## Uninstalling
+
+### Homebrew
+```bash
+brew uninstall apispec
+```
 
 ### Pre-built Binary
 ```bash
