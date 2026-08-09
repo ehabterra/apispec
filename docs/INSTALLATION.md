@@ -1,6 +1,26 @@
 # Installation Guide
 
-This guide covers all the ways to install and use apispec.
+Install, update and remove apispec — four ways to do it, and how to tell which
+one you are running when more than one is installed.
+
+## At a glance
+
+Pick a row and stay in it: the commands are not interchangeable, and installing a
+second way does not replace the first (see
+[Switching between methods](#switching-between-installation-methods)).
+
+| | Install | Update | Uninstall |
+|---|---|---|---|
+| **[Homebrew](#1-homebrew-macos-and-linux)** — macOS/Linux, no Go needed | `brew install ehabterra/tap/apispec` | `brew upgrade apispec` | `brew uninstall apispec` |
+| **[Pre-built binary](#2-download-a-pre-built-binary)** — any platform, no Go needed | [copy-paste block](#2-download-a-pre-built-binary) | re-run the same block | `sudo rm /usr/local/bin/apispec` |
+| **[Go install](#3-go-install)** — needs Go 1.26+ | `go install github.com/ehabterra/apispec/cmd/apispec@latest` | same command again | `rm "$(go env GOPATH)/bin/apispec"` |
+| **[From source](#4-from-source)** — for development | `make install-local` | `git pull && make install-local` | `make uninstall-local` |
+
+Not sure what you have? → [Which apispec am I running?](#which-apispec-am-i-running)
+
+Only the `apispec` CLI is distributed as a binary. `apispecui` (browser config &
+preview) and `apidiag` (call-graph server) are built from source — see
+[Development Installation](#development-installation).
 
 ## Prerequisites
 
