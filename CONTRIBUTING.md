@@ -103,11 +103,14 @@ This helps us work together effectively and ensures contributions align with the
 
 To add support for a new web framework:
 
-1. **Update framework detection** in `internal/core/detector.go`
-2. **Add the default configuration** in `internal/spec/config_<framework>.go` (each framework lives in its own file alongside `config.go`)
-3. **Register the framework** in `cmd/apispec/main.go`
-4. **Add a fixture project** under `testdata/<framework>/` and a corresponding test case
-5. **Update documentation** in `README.md`
+1. **Add a registry entry** in `internal/core/frameworks.go` — the single source for detection patterns, dependency analysis and the UI picker
+2. **Add the default configuration** in `internal/spec/config_<framework>.go` (each framework lives in its own file alongside `config.go`) and map it in `internal/spec/framework_config.go`
+3. **Add a fixture project** under `testdata/<framework>/` and a corresponding test case
+4. **Update documentation** in `README.md`
+
+Nothing else needs editing: the detector, the dependency analyser and the UI all
+project the registry, and `TestFrameworkConfigsCoverRegistry` fails if step 2's
+mapping is missed.
 
 If you're unsure about any step, feel free to ask questions or create a draft PR - I'm happy to help!
 

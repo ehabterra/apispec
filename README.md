@@ -1033,10 +1033,9 @@ go test ./internal/spec -v -run "Test.*Comprehensive"
 
 ### Adding a framework
 
-1. Add detection to `internal/core/detector.go`.
-2. Add the default config (route/request/response/param patterns) under `internal/spec/`.
-3. Register the framework in `cmd/apispec/main.go`.
-4. Add a fixture project under `testdata/` and a test case.
+1. Add a registry entry to `internal/core/frameworks.go` (detection patterns, import patterns, detection rank).
+2. Add the default config (route/request/response/param patterns) under `internal/spec/`, and map it in `internal/spec/framework_config.go`.
+3. Add a fixture project under `testdata/` and a test case.
 
 ### Contributing
 

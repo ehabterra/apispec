@@ -540,8 +540,6 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	return meta, nil
 }
 
-// defaultFrameworkConfig maps a detected framework name to its built-in
-// config; unknown names (and "net/http") get the net/http config.
 // ComposeFrameworkConfig builds the effective framework config for a directory:
 // the detected primary's config, every other detected framework merged in as a
 // receiver-scoped view, and the stdlib net/http surface layered underneath. It
@@ -595,7 +593,7 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 		frameworks = append([]string{primary}, rest...)
 	}
 
-	cfg := defaultFrameworkConfig(primary)
+	cfg := spec.DefaultConfigForFramework(primary)
 	// Additional recognised frameworks (a gin API next to a gorilla/mux admin
 	// router, half-migrated projects): merge each one's receiver-scoped view so
 	// its registrations are traced too. Scoped patterns cannot claim another
@@ -605,7 +603,7 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 		if fw == primary {
 			continue
 		}
-		cfg = spec.MergeFrameworkConfigs(cfg, spec.SecondaryView(defaultFrameworkConfig(fw)))
+		cfg = spec.MergeFrameworkConfigs(cfg, spec.SecondaryView(spec.DefaultConfigForFramework(fw)))
 	}
 	// Layer the stdlib net/http surface under the detected framework: mixed
 	// projects (a framework API plus plain ServeMux ops endpoints in one binary)
@@ -617,23 +615,6 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 		cfg = spec.MergeFrameworkConfigs(cfg, spec.HTTPSecondaryConfig())
 	}
 	return cfg, frameworks
-}
-
-func defaultFrameworkConfig(framework string) *spec.APISpecConfig {
-	switch framework {
-	case "gin":
-		return spec.DefaultGinConfig()
-	case "chi":
-		return spec.DefaultChiConfig()
-	case "echo":
-		return spec.DefaultEchoConfig()
-	case "fiber":
-		return spec.DefaultFiberConfig()
-	case "mux":
-		return spec.DefaultMuxConfig()
-	default:
-		return spec.DefaultHTTPConfig()
-	}
 }
 
 func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {

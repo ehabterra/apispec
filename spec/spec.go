@@ -51,6 +51,13 @@ func DefaultFiberConfig() *APISpecConfig { return intspec.DefaultFiberConfig() }
 func DefaultMuxConfig() *APISpecConfig   { return intspec.DefaultMuxConfig() }
 func DefaultHTTPConfig() *APISpecConfig  { return intspec.DefaultHTTPConfig() }
 
+// DefaultConfigForFramework returns the default configuration for a framework
+// by name ("gin", "chi", "echo", "fiber", "mux", "net/http"), falling back to
+// the net/http configuration for anything unrecognised.
+func DefaultConfigForFramework(name string) *APISpecConfig {
+	return intspec.DefaultConfigForFramework(name)
+}
+
 // HTTPSecondaryConfig is the merge-safe, receiver-scoped subset of the
 // net/http config for layering under another framework's config.
 func HTTPSecondaryConfig() *APISpecConfig { return intspec.HTTPSecondaryConfig() }

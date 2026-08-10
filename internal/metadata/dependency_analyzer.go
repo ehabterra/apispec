@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ehabterra/apispec/internal/core"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -105,43 +106,32 @@ func NewFrameworkDetectorWithConfig(config FrameworkDetectorConfig) *FrameworkDe
 	}
 }
 
+// frameworkPatternsFromRegistry projects the framework registry into the
+// import-pattern map this detector classifies packages with.
+func frameworkPatternsFromRegistry() map[string][]string {
+	out := make(map[string][]string, len(core.Frameworks()))
+	for _, fw := range core.Frameworks() {
+		out[fw.DependencyKey] = slices.Clone(fw.ImportPatterns)
+	}
+	return out
+}
+
+// frameworkExternalPrefixes returns the framework half of ExternalPrefixes, in
+// detection-rank order. The remaining prefixes are ordinary vendor namespaces
+// with no framework meaning and stay listed at the call site.
+func frameworkExternalPrefixes() []string {
+	var out []string
+	for _, fw := range core.FrameworksByDetectionRank() {
+		out = append(out, fw.ExternalPrefixes...)
+	}
+	return out
+}
+
 // DefaultFrameworkDetectorConfig returns the default configuration for framework detection
 func DefaultFrameworkDetectorConfig() FrameworkDetectorConfig {
 	return FrameworkDetectorConfig{
-		FrameworkPatterns: map[string][]string{
-			"gin": {
-				"github.com/gin-gonic/gin",
-				"github.com/gin-contrib/",
-			},
-			"echo": {
-				"github.com/labstack/echo",
-				"github.com/labstack/echo/v4",
-			},
-			"fiber": {
-				"github.com/gofiber/fiber",
-				"github.com/gofiber/fiber/v2",
-			},
-			"chi": {
-				"github.com/go-chi/chi",
-				"github.com/go-chi/chi/v5",
-			},
-			"mux": {
-				"github.com/gorilla/mux",
-			},
-			"http": {
-				"net/http",
-			},
-			"fasthttp": {
-				"github.com/valyala/fasthttp",
-			},
-		},
-		ExternalPrefixes: []string{
-			"github.com/gin-gonic/gin",
-			"github.com/labstack/echo",
-			"github.com/gofiber/fiber",
-			"github.com/go-chi/chi",
-			"github.com/gorilla/mux",
-			"github.com/valyala/fasthttp",
+		FrameworkPatterns: frameworkPatternsFromRegistry(),
+		ExternalPrefixes: append(frameworkExternalPrefixes(), []string{
 			"golang.org/x/",
 			"google.golang.org/",
 			"go.uber.org/",
@@ -153,7 +143,7 @@ func DefaultFrameworkDetectorConfig() FrameworkDetectorConfig {
 			"k8s.io/",
 			"sigs.k8s.io/",
 			"github.com/google/uuid",
-		},
+		}...),
 		ProjectPatterns: []string{
 			"/modules/",
 			"/pkg/",
@@ -362,10 +352,13 @@ func (fd *FrameworkDetector) findAllFrameworkPackages(
 // directly made the winner random per run for packages that import both a
 // framework and net/http (nearly all handler code does).
 func (fd *FrameworkDetector) frameworkDetectionOrder() []string {
-	known := []string{"gin", "echo", "fiber", "chi", "mux", "fasthttp"}
-	seen := map[string]bool{"http": true}
+	seen := map[string]bool{core.StdlibDependencyKey: true}
 	order := make([]string, 0, len(fd.config.FrameworkPatterns))
-	for _, k := range known {
+	for _, fw := range core.FrameworksByDetectionRank() {
+		k := fw.DependencyKey
+		if seen[k] {
+			continue // the stdlib bucket is appended last, below
+		}
 		if _, ok := fd.config.FrameworkPatterns[k]; ok {
 			order = append(order, k)
 			seen[k] = true
@@ -379,8 +372,8 @@ func (fd *FrameworkDetector) frameworkDetectionOrder() []string {
 	}
 	sort.Strings(extras)
 	order = append(order, extras...)
-	if _, ok := fd.config.FrameworkPatterns["http"]; ok {
-		order = append(order, "http")
+	if _, ok := fd.config.FrameworkPatterns[core.StdlibDependencyKey]; ok {
+		order = append(order, core.StdlibDependencyKey)
 	}
 	return order
 }

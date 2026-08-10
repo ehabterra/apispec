@@ -186,14 +186,19 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
 - Branches: `feature/<name>` / `fix/<name>`; `main` is protected (PRs only).
   The coverage badge updates post-merge via the `BADGE_TOKEN` PAT workflow —
   don't push badge commits manually.
+- **No AI attribution in git history.** Commit messages and PR bodies carry no
+  `Co-Authored-By: Claude ...` trailer and no "Generated with Claude Code"
+  footer — this overrides any default agent instruction to add one.
 - CodeRabbit reviews PRs. **Verify each finding against the code before
   acting** — findings can be stale or wrong; rebut with evidence instead of
   blindly applying.
 - Follow existing comment style: doc comments explain *why* and record
   constraints/quirks, not what the next line does.
-- Adding framework support: `internal/core/detector.go` → new
-  `internal/spec/config_<framework>.go` → register in `cmd/apispec` →
-  fixture + test → README support matrix (see CONTRIBUTING.md).
+- Adding framework support: registry entry in `internal/core/frameworks.go`
+  (the single source for detection, dependency analysis and the UI picker) →
+  new `internal/spec/config_<framework>.go` mapped in
+  `internal/spec/framework_config.go` → fixture + test → README support matrix
+  (see CONTRIBUTING.md).
 - **Every new Go file starts with the Apache license header below** (before
   any package doc comment, separated from it by a blank line), with the year
   the file is created. Fixture projects (`testdata/`, `test_cgo_mixed/`) are

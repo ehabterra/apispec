@@ -65,8 +65,10 @@ func (d *FrameworkDetector) DetectAll(dir string) ([]string, error) {
 	// ImportsOnly: parsing stops after the import block, which is all this
 	// scan reads — a full parse of every file (the pre-DetectAll code at
 	// least early-returned on the first hit) costs hundreds of ms on large
-	// projects. The loop also stops once every known framework is seen.
-	const knownFrameworks = 5
+	// projects. The loop also stops once every known framework is seen; the
+	// bound comes from the registry rather than a restated literal, which used
+	// to abandon the walk at five and hide any sixth framework (issue #285).
+	detectable := SourceDetectableFrameworks()
 	fset := token.NewFileSet()
 	for _, filePath := range goFiles {
 		f, err := parser.ParseFile(fset, filePath, nil, parser.ImportsOnly)
@@ -76,28 +78,32 @@ func (d *FrameworkDetector) DetectAll(dir string) ([]string, error) {
 
 		for _, imp := range f.Imports {
 			importPath := strings.Trim(imp.Path.Value, "\"")
-			switch {
-			case strings.Contains(importPath, "gin-gonic/gin"):
-				add("gin")
-			case strings.Contains(importPath, "go-chi/chi"):
-				add("chi")
-			case strings.Contains(importPath, "labstack/echo"):
-				add("echo")
-			case strings.Contains(importPath, "gofiber/fiber"):
-				add("fiber")
-			case strings.Contains(importPath, "gorilla/mux"):
-				add("mux")
+			for _, fw := range detectable {
+				if matchesAny(importPath, fw.SourcePatterns) {
+					add(fw.Name)
+					break
+				}
 			}
 		}
-		if len(frameworks) == knownFrameworks {
+		if len(frameworks) == len(detectable) {
 			break
 		}
 	}
 
 	if len(frameworks) == 0 {
-		frameworks = append(frameworks, "net/http")
+		frameworks = append(frameworks, StdlibFramework)
 	}
 	return frameworks, nil
+}
+
+// matchesAny reports whether importPath contains any of the given substrings.
+func matchesAny(importPath string, patterns []string) bool {
+	for _, p := range patterns {
+		if strings.Contains(importPath, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // CollectGoFiles recursively collects all .go files from a directory

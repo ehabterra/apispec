@@ -34,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ehabterra/apispec/internal/core"
 	"github.com/ehabterra/apispec/internal/diagserver"
 	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/insight"
@@ -102,8 +103,9 @@ func detectVersionInfo() {
 	}
 }
 
-// supportedFrameworks lists frameworks the UI can pick from.
-var supportedFrameworks = []string{"gin", "chi", "echo", "fiber", "mux", "net/http"}
+// supportedFrameworks lists frameworks the UI can pick from: every framework in
+// the core registry that ships a default pattern config.
+var supportedFrameworks = core.ConfigurableFrameworkNames()
 
 // ServerConfig is the runtime config of the apispecui server.
 type ServerConfig struct {
@@ -514,20 +516,7 @@ func noCacheAssets(h http.Handler) http.Handler {
 // defaultConfigForFramework returns the default APISpecConfig for the named
 // framework, falling back to net/http.
 func defaultConfigForFramework(name string) *spec.APISpecConfig {
-	switch strings.ToLower(name) {
-	case "gin":
-		return spec.DefaultGinConfig()
-	case "chi":
-		return spec.DefaultChiConfig()
-	case "echo":
-		return spec.DefaultEchoConfig()
-	case "fiber":
-		return spec.DefaultFiberConfig()
-	case "mux":
-		return spec.DefaultMuxConfig()
-	default:
-		return spec.DefaultHTTPConfig()
-	}
+	return spec.DefaultConfigForFramework(name)
 }
 
 // findModuleRoot walks up from start looking for a go.mod file.
