@@ -540,8 +540,6 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 	return meta, nil
 }
 
-// defaultFrameworkConfig maps a detected framework name to its built-in
-// config; unknown names (and "net/http") get the net/http config.
 // ComposeFrameworkConfig builds the effective framework config for a directory:
 // the detected primary's config, every other detected framework merged in as a
 // receiver-scoped view, and the stdlib net/http surface layered underneath. It
@@ -576,8 +574,20 @@ func ComposeFrameworkConfigWithPrimary(dir, primary string) (*spec.APISpecConfig
 // in the project, so doing it twice for one run is pure waste.
 func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APISpecConfig, []string) {
 	if len(frameworks) == 0 {
-		frameworks = []string{"net/http"}
+		frameworks = []string{core.StdlibFramework}
 	}
+	// Canonicalise before anything compares names. Detection always reports the
+	// registry spelling, but an explicit primary is user input (the UI posts
+	// req.Framework straight through), and a mixed-case "Gin" would otherwise
+	// resolve to the gin config while failing every == comparison below —
+	// duplicating the framework in the returned list and merging gin's own
+	// patterns back over itself as a secondary.
+	canonical := make([]string, len(frameworks))
+	for i, fw := range frameworks {
+		canonical[i], _ = core.CanonicalFrameworkName(fw)
+	}
+	frameworks = canonical
+	primary, _ = core.CanonicalFrameworkName(primary)
 	if primary == "" {
 		primary = frameworks[0]
 	} else {
@@ -595,7 +605,7 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 		frameworks = append([]string{primary}, rest...)
 	}
 
-	cfg := defaultFrameworkConfig(primary)
+	cfg := spec.DefaultConfigForFramework(primary)
 	// Additional recognised frameworks (a gin API next to a gorilla/mux admin
 	// router, half-migrated projects): merge each one's receiver-scoped view so
 	// its registrations are traced too. Scoped patterns cannot claim another
@@ -605,7 +615,7 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 		if fw == primary {
 			continue
 		}
-		cfg = spec.MergeFrameworkConfigs(cfg, spec.SecondaryView(defaultFrameworkConfig(fw)))
+		cfg = spec.MergeFrameworkConfigs(cfg, spec.SecondaryView(spec.DefaultConfigForFramework(fw)))
 	}
 	// Layer the stdlib net/http surface under the detected framework: mixed
 	// projects (a framework API plus plain ServeMux ops endpoints in one binary)
@@ -613,27 +623,10 @@ func ComposeFrameworkConfigFrom(frameworks []string, primary string) (*spec.APIS
 	// detection cannot pick it as a second framework. Every merged pattern is
 	// receiver- or package-scoped, which keeps the merge inert for
 	// pure-framework projects.
-	if primary != "net/http" {
+	if primary != core.StdlibFramework {
 		cfg = spec.MergeFrameworkConfigs(cfg, spec.HTTPSecondaryConfig())
 	}
 	return cfg, frameworks
-}
-
-func defaultFrameworkConfig(framework string) *spec.APISpecConfig {
-	switch framework {
-	case "gin":
-		return spec.DefaultGinConfig()
-	case "chi":
-		return spec.DefaultChiConfig()
-	case "echo":
-		return spec.DefaultEchoConfig()
-	case "fiber":
-		return spec.DefaultFiberConfig()
-	case "mux":
-		return spec.DefaultMuxConfig()
-	default:
-		return spec.DefaultHTTPConfig()
-	}
 }
 
 func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {

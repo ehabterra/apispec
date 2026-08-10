@@ -101,3 +101,45 @@ func TestComposeFrameworkConfigSingleFramework(t *testing.T) {
 		t.Fatal("no route patterns composed")
 	}
 }
+
+// TestComposeFrameworkConfigNormalisesPrimaryCase covers user-supplied primary
+// names. The UI posts req.Framework straight into
+// ComposeFrameworkConfigWithPrimary without validating it against the registry,
+// so "Gin" is reachable. The config lookup is case-insensitive, but the dedup
+// and stdlib comparisons are ==, so an unnormalised name used to return the
+// framework twice ([Gin gin]) and merge gin's own patterns back over itself.
+func TestComposeFrameworkConfigNormalisesPrimaryCase(t *testing.T) {
+	for _, primary := range []string{"GIN", "Gin", "gIn"} {
+		cfg, frameworks := ComposeFrameworkConfigFrom([]string{"gin"}, primary)
+
+		if len(frameworks) != 1 || frameworks[0] != "gin" {
+			t.Errorf("primary %q: frameworks = %v, want [gin] — the name was not canonicalised before dedup", primary, frameworks)
+		}
+		base, _ := ComposeFrameworkConfigFrom([]string{"gin"}, "gin")
+		if len(cfg.Framework.RoutePatterns) != len(base.Framework.RoutePatterns) {
+			t.Errorf("primary %q: composed %d route patterns, canonical %q composed %d — the secondary merge ran against itself",
+				primary, len(cfg.Framework.RoutePatterns), "gin", len(base.Framework.RoutePatterns))
+		}
+	}
+
+	// The stdlib name carries a slash and is compared against separately.
+	if _, frameworks := ComposeFrameworkConfigFrom([]string{"net/http"}, "NET/HTTP"); len(frameworks) != 1 {
+		t.Errorf("frameworks = %v, want one entry", frameworks)
+	}
+
+	// An unknown explicit choice is still carried through, not rejected.
+	_, frameworks := ComposeFrameworkConfigFrom([]string{"gin"}, "house-router")
+	if len(frameworks) != 2 || frameworks[0] != "house-router" {
+		t.Errorf("frameworks = %v, want [house-router gin]", frameworks)
+	}
+}
+
+// TestComposeFrameworkConfigFromDoesNotMutateInput guards the canonicalisation
+// pass: the caller's slice is shared (the engine reuses the detected list).
+func TestComposeFrameworkConfigFromDoesNotMutateInput(t *testing.T) {
+	input := []string{"GIN", "MUX"}
+	ComposeFrameworkConfigFrom(input, "")
+	if input[0] != "GIN" || input[1] != "MUX" {
+		t.Errorf("input slice was rewritten in place: %v", input)
+	}
+}
