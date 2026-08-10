@@ -147,8 +147,14 @@ func TestDefaultFrameworkDetectorConfig(t *testing.T) {
 
 func TestFrameworkDetector_PureHelpers(t *testing.T) {
 	fd := NewFrameworkDetector()
-	if got := fd.findCommonPrefix("github.com/a/b", "github.com/a/c"); got != "github.com/a/" {
+	// Whole segments, not bytes: the old byte-wise version returned
+	// "github.com/a/" here and "github.com/acme/ap" for api+app — strings that
+	// are not package paths, then used as HasPrefix membership tests (#282).
+	if got := fd.findCommonPrefix("github.com/a/b", "github.com/a/c"); got != "github.com/a" {
 		t.Errorf("findCommonPrefix = %q", got)
+	}
+	if got := fd.findCommonPrefix("github.com/acme/api", "github.com/acme/app"); got != "github.com/acme" {
+		t.Errorf("findCommonPrefix(api, app) = %q, want github.com/acme", got)
 	}
 	if !fd.contains([]string{"x", "y"}, "y") || fd.contains([]string{"x"}, "z") {
 		t.Error("contains wrong")

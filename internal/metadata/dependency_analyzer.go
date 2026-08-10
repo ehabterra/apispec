@@ -49,8 +49,9 @@ type FrameworkDependencyList struct {
 }
 
 // FrameworkDetectorConfig holds configuration for framework detection.
-// This configuration allows for flexible and customizable framework detection
-// without hardcoded values, making the system adaptable to different project structures.
+// The framework patterns and external prefixes are projections of the registry
+// in internal/core; the project/test/mock patterns below are heuristics that
+// only apply when no module path is known (see FrameworkDetector.modulePath).
 type FrameworkDetectorConfig struct {
 	// FrameworkPatterns maps framework types to their import patterns.
 	// Example: "gin" -> ["github.com/gin-gonic/gin", "github.com/gin-contrib/"]
@@ -80,9 +81,14 @@ type FrameworkDetectorConfig struct {
 
 // FrameworkDetector detects framework dependencies using configurable patterns.
 // It analyzes Go packages to identify framework usage and related dependencies,
-// providing intelligent project package detection without hardcoded values.
+// and classifies each import as belonging to the project or not.
 type FrameworkDetector struct {
 	config FrameworkDetectorConfig
+	// modulePath is the module path from go.mod — the authoritative answer to
+	// "is this package ours". Empty when the caller has no module (a bare
+	// directory, or a test constructing the detector directly), which is the
+	// only case the path heuristics below run in.
+	modulePath string
 	// Package analysis results from go/packages
 	packages map[string]*packages.Package
 	// Dependency graph: package -> its dependencies
@@ -94,6 +100,15 @@ type FrameworkDetector struct {
 // NewFrameworkDetector creates a new framework detector with default configuration
 func NewFrameworkDetector() *FrameworkDetector {
 	return NewFrameworkDetectorWithConfig(DefaultFrameworkDetectorConfig())
+}
+
+// NewFrameworkDetectorForModule creates a detector that classifies project
+// packages by the given module path (as read from go.mod). Pass "" only when
+// there is no module to read — the heuristic fallback is markedly less precise.
+func NewFrameworkDetectorForModule(modulePath string) *FrameworkDetector {
+	fd := NewFrameworkDetector()
+	fd.modulePath = modulePath
+	return fd
 }
 
 // NewFrameworkDetectorWithConfig creates a new framework detector with custom configuration
@@ -591,26 +606,36 @@ func (fd *FrameworkDetector) isProjectRelatedPackage(importPath string) bool {
 	return fd.isIntelligentProjectPackage(importPath)
 }
 
-// isIntelligentProjectPackage uses context-aware analysis to determine if a package belongs to the project
+// isIntelligentProjectPackage determines whether a package belongs to the
+// project. With a module path this is an exact answer; without one it degrades
+// to inference over import paths.
 func (fd *FrameworkDetector) isIntelligentProjectPackage(importPath string) bool {
-	// Get the project root from the analyzed packages
+	// go.mod already says which packages are ours. Guessing when the answer is
+	// available was not merely redundant: for any domain-hosted module the
+	// inference below returns no root at all (the common prefix contains a dot,
+	// and no package path starts with a dot-free segment), so every third-party
+	// import that is not in ExternalPrefixes fell through to
+	// fallbackProjectPackageDetection and was classified as a project package
+	// on the strength of having two slashes in it (issue #282).
+	if fd.modulePath != "" {
+		return importPath == fd.modulePath || strings.HasPrefix(importPath, fd.modulePath+"/")
+	}
+
+	// No module to read. Infer, and say so.
 	projectRoot := fd.detectProjectRoot()
 	if projectRoot == "" {
-		// Fallback to simple heuristics if we can't detect project root
 		return fd.fallbackProjectPackageDetection(importPath)
 	}
-
-	// Check if this package is under the detected project root
-	if strings.HasPrefix(importPath, projectRoot) {
+	if importPath == projectRoot || strings.HasPrefix(importPath, projectRoot+"/") {
 		return true
 	}
-
-	// Check if this package is imported by any of our analyzed packages
-	// This catches packages that are part of the project but not under the main root
+	// Packages that are part of the project but not under the inferred root.
 	return fd.isPackageImportedByProject(importPath)
 }
 
-// detectProjectRoot analyzes the package paths to determine the common project root
+// detectProjectRoot infers a project root as the longest common path prefix of
+// the analysed packages. Only used when no module path is available; see
+// isIntelligentProjectPackage.
 func (fd *FrameworkDetector) detectProjectRoot() string {
 	if len(fd.packages) == 0 {
 		return ""
@@ -637,36 +662,29 @@ func (fd *FrameworkDetector) detectProjectRoot() string {
 		}
 	}
 
-	// If the common prefix is too short or looks like a domain, try a different approach
-	if len(commonPrefix) < 3 || strings.Contains(commonPrefix, ".") {
-		// Look for packages that don't start with a domain (github.com, etc.)
-		for _, path := range packagePaths {
-			parts := strings.Split(path, "/")
-			if len(parts) >= 2 && !strings.Contains(parts[0], ".") {
-				// This looks like a project package (e.g., "myproject/models")
-				return parts[0]
-			}
-		}
+	// A bare host ("github.com") is not a project root — it would make every
+	// package on that host project-related. Anything shorter than one segment
+	// past the host is no root at all.
+	segments := strings.Split(commonPrefix, "/")
+	if commonPrefix == "" || (len(segments) == 1 && strings.Contains(segments[0], ".")) {
 		return ""
 	}
 
 	return commonPrefix
 }
 
-// findCommonPrefix finds the longest common prefix between two strings
+// findCommonPrefix returns the longest common prefix of two import paths,
+// measured in whole path segments. Comparing bytes instead produced strings
+// that are not package paths at all — "github.com/acme/api" and
+// "github.com/acme/app" share the bytes "github.com/acme/ap" — which were then
+// used as a HasPrefix membership test (issue #282).
 func (fd *FrameworkDetector) findCommonPrefix(a, b string) string {
-	minLen := len(a)
-	if len(b) < minLen {
-		minLen = len(b)
+	as, bs := strings.Split(a, "/"), strings.Split(b, "/")
+	n := min(len(as), len(bs))
+	i := 0
+	for ; i < n && as[i] == bs[i]; i++ {
 	}
-
-	for i := 0; i < minLen; i++ {
-		if a[i] != b[i] {
-			return a[:i]
-		}
-	}
-
-	return a[:minLen]
+	return strings.Join(as[:i], "/")
 }
 
 // isPackageImportedByProject checks if a package is imported by any of the analyzed project packages

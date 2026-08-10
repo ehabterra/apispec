@@ -1239,7 +1239,11 @@ func (e *Engine) analyzeFrameworkDependencies(
 	fileToInfo map[*ast.File]*types.Info,
 	fset *token.FileSet,
 ) (*metadata.FrameworkDependencyList, error) {
-	detector := metadata.NewFrameworkDetector()
+	// The module path from go.mod decides which packages are the project's.
+	// GenerateMetadataWithLogger has taken it since it was added; the dependency
+	// analyser was left inferring the same answer from import-path shape, and
+	// got it wrong for every domain-hosted module (issue #282).
+	detector := metadata.NewFrameworkDetectorForModule(e.moduleImportPath())
 	// Configure detector for more precise analysis
 	detector.Configure(false, 2) // Don't include external packages, max 2 levels deep
 	if e.config.SkipHTTPFramework {
