@@ -119,15 +119,50 @@ an unreachable `url`, and a `sha256` that does not match what the URL serves.
 listed there, however it is configured — so appearing in that search means getting
 the formula accepted into core.
 
-### Where apispec stands
+> **Read the notability section below before spending time on this.** apispec
+> does not currently qualify for a self-submission, and the audit rejects the PR
+> automatically before a maintainer looks at it.
 
-| requirement | status |
-|---|---|
-| Notable enough — Homebrew's heuristic is 75 stars **or** 30 forks **or** 30 watchers | **83 stars** — clears it |
-| Open-source with an OSI licence | Apache-2.0 |
-| Stable, versioned releases | v0.5.6, tagged and signed |
-| Maintained, not a duplicate of an existing formula | yes |
-| **Builds from source** | this is the work — see below |
+### Where apispec stands — NOT eligible yet
+
+Homebrew applies a **3× stricter bar when the author submits their own project**
+(`SELF_SUBMISSION_THRESHOLD_MULTIPLIER = 3` in `Library/Homebrew/utils/shared_audits.rb`).
+Self-submission is detected by comparing the PR author with the repo owner, so
+submitting apispec yourself always triggers it.
+
+| | third-party submission | **self-submission** | apispec today |
+|---|---|---|---|
+| forks | 30 | **90** | 4 |
+| watchers | 30 | **90** | 1 |
+| stars | 75 | **225** | 83 |
+
+You need to clear **any one** of the three — the check only rejects when all
+three are below (`forks < x && watchers < y && stars < z`). apispec is below all
+three of the self-submission numbers, so a PR from this account is auto-rejected:
+
+    Self-submitted GitHub repository not notable enough
+    (<90 forks, <90 watchers and <225 stars)
+
+An earlier version of this file quoted the 30/30/75 figures. Those are real, but
+they are the **third-party** bar; quoting them for a self-submission is what
+produced a rejected PR.
+
+### What to do about it
+
+1. **Keep the tap.** It has no notability bar, it already works, and it
+   auto-updates on every release. For most projects this is simply the answer,
+   and nothing about it is second-class — plenty of well-known tools ship this
+   way indefinitely.
+2. **Resubmit when a threshold is met.** 225 stars is the realistic one from 83;
+   90 forks or 90 watchers are further away. Nothing needs to change in the
+   formula — it already builds, tests and audits clean, so resubmission is a
+   re-push.
+3. **A third party submitting** faces the lower 75-star bar, which apispec
+   already clears at 83. Worth knowing, but worth being straight about: that bar
+   exists to measure demand from people who are not the author, so arranging a
+   proxy submitter defeats the signal rather than satisfying it. If someone
+   submits it unprompted because they use it, that is exactly what the rule is
+   looking for.
 
 ### The one blocking difference
 
