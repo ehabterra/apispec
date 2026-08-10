@@ -112,6 +112,13 @@ Nothing else needs editing: the detector, the dependency analyser and the UI all
 project the registry, and `TestFrameworkConfigsCoverRegistry` fails if step 2's
 mapping is missed.
 
+Step 2 is the one part that can be deferred. A registry entry with
+`HasDefaultConfig: false` (as `fasthttp` has today) is classified during
+dependency analysis — so its packages are included in the walk and its imports
+are treated as external — but extracts no routes, and the project is analysed
+with the `net/http` surface instead. That is a useful half-step, not a
+destination: leave a comment on the entry saying so.
+
 If you're unsure about any step, feel free to ask questions or create a draft PR - I'm happy to help!
 
 ## Submitting Changes

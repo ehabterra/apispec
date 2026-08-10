@@ -204,4 +204,52 @@ func TestFrameworksReturnsACopy(t *testing.T) {
 	if Frameworks()[0].Name != original {
 		t.Errorf("mutating the returned slice changed the registry: got %q, want %q", Frameworks()[0].Name, original)
 	}
+
+	// The struct copy is shallow, so the pattern slices need cloning too —
+	// otherwise a caller editing fw.ImportPatterns[0] rewrites the registry
+	// for every later caller.
+	for _, accessor := range []struct {
+		name string
+		get  func() []Framework
+	}{
+		{"Frameworks", Frameworks},
+		{"SourceDetectableFrameworks", SourceDetectableFrameworks},
+	} {
+		got := accessor.get()
+		if len(got) == 0 || len(got[0].ImportPatterns) == 0 {
+			t.Fatalf("%s returned nothing to mutate", accessor.name)
+		}
+		name, want := got[0].Name, got[0].ImportPatterns[0]
+		got[0].ImportPatterns[0] = "mutated"
+
+		for _, fw := range Frameworks() {
+			if fw.Name == name && fw.ImportPatterns[0] != want {
+				t.Errorf("%s: mutating ImportPatterns changed the registry entry %q: got %q, want %q",
+					accessor.name, name, fw.ImportPatterns[0], want)
+			}
+		}
+	}
+}
+
+func TestCanonicalFrameworkName(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    string
+		wantOK  bool
+		comment string
+	}{
+		{"gin", "gin", true, "exact"},
+		{"GIN", "gin", true, "upper"},
+		{"Gin", "gin", true, "title"},
+		{"NET/HTTP", StdlibFramework, true, "the stdlib name carries a slash"},
+		{"house-router", "house-router", false, "unknown names pass through unchanged"},
+		{"", "", false, "empty stays empty"},
+	}
+	for _, tt := range tests {
+		got, ok := CanonicalFrameworkName(tt.in)
+		if got != tt.want || ok != tt.wantOK {
+			t.Errorf("CanonicalFrameworkName(%q) = (%q, %v), want (%q, %v) — %s",
+				tt.in, got, ok, tt.want, tt.wantOK, tt.comment)
+		}
+	}
 }

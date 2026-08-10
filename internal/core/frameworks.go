@@ -14,7 +14,11 @@
 
 package core
 
-import "sort"
+import (
+	"slices"
+	"sort"
+	"strings"
+)
 
 // StdlibFramework is the name reported when no third-party framework import is
 // found. net/http is imported by nearly every Go project and carries no routing
@@ -156,10 +160,21 @@ func FrameworksByDetectionRank() []Framework {
 	return out
 }
 
-// Frameworks returns the registry in declaration order.
+// clone deep-copies f, so a caller that reorders or edits what an accessor
+// returned cannot reach the registry through a shared backing array.
+func (f Framework) clone() Framework {
+	f.SourcePatterns = slices.Clone(f.SourcePatterns)
+	f.ImportPatterns = slices.Clone(f.ImportPatterns)
+	f.ExternalPrefixes = slices.Clone(f.ExternalPrefixes)
+	return f
+}
+
+// Frameworks returns a deep copy of the registry, in declaration order.
 func Frameworks() []Framework {
-	out := make([]Framework, len(frameworks))
-	copy(out, frameworks)
+	out := make([]Framework, 0, len(frameworks))
+	for _, f := range frameworks {
+		out = append(out, f.clone())
+	}
 	return out
 }
 
@@ -169,10 +184,23 @@ func SourceDetectableFrameworks() []Framework {
 	out := make([]Framework, 0, len(frameworks))
 	for _, f := range frameworks {
 		if f.SourceDetectable() {
-			out = append(out, f)
+			out = append(out, f.clone())
 		}
 	}
 	return out
+}
+
+// CanonicalFrameworkName maps a framework name to its registry spelling,
+// case-insensitively, reporting whether the registry knows it. Unknown names
+// are returned unchanged: an explicitly selected framework the registry has
+// never heard of (a house router) is carried through, not rejected.
+func CanonicalFrameworkName(name string) (string, bool) {
+	for _, f := range frameworks {
+		if strings.EqualFold(f.Name, name) {
+			return f.Name, true
+		}
+	}
+	return name, false
 }
 
 // ConfigurableFrameworkNames returns the names of frameworks that ship a
