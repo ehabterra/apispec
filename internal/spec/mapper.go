@@ -97,6 +97,51 @@ func mapGoTypeForRoute(usedTypes map[string]*Schema, goType string, meta *metada
 	return schema
 }
 
+// untypedConstantDefault maps go/types' rendering of an untyped constant to the
+// type it defaults to. Go defines these exactly (spec, "Constants"), so `true`
+// in a response body is a bool and the schema is derived, not guessed. Without
+// this, "untyped bool" is not a primitive by name, so it passed the ref gate
+// and became a component named `untyped-bool` that nothing declares (#326).
+func untypedConstantDefault(goType string) (string, bool) {
+	switch goType {
+	case "untyped bool":
+		return "bool", true
+	case "untyped int":
+		return "int", true
+	case "untyped rune":
+		return "rune", true
+	case "untyped float":
+		return "float64", true
+	case "untyped complex":
+		return "complex128", true
+	case "untyped string":
+		return "string", true
+	}
+	// "untyped nil" has no default type; leave it to the caller.
+	return "", false
+}
+
+// isContainerCoreName reports whether a type's core name is itself a container
+// ("[2]int64", "map[string]int") rather than a declarable name.
+//
+// A container has no package, so a qualified one — `pkg-->[2]int64` — is
+// mis-qualified (issue #329) and its shape is invisible to a prefix test on the
+// whole key, which is how a fixed-size array became a component. Reading the
+// parsed core is what makes the check survive that.
+func isContainerCoreName(name string) bool {
+	return strings.HasPrefix(name, "[") || strings.Contains(name, "map[")
+}
+
+// unqualifyContainer drops a package qualifier from a container type, so the
+// shape is visible to the structural handling below.
+func unqualifyContainer(goType string) string {
+	core := typemodel.Parse(goType).Core()
+	if core == nil || core.Pkg == "" || !isContainerCoreName(core.Name) {
+		return goType
+	}
+	return strings.Replace(goType, core.Pkg+TypeSep, "", 1)
+}
+
 // shouldPromoteToComponent reports whether an inline schema should be
 // promoted into a named component and replaced with a $ref at the call
 // site. Three reasons it shouldn't:
@@ -2678,6 +2723,16 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		visitedTypes = map[string]bool{}
 	}
 
+	// Normalise two shapes that are not declarable before anything below reads
+	// the string: an untyped constant becomes the type it defaults to, and a
+	// mis-qualified container loses the package it was never in. Both otherwise
+	// reach the switch below as opaque names and come out as components
+	// (issue #326).
+	if def, ok := untypedConstantDefault(goType); ok {
+		goType = def
+	}
+	goType = unqualifyContainer(goType)
+
 	isPrimitive := metadata.IsPrimitiveType(goType)
 
 	derivedGoType := strings.TrimPrefix(goType, "*")
@@ -3085,6 +3140,19 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 func canAddRefSchemaForType(key string) bool {
 	if metadata.IsPrimitiveType(key) || strings.HasPrefix(key, "[]") || strings.Contains(key, "map[") {
 		return false
+	}
+
+	// The prefix tests above read the whole key, which a package qualifier
+	// defeats: `pkg-->[2]int64` starts with neither "[]" nor "map[". Judge the
+	// parsed core instead — a container or an untyped constant has no name to
+	// register a component under, whatever it is qualified with (issue #326).
+	if core := typemodel.Parse(key).Core(); core != nil {
+		if _, untyped := untypedConstantDefault(core.Name); untyped {
+			return false
+		}
+		if isContainerCoreName(core.Name) {
+			return false
+		}
 	}
 
 	// Exclude _nested types from reference schema generation
