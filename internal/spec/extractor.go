@@ -977,6 +977,19 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 // while another loses it to an error status — so the union with
 // informative-wins slot competition keeps extraction order-independent.
 func mergeRouteExtraction(existing, next *RouteInfo) {
+	// UsedTypes is a union, not a preference: it is the record of which types
+	// the extraction referenced, and component generation emits a schema for
+	// exactly those. A slot lost here is a $ref with no component (issue #325),
+	// which is why it merges even when the schema slots below prefer the
+	// existing extraction.
+	for name, schema := range next.UsedTypes {
+		if existing.UsedTypes == nil {
+			existing.UsedTypes = make(map[string]*Schema, len(next.UsedTypes))
+		}
+		if cur, ok := existing.UsedTypes[name]; !ok || cur == nil {
+			existing.UsedTypes[name] = schema
+		}
+	}
 	for slot, resp := range next.Response {
 		existing.Response[slot] = preferResponseInfo(existing.Response[slot], resp)
 	}
@@ -2555,7 +2568,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			// `additionalProperties: {type: object}` (issue #295).
 			schema = lit
 		} else {
-			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+			schema = mapGoTypeForRoute(route.UsedTypes, bodyType, route.Metadata, r.cfg)
 		}
 
 		// Wrapper specialisation: when the body resolves to a struct
@@ -3455,7 +3468,7 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 			}
 		}
 
-		schema, _ := mapGoTypeToOpenAPISchema(route.UsedTypes, paramType, route.Metadata, p.cfg, nil)
+		schema := mapGoTypeForRoute(route.UsedTypes, paramType, route.Metadata, p.cfg)
 		param.Schema = schema
 	}
 

@@ -1146,7 +1146,7 @@ func (r *RequestPatternMatcherImpl) ExtractRequest(node TrackerNodeInterface, ro
 		if schema != nil {
 			reqInfo.OneOfTypes = oneOfTypes
 		} else {
-			schema, _ = mapGoTypeToOpenAPISchema(route.UsedTypes, bodyType, route.Metadata, r.cfg, nil)
+			schema = mapGoTypeForRoute(route.UsedTypes, bodyType, route.Metadata, r.cfg)
 		}
 		reqInfo.Schema = schema
 	}
