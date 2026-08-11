@@ -32,6 +32,22 @@ func TestTestdata_NamedUnderlyingTypes(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "named_underlying_types", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
 
+	// Routes and methods, so a fixture that stopped resolving its handlers
+	// cannot pass the schema assertions by documenting nothing.
+	for _, tc := range []struct{ path, method string }{
+		{"/bundle", "GET"},
+		{"/points", "GET"},
+	} {
+		item, ok := out.Paths[tc.path]
+		if !ok {
+			t.Errorf("path %q missing; have %v", tc.path, mapPathKeys(out.Paths))
+			continue
+		}
+		if opFor(item, tc.method) == nil {
+			t.Errorf("%s %s: expected operation, missing", tc.method, tc.path)
+		}
+	}
+
 	comp := func(suffix string) *spec.Schema {
 		t.Helper()
 		if out.Components == nil {
@@ -91,6 +107,16 @@ func TestTestdata_NamedUnderlyingTypes(t *testing.T) {
 		for name := range out.Components.Schemas {
 			if name == "Point" {
 				t.Error(`a bare "Point" component exists alongside the qualified one: the target was not qualified`)
+			}
+		}
+	})
+
+	// None of these is external, so none should fall back to the
+	// unresolved-external placeholder (#325's honest-but-empty shape).
+	t.Run("no unresolved placeholders", func(t *testing.T) {
+		for name, s := range out.Components.Schemas {
+			if strings.Contains(s.Description, "External or unresolved type") {
+				t.Errorf("component %q resolved to the unresolved-external placeholder: %s", name, s.Description)
 			}
 		}
 	})

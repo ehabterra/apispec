@@ -14,7 +14,12 @@
 
 package spec
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
 
 // TestUntypedConstantDefault pins the mapping to the Go spec's default types
 // for untyped constants. These are defined by the language, so each case is
@@ -186,4 +191,56 @@ func TestPatternMatcherGetPattern(t *testing.T) {
 	if gotSec.CallRegex != secPattern.CallRegex {
 		t.Errorf("security GetPattern = %+v, want the pattern it was built with", gotSec)
 	}
+}
+
+// TestGenerateAliasSchemaQualifiesTarget covers the resolution half of #333: a
+// declaration's target is recorded as written, so a named type it refers to
+// arrives bare and must be qualified with the DECLARING package. Without it the
+// element resolves to a second component under the unqualified name — a bug
+// this fix shipped for one build.
+func TestGenerateAliasSchemaQualifiesTarget(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	pkg := "example.com/app"
+
+	newType := func(name, kind, target string) *metadata.Type {
+		return &metadata.Type{
+			Name:   meta.StringPool.Get(name),
+			Pkg:    meta.StringPool.Get(pkg),
+			Kind:   meta.StringPool.Get(kind),
+			Target: meta.StringPool.Get(target),
+		}
+	}
+
+	t.Run("named slice of a named type qualifies the element", func(t *testing.T) {
+		schema, _ := generateAliasSchema(map[string]*Schema{}, newType("Nested", "other", "[]Point"), meta, DefaultAPISpecConfig(), nil)
+		if schema == nil || schema.Type != "array" || schema.Items == nil {
+			t.Fatalf("Nested = %+v, want an array", schema)
+		}
+		if schema.Items.Ref == "" {
+			t.Fatalf("element = %+v, want a $ref to the named element type", schema.Items)
+		}
+		if !strings.Contains(schema.Items.Ref, "example_com_app_Point") {
+			t.Errorf("element $ref = %q, want it qualified with the declaring package %q", schema.Items.Ref, pkg)
+		}
+	})
+
+	t.Run("a primitive target is untouched", func(t *testing.T) {
+		schema, _ := generateAliasSchema(map[string]*Schema{}, newType("Count", "alias", "int"), meta, DefaultAPISpecConfig(), nil)
+		if schema == nil || schema.Type != "integer" {
+			t.Errorf("Count = %+v, want an integer schema with no qualification applied", schema)
+		}
+	})
+
+	t.Run("container targets resolve structurally", func(t *testing.T) {
+		for target, want := range map[string]string{
+			"[]string":       "array",
+			"[2]int64":       "array",
+			"map[string]int": "object",
+		} {
+			schema, _ := generateAliasSchema(map[string]*Schema{}, newType("T", "other", target), meta, DefaultAPISpecConfig(), nil)
+			if schema == nil || schema.Type != want {
+				t.Errorf("target %q = %+v, want type %q", target, schema, want)
+			}
+		}
+	})
 }
