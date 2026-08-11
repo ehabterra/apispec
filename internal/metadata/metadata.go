@@ -1802,7 +1802,7 @@ func astFileFromFn(pkgName, fnName, recvType string, pkgs map[string]map[string]
 				funcFallback = pkgs[pkgName][fileName]
 			}
 		}
-		for _, typeName := range slices.Sorted(maps.Keys(f.Types)) {
+		for _, typeName := range metadata.SortedTypeNames(pkgName, fileName) {
 			for _, method := range f.Types[typeName].Methods {
 				if metadata.StringPool.GetString(method.Name) != fnName {
 					continue

@@ -1114,10 +1114,8 @@ func typeByName(pkgName, typeName string, meta *metadata.Metadata) *metadata.Typ
 	}
 
 	if pkgName != "" && typeName != "" {
-		if pkg, exists := meta.Packages[pkgName]; exists {
-			if typ := typeInPackage(pkg, typeName); typ != nil {
-				return typ
-			}
+		if typ := meta.TypeInPackage(pkgName, typeName); typ != nil {
+			return typ
 		}
 	}
 
@@ -1126,27 +1124,7 @@ func typeByName(pkgName, typeName string, meta *metadata.Metadata) *metadata.Typ
 	// runs — otherwise map iteration would pick a different package's type and
 	// flip the schema between runs.
 	for _, pkg := range meta.SortedPackageNames() {
-		if typ := typeInPackage(meta.Packages[pkg], typeName); typ != nil {
-			return typ
-		}
-	}
-	return nil
-}
-
-// typeInPackage returns the named type from a package, scanning files in stable
-// order (Files is a map).
-func typeInPackage(pkg *metadata.Package, typeName string) *metadata.Type {
-	if pkg == nil {
-		return nil
-	}
-	// A type lives in exactly one file, but iterate deterministically anyway.
-	var fileNames []string
-	for fileName := range pkg.Files {
-		fileNames = append(fileNames, fileName)
-	}
-	sort.Strings(fileNames)
-	for _, fileName := range fileNames {
-		if typ, exists := pkg.Files[fileName].Types[typeName]; exists {
+		if typ := meta.TypeInPackage(pkg, typeName); typ != nil {
 			return typ
 		}
 	}
