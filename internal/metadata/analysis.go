@@ -107,7 +107,18 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 	return "", "", ""
 }
 
-// findEnclosingFunctionLiteral recursively searches for the innermost function literal containing the position
+// findEnclosingFunctionLiteral returns the innermost function literal
+// containing pos, or nil when pos is not inside one.
+//
+// The walk prunes: a child's range nests inside its parent's, so a subtree
+// whose range excludes pos cannot contain it anywhere below either. Descending
+// regardless visited every node of the file for every call expression, which
+// is O(calls x file size) and measured at 13% of a full run on this repo
+// (issue #225). Pruned, each query walks one root-to-leaf path.
+//
+// Nodes with invalid positions are descended into rather than pruned — their
+// range says nothing about their children — which keeps the result identical
+// to the exhaustive walk.
 func findEnclosingFunctionLiteral(file *ast.File, pos token.Pos) *ast.FuncLit {
 	var found *ast.FuncLit
 
@@ -116,13 +127,15 @@ func findEnclosingFunctionLiteral(file *ast.File, pos token.Pos) *ast.FuncLit {
 			return true
 		}
 
-		// Check if this node contains our position
-		if n.Pos()+1 <= pos && pos <= n.End()-1 {
-			if funcLit, ok := n.(*ast.FuncLit); ok {
-				// This is a function literal that contains our position
-				// Keep the innermost one (most recent)
-				found = funcLit
-			}
+		if n.Pos()+1 > pos || pos > n.End()-1 {
+			// Outside this node. Prune only when the range is trustworthy.
+			return !n.Pos().IsValid() || !n.End().IsValid()
+		}
+
+		if funcLit, ok := n.(*ast.FuncLit); ok {
+			// Pre-order, so ancestors arrive outermost first and the last
+			// literal recorded is the innermost.
+			found = funcLit
 		}
 
 		return true
