@@ -83,7 +83,7 @@ func mapLiteralSchema(arg *metadata.CallArgument, resolve resolveValueType, used
 			props[key] = &Schema{}
 			continue
 		}
-		s, _ := mapGoTypeToOpenAPISchema(usedTypes, valueType, meta, cfg, nil)
+		s := mapGoTypeForRoute(usedTypes, valueType, meta, cfg)
 		if s == nil {
 			props[key] = &Schema{}
 			continue

@@ -73,7 +73,7 @@ func oneOfSchemaFor(usedTypes map[string]*Schema, concretes []string, meta *meta
 	}
 	members := make([]*Schema, 0, len(concretes))
 	for _, ct := range concretes {
-		schema, _ := mapGoTypeToOpenAPISchema(usedTypes, ct, meta, cfg, nil)
+		schema := mapGoTypeForRoute(usedTypes, ct, meta, cfg)
 		if schema == nil {
 			continue
 		}

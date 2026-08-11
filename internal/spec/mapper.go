@@ -67,6 +67,36 @@ func unresolvedExternalPlaceholder(name string) *Schema {
 	}
 }
 
+// mapGoTypeForRoute maps a Go type for a route's request/response/parameter and
+// keeps the nested schemas the mapping produced.
+//
+// mapGoTypeToOpenAPISchema returns two things: the schema for goType, and the
+// components that schema's $refs point at — including the placeholder it
+// registers for a type it could not resolve. Callers that took the schema and
+// discarded the map emitted references to components nothing then created, so a
+// field of a dependency type (jwt.RegisteredClaims, timestamppb.Timestamp,
+// url.Values) left a $ref that no consumer can resolve (issue #325).
+//
+// Recording them in route.UsedTypes is what carries them to component
+// generation: collectUsedTypesFromRoutes merges that map, and generateSchemas
+// emits a real schema for a declared type or the unresolved placeholder for one
+// that is not.
+func mapGoTypeForRoute(usedTypes map[string]*Schema, goType string, meta *metadata.Metadata, cfg *APISpecConfig) *Schema {
+	schema, nested := mapGoTypeToOpenAPISchema(usedTypes, goType, meta, cfg, nil)
+	for name, s := range nested {
+		if s == nil {
+			continue
+		}
+		// Only record what is missing: an entry already present was resolved by
+		// the generation pass itself and must not be overwritten by a nested
+		// (possibly placeholder) view of the same type.
+		if existing, ok := usedTypes[name]; !ok || existing == nil {
+			usedTypes[name] = s
+		}
+	}
+	return schema
+}
+
 // shouldPromoteToComponent reports whether an inline schema should be
 // promoted into a named component and replaced with a $ref at the call
 // site. Three reasons it shouldn't:
