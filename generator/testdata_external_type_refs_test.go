@@ -35,9 +35,19 @@ func TestTestdata_ExternalTypeRefs(t *testing.T) {
 	// document and asserts a component exists for it.
 	noDanglingRefs(t, out)
 
-	for _, path := range []string{"/accounts/{id}", "/embedded"} {
-		if _, ok := out.Paths[path]; !ok {
-			t.Errorf("path %q missing; have %v", path, mapPathKeys(out.Paths))
+	// Method as well as path: the fixture registers each handler under one
+	// verb, and a route whose method was lost still produces a path entry.
+	for _, tc := range []struct{ path, method string }{
+		{"/accounts/{id}", "GET"},
+		{"/embedded", "POST"},
+	} {
+		item, ok := out.Paths[tc.path]
+		if !ok {
+			t.Errorf("path %q missing; have %v", tc.path, mapPathKeys(out.Paths))
+			continue
+		}
+		if opFor(item, tc.method) == nil {
+			t.Errorf("%s %s: expected operation, missing", tc.method, tc.path)
 		}
 	}
 
