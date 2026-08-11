@@ -1285,8 +1285,10 @@ func TestSweepFrameworkDetectorHelpers(t *testing.T) {
 		t.Errorf("disabled gin still detected: %q", got)
 	}
 
-	// detectProjectRoot: empty detector, then divergent paths where the
-	// non-domain path names the root.
+	// detectProjectRoot: empty detector, then divergent paths sharing no
+	// segment. Picking "abc" here because it is the one path without a dot was
+	// a guess (#282); with no shared root the honest answer is none, and
+	// classification falls through to the documented heuristics.
 	fd3 := NewFrameworkDetector()
 	if got := fd3.detectProjectRoot(); got != "" {
 		t.Errorf("empty detector root: %q", got)
@@ -1294,8 +1296,16 @@ func TestSweepFrameworkDetectorHelpers(t *testing.T) {
 	fd3.packages["abc/x"] = nil
 	fd3.packages["zzz.io/y"] = nil
 	fd3.packages["qqq.io/z"] = nil
-	if got := fd3.detectProjectRoot(); got != "abc" {
+	if got := fd3.detectProjectRoot(); got != "" {
 		t.Errorf("divergent root: %q", got)
+	}
+	// Packages that do share a root now resolve it, including domain-hosted
+	// ones — the old "looks like a domain" branch discarded exactly those.
+	fd3b := NewFrameworkDetector()
+	fd3b.packages["github.com/acme/x/api"] = nil
+	fd3b.packages["github.com/acme/x/app"] = nil
+	if got := fd3b.detectProjectRoot(); got != "github.com/acme/x" {
+		t.Errorf("shared root: %q, want github.com/acme/x", got)
 	}
 
 	// fallbackProjectPackageDetection heuristics.
