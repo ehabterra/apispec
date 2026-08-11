@@ -208,8 +208,16 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 					argType = strings.TrimPrefix(argType, "*")
 					argType = strings.TrimPrefix(argType, arg.GetPkg()+separator)
 
-					// Add only if the pkg is deattached from the type
-					if !strings.Contains(argType, "/") {
+					// Re-attach the package only when the type does not already
+					// carry one of its own. Asking the parsed type is exact;
+					// the previous test — "the string contains no /" — was a
+					// stand-in for the same question that answers wrongly for a
+					// SHORT qualified name. `time.Time` and `otherpkg.User` are
+					// already qualified but have no slash, so they were
+					// re-qualified with the package the argument appears in,
+					// producing names like `<caller pkg>-->time.Time` that match
+					// no metadata entry and no externalTypes key (issue #329).
+					if core := typemodel.Parse(argType).Core(); core == nil || core.Pkg == "" {
 						// Re-add package prefix
 						argType = arg.GetPkg() + TypeSep + argType
 					}
