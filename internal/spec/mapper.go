@@ -1265,7 +1265,16 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 	case "alias":
 		schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg, visitedTypes)
 	default:
-		schema = &Schema{Type: "object"}
+		// A named type whose underlying type is a container (type IDs []string,
+		// type Point [2]int64, type Lookup map[string]int) carries that type as
+		// its target and resolves to its shape, exactly as a named primitive
+		// does. Only a declaration whose underlying type was not recorded falls
+		// through to an opaque object (issue #333).
+		if underlying := getStringFromPool(meta, typ.Target); underlying != "" {
+			schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg, visitedTypes)
+		} else {
+			schema = &Schema{Type: "object"}
+		}
 	}
 
 	markUsedType(usedTypes, key, schema)
@@ -1570,6 +1579,14 @@ func generateInterfaceSchema() *Schema {
 // generateAliasSchema generates a schema for an alias type
 func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
+
+	// The target is recorded as written in the source, so a named type it
+	// refers to arrives bare: `type Nested []Point` targets "[]Point", not
+	// "[]pkg.Point". Qualify it with the declaring package — the same call the
+	// struct-field path makes — or the element resolves to a second, duplicate
+	// component under the unqualified name. Inert for a primitive target
+	// (type Count int), which is why the alias path never needed it before.
+	underlyingType = qualifyFieldType(underlyingType, getStringFromPool(meta, typ.Pkg))
 
 	// Get the original type name for enum detection
 	originalTypeName := getStringFromPool(meta, typ.Name)
