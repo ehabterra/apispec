@@ -2432,6 +2432,31 @@ func TestCanAddRefSchemaForTypeWithMap(t *testing.T) {
 			expected: false,
 		},
 		{
+			// A container carries no package, so a qualified one is
+			// mis-qualified (#329) — and the qualifier hid the shape from the
+			// prefix test, which is how a fixed-size array became a component
+			// (#326).
+			name:     "fixed-size array with package prefix",
+			key:      "github.com/x/y" + TypeSep + "[2]int64",
+			expected: false,
+		},
+		{
+			name:     "fixed-size array",
+			key:      "[2]int64",
+			expected: false,
+		},
+		{
+			name:     "slice with package prefix",
+			key:      "github.com/x/y" + TypeSep + "[]string",
+			expected: false,
+		},
+		{
+			// An untyped constant has a default type; it is not a name.
+			name:     "untyped constant",
+			key:      "untyped bool",
+			expected: false,
+		},
+		{
 			name:     "custom type",
 			key:      "CustomType",
 			expected: true,
