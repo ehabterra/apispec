@@ -35,6 +35,7 @@ import (
 	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/pkg/patterns"
 	"github.com/ehabterra/apispec/spec"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
 )
@@ -999,13 +1000,13 @@ func (e *Engine) moduleImportPath() string {
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "module"))
-		}
-	}
-	return ""
+	// Parsed with the module-file grammar rather than by trimming a "module "
+	// prefix: the hand-rolled version missed a tab-separated directive
+	// entirely, and kept the trailing // comment or the surrounding quotes when
+	// present. Each of those silently mis-answers "which packages are ours" —
+	// an empty path reverts to the heuristics, and a path with a comment
+	// glued on matches no package at all.
+	return modfile.ModulePath(data)
 }
 
 // matchesPattern checks if a path matches a gitignore-style pattern

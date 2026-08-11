@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/spec"
@@ -77,11 +78,32 @@ func TestTestdata_ModulePrefixPackages(t *testing.T) {
 		}
 	}
 
-	// The request body on POST /widgets resolves through the api package's own
-	// type — a component, not an empty schema.
-	if item, ok := out.Paths["/widgets"]; ok {
-		if op := opFor(item, "POST"); op != nil && op.RequestBody == nil {
-			t.Error("POST /widgets: request body missing")
-		}
+	// The request body on POST /widgets must resolve through the api package's
+	// own Widget type — the api package is one of the two whose classification
+	// this fix changes, so a body that degraded to an empty schema would mean
+	// the package stopped being analysed.
+	item, ok := out.Paths["/widgets"]
+	if !ok {
+		return
+	}
+	op := opFor(item, "POST")
+	if op == nil || op.RequestBody == nil {
+		t.Fatal("POST /widgets: request body missing")
+	}
+	mt, ok := op.RequestBody.Content["application/json"]
+	if !ok || mt.Schema == nil {
+		t.Fatal("POST /widgets: no application/json schema")
+	}
+	if !strings.HasSuffix(mt.Schema.Ref, "Widget") {
+		t.Fatalf("POST /widgets: body should $ref the api package's Widget, got ref=%q type=%q", mt.Schema.Ref, mt.Schema.Type)
+	}
+	// noDanglingRefs covers reachable refs generally; name the component here so
+	// the failure says which type went missing.
+	name := mt.Schema.Ref[strings.LastIndex(mt.Schema.Ref, "/")+1:]
+	if out.Components == nil || out.Components.Schemas == nil {
+		t.Fatal("POST /widgets: body $refs a component but the spec has no components")
+	}
+	if _, ok := out.Components.Schemas[name]; !ok {
+		t.Errorf("POST /widgets: body $refs %q, which is not in components.schemas", name)
 	}
 }
