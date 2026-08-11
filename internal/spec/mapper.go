@@ -125,11 +125,16 @@ func untypedConstantDefault(goType string) (string, bool) {
 // ("[2]int64", "map[string]int") rather than a declarable name.
 //
 // A container has no package, so a qualified one — `pkg-->[2]int64` — is
-// mis-qualified (issue #329) and its shape is invisible to a prefix test on the
-// whole key, which is how a fixed-size array became a component. Reading the
-// parsed core is what makes the check survive that.
+// mis-qualified (issue #329), and the qualifier hides the shape from a test on
+// the whole key: that is how a fixed-size array became a component. Parsing the
+// core name recovers the shape structurally, so the judgement is the type model's
+// rather than a prefix guess (golden rule #2).
 func isContainerCoreName(name string) bool {
-	return strings.HasPrefix(name, "[") || strings.Contains(name, "map[")
+	switch typemodel.Parse(name).Kind {
+	case typemodel.KindSlice, typemodel.KindArray, typemodel.KindMap:
+		return true
+	}
+	return false
 }
 
 // unqualifyContainer drops a package qualifier from a container type, so the
@@ -3083,7 +3088,9 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	switch goType {
 	case "string":
 		return &Schema{Type: "string"}, schemas
-	case "int", "int8", "int16", "int32", "int64":
+	case "int", "int8", "int16", "int32", "int64", "rune":
+		// rune is an alias for int32, so the mapping is exact. Without it the
+		// name fell through to the default and produced no schema at all.
 		return &Schema{Type: "integer"}, schemas
 	case "uint", "uint8", "uint16", "uint32", "uint64", "byte":
 		return &Schema{Type: "integer", Minimum: 0}, schemas
