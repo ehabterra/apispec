@@ -354,3 +354,32 @@ func TestLookupCachesAreRaceFree(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestLookupCachesTolerateNilFiles covers a nil entry in Package.Files. Every
+// reader of that map in the spec layer skips nil, and the index build here
+// does too — the shape fingerprint did not, so computing it panicked before a
+// single lookup could run. Metadata is deserialised from YAML as well as
+// generated, so a package need not be as well-formed as the generator makes it.
+func TestLookupCachesTolerateNilFiles(t *testing.T) {
+	present := &Type{Name: 1}
+	m := &Metadata{StringPool: NewStringPool()}
+	m.Packages = map[string]*Package{
+		"app": {Files: map[string]*File{
+			"a.go": {Types: map[string]*Type{"Present": present}},
+			"b.go": nil,
+		}},
+	}
+
+	if got := m.TypeInPackage("app", "Present"); got != present {
+		t.Errorf("TypeInPackage = %p, want %p", got, present)
+	}
+	if got := m.TypeInPackage("app", "Absent"); got != nil {
+		t.Errorf("absent type = %p, want nil", got)
+	}
+	if got := m.SortedTypeNames("app", "b.go"); got != nil {
+		t.Errorf("SortedTypeNames of a nil file = %v, want nil", got)
+	}
+	if got := m.SortedTypeNames("app", "a.go"); !reflect.DeepEqual(got, []string{"Present"}) {
+		t.Errorf("SortedTypeNames = %v, want [Present]", got)
+	}
+}

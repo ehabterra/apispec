@@ -355,6 +355,13 @@ type pkgShape struct{ files, types int }
 func shapeOf(pkg *Package) pkgShape {
 	shape := pkgShape{files: len(pkg.Files)}
 	for _, f := range pkg.Files {
+		// A nil file entry counts towards files but has no types — the same
+		// guard the index build below applies, and the convention every reader
+		// of Package.Files follows (a deserialised metadata.yaml need not be
+		// as well-formed as a generated one).
+		if f == nil {
+			continue
+		}
 		shape.types += len(f.Types)
 	}
 	return shape
