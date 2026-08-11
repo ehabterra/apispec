@@ -98,3 +98,92 @@ func TestUnqualifyContainer(t *testing.T) {
 		}
 	}
 }
+
+// TestMapGoTypeForRoute covers the recording that makes a route's $refs
+// resolvable (#325): the nested schemas a mapping produces are carried into
+// usedTypes, which is what component generation reads.
+func TestMapGoTypeForRoute(t *testing.T) {
+	cfg := DefaultAPISpecConfig()
+
+	t.Run("records the components the schema references", func(t *testing.T) {
+		usedTypes := map[string]*Schema{}
+		schema := mapGoTypeForRoute(usedTypes, "net/url.Values", nil, cfg)
+		if schema == nil {
+			t.Fatal("no schema returned")
+		}
+		// An unresolvable type registers a placeholder; that placeholder is the
+		// target of the $ref and must reach usedTypes.
+		if len(usedTypes) == 0 {
+			t.Fatal("nothing recorded: a $ref would have no component")
+		}
+		if _, ok := usedTypes["net/url.Values"]; !ok {
+			t.Errorf("net/url.Values not recorded; got %v", usedTypeKeys(usedTypes))
+		}
+	})
+
+	t.Run("does not overwrite an entry the generation pass resolved", func(t *testing.T) {
+		resolved := &Schema{Type: "object", Description: "resolved by the generation pass"}
+		usedTypes := map[string]*Schema{"net/url.Values": resolved}
+
+		mapGoTypeForRoute(usedTypes, "net/url.Values", nil, cfg)
+
+		if usedTypes["net/url.Values"] != resolved {
+			t.Errorf("an already-resolved entry was replaced by a nested view: %+v", usedTypes["net/url.Values"])
+		}
+	})
+
+	t.Run("fills an entry that is present but nil", func(t *testing.T) {
+		usedTypes := map[string]*Schema{"net/url.Values": nil}
+
+		mapGoTypeForRoute(usedTypes, "net/url.Values", nil, cfg)
+
+		if usedTypes["net/url.Values"] == nil {
+			t.Error("a nil placeholder entry should be filled, otherwise the component is never emitted")
+		}
+	})
+
+	t.Run("a primitive records nothing", func(t *testing.T) {
+		usedTypes := map[string]*Schema{}
+		schema := mapGoTypeForRoute(usedTypes, "string", nil, cfg)
+		if schema == nil || schema.Type != "string" {
+			t.Fatalf("string = %+v, want a string schema", schema)
+		}
+		if len(usedTypes) != 0 {
+			t.Errorf("a primitive needs no component, but recorded %v", usedTypeKeys(usedTypes))
+		}
+	})
+}
+
+func usedTypeKeys(m map[string]*Schema) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// TestPatternMatcherGetPattern covers the PatternMatcher accessor on the two
+// implementations that had none. It is required by the interface, so it cannot
+// simply be deleted as dead code — but it is worth noting that nothing in the
+// production path calls it, which is the shape issue #283 describes.
+func TestPatternMatcherGetPattern(t *testing.T) {
+	respPattern := ResponsePattern{CallRegex: "^JSON$"}
+	resp := &ResponsePatternMatcherImpl{pattern: respPattern}
+	got, ok := resp.GetPattern().(ResponsePattern)
+	if !ok {
+		t.Fatalf("response GetPattern returned %T, want ResponsePattern", resp.GetPattern())
+	}
+	if got.CallRegex != respPattern.CallRegex {
+		t.Errorf("response GetPattern = %+v, want the pattern it was built with", got)
+	}
+
+	secPattern := SecurityPattern{CallRegex: "^Use$"}
+	sec := &SecurityPatternMatcherImpl{pattern: secPattern}
+	gotSec, ok := sec.GetPattern().(SecurityPattern)
+	if !ok {
+		t.Fatalf("security GetPattern returned %T, want SecurityPattern", sec.GetPattern())
+	}
+	if gotSec.CallRegex != secPattern.CallRegex {
+		t.Errorf("security GetPattern = %+v, want the pattern it was built with", gotSec)
+	}
+}
