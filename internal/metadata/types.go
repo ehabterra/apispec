@@ -167,7 +167,20 @@ type Metadata struct {
 	sortedFiles      map[string][]string
 	sortedFilesFor   map[string]int
 	sortedFilesMutex sync.RWMutex
-	Args             map[string][]*CallGraphEdge `yaml:"-"`
+	// sortedTypeNames caches each FILE's type names in sorted order, with the
+	// type count they were sorted at — the same shape and the same reason as
+	// sortedFiles above, for the inner loop of astFileFromFn.
+	sortedTypeNames      map[fileKey][]string
+	sortedTypeNamesFor   map[fileKey]int
+	sortedTypeNamesMutex sync.RWMutex
+	// typeIndex maps a package's declared type names to their declaration,
+	// resolved once in sorted-file order so the answer matches a scan.
+	// pkgShape records the (files, types) the index was built at, since these
+	// lookups can run while metadata is still being assembled.
+	typeIndex      map[string]map[string]*Type
+	typeIndexFor   map[string]pkgShape
+	typeIndexMutex sync.RWMutex
+	Args           map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
 
@@ -330,6 +343,121 @@ func (m *Metadata) SortedFileNames(pkgName string) []string {
 	m.sortedFiles[pkgName] = names
 	m.sortedFilesFor[pkgName] = len(pkg.Files)
 	return names
+}
+
+// fileKey identifies one file within one package.
+type fileKey struct{ pkg, file string }
+
+// pkgShape is a cheap fingerprint of a package's contents: enough to notice
+// that more was recorded since a derived index was built, without hashing it.
+type pkgShape struct{ files, types int }
+
+func shapeOf(pkg *Package) pkgShape {
+	shape := pkgShape{files: len(pkg.Files)}
+	for _, f := range pkg.Files {
+		// A nil file entry counts towards files but has no types — the same
+		// guard the index build below applies, and the convention every reader
+		// of Package.Files follows (a deserialised metadata.yaml need not be
+		// as well-formed as a generated one).
+		if f == nil {
+			continue
+		}
+		shape.types += len(f.Types)
+	}
+	return shape
+}
+
+// SortedTypeNames returns a file's type names in sorted order.
+//
+// Like SortedFileNames, the order IS the determinism guarantee — astFileFromFn
+// picks the first method matching a name, so the order decides which file (and
+// therefore which types.Info) a lookup resolves to. This caches the order; it
+// never changes it.
+func (m *Metadata) SortedTypeNames(pkgName, fileName string) []string {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	f, ok := pkg.Files[fileName]
+	if !ok || f == nil {
+		return nil
+	}
+
+	key := fileKey{pkg: pkgName, file: fileName}
+	m.sortedTypeNamesMutex.RLock()
+	names, cached := m.sortedTypeNames[key]
+	builtFor := m.sortedTypeNamesFor[key]
+	m.sortedTypeNamesMutex.RUnlock()
+	if cached && builtFor == len(f.Types) {
+		return names
+	}
+
+	m.sortedTypeNamesMutex.Lock()
+	defer m.sortedTypeNamesMutex.Unlock()
+	if names, ok := m.sortedTypeNames[key]; ok && m.sortedTypeNamesFor[key] == len(f.Types) {
+		return names // another goroutine won the race
+	}
+	names = slices.Sorted(maps.Keys(f.Types))
+	if m.sortedTypeNames == nil {
+		m.sortedTypeNames = make(map[fileKey][]string)
+		m.sortedTypeNamesFor = make(map[fileKey]int)
+	}
+	m.sortedTypeNames[key] = names
+	m.sortedTypeNamesFor[key] = len(f.Types)
+	return names
+}
+
+// TypeInPackage returns the type a package declares under typeName, or nil.
+//
+// Equivalent to scanning the package's files in sorted order and taking the
+// first declaration of that name, which is what callers did per lookup —
+// allocating and sorting every file name each time, for every package, on a
+// path that falls back to scanning all packages (issue #322). The scan order is
+// preserved exactly: the index is filled in sorted-file order and an earlier
+// file wins, so a name declared twice resolves to the same type it did before.
+func (m *Metadata) TypeInPackage(pkgName, typeName string) *Type {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	shape := shapeOf(pkg)
+
+	m.typeIndexMutex.RLock()
+	idx, cached := m.typeIndex[pkgName]
+	builtFor := m.typeIndexFor[pkgName]
+	m.typeIndexMutex.RUnlock()
+	if cached && builtFor == shape {
+		return idx[typeName]
+	}
+
+	m.typeIndexMutex.Lock()
+	defer m.typeIndexMutex.Unlock()
+	if idx, ok := m.typeIndex[pkgName]; ok && m.typeIndexFor[pkgName] == shape {
+		return idx[typeName] // another goroutine won the race
+	}
+	idx = make(map[string]*Type, shape.types)
+	// Safe under typeIndexMutex: SortedFileNames takes sortedFilesMutex only.
+	for _, fileName := range m.SortedFileNames(pkgName) {
+		f := pkg.Files[fileName]
+		if f == nil {
+			continue
+		}
+		// Within one file a type name is unique, so map order cannot decide
+		// anything here; across files the first (sorted) file wins, which is
+		// the order the replaced scan used.
+		for name, typ := range f.Types {
+			if _, seen := idx[name]; !seen {
+				idx[name] = typ
+			}
+		}
+	}
+	if m.typeIndex == nil {
+		m.typeIndex = make(map[string]map[string]*Type, len(m.Packages))
+		m.typeIndexFor = make(map[string]pkgShape, len(m.Packages))
+	}
+	m.typeIndex[pkgName] = idx
+	m.typeIndexFor[pkgName] = shape
+	return idx[typeName]
 }
 
 // ImplementersOf returns "pkg.Type" for every recorded type that implements the

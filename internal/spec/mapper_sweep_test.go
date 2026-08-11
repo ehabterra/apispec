@@ -308,9 +308,16 @@ func TestTypeByName_NilMetadata(t *testing.T) {
 	}
 }
 
-func TestTypeInPackage_NilPackage(t *testing.T) {
-	if got := typeInPackage(nil, "User"); got != nil {
-		t.Errorf("expected nil, got %v", got)
+func TestTypeInPackage_MissingPackage(t *testing.T) {
+	meta, _ := sweepMeta(t)
+	if got := meta.TypeInPackage("no/such/pkg", "User"); got != nil {
+		t.Errorf("missing package: expected nil, got %v", got)
+	}
+	if got := meta.TypeInPackage("main", "NoSuchType"); got != nil {
+		t.Errorf("missing type: expected nil, got %v", got)
+	}
+	if got := meta.TypeInPackage("main", "User"); got == nil {
+		t.Error("main.User should resolve")
 	}
 }
 
