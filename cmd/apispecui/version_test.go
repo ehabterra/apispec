@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -56,26 +57,20 @@ func TestVersionFlag(t *testing.T) {
 
 	for _, flag := range []string{"--version", "-V"} {
 		t.Run(flag, func(t *testing.T) {
+			// The deadline is what proves it exits rather than serves: a bound
+			// port would keep the process alive until the context kills it.
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
 			// An empty working directory: --version must not depend on there
 			// being a project to analyse.
-			cmd := exec.Command(bin, flag)
+			cmd := exec.CommandContext(ctx, bin, flag)
 			cmd.Dir = t.TempDir()
 
-			done := make(chan struct{})
-			var out []byte
-			var err error
-			go func() {
-				out, err = cmd.CombinedOutput()
-				close(done)
-			}()
-
-			select {
-			case <-done:
-			case <-time.After(30 * time.Second):
-				_ = cmd.Process.Kill()
-				t.Fatalf("%s did not exit: it started serving instead of printing the version", flag)
+			out, err := cmd.CombinedOutput()
+			if ctx.Err() != nil {
+				t.Fatalf("%s did not exit within the deadline: it started serving instead of printing the version\n%s", flag, out)
 			}
-
 			if err != nil {
 				t.Fatalf("%s exited with %v\n%s", flag, err, out)
 			}
