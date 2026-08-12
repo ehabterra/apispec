@@ -111,13 +111,28 @@ func goTypeByComponentName(usedTypes map[string]*Schema) map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(usedTypes))
+	ambiguous := map[string]bool{}
+
 	for goType := range usedTypes {
-		name := schemaComponentNameReplacer.Replace(strings.TrimPrefix(goType, "*"))
-		// Several Go types can mangle to one name; prefer the shortest, which
-		// is the least decorated spelling of the same thing.
-		if prev, ok := out[name]; !ok || len(goType) < len(prev) {
-			out[name] = goType
+		// The same mangling the naming itself uses, so the two cannot disagree.
+		// Pointer spellings are stripped first: `*pkg.T` and `pkg.T` are one
+		// type, not a collision.
+		bare := strings.TrimPrefix(goType, "*")
+		name := schemaComponentNameReplacer.Replace(bare)
+
+		if prev, ok := out[name]; ok && prev != bare {
+			// Two DIFFERENT types mangling to one component name. Which one the
+			// reference meant is not knowable here, and naming the wrong
+			// dependency is worse than naming none (golden rule #7), so the
+			// report falls back to the component name.
+			ambiguous[name] = true
+			continue
 		}
+		out[name] = bare
+	}
+
+	for name := range ambiguous {
+		delete(out, name)
 	}
 	return out
 }
@@ -130,14 +145,21 @@ func goTypeByComponentName(usedTypes map[string]*Schema) map[string]string {
 // bodies, responses, headers, parameters and the components section each carry
 // their own.
 func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
-	seen := map[*Schema]bool{}
+	// A RECURSION STACK, not a global visited set: the same *Schema can be
+	// mounted in two operations, and both are references that need a target.
+	// Deduplicating globally would visit it once and undercount Sites, which
+	// is the number telling a user how much of their spec is affected. Only a
+	// schema currently being walked is skipped, which is what makes a
+	// self-referential type terminate.
+	onPath := map[*Schema]bool{}
 
 	var walk func(s *Schema)
 	walk = func(s *Schema) {
-		if s == nil || seen[s] {
+		if s == nil || onPath[s] {
 			return
 		}
-		seen[s] = true
+		onPath[s] = true
+		defer delete(onPath, s)
 
 		if name, ok := componentSchemaName(s.Ref); ok {
 			visit(name)

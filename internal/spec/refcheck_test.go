@@ -119,6 +119,32 @@ func TestForEachSchemaRefVisitsEveryLocation(t *testing.T) {
 	}
 }
 
+// TestForEachSchemaRefCountsSharedSchemasPerMount covers the reason the cycle
+// guard is a recursion stack rather than a global visited set: the same *Schema
+// value is often mounted in more than one place, and each mount is a reference
+// that needs a target. Deduplicating by pointer would report one site where
+// there are two, understating how much of the spec is affected.
+func TestForEachSchemaRefCountsSharedSchemasPerMount(t *testing.T) {
+	shared := refTo("T")
+	spec := &OpenAPISpec{Paths: map[string]PathItem{
+		"/a": {Get: &Operation{Responses: map[string]Response{"200": {Content: map[string]MediaType{"application/json": {Schema: shared}}}}}},
+		"/b": {Get: &Operation{Responses: map[string]Response{"200": {Content: map[string]MediaType{"application/json": {Schema: shared}}}}}},
+	}}
+
+	n := 0
+	forEachSchemaRef(spec, func(string) { n++ })
+	if n != 2 {
+		t.Errorf("counted %d sites for one schema mounted twice, want 2", n)
+	}
+
+	// And the repair reports it the same way.
+	spec.Components = &Components{Schemas: map[string]*Schema{}}
+	got := repairDanglingRefs(spec, nil)
+	if len(got) != 1 || got[0].Sites != 2 {
+		t.Errorf("repair reported %+v, want one entry with 2 sites", got)
+	}
+}
+
 func TestForEachSchemaRefIgnoresForeignRefs(t *testing.T) {
 	spec := specWithSchemas(map[string]*Schema{
 		"A": {Ref: "#/components/parameters/NotASchema"},

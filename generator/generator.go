@@ -84,5 +84,8 @@ func (g *Generator) PathParamMismatches() []intspec.PathParamMismatch {
 // some type resolved to nothing useful — the actionable fix is usually
 // registering it under externalTypes (issue #327).
 func (g *Generator) UnresolvedRefs() []intspec.UnresolvedRef {
+	if g.engine == nil {
+		return nil
+	}
 	return g.engine.GetUnresolvedRefs()
 }
