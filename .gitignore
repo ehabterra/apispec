@@ -78,7 +78,13 @@ cmd/apispec/apispec
 cmd/apispecui/apispecui
 cmd/apidiag/apidiag
 
-# a `go build` inside a testdata fixture module drops its binary beside main.go
+# a `go build` inside a testdata fixture module drops its binary beside main.go,
+# named after the module — which no gitignore pattern can express, since the
+# name matches the parent directory. Hence the list below, and hence
+# TestNoCompiledBinariesUnderTestdata: the list has been added to at least five
+# times and still let five binaries (~44MB) reach the repository, so the test is
+# what actually holds the line. Add a fixture here when you create it, but the
+# test is what catches you when you forget.
 testdata/cli_entrypoint_routes/cli_entrypoint_routes
 testdata/cobra_entrypoint_routes/cobra_entrypoint_routes
 
@@ -107,3 +113,10 @@ testdata/mount_via_helper/mount_via_helper
 apispec-darwin-*
 apispec-linux-*
 apispec-windows-*
+
+# a `go build` inside these fixtures drops its binary beside main.go
+testdata/concat_path/concatpath
+testdata/external_type_refs/external_type_refs
+testdata/foreign_type_qualification/foreign_type_qualification
+testdata/array_untyped_schemas/array_untyped_schemas
+testdata/named_underlying_types/named_underlying_types
