@@ -1,11 +1,18 @@
 #!/bin/bash
 
 # APISpec Installation Script
-# This script provides multiple installation options for apispec
+# This script provides multiple installation options for apispec and apispecui.
+#
+# Which tools to install is chosen with --tool (default: both), so the same
+# invocations that installed apispec keep working and now cover the UI too.
 
 set -e
 
 APP_NAME="apispec"
+UI_NAME="apispecui"
+# Tools to act on, set by --tool. Both by default: someone running the
+# installer wants a working setup, and the UI is part of one.
+TOOLS=("apispec" "apispecui")
 VERSION="0.0.1"
 REPO_URL="https://github.com/ehabterra/apispec"
 
@@ -55,22 +62,23 @@ check_go() {
 # Function to install using go install
 install_go_install() {
     print_status "Installing using 'go install'..."
-    
-    if command_exists apispec; then
-        print_warning "apispec is already installed. Updating..."
-        go install github.com/ehabterra/apispec/cmd/apispec@latest
-    else
-        go install github.com/ehabterra/apispec/cmd/apispec@latest
-    fi
-    
-    # Check if installation was successful
-    if command_exists apispec; then
-        print_status "apispec installed successfully using go install!"
-        apispec --version
-    else
-        print_error "Installation failed. Please check your Go environment."
-        exit 1
-    fi
+
+    local tool
+    for tool in "${TOOLS[@]}"; do
+        if command_exists "$tool"; then
+            print_warning "$tool is already installed. Updating..."
+        fi
+        go install "github.com/ehabterra/apispec/cmd/$tool@latest"
+
+        # Check if installation was successful
+        if command_exists "$tool"; then
+            print_status "$tool installed successfully using go install!"
+            "$tool" --version | head -n 1
+        else
+            print_error "Installation of $tool failed. Please check your Go environment."
+            exit 1
+        fi
+    done
 }
 
 # Function to install from source
@@ -85,20 +93,30 @@ install_from_source() {
     print_status "Cloning repository..."
     git clone "$REPO_URL" .
     
-    # Build and install
-    print_status "Building apispec..."
-    make build
-    
-    # Install to system
-    if [ "$1" = "system" ]; then
-        print_status "Installing to /usr/local/bin (requires sudo)..."
-        sudo cp apispec /usr/local/bin/
-        print_status "apispec installed to /usr/local/bin successfully!"
-    else
-        print_status "Installing to ~/go/bin..."
-        mkdir -p ~/go/bin
-        cp apispec ~/go/bin/
-        print_status "apispec installed to ~/go/bin successfully!"
+    # Build and install each selected tool
+    local tool target
+    for tool in "${TOOLS[@]}"; do
+        print_status "Building $tool..."
+        if [ "$tool" = "$UI_NAME" ]; then
+            make build-ui
+        else
+            make build
+        fi
+
+        if [ "$1" = "system" ]; then
+            target="/usr/local/bin"
+            print_status "Installing $tool to $target (requires sudo)..."
+            sudo cp "$tool" "$target/"
+        else
+            target="$HOME/go/bin"
+            print_status "Installing $tool to $target..."
+            mkdir -p "$target"
+            cp "$tool" "$target/"
+        fi
+        print_status "$tool installed to $target successfully!"
+    done
+
+    if [ "$1" != "system" ]; then
         print_warning "Make sure ~/go/bin is in your PATH"
         echo "Add this to your shell profile: export PATH=\$HOME/go/bin:\$PATH"
     fi
@@ -118,8 +136,14 @@ show_usage() {
     echo "  source-system  Install from source to /usr/local/bin (requires sudo)"
     echo "  help           Show this help message"
     echo ""
+    echo "Flags:"
+    echo "  --tool NAME    Which tool to install: apispec, apispecui, or both"
+    echo "                 (default: both)"
+    echo ""
     echo "Examples:"
-    echo "  $0 go-install      # Install using go install"
+    echo "  $0 go-install                    # Install both tools with go install"
+    echo "  $0 go-install --tool apispec     # CLI only"
+    echo "  $0 go-install --tool apispecui   # Web UI only"
     echo "  $0 source-local    # Build and install to user directory"
     echo "  $0 source-system   # Build and install to system directory"
 }
@@ -127,10 +151,35 @@ show_usage() {
 # Main script
 main() {
     print_header
-    
+
     # Check Go installation
     check_go
-    
+
+    # Pull --tool out of the arguments before the mode is read, so it can be
+    # given on either side of it.
+    local args=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tool)
+                shift
+                case "${1:-}" in
+                    apispec)   TOOLS=("$APP_NAME") ;;
+                    apispecui) TOOLS=("$UI_NAME") ;;
+                    both|"")   TOOLS=("$APP_NAME" "$UI_NAME") ;;
+                    *)
+                        print_error "Unknown tool: $1 (expected apispec, apispecui or both)"
+                        exit 1
+                        ;;
+                esac
+                ;;
+            *) args+=("$1") ;;
+        esac
+        shift
+    done
+    set -- "${args[@]}"
+
+    print_status "Installing: ${TOOLS[*]}"
+
     # Parse arguments
     case "${1:-go-install}" in
         "go-install")
@@ -143,7 +192,10 @@ main() {
             install_from_source "system"
             ;;
         "help"|"-h"|"--help")
+            # Return rather than fall through: the summary below claims an
+            # installation happened, which printing help plainly did not.
             show_usage
+            return 0
             ;;
         *)
             print_error "Unknown option: $1"
@@ -154,10 +206,21 @@ main() {
     
     print_status "Installation completed successfully!"
     echo ""
-    echo "You can now use apispec:"
-    echo "  apispec --help          # Show help"
-    echo "  apispec --version       # Show version"
-    echo "  apispec <directory>     # Generate OpenAPI spec"
+    local tool
+    for tool in "${TOOLS[@]}"; do
+        if [ "$tool" = "$UI_NAME" ]; then
+            echo "You can now use apispecui:"
+            echo "  apispecui --help          # Show help"
+            echo "  apispecui --version       # Show version"
+            echo "  apispecui -d <directory>  # Open the web UI on http://localhost:8088"
+        else
+            echo "You can now use apispec:"
+            echo "  apispec --help          # Show help"
+            echo "  apispec --version       # Show version"
+            echo "  apispec <directory>     # Generate OpenAPI spec"
+        fi
+        echo ""
+    done
 }
 
 # Run main function

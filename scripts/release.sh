@@ -6,6 +6,11 @@
 set -e
 
 APP_NAME="apispec"
+# Every command this release ships, as "binary-name:package". apispecui is a
+# distributable tool in its own right, not a dev aid, so it is built for the
+# same platforms and published alongside apispec (it embeds its own assets, so
+# each binary is still self-contained).
+BINARIES=("apispec:./cmd/apispec" "apispecui:./cmd/apispecui")
 VERSION="${VERSION:-0.0.1}"  # Allow VERSION to be set from environment
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
@@ -52,13 +57,11 @@ check_go() {
     print_status "Found Go version: $GO_VERSION"
 }
 
-# Function to build for a specific platform
+# Function to build every binary for a specific platform
 build_for_platform() {
     local GOOS=$1
     local GOARCH=$2
     local EXTENSION=$3
-    
-    print_status "Building for $GOOS/$GOARCH..."
     
     # Set environment variables
     export GOOS=$GOOS
@@ -66,12 +69,18 @@ build_for_platform() {
     export CGO_ENABLED=0
     
     # Build flags - use environment variables if available, fallback to script variables
+    # main.BuildDate is a no-op for a binary that does not declare it (the
+    # linker ignores an -X for a missing symbol), so one flag set serves both.
     LDFLAGS="-X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.BuildDate=$BUILD_DATE' -X 'main.GoVersion=$GO_VERSION'"
     
-    # Build
-    go build -ldflags "$LDFLAGS" -o "dist/${APP_NAME}-${GOOS}-${GOARCH}${EXTENSION}" ./cmd/apispec
-    
-    print_status "Built: dist/${APP_NAME}-${GOOS}-${GOARCH}${EXTENSION}"
+    local entry name pkg
+    for entry in "${BINARIES[@]}"; do
+        name="${entry%%:*}"
+        pkg="${entry#*:}"
+        print_status "Building $name for $GOOS/$GOARCH..."
+        go build -ldflags "$LDFLAGS" -o "dist/${name}-${GOOS}-${GOARCH}${EXTENSION}" "$pkg"
+        print_status "Built: dist/${name}-${GOOS}-${GOARCH}${EXTENSION}"
+    done
 }
 
 # Function to create release package

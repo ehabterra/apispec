@@ -1,4 +1,5 @@
 APP_NAME = apispec
+UI_NAME = apispecui
 VERSION ?= 0.0.1
 COMMIT ?= $(shell git rev-parse --short HEAD)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -9,17 +10,23 @@ LDFLAGS = -X 'main.Version=$(VERSION)' \
           -X 'main.BuildDate=$(BUILD_DATE)' \
           -X 'main.GoVersion=$(GO_VERSION)'
 
-.PHONY: help build test clean coverage lint fmt update-badge metrics-view metrics-generate
+.PHONY: help build build-ui build-apidiag test clean coverage lint fmt update-badge metrics-view metrics-generate \
+	install install-ui install-local install-ui-local uninstall uninstall-ui uninstall-local uninstall-ui-local
 
 # Default target
 help:
 	@echo "Available targets:"
 	@echo "  build         - Build the apispec binary"
+	@echo "  build-ui      - Build the apispecui binary (web UI)"
 	@echo "  build-apidiag - Build the apidiag binary"
 	@echo "  install       - Install apispec to /usr/local/bin (requires sudo)"
+	@echo "  install-ui    - Install apispecui to /usr/local/bin (requires sudo)"
 	@echo "  install-local - Install apispec to ~/go/bin (no sudo required)"
+	@echo "  install-ui-local - Install apispecui to ~/go/bin (no sudo required)"
 	@echo "  uninstall     - Remove apispec from /usr/local/bin"
+	@echo "  uninstall-ui  - Remove apispecui from /usr/local/bin"
 	@echo "  uninstall-local - Remove apispec from ~/go/bin"
+	@echo "  uninstall-ui-local - Remove apispecui from ~/go/bin"
 	@echo "  release       - Build for multiple platforms and create release package"
 	@echo "  create-tag    - Create a new release tag (e.g., make create-tag VERSION=1.0.0)"
 	@echo "  tags          - Show current git tags"
@@ -53,6 +60,11 @@ help:
 build:
 	@echo "Building $(APP_NAME) version $(VERSION)..."
 	go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) ./cmd/apispec
+
+# Build the web UI. It embeds its assets, so the binary is self-contained.
+build-ui:
+	@echo "Building $(UI_NAME) version $(VERSION)..."
+	go build -ldflags "$(LDFLAGS)" -o $(UI_NAME) ./cmd/apispecui
 
 # Build the apidiag binary
 build-apidiag:
@@ -106,7 +118,7 @@ update-badge:
 
 # Clean build artifacts
 clean:
-	rm -f $(APP_NAME) apidiag coverage.out coverage.html
+	rm -f $(APP_NAME) $(UI_NAME) apidiag coverage.out coverage.html
 	go clean -cache
 
 # Install apispec to system (requires sudo)
@@ -115,6 +127,13 @@ install: build
 	sudo cp $(APP_NAME) /usr/local/bin/
 	@echo "$(APP_NAME) installed successfully!"
 	@echo "You can now run 'apispec --help' from anywhere"
+
+# Install apispecui to system (requires sudo)
+install-ui: build-ui
+	@echo "Installing $(UI_NAME) to /usr/local/bin/..."
+	sudo cp $(UI_NAME) /usr/local/bin/
+	@echo "$(UI_NAME) installed successfully!"
+	@echo "You can now run 'apispecui --help' from anywhere"
 
 # Install to user's local bin directory (no sudo required)
 install-local: build
@@ -125,17 +144,38 @@ install-local: build
 	@echo "Make sure ~/go/bin is in your PATH"
 	@echo "Add this to your shell profile: export PATH=\$$HOME/go/bin:\$$PATH"
 
+# Install apispecui to user's local bin directory (no sudo required)
+install-ui-local: build-ui
+	@echo "Installing $(UI_NAME) to ~/go/bin/..."
+	mkdir -p ~/go/bin
+	cp $(UI_NAME) ~/go/bin/
+	@echo "$(UI_NAME) installed successfully!"
+	@echo "Make sure ~/go/bin is in your PATH"
+	@echo "Add this to your shell profile: export PATH=\$$HOME/go/bin:\$$PATH"
+
 # Uninstall apispec from system
 uninstall:
 	@echo "Uninstalling $(APP_NAME) from /usr/local/bin/..."
 	sudo rm -f /usr/local/bin/$(APP_NAME)
 	@echo "$(APP_NAME) uninstalled successfully!"
 
+# Uninstall apispecui from system
+uninstall-ui:
+	@echo "Uninstalling $(UI_NAME) from /usr/local/bin/..."
+	sudo rm -f /usr/local/bin/$(UI_NAME)
+	@echo "$(UI_NAME) uninstalled successfully!"
+
 # Uninstall from user's local bin directory
 uninstall-local:
 	@echo "Uninstalling $(APP_NAME) from ~/go/bin/..."
 	rm -f ~/go/bin/$(APP_NAME)
 	@echo "$(APP_NAME) uninstalled successfully!"
+
+# Uninstall apispecui from user's local bin directory
+uninstall-ui-local:
+	@echo "Uninstalling $(UI_NAME) from ~/go/bin/..."
+	rm -f ~/go/bin/$(UI_NAME)
+	@echo "$(UI_NAME) uninstalled successfully!"
 
 # Build for multiple platforms and create release package
 release:
