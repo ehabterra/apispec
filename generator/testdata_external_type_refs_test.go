@@ -116,22 +116,34 @@ func TestTestdata_UnresolvedRefsAreReported(t *testing.T) {
 	// The document must load regardless — that is what the repair is for.
 	noDanglingRefs(t, out)
 
-	// An empty report is the healthy state and the expected one here: since
-	// #325 the generation pass registers a placeholder for a type it cannot
-	// resolve, so nothing reaches the final repair. That is why this asserts
-	// the invariant rather than a non-empty report — the repair is a net for
-	// causes not yet known, and unit tests in internal/spec exercise it
-	// directly. What is worth checking end to end is that the accessor is
-	// wired and self-consistent.
-	for _, r := range g.UnresolvedRefs() {
+	// This fixture must report NOTHING, and that is a real assertion rather
+	// than a vacuous loop: since #325 the generation pass registers a
+	// placeholder for a type it cannot resolve, so nothing should reach the
+	// final repair. A non-empty report here means type resolution regressed
+	// far enough that the safety net had to catch it — which is exactly the
+	// signal worth failing on.
+	//
+	// The repair itself is exercised directly by unit tests in internal/spec
+	// (one per document location, plus its repair and reporting behaviour).
+	// Reproducing it end to end would need a fixture that encodes a bug which
+	// does not exist, and that would stop reproducing the moment the bug was
+	// fixed elsewhere.
+	refs := g.UnresolvedRefs()
+	if len(refs) != 0 {
+		t.Errorf("%d reference(s) needed repairing in a fixture whose types all resolve — "+
+			"type resolution regressed: %+v", len(refs), refs)
+	}
+
+	// Whatever is reported, the report must describe what was repaired: every
+	// component it names now exists. Kept so a future non-empty report is
+	// checked rather than only counted.
+	for _, r := range refs {
 		if r.Component == "" {
 			t.Error("an unresolved ref reports no component name")
 		}
 		if r.Sites < 1 {
 			t.Errorf("%s reports %d sites, want at least 1", r.Component, r.Sites)
 		}
-		// Every component it names must now exist — the report describes what
-		// was repaired, not what is still broken.
 		if out.Components == nil || out.Components.Schemas[r.Component] == nil {
 			t.Errorf("%s was reported unresolved but no placeholder was registered for it", r.Component)
 		}
