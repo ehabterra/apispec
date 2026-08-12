@@ -109,11 +109,12 @@ var supportedFrameworks = core.ConfigurableFrameworkNames()
 
 // ServerConfig is the runtime config of the apispecui server.
 type ServerConfig struct {
-	Host       string
-	Port       int
-	InputDir   string
-	ConfigFile string
-	Verbose    bool
+	Host        string
+	Port        int
+	InputDir    string
+	ConfigFile  string
+	Verbose     bool
+	ShowVersion bool
 }
 
 // DetectResponse is what GET /api/detect returns: information the UI needs
@@ -380,6 +381,14 @@ func main() {
 	detectVersionInfo()
 	cfg := parseFlags()
 
+	// Before anything binds a port or walks a directory: --version must work
+	// in a sandbox with no project to analyse, which is exactly where the
+	// Homebrew formula's test runs it.
+	if cfg.ShowVersion {
+		printVersion()
+		return
+	}
+
 	diag := diagserver.New(&diagserver.Config{
 		Host:                         cfg.Host,
 		Port:                         cfg.Port,
@@ -448,6 +457,19 @@ func main() {
 	}
 }
 
+// printVersion mirrors apispec's --version output, so the two binaries report
+// themselves the same way and the Homebrew formula can assert on it.
+func printVersion() {
+	detectVersionInfo()
+
+	fmt.Printf("apispecui version: %s\n", Version)
+	fmt.Printf("Commit: %s\n", Commit)
+	fmt.Printf("Build time: %s\n", BuildTime)
+	fmt.Printf("Go version: %s\n", GoVersion)
+	fmt.Println(engine.CopyrightNotice)
+	fmt.Println(engine.LicenseNotice)
+}
+
 func parseFlags() *ServerConfig {
 	cfg := &ServerConfig{}
 	flag.StringVar(&cfg.Host, "host", "localhost", "HTTP host to bind")
@@ -457,6 +479,8 @@ func parseFlags() *ServerConfig {
 	flag.StringVar(&cfg.ConfigFile, "config", "", "Optional initial APISpec config YAML to seed the UI")
 	flag.StringVar(&cfg.ConfigFile, "c", "", "Shorthand for --config")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Verbose logging")
+	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version information")
+	flag.BoolVar(&cfg.ShowVersion, "V", false, "Shorthand for --version")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "apispec-ui: interactive web UI to configure and preview an OpenAPI spec\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", os.Args[0])

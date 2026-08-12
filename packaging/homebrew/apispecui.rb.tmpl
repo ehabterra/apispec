@@ -1,0 +1,49 @@
+# Homebrew formula for apispecui: installs the pre-built release binary, so
+# `brew install` needs no Go toolchain to install it.
+#
+# packaging/homebrew/apispecui.rb.tmpl is the SOURCE; apispecui.rb is it
+# rendered at the current release. .github/workflows/release.yml renders the
+# template with the checksums of the artifacts it just built and pushes the
+# result to the tap (ehabterra/homebrew-tap, Formula/apispecui.rb).
+# TestHomebrewFormulaMatchesTemplate keeps the two from drifting.
+class Apispecui < Formula
+  desc "Interactive web UI to configure and preview an OpenAPI spec from Go source"
+  homepage "https://github.com/ehabterra/apispec"
+  license "Apache-2.0"
+
+  # Same runtime requirement as apispec: the UI analyses a project by loading
+  # its packages through go/packages, which shells out to `go list`. The web
+  # assets are embedded in the binary, so nothing else is needed.
+  depends_on "go"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispecui-darwin-arm64"
+      sha256 "__SHA_DARWIN_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispecui-darwin-amd64"
+      sha256 "__SHA_DARWIN_AMD64__"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispecui-linux-arm64"
+      sha256 "__SHA_LINUX_ARM64__"
+    end
+    on_intel do
+      url "https://github.com/ehabterra/apispec/releases/download/v__VERSION__/apispecui-linux-amd64"
+      sha256 "__SHA_LINUX_AMD64__"
+    end
+  end
+
+  def install
+    # The download keeps its asset name; install it under the short one.
+    bin.install Dir["apispecui-*"].first => "apispecui"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/apispecui --version")
+  end
+end

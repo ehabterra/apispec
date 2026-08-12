@@ -65,13 +65,21 @@
 ### Install
 
 ```bash
+# Homebrew (macOS/Linux) — no Go toolchain needed to install
+brew install ehabterra/tap/apispec      # the CLI
+brew install ehabterra/tap/apispecui    # the web UI
+
+# or with Go
 go install github.com/ehabterra/apispec/cmd/apispec@latest
+go install github.com/ehabterra/apispec/cmd/apispecui@latest
 
 # Make sure your Go bin is on PATH:
 export PATH=$HOME/go/bin:$PATH
 ```
 
-Other install methods (Homebrew-style scripts, building from source, packaging the binary) are documented in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+Both tools are published the same way — Homebrew, pre-built binaries for six
+platforms, `go install`, from source, or the install script. See
+[docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ### Generate an OpenAPI spec
 
@@ -191,12 +199,17 @@ Two things worth knowing before a first run on a large project:
 **Insight** (the ◷ tab) reports how the spec was produced, not just what is in it: which frameworks were detected and which one's patterns lead, what the CLI entry-point gate decided, and — per status code — how many responses describe their fields, are a free-form object, were found with an unresolved type, or document no body at all. The last split is the useful one: an empty body at `200` means the write was never followed, while an unresolved type means it was found and needs a type mapping.
 
 ```bash
-# Build and run
-go build -o apispecui ./cmd/apispecui
-./apispecui --dir ./my-go-project
+# Install it the same way as apispec (see Install above)
+brew install ehabterra/tap/apispecui
+# or: go install github.com/ehabterra/apispec/cmd/apispecui@latest
+
+apispecui --dir ./my-go-project
 
 # Open http://localhost:8088 — config UI
 # Open http://localhost:8088/diagram — call-graph visualization
+
+# From a clone instead:
+make build-ui && ./apispecui --dir ./my-go-project
 ```
 
 Endpoints exposed:

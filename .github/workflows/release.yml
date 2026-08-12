@@ -101,6 +101,14 @@ jobs:
           sed -i "s|BuildDate = \"[^\"]*\"|BuildDate = \"$BUILD_DATE\"|" cmd/apispec/main.go
           sed -i "s|GoVersion = \"[^\"]*\"|GoVersion = \"$GO_VERSION\"|" cmd/apispec/main.go
 
+          # apispecui declares the same constants (BuildTime rather than
+          # BuildDate — it reports the binary's mtime, which `make release`
+          # cannot know). Patched here for the same reason as apispec: the
+          # ldflags below cover a build, this covers a `go install` from the tag.
+          sed -i "s|Version   = \"[^\"]*\"|Version   = \"$VERSION\"|" cmd/apispecui/main.go
+          sed -i "s|Commit    = \"[^\"]*\"|Commit    = \"$COMMIT\"|" cmd/apispecui/main.go
+          sed -i "s|GoVersion = \"[^\"]*\"|GoVersion = \"$GO_VERSION\"|" cmd/apispecui/main.go
+
       - name: Build for multiple platforms
         # The Makefile declares these with `?=`, so the environment wins and no
         # command line has to be built out of untrusted values at all.
@@ -131,24 +139,29 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          # Checksums come from the artifacts THIS job just built, so the formula
-          # can never point at a digest the release does not have.
-          sha() { shasum -a 256 "dist/apispec-$1" | awk '{print $1}'; }
-
-          sed -e "s|__VERSION__|$VERSION|g" \
-              -e "s|__SHA_DARWIN_ARM64__|$(sha darwin-arm64)|" \
-              -e "s|__SHA_DARWIN_AMD64__|$(sha darwin-amd64)|" \
-              -e "s|__SHA_LINUX_ARM64__|$(sha linux-arm64)|" \
-              -e "s|__SHA_LINUX_AMD64__|$(sha linux-amd64)|" \
-              packaging/homebrew/apispec.rb.tmpl > /tmp/apispec.rb
+          # $1 = tool, $2 = platform. Checksums come from the artifacts THIS job
+          # just built, so a formula can never point at a digest the release
+          # does not have.
+          sha() { shasum -a 256 "dist/$1-$2" | awk '{print $1}'; }
 
           git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/ehabterra/homebrew-tap.git" /tmp/tap
           mkdir -p /tmp/tap/Formula
-          cp /tmp/apispec.rb /tmp/tap/Formula/apispec.rb
+
+          # Every tool the tap publishes. apispecui is a distributable tool in
+          # its own right, so it gets a formula on the same terms as apispec.
+          for tool in apispec apispecui; do
+            sed -e "s|__VERSION__|$VERSION|g" \
+                -e "s|__SHA_DARWIN_ARM64__|$(sha "$tool" darwin-arm64)|" \
+                -e "s|__SHA_DARWIN_AMD64__|$(sha "$tool" darwin-amd64)|" \
+                -e "s|__SHA_LINUX_ARM64__|$(sha "$tool" linux-arm64)|" \
+                -e "s|__SHA_LINUX_AMD64__|$(sha "$tool" linux-amd64)|" \
+                "packaging/homebrew/$tool.rb.tmpl" > "/tmp/tap/Formula/$tool.rb"
+          done
+
           cd /tmp/tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/apispec.rb
+          git add Formula/apispec.rb Formula/apispecui.rb
           git diff --staged --quiet || git commit -m "apispec $VERSION"
           git push
 
@@ -164,6 +177,12 @@ jobs:
             dist/apispec-darwin-arm64
             dist/apispec-windows-amd64.exe
             dist/apispec-windows-arm64.exe
+            dist/apispecui-linux-amd64
+            dist/apispecui-linux-arm64
+            dist/apispecui-darwin-amd64
+            dist/apispecui-darwin-arm64
+            dist/apispecui-windows-amd64.exe
+            dist/apispecui-windows-arm64.exe
             dist/*.sha256
           draft: false
           prerelease: false

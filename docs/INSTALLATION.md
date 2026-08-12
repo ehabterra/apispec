@@ -1,7 +1,11 @@
 # Installation Guide
 
-Install, update and remove apispec — four ways to do it, and how to tell which
-one you are running when more than one is installed.
+Install, update and remove apispec and apispecui — four ways to do it, and how
+to tell which one you are running when more than one is installed.
+
+Both tools ship the same way. `apispec` is the CLI that generates a spec;
+`apispecui` is the browser UI that configures and previews one. Every method
+below installs either or both.
 
 ## At a glance
 
@@ -16,11 +20,14 @@ second way does not replace the first (see
 | **[Go install](#3-go-install)** — needs Go 1.26+ | `go install github.com/ehabterra/apispec/cmd/apispec@latest` | same command again | `rm "$(go env GOPATH)/bin/apispec"` |
 | **[From source](#4-from-source)** — for development | `make install-local` | `git pull && make install-local` | `make uninstall-local` |
 
+For the UI, substitute `apispecui` throughout — `brew install ehabterra/tap/apispecui`,
+`go install github.com/ehabterra/apispec/cmd/apispecui@latest`, `make install-ui-local`,
+and the `apispecui-*` release assets.
+
 Not sure what you have? → [Which apispec am I running?](#which-apispec-am-i-running)
 
-Only the `apispec` CLI is distributed as a binary. `apispecui` (browser config &
-preview) and `apidiag` (call-graph server) are built from source — see
-[Development Installation](#development-installation).
+`apidiag` (call-graph server) is not published as a binary and is built from
+source — see [Development Installation](#development-installation).
 
 ## Prerequisites
 
@@ -36,11 +43,17 @@ For the `go install` and from-source methods:
 ### 1. Homebrew (macOS and Linux)
 
 ```bash
-brew install ehabterra/tap/apispec
+brew install ehabterra/tap/apispec      # the CLI
+brew install ehabterra/tap/apispecui    # the web UI
 ```
 
-Upgrade with `brew upgrade apispec`, remove with `brew uninstall apispec`.
-Homebrew picks the right build for your machine and puts `apispec` on your PATH.
+Upgrade with `brew upgrade apispec`, remove with `brew uninstall apispec` (and
+the same for `apispecui`). Homebrew picks the right build for your machine and
+puts the binary on your PATH.
+
+Both formulae depend on `go`: the tools analyse a project by loading its
+packages, which shells out to the Go toolchain at **runtime**. You do not need
+Go to *install* them, but you do need it to run them.
 
 ### 2. Download a Pre-built Binary
 
@@ -53,17 +66,18 @@ your platform, verifies the checksum, and installs `apispec` onto your PATH.
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 case "$ARCH" in x86_64|amd64) ARCH=amd64 ;; arm64|aarch64) ARCH=arm64 ;; esac
-ASSET="apispec-${OS}-${ARCH}"
+TOOL=apispec            # or apispecui for the web UI
+ASSET="${TOOL}-${OS}-${ARCH}"
 BASE="https://github.com/ehabterra/apispec/releases/latest/download"
 
 curl -fsSL -O "$BASE/$ASSET"
 curl -fsSL -O "$BASE/$ASSET.sha256"
 shasum -a 256 -c "$ASSET.sha256" 2>/dev/null || sha256sum -c "$ASSET.sha256"
 
-sudo install -m 0755 "$ASSET" /usr/local/bin/apispec
+sudo install -m 0755 "$ASSET" "/usr/local/bin/$TOOL"
 rm -f "$ASSET" "$ASSET.sha256"
 
-apispec --version
+"$TOOL" --version
 ```
 
 The checksum step prints `apispec-darwin-arm64: OK` (or your platform's name). If
@@ -78,14 +92,15 @@ it prints `FAILED`, stop — do not install the file.
 Installing somewhere else, e.g. no `sudo`:
 
 ```bash
-mkdir -p ~/.local/bin && install -m 0755 "$ASSET" ~/.local/bin/apispec
+mkdir -p ~/.local/bin && install -m 0755 "$ASSET" "$HOME/.local/bin/$TOOL"
 # ensure ~/.local/bin is on your PATH
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-$asset = "apispec-windows-amd64.exe"   # or apispec-windows-arm64.exe on ARM
+$tool  = "apispec"                       # or apispecui for the web UI
+$asset = "$tool-windows-amd64.exe"       # or -windows-arm64.exe on ARM
 $base  = "https://github.com/ehabterra/apispec/releases/latest/download"
 
 Invoke-WebRequest -Uri "$base/$asset" -OutFile $asset
@@ -94,9 +109,9 @@ $expected = (Get-Content "$asset.sha256").Split(" ")[0]
 if ((Get-FileHash $asset -Algorithm SHA256).Hash -ne $expected) { throw "checksum mismatch" }
 
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\apispec" | Out-Null
-Move-Item -Force $asset "$env:LOCALAPPDATA\Programs\apispec\apispec.exe"
+Move-Item -Force $asset "$env:LOCALAPPDATA\Programs\apispec\$tool.exe"
 # add that directory to your PATH, then:
-apispec --version
+& $tool --version
 ```
 
 To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
@@ -107,7 +122,7 @@ To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
 
 **Cons:**
 - Manual updates (re-run the block to upgrade)
-- Only `apispec` is published as a binary — `apispecui` and `apidiag` are built from source
+- `apidiag` is not published as a binary — it is built from source
 
 ### 3. Go Install
 
@@ -115,6 +130,7 @@ If you already have Go:
 
 ```bash
 go install github.com/ehabterra/apispec/cmd/apispec@latest
+go install github.com/ehabterra/apispec/cmd/apispecui@latest
 ```
 
 **Pros:**
@@ -136,11 +152,16 @@ git clone https://github.com/ehabterra/apispec.git
 cd apispec
 
 # Install to user directory (no sudo required)
-make install-local
+make install-local        # apispec
+make install-ui-local     # apispecui
 
 # OR install to system directory (requires sudo)
-make install
+make install              # apispec
+make install-ui           # apispecui
 ```
+
+Remove them again with `make uninstall-local` / `make uninstall-ui-local` (or
+`make uninstall` / `make uninstall-ui` for a system install).
 
 **Pros:**
 - Full control over the build process
@@ -161,6 +182,13 @@ curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/insta
 ```
 
 Supported arguments: `go-install` (default), `source-local`, `source-system`, `help`.
+
+It installs **both** tools by default. Add `--tool apispec` or `--tool apispecui`
+to install just one:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/install.sh | bash -s go-install --tool apispecui
+```
 
 **Pros:**
 - Automated, with error checking and validation
@@ -408,7 +436,9 @@ cd apispec
 make deps
 
 # Build for development
-make build
+make build          # apispec
+make build-ui       # apispecui
+make build-apidiag  # apidiag (source-only tool)
 
 # Run tests
 make test
@@ -421,15 +451,17 @@ make release
 
 Every release on the [GitHub Releases page](https://github.com/ehabterra/apispec/releases) publishes these assets — see [Installation Method 2](#2-download-a-pre-built-binary) for the commands.
 
-| Platform | Asset |
-|---|---|
-| macOS arm64 (Apple Silicon) | `apispec-darwin-arm64` |
-| macOS amd64 (Intel) | `apispec-darwin-amd64` |
-| Linux amd64 | `apispec-linux-amd64` |
-| Linux arm64 | `apispec-linux-arm64` |
-| Windows amd64 | `apispec-windows-amd64.exe` |
-| Windows arm64 | `apispec-windows-arm64.exe` |
+| Platform | CLI asset | Web UI asset |
+|---|---|---|
+| macOS arm64 (Apple Silicon) | `apispec-darwin-arm64` | `apispecui-darwin-arm64` |
+| macOS amd64 (Intel) | `apispec-darwin-amd64` | `apispecui-darwin-amd64` |
+| Linux amd64 | `apispec-linux-amd64` | `apispecui-linux-amd64` |
+| Linux arm64 | `apispec-linux-arm64` | `apispecui-linux-arm64` |
+| Windows amd64 | `apispec-windows-amd64.exe` | `apispecui-windows-amd64.exe` |
+| Windows arm64 | `apispec-windows-arm64.exe` | `apispecui-windows-arm64.exe` |
 
-Each binary ships a matching `<asset>.sha256` checksum file, plus a source archive (`apispec-<version>.tar.gz`) and release notes.
+Each binary ships a matching `<asset>.sha256` checksum file, plus an archive of
+them all (`apispec-<version>.tar.gz`) and release notes.
 
-Only the `apispec` CLI is published as a binary. `apispecui` (browser config & preview) and `apidiag` (call-graph server) are built from source — see [Development Installation](#development-installation).
+`apidiag` (call-graph server) is not published as a binary and is built from
+source — see [Development Installation](#development-installation).
