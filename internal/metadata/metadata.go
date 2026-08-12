@@ -718,7 +718,14 @@ func processTypeKind(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 		allTypes[tspec.Name.Name] = t
 
 	default:
+		// Named types whose underlying type is a slice, array, map, pointer or
+		// channel. The kind stays "other" — they are none of the three above —
+		// but the underlying type is recorded, without which the spec layer has
+		// nothing to build a schema from and defaults every one of them to an
+		// empty object (issue #333). Rendered with getTypeName, the same form
+		// struct fields are recorded in, so consumers need no second parser.
 		t.Kind = metadata.StringPool.Get("other")
+		t.Target = metadata.StringPool.Get(getTypeName(tspec.Type, info))
 		allTypes[tspec.Name.Name] = t
 	}
 }

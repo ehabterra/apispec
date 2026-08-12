@@ -1265,7 +1265,16 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 	case "alias":
 		schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg, visitedTypes)
 	default:
-		schema = &Schema{Type: "object"}
+		// A named type whose underlying type is a container (type IDs []string,
+		// type Point [2]int64, type Lookup map[string]int) carries that type as
+		// its target and resolves to its shape, exactly as a named primitive
+		// does. Only a declaration whose underlying type was not recorded falls
+		// through to an opaque object (issue #333).
+		if underlying := getStringFromPool(meta, typ.Target); underlying != "" {
+			schema, newSchemas = generateAliasSchema(usedTypes, typ, meta, cfg, visitedTypes)
+		} else {
+			schema = &Schema{Type: "object"}
+		}
 	}
 
 	markUsedType(usedTypes, key, schema)
@@ -1355,13 +1364,29 @@ func qualifyFieldType(fieldType, pkgName string) string {
 	}
 
 	ref := typemodel.Parse(fieldType)
-	leaf := namedLeaf(ref)
-	if leaf == nil || leaf.Name == "" || leaf.Pkg != "" || metadata.IsPrimitiveType(leaf.Name) {
+	if !qualifyTypeRef(ref, pkgName) {
 		return fieldType
 	}
-	leaf.Pkg = pkgName
 
 	return ref.String()
+}
+
+// qualifyTypeRef attaches pkgName to ref's named leaf when it carries no
+// package of its own, reporting whether it changed anything. Mutates ref, so
+// callers holding a shared (memoized) ref must Clone first — golden rule #2.
+//
+// The two callers reach it differently: a struct field arrives as a string and
+// parses here, while a type declaration's target is a pooled id and comes from
+// the memoized Metadata.TypeRefOf. Keeping the decision in one place is what
+// stops the two from drifting — a difference between them shows up as a
+// duplicate component under an unqualified name.
+func qualifyTypeRef(ref *typemodel.TypeRef, pkgName string) bool {
+	leaf := namedLeaf(ref)
+	if leaf == nil || leaf.Name == "" || leaf.Pkg != "" || metadata.IsPrimitiveType(leaf.Name) {
+		return false
+	}
+	leaf.Pkg = pkgName
+	return true
 }
 
 // namedLeaf descends through every container constructor — including a map's
@@ -1570,6 +1595,23 @@ func generateInterfaceSchema() *Schema {
 // generateAliasSchema generates a schema for an alias type
 func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta *metadata.Metadata, cfg *APISpecConfig, visitedTypes map[string]bool) (*Schema, map[string]*Schema) {
 	underlyingType := getStringFromPool(meta, typ.Target)
+
+	// The target is recorded as written in the source, so a named type it
+	// refers to arrives bare: `type Nested []Point` targets "[]Point", not
+	// "[]pkg.Point". Qualify it with the declaring package — the same decision
+	// the struct-field path makes — or the element resolves to a second,
+	// duplicate component under the unqualified name. Inert for a primitive
+	// target (type Count int), which is why this path never needed it before.
+	//
+	// The target is a pooled id, so the ref comes from the memoized parse and
+	// is shared: clone before mutating, and render only here, at the boundary
+	// where mapGoTypeToOpenAPISchema wants a string.
+	if ref := meta.TypeRefOf(typ.Target); ref != nil {
+		qualified := ref.Clone()
+		if qualifyTypeRef(qualified, getStringFromPool(meta, typ.Pkg)) {
+			underlyingType = qualified.String()
+		}
+	}
 
 	// Get the original type name for enum detection
 	originalTypeName := getStringFromPool(meta, typ.Name)
