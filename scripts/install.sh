@@ -161,11 +161,19 @@ main() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --tool)
+                # A value is required. Without this check a trailing `--tool`
+                # shifts past the end of the argument list, and the shift at the
+                # bottom of the loop then fails under `set -e` — the script
+                # exits after printing its header, with no error at all.
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    print_error "--tool requires a value (apispec, apispecui or both)"
+                    exit 1
+                fi
                 shift
-                case "${1:-}" in
+                case "$1" in
                     apispec)   TOOLS=("$APP_NAME") ;;
                     apispecui) TOOLS=("$UI_NAME") ;;
-                    both|"")   TOOLS=("$APP_NAME" "$UI_NAME") ;;
+                    both)      TOOLS=("$APP_NAME" "$UI_NAME") ;;
                     *)
                         print_error "Unknown tool: $1 (expected apispec, apispecui or both)"
                         exit 1
