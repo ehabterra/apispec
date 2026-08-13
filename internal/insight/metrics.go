@@ -275,7 +275,7 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 // route isn't found in the tree (or has no body there) it falls back to the
 // call graph augmented with structural interface resolution.
 func analyzeFromTrackerTree(meta *metadata.Metadata, cfg *spec.APISpecConfig, method, path, fallbackRoot string) (Metrics, TraceGraph, bool) {
-	if tree := cachedTrackerTree(meta); tree != nil && cfg != nil {
+	if tree := cachedTrackerTreeLocked(meta); tree != nil && cfg != nil {
 		for _, r := range spec.NewExtractor(tree, cfg).ExtractRoutes() {
 			if r == nil || r.Node == nil || !strings.EqualFold(r.Method, method) || r.OpenAPIPath() != path {
 				continue
@@ -624,20 +624,43 @@ func trackerLimits() metadata.TrackerLimits {
 	}
 }
 
+// analysisMu serializes ALL analysis over a shared *Metadata.
+//
+// The analysis pipeline is single-threaded by construction: nearly every
+// identity it computes is memoized in place on first use — CallIdentifier's
+// idCache, Call's base/instance ID caches, TrackerNode.TypeParams, the lazy
+// tree's plan/trace/generic caches. Those are the optimizations that make a CLI
+// run affordable, and they mean a "read" of the graph WRITES to it. Two
+// goroutines walking one metadata is therefore not a benign data race but
+// `fatal error: concurrent map writes`, which no recover() can catch.
+//
+// The UI is the only concurrent consumer: it holds one metadata and one tree
+// across requests, so two tabs (or one tab's endpoint + export requests) walked
+// them together. Serializing here rather than locking the pipeline itself is
+// deliberate — per-node synchronization would tax every CLI run, which is
+// single-threaded and cannot race, to fix a bug only the server has.
+//
+// The cost is that concurrent insight requests queue. That is acceptable: the
+// tree is built once and cached, so a queued request waits on a walk, not on a
+// rebuild. TestConcurrentInsightAnalysis guards this.
+var analysisMu sync.Mutex
+
 // cachedTrackerTree builds and memoizes the tracker tree for a metadata,
 // rebuilding only when the metadata pointer changes (after a regenerate).
 var (
-	treeMu  sync.Mutex
 	treeKey *metadata.Metadata
 	treeVal spec.TrackerTreeInterface
 )
 
-func cachedTrackerTree(meta *metadata.Metadata) spec.TrackerTreeInterface {
+// cachedTrackerTreeLocked returns the memoized tree. The caller MUST hold
+// analysisMu — and must keep holding it for as long as it walks the result,
+// which is the part a self-locking accessor could not express: handing back a
+// mutable shared tree from under a lock is what made this racy in the first
+// place.
+func cachedTrackerTreeLocked(meta *metadata.Metadata) spec.TrackerTreeInterface {
 	if meta == nil {
 		return nil
 	}
-	treeMu.Lock()
-	defer treeMu.Unlock()
 	if treeKey == meta && treeVal != nil {
 		return treeVal
 	}

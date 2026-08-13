@@ -134,6 +134,11 @@ func BuildEndpoint(s *spec.OpenAPISpec, meta *metadata.Metadata, method, path st
 // raw edges. cfg enables the tracker tree (route→handler resolution); when nil
 // or the route isn't found, it falls back to the call graph.
 func BuildEndpointWithSource(s *spec.OpenAPISpec, meta *metadata.Metadata, cfg *spec.APISpecConfig, method, path, traceSource string) *EndpointReport {
+	// Walking meta memoizes into it, so concurrent callers would corrupt it —
+	// see analysisMu. Held for the whole build, not just the tree lookup.
+	analysisMu.Lock()
+	defer analysisMu.Unlock()
+
 	rep := &EndpointReport{
 		Method:    strings.ToUpper(method),
 		Path:      path,
