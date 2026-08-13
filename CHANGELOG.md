@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unrelated feature pushed a shared response helper past 25 copies and silently
   removed the response body of an endpoint nobody had touched. A threshold that
   moves when you edit somewhere else cannot be verified safe by any project. At
-  100 that service documents all nine bodies it was missing, for about 1s; this
-  repo's own spec gains one body it had been missing. (#224)
+  100 that service documents all nine bodies it was missing, for about 1.1× the
+  run time; this repo's own spec gains one body it had been missing. (#224)
 - **Some projects pay for that and gain nothing.** The cost is uneven: medium
   projects show no measurable change, but a 163-route service emits a
   byte-identical spec and takes 1.8× as long (7s → 13s), because its instance

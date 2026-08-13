@@ -987,10 +987,11 @@ But how high that ancestor sits depends on how the app is wired, and that is wha
 | 40  | 391 / 391 | 82s | — | — | — |
 | 100 (default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s | 0 bodies empty, 9.2s |
 
-The last three columns are one measurement session on one machine; absolute wall
-clock varies with hardware, so only the difference between rows is comparable.
-"Empty" means a response that rendered as `application/json: {}` — content
-present, schema missing.
+The last three columns are one measurement session on one machine. Absolute wall
+clock varies with hardware, and so does the gap between two rows — what carries
+across machines is the **ratio**: the 163-route service's 13s / 7s = 1.8× is the
+comparable figure, not the "+6s". "Empty" means a response that rendered as
+`application/json: {}` — content present, schema missing.
 
 The default moved from 25 to 100 because of how 25 failed rather than how often:
 on the 374-route service, adding three handlers in an unrelated feature pushed a
@@ -999,8 +1000,8 @@ an endpoint nobody had touched. The threshold moves when you edit elsewhere, so
 no project can tell whether it is safe.
 
 **The cost is uneven, and on some projects it is large.** Medium projects (~20
-paths) show no measurable change. The 374-route service pays about 1s for the
-nine bodies it gains, and this repo about 0.6s for one. But a 163-route service
+paths) show no measurable change. The 374-route service pays about 1.1× for the
+nine bodies it gains, and this repo about 1.07× for one. But a 163-route service
 produced a byte-identical spec and took **1.8× as long** (7s → 13s) — it pays
 the whole cost for nothing, because its cap fires 3.6M times inside
 error-formatting call diamonds that no response body depends on. If your
