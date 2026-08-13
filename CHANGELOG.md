@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--max-instances-per-key 25`, set it explicitly — you give up only the
   guarantee that the number stays safe as the code grows. (#224)
 
+### Fixed
+
+- **The UI could crash with `fatal error: concurrent map writes`.** Two insight
+  requests in flight at once — two browser tabs, or one tab firing the endpoint
+  and export requests together — walked the same metadata and tracker tree
+  simultaneously. Analysis memoizes as it walks (identifier caches, type-param
+  maps, expansion plans), so a "read" writes, and the resulting map corruption
+  killed the whole server process rather than failing one request. Insight
+  analysis is now serialized. The CLI was never affected: it is single-threaded
+  and does not pay for the fix.
+
 ## [0.5.6] - 2026-08-08
 
 The largest correctness release so far. On a ~900-route project the documented

@@ -276,6 +276,11 @@ func operationsOf(pi spec.PathItem) []struct {
 // BuildOverview projects a generated spec + metadata into an
 // OverviewReport. Both inputs may be nil (returns a zero-value report).
 func BuildOverview(s *spec.OpenAPISpec, meta *metadata.Metadata) *OverviewReport {
+	// Walking meta memoizes into it, so concurrent callers would corrupt it —
+	// see analysisMu.
+	analysisMu.Lock()
+	defer analysisMu.Unlock()
+
 	rep := &OverviewReport{}
 	if s == nil {
 		return rep
