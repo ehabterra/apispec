@@ -976,14 +976,21 @@ So the two flags fail in different ways, and the warnings say which happened:
 
 Instead of the recursion-depth / nested-args caps, the lazy engine bounds copies of one callee **within an instance scope**: it keeps a copy of a shared helper per route so per-route value tracing stays accurate, but cuts the combinatorial copies a call diamond inside a single handler would otherwise create — the role the eager tree's per-ID recursion cap plays.
 
-The scope is the nearest argument ancestor — in practice the handler, including for routes registered inside a group closure (`r.Route("/x", func(r chi.Router) {…})`, where the handler argument node, not the closure, is the nearest ancestor; `testdata/group_closure_instances` pins this). What exhausts a scope is therefore a call diamond *inside one handler's* reach: a shared response helper reached along enough distinct paths runs out of copies, and the route silently loses its response body. Raising `--max-instances-per-key` is the remedy until the cap is scoped per route (issue #224); it is a real trade, measured across several services:
+The scope is the nearest argument ancestor. For a route registered directly — or inside a group closure (`r.Route("/x", func(r chi.Router) {…})`) — that is the **handler**, not the closure; `testdata/group_closure_instances` pins this, and it is why a group of 15 routes sharing one responder keeps every body down to a cap of 1.
 
-| `--max-instances-per-key` | success bodies (330-route service) | time (107-route service) | 374-route service | 163-route service |
-|---|---|---|---|---|
-| 5   | 77 / 391  | — | — | — |
-| 25 (previous default) | 391 / 391 | 66s | 9 bodies empty, 8s | identical spec, 7s |
-| 40  | 391 / 391 | 82s | — | — |
-| 100 (default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s |
+But how high that ancestor sits depends on how the app is wired, and that is what makes a fixed number unsafe. On the 374-route service below, the first scope to run out was the argument node of a constructor call in the composition root — above every handler it reaches, so those handlers share one allowance and the routes that lose their bodies are decided by expansion order rather than by anything about themselves. Raising `--max-instances-per-key` is the remedy until the cap is scoped per route (issue #224); it is a real trade, measured across several services:
+
+| `--max-instances-per-key` | success bodies (330-route service) | time (107-route service) | 374-route service | 163-route service | this repo (34 routes) |
+|---|---|---|---|---|---|
+| 5   | 77 / 391  | — | — | — | — |
+| 25 (previous default) | 391 / 391 | 66s | 9 bodies empty, 8s | identical spec, 7s | 1 body empty, 8.6s |
+| 40  | 391 / 391 | 82s | — | — | — |
+| 100 (default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s | 0 bodies empty, 9.2s |
+
+The last three columns are one measurement session on one machine; absolute wall
+clock varies with hardware, so only the difference between rows is comparable.
+"Empty" means a response that rendered as `application/json: {}` — content
+present, schema missing.
 
 The default moved from 25 to 100 because of how 25 failed rather than how often:
 on the 374-route service, adding three handlers in an unrelated feature pushed a
@@ -993,8 +1000,10 @@ no project can tell whether it is safe.
 
 **The cost is uneven, and on some projects it is large.** Medium projects (~20
 paths) show no measurable change. The 374-route service pays about 1s for the
-nine bodies it gains. But a 163-route service produced a byte-identical spec and
-took **1.8× as long** (7s → 13s) — it pays the whole cost for nothing. If your
+nine bodies it gains, and this repo about 0.6s for one. But a 163-route service
+produced a byte-identical spec and took **1.8× as long** (7s → 13s) — it pays
+the whole cost for nothing, because its cap fires 3.6M times inside
+error-formatting call diamonds that no response body depends on. If your
 spec does not change when you set `--max-instances-per-key 25`, set it: the
 lower cap is safe *for the code as it stands today*, which is exactly the
 guarantee the default gives up in exchange for not depending on where the next

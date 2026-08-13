@@ -274,10 +274,12 @@ const (
 // `--max-instances-per-key 1` — because the handler argument node, not the group
 // closure, is the nearest argument ancestor and therefore the scope.
 //
-// So the cap is per-handler in that shape, and the starving service has a shape
-// not yet reproduced. Rather than guess again, noteInstanceTruncation now names
-// the scope that ran out whenever the cap fires, which is the one fact that
-// distinguishes a bounded diamond from a starved route.
+// So the cap is per-handler in that shape. Rather than guess again,
+// noteInstanceTruncation names the scope that ran out whenever the cap fires,
+// which is the one fact that distinguishes a bounded diamond from a starved
+// route — and that report is what finally identified the real shape: an
+// argument node ABOVE the handlers, not below them. See the bottom of this
+// comment.
 //
 // The value is measured, not guessed — and the measurement is a TRADE, because
 // raising the cap costs projects that gain nothing from it:
@@ -300,19 +302,23 @@ const (
 // projects need more" — it is that the threshold moves when you edit somewhere
 // else, so no project can know it is safe (evidence on #224).
 //
-// Re-measured for the new value:
+// Re-measured for the new value. All four rows are ONE session on one machine,
+// because absolute wall clock is machine-dependent and earlier runs of the top
+// row on other hardware read 13.4s / 15.3s — only the ratio between the two
+// columns is comparable, and "empty" means a 2xx that rendered as
+// `application/json: {}`, content present and schema missing:
 //
 //	                          cap 25            cap 100
-//	374-route chi service     13.4s, 9 empty    15.3s, 0 empty
-//	this repo (34 routes)     13.2s, 0 empty    14.5s, 0 empty
-//	163-route chi service      7.0s, identical  12.8s, identical
+//	374-route chi service      8s, 9 empty       9s, 0 empty
+//	163-route chi service      7s, identical    13s, identical
+//	this repo (34 routes)      8.6s, 1 empty     9.2s, 0 empty
 //	19-path medium project     1s, identical     1s, identical
 //
 // The thing being bought changed, which is why this trade reads differently
 // from the 25-vs-40 one above: 40 bought three bodies, 100 buys the property
 // that adding an endpoint cannot silently remove documentation from another.
 //
-// The cost is NOT uniform, and the third row is the honest part of this
+// The cost is NOT uniform, and the second row is the honest part of this
 // decision: that service emits a byte-identical spec at both caps and takes
 // 1.8x as long at 100 — it pays the entire cost for nothing. The cap fires
 // there 3.6M times, first inside an error-formatting diamond (fmt.Errorf in a
@@ -325,15 +331,23 @@ const (
 // This is still a mitigation, not the fix. The cap is applied to the wrong
 // UNIT (#224): scoped per route rather than per argument ancestor, a handful of
 // copies would be ample everywhere and no project would pay for another's
-// shape. A group with more than ~100 routes sharing one helper still starves,
-// silently — the number moved, the shape did not.
+// shape.
+//
+// The number moved; the shape did not. What still starves is an argument node
+// whose subtree spans many routes — NOT the group closure the retracted
+// explanation above blamed. On the 374-route service the first scope to run out
+// at 25 was `notify.New.params`: the argument node of a constructor call in the
+// composition root, above every handler it reaches. Which node that is depends
+// on how an app is wired, which is precisely why no fixed number is safe.
 const DefaultMaxInstancesPerKey = 100
 
 // instanceBudget is the cap in force for this tree: the configured value, or the
 // default. It is configurable because the right number depends on a project's
-// shape — a group closure holding 40 routes needs more than one holding 5, and
-// until the cap is scoped per route (issue #224) the only way to document such a
-// project is to raise it.
+// shape — an argument node whose subtree reaches 40 routes needs more than one
+// reaching 5 — and until the cap is scoped per route (issue #224) raising it is
+// the only way to document a project whose wiring puts that node high. Lowering
+// it is equally legitimate: see DefaultMaxInstancesPerKey for a service that
+// pays 1.8x at the default for a byte-identical spec.
 func (t *LazyTree) instanceBudget() int {
 	if t.limits.MaxInstancesPerKey > 0 {
 		return t.limits.MaxInstancesPerKey
