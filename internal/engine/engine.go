@@ -284,6 +284,10 @@ type Engine struct {
 	// so the user can map it to a scheme.
 	unresolvedSecurity []intspec.MiddlewareRef
 
+	// unresolvedRefs lists $refs the generated document could not satisfy and
+	// that were repaired with a placeholder, from the most recent generation.
+	unresolvedRefs []intspec.UnresolvedRef
+
 	// pathParamMismatches lists map-key path-variable reads (mux.Vars(r)["x"])
 	// whose key matches no route placeholder, gathered during the last generation.
 	pathParamMismatches []intspec.PathParamMismatch
@@ -814,6 +818,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if secDiag != nil {
 		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
 		e.pathParamMismatches = secDiag.PathParamMismatches
+		e.unresolvedRefs = secDiag.UnresolvedRefs
+		e.reportUnresolvedRefs()
 	}
 	// Read after mapping: with the lazy tree the entrypoint gate runs during
 	// expansion, which mapping is what triggers.
@@ -1216,6 +1222,47 @@ func (e *Engine) GetExpansionStats() intspec.ExpansionStats {
 // recent generation. Zero when the project declares no entrypoints.
 func (e *Engine) GetEntrypointStats() intspec.EntrypointStats {
 	return e.entrypointStats
+}
+
+// reportUnresolvedRefs warns about references the document could not satisfy.
+//
+// Always-on rather than verbose-gated, like the truncation warnings: a
+// reference with no component means a type resolved to nothing useful, so the
+// operation is documented while its shape is not. It names the GO TYPE, which
+// is what tells a user which dependency to register under externalTypes — the
+// mangled component name does not.
+func (e *Engine) reportUnresolvedRefs() {
+	if len(e.unresolvedRefs) == 0 {
+		return
+	}
+
+	var b strings.Builder
+	sites := 0
+	for i, ref := range e.unresolvedRefs {
+		sites += ref.Sites
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if ref.GoType != "" {
+			b.WriteString(ref.GoType)
+		} else {
+			b.WriteString(ref.Component)
+		}
+		if ref.Sites > 1 {
+			fmt.Fprintf(&b, " (%d sites)", ref.Sites)
+		}
+	}
+
+	e.reportPhase(fmt.Sprintf(
+		"%d type(s) had no schema and were inlined as unresolved across %d reference(s): %s",
+		len(e.unresolvedRefs), sites, b.String()), 0)
+}
+
+// GetUnresolvedRefs returns the references the most recent generation could not
+// satisfy, after they were repaired. Non-empty means the spec loads but some
+// operation's shape is a placeholder.
+func (e *Engine) GetUnresolvedRefs() []intspec.UnresolvedRef {
+	return e.unresolvedRefs
 }
 
 // GetPathParamMismatches returns map-key path-variable reads (e.g.

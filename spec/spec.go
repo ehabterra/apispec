@@ -27,6 +27,10 @@ type SecurityScheme = intspec.SecurityScheme
 type SecurityPattern = intspec.SecurityPattern
 type SecurityMapping = intspec.SecurityMapping
 type MiddlewareRef = intspec.MiddlewareRef
+
+// UnresolvedRef reports a $ref the generated document could not satisfy, after
+// it was repaired with a placeholder — see Generator.UnresolvedRefs.
+type UnresolvedRef = intspec.UnresolvedRef
 type FrameworkConfig = intspec.FrameworkConfig
 type Tag = intspec.Tag
 

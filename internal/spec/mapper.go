@@ -218,6 +218,13 @@ type SecurityDiagnostics struct {
 	// (mux.Vars(r)["userId"]) whose key matches no route placeholder — a likely
 	// typo, since the read is always empty.
 	PathParamMismatches []PathParamMismatch
+
+	// UnresolvedRefs lists references the document could not satisfy, after
+	// they were repaired with a placeholder so the spec still loads. Non-empty
+	// means some type resolved to nothing useful: the operation is documented,
+	// its shape is not. Reported here rather than only on stderr so the UI and
+	// a CI gate can read it (issue #327).
+	UnresolvedRefs []UnresolvedRef
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification.
@@ -268,7 +275,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	paths := buildPathsFromRoutes(routes, handlerMethods...)
 
 	// Generate component schemas
-	components := generateComponentSchemas(tree.GetMetadata(), cfg, routes)
+	components, usedTypes := generateComponentSchemas(tree.GetMetadata(), cfg, routes)
 
 	// Register shared component parameters for dynamic-path placeholders
 	// (issue #34). Each unique placeholder name across routes becomes one
@@ -313,9 +320,16 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		spec.Components.SecuritySchemes = schemes
 	}
 
+	// Last, once every component is registered: make the document internally
+	// consistent. Anything still pointing at nothing is repaired with the
+	// honest placeholder and reported, so a spec that cannot resolve never
+	// reaches a viewer (issue #327).
+	unresolvedRefs := repairDanglingRefs(spec, usedTypes)
+
 	diag := &SecurityDiagnostics{
 		UnresolvedMiddleware: extractor.UnresolvedSecurity(),
 		PathParamMismatches:  extractor.PathParamMismatches(),
+		UnresolvedRefs:       unresolvedRefs,
 	}
 	return spec, diag, nil
 }
@@ -989,7 +1003,11 @@ func pathParamPatterns(path string) map[string]string {
 }
 
 // generateComponentSchemas generates component schemas from metadata
-func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, routes []*RouteInfo) Components {
+// generateComponentSchemas returns the components and the used-type map they
+// were built from. The map is the only place the ORIGINAL Go type names
+// survive — component naming mangles them — so the ref repair needs it to
+// report something a user can act on.
+func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, routes []*RouteInfo) (Components, map[string]*Schema) {
 	components := Components{
 		Schemas: make(map[string]*Schema),
 	}
@@ -1000,7 +1018,7 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, route
 	// Generate schemas for used types
 	generateSchemas(usedTypes, cfg, components, meta)
 
-	return components
+	return components, usedTypes
 }
 
 func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {

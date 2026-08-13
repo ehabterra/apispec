@@ -78,3 +78,14 @@ func (g *Generator) PathParamMismatches() []intspec.PathParamMismatch {
 	}
 	return g.engine.GetPathParamMismatches()
 }
+
+// UnresolvedRefs returns the $refs the last generation could not satisfy, after
+// they were repaired with a placeholder. Non-empty means the document loads but
+// some type resolved to nothing useful — the actionable fix is usually
+// registering it under externalTypes (issue #327).
+func (g *Generator) UnresolvedRefs() []intspec.UnresolvedRef {
+	if g.engine == nil {
+		return nil
+	}
+	return g.engine.GetUnresolvedRefs()
+}

@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,4 +95,57 @@ func schemaPropNames(s *spec.Schema) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestTestdata_UnresolvedRefsAreReported covers the end of the chain for issue
+// #327: a type with no schema is repaired so the document still loads, AND the
+// fact is reported so a user knows their spec has a placeholder in it rather
+// than a type.
+//
+// external_type_refs is the right fixture: its fields are standard-library
+// types, which are outside the analysed module exactly like a dependency, so
+// they genuinely cannot resolve.
+func TestTestdata_UnresolvedRefsAreReported(t *testing.T) {
+	dir := filepath.Join("..", "testdata", "external_type_refs")
+	g := NewGenerator(spec.DefaultHTTPConfig())
+	out, err := g.GenerateFromDirectory(dir)
+	if err != nil {
+		t.Fatalf("GenerateFromDirectory: %v", err)
+	}
+
+	// The document must load regardless — that is what the repair is for.
+	noDanglingRefs(t, out)
+
+	// This fixture must report NOTHING, and that is a real assertion rather
+	// than a vacuous loop: since #325 the generation pass registers a
+	// placeholder for a type it cannot resolve, so nothing should reach the
+	// final repair. A non-empty report here means type resolution regressed
+	// far enough that the safety net had to catch it — which is exactly the
+	// signal worth failing on.
+	//
+	// The repair itself is exercised directly by unit tests in internal/spec
+	// (one per document location, plus its repair and reporting behaviour).
+	// Reproducing it end to end would need a fixture that encodes a bug which
+	// does not exist, and that would stop reproducing the moment the bug was
+	// fixed elsewhere.
+	refs := g.UnresolvedRefs()
+	if len(refs) != 0 {
+		t.Errorf("%d reference(s) needed repairing in a fixture whose types all resolve — "+
+			"type resolution regressed: %+v", len(refs), refs)
+	}
+
+	// Whatever is reported, the report must describe what was repaired: every
+	// component it names now exists. Kept so a future non-empty report is
+	// checked rather than only counted.
+	for _, r := range refs {
+		if r.Component == "" {
+			t.Error("an unresolved ref reports no component name")
+		}
+		if r.Sites < 1 {
+			t.Errorf("%s reports %d sites, want at least 1", r.Component, r.Sites)
+		}
+		if out.Components == nil || out.Components.Schemas[r.Component] == nil {
+			t.Errorf("%s was reported unresolved but no placeholder was registered for it", r.Component)
+		}
+	}
 }

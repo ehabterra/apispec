@@ -796,7 +796,7 @@ func TestGenerateComponentSchemas(t *testing.T) {
 	cfg := DefaultGinConfig()
 
 	// Test component schema generation
-	components := generateComponentSchemas(meta, cfg, routes)
+	components, _ := generateComponentSchemas(meta, cfg, routes)
 	if components.Schemas == nil {
 		t.Fatal("Schemas should not be nil")
 	}
