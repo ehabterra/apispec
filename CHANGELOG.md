@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`--max-instances-per-key` now defaults to 100 (was 25).** The reason is how
+  25 failed, not how often: on a 374-route service, adding three handlers in an
+  unrelated feature pushed a shared response helper past 25 copies and silently
+  removed the response body of an endpoint nobody had touched. A threshold that
+  moves when you edit somewhere else cannot be verified safe by any project. At
+  100 that service documents all nine bodies it was missing, for about 1s.
+  (#224)
+- **Some projects pay for that and gain nothing.** The cost is uneven: medium
+  projects show no measurable change, but a 163-route service emits a
+  byte-identical spec and takes 1.8× as long (7s → 13s), because its instance
+  cap fires millions of times inside error-formatting call diamonds that no
+  response body depends on. If your spec is unchanged at
+  `--max-instances-per-key 25`, set it explicitly — you give up only the
+  guarantee that the number stays safe as the code grows. (#224)
+
 ## [0.5.6] - 2026-08-08
 
 The largest correctness release so far. On a ~900-route project the documented

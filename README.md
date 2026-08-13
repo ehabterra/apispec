@@ -159,7 +159,7 @@ apispec --output openapi.yaml --skip-cgo
 | `--max-args`                | `-ma`     | Max arguments per function                             | `100`                           |
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
 | `--max-recursion-depth`     | `-mrd`    | Max recursion depth (anti-loop)                        | `10`                            |
-| `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `25`                   |
+| `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `100`                  |
 | `--legacy-tracker`          |           | Use the legacy (eager) tracker tree instead of the default lazy tracker | `false`        |
 | `--skip-cgo`                |           | Skip CGO packages                                      | `true`                          |
 | `--include-file`            |           | Include files matching pattern (repeatable)            | `""`                            |
@@ -965,7 +965,7 @@ APISpec applies safeguards to prevent runaway analysis. **Not every knob applies
 | Max args / function  | 100      | `--max-args`            | both                                                                       |
 | Max nested arg depth | 100      | `--max-nested-args`     | **eager only**                                                             |
 | Max recursion depth  | 10       | `--max-recursion-depth` | **eager only**                                                             |
-| Max instances / key  | 25       | `--max-instances-per-key` | **lazy only**                                                            |
+| Max instances / key  | 100      | `--max-instances-per-key` | **lazy only**                                                            |
 
 The lazy engine's node budget is **two budgets, and they are independent**. That split is what keeps truncation local (issue #264). With one global budget the walk is depth-first, so whatever expands first spends it and every route not yet *reached* is lost outright — on a ~900-route project the allowance was gone inside configuration and logging packages, and the run documented **12 paths**. Bounding a route's detail separately, and charging its keys only to its own allowance, took the same project to **640**.
 
@@ -976,15 +976,32 @@ So the two flags fail in different ways, and the warnings say which happened:
 
 Instead of the recursion-depth / nested-args caps, the lazy engine bounds copies of one callee **within an instance scope**: it keeps a copy of a shared helper per route so per-route value tracing stays accurate, but cuts the combinatorial copies a call diamond inside a single handler would otherwise create — the role the eager tree's per-ID recursion cap plays.
 
-The scope is the nearest argument ancestor, which is "per handler" only when routes are registered directly. Register them inside a group closure (`r.Route("/x", func(r chi.Router) {…})`) and the *closure* becomes the scope for every route in the group, so a response helper shared across it exhausts the budget after that many routes and every later route in the group silently loses its response body. Raising `--max-instances-per-key` is the remedy until the cap is scoped per route (issue #224); it is a real trade, measured on a ~330-route service and a 107-route service:
+The scope is the nearest argument ancestor — in practice the handler, including for routes registered inside a group closure (`r.Route("/x", func(r chi.Router) {…})`, where the handler argument node, not the closure, is the nearest ancestor; `testdata/group_closure_instances` pins this). What exhausts a scope is therefore a call diamond *inside one handler's* reach: a shared response helper reached along enough distinct paths runs out of copies, and the route silently loses its response body. Raising `--max-instances-per-key` is the remedy until the cap is scoped per route (issue #224); it is a real trade, measured across several services:
 
-| `--max-instances-per-key` | success bodies (330-route service) | time (107-route service) |
-|---|---|---|
-| 5   | 77 / 391  | — |
-| 25 (default) | 391 / 391 | 66s |
-| 40  | 391 / 391 | 82s |
+| `--max-instances-per-key` | success bodies (330-route service) | time (107-route service) | 374-route service | 163-route service |
+|---|---|---|---|---|
+| 5   | 77 / 391  | — | — | — |
+| 25 (previous default) | 391 / 391 | 66s | 9 bodies empty, 8s | identical spec, 7s |
+| 40  | 391 / 391 | 82s | — | — |
+| 100 (default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s |
 
-Raise it when success responses are missing bodies on a project with large route groups; leave it alone otherwise, since the cost is paid by every project regardless of shape.
+The default moved from 25 to 100 because of how 25 failed rather than how often:
+on the 374-route service, adding three handlers in an unrelated feature pushed a
+shared response helper past 25 copies and silently removed the response body of
+an endpoint nobody had touched. The threshold moves when you edit elsewhere, so
+no project can tell whether it is safe.
+
+**The cost is uneven, and on some projects it is large.** Medium projects (~20
+paths) show no measurable change. The 374-route service pays about 1s for the
+nine bodies it gains. But a 163-route service produced a byte-identical spec and
+took **1.8× as long** (7s → 13s) — it pays the whole cost for nothing. If your
+spec does not change when you set `--max-instances-per-key 25`, set it: the
+lower cap is safe *for the code as it stands today*, which is exactly the
+guarantee the default gives up in exchange for not depending on where the next
+endpoint is added.
+
+Raise it above 100 when success responses are still missing bodies on a project
+with very large route groups.
 
 When a limit is reached, APISpec logs a clear warning, e.g.:
 

@@ -288,16 +288,46 @@ const (
 //	 40   390 / 390 bodies     82s  (107 paths)
 //	400   390 / 390 bodies    ~2x again
 //
-// 25 recovers 99.2% of the bodies for +0.6s on the starved service, while 40
-// buys the last three and costs the second service another 16s for no extra
-// route at all. So 25, and the remaining three wait for the real fix.
+// 25 recovered 99.2% of the bodies for +0.6s on the starved service, while 40
+// bought the last three and cost the second service another 16s for no extra
+// route at all.
 //
-// That asymmetry is the argument for #224: the cap is being applied to the wrong
-// UNIT. Scoped per route instead of per argument ancestor, a handful of copies
-// would be ample everywhere and no project would pay for another's shape. Until
-// then this stays a mitigation — a group with more than ~25 routes sharing one
-// helper still starves, silently.
-const DefaultMaxInstancesPerKey = 25
+// RAISED TO 100. 25 held for as long as it took another service to grow into
+// it, and the way it failed is the argument: on a ~374-route service, adding
+// three handlers in an unrelated feature pushed a shared response helper past
+// 25 copies and silently deleted the body of an endpoint nobody had touched.
+// Nine 2xx bodies were empty at 25 and none at 100. The failure is not "large
+// projects need more" — it is that the threshold moves when you edit somewhere
+// else, so no project can know it is safe (evidence on #224).
+//
+// Re-measured for the new value:
+//
+//	                          cap 25            cap 100
+//	374-route chi service     13.4s, 9 empty    15.3s, 0 empty
+//	this repo (34 routes)     13.2s, 0 empty    14.5s, 0 empty
+//	163-route chi service      7.0s, identical  12.8s, identical
+//	19-path medium project     1s, identical     1s, identical
+//
+// The thing being bought changed, which is why this trade reads differently
+// from the 25-vs-40 one above: 40 bought three bodies, 100 buys the property
+// that adding an endpoint cannot silently remove documentation from another.
+//
+// The cost is NOT uniform, and the third row is the honest part of this
+// decision: that service emits a byte-identical spec at both caps and takes
+// 1.8x as long at 100 — it pays the entire cost for nothing. The cap fires
+// there 3.6M times, first inside an error-formatting diamond (fmt.Errorf in a
+// mongo mapper) that no response body depends on: the cap is doing its job, and
+// a higher cap simply buys each of those dead copies 4x more work. Projects in
+// that position should set --max-instances-per-key 25 explicitly; what they
+// give up by doing so is only the guarantee that the number stays safe when
+// the code is edited somewhere else.
+//
+// This is still a mitigation, not the fix. The cap is applied to the wrong
+// UNIT (#224): scoped per route rather than per argument ancestor, a handful of
+// copies would be ample everywhere and no project would pay for another's
+// shape. A group with more than ~100 routes sharing one helper still starves,
+// silently — the number moved, the shape did not.
+const DefaultMaxInstancesPerKey = 100
 
 // instanceBudget is the cap in force for this tree: the configured value, or the
 // default. It is configurable because the right number depends on a project's
