@@ -53,8 +53,11 @@ func TestTestdata_GroupClosureInstances(t *testing.T) {
 	)
 
 	// One is the harshest cap that still permits a single copy of each callee.
-	// If the scope spanned the group, this could not document 15 routes.
-	for _, cap := range []int{1, 25} {
+	// If the scope spanned the group, this could not document 15 routes. The
+	// shipped default is read from the constant rather than written out, so
+	// raising or lowering it re-runs this sweep at the value that actually
+	// ships (the per-route sweep below does the same).
+	for _, cap := range []int{1, intspec.DefaultMaxInstancesPerKey} {
 		t.Run(fmt.Sprintf("cap=%d", cap), func(t *testing.T) {
 			cfg := engine.DefaultEngineConfig()
 			cfg.InputDir = filepath.Join("..", "testdata", fixture)

@@ -37,6 +37,9 @@ openapi*.yaml
 
 # Local, machine-specific external project list for scripts/compare-spec.sh
 scripts/compare-spec.paths
+# scripts/compare-spec.sh writes a project's stderr here and removes it again;
+# an interrupted run leaves the file behind, which must not read as a change.
+.compare_err
 
 # Test output
 *.log
