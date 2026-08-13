@@ -67,13 +67,16 @@ func TestConcurrentInsightAnalysis(t *testing.T) {
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
 	})
+	// Every setup failure below is fatal rather than a skip: this is a
+	// regression guard, and a skipped guard silently stops guarding. The
+	// generator fixture suites hard-fail on the same call for the same reason.
 	out, err := eng.GenerateOpenAPI()
 	if err != nil {
-		t.Skipf("engine generate unavailable in this environment: %v", err)
+		t.Fatalf("GenerateOpenAPI: %v", err)
 	}
 	meta := eng.GetMetadata()
 	if out == nil || meta == nil || len(out.Paths) == 0 {
-		t.Skip("no spec/metadata produced")
+		t.Fatal("no spec/metadata produced, so nothing would be walked concurrently")
 	}
 
 	// Route list comes from a warm-up overview, so the concurrent phase below
@@ -81,7 +84,7 @@ func TestConcurrentInsightAnalysis(t *testing.T) {
 	// the race must not depend on starting cold.
 	warm := BuildOverview(out, meta)
 	if len(warm.Endpoints) == 0 {
-		t.Skip("no endpoints in overview")
+		t.Fatal("no endpoints in overview, so the concurrent phase would walk nothing")
 	}
 
 	const goroutines = 8
