@@ -24,6 +24,11 @@
 #                     default: deleted).
 #   -a, --all         Also list ADDED keys (new routes/fields). STATUS CHANGES,
 #                     MISSING and CHANGED are always reported and always fail.
+#       --self-test   Check the comparator's own key semantics against built-in
+#                     cases and exit. Compares nothing and needs no project.
+#       --compare-files REF GEN
+#                     Compare two spec files directly and exit, skipping
+#                     generation. Used by --self-test; also handy by hand.
 #       --strict      Compare keys literally (do NOT canonicalize '.'<->'_' in
 #                     schema names / $refs). Off by default.
 #       --paths FILE  External-projects list file (default: scripts/compare-spec.paths).
@@ -45,6 +50,8 @@ VERSION=""
 KEEP=0
 SHOW_ALL=0
 STRICT=0
+SELF_TEST=0
+CMP_FILES=()
 GENERATE=0
 NO_TESTDATA=0
 APISPEC_BIN=""
@@ -60,6 +67,8 @@ while [[ $# -gt 0 ]]; do
     -k|--keep)      KEEP=1; shift ;;
     -a|--all)       SHOW_ALL=1; shift ;;
     --strict)       STRICT=1; shift ;;
+    --self-test)    SELF_TEST=1; shift ;;
+    --compare-files) CMP_FILES=("$2" "$3"); shift 3 ;;
     --paths)        PATHS_FILE="$2"; shift 2 ;;
     --no-testdata)  NO_TESTDATA=1; shift ;;
     --bin)          APISPEC_BIN="$2"; shift 2 ;;
@@ -68,6 +77,231 @@ while [[ $# -gt 0 ]]; do
     *)              PATHS+=("$1"); shift ;;
   esac
 done
+
+# self_test checks the comparator's KEY SEMANTICS -- which differences it treats
+# as drift, and which as the same thing said differently -- against built-in
+# cases. See scripts/compare-spec-selftest.py for what each case pins and why.
+self_test() {
+  python3 "$REPO_ROOT/scripts/compare-spec-selftest.py" "$REPO_ROOT"
+}
+
+compare_py() {
+python3 - "$1" "$2" "$SHOW_ALL" "$STRICT" <<'PY'
+import json, sys, yaml
+
+ref_file, gen_file = sys.argv[1], sys.argv[2]
+show_added = sys.argv[3] == "1"
+strict     = sys.argv[4] == "1"
+
+HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+
+# Lists whose meaning is membership, not order, and which are therefore keyed by
+# VALUE rather than by index. Sorting (below) already stops a reorder looking like
+# a change, but it does not help an INSERTION: keyed positionally, adding one
+# value to a 32-value enum reports every later value as CHANGED, which both
+# invents drift and buries whether anything was genuinely dropped.
+#
+# `required` and `tags` have the same set-like shape; add them here if their
+# insert-cascade becomes noisy too. They are left out for now because only enum
+# has actually produced false drift in practice.
+SET_VALUED_KEYS = {"enum"}
+
+# Lists of OBJECTS whose members have a stable identity, keyed by that identity
+# rather than by index for the same reason. A parameter is identified by
+# (name, in) per the OpenAPI spec, so inserting a header parameter ahead of a
+# path parameter should report one added parameter — not rename every one after
+# it. Falls back to positional keying when the identity is not usable (a $ref'd
+# parameter has no name, and duplicates would collide), so the comparison is
+# never made less precise than it was.
+IDENTITY_KEYED_LISTS = {"parameters": ("name", "in")}
+
+def member_token(v):
+    # Stable, type-aware identity for a whole set member. json rather than repr:
+    # it gives object and array members a canonical form (sorted keys), which
+    # repr does not, and it still keeps 1, 1.0, "1", true and null apart.
+    return json.dumps(v, sort_keys=True, default=str)
+
+def identity_tokens(obj, fields):
+    # Tokens for an identity-keyed list, or None when they cannot be trusted.
+    if not all(isinstance(v, dict) for v in obj):
+        return None
+    tokens = []
+    for v in obj:
+        if not all(v.get(f) is not None for f in fields):
+            return None  # a $ref'd or malformed member has no identity
+        tokens.append(",".join(str(v[f]) for f in fields))
+    if len(set(tokens)) != len(tokens):
+        return None  # duplicates would collapse; keep them positional instead
+    return tokens
+
+def flatten(obj, prefix=()):
+    out = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.update(flatten(v, prefix + (str(k),)))
+    elif isinstance(obj, list):
+        parent = prefix[-1] if prefix else None
+        if obj and parent in SET_VALUED_KEYS:
+            # A member is identified by WHAT IT IS, so one added value is one
+            # ADDED entry and one removed value is one MISSING entry. Whole
+            # members, including object and array ones, which OpenAPI allows.
+            for v in obj:
+                out[prefix + (f"[={member_token(v)}]",)] = v
+            return out
+        if obj and parent in IDENTITY_KEYED_LISTS:
+            tokens = identity_tokens(obj, IDENTITY_KEYED_LISTS[parent])
+            if tokens is not None:
+                for token, v in zip(tokens, obj):
+                    out.update(flatten(v, prefix + (f"[{token}]",)))
+                return out
+        if obj and all(not isinstance(v, (dict, list)) for v in obj):
+            # Sort the remaining all-scalar lists (required, tags, security
+            # scopes, ...) so a cosmetic reorder does not masquerade as CHANGED.
+            obj = sorted(obj, key=lambda x: (str(type(x)), str(x)))
+        for i, v in enumerate(obj):
+            out.update(flatten(v, prefix + (f"[{i}]",)))
+    else:
+        out[prefix] = obj
+    return out
+
+def canon_seg(seg):
+    # Canonicalize a single path segment: treat '.' and '_' as the same separator
+    # in schema component identifiers (the sanitizer changed '.' -> '_').
+    return seg.replace(".", "_")
+
+def canon_key(key):
+    # Only canonicalize the schema-name segment (child of components.schemas.*).
+    if len(key) >= 3 and key[0] == "components" and key[1] == "schemas":
+        return key[:2] + (canon_seg(key[2]),) + key[3:]
+    return key
+
+def canon_val(v):
+    if isinstance(v, str) and v.startswith("#/components/schemas/"):
+        head, name = v.rsplit("/", 1)
+        return head + "/" + canon_seg(name)
+    if isinstance(v, list):
+        return [canon_val(x) for x in v]
+    if isinstance(v, dict):
+        return {k: canon_val(x) for k, x in v.items()}
+    return v
+
+def canon_entry(key, value):
+    # Canonicalize key and value TOGETHER. A set member's key is derived from its
+    # value, so canonicalizing only the value would leave two spellings of the
+    # same $ref keyed differently and report one MISSING plus one ADDED where
+    # there is no drift at all.
+    cvalue = canon_val(value)
+    if key and key[-1].startswith("[=") and cvalue != value:
+        key = key[:-1] + (f"[={member_token(cvalue)}]",)
+    return canon_key(key), cvalue
+
+def show(key):
+    # Human-readable path for display.
+    out = ""
+    for seg in key:
+        if seg.startswith("["):
+            out += seg
+        else:
+            out += ("." if out else "") + seg
+    return out
+
+def op_statuses(doc):
+    # {(path, METHOD): set(response status keys)} for every operation.
+    out = {}
+    for p, item in ((doc or {}).get("paths", {}) or {}).items():
+        if not isinstance(item, dict):
+            continue
+        for m, op in item.items():
+            if m.lower() not in HTTP_METHODS or not isinstance(op, dict):
+                continue
+            resps = op.get("responses", {}) or {}
+            out[(p, m.upper())] = {str(k) for k in resps}
+    return out
+
+with open(ref_file) as f: ref_doc = yaml.safe_load(f) or {}
+with open(gen_file) as f: gen_doc = yaml.safe_load(f) or {}
+
+# Say which file is not a spec, rather than failing inside the walk with an
+# AttributeError. Reachable by hand now that --compare-files takes any two paths.
+for label, path, doc in (("snapshot", ref_file, ref_doc), ("generated", gen_file, gen_doc)):
+    if not isinstance(doc, dict):
+        print(f"  error: {label} {path} is not an OpenAPI document "
+              f"(parsed as {type(doc).__name__})")
+        sys.exit(2)
+
+ref_raw = flatten(ref_doc)
+gen_raw = flatten(gen_doc)
+
+if strict:
+    ref, gen = ref_raw, gen_raw
+else:
+    ref = dict(canon_entry(k, v) for k, v in ref_raw.items())
+    gen = dict(canon_entry(k, v) for k, v in gen_raw.items())
+
+missing = sorted((k for k in ref if k not in gen), key=show)
+changed = sorted((k for k in ref if k in gen and ref[k] != gen[k]), key=show)
+added   = sorted((k for k in gen if k not in ref), key=show)
+
+# Per-operation response-status-set diffs (order-independent).
+ref_st, gen_st = op_statuses(ref_doc), op_statuses(gen_doc)
+status_diffs = []
+for opkey in sorted(set(ref_st) | set(gen_st)):
+    lost = sorted(ref_st.get(opkey, set()) - gen_st.get(opkey, set()))
+    gained = sorted(gen_st.get(opkey, set()) - ref_st.get(opkey, set()))
+    if lost or gained:
+        status_diffs.append((opkey, lost, gained))
+
+# Note the schema-rename normalization if it actually merged anything.
+if not strict:
+    renamed = sum(1 for k in ref_raw if canon_key(k) != k)
+    if renamed:
+        print(f"  (note: schema names canonicalized '.'<->'_'; {renamed} keys "
+              f"normalized — pass --strict to compare literally)")
+
+if status_diffs:
+    print(f"  STATUS CHANGES ({len(status_diffs)}) — response status set differs:")
+    for (p, m), lost, gained in status_diffs:
+        parts = []
+        if lost:   parts.append("lost "   + ",".join(lost))
+        if gained: parts.append("gained " + ",".join(gained))
+        print(f"    ! {m} {p}: {'; '.join(parts)}")
+else:
+    print("  STATUS CHANGES (0) — response status sets unchanged.")
+
+if missing:
+    print(f"  MISSING ({len(missing)}) — in snapshot, absent from generated:")
+    for k in missing:
+        print(f"    - {show(k)} = {ref[k]!r}")
+else:
+    print("  MISSING (0) — nothing from the snapshot was dropped.")
+
+if changed:
+    print(f"  CHANGED ({len(changed)}) — same key, different value:")
+    for k in changed:
+        print(f"    ~ {show(k)}: {ref[k]!r} -> {gen[k]!r}")
+else:
+    print("  CHANGED (0) — no in-place value changes.")
+
+if show_added and added:
+    print(f"  ADDED ({len(added)}) — new in generated:")
+    for k in added:
+        print(f"    + {show(k)} = {gen[k]!r}")
+
+# Fail on any drift that removes or alters documented behaviour: a status
+# gained/lost, a dropped key, or an in-place value change.
+sys.exit(1 if (status_diffs or missing or changed) else 0)
+PY
+}
+
+# Early-exit modes, dispatched here because they need the comparator above and
+# nothing below: neither resolves a project set, so neither should be made to
+# discover one first.
+if [[ $SELF_TEST -eq 1 ]]; then
+  self_test; exit $?
+fi
+if [[ ${#CMP_FILES[@]} -gt 0 ]]; then
+  compare_py "${CMP_FILES[0]}" "${CMP_FILES[1]}"; exit $?
+fi
 
 # Resolve a path token to an absolute path: absolute tokens as-is, otherwise
 # relative to the repo root (so the script works from any CWD).
@@ -206,156 +440,6 @@ run_apispec() {
 # entries for everything after it.
 # ADDED keys (new routes/fields) are informational and shown only with --all,
 # except added statuses, which the STATUS section always reports and fails on.
-compare_py() {
-python3 - "$1" "$2" "$SHOW_ALL" "$STRICT" <<'PY'
-import sys, yaml
-
-ref_file, gen_file = sys.argv[1], sys.argv[2]
-show_added = sys.argv[3] == "1"
-strict     = sys.argv[4] == "1"
-
-HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
-
-# Lists whose meaning is membership, not order, and which are therefore keyed by
-# VALUE rather than by index. Sorting (below) already stops a reorder looking like
-# a change, but it does not help an INSERTION: keyed positionally, adding one
-# value to a 32-value enum reports every later value as CHANGED, which both
-# invents drift and buries whether anything was genuinely dropped.
-#
-# `required` and `tags` have the same set-like shape; add them here if their
-# insert-cascade becomes noisy too. They are left out for now because only enum
-# has actually produced false drift in practice.
-SET_VALUED_KEYS = {"enum"}
-
-def flatten(obj, prefix=()):
-    out = {}
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            out.update(flatten(v, prefix + (str(k),)))
-    elif isinstance(obj, list):
-        if obj and all(not isinstance(v, (dict, list)) for v in obj):
-            if prefix and prefix[-1] in SET_VALUED_KEYS:
-                # Keyed by value: one added value is one ADDED entry, one removed
-                # value is one MISSING entry, and nothing else moves. repr() keeps
-                # 1 and "1" distinct in a mixed-type enum.
-                for v in obj:
-                    out[prefix + (f"[={v!r}]",)] = v
-                return out
-            # Sort the remaining all-scalar lists (required, tags, security
-            # scopes, ...) so a cosmetic reorder does not masquerade as CHANGED.
-            obj = sorted(obj, key=lambda x: (str(type(x)), str(x)))
-        for i, v in enumerate(obj):
-            out.update(flatten(v, prefix + (f"[{i}]",)))
-    else:
-        out[prefix] = obj
-    return out
-
-def canon_seg(seg):
-    # Canonicalize a single path segment: treat '.' and '_' as the same separator
-    # in schema component identifiers (the sanitizer changed '.' -> '_').
-    return seg.replace(".", "_")
-
-def canon_key(key):
-    # Only canonicalize the schema-name segment (child of components.schemas.*).
-    if len(key) >= 3 and key[0] == "components" and key[1] == "schemas":
-        return key[:2] + (canon_seg(key[2]),) + key[3:]
-    return key
-
-def canon_val(v):
-    if isinstance(v, str) and v.startswith("#/components/schemas/"):
-        head, name = v.rsplit("/", 1)
-        return head + "/" + canon_seg(name)
-    return v
-
-def show(key):
-    # Human-readable path for display.
-    out = ""
-    for seg in key:
-        if seg.startswith("["):
-            out += seg
-        else:
-            out += ("." if out else "") + seg
-    return out
-
-def op_statuses(doc):
-    # {(path, METHOD): set(response status keys)} for every operation.
-    out = {}
-    for p, item in ((doc or {}).get("paths", {}) or {}).items():
-        if not isinstance(item, dict):
-            continue
-        for m, op in item.items():
-            if m.lower() not in HTTP_METHODS or not isinstance(op, dict):
-                continue
-            resps = op.get("responses", {}) or {}
-            out[(p, m.upper())] = {str(k) for k in resps}
-    return out
-
-with open(ref_file) as f: ref_doc = yaml.safe_load(f) or {}
-with open(gen_file) as f: gen_doc = yaml.safe_load(f) or {}
-
-ref_raw = flatten(ref_doc)
-gen_raw = flatten(gen_doc)
-
-if strict:
-    ref, gen = ref_raw, gen_raw
-else:
-    ref = {canon_key(k): canon_val(v) for k, v in ref_raw.items()}
-    gen = {canon_key(k): canon_val(v) for k, v in gen_raw.items()}
-
-missing = sorted((k for k in ref if k not in gen), key=show)
-changed = sorted((k for k in ref if k in gen and ref[k] != gen[k]), key=show)
-added   = sorted((k for k in gen if k not in ref), key=show)
-
-# Per-operation response-status-set diffs (order-independent).
-ref_st, gen_st = op_statuses(ref_doc), op_statuses(gen_doc)
-status_diffs = []
-for opkey in sorted(set(ref_st) | set(gen_st)):
-    lost = sorted(ref_st.get(opkey, set()) - gen_st.get(opkey, set()))
-    gained = sorted(gen_st.get(opkey, set()) - ref_st.get(opkey, set()))
-    if lost or gained:
-        status_diffs.append((opkey, lost, gained))
-
-# Note the schema-rename normalization if it actually merged anything.
-if not strict:
-    renamed = sum(1 for k in ref_raw if canon_key(k) != k)
-    if renamed:
-        print(f"  (note: schema names canonicalized '.'<->'_'; {renamed} keys "
-              f"normalized — pass --strict to compare literally)")
-
-if status_diffs:
-    print(f"  STATUS CHANGES ({len(status_diffs)}) — response status set differs:")
-    for (p, m), lost, gained in status_diffs:
-        parts = []
-        if lost:   parts.append("lost "   + ",".join(lost))
-        if gained: parts.append("gained " + ",".join(gained))
-        print(f"    ! {m} {p}: {'; '.join(parts)}")
-else:
-    print("  STATUS CHANGES (0) — response status sets unchanged.")
-
-if missing:
-    print(f"  MISSING ({len(missing)}) — in snapshot, absent from generated:")
-    for k in missing:
-        print(f"    - {show(k)} = {ref[k]!r}")
-else:
-    print("  MISSING (0) — nothing from the snapshot was dropped.")
-
-if changed:
-    print(f"  CHANGED ({len(changed)}) — same key, different value:")
-    for k in changed:
-        print(f"    ~ {show(k)}: {ref[k]!r} -> {gen[k]!r}")
-else:
-    print("  CHANGED (0) — no in-place value changes.")
-
-if show_added and added:
-    print(f"  ADDED ({len(added)}) — new in generated:")
-    for k in added:
-        print(f"    + {show(k)} = {gen[k]!r}")
-
-# Fail on any drift that removes or alters documented behaviour: a status
-# gained/lost, a dropped key, or an in-place value change.
-sys.exit(1 if (status_diffs or missing or changed) else 0)
-PY
-}
 
 OVERALL=0
 echo

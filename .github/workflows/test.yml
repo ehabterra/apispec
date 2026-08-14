@@ -59,6 +59,13 @@ jobs:
     - name: Run integration tests
       run: go test -v ./cmd/apispec/...
 
+    # The snapshot comparator decides what counts as drift, so its own key
+    # semantics need guarding: keyed positionally, an inserted enum value or
+    # parameter reports everything after it as changed, which hides whether
+    # anything was really dropped.
+    - name: Comparator self-test
+      run: bash scripts/compare-spec.sh --self-test
+
     - name: Generate coverage report
       run: go tool cover -func=coverage.out
 
