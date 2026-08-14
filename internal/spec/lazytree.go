@@ -560,7 +560,7 @@ func (t *LazyTree) routeBudgetExhausted(scope int32) bool {
 // warns once. The route's own key is named: unlike the whole-walk truncation,
 // this says exactly which endpoint is under-documented.
 func (t *LazyTree) noteRouteTruncation(scope int32) {
-	for int32(len(t.routeScopeCut)) <= scope {
+	for len(t.routeScopeCut) <= int(scope) {
 		t.routeScopeCut = append(t.routeScopeCut, false)
 	}
 	if t.routeScopeCut[scope] {

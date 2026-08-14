@@ -182,10 +182,9 @@ type Metadata struct {
 	typeIndexMutex sync.RWMutex
 
 	// funcIndex is TypeInPackage's counterpart for functions: a package's
-	// declared function names to their declaration. funcAnywhere is the
-	// whole-program fallback — a bare name to the declaration in the first
-	// package (sorted) that declares it — which is the expensive half, since
-	// the scan it replaces touched every file of every package per miss.
+	// declared function names to their declaration. FunctionAnywhere composes
+	// these rather than keeping a whole-program index of its own, so that the
+	// per-package pkgShape guard covers the fallback too.
 	funcIndex      map[string]map[string]*Function
 	funcIndexFor   map[string]pkgShape
 	funcAnywhere   map[string]*Function
@@ -526,8 +525,24 @@ func (m *Metadata) FunctionInPackage(pkgName, name string) *Function {
 //
 // The sorted order is the determinism guarantee, not an implementation detail:
 // when several packages declare the same bare name the answer must not depend
-// on map iteration order (golden rule #1). Built once for the whole program
-// rather than re-sorted per lookup.
+// on map iteration order (golden rule #1).
+//
+// Built once for the whole program, and deliberately NOT shape-guarded the way
+// FunctionInPackage is. The guard would have to fingerprint every file of every
+// package per lookup — measured, that costs the entire win this indexing bought
+// (a 163-route service goes 6.3s back to ~9s), because the fallback is consulted
+// far too often to re-count the program on each call.
+//
+// What makes build-once safe here is a layer boundary, not luck: functions and
+// packages are only ever added while GenerateMetadata assembles the metadata,
+// and every caller of this lookup is in the spec layer, which does not run until
+// assembly has returned (the spec layer only ever READS Files/Functions).
+// FunctionInPackage carries the pkgShape guard precisely because it does NOT
+// have that property — metadata-layer code calls it mid-assembly.
+//
+// So: if you add a caller inside internal/metadata, or start adding declarations
+// after assembly, this memo has to grow a guard. TestFunctionAnywhereIsSpecLayerOnly
+// fails when the first half of that happens.
 func (m *Metadata) FunctionAnywhere(name string) *Function {
 	m.funcIndexMutex.RLock()
 	idx := m.funcAnywhere
@@ -551,6 +566,8 @@ func (m *Metadata) FunctionAnywhere(name string) *Function {
 		if pkg == nil {
 			continue
 		}
+		// Sorted packages outermost and first-declaration-wins: a bare name
+		// declared by several packages must resolve to the same one every run.
 		for _, f := range pkg.Files {
 			if f == nil {
 				continue
