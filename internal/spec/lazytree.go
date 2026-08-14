@@ -133,6 +133,11 @@ type LazyTree struct {
 	// unfolding actually does. Reported, not budgeted (#247).
 	nodesMaterialized int
 
+	// typeParams memoizes GetTypeParamMap per node. A side table rather than a
+	// node field because only generic call sites ever read it, while the field
+	// would be paid for by every node materialised — see LazyNode.routeScope.
+	typeParams map[*LazyNode]map[string]string
+
 	// instanceCount counts node copies per (instance scope, callee ID) —
 	// see DefaultMaxInstancesPerKey. A node is (edge, parent), so a callee reached
 	// along many paths gets many copies; business-layer diamonds make that
@@ -495,7 +500,7 @@ func (t *LazyTree) routeBudget() int {
 // A registration opens a scope rather than joining one, so everything the route
 // pulls in — its handler, that handler's helpers, their types — is charged to
 // that route and to nothing else.
-func (t *LazyTree) scopeOf(n *LazyNode) int {
+func (t *LazyTree) scopeOf(n *LazyNode) int32 {
 	if n == nil {
 		return 0
 	}
@@ -509,7 +514,7 @@ func (t *LazyTree) scopeOf(n *LazyNode) int {
 	}
 	t.routeScopeNodes = append(t.routeScopeNodes, 0)
 	t.routeScopeKeys = append(t.routeScopeKeys, n.key)
-	return len(t.routeScopeNodes) - 1
+	return int32(len(t.routeScopeNodes) - 1)
 }
 
 // budgetExhausted reports whether the WIRING budget is spent — the walk that
@@ -530,7 +535,7 @@ func (t *LazyTree) budgetExhausted() bool {
 // key is seen at all: a key can be reached below a route first and by the wiring
 // walk afterwards, and skipping it then would let a walk that happens to descend
 // into a route early understate its own cost without bound.
-func (t *LazyTree) countKey(key string, scope int) {
+func (t *LazyTree) countKey(key string, scope int32) {
 	if t.seenKeys == nil {
 		t.seenKeys = map[string]uint8{}
 	}
@@ -547,15 +552,15 @@ func (t *LazyTree) countKey(key string, scope int) {
 
 // routeBudgetExhausted reports whether this node's route has spent its own
 // allowance. Scope 0 — the wiring walk — is bounded by budgetExhausted instead.
-func (t *LazyTree) routeBudgetExhausted(scope int) bool {
-	return scope > 0 && scope < len(t.routeScopeNodes) && t.routeScopeNodes[scope] >= t.routeBudget()
+func (t *LazyTree) routeBudgetExhausted(scope int32) bool {
+	return scope > 0 && int(scope) < len(t.routeScopeNodes) && t.routeScopeNodes[scope] >= t.routeBudget()
 }
 
 // noteRouteTruncation records a route subtree cut short by its own budget, and
 // warns once. The route's own key is named: unlike the whole-walk truncation,
 // this says exactly which endpoint is under-documented.
-func (t *LazyTree) noteRouteTruncation(scope int) {
-	for len(t.routeScopeCut) <= scope {
+func (t *LazyTree) noteRouteTruncation(scope int32) {
+	for int32(len(t.routeScopeCut)) <= scope {
 		t.routeScopeCut = append(t.routeScopeCut, false)
 	}
 	if t.routeScopeCut[scope] {
@@ -564,7 +569,7 @@ func (t *LazyTree) noteRouteTruncation(scope int) {
 	t.routeScopeCut[scope] = true
 	t.routeTruncations++
 	key := ""
-	if scope < len(t.routeScopeKeys) {
+	if int(scope) < len(t.routeScopeKeys) {
 		key = t.routeScopeKeys[scope]
 	}
 	if t.routeFirstTruncated == "" {
@@ -951,8 +956,6 @@ type LazyNode struct {
 	edge *metadata.CallGraphEdge
 	arg  *metadata.CallArgument
 
-	typeParams map[string]string // GetTypeParamMap cache
-
 	children []TrackerNodeInterface // nil = not yet expanded
 
 	// routeScope identifies which budget this node's expansion is charged to:
@@ -963,7 +966,12 @@ type LazyNode struct {
 	// find it per expansion would be O(depth) work on every child, which goes
 	// quadratic over deep graphs and is the shape that shows up in profiles as
 	// GC dominance rather than as the guilty frame.
-	routeScope int
+	//
+	// int32, and the flags below it pack into the same word: a real service
+	// materialises millions of these (7.1M on a 163-route service), so the
+	// struct's SIZE is a first-order cost — expansion is memory-bound on
+	// writing the slabs, not on any computation it does.
+	routeScope int32
 
 	argType    ArgumentType
 	isArgument bool
@@ -989,9 +997,12 @@ func (n *LazyNode) GetArgument() *metadata.CallArgument { return n.arg }
 
 // GetTypeParamMap implements TrackerNodeInterface: bindings from this node's
 // edge/argument merged with its ancestors', nearest binding winning.
+// The memo lives on the tree rather than in a field of the node: only generic
+// call sites ever ask for it, and a field costs 8 bytes on every one of the
+// millions of nodes a real service materialises.
 func (n *LazyNode) GetTypeParamMap() map[string]string {
-	if n.typeParams != nil {
-		return n.typeParams
+	if cached, ok := n.tree.typeParams[n]; ok {
+		return cached
 	}
 	out := map[string]string{}
 	for cur := n; cur != nil; cur = cur.parent {
@@ -1010,7 +1021,10 @@ func (n *LazyNode) GetTypeParamMap() map[string]string {
 			}
 		}
 	}
-	n.typeParams = out
+	if n.tree.typeParams == nil {
+		n.tree.typeParams = map[*LazyNode]map[string]string{}
+	}
+	n.tree.typeParams[n] = out
 	return out
 }
 
@@ -1173,7 +1187,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		// #224; what this counter can honestly do meanwhile is report the work
 		// instead of hiding it.
 		n.tree.nodesMaterialized++
-		if childScope > 0 && childScope < len(n.tree.routeScopeNodes) {
+		if childScope > 0 && int(childScope) < len(n.tree.routeScopeNodes) {
 			n.tree.routeScopeNodes[childScope]++
 		}
 		n.tree.countKey(spec.key, childScope)
