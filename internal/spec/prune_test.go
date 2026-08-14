@@ -147,17 +147,32 @@ func TestComputeReachJoinsDiamond(t *testing.T) {
 func TestSpecIdentityMatchesPlanKey(t *testing.T) {
 	tree := &LazyTree{}
 
-	callSpec := childSpec{key: "pkg.Callee"}
+	// Distinct, non-nil edges throughout: an argument child carries argEdge and
+	// a call child carries edge, so leaving either nil would let the test pass
+	// even if specIdentity read the wrong one.
+	calleeEdge := &metadata.CallGraphEdge{}
+	argOwnEdge := &metadata.CallGraphEdge{}
+	parentEdge := &metadata.CallGraphEdge{}
+
+	callSpec := childSpec{key: "pkg.Callee", edge: calleeEdge}
 	callNode := tree.specNode(callSpec)
 	wantCall := planKey{key: callNode.key, edge: callNode.edge, arg: callNode.arg, isArg: callNode.isArgument}
 	if got := specIdentity(callSpec); got != wantCall {
 		t.Errorf("call child: specIdentity = %+v, planFor would use %+v", got, wantCall)
 	}
+	if callNode.edge != calleeEdge {
+		t.Errorf("call child: node carries edge %p, want the spec's callee edge %p", callNode.edge, calleeEdge)
+	}
 
-	argSpec := childSpec{key: "pkg.Arg", argType: ArgTypeLiteral}
-	// A non-nil arg is what makes it an argument child; the pointer identity is
-	// all that matters to the key.
-	argSpec.arg = &metadata.CallArgument{}
+	// An argument child carries its OWN edge, not the parent edge it holds for
+	// context — the distinction GetChildren makes and the identity must follow.
+	argSpec := childSpec{
+		key:     "pkg.Arg",
+		edge:    parentEdge,
+		argEdge: argOwnEdge,
+		arg:     &metadata.CallArgument{},
+		argType: ArgTypeLiteral,
+	}
 	argNode := tree.specNode(argSpec)
 	wantArg := planKey{key: argNode.key, edge: argNode.edge, arg: argNode.arg, isArg: argNode.isArgument}
 	if got := specIdentity(argSpec); got != wantArg {
@@ -165,5 +180,16 @@ func TestSpecIdentityMatchesPlanKey(t *testing.T) {
 	}
 	if !argNode.isArgument {
 		t.Error("a spec carrying an argument must build an argument node")
+	}
+	if argNode.edge != argOwnEdge {
+		t.Errorf("argument child: node carries edge %p, want the argument's own edge %p (not the parent edge %p)",
+			argNode.edge, argOwnEdge, parentEdge)
+	}
+	if got := specEdge(argSpec); got != argOwnEdge {
+		t.Errorf("argument child: specEdge = %p, want the argument's own edge %p — the prune would test the wrong edge for a match",
+			got, argOwnEdge)
+	}
+	if got := specEdge(callSpec); got != calleeEdge {
+		t.Errorf("call child: specEdge = %p, want the callee edge %p", got, calleeEdge)
 	}
 }

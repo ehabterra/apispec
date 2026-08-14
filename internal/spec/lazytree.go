@@ -165,10 +165,9 @@ type LazyTree struct {
 	// extractor) simply never installs one.
 	edgeMatches func(*metadata.CallGraphEdge) bool
 	// reach is the memoized per-identity answer; nil until built, and nil
-	// forever when pruning is off. reachIdentities is its size, reported.
-	reach           map[planKey]bool
-	reachBuilt      bool
-	reachIdentities int
+	// forever when pruning is off.
+	reach      map[planKey]bool
+	reachBuilt bool
 
 	// terminalRouteMatch matches only the calls that register ONE route. It is
 	// what opens a budget scope; routeMatch (which also matches mounts and

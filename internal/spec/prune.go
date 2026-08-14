@@ -147,7 +147,6 @@ func (t *LazyTree) buildReachIndex() {
 	}
 
 	t.reach = computeReach(roots, childrenOf, matches)
-	t.reachIdentities = len(specOf)
 }
 
 // computeReach returns the identities with a path to one that matches.
