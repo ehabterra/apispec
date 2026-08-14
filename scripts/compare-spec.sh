@@ -201,6 +201,9 @@ run_apispec() {
 #   * MISSING — a key present in the snapshot is absent from the generated spec.
 #   * CHANGED — a key present in both has a different value (a $ref retargeted, a
 #     schema type flipped in place, a `required`/format changed).
+# Enum values are compared as SETS (keyed by value, not position), so adding or
+# removing one reports exactly that one value rather than a cascade of CHANGED
+# entries for everything after it.
 # ADDED keys (new routes/fields) are informational and shown only with --all,
 # except added statuses, which the STATUS section always reports and fails on.
 compare_py() {
@@ -213,15 +216,33 @@ strict     = sys.argv[4] == "1"
 
 HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
+# Lists whose meaning is membership, not order, and which are therefore keyed by
+# VALUE rather than by index. Sorting (below) already stops a reorder looking like
+# a change, but it does not help an INSERTION: keyed positionally, adding one
+# value to a 32-value enum reports every later value as CHANGED, which both
+# invents drift and buries whether anything was genuinely dropped.
+#
+# `required` and `tags` have the same set-like shape; add them here if their
+# insert-cascade becomes noisy too. They are left out for now because only enum
+# has actually produced false drift in practice.
+SET_VALUED_KEYS = {"enum"}
+
 def flatten(obj, prefix=()):
     out = {}
     if isinstance(obj, dict):
         for k, v in obj.items():
             out.update(flatten(v, prefix + (str(k),)))
     elif isinstance(obj, list):
-        # Sort all-scalar lists (required, enum, tags, security scopes, ...) so a
-        # cosmetic reorder does not masquerade as a CHANGED value.
         if obj and all(not isinstance(v, (dict, list)) for v in obj):
+            if prefix and prefix[-1] in SET_VALUED_KEYS:
+                # Keyed by value: one added value is one ADDED entry, one removed
+                # value is one MISSING entry, and nothing else moves. repr() keeps
+                # 1 and "1" distinct in a mixed-type enum.
+                for v in obj:
+                    out[prefix + (f"[={v!r}]",)] = v
+                return out
+            # Sort the remaining all-scalar lists (required, tags, security
+            # scopes, ...) so a cosmetic reorder does not masquerade as CHANGED.
             obj = sorted(obj, key=lambda x: (str(type(x)), str(x)))
         for i, v in enumerate(obj):
             out.update(flatten(v, prefix + (f"[{i}]",)))
