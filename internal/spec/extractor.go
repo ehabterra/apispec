@@ -1930,30 +1930,16 @@ func findFunctionByName(meta *metadata.Metadata, pkg, name string) *metadata.Fun
 	if meta == nil || name == "" {
 		return nil
 	}
-	if p, ok := meta.Packages[pkg]; ok {
-		for _, file := range p.Files {
-			if fn, ok := file.Functions[name]; ok {
-				return fn
-			}
-		}
+	if fn := meta.FunctionInPackage(pkg, name); fn != nil {
+		return fn
 	}
-	// Fallback: any package declaring the name. Sort package keys so that when
-	// several packages declare the same bare name the result is stable across
-	// runs (map iteration order is random). Function names are unique within a
-	// package, so the inner file order doesn't affect the result.
-	pkgNames := make([]string, 0, len(meta.Packages))
-	for p := range meta.Packages {
-		pkgNames = append(pkgNames, p)
-	}
-	sort.Strings(pkgNames)
-	for _, p := range pkgNames {
-		for _, file := range meta.Packages[p].Files {
-			if fn, ok := file.Functions[name]; ok {
-				return fn
-			}
-		}
-	}
-	return nil
+	// Fallback: any package declaring the name, the first in sorted package
+	// order so that a bare name declared by several packages resolves the same
+	// way across runs. Both lookups are indexed (issue #322): this is a hot
+	// path — one response-destination resolution asks it per candidate per
+	// path — and scanning every file of every package per miss made it 15% of
+	// a run on a 100-package service.
+	return meta.FunctionAnywhere(name)
 }
 
 // callerAssignmentMap returns the variable→assignments map of the function or

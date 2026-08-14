@@ -180,6 +180,16 @@ type Metadata struct {
 	typeIndex      map[string]map[string]*Type
 	typeIndexFor   map[string]pkgShape
 	typeIndexMutex sync.RWMutex
+
+	// funcIndex is TypeInPackage's counterpart for functions: a package's
+	// declared function names to their declaration. funcAnywhere is the
+	// whole-program fallback — a bare name to the declaration in the first
+	// package (sorted) that declares it — which is the expensive half, since
+	// the scan it replaces touched every file of every package per miss.
+	funcIndex      map[string]map[string]*Function
+	funcIndexFor   map[string]pkgShape
+	funcAnywhere   map[string]*Function
+	funcIndexMutex sync.RWMutex
 	Args           map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
@@ -350,7 +360,7 @@ type fileKey struct{ pkg, file string }
 
 // pkgShape is a cheap fingerprint of a package's contents: enough to notice
 // that more was recorded since a derived index was built, without hashing it.
-type pkgShape struct{ files, types int }
+type pkgShape struct{ files, types, funcs int }
 
 func shapeOf(pkg *Package) pkgShape {
 	shape := pkgShape{files: len(pkg.Files)}
@@ -363,6 +373,7 @@ func shapeOf(pkg *Package) pkgShape {
 			continue
 		}
 		shape.types += len(f.Types)
+		shape.funcs += len(f.Functions)
 	}
 	return shape
 }
@@ -458,6 +469,101 @@ func (m *Metadata) TypeInPackage(pkgName, typeName string) *Type {
 	m.typeIndex[pkgName] = idx
 	m.typeIndexFor[pkgName] = shape
 	return idx[typeName]
+}
+
+// FunctionInPackage returns the function a package declares under name, or nil.
+//
+// The function-side twin of TypeInPackage, and for the same reason (issue
+// #322): callers scanned the package's files per lookup and, on a miss, fell
+// back to sorting every package name and scanning every file of every package.
+// On a 100-package service that fallback was 15% of a whole run — it is a
+// lookup, so it should cost a map hit.
+//
+// A function name is unique within a package, so file order cannot decide the
+// result and the index reproduces the scan exactly.
+func (m *Metadata) FunctionInPackage(pkgName, name string) *Function {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	shape := shapeOf(pkg)
+
+	m.funcIndexMutex.RLock()
+	idx, cached := m.funcIndex[pkgName]
+	builtFor := m.funcIndexFor[pkgName]
+	m.funcIndexMutex.RUnlock()
+	if cached && builtFor == shape {
+		return idx[name]
+	}
+
+	m.funcIndexMutex.Lock()
+	defer m.funcIndexMutex.Unlock()
+	if idx, ok := m.funcIndex[pkgName]; ok && m.funcIndexFor[pkgName] == shape {
+		return idx[name] // another goroutine won the race
+	}
+	idx = make(map[string]*Function, shape.funcs)
+	for _, f := range pkg.Files {
+		if f == nil {
+			continue
+		}
+		for fnName, fn := range f.Functions {
+			if _, seen := idx[fnName]; !seen {
+				idx[fnName] = fn
+			}
+		}
+	}
+	if m.funcIndex == nil {
+		m.funcIndex = make(map[string]map[string]*Function, len(m.Packages))
+		m.funcIndexFor = make(map[string]pkgShape, len(m.Packages))
+	}
+	m.funcIndex[pkgName] = idx
+	m.funcIndexFor[pkgName] = shape
+	return idx[name]
+}
+
+// FunctionAnywhere returns the function declared under a bare name by the first
+// package that declares it in sorted package order, or nil.
+//
+// The sorted order is the determinism guarantee, not an implementation detail:
+// when several packages declare the same bare name the answer must not depend
+// on map iteration order (golden rule #1). Built once for the whole program
+// rather than re-sorted per lookup.
+func (m *Metadata) FunctionAnywhere(name string) *Function {
+	m.funcIndexMutex.RLock()
+	idx := m.funcAnywhere
+	m.funcIndexMutex.RUnlock()
+	if idx != nil {
+		return idx[name]
+	}
+
+	// SortedPackageNames takes cacheMutex, not funcIndexMutex; resolve it
+	// before taking the write lock all the same, so the two never nest.
+	pkgNames := m.SortedPackageNames()
+
+	m.funcIndexMutex.Lock()
+	defer m.funcIndexMutex.Unlock()
+	if m.funcAnywhere != nil {
+		return m.funcAnywhere[name] // another goroutine won the race
+	}
+	idx = map[string]*Function{}
+	for _, pkgName := range pkgNames {
+		pkg := m.Packages[pkgName]
+		if pkg == nil {
+			continue
+		}
+		for _, f := range pkg.Files {
+			if f == nil {
+				continue
+			}
+			for fnName, fn := range f.Functions {
+				if _, seen := idx[fnName]; !seen {
+					idx[fnName] = fn
+				}
+			}
+		}
+	}
+	m.funcAnywhere = idx
+	return idx[name]
 }
 
 // ImplementersOf returns "pkg.Type" for every recorded type that implements the
