@@ -193,3 +193,64 @@ func TestSpecIdentityMatchesPlanKey(t *testing.T) {
 		t.Errorf("call child: specEdge = %p, want the callee edge %p", got, calleeEdge)
 	}
 }
+
+// TestEdgeOnlyNodeAnswersAsUnparented pins the half of the prune's soundness
+// argument that lives in this type rather than in the fixpoint.
+//
+// edgeOnlyNode lets a matcher family be evaluated for an edge before any node
+// exists for it. That is sound because every MatchNode implementation reads only
+// GetEdge() — but the argument does not stop there: should one start consulting
+// ancestry, it must see NOTHING rather than something borrowed, since every such
+// check is a further condition to satisfy. Answering empty keeps the prune an
+// over-approximation, which is the direction that can only keep subtrees the
+// real node would have kept, never drop one it would have matched.
+func TestEdgeOnlyNodeAnswersAsUnparented(t *testing.T) {
+	edge := &metadata.CallGraphEdge{}
+	node := edgeOnlyNode{edge: edge}
+
+	if node.GetEdge() != edge {
+		t.Errorf("GetEdge = %p, want the edge under test %p", node.GetEdge(), edge)
+	}
+	if got := node.GetKey(); got != "" {
+		t.Errorf("GetKey = %q, want empty: an edge has no node key yet", got)
+	}
+	if got := node.GetParent(); got != nil {
+		t.Errorf("GetParent = %v, want nil: a matcher consulting ancestry must see none, not a borrowed one", got)
+	}
+	if got := node.GetChildren(); got != nil {
+		t.Errorf("GetChildren = %v, want nil", got)
+	}
+	if got := node.GetArgument(); got != nil {
+		t.Errorf("GetArgument = %v, want nil: the edge form carries no argument", got)
+	}
+	if got := node.GetTypeParamMap(); got != nil {
+		t.Errorf("GetTypeParamMap = %v, want nil", got)
+	}
+
+	// It has to actually satisfy the interface the matchers take, which is the
+	// whole point of the type.
+	var _ TrackerNodeInterface = node
+}
+
+// TestCanReachMatchIsInertWithoutAPredicate covers the off switch: no predicate
+// installed means no pruning, which is how every consumer other than the
+// extractor sees the tree (the diagram server builds its own and never installs
+// one). A tree that pruned by default would silently change what they read.
+func TestCanReachMatchIsInertWithoutAPredicate(t *testing.T) {
+	tree := &LazyTree{}
+	spec := childSpec{key: "pkg.Anything"}
+
+	if !tree.canReachMatch(spec) {
+		t.Error("with no edge matcher installed every child must be kept; pruning must be opt-in")
+	}
+	if tree.reachBuilt {
+		t.Error("no index should be built when pruning is off")
+	}
+
+	// buildReachIndex is likewise a no-op, so a consumer that never installs a
+	// predicate pays nothing for the machinery.
+	tree.buildReachIndex()
+	if tree.reach != nil || tree.reachBuilt {
+		t.Errorf("buildReachIndex built an index with no predicate: reach=%v built=%v", tree.reach, tree.reachBuilt)
+	}
+}

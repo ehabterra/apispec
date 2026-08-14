@@ -110,24 +110,22 @@ func (t *LazyTree) buildReachIndex() {
 	specOf := map[planKey]childSpec{}
 	roots := make([]planKey, 0, len(t.roots))
 	for _, r := range t.roots {
+		// buildRelations creates every root as a bare-key node, so a root is
+		// never an argument and the identity is the key alone.
 		root, ok := r.(*LazyNode)
 		if !ok {
 			continue
 		}
 		spec := childSpec{key: root.key, edge: root.edge, arg: root.arg, argType: root.argType}
-		if root.isArgument {
-			spec.argEdge = root.edge
-		}
 		id := specIdentity(spec)
 		specOf[id] = spec
 		roots = append(roots, id)
 	}
 
 	childrenOf := func(id planKey) []planKey {
-		spec, ok := specOf[id]
-		if !ok {
-			return nil
-		}
+		// Every id computeReach can ask about was registered here or as a root
+		// before it was handed back, so the lookup always finds its spec.
+		spec := specOf[id]
 		// planFor memoizes, so the plans built here are the same objects the
 		// expansion will use — this warms the memo rather than duplicating it.
 		plan := t.planFor(t.specNode(spec))
