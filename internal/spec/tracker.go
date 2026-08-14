@@ -42,8 +42,13 @@ func getTrackerNode() *TrackerNode {
 	return node
 }
 
-// ArgumentType represents the classification of an argument
-type ArgumentType int
+// ArgumentType represents the classification of an argument.
+//
+// uint8, not int: it is a field of every tracker node, and the lazy tree
+// materialises millions of those on a real service, where expansion is bound
+// by the bytes it writes rather than by anything it computes. Eleven values
+// need one byte, and one byte lets the node's flags share a single word.
+type ArgumentType uint8
 
 const (
 	ArgTypeDirectCallee ArgumentType = iota // Direct function call (existing callee)

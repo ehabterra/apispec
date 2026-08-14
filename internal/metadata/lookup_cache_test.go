@@ -15,8 +15,15 @@
 package metadata
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"go/types"
+	"io/fs"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -381,5 +388,172 @@ func TestLookupCachesTolerateNilFiles(t *testing.T) {
 	}
 	if got := m.SortedTypeNames("app", "a.go"); !reflect.DeepEqual(got, []string{"Present"}) {
 		t.Errorf("SortedTypeNames = %v, want [Present]", got)
+	}
+}
+
+// TestFunctionInPackageMatchesFileScan pins the function index against the scan
+// it replaced, including the case that decides determinism: a bare name that
+// two files of one package declare must resolve to the same one every run.
+func TestFunctionInPackageMatchesFileScan(t *testing.T) {
+	inA, inZ := &Function{Name: 1}, &Function{Name: 2}
+	m := &Metadata{StringPool: NewStringPool()}
+	m.Packages = map[string]*Package{
+		"app": {Files: map[string]*File{
+			"z.go": {Functions: map[string]*Function{"Dup": inZ, "OnlyZ": {}}},
+			"a.go": {Functions: map[string]*Function{"Dup": inA, "OnlyA": {}}},
+		}},
+	}
+
+	for _, name := range []string{"OnlyA", "OnlyZ"} {
+		if m.FunctionInPackage("app", name) == nil {
+			t.Errorf("FunctionInPackage(%q) = nil, want the declaration", name)
+		}
+	}
+	if got := m.FunctionInPackage("app", "Absent"); got != nil {
+		t.Errorf("FunctionInPackage(\"Absent\") = %p, want nil", got)
+	}
+	// Go itself forbids the duplicate, so this is about the index never letting
+	// map order decide an answer (golden rule #1): a.go sorts first, so a.go's
+	// declaration wins, on this run and every other. Rebuilt repeatedly because
+	// a map-order-dependent index can agree with the sorted one by chance.
+	for range 32 {
+		m.funcIndex, m.funcIndexFor = nil, nil // force a rebuild
+		if got := m.FunctionInPackage("app", "Dup"); got != inA {
+			t.Fatalf("Dup resolved to %p, want a.go's %p — the index must not depend on map order", got, inA)
+		}
+	}
+	if got := m.FunctionInPackage("missing", "Dup"); got != nil {
+		t.Errorf("FunctionInPackage on an unknown package = %p, want nil", got)
+	}
+}
+
+// TestFunctionInPackageInvalidatesOnGrowth covers the reason the index carries a
+// pkgShape fingerprint: these lookups can run before assembly has finished, and
+// pkgShape counts functions (not only files) because assembly adds a function to
+// a file that already exists.
+func TestFunctionInPackageInvalidatesOnGrowth(t *testing.T) {
+	m := &Metadata{StringPool: NewStringPool()}
+	m.Packages = map[string]*Package{
+		"app": {Files: map[string]*File{"a.go": {Functions: map[string]*Function{"First": {}}}}},
+	}
+	if m.FunctionInPackage("app", "First") == nil {
+		t.Fatal("First should resolve")
+	}
+	// Added to the EXISTING file: the file count is unchanged, so only the
+	// function count can notice this.
+	m.Packages["app"].Files["a.go"].Functions["Second"] = &Function{}
+	if m.FunctionInPackage("app", "Second") == nil {
+		t.Error("a function added to an existing file must not be hidden by the stale index")
+	}
+	m.Packages["app"].Files["b.go"] = &File{Functions: map[string]*Function{"Third": {}}}
+	if m.FunctionInPackage("app", "Third") == nil {
+		t.Error("a function added in a new file must not be hidden by the stale index")
+	}
+}
+
+// TestFunctionAnywhereIsDeterministic pins the fallback's contract: the first
+// package in SORTED order that declares the bare name wins, so a name declared
+// by several packages cannot resolve differently between runs (golden rule #1).
+func TestFunctionAnywhereIsDeterministic(t *testing.T) {
+	inApp, inZoo := &Function{Name: 1}, &Function{Name: 2}
+	newMeta := func() *Metadata {
+		m := &Metadata{StringPool: NewStringPool()}
+		m.Packages = map[string]*Package{
+			"zoo": {Files: map[string]*File{"z.go": {Functions: map[string]*Function{"Shared": inZoo}}}},
+			"app": {Files: map[string]*File{"a.go": {Functions: map[string]*Function{"Shared": inApp, "Only": {}}}}},
+		}
+		return m
+	}
+	for range 32 {
+		if got := newMeta().FunctionAnywhere("Shared"); got != inApp {
+			t.Fatalf("Shared resolved to %p, want app's %p — \"app\" sorts before \"zoo\"", got, inApp)
+		}
+	}
+	if got := newMeta().FunctionAnywhere("Absent"); got != nil {
+		t.Errorf("FunctionAnywhere(\"Absent\") = %p, want nil", got)
+	}
+	if got := newMeta().FunctionAnywhere("Only"); got == nil {
+		t.Error("a name declared by exactly one package must still resolve")
+	}
+}
+
+// TestFunctionAnywhereIsSpecLayerOnly enforces the invariant that lets
+// FunctionAnywhere memoize once instead of re-fingerprinting the program on
+// every lookup: it may only be called from the spec layer. Spec-layer code does
+// not run until GenerateMetadata has returned, so the declaration set it indexes
+// is already final. A caller that runs DURING assembly would cache a snapshot
+// that later lookups answer from — the bug pkgShape exists to prevent for
+// FunctionInPackage, which needs its guard precisely because it lacks this
+// property.
+//
+// Scanned repo-wide rather than package-locally: assembly is driven from this
+// package today, but a future analysis pass called from GenerateMetadata could
+// live anywhere, and it is the CALLER'S PHASE that matters. Allowing only
+// internal/spec is the enforceable form of that.
+//
+// If this fails, either move the caller into the spec layer or give
+// FunctionAnywhere a shape guard (and pay for it — see its doc comment).
+func TestFunctionAnywhereIsSpecLayerOnly(t *testing.T) {
+	const allowedDir = "internal/spec"
+
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolving the repo root: %v", err)
+	}
+	fset := token.NewFileSet()
+	scanned := 0
+	err = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			// Fixture projects are separate modules that never import this one,
+			// and .git/node_modules are not source.
+			case ".git", "node_modules", "testdata", "test_cgo_mixed", "test_cgo_demo":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		file, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return fmt.Errorf("parsing %s: %w", path, perr)
+		}
+		scanned++
+		rel, rerr := filepath.Rel(repoRoot, path)
+		if rerr != nil {
+			rel = path
+		}
+		allowed := strings.HasPrefix(filepath.ToSlash(rel), allowedDir+"/")
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			called := ""
+			switch fn := call.Fun.(type) {
+			case *ast.Ident:
+				called = fn.Name
+			case *ast.SelectorExpr:
+				called = fn.Sel.Name
+			}
+			if called == "FunctionAnywhere" && !allowed {
+				t.Errorf("%s calls FunctionAnywhere from outside %s; its memo is only "+
+					"safe because every caller runs after metadata assembly has finished",
+					fset.Position(call.Pos()), allowedDir)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the repo: %v", err)
+	}
+	if scanned == 0 {
+		t.Fatal("scanned no source files — the check would pass vacuously")
 	}
 }
