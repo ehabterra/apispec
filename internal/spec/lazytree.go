@@ -158,6 +158,17 @@ type LazyTree struct {
 	// routeMatch gates which entrypoints earn a root: only those whose subtree
 	// can reach a route registration.
 	routeMatch func(*metadata.CallGraphEdge) bool
+	// edgeMatches reports whether any configured matcher family accepts an edge
+	// — the base case of the barren-subtree prune (issue #318, see prune.go).
+	// Nil is the off switch, and the default: a consumer that wants the full
+	// unfolding (the diagram server builds its own tree and never runs the
+	// extractor) simply never installs one.
+	edgeMatches func(*metadata.CallGraphEdge) bool
+	// reach is the memoized per-identity answer; nil until built, and nil
+	// forever when pruning is off.
+	reach      map[planKey]bool
+	reachBuilt bool
+
 	// terminalRouteMatch matches only the calls that register ONE route. It is
 	// what opens a budget scope; routeMatch (which also matches mounts and
 	// groups) must not, or every route inside a group shares one allowance —
@@ -825,6 +836,19 @@ func WithTerminalRouteMatcher(match func(*metadata.CallGraphEdge) bool) LazyTree
 	return func(t *LazyTree) { t.terminalRouteMatch = match }
 }
 
+// SetEdgeMatcher supplies the predicate deciding whether an edge is one some
+// matcher family accepts, enabling the barren-subtree prune. Set by the
+// extractor before it walks, because the matcher families are its own; the tree
+// is constructed earlier and expands nothing until walked, so installing it here
+// is not late.
+func (t *LazyTree) SetEdgeMatcher(match func(*metadata.CallGraphEdge) bool) {
+	if t == nil {
+		return
+	}
+	t.edgeMatches = match
+	t.reach, t.reachBuilt = nil, false
+}
+
 // addEntrypointRoots appends a root per qualifying entrypoint. Called from
 // buildRelations (which every expansion path already goes through) rather than
 // from the constructor, because the candidate set comes out of the same walk that
@@ -1144,6 +1168,13 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		}
 		if n.onPath(spec.key) {
 			continue // cycle: this call is already on the current path
+		}
+		if !n.tree.canReachMatch(spec) {
+			// Nothing below this child can match any pattern, on any path, so
+			// the whole subtree would be built only to be walked and discarded
+			// (issue #318). Skipped rather than built-and-ignored: it is 97.6%
+			// of the nodes on a real service.
+			continue
 		}
 		if scopeCounts[spec.key] >= n.tree.instanceBudget() {
 			// Diamond inside this scope: stop materializing further copies.
