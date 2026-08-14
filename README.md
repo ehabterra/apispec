@@ -19,6 +19,13 @@
 
 **TL;DR**: Point APISpec at your module. Get an OpenAPI spec — plus, optionally, an interactive call-graph diagram and a browser-based config UI.
 
+📖 **Documentation:** [apispec.ehabterra.com](https://apispec.ehabterra.com) — installation,
+CLI reference, configuration, CI drift checking, and per-framework walkthroughs that show the
+spec APISpec actually produces for each router.
+
+Coming from an annotation-based tool? See [APISpec vs swaggo/swag](https://apispec.ehabterra.com/vs/swaggo/),
+or [the wider landscape](https://apispec.ehabterra.com/alternatives/) if you are still choosing.
+
 ## Table of Contents
 
 - [Demo](#demo)
@@ -79,7 +86,8 @@ export PATH=$HOME/go/bin:$PATH
 
 Both tools are published the same way — Homebrew, pre-built binaries for six
 platforms, `go install`, from source, or the install script. See
-[docs/INSTALLATION.md](docs/INSTALLATION.md).
+[docs/INSTALLATION.md](docs/INSTALLATION.md), or the
+[installation guide on the site](https://apispec.ehabterra.com/docs/#install).
 
 ### Generate an OpenAPI spec
 
@@ -263,12 +271,12 @@ See [`cmd/apidiag/README.md`](cmd/apidiag/README.md) for full documentation and 
 
 | Framework         | Routes & methods | Path params | Groups / mounting | Request body | Responses | Auth |
 |-------------------|:----------------:|:-----------:|:-----------------:|:------------:|:---------:|:----:|
-| **Gin**           | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
-| **Echo**          | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
-| **Chi**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        | ✅   |
-| **Fiber**         | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
-| **Gorilla Mux**   | ✅               | ✅ (`mux.Vars(r)["id"]`, incl. helper-wrapped & `{id:regex}` → `pattern`) | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ | ✅ |
-| **`net/http`**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ | ✅ |
+| **[Gin](https://apispec.ehabterra.com/gin-openapi-generator/)**           | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **[Echo](https://apispec.ehabterra.com/echo-openapi-generator/)**          | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **[Chi](https://apispec.ehabterra.com/chi-openapi-generator/)**           | ✅               | ✅          | ✅ (incl. `render`) | ✅         | ✅        | ✅   |
+| **[Fiber](https://apispec.ehabterra.com/fiber-openapi-generator/)**         | ✅               | ✅          | ✅                | ✅           | ✅        | ✅   |
+| **[Gorilla Mux](https://apispec.ehabterra.com/gorilla-mux-openapi-generator/)**   | ✅               | ✅ (`mux.Vars(r)["id"]`, incl. helper-wrapped & `{id:regex}` → `pattern`) | ✅ (`PathPrefix`, `Subrouter`) | ✅ | ✅ | ✅ |
+| **[`net/http`](https://apispec.ehabterra.com/net-http-openapi-generator/)**    | ✅ (`HandleFunc`, `Handle`; Go 1.22 method-aware patterns) | ✅ (`{id}` wildcards + `r.PathValue`) | basic | ✅ | ✅ | ✅ |
 
 Conditional registration (dynamic routes built at runtime) is generally not supported.
 
