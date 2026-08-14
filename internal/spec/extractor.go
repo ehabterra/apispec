@@ -308,6 +308,11 @@ func (e *Extractor) initializePatternMatchers() {
 
 // ExtractRoutes extracts all routes from the tracker tree
 func (e *Extractor) ExtractRoutes() []*RouteInfo {
+	// Installed before the first expansion, not at tree construction, because
+	// the matcher families belong to the extractor. The tree expands nothing
+	// until walked, so this is in time (issue #318, prune.go).
+	e.enableBarrenPruning()
+
 	routes := make([]*RouteInfo, 0)
 	for _, root := range e.tree.GetRoots() {
 		e.traverseForRoutes(root, "", nil, nil, nil, &routes)
