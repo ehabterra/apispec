@@ -15,11 +15,13 @@
 package metadata
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"go/types"
-	"os"
+	"io/fs"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -477,30 +479,56 @@ func TestFunctionAnywhereIsDeterministic(t *testing.T) {
 
 // TestFunctionAnywhereIsSpecLayerOnly enforces the invariant that lets
 // FunctionAnywhere memoize once instead of re-fingerprinting the program on
-// every lookup: nothing in the metadata layer may call it. Metadata-layer code
-// runs DURING assembly, when the declaration set is still growing, so such a
-// caller could cache a snapshot that later lookups would answer from — the bug
-// pkgShape exists to prevent for FunctionInPackage.
+// every lookup: it may only be called from the spec layer. Spec-layer code does
+// not run until GenerateMetadata has returned, so the declaration set it indexes
+// is already final. A caller that runs DURING assembly would cache a snapshot
+// that later lookups answer from — the bug pkgShape exists to prevent for
+// FunctionInPackage, which needs its guard precisely because it lacks this
+// property.
 //
-// If this fails, either move the new caller into the spec layer or give
+// Scanned repo-wide rather than package-locally: assembly is driven from this
+// package today, but a future analysis pass called from GenerateMetadata could
+// live anywhere, and it is the CALLER'S PHASE that matters. Allowing only
+// internal/spec is the enforceable form of that.
+//
+// If this fails, either move the caller into the spec layer or give
 // FunctionAnywhere a shape guard (and pay for it — see its doc comment).
 func TestFunctionAnywhereIsSpecLayerOnly(t *testing.T) {
-	entries, err := os.ReadDir(".")
+	const allowedDir = "internal/spec"
+
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
-		t.Fatalf("reading the metadata package directory: %v", err)
+		t.Fatalf("resolving the repo root: %v", err)
 	}
 	fset := token.NewFileSet()
 	scanned := 0
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		file, err := parser.ParseFile(fset, name, nil, 0)
+	err = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			t.Fatalf("parsing %s: %v", name, err)
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			// Fixture projects are separate modules that never import this one,
+			// and .git/node_modules are not source.
+			case ".git", "node_modules", "testdata", "test_cgo_mixed", "test_cgo_demo":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		file, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return fmt.Errorf("parsing %s: %w", path, perr)
 		}
 		scanned++
+		rel, rerr := filepath.Rel(repoRoot, path)
+		if rerr != nil {
+			rel = path
+		}
+		allowed := strings.HasPrefix(filepath.ToSlash(rel), allowedDir+"/")
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -513,13 +541,17 @@ func TestFunctionAnywhereIsSpecLayerOnly(t *testing.T) {
 			case *ast.SelectorExpr:
 				called = fn.Sel.Name
 			}
-			if called == "FunctionAnywhere" {
-				t.Errorf("%s calls FunctionAnywhere from inside the metadata layer; "+
-					"its memo is only safe because every caller runs after assembly",
-					fset.Position(call.Pos()))
+			if called == "FunctionAnywhere" && !allowed {
+				t.Errorf("%s calls FunctionAnywhere from outside %s; its memo is only "+
+					"safe because every caller runs after metadata assembly has finished",
+					fset.Position(call.Pos()), allowedDir)
 			}
 			return true
 		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the repo: %v", err)
 	}
 	if scanned == 0 {
 		t.Fatal("scanned no source files — the check would pass vacuously")
