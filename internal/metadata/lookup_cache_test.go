@@ -410,13 +410,14 @@ func TestFunctionInPackageMatchesFileScan(t *testing.T) {
 	if got := m.FunctionInPackage("app", "Absent"); got != nil {
 		t.Errorf("FunctionInPackage(\"Absent\") = %p, want nil", got)
 	}
-	// Go itself forbids the duplicate, so which one wins is not the point —
-	// that the SAME one wins on every run is.
-	first := m.FunctionInPackage("app", "Dup")
-	for range 8 {
+	// Go itself forbids the duplicate, so this is about the index never letting
+	// map order decide an answer (golden rule #1): a.go sorts first, so a.go's
+	// declaration wins, on this run and every other. Rebuilt repeatedly because
+	// a map-order-dependent index can agree with the sorted one by chance.
+	for range 32 {
 		m.funcIndex, m.funcIndexFor = nil, nil // force a rebuild
-		if got := m.FunctionInPackage("app", "Dup"); got != first {
-			t.Fatalf("Dup resolved to %p, then %p — the index must not depend on map order", first, got)
+		if got := m.FunctionInPackage("app", "Dup"); got != inA {
+			t.Fatalf("Dup resolved to %p, want a.go's %p — the index must not depend on map order", got, inA)
 		}
 	}
 	if got := m.FunctionInPackage("missing", "Dup"); got != nil {
@@ -461,7 +462,7 @@ func TestFunctionAnywhereIsDeterministic(t *testing.T) {
 		}
 		return m
 	}
-	for range 8 {
+	for range 32 {
 		if got := newMeta().FunctionAnywhere("Shared"); got != inApp {
 			t.Fatalf("Shared resolved to %p, want app's %p — \"app\" sorts before \"zoo\"", got, inApp)
 		}

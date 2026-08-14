@@ -478,8 +478,9 @@ func (m *Metadata) TypeInPackage(pkgName, typeName string) *Type {
 // On a 100-package service that fallback was 15% of a whole run — it is a
 // lookup, so it should cost a map hit.
 //
-// A function name is unique within a package, so file order cannot decide the
-// result and the index reproduces the scan exactly.
+// Filled walking SortedFileNames with an earlier file winning, so a name that
+// somehow appears in two files resolves to the same declaration on every run
+// rather than to whichever the map handed over first.
 func (m *Metadata) FunctionInPackage(pkgName, name string) *Function {
 	pkg, ok := m.Packages[pkgName]
 	if !ok || pkg == nil {
@@ -501,7 +502,13 @@ func (m *Metadata) FunctionInPackage(pkgName, name string) *Function {
 		return idx[name] // another goroutine won the race
 	}
 	idx = make(map[string]*Function, shape.funcs)
-	for _, f := range pkg.Files {
+	// Safe under funcIndexMutex: SortedFileNames takes sortedFilesMutex only.
+	// Sorted, not map order: Go forbids two files of a package declaring the
+	// same function name, but metadata can be deserialised from anywhere, and
+	// an index whose answer depends on map order is the determinism bug golden
+	// rule #1 exists to stop. Earlier file wins, matching TypeInPackage.
+	for _, fileName := range m.SortedFileNames(pkgName) {
+		f := pkg.Files[fileName]
 		if f == nil {
 			continue
 		}
@@ -566,9 +573,11 @@ func (m *Metadata) FunctionAnywhere(name string) *Function {
 		if pkg == nil {
 			continue
 		}
-		// Sorted packages outermost and first-declaration-wins: a bare name
-		// declared by several packages must resolve to the same one every run.
-		for _, f := range pkg.Files {
+		// Sorted packages outermost, sorted files within them, and
+		// first-declaration-wins: a bare name declared more than once must
+		// resolve to the same declaration on every run (golden rule #1).
+		for _, fileName := range m.SortedFileNames(pkgName) {
+			f := pkg.Files[fileName]
 			if f == nil {
 				continue
 			}
