@@ -1,5 +1,6 @@
 # Homebrew formula for apispecui: installs the pre-built release binary, so
-# `brew install` needs no Go toolchain to install it.
+# `brew install` compiles nothing. Go is still a RUNTIME dependency (below):
+# the UI runs the same analysis, which shells out to `go list`.
 #
 # packaging/homebrew/apispecui.rb.tmpl is the SOURCE; apispecui.rb is it
 # rendered at the current release. .github/workflows/release.yml renders the

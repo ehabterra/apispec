@@ -15,8 +15,8 @@ second way does not replace the first (see
 
 | | Install | Update | Uninstall |
 |---|---|---|---|
-| **[Homebrew](#1-homebrew-macos-and-linux)** — macOS/Linux, no Go needed | `brew install ehabterra/tap/apispec` | `brew upgrade apispec` | `brew uninstall apispec` |
-| **[Pre-built binary](#2-download-a-pre-built-binary)** — any platform, no Go needed | [copy-paste block](#2-download-a-pre-built-binary) | re-run the same block | `sudo rm /usr/local/bin/apispec` |
+| **[Homebrew](#1-homebrew-macos-and-linux)** — macOS/Linux, nothing to compile | `brew install ehabterra/tap/apispec` | `brew upgrade apispec` | `brew uninstall apispec` |
+| **[Pre-built binary](#2-download-a-pre-built-binary)** — any platform, nothing to compile | [copy-paste block](#2-download-a-pre-built-binary) | re-run the same block | `sudo rm /usr/local/bin/apispec` |
 | **[Go install](#3-go-install)** — needs Go 1.26+ | `go install github.com/ehabterra/apispec/cmd/apispec@latest` | same command again | `rm "$(go env GOPATH)/bin/apispec"` |
 | **[From source](#4-from-source)** — for development | `make install-local` | `git pull && make install-local` | `make uninstall-local` |
 
@@ -31,11 +31,23 @@ source — see [Development Installation](#development-installation).
 
 ## Prerequisites
 
-**None** for the pre-built binaries below — they are self-contained.
+**Go 1.26 or later, whichever way you install** —
+[Download from golang.org](https://golang.org/doc/install) (the module declares
+`go 1.26.0`).
 
-For the `go install` and from-source methods:
+This one catches people out, because the pre-built binaries are self-contained
+and several methods below compile nothing. apispec still needs the toolchain to
+*run*: it analyses a project by loading its packages through `go/packages`,
+which shells out to `go list`. Without `go` on PATH every run exits with
 
-- **Go 1.26 or later** — [Download from golang.org](https://golang.org/doc/install) (the module declares `go 1.26.0`)
+    failed to load filtered packages: err: go command required, not found
+
+So "nothing to compile" below means exactly that, and never that Go is optional.
+Homebrew reflects this — the formula declares `go` as a runtime dependency and
+installs it for you.
+
+Additionally, for the from-source methods:
+
 - **Git** — for cloning the repository
 
 ## Installation Methods
@@ -57,8 +69,9 @@ Go to *install* them, but you do need it to run them.
 
 ### 2. Download a Pre-built Binary
 
-No Go toolchain and no Homebrew required. **Copy the whole block** — it detects
-your platform, verifies the checksum, and installs `apispec` onto your PATH.
+Nothing to compile and no Homebrew required. **Copy the whole block** — it
+detects your platform, verifies the checksum, and installs `apispec` onto your
+PATH. (Go is still needed to *run* it — see [Prerequisites](#prerequisites).)
 
 **macOS / Linux**
 
@@ -117,7 +130,7 @@ Move-Item -Force $asset "$env:LOCALAPPDATA\Programs\apispec\$tool.exe"
 To pin a version, swap `latest/download` for `download/v0.5.6` (any tag).
 
 **Pros:**
-- No Go toolchain needed
+- Nothing compiles — installs in seconds
 - Exact, reproducible version with a published checksum
 
 **Cons:**
@@ -195,8 +208,9 @@ curl -sSL https://raw.githubusercontent.com/ehabterra/apispec/main/scripts/insta
 
 **Cons:**
 - Requires curl/wget, and downloads and executes a script from the internet
-- **Every mode requires Go** — the script builds from source and does not download
-  a pre-built binary. Use method 1 if you have no Go toolchain.
+- **Every mode compiles from source** — the script does not download a pre-built
+  binary. Use method 1 or 2 to skip the compile; every method still needs Go
+  installed to run apispec, see [Prerequisites](#prerequisites).
 
 ## Platform-Specific Instructions
 

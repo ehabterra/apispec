@@ -1,5 +1,6 @@
 # Homebrew formula for apispec: installs the pre-built release binary, so
-# `brew install` needs no Go toolchain.
+# `brew install` compiles nothing. Go is still a RUNTIME dependency (below):
+# apispec shells out to `go list` and cannot analyse anything without it.
 #
 # packaging/homebrew/apispec.rb.tmpl is the SOURCE; apispec.rb is it rendered at
 # the current release. .github/workflows/release.yml renders the template with

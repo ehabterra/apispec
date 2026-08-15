@@ -72,7 +72,7 @@ or [the wider landscape](https://apispec.ehabterra.com/alternatives/) if you are
 ### Install
 
 ```bash
-# Homebrew (macOS/Linux) — no Go toolchain needed to install
+# Homebrew (macOS/Linux) — nothing to compile; pulls in Go, which apispec needs to run
 brew install ehabterra/tap/apispec      # the CLI
 brew install ehabterra/tap/apispecui    # the web UI
 
