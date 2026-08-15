@@ -1,7 +1,13 @@
 # Homebrew packaging
 
 `brew install ehabterra/tap/apispec` installs the **pre-built release binary**,
-so it needs no Go toolchain and takes seconds.
+so it compiles nothing and takes seconds.
+
+It does pull in Go, as a **runtime** dependency (`depends_on "go"`, not
+`=> :build`). apispec analyses a project by loading its packages through
+`go/packages`, which shells out to `go list`, so without the go binary on PATH
+every run exits with `go command required, not found`. The toolchain is needed
+to *use* the tool, not to install it — nothing is compiled at install time.
 
 ## Files here
 
