@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Speed and completeness. The walk that builds the spec no longer visits code that
+cannot contribute to it, which on the ~900-route project from 0.5.6 takes the
+documented surface from **640 paths to 900** while halving peak memory. Four
+separate causes of dangling `$ref`s are fixed, and a final pass now guarantees
+the document resolves.
+
+### Added
+
+- **`$ref`s that the document cannot satisfy are repaired and reported.** A
+  single unresolvable reference makes Swagger UI refuse the whole document, and
+  the four causes fixed this cycle were all found the same way — by loading the
+  output into a viewer, which is not a check anyone runs against their own
+  project. Generation now ends by making the document internally consistent: a
+  missing target is **repaired, not dropped**, since removing the reference
+  would silently change an operation's shape. The report names the **Go** type,
+  not the mangled component name, because that is what tells you which
+  dependency to register under `externalTypes`. (#327)
+- **Homebrew tap, and install instructions that install.** `brew install` now
+  works for both binaries — `apispecui` is built, released and distributed the
+  same way as `apispec` rather than being source-only. (#309, #335)
+
 ### Changed
 
 - **`--max-instances-per-key` now defaults to 100 (was 25).** The reason is how
@@ -23,9 +44,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response body depends on. If your spec is unchanged at
   `--max-instances-per-key 25`, set it explicitly — you give up only the
   guarantee that the number stays safe as the code grows. (#224)
+- **Specs gain content on upgrade, so expect a reviewable diff.** Skipping
+  subtrees that cannot contribute frees the per-route and instance budgets for
+  the code that can, so responses and bodies that were being truncated away now
+  appear. On this repo six of 36 routes were hitting the per-route limit and are
+  no longer; on the ~900-route project the endpoint count rises by 260. Nothing
+  is removed — the change is additive wherever it is not byte-identical. (#318)
 
 ### Fixed
 
+- **A sixth framework would have been detected only by accident.** The supported
+  set was written out six times in six shapes, one of them a bare
+  `knownFrameworks = 5` bounding the detector's file walk — an unlinked
+  restatement of a `switch` twenty lines below. Adding a sixth framework makes
+  the early exit fire at five and abandon the walk, so the new framework
+  resolves only in projects that happen not to import five others. It compiles,
+  every test passes, and the spec just comes out thinner. There is now one
+  registry. (#285)
+- **The standard library was being treated as your project code.** For any
+  domain-hosted module — essentially every real Go project — project-root
+  inference produced no root at all and fell through to a heuristic that accepts
+  any two-segment path whose first segment has no dot. Running against this
+  repo, that classified `net/http`, `go/types`, `encoding/json` and nine others
+  as project packages and appended them to `IncludePackages`. Packages are now
+  classified by module path. (#282)
+- **The components a route's `$ref`s point at are kept.** Five callers took the
+  schema from `mapGoTypeToOpenAPISchema` and discarded the components map that
+  went with it, so the references survived and their targets did not — always
+  for types declared outside the analysed module, which have no metadata entry.
+  A route reached through two traversal contexts also dropped one extraction's
+  recorded types on merge; those are now unioned, since there is no "better"
+  answer between two records of what was referenced. (#325)
+- **Fixed-size arrays and untyped constants are no longer registered as
+  components.** `[2]int64` reached the mapper carrying a package it was never
+  in, defeating a ref gate that tests the raw key for `[]` or `map[`, and became
+  a component named `_2int64`; `ok: true` in a map-literal response became one
+  named `untyped-bool`. The gate now judges the parsed core, and both shapes are
+  normalised on entry — an untyped constant becoming the type the Go spec fixes
+  as its default, so `true` is a `bool` by derivation rather than by guess.
+  (#326)
+- **A type is re-qualified only when it carries no package of its own.** (#329)
+- **Named container types record their underlying type.** `processTypeKind`
+  recorded a target only for `*ast.Ident`, so a named map or slice reached the
+  spec layer with nothing to build from and fell through to an opaque object.
+  (#333)
 - **The UI could crash with `fatal error: concurrent map writes`.** Two insight
   requests in flight at once — two browser tabs, or one tab firing the endpoint
   and export requests together — walked the same metadata and tracker tree
@@ -34,6 +96,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   killed the whole server process rather than failing one request. Insight
   analysis is now serialized. The CLI was never affected: it is single-threaded
   and does not pay for the fix.
+- **Homebrew installs a working binary.** Go is a runtime dependency of the
+  formula, not a build-time one. (#312)
+
+### Performance
+
+- **The expansion no longer builds subtrees that nothing can read.** The tracker
+  materialises one node per path, so a callee reached along many paths is
+  rebuilt once per path — measured on a 163-route service, 12,882 distinct
+  callees unfolded into 7,147,505 nodes, of which **97.6% were in subtrees that
+  matched no pattern at all**. Whether a subtree can contain anything a matcher
+  accepts is a property of the call edge rather than of the path taken to reach
+  it, so the answer is computed once over the plan graph — thousands of
+  identities — instead of over the unfolded tree's millions. Nodes on the way to
+  a match are still built, so provenance is unaffected.
+
+  | | before | after |
+  |---|---|---|
+  | 163-route service, mapping stage | 6.06s | **2.67s** |
+  | ↳ nodes materialised | 7,147,505 | **405,490** |
+  | ↳ peak RSS | 1145 MB | **522 MB** |
+  | ~900-route project, peak RSS | 8.24 GB | **4.86 GB** |
+  | this repo, mapping stage | 6.58s | **0.58s** |
+
+  (#318)
+- **Function lookups are indexed instead of scanning every package.** Resolving
+  a bare name sorted every package key and scanned every file of every package,
+  per call, on a path the response-destination resolver reaches once per
+  candidate per path. On a 163-route service that was 15% of CPU and 130MB of
+  allocation on its own: **12.45s → 8.03s** end to end, spec byte-identical.
+  (#322)
+- **The extraction chain is carried on the stack instead of interned.** 2.1M
+  chains were being retained for the life of each route walk to serve 610
+  lookups of at most five frames. **−25% allocation, −16% wall clock.** (#319)
+- **Lookup ordering is resolved once rather than per call**, and the
+  enclosing-function-literal walk is pruned — **37% faster end to end** on the
+  measured project. (#322, #225)
+
+### Known issues
+
+- **On a project large enough to truncate, output is not yet stable run to
+  run.** The same command can document a route's responses in one run and omit
+  them in the next: a truncation decision is broken by map-iteration order,
+  which Go randomises per process. It predates this release, but is more visible
+  now that far more content is documented and therefore sits near a budget
+  boundary. Projects that do not exhaust a budget are unaffected and remain
+  byte-identical between runs. (#340)
 
 ## [0.5.6] - 2026-08-08
 
