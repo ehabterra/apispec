@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-15
+
 Speed and completeness. The walk that builds the spec no longer visits code that
 cannot contribute to it, which on the ~900-route project from 0.5.6 takes the
 documented surface from **640 paths to 900** while halving peak memory. Four
@@ -393,7 +395,8 @@ Baseline release. Static-analysis OpenAPI 3.1 generation for gin, echo, chi,
 fiber, gorilla/mux, and net/http, with framework-agnostic auth detection, a
 structured type model, and the `apispecui`/`apidiag` companion tools.
 
-[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.6...HEAD
+[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/ehabterra/apispec/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/ehabterra/apispec/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/ehabterra/apispec/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/ehabterra/apispec/compare/v0.5.3...v0.5.4
