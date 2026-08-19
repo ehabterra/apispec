@@ -246,9 +246,11 @@ func (fd *FrameworkDetector) AnalyzeFrameworkDependencies(
 		}
 	}
 
-	fmt.Printf("Found %d framework packages (%d direct, %d indirect)\n",
-		list.TotalPackages, list.DirectPackages, list.IndirectPackages)
-
+	// Deliberately silent: the caller reports these counts (engine's
+	// "framework dependencies analysed" phase line). Printed here, they read as
+	// a result — "Found 1 framework packages" is stated even when detection
+	// produced nothing usable, which is half of why an unmatched router looked
+	// like a success (issue #379).
 	return list, nil
 }
 
@@ -485,8 +487,6 @@ func (fd *FrameworkDetector) findImportedPackages(
 			fd.findImportsRecursively(pkg, availablePackages, importedPackagePaths, processed, &importedPackages)
 		}
 	}
-
-	fmt.Printf("Found %d imported packages by framework packages (including transitive imports)\n", len(importedPackages))
 
 	return importedPackages
 }

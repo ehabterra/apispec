@@ -551,7 +551,14 @@ func writeOutput(openAPISpec interface{}, config *CLIConfig, genEngine *engine.E
 			}
 		}
 
-		fmt.Println("Successfully generated:", outputPath)
+		// "Successfully generated" over a document with no paths is what made an
+		// unmatched router look like a working run (issue #379). The engine has
+		// already said why on stderr; this line must not contradict it.
+		if genEngine.GetRouteDiscovery().Paths == 0 {
+			fmt.Println("Generated (0 paths — nothing matched):", outputPath)
+		} else {
+			fmt.Println("Successfully generated:", outputPath)
+		}
 	}
 	return nil
 }

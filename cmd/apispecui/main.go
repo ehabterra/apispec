@@ -294,6 +294,13 @@ type GenerateResponse struct {
 	// read as a bound that was hit (CodeRabbit, PR #234).
 	Truncated bool `json:"truncated,omitempty"`
 	NodeLimit int  `json:"nodeLimit,omitempty"`
+
+	// NothingMatched reports that the analysis walked a non-empty call graph and
+	// matched no route registration in it — an unsupported router, an unmatched
+	// wiring style, or filters that excluded the routing package. Without it,
+	// "generated 0 paths" reads the same as a project that serves no HTTP
+	// (issue #379).
+	NothingMatched bool `json:"nothingMatched,omitempty"`
 }
 
 // UIServer holds shared state across requests.
@@ -1095,6 +1102,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			SkippedPackages:    skipped,
 			UnresolvedSecurity: gen.GetUnresolvedSecurity(),
 			Truncated:          expansion.Truncated,
+			NothingMatched:     gen.GetRouteDiscovery().NothingMatched(),
 		}
 		if expansion.Truncated {
 			resp.NodeLimit = expansion.Limit
