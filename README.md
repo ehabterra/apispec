@@ -19,7 +19,7 @@
 
 **At a glance**
 
-- **No annotations, no comments, no code changes** — the spec is derived from your AST and call graph, so it cannot drift out of sync with the implementation.
+- **No annotations required** — nothing to add to your code: routes, parameters and bodies come from the AST and the call graph, not from a parallel set of comments you have to keep in sync. (Doc comments you already write are used for `summary`/`description` when they are there.)
 - **OpenAPI 3.1** output as YAML or JSON.
 - **Six routers out of the box** — Gin, Echo, Chi, Fiber, Gorilla Mux, and `net/http` (including Go 1.22 `ServeMux` method-aware patterns, `{id}` wildcards and `r.PathValue`), plus mixed multi-framework projects in one binary.
 - **Your own router, detected automatically** — house wrapper types and house contexts (`func (r *Router) Get(...)`, `ctx.JSON/Bind/Query`) need no configuration.
@@ -1131,8 +1131,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 APISpec is Apache-2.0, so anyone is free to build on it — and someone has:
 
 - **[antst/go-apispec](https://github.com/antst/go-apispec)** — a fork of this project by Anton
-  Starikov, with a substantially reworked analysis pipeline. Credit to him for taking the idea
-  further and spending the time to make it his own; that is exactly what the licence is for.
+  Starikov, also Apache-2.0, with a substantially reworked analysis pipeline. Credit to him for
+  taking the idea further and spending the time to make it his own; that is exactly what the
+  licence is for.
 
 Building on APISpec yourself? Open an issue or a discussion — downstream projects are welcome here.
 
