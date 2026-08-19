@@ -1536,17 +1536,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 			callerName := getStringFromPool(meta, edges[0].Caller.Name)
 			callerPkg := getStringFromPool(meta, edges[0].Caller.Pkg)
 
-			if pkg, ok := meta.Packages[callerPkg]; ok {
-				// Sorted: two files declaring the same name would otherwise
-				// copy in random order, and the later copy wins per variable.
-				for _, fileName := range meta.SortedFileNames(callerPkg) {
-					file := pkg.Files[fileName]
-					if file == nil {
-						continue
-					}
-					if fn, ok := file.Functions[callerName]; ok {
-						maps.Copy(node.RootAssignmentMap, fn.AssignmentMap)
-					}
+			// Sorted: two files declaring the same name would otherwise
+			// copy in random order, and the later copy wins per variable.
+			for _, file := range meta.SortedFiles(callerPkg) {
+				if fn, ok := file.Functions[callerName]; ok {
+					maps.Copy(node.RootAssignmentMap, fn.AssignmentMap)
 				}
 			}
 		}
@@ -1662,51 +1656,39 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		calleePkg := getString(meta, parentEdge.Callee.Pkg)
 		methodName := getString(meta, parentEdge.Callee.Name)
 
-		if pkg, exists := meta.Packages[calleePkg]; exists {
-			// Sorted: the type declaration found first decides the fan-out.
-			for _, fileName := range meta.SortedFileNames(calleePkg) {
-				file := pkg.Files[fileName]
-				if file == nil {
-					continue
-				}
-				if typ, exists := file.Types[recvTypeName]; exists {
-					kindStr := getString(meta, typ.Kind)
-					if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
-						for _, implTypeIdx := range typ.ImplementedBy {
-							implTypeName := getString(meta, implTypeIdx)
-							// ImplementedBy is "import/path.Type"; the import path
-							// itself contains dots (github.com/…), so split on the
-							// LAST dot — not every dot — to separate pkg from type.
-							dot := strings.LastIndex(implTypeName, ".")
-							if dot <= 0 || dot == len(implTypeName)-1 {
-								continue
-							}
-							implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
+		// Sorted: the type declaration found first decides the fan-out.
+		for _, file := range meta.SortedFiles(calleePkg) {
+			if typ, exists := file.Types[recvTypeName]; exists {
+				kindStr := getString(meta, typ.Kind)
+				if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
+					for _, implTypeIdx := range typ.ImplementedBy {
+						implTypeName := getString(meta, implTypeIdx)
+						// ImplementedBy is "import/path.Type"; the import path
+						// itself contains dots (github.com/…), so split on the
+						// LAST dot — not every dot — to separate pkg from type.
+						dot := strings.LastIndex(implTypeName, ".")
+						if dot <= 0 || dot == len(implTypeName)-1 {
+							continue
+						}
+						implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
 
-							if implPkgObj, exists := meta.Packages[implPkg]; exists {
-								for _, implFileName := range meta.SortedFileNames(implPkg) {
-									implFile := implPkgObj.Files[implFileName]
-									if implFile == nil {
+						for _, implFile := range meta.SortedFiles(implPkg) {
+							if implTypeObj, exists := implFile.Types[implType]; exists {
+								for _, method := range implTypeObj.Methods {
+									if getString(meta, method.Name) != methodName {
 										continue
 									}
-									if implTypeObj, exists := implFile.Types[implType]; exists {
-										for _, method := range implTypeObj.Methods {
-											if getString(meta, method.Name) != methodName {
+
+									concreteMethodID := implPkg + "." + implType + "." + methodName
+									if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
+										for _, concreteEdge := range concreteEdges {
+											concreteCalleeID := concreteEdge.Callee.ID()
+											if tree.nodeMap[concreteCalleeID] != nil {
 												continue
 											}
 
-											concreteMethodID := implPkg + "." + implType + "." + methodName
-											if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
-												for _, concreteEdge := range concreteEdges {
-													concreteCalleeID := concreteEdge.Callee.ID()
-													if tree.nodeMap[concreteCalleeID] != nil {
-														continue
-													}
-
-													if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
-														node.AddChild(childNode)
-													}
-												}
+											if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
+												node.AddChild(childNode)
 											}
 										}
 									}

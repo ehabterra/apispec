@@ -340,17 +340,9 @@ func findFunction(meta *metadata.Metadata, pkg, name string) *metadata.Function 
 	if meta == nil {
 		return nil
 	}
-	p, ok := meta.Packages[pkg]
-	if !ok {
-		return nil
-	}
 	// Sorted: the first file declaring the name answers, so map order would
 	// decide which declaration wins (golden rule #1).
-	for _, fileName := range meta.SortedFileNames(pkg) {
-		file := p.Files[fileName]
-		if file == nil {
-			continue
-		}
+	for _, file := range meta.SortedFiles(pkg) {
 		if fn, ok := file.Functions[name]; ok {
 			return fn
 		}

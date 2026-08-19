@@ -2022,22 +2022,10 @@ func methodAssignmentMap(meta *metadata.Metadata, pkg, recv, name, varName strin
 	if meta == nil || name == "" {
 		return nil
 	}
-	p, ok := meta.Packages[pkg]
-	if !ok {
-		return nil
-	}
 	// Sorted: the first method whose assignments hold the variable answers, so
 	// map order would decide which declaration wins (golden rule #1).
-	for _, fileName := range meta.SortedFileNames(pkg) {
-		file := p.Files[fileName]
-		if file == nil {
-			continue
-		}
-		for _, tname := range meta.SortedTypeNames(pkg, fileName) {
-			t := file.Types[tname]
-			if t == nil {
-				continue
-			}
+	for fileName := range meta.SortedFiles(pkg) {
+		for _, t := range meta.SortedTypes(pkg, fileName) {
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {
@@ -2065,26 +2053,11 @@ func findMethodByName(meta *metadata.Metadata, pkg, recv, name string) *metadata
 	if meta == nil || name == "" {
 		return nil
 	}
-	p, ok := meta.Packages[pkg]
-	if !ok {
-		return nil
-	}
-	// Sort file keys: a receiver-less lookup can match in several files, and map
-	// iteration order would make the winner (and any doc comment it carries)
-	// vary between runs.
-	fileNames := make([]string, 0, len(p.Files))
-	for f := range p.Files {
-		fileNames = append(fileNames, f)
-	}
-	sort.Strings(fileNames)
-	for _, fname := range fileNames {
-		// Sorted: with no receiver to filter on, the first same-named method
-		// found answers, so map order would decide which type's method wins.
-		for _, tname := range meta.SortedTypeNames(pkg, fname) {
-			t := p.Files[fname].Types[tname]
-			if t == nil {
-				continue
-			}
+	// Sorted: a receiver-less lookup can match in several files (and in several
+	// types within one file), and map iteration order would make the winner —
+	// and any doc comment it carries — vary between runs.
+	for fname := range meta.SortedFiles(pkg) {
+		for _, t := range meta.SortedTypes(pkg, fname) {
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {

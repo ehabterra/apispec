@@ -15,7 +15,8 @@
 package spec
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
@@ -32,7 +33,7 @@ import (
 //
 // The producing call's instance ID alone does NOT order the list: one edge can
 // be linked to several assignments (`a, b := f()`, an edge whose AssignmentMap
-// holds more than one variable), and sort.Slice is unstable, so those ties were
+// holds more than one variable), and the sort is unstable, so those ties were
 // broken by the random map order — 9,284 of 21,735 links on gitea sat in such a
 // tie, which is how the same command produced different specs run to run
 // (issue #340). The link's AssignmentKey is the map key, hence unique, so
@@ -43,22 +44,15 @@ func sortedAssignmentRelationships(meta *metadata.Metadata) []*metadata.Assignme
 	for _, rel := range relationships {
 		rels = append(rels, rel)
 	}
-	sort.Slice(rels, func(i, j int) bool {
-		a, b := rels[i], rels[j]
-		if ai, bi := a.Edge.Callee.ID(), b.Edge.Callee.ID(); ai != bi {
-			return ai < bi
-		}
+	slices.SortFunc(rels, func(a, b *metadata.AssignmentLink) int {
 		ak, bk := a.AssignmentKey, b.AssignmentKey
-		if ak.Container != bk.Container {
-			return ak.Container < bk.Container
-		}
-		if ak.Pkg != bk.Pkg {
-			return ak.Pkg < bk.Pkg
-		}
-		if ak.Name != bk.Name {
-			return ak.Name < bk.Name
-		}
-		return ak.Type < bk.Type
+		return cmp.Or(
+			cmp.Compare(a.Edge.Callee.ID(), b.Edge.Callee.ID()),
+			cmp.Compare(ak.Container, bk.Container),
+			cmp.Compare(ak.Pkg, bk.Pkg),
+			cmp.Compare(ak.Name, bk.Name),
+			cmp.Compare(ak.Type, bk.Type),
+		)
 	})
 	return rels
 }
