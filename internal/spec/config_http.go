@@ -51,6 +51,9 @@ var netHTTPResponseContext = ResponseContextConfig{
 		{CallRegex: `^Marshal$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
 		{CallRegex: `^MarshalIndent$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
 	},
+	// net/http: "If WriteHeader is not called explicitly, the first call to
+	// Write will trigger an implicit WriteHeader(http.StatusOK)".
+	ImplicitStatus: http.StatusOK,
 }
 
 // DefaultHTTPConfig returns a default configuration for net/http.
