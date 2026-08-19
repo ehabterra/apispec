@@ -17,6 +17,23 @@
 
 **APISpec** analyzes your Go source and generates an OpenAPI 3.1 spec (YAML or JSON). It detects routes for popular frameworks (Gin, Echo, Chi, Fiber, Gorilla Mux, `net/http`), follows the call graph to the real handlers, and infers request/response types from actual code — struct tags, literals, generics, and more.
 
+**At a glance**
+
+- **No annotations, no comments, no code changes** — the spec is derived from your AST and call graph, so it cannot drift out of sync with the implementation.
+- **OpenAPI 3.1** output as YAML or JSON.
+- **Six routers out of the box** — Gin, Echo, Chi, Fiber, Gorilla Mux, and `net/http` (including Go 1.22 `ServeMux` method-aware patterns, `{id}` wildcards and `r.PathValue`), plus mixed multi-framework projects in one binary.
+- **Your own router, detected automatically** — house wrapper types and house contexts (`func (r *Router) Get(...)`, `ctx.JSON/Bind/Query`) need no configuration.
+- **Request bodies** from `json.Decode`/`Unmarshal`, framework binders, custom wrapper helpers, and form / multipart file uploads (`multipart/form-data` vs `x-www-form-urlencoded`).
+- **Responses and status codes** per branch — conditional statuses, envelopes, generic wrappers, map-literal payloads, and interface-typed bodies resolved to the concrete type actually written.
+- **Parameters** in path, query, header, cookie and form position.
+- **Auth and security detection** — bearer/JWT, basic and apiKey schemes, with middleware followed through router-wide `Use`, group closures, per-route chains and handler wrappers.
+- **Type-aware schemas** — generics (including inferred instantiations), aliases, enums from constants, fixed-size arrays, pointers, embedded and inline structs, and external package types.
+- **Validation constraints** from `go-playground/validator` tags — `required`, formats, patterns, and length/value/item bounds routed by field type.
+- **Doc comments** on handlers become the operation `summary` and `description`.
+- **Deterministic output** — regenerating an unchanged project yields a byte-identical file, so the spec can be committed and diffed in CI without false failures.
+- **Debuggable when a route is missed** — call-graph diagram, metadata dump, and an insight report that says *why* a response has no body rather than only that it doesn't.
+- **Extensible without forking** — framework behaviour is regex patterns in YAML; adding a router touches no core logic.
+
 **TL;DR**: Point APISpec at your module. Get an OpenAPI spec — plus, optionally, an interactive call-graph diagram and a browser-based config UI.
 
 📖 **Documentation:** [apispec.ehabterra.com](https://apispec.ehabterra.com) — installation,
@@ -46,6 +63,7 @@ or [the wider landscape](https://apispec.ehabterra.com/alternatives/) if you are
 - [Performance & Limits](#performance--limits)
 - [Development](#development)
 - [Documentation](#documentation)
+- [Forks & derivatives](#forks--derivatives)
 - [License](#license)
 
 ## Demo
@@ -1107,6 +1125,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 - [cmd/apidiag/README.md](cmd/apidiag/README.md) — diagram server
 - [internal/metadata/README.md](internal/metadata/README.md) — metadata package
 - [internal/spec/README.md](internal/spec/README.md) — spec-generation package
+
+## Forks & derivatives
+
+APISpec is Apache-2.0, so anyone is free to build on it — and someone has:
+
+- **[antst/go-apispec](https://github.com/antst/go-apispec)** — a fork of this project by Anton
+  Starikov, with a substantially reworked analysis pipeline. Credit to him for taking the idea
+  further and spending the time to make it his own; that is exactly what the licence is for.
+
+Building on APISpec yourself? Open an issue or a discussion — downstream projects are welcome here.
 
 ## License
 
