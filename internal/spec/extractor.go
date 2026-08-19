@@ -2026,8 +2026,18 @@ func methodAssignmentMap(meta *metadata.Metadata, pkg, recv, name, varName strin
 	if !ok {
 		return nil
 	}
-	for _, file := range p.Files {
-		for _, t := range file.Types {
+	// Sorted: the first method whose assignments hold the variable answers, so
+	// map order would decide which declaration wins (golden rule #1).
+	for _, fileName := range meta.SortedFileNames(pkg) {
+		file := p.Files[fileName]
+		if file == nil {
+			continue
+		}
+		for _, tname := range meta.SortedTypeNames(pkg, fileName) {
+			t := file.Types[tname]
+			if t == nil {
+				continue
+			}
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {

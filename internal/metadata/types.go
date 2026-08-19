@@ -1800,7 +1800,13 @@ func (m *Metadata) resolveIdentReturnType(returnVar *CallArgument, pkgName, cont
 
 	// First, check if it's a variable in the current package
 	if pkg, exists := m.Packages[pkgName]; exists {
-		for _, file := range pkg.Files {
+		// Sorted: the first file declaring the variable (or the context
+		// function) answers, so map order would decide the type.
+		for _, fileName := range m.SortedFileNames(pkgName) {
+			file := pkg.Files[fileName]
+			if file == nil {
+				continue
+			}
 			// Check variables
 			if variable, exists := file.Variables[varName]; exists {
 				return m.StringPool.GetString(variable.Type)
@@ -1993,7 +1999,12 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 
 	// Look for the function in metadata
 	if pkg, exists := m.Packages[pkgName]; exists {
-		for _, file := range pkg.Files {
+		// Sorted: the first declaration found answers (golden rule #1).
+		for _, fileName := range m.SortedFileNames(pkgName) {
+			file := pkg.Files[fileName]
+			if file == nil {
+				continue
+			}
 			// Check functions
 			if fn, exists := file.Functions[funcName]; exists {
 				if fn.Signature.ResolvedType != -1 {

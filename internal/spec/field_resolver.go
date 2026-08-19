@@ -177,7 +177,12 @@ func constIdentDeclaredType(arg *metadata.CallArgument, cp ContextProvider) stri
 		return ""
 	}
 	name := arg.GetName()
-	for _, file := range pkg.Files {
+	// Sorted: the first file declaring the constant answers (golden rule #1).
+	for _, fileName := range impl.meta.SortedFileNames(arg.GetPkg()) {
+		file := pkg.Files[fileName]
+		if file == nil {
+			continue
+		}
 		v, ok := file.Variables[name]
 		if !ok {
 			continue
@@ -209,7 +214,12 @@ func findType(meta *metadata.Metadata, pkg, typeName string) *metadata.Type {
 	if t, ok := p.Types[typeName]; ok && t != nil {
 		return t
 	}
-	for _, file := range p.Files {
+	// Sorted: the first file declaring the type answers (golden rule #1).
+	for _, fileName := range meta.SortedFileNames(pkg) {
+		file := p.Files[fileName]
+		if file == nil {
+			continue
+		}
 		if t, ok := file.Types[typeName]; ok && t != nil {
 			return t
 		}

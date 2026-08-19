@@ -179,7 +179,12 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 	case metadata.KindIdent, metadata.KindFuncLit:
 		// Try to resolve as a constant value from metadata
 		if pkg, exists := c.meta.Packages[arg.GetPkg()]; exists {
-			for _, file := range pkg.Files {
+			// Sorted: the first file declaring the constant answers.
+			for _, fileName := range c.meta.SortedFileNames(arg.GetPkg()) {
+				file := pkg.Files[fileName]
+				if file == nil {
+					continue
+				}
 				if variable, exists := file.Variables[arg.GetName()]; exists && c.GetString(variable.Tok) == "const" {
 					return strings.Trim(c.GetString(variable.Value), "\"")
 				}

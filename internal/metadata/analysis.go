@@ -558,9 +558,16 @@ func traceVariableOriginHelper(
 		}
 	}
 
-	// Try to find assignment in the same pkg
+	// Try to find assignment in the same pkg. Sorted: the loop returns on the
+	// FIRST file that declares the variable or the function, so map order would
+	// decide which declaration answers — and the answer is cached for the rest
+	// of the run (issue #340).
 	if pkg, ok := metadata.Packages[pkgName]; ok {
-		for _, file := range pkg.Files {
+		for _, fileName := range metadata.SortedFileNames(pkgName) {
+			file := pkg.Files[fileName]
+			if file == nil {
+				continue
+			}
 			if v, ok := file.Variables[varName]; ok {
 				arg := NewCallArgument(metadata)
 				arg.SetKind(KindIdent)
@@ -581,7 +588,11 @@ func traceVariableOriginHelper(
 					if assign.CalleeFunc != "" && assign.CalleePkg != "" {
 						calleePkg, ok := metadata.Packages[assign.CalleePkg]
 						if ok {
-							for _, calleeFile := range calleePkg.Files {
+							for _, calleeFileName := range metadata.SortedFileNames(assign.CalleePkg) {
+								calleeFile := calleePkg.Files[calleeFileName]
+								if calleeFile == nil {
+									continue
+								}
 								if calleeFn, ok := calleeFile.Functions[assign.CalleeFunc]; ok {
 									retIdx := assign.ReturnIndex
 									if retIdx < len(calleeFn.ReturnVars) {

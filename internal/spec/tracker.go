@@ -477,21 +477,11 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 
 	visited := make(map[string]int, 200) // Pre-allocate with estimated capacity
 
-	// Get pre-built relationships from metadata
-	assignmentRelationships := meta.GetAssignmentRelationships()
-
-	// Iterate in a stable order: this is a map, and the assignment below is
-	// last-write-wins (assignmentIndex[akey] = …). When two relationships map to
-	// the same akey, random map order would pick a different winner each run,
-	// flipping variable resolution (and the final spec). Order by the edge's
-	// instance ID (unique, position-based).
-	rels := make([]*metadata.AssignmentLink, 0, len(assignmentRelationships))
-	for _, a := range assignmentRelationships {
-		rels = append(rels, a)
-	}
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].Edge.Callee.ID() < rels[j].Edge.Callee.ID()
-	})
+	// Iterate in a stable order: the source is a map, and the assignment below
+	// is last-write-wins (assignmentIndex[akey] = …). When two relationships map
+	// to the same akey, random map order would pick a different winner each run,
+	// flipping variable resolution (and the final spec).
+	rels := sortedAssignmentRelationships(meta)
 
 	for _, assignment := range rels {
 		recvVarName := getString(meta, assignment.Assignment.VariableName)
@@ -1547,7 +1537,13 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 			callerPkg := getStringFromPool(meta, edges[0].Caller.Pkg)
 
 			if pkg, ok := meta.Packages[callerPkg]; ok {
-				for _, file := range pkg.Files {
+				// Sorted: two files declaring the same name would otherwise
+				// copy in random order, and the later copy wins per variable.
+				for _, fileName := range meta.SortedFileNames(callerPkg) {
+					file := pkg.Files[fileName]
+					if file == nil {
+						continue
+					}
 					if fn, ok := file.Functions[callerName]; ok {
 						maps.Copy(node.RootAssignmentMap, fn.AssignmentMap)
 					}
@@ -1667,7 +1663,12 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		methodName := getString(meta, parentEdge.Callee.Name)
 
 		if pkg, exists := meta.Packages[calleePkg]; exists {
-			for _, file := range pkg.Files {
+			// Sorted: the type declaration found first decides the fan-out.
+			for _, fileName := range meta.SortedFileNames(calleePkg) {
+				file := pkg.Files[fileName]
+				if file == nil {
+					continue
+				}
 				if typ, exists := file.Types[recvTypeName]; exists {
 					kindStr := getString(meta, typ.Kind)
 					if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
@@ -1683,7 +1684,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 							implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
 
 							if implPkgObj, exists := meta.Packages[implPkg]; exists {
-								for _, implFile := range implPkgObj.Files {
+								for _, implFileName := range meta.SortedFileNames(implPkg) {
+									implFile := implPkgObj.Files[implFileName]
+									if implFile == nil {
+										continue
+									}
 									if implTypeObj, exists := implFile.Types[implType]; exists {
 										for _, method := range implTypeObj.Methods {
 											if getString(meta, method.Name) != methodName {

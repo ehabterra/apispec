@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ehabterra/apispec/internal/engine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,6 +43,57 @@ func TestGenerateDeterministic(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGenerateDeterministicUnderTruncation runs the same fixtures with the
+// budgets forced low enough to truncate, because that is where determinism
+// broke in the field (issue #340): the same command on a large project dropped
+// different responses and header parameters between runs, while every fixture
+// small enough for TestGenerateDeterministic never spent a budget at all.
+//
+// Truncation itself is asserted, so the test cannot quietly stop exercising the
+// path it exists for.
+func TestGenerateDeterministicUnderTruncation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping determinism fixtures in -short mode")
+	}
+	for _, name := range []string{"complex_chi_router", "group_closure_instances", "mixed_gin_mux"} {
+		t.Run(name, func(t *testing.T) {
+			base, truncated := marshalTruncatedSpec(t, name)
+			if !truncated {
+				t.Fatalf("%s did not truncate at the forced budgets, so this fixture no longer covers the truncation path", name)
+			}
+			for run := 1; run < 3; run++ {
+				got, _ := marshalTruncatedSpec(t, name)
+				if string(got) != string(base) {
+					t.Fatalf("spec for %s differs between runs at a truncating budget:\n%s",
+						name, firstDiffLine(string(base), string(got)))
+				}
+			}
+		})
+	}
+}
+
+// marshalTruncatedSpec generates the fixture with both expansion budgets forced
+// to their harshest useful values, and reports whether either one truncated.
+func marshalTruncatedSpec(t *testing.T, fixture string) ([]byte, bool) {
+	t.Helper()
+	cfg := engine.DefaultEngineConfig()
+	cfg.InputDir = filepath.Join("..", "testdata", fixture)
+	cfg.MaxInstancesPerKey = 1
+	cfg.MaxNodesPerRoute = 200
+
+	eng := engine.NewEngine(cfg)
+	out, err := eng.GenerateOpenAPI()
+	if err != nil {
+		t.Fatalf("GenerateOpenAPI(%s): %v", fixture, err)
+	}
+	data, err := yaml.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := eng.GetExpansionStats()
+	return data, stats.InstanceTruncations > 0 || stats.RouteTruncations > 0
 }
 
 func marshalSpec(t *testing.T, dir string) []byte {

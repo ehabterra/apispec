@@ -115,6 +115,19 @@ func (u User) Label() string { return u.Name }
 func generateOnce(t *testing.T, cfg *packages.Config) []byte {
 	t.Helper()
 
+	meta := generateMetaOnce(t, cfg)
+	out, err := yaml.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// generateMetaOnce is generateOnce without the serialization, for tests that
+// query the metadata itself.
+func generateMetaOnce(t *testing.T, cfg *packages.Config) *metadata.Metadata {
+	t.Helper()
+
 	fset := token.NewFileSet()
 	loadCfg := *cfg
 	loadCfg.Mode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
@@ -144,12 +157,7 @@ func generateOnce(t *testing.T, cfg *packages.Config) []byte {
 		}
 	}
 
-	meta := metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
-	out, err := yaml.Marshal(meta)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+	return metadata.GenerateMetadata(pkgsMetadata, fileToInfo, importPaths, fset)
 }
 
 // TestGenerateMetadataDeterministic asserts that repeated metadata generation

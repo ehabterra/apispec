@@ -455,9 +455,14 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 		callerName := m.StringPool.GetString(edge.Caller.Name)
 		callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
 
-		// Get root assignments
+		// Get root assignments. Sorted: relationships[akey] is last-write-wins,
+		// so two files contributing the same key would resolve by map order.
 		if pkg, ok := m.Packages[callerPkg]; ok {
-			for _, file := range pkg.Files {
+			for _, fileName := range m.SortedFileNames(callerPkg) {
+				file := pkg.Files[fileName]
+				if file == nil {
+					continue
+				}
 				if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
 					for recvVarName, assigns := range fn.AssignmentMap {
 						assignment := assigns[len(assigns)-1]
