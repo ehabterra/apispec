@@ -292,9 +292,41 @@ type Engine struct {
 	// whose key matches no route placeholder, gathered during the last generation.
 	pathParamMismatches []intspec.PathParamMismatch
 
+	// routeDiscovery records what the route search had to work with and what it
+	// found during the last generation (issue #379).
+	routeDiscovery RouteDiscovery
+
 	// resolvedGraph is the SSA+VTA resolved call graph, built during
 	// GenerateMetadataOnly when config.ResolveCallGraph is set.
 	resolvedGraph *callgraph.Resolved
+}
+
+// RouteDiscovery reports the inputs and the outcome of the route search.
+//
+// It exists because "zero paths" is ambiguous: a library with no HTTP routes
+// legitimately documents nothing, and so does a project whose router apispec
+// does not support, whose wiring style no pattern matched, or whose routing
+// package the include/exclude filters removed. All four used to print
+// "Successfully generated" and exit 0, which made them indistinguishable
+// (issue #379).
+//
+// The signal that separates them is zero paths from a call graph that is NOT
+// empty: there was code to walk, and nothing in it registered a route.
+type RouteDiscovery struct {
+	// CallEdges is the size of the call graph the route search walked.
+	CallEdges int
+	// Packages is how many packages that call graph came from.
+	Packages int
+	// Paths is how many paths the generated document ended up with.
+	Paths int
+	// Frameworks names the pattern sets in effect, primary first.
+	Frameworks []string
+}
+
+// NothingMatched reports the condition worth telling the user about: code was
+// analysed and no route registration in it matched any configured pattern.
+func (d RouteDiscovery) NothingMatched() bool {
+	return d.Paths == 0 && d.CallEdges > 0
 }
 
 // GetResolvedCallGraph returns the resolved call graph from the last
@@ -501,7 +533,8 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 			e.reportPhase("framework-dependency analysis failed", time.Since(tDeps))
 		} else {
 			logger.Printf("Framework dependency analysis completed: %d packages found\n", dependencyTree.TotalPackages)
-			e.reportPhase(fmt.Sprintf("framework dependencies analysed (%d pkgs)", dependencyTree.TotalPackages), time.Since(tDeps))
+			e.reportPhase(fmt.Sprintf("framework dependencies analysed (%d pkgs: %d direct, %d indirect)",
+				dependencyTree.TotalPackages, dependencyTree.DirectPackages, dependencyTree.IndirectPackages), time.Since(tDeps))
 
 			// Auto-include framework packages in IncludePackages if requested
 			if e.config.AutoIncludeFrameworkPackages {
@@ -854,6 +887,14 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		}
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
+
+	e.routeDiscovery = RouteDiscovery{
+		CallEdges:  len(meta.CallGraph),
+		Packages:   len(meta.Packages),
+		Paths:      len(openAPISpec.Paths),
+		Frameworks: frameworks,
+	}
+	e.reportNoRoutes()
 
 	// Handle metadata writing if requested
 	if e.config.WriteMetadata {
@@ -1258,11 +1299,40 @@ func (e *Engine) reportUnresolvedRefs() {
 		len(e.unresolvedRefs), sites, b.String()), 0)
 }
 
+// reportNoRoutes says so when the walk analysed real code and matched no route
+// registration in it — the case that used to print "Successfully generated"
+// over an empty document and exit 0, indistinguishable from a project that
+// genuinely serves no HTTP (issue #379).
+//
+// Written with log rather than reportPhase because it is not a phase: it is the
+// result, and the " in 0s" a phase line appends reads as a timing on something
+// that did not happen.
+func (e *Engine) reportNoRoutes() {
+	d := e.routeDiscovery
+	if !d.NothingMatched() {
+		return
+	}
+	frameworks := strings.Join(d.Frameworks, ", ")
+	if frameworks == "" {
+		frameworks = "no framework"
+	}
+	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %s patterns in effect",
+		d.CallEdges, d.Packages, frameworks)
+	log.Printf("[engine] if this project serves HTTP, then its router is unsupported, is wired in a style no pattern matched, or was excluded by --include-*/--exclude-* filters — docs/DEBUGGING.md walks through telling those apart")
+}
+
 // GetUnresolvedRefs returns the references the most recent generation could not
 // satisfy, after they were repaired. Non-empty means the spec loads but some
 // operation's shape is a placeholder.
 func (e *Engine) GetUnresolvedRefs() []intspec.UnresolvedRef {
 	return e.unresolvedRefs
+}
+
+// GetRouteDiscovery returns what the route search walked and what it found in
+// the most recent generation. NothingMatched() distinguishes "this project has
+// no HTTP routes" from "apispec did not recognise this project's routes".
+func (e *Engine) GetRouteDiscovery() RouteDiscovery {
+	return e.routeDiscovery
 }
 
 // GetPathParamMismatches returns map-key path-variable reads (e.g.

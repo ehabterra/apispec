@@ -313,10 +313,16 @@ export async function generate(opts = {}) {
         skipped,
         unresolvedSecurity: res.unresolvedSecurity || [],
         truncated: !!res.truncated,
+        nothingMatched: !!res.nothingMatched,
         nodeLimit: res.nodeLimit || 0,
         genBlocked: false,
       });
-      if (res.truncated) {
+      if (res.nothingMatched) {
+        setStatus(
+          `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters · ${took}`,
+          "warn",
+        );
+      } else if (res.truncated) {
         setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing · ${took}`, "warn");
       } else if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
