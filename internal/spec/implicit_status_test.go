@@ -16,6 +16,7 @@ package spec
 
 import (
 	"net/http"
+	"sort"
 	"testing"
 )
 
@@ -81,4 +82,98 @@ func TestHTTPSecondaryConfigCarriesTheImplicitStatus(t *testing.T) {
 	if got := HTTPSecondaryConfig().Framework.ResponseContext.ImplicitStatus; got != http.StatusOK {
 		t.Errorf("HTTPSecondaryConfig: ImplicitStatus = %d, want %d", got, http.StatusOK)
 	}
+}
+
+// stubResponseMatcher returns pre-programmed responses per node, so the pairing
+// logic can be exercised without a tracker tree or real patterns.
+type stubResponseMatcher struct {
+	byNode map[TrackerNodeInterface][]*ResponseInfo
+}
+
+func (s *stubResponseMatcher) MatchNode(node TrackerNodeInterface) bool {
+	_, ok := s.byNode[node]
+	return ok
+}
+func (s *stubResponseMatcher) GetPattern() interface{} { return nil }
+func (s *stubResponseMatcher) GetPriority() int        { return 0 }
+func (s *stubResponseMatcher) ExtractResponse(node TrackerNodeInterface, _ *RouteInfo) []*ResponseInfo {
+	return s.byNode[node]
+}
+
+// TestPairAndFillResponsesImplicitStatus covers the pairing states the implicit
+// status introduces (issue #369), at the layer that decides them: the body is
+// unclaimed, the body is claimed by a stated status, and the body follows a
+// status write whose value could not be read.
+func TestPairAndFillResponsesImplicitStatus(t *testing.T) {
+	// One fragment per call site, positioned so source order is unambiguous —
+	// pairing walks fragments in that order.
+	build := func(resps ...[]*ResponseInfo) (*Extractor, []responseCandidate, *RouteInfo) {
+		meta := exSweepMeta()
+		stub := &stubResponseMatcher{byNode: map[TrackerNodeInterface][]*ResponseInfo{}}
+		candidates := make([]responseCandidate, 0, len(resps))
+		for i, r := range resps {
+			pos := "h.go:" + string(rune('1'+i)) + ":1"
+			node := &fakeNode{edge: sweepEdge(meta, "handler", "app", "write", "app", "", pos)}
+			stub.byNode[node] = r
+			candidates = append(candidates, responseCandidate{node: node, chain: "chain"})
+		}
+		e := &Extractor{responseMatchers: []ResponsePatternMatcher{stub}}
+		return e, candidates, &RouteInfo{Metadata: meta, Response: map[string]*ResponseInfo{}}
+	}
+	body := func(implicit int) *ResponseInfo {
+		return &ResponseInfo{StatusCode: -1, ContentType: "application/json", BodyType: "Item", ImplicitStatus: implicit}
+	}
+
+	t.Run("an unclaimed body takes the implicit status", func(t *testing.T) {
+		e, candidates, route := build([]*ResponseInfo{body(200)})
+		e.pairAndFillResponses(route, candidates)
+		if resp, ok := route.Response["200"]; !ok || resp.BodyType != "Item" {
+			t.Errorf("body should be documented as 200, got %v", statusKeysOf(route))
+		}
+	})
+
+	t.Run("a stated status claims the body instead", func(t *testing.T) {
+		e, candidates, route := build(
+			[]*ResponseInfo{{StatusCode: 201, ContentType: "application/json"}},
+			[]*ResponseInfo{body(200)},
+		)
+		e.pairAndFillResponses(route, candidates)
+		if resp, ok := route.Response["201"]; !ok || resp.BodyType != "Item" {
+			t.Errorf("the stated 201 should claim the body, got %v", statusKeysOf(route))
+		}
+		if _, ok := route.Response["200"]; ok {
+			t.Errorf("the implicit status must not also be emitted, got %v", statusKeysOf(route))
+		}
+	})
+
+	t.Run("a body after an unreadable status write stays undetermined", func(t *testing.T) {
+		e, candidates, route := build(
+			[]*ResponseInfo{{StatusCode: -1, ContentType: "application/json", StatusUnresolved: true}},
+			[]*ResponseInfo{body(200)},
+		)
+		e.pairAndFillResponses(route, candidates)
+		if _, ok := route.Response["200"]; ok {
+			t.Errorf("the handler states a status we cannot read; 200 would be a guess, got %v", statusKeysOf(route))
+		}
+		if resp, ok := route.Response["-1"]; !ok || resp.BodyType != "Item" {
+			t.Errorf("the body should keep an undetermined status, got %v", statusKeysOf(route))
+		}
+	})
+
+	t.Run("a body with no implicit status stays undetermined", func(t *testing.T) {
+		e, candidates, route := build([]*ResponseInfo{body(0)})
+		e.pairAndFillResponses(route, candidates)
+		if _, ok := route.Response["-1"]; !ok {
+			t.Errorf("a framework declaring no implicit status leaves the body undetermined, got %v", statusKeysOf(route))
+		}
+	})
+}
+
+func statusKeysOf(route *RouteInfo) []string {
+	keys := make([]string, 0, len(route.Response))
+	for k := range route.Response {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

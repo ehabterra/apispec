@@ -659,7 +659,7 @@ function ResponseContextEditor({ rc, onChange }) {
         <span>Implicit status</span>
         <${Info} text="Status the framework sends when a handler writes a body without stating one — 200 for net/http, whose first Write implies it. Leave empty for frameworks whose renderers always carry the status." />
       </label>
-      <input class="input" type="number" value=${rc?.implicitStatus ?? ""}
+      <input class="input" type="number" min="100" max="599" step="1" value=${rc?.implicitStatus ?? ""}
         placeholder="200"
         onInput=${(e) => set("implicitStatus", e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0)} />
     </div>
