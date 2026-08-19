@@ -85,6 +85,11 @@ func TestTraceVariableOriginDeterministic(t *testing.T) {
 	// so the trace stops at the local assignment instead of following the
 	// builder's receiver. Pinned, not just compared run to run: a flip is only
 	// caught here if some run lands on the other order.
+	//
+	// That the receiver is NOT followed is issue #380 — the method lookup
+	// caches its miss package-wide after scanning one file — so this value is
+	// also a change detector: when #380 is fixed the answer becomes the
+	// builder's receiver and this expectation moves with it.
 	want := answer{variable: "cmd", pkg: "traceorigin/svc", caller: "Build"}
 	for run := 0; run < 12; run++ {
 		meta := generateMetaOnce(t, cfg)
