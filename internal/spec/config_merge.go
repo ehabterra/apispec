@@ -14,7 +14,10 @@
 
 package spec
 
-import "strings"
+import (
+	"net/http"
+	"strings"
+)
 
 // HTTPSecondaryConfig is the merge-safe subset of the net/http default config,
 // meant to be layered UNDER another framework's config for mixed projects (a
@@ -75,6 +78,11 @@ func HTTPSecondaryConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			// A handler reached through the stdlib surface writes to an
+			// http.ResponseWriter, so a body it writes without stating a status
+			// is sent as 200 (issue #369). Only the implicit status is layered;
+			// see SecondaryView on why the writer types are not.
+			ResponseContext: ResponseContextConfig{ImplicitStatus: http.StatusOK},
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(".*json(iter)?\\.\\*Decoder"),
 				jsonUnmarshalRequestPattern("json"),
@@ -149,6 +157,13 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	}
 	out := &APISpecConfig{Framework: FrameworkConfig{
 		RequestContext: cfg.Framework.RequestContext,
+		// Only the implicit status travels from the response context: it
+		// describes what the SERVER sends when a handler states no status, so it
+		// is true of a secondary framework's handlers too. The writer-type
+		// regexes deliberately do not travel — they GATE which encodes count as
+		// responses, and one framework's writer types would drop the other's
+		// (issue #369, keeping #212's "secondary costs nothing" rule).
+		ResponseContext: ResponseContextConfig{ImplicitStatus: cfg.Framework.ResponseContext.ImplicitStatus},
 	}}
 	// Copied rather than aliased so an append by a later caller cannot reach
 	// the source config's backing array.
@@ -281,6 +296,14 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 			primary.Framework.RequestContext.TypeRegexes, sec.Framework.RequestContext.TypeRegexes...)
 		primary.Framework.RequestContext.BodyAccessors = appendUniqueStrings(
 			primary.Framework.RequestContext.BodyAccessors, sec.Framework.RequestContext.BodyAccessors...)
+		// The implicit status is a property of HTTP, not of the framework that
+		// happened to sort first: a chi handler writing a body without stating a
+		// status still sends 200 when gin is primary. Only the ABSENCE is filled
+		// — a primary that declares one keeps it (issue #369, under #212's rule
+		// that being secondary costs a framework nothing).
+		if primary.Framework.ResponseContext.ImplicitStatus == 0 {
+			primary.Framework.ResponseContext.ImplicitStatus = sec.Framework.ResponseContext.ImplicitStatus
+		}
 	}
 	return primary
 }

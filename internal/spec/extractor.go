@@ -173,6 +173,19 @@ type ResponseInfo struct {
 	Line int
 
 	StatusCode int
+
+	// ImplicitStatus is the status this body takes if no explicit status write
+	// claims it during pairing — the framework's ImplicitStatus, stamped only on
+	// bodies whose pattern carries no status source (see ResponseContextConfig).
+	// Zero means "leave it undetermined", which is what lands under "default".
+	ImplicitStatus int
+
+	// StatusUnresolved marks a status WRITE whose value could not be read
+	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
+	// no body — and is never stored; it exists so pairing knows the handler does
+	// set a status on this chain, which stops a body written afterwards from
+	// claiming the framework's implicit status (issue #369).
+	StatusUnresolved bool
 }
 
 // Extractor provides a cleaner, more modular approach to extraction
@@ -1347,7 +1360,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		siteID := cand.node.GetEdge().Callee.ID()
 		caller := cand.node.GetEdge().Caller.BaseID()
 		for _, resp := range resps {
-			if resp == nil || (resp.BodyType == "" && resp.StatusCode < 100) {
+			if resp == nil || (resp.BodyType == "" && resp.StatusCode < 100 && !resp.StatusUnresolved) {
 				continue // nothing resolved
 			}
 			status := resp.StatusCode
@@ -1395,6 +1408,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 
 	pending := map[string]bool{} // chain -> a bodyless status awaits its body
 	pendingStatus := map[string]int{}
+	// chain -> a status write on it did NOT resolve. The handler states a
+	// status; we just could not read it. A body written after that is emphatically
+	// NOT the framework's implicit status — the server sends whatever that call
+	// set — so such a body keeps its undetermined status rather than claiming 200
+	// (issue #369, golden rule #7).
+	statusUnresolved := map[string]bool{}
 	var unpaired []*fragment
 	for i := range frags {
 		f := &frags[i]
@@ -1407,7 +1426,15 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			pendingStatus[f.chain] = status
 		case known:
 			store(f.resp)
+		case f.resp.StatusUnresolved:
+			// A status write whose value did not resolve: nothing to store (no
+			// status, no body), but it disqualifies this chain's later bodies
+			// from the implicit status.
+			statusUnresolved[f.chain] = true
 		case body != "":
+			if statusUnresolved[f.chain] {
+				f.resp.ImplicitStatus = 0
+			}
 			if pending[f.chain] {
 				f.resp.StatusCode = pendingStatus[f.chain]
 				delete(pending, f.chain)
@@ -1444,6 +1471,15 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		unknown := 0
 		for _, f := range unpaired {
 			if depthOf(f) != minDepth {
+				continue
+			}
+			// No status write claimed this body, so the framework's implicit
+			// status is what the server actually sends (issue #369). Only a body
+			// whose pattern named no status carries one; the rest stay
+			// undetermined.
+			if f.resp.ImplicitStatus > 0 {
+				f.resp.StatusCode = f.resp.ImplicitStatus
+				store(f.resp)
 				continue
 			}
 			unknown++
@@ -2471,6 +2507,16 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		statusResolved = true
 	}
 
+	// A body write that names no status at all takes the framework's implicit
+	// one — net/http's first Write sends 200 (issue #369). Stamped, not applied:
+	// pairing runs first, so `w.WriteHeader(201)` before the encode still claims
+	// the body (pairAndFillResponses). Patterns that DO carry a status argument
+	// are excluded even when it fails to resolve — that is a status which could
+	// not be determined, and saying 200 there would be a guess.
+	if !statusResolved && !r.pattern.StatusFromArg {
+		respInfo.ImplicitStatus = r.cfg.Framework.ResponseContext.ImplicitStatus
+	}
+
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
 		// If status code is not from argument, attach this body to an existing
 		// response that has no body yet. route.Response is a map, so iterating it
@@ -2611,6 +2657,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	if !statusResolved && respInfo.BodyType == "" {
+		// Nothing to document. But a pattern that READS a status argument and
+		// failed is evidence that the handler states one — pass that on so a
+		// later body does not take the implicit status (issue #369).
+		if r.pattern.StatusFromArg {
+			respInfo.StatusUnresolved = true
+			return []*ResponseInfo{respInfo}
+		}
 		return nil
 	}
 

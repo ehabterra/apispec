@@ -167,6 +167,23 @@ type ResponseContextConfig struct {
 	// never reaches a sink (a downstream client's outbound request) is simply
 	// never a response.
 	BodyTransforms []BodyTransform `yaml:"bodyTransforms,omitempty" json:"bodyTransforms,omitempty"`
+
+	// ImplicitStatus is the status the framework sends when a handler writes a
+	// body without stating one — net/http's first Write sends 200. It fills
+	// exactly that gap: a body write whose pattern carries no status source at
+	// all (`json.NewEncoder(w).Encode(v)`, `w.Write(b)`) and that no explicit
+	// status write on its own call chain claims.
+	//
+	// This is not a guess standing in for an unresolved status, and must not
+	// become one: a pattern that HAS a status argument which failed to resolve
+	// keeps landing under "default", because there the status genuinely could
+	// not be determined (golden rule #7). Zero disables it, which is right for
+	// frameworks whose renderers always carry the status (`c.JSON(200, v)`).
+	//
+	// See issue #369: without it the most common Go handler shape documents its
+	// success body under "default", which client generators map to the ERROR
+	// branch — so the endpoint gets no typed success return.
+	ImplicitStatus int `yaml:"implicitStatus,omitempty" json:"implicitStatus,omitempty"`
 }
 
 // BodyTransform matches a serialization call (by callee function name and

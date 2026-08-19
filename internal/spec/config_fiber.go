@@ -76,6 +76,12 @@ func DefaultFiberConfig() *APISpecConfig {
 				},
 			},
 			RequestContext: fiberRequestContext,
+			// c.JSON(v) and c.SendString(v) carry no status: fiber sends the
+			// context's status, which is 200 unless c.Status(...) set one — and
+			// that call pairs with the body through the ^Status$ pattern above
+			// (issue #369). Declared here rather than inherited from the stdlib
+			// layer so an explicit fiber config behaves the same.
+			ResponseContext: ResponseContextConfig{ImplicitStatus: http.StatusOK},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^BodyParser$`,

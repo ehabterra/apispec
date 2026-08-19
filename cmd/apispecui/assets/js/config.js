@@ -645,14 +645,24 @@ function RequestContextEditor({ rc, onChange }) {
   `;
 }
 
-// ResponseContextEditor edits the writer-type lists only. Body transforms
-// (envelope unwrapping) are nested per-transform structures; those are edited in
-// YAML mode rather than duplicated here, and they round-trip untouched.
+// ResponseContextEditor edits the writer-type lists and the implicit status.
+// Body transforms (envelope unwrapping) are nested per-transform structures;
+// those are edited in YAML mode rather than duplicated here, and they round-trip
+// untouched.
 function ResponseContextEditor({ rc, onChange }) {
   const set = (k, v) => onChange({ ...(rc || {}), [k]: v });
   return html`
     ${area("Writer type regexes (one per line)", lines(rc?.writerTypeRegexes), (e) => set("writerTypeRegexes", toLines(e.target.value)), "^net/http\\.ResponseWriter$")}
     ${area("Writer-compatible type regexes (one per line)", lines(rc?.writerCompatibleTypeRegexes), (e) => set("writerCompatibleTypeRegexes", toLines(e.target.value)), "^io\\.Writer$")}
+    <div class="field">
+      <label class="row" style="gap:6px">
+        <span>Implicit status</span>
+        <${Info} text="Status the framework sends when a handler writes a body without stating one — 200 for net/http, whose first Write implies it. Leave empty for frameworks whose renderers always carry the status." />
+      </label>
+      <input class="input" type="number" value=${rc?.implicitStatus ?? ""}
+        placeholder="200"
+        onInput=${(e) => set("implicitStatus", e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0)} />
+    </div>
   `;
 }
 
