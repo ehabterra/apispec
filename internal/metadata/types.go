@@ -2014,8 +2014,13 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 				return
 			}
 
-			// Check methods
-			for _, typ := range file.Types {
+			// Check methods. Sorted: two types in a file can declare the same
+			// method name, and the first match returns.
+			for _, typeName := range m.SortedTypeNames(pkgName, fileName) {
+				typ := file.Types[typeName]
+				if typ == nil {
+					continue
+				}
 				for _, method := range typ.Methods {
 					if m.StringPool.GetString(method.Name) == funcName {
 						if method.Signature.ResolvedType != -1 {

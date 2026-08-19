@@ -14,7 +14,11 @@
 
 package spec
 
-import "github.com/ehabterra/apispec/internal/metadata"
+import (
+	"sort"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
 
 // This file holds the auth/security presets. Two pure-data layers keep the
 // engine framework-agnostic:
@@ -316,6 +320,8 @@ func collectImports(meta *metadata.Metadata) []string {
 			}
 		}
 	}
+	// Sorted: the caller ranges the result, and both maps above are unordered.
+	sort.Strings(out)
 	return out
 }
 

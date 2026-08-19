@@ -425,8 +425,11 @@ func embeddingRecvRegex(meta *metadata.Metadata, w *wrapperMethod) string {
 			if file == nil {
 				continue
 			}
-			for typeName, typ := range file.Types {
-				if containsName(names, typeName) {
+			// Sorted: names accumulates in scan order and is consumed as a
+			// list, so map order would reach the caller.
+			for _, typeName := range meta.SortedTypeNames(w.pkg, fileName) {
+				typ := file.Types[typeName]
+				if typ == nil || containsName(names, typeName) {
 					continue
 				}
 				for _, embedded := range typ.Embeds {

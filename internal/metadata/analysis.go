@@ -625,7 +625,14 @@ func traceVariableOriginHelper(
 									calleeMethod, exists = metadata.methodLookupCache[methodKey]
 								}
 								if !exists {
-									for _, t := range calleeFile.Types {
+									// Sorted: two types in one file can declare
+									// the same method name, and the first match
+									// wins — and is cached for the whole run.
+									for _, typeName := range metadata.SortedTypeNames(assign.CalleePkg, calleeFileName) {
+										t := calleeFile.Types[typeName]
+										if t == nil {
+											continue
+										}
 										for _, method := range t.Methods {
 											if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
 												calleeMethod = &method

@@ -2078,7 +2078,13 @@ func findMethodByName(meta *metadata.Metadata, pkg, recv, name string) *metadata
 	}
 	sort.Strings(fileNames)
 	for _, fname := range fileNames {
-		for _, t := range p.Files[fname].Types {
+		// Sorted: with no receiver to filter on, the first same-named method
+		// found answers, so map order would decide which type's method wins.
+		for _, tname := range meta.SortedTypeNames(pkg, fname) {
+			t := p.Files[fname].Types[tname]
+			if t == nil {
+				continue
+			}
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {
