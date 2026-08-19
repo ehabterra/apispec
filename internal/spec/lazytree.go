@@ -673,15 +673,10 @@ func (t *LazyTree) buildRelations() {
 		}
 	}
 
-	// Assignment links: variable <- producing call. Sort by producing callee
-	// ID so the receiverChildren lists are order-independent of the source map.
-	rels := make([]*metadata.AssignmentLink, 0)
-	for _, rel := range meta.GetAssignmentRelationships() {
-		rels = append(rels, rel)
-	}
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].Edge.Callee.ID() < rels[j].Edge.Callee.ID()
-	})
+	// Assignment links: variable <- producing call, in a total order so the
+	// receiverChildren lists and assignIndex winners are independent of the
+	// source map's iteration order (see sortedAssignmentRelationships).
+	rels := sortedAssignmentRelationships(meta)
 	producerByVar := map[recvKey]string{}
 	for _, rel := range rels {
 		producerKey := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")

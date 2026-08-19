@@ -558,109 +558,110 @@ func traceVariableOriginHelper(
 		}
 	}
 
-	// Try to find assignment in the same pkg
-	if pkg, ok := metadata.Packages[pkgName]; ok {
-		for _, file := range pkg.Files {
-			if v, ok := file.Variables[varName]; ok {
-				arg := NewCallArgument(metadata)
-				arg.SetKind(KindIdent)
-				arg.Type = v.Type
-				return cacheAndReturn(varName, pkgName, funcName, arg)
-			}
+	// Try to find assignment in the same pkg. Sorted: the loop returns on the
+	// FIRST file that declares the variable or the function, so map order would
+	// decide which declaration answers — and the answer is cached for the rest
+	// of the run (issue #340).
+	for _, file := range metadata.SortedFiles(pkgName) {
+		if v, ok := file.Variables[varName]; ok {
+			arg := NewCallArgument(metadata)
+			arg.SetKind(KindIdent)
+			arg.Type = v.Type
+			return cacheAndReturn(varName, pkgName, funcName, arg)
+		}
 
-			if fn, ok := file.Functions[funcName]; ok {
-				if assigns, ok := fn.AssignmentMap[varName]; ok && len(assigns) > 0 {
-					// Use the most recent assignment (last in slice)
-					assign := assigns[len(assigns)-1]
-					// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS to the base variable
-					if assign.Value.GetKind() == KindIdent && assign.Value.GetName() != varName {
-						baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.GetName(), funcName, pkgName, metadata, visited)
-						return baseVar, basePkg, t, f
-					}
-					// If the assignment is from a function call, follow the return value
-					if assign.CalleeFunc != "" && assign.CalleePkg != "" {
-						calleePkg, ok := metadata.Packages[assign.CalleePkg]
-						if ok {
-							for _, calleeFile := range calleePkg.Files {
-								if calleeFn, ok := calleeFile.Functions[assign.CalleeFunc]; ok {
-									retIdx := assign.ReturnIndex
-									if retIdx < len(calleeFn.ReturnVars) {
-										retArg := calleeFn.ReturnVars[retIdx]
-									OuterLoop:
-										for retArg.GetKind() != KindIdent {
-											switch retArg.GetKind() {
-											case KindSelector:
-												retArg = *retArg.Sel
-											case KindUnary, KindCompositeLit:
-												retArg = *retArg.X
-											default:
-												break OuterLoop
-											}
-										}
-										if retArg.GetKind() == KindIdent && retArg.Name != -1 {
-											_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
-											return retArg.GetName(), assign.CalleePkg, t, f
-										}
-										// For literals or other expressions, return as is
-										return retArg.GetName(), assign.CalleePkg, &retArg, funcName
+		if fn, ok := file.Functions[funcName]; ok {
+			if assigns, ok := fn.AssignmentMap[varName]; ok && len(assigns) > 0 {
+				// Use the most recent assignment (last in slice)
+				assign := assigns[len(assigns)-1]
+				// If the assignment is an alias (Value.Kind == kindIdent), recursively trace the RHS to the base variable
+				if assign.Value.GetKind() == KindIdent && assign.Value.GetName() != varName {
+					baseVar, basePkg, t, f := traceVariableOriginHelper(assign.Value.GetName(), funcName, pkgName, metadata, visited)
+					return baseVar, basePkg, t, f
+				}
+				// If the assignment is from a function call, follow the return value
+				if assign.CalleeFunc != "" && assign.CalleePkg != "" {
+					for calleeFileName, calleeFile := range metadata.SortedFiles(assign.CalleePkg) {
+						if calleeFn, ok := calleeFile.Functions[assign.CalleeFunc]; ok {
+							retIdx := assign.ReturnIndex
+							if retIdx < len(calleeFn.ReturnVars) {
+								retArg := calleeFn.ReturnVars[retIdx]
+							OuterLoop:
+								for retArg.GetKind() != KindIdent {
+									switch retArg.GetKind() {
+									case KindSelector:
+										retArg = *retArg.Sel
+									case KindUnary, KindCompositeLit:
+										retArg = *retArg.X
+									default:
+										break OuterLoop
 									}
 								}
-
-								// Looking for methods with caching
-								methodKey := assign.CalleePkg + "." + assign.CalleeFunc
-								var calleeMethod *Method
-								var exists bool
-								if metadata.methodLookupCache != nil {
-									calleeMethod, exists = metadata.methodLookupCache[methodKey]
+								if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+									_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+									return retArg.GetName(), assign.CalleePkg, t, f
 								}
-								if !exists {
-									for _, t := range calleeFile.Types {
-										for _, method := range t.Methods {
-											if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
-												calleeMethod = &method
-												if metadata.methodLookupCache != nil {
-													metadata.methodLookupCache[methodKey] = calleeMethod
-												}
-												break
-											}
+								// For literals or other expressions, return as is
+								return retArg.GetName(), assign.CalleePkg, &retArg, funcName
+							}
+						}
+
+						// Looking for methods with caching
+						methodKey := assign.CalleePkg + "." + assign.CalleeFunc
+						var calleeMethod *Method
+						var exists bool
+						if metadata.methodLookupCache != nil {
+							calleeMethod, exists = metadata.methodLookupCache[methodKey]
+						}
+						if !exists {
+							// Sorted: two types in one file can declare the same
+							// method name, and the first match wins — and is
+							// cached for the whole run.
+							for _, t := range metadata.SortedTypes(assign.CalleePkg, calleeFileName) {
+								for _, method := range t.Methods {
+									if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
+										calleeMethod = &method
+										if metadata.methodLookupCache != nil {
+											metadata.methodLookupCache[methodKey] = calleeMethod
 										}
-										if calleeMethod != nil {
-											break
-										}
-									}
-									// Cache nil result to avoid repeated lookups
-									if calleeMethod == nil && metadata.methodLookupCache != nil {
-										metadata.methodLookupCache[methodKey] = nil
+										break
 									}
 								}
 								if calleeMethod != nil {
-									retIdx := assign.ReturnIndex
-									if retIdx < len(calleeMethod.ReturnVars) {
-										retArg := calleeMethod.ReturnVars[retIdx]
-									OuterLoop2:
-										for retArg.GetKind() != KindIdent {
-											switch retArg.GetKind() {
-											case KindSelector:
-												retArg = *retArg.Sel
-											case KindUnary, KindCompositeLit:
-												retArg = *retArg.X
-											default:
-												break OuterLoop2
-											}
-										}
-										if retArg.GetKind() == KindIdent && retArg.Name != -1 {
-											_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
-											return retArg.GetName(), assign.CalleePkg, t, f
-										}
-										// For literals or other expressions, return as is
-										return retArg.GetName(), assign.CalleePkg, &retArg, funcName
+									break
+								}
+							}
+							// Cache nil result to avoid repeated lookups
+							if calleeMethod == nil && metadata.methodLookupCache != nil {
+								metadata.methodLookupCache[methodKey] = nil
+							}
+						}
+						if calleeMethod != nil {
+							retIdx := assign.ReturnIndex
+							if retIdx < len(calleeMethod.ReturnVars) {
+								retArg := calleeMethod.ReturnVars[retIdx]
+							OuterLoop2:
+								for retArg.GetKind() != KindIdent {
+									switch retArg.GetKind() {
+									case KindSelector:
+										retArg = *retArg.Sel
+									case KindUnary, KindCompositeLit:
+										retArg = *retArg.X
+									default:
+										break OuterLoop2
 									}
 								}
+								if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+									_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+									return retArg.GetName(), assign.CalleePkg, t, f
+								}
+								// For literals or other expressions, return as is
+								return retArg.GetName(), assign.CalleePkg, &retArg, funcName
 							}
 						}
 					}
-					return cacheAndReturn(varName, pkgName, funcName, &assign.Value)
 				}
+				return cacheAndReturn(varName, pkgName, funcName, &assign.Value)
 			}
 		}
 	}

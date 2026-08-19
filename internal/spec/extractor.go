@@ -2022,12 +2022,10 @@ func methodAssignmentMap(meta *metadata.Metadata, pkg, recv, name, varName strin
 	if meta == nil || name == "" {
 		return nil
 	}
-	p, ok := meta.Packages[pkg]
-	if !ok {
-		return nil
-	}
-	for _, file := range p.Files {
-		for _, t := range file.Types {
+	// Sorted: the first method whose assignments hold the variable answers, so
+	// map order would decide which declaration wins (golden rule #1).
+	for fileName := range meta.SortedFiles(pkg) {
+		for _, t := range meta.SortedTypes(pkg, fileName) {
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {
@@ -2055,20 +2053,11 @@ func findMethodByName(meta *metadata.Metadata, pkg, recv, name string) *metadata
 	if meta == nil || name == "" {
 		return nil
 	}
-	p, ok := meta.Packages[pkg]
-	if !ok {
-		return nil
-	}
-	// Sort file keys: a receiver-less lookup can match in several files, and map
-	// iteration order would make the winner (and any doc comment it carries)
-	// vary between runs.
-	fileNames := make([]string, 0, len(p.Files))
-	for f := range p.Files {
-		fileNames = append(fileNames, f)
-	}
-	sort.Strings(fileNames)
-	for _, fname := range fileNames {
-		for _, t := range p.Files[fname].Types {
+	// Sorted: a receiver-less lookup can match in several files (and in several
+	// types within one file), and map iteration order would make the winner —
+	// and any doc comment it carries — vary between runs.
+	for fname := range meta.SortedFiles(pkg) {
+		for _, t := range meta.SortedTypes(pkg, fname) {
 			for i := range t.Methods {
 				m := &t.Methods[i]
 				if meta.StringPool.GetString(m.Name) != name {

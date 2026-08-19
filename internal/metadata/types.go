@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"iter"
 	"maps"
 	"regexp"
 	"slices"
@@ -375,6 +376,58 @@ func shapeOf(pkg *Package) pkgShape {
 		shape.funcs += len(f.Functions)
 	}
 	return shape
+}
+
+// SortedFiles iterates a package's files in sorted-name order, skipping nil
+// entries.
+//
+// It pairs with SortedFileNames, whose cached list it walks: the lookups that
+// use it answer from the FIRST file declaring what they are after, so the order
+// decides the answer (golden rule #1, issue #340). The nil skip is the
+// convention every reader of Package.Files follows — a deserialised
+// metadata.yaml need not be as well-formed as a generated one — kept here so
+// each call site is a plain loop over real files.
+func (m *Metadata) SortedFiles(pkgName string) iter.Seq2[string, *File] {
+	return func(yield func(string, *File) bool) {
+		pkg, ok := m.Packages[pkgName]
+		if !ok || pkg == nil {
+			return
+		}
+		for _, name := range m.SortedFileNames(pkgName) {
+			file := pkg.Files[name]
+			if file == nil {
+				continue
+			}
+			if !yield(name, file) {
+				return
+			}
+		}
+	}
+}
+
+// SortedTypes iterates a file's types in sorted-name order, skipping nil
+// entries. The SortedFiles rationale applies unchanged: two types in one file
+// can declare the same method name, and the first match answers.
+func (m *Metadata) SortedTypes(pkgName, fileName string) iter.Seq2[string, *Type] {
+	return func(yield func(string, *Type) bool) {
+		pkg, ok := m.Packages[pkgName]
+		if !ok || pkg == nil {
+			return
+		}
+		file := pkg.Files[fileName]
+		if file == nil {
+			return
+		}
+		for _, name := range m.SortedTypeNames(pkgName, fileName) {
+			typ := file.Types[name]
+			if typ == nil {
+				continue
+			}
+			if !yield(name, typ) {
+				return
+			}
+		}
+	}
 }
 
 // SortedTypeNames returns a file's type names in sorted order.
@@ -1799,25 +1852,25 @@ func (m *Metadata) resolveIdentReturnType(returnVar *CallArgument, pkgName, cont
 	varName := returnVar.GetName()
 
 	// First, check if it's a variable in the current package
-	if pkg, exists := m.Packages[pkgName]; exists {
-		for _, file := range pkg.Files {
-			// Check variables
-			if variable, exists := file.Variables[varName]; exists {
-				return m.StringPool.GetString(variable.Type)
-			}
+	// Sorted: the first file declaring the variable (or the context
+	// function) answers, so map order would decide the type.
+	for _, file := range m.SortedFiles(pkgName) {
+		// Check variables
+		if variable, exists := file.Variables[varName]; exists {
+			return m.StringPool.GetString(variable.Type)
+		}
 
-			// Check function assignments
-			if fn, exists := file.Functions[contextName]; exists {
-				if assignments, exists := fn.AssignmentMap[varName]; exists && len(assignments) > 0 {
-					// Use the most recent assignment
-					assign := assignments[len(assignments)-1]
-					if assign.ConcreteType != -1 {
-						return m.StringPool.GetString(assign.ConcreteType)
-					}
-					// Try to resolve from the assignment value
-					assign.Value.Meta = m
-					return m.determineResolvedTypeFromReturnVar(&assign.Value, pkgName, contextName)
+		// Check function assignments
+		if fn, exists := file.Functions[contextName]; exists {
+			if assignments, exists := fn.AssignmentMap[varName]; exists && len(assignments) > 0 {
+				// Use the most recent assignment
+				assign := assignments[len(assignments)-1]
+				if assign.ConcreteType != -1 {
+					return m.StringPool.GetString(assign.ConcreteType)
 				}
+				// Try to resolve from the assignment value
+				assign.Value.Meta = m
+				return m.determineResolvedTypeFromReturnVar(&assign.Value, pkgName, contextName)
 			}
 		}
 	}
@@ -1992,27 +2045,27 @@ func (m *Metadata) processFunctionCallReturnType(arg *CallArgument) {
 	}
 
 	// Look for the function in metadata
-	if pkg, exists := m.Packages[pkgName]; exists {
-		for _, file := range pkg.Files {
-			// Check functions
-			if fn, exists := file.Functions[funcName]; exists {
-				if fn.Signature.ResolvedType != -1 {
-					arg.SetResolvedType(fn.Signature.GetResolvedType())
-					arg.Fun.SetResolvedType(fn.Signature.GetResolvedType())
-				}
-				return
+	// Sorted: the first declaration found answers (golden rule #1).
+	for fileName, file := range m.SortedFiles(pkgName) {
+		// Check functions
+		if fn, exists := file.Functions[funcName]; exists {
+			if fn.Signature.ResolvedType != -1 {
+				arg.SetResolvedType(fn.Signature.GetResolvedType())
+				arg.Fun.SetResolvedType(fn.Signature.GetResolvedType())
 			}
+			return
+		}
 
-			// Check methods
-			for _, typ := range file.Types {
-				for _, method := range typ.Methods {
-					if m.StringPool.GetString(method.Name) == funcName {
-						if method.Signature.ResolvedType != -1 {
-							arg.SetResolvedType(method.Signature.GetResolvedType())
-							arg.Fun.SetResolvedType(method.Signature.GetResolvedType())
-						}
-						return
+		// Check methods. Sorted: two types in a file can declare the same
+		// method name, and the first match returns.
+		for _, typ := range m.SortedTypes(pkgName, fileName) {
+			for _, method := range typ.Methods {
+				if m.StringPool.GetString(method.Name) == funcName {
+					if method.Signature.ResolvedType != -1 {
+						arg.SetResolvedType(method.Signature.GetResolvedType())
+						arg.Fun.SetResolvedType(method.Signature.GetResolvedType())
 					}
+					return
 				}
 			}
 		}

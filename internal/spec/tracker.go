@@ -477,21 +477,11 @@ func NewTrackerTree(meta *metadata.Metadata, limits metadata.TrackerLimits, logg
 
 	visited := make(map[string]int, 200) // Pre-allocate with estimated capacity
 
-	// Get pre-built relationships from metadata
-	assignmentRelationships := meta.GetAssignmentRelationships()
-
-	// Iterate in a stable order: this is a map, and the assignment below is
-	// last-write-wins (assignmentIndex[akey] = …). When two relationships map to
-	// the same akey, random map order would pick a different winner each run,
-	// flipping variable resolution (and the final spec). Order by the edge's
-	// instance ID (unique, position-based).
-	rels := make([]*metadata.AssignmentLink, 0, len(assignmentRelationships))
-	for _, a := range assignmentRelationships {
-		rels = append(rels, a)
-	}
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].Edge.Callee.ID() < rels[j].Edge.Callee.ID()
-	})
+	// Iterate in a stable order: the source is a map, and the assignment below
+	// is last-write-wins (assignmentIndex[akey] = …). When two relationships map
+	// to the same akey, random map order would pick a different winner each run,
+	// flipping variable resolution (and the final spec).
+	rels := sortedAssignmentRelationships(meta)
 
 	for _, assignment := range rels {
 		recvVarName := getString(meta, assignment.Assignment.VariableName)
@@ -1546,11 +1536,11 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 			callerName := getStringFromPool(meta, edges[0].Caller.Name)
 			callerPkg := getStringFromPool(meta, edges[0].Caller.Pkg)
 
-			if pkg, ok := meta.Packages[callerPkg]; ok {
-				for _, file := range pkg.Files {
-					if fn, ok := file.Functions[callerName]; ok {
-						maps.Copy(node.RootAssignmentMap, fn.AssignmentMap)
-					}
+			// Sorted: two files declaring the same name would otherwise
+			// copy in random order, and the later copy wins per variable.
+			for _, file := range meta.SortedFiles(callerPkg) {
+				if fn, ok := file.Functions[callerName]; ok {
+					maps.Copy(node.RootAssignmentMap, fn.AssignmentMap)
 				}
 			}
 		}
@@ -1666,42 +1656,39 @@ func NewTrackerNode(tree *TrackerTree, meta *metadata.Metadata, parentID, id str
 		calleePkg := getString(meta, parentEdge.Callee.Pkg)
 		methodName := getString(meta, parentEdge.Callee.Name)
 
-		if pkg, exists := meta.Packages[calleePkg]; exists {
-			for _, file := range pkg.Files {
-				if typ, exists := file.Types[recvTypeName]; exists {
-					kindStr := getString(meta, typ.Kind)
-					if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
-						for _, implTypeIdx := range typ.ImplementedBy {
-							implTypeName := getString(meta, implTypeIdx)
-							// ImplementedBy is "import/path.Type"; the import path
-							// itself contains dots (github.com/…), so split on the
-							// LAST dot — not every dot — to separate pkg from type.
-							dot := strings.LastIndex(implTypeName, ".")
-							if dot <= 0 || dot == len(implTypeName)-1 {
-								continue
-							}
-							implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
+		// Sorted: the type declaration found first decides the fan-out.
+		for _, file := range meta.SortedFiles(calleePkg) {
+			if typ, exists := file.Types[recvTypeName]; exists {
+				kindStr := getString(meta, typ.Kind)
+				if kindStr == "interface" && len(typ.ImplementedBy) > 0 {
+					for _, implTypeIdx := range typ.ImplementedBy {
+						implTypeName := getString(meta, implTypeIdx)
+						// ImplementedBy is "import/path.Type"; the import path
+						// itself contains dots (github.com/…), so split on the
+						// LAST dot — not every dot — to separate pkg from type.
+						dot := strings.LastIndex(implTypeName, ".")
+						if dot <= 0 || dot == len(implTypeName)-1 {
+							continue
+						}
+						implPkg, implType := implTypeName[:dot], implTypeName[dot+1:]
 
-							if implPkgObj, exists := meta.Packages[implPkg]; exists {
-								for _, implFile := range implPkgObj.Files {
-									if implTypeObj, exists := implFile.Types[implType]; exists {
-										for _, method := range implTypeObj.Methods {
-											if getString(meta, method.Name) != methodName {
+						for _, implFile := range meta.SortedFiles(implPkg) {
+							if implTypeObj, exists := implFile.Types[implType]; exists {
+								for _, method := range implTypeObj.Methods {
+									if getString(meta, method.Name) != methodName {
+										continue
+									}
+
+									concreteMethodID := implPkg + "." + implType + "." + methodName
+									if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
+										for _, concreteEdge := range concreteEdges {
+											concreteCalleeID := concreteEdge.Callee.ID()
+											if tree.nodeMap[concreteCalleeID] != nil {
 												continue
 											}
 
-											concreteMethodID := implPkg + "." + implType + "." + methodName
-											if concreteEdges, exists := meta.Callers[concreteMethodID]; exists {
-												for _, concreteEdge := range concreteEdges {
-													concreteCalleeID := concreteEdge.Callee.ID()
-													if tree.nodeMap[concreteCalleeID] != nil {
-														continue
-													}
-
-													if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
-														node.AddChild(childNode)
-													}
-												}
+											if childNode := NewTrackerNode(tree, meta, id, concreteCalleeID, concreteEdge, nil, visited, assignmentIndex, limits); childNode != nil {
+												node.AddChild(childNode)
 											}
 										}
 									}

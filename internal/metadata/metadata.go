@@ -455,29 +455,28 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 		callerName := m.StringPool.GetString(edge.Caller.Name)
 		callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
 
-		// Get root assignments
-		if pkg, ok := m.Packages[callerPkg]; ok {
-			for _, file := range pkg.Files {
-				if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
-					for recvVarName, assigns := range fn.AssignmentMap {
-						assignment := assigns[len(assigns)-1]
+		// Get root assignments. Sorted: relationships[akey] is last-write-wins,
+		// so two files contributing the same key would resolve by map order.
+		for _, file := range m.SortedFiles(callerPkg) {
+			if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
+				for recvVarName, assigns := range fn.AssignmentMap {
+					assignment := assigns[len(assigns)-1]
 
-						if edge.CalleeRecvVarName != recvVarName {
-							continue
-						}
+					if edge.CalleeRecvVarName != recvVarName {
+						continue
+					}
 
-						akey := AssignmentKey{
-							Name:      recvVarName,
-							Pkg:       callerPkg,
-							Type:      m.StringPool.GetString(assignment.ConcreteType),
-							Container: callerName,
-						}
+					akey := AssignmentKey{
+						Name:      recvVarName,
+						Pkg:       callerPkg,
+						Type:      m.StringPool.GetString(assignment.ConcreteType),
+						Container: callerName,
+					}
 
-						relationships[akey] = &AssignmentLink{
-							AssignmentKey: akey,
-							Assignment:    &assignment,
-							Edge:          edge,
-						}
+					relationships[akey] = &AssignmentLink{
+						AssignmentKey: akey,
+						Assignment:    &assignment,
+						Edge:          edge,
 					}
 				}
 			}

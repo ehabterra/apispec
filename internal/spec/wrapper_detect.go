@@ -414,18 +414,15 @@ func embeddingRecvRegex(meta *metadata.Metadata, w *wrapperMethod) string {
 
 	// Transitively: a type embedding a type that embeds the declaring one gets
 	// the method too.
-	pkg, ok := meta.Packages[w.pkg]
-	if !ok {
+	if _, ok := meta.Packages[w.pkg]; !ok {
 		return recvTypeRegexForNames(w.pkg, names)
 	}
 	for round := 0; round < wrapperDetectRounds; round++ {
 		grew := false
-		for _, fileName := range meta.SortedFileNames(w.pkg) {
-			file := pkg.Files[fileName]
-			if file == nil {
-				continue
-			}
-			for typeName, typ := range file.Types {
+		for fileName := range meta.SortedFiles(w.pkg) {
+			// Sorted: names accumulates in scan order and is consumed as a
+			// list, so map order would reach the caller.
+			for typeName, typ := range meta.SortedTypes(w.pkg, fileName) {
 				if containsName(names, typeName) {
 					continue
 				}
