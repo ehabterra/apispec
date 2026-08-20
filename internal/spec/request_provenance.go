@@ -64,8 +64,22 @@ func (e *Extractor) followsControlFlow(parent, child TrackerNodeInterface, depth
 	// registration, though: deeper down, an argument node is an ordinary value,
 	// and the producer relation hangs every writer of that value underneath it —
 	// which is the lateral jump this gate exists to stop.
-	if parent.GetArgument() != nil {
-		return depth <= handlerArgDepth
+	if parentArg := parent.GetArgument(); parentArg != nil {
+		if depth <= handlerArgDepth {
+			return true
+		}
+		// A handler wrapped at the registration site sits deeper than one hop:
+		// `mux.Handle(p, mw(http.HandlerFunc(h)))` puts it behind a call and a
+		// conversion, and refusing those hops loses the handler's request body
+		// (issue #364). Only those two kinds are transparent, which keeps this
+		// gate's own case blocked: the lateral producer relation attaches to
+		// VARIABLE and SELECTOR arguments (see argProducerIDs), so every writer
+		// of a value still stops here.
+		switch parentArg.GetKind() {
+		case metadata.KindCall, metadata.KindTypeConversion:
+			return true
+		}
+		return false
 	}
 	// Arguments belong to the frame that is already in scope.
 	if child.GetArgument() != nil {

@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"strings"
 	"testing"
 
 	intspec "github.com/ehabterra/apispec/internal/spec"
@@ -79,42 +80,56 @@ func TestTestdata_AuthPresets(t *testing.T) {
 		cfg       func() *spec.APISpecConfig
 		protected struct{ method, path string }
 		open      struct{ method, path string }
+		// handler is the function the protected operation must be attributed to.
+		handler string
 	}{
 		{
 			name:      "auth_chi_with",
 			cfg:       spec.DefaultChiConfig,
 			protected: struct{ method, path string }{"GET", "/users/{id}"},
 			open:      struct{ method, path string }{"GET", "/health"},
+			handler:   "getUser",
 		},
 		{
 			name:      "auth_echo_group",
 			cfg:       spec.DefaultEchoConfig,
 			protected: struct{ method, path string }{"GET", "/api/me"},
 			open:      struct{ method, path string }{"GET", "/health"},
+			handler:   "me",
 		},
 		{
 			name:      "auth_fiber_group",
 			cfg:       spec.DefaultFiberConfig,
 			protected: struct{ method, path string }{"GET", "/api/me"},
 			open:      struct{ method, path string }{"GET", "/health"},
+			handler:   "me",
 		},
 		{
 			name:      "auth_gin_perroute",
 			cfg:       spec.DefaultGinConfig,
 			protected: struct{ method, path string }{"GET", "/users/{id}"},
 			open:      struct{ method, path string }{"GET", "/health"},
+			// KNOWN WRONG, pinned as a change detector: gin takes its handler
+			// chain variadically (`r.GET(path, mw, h)`), so the configured
+			// handler position holds the MIDDLEWARE and the operation is
+			// attributed to it. A sibling-argument chain, not the wrapped-call
+			// shape #364 fixes — tracked as #386; flip this to "getUser"
+			// when it lands.
+			handler: "jwtAuth",
 		},
 		{
 			name:      "auth_mux_subrouter",
 			cfg:       spec.DefaultMuxConfig,
 			protected: struct{ method, path string }{"POST", "/api/me"},
 			open:      struct{ method, path string }{"POST", "/health"},
+			handler:   "getUser",
 		},
 		{
 			name:      "auth_nethttp_wrap",
 			cfg:       spec.DefaultHTTPConfig,
 			protected: struct{ method, path string }{"GET", "/users/{id}"},
 			open:      struct{ method, path string }{"GET", "/health"},
+			handler:   "getUser",
 		},
 	}
 
@@ -149,6 +164,21 @@ func TestTestdata_AuthPresets(t *testing.T) {
 			if oOp.Security != nil {
 				t.Errorf("%s %s: expected no security (sibling of guarded route), got %v",
 					tc.open.method, tc.open.path, *oOp.Security)
+			}
+
+			// The guarded operation must still be the HANDLER's, not the
+			// middleware's. Asserted here because auth_nethttp_wrap wires the
+			// guard as `mux.Handle(p, jwtAuth(http.HandlerFunc(getUser)))` — the
+			// exact shape that used to document jwtAuth as the operation, with
+			// the handler's response missing. Security passing while the
+			// operation is wrong is precisely what this fixture missed (#364).
+			if len(pOp.Responses) == 0 {
+				t.Errorf("%s %s: the handler's response is missing — the operation may have been attributed to the middleware (operationId %q)",
+					tc.protected.method, tc.protected.path, pOp.OperationID)
+			}
+			if !strings.HasSuffix(pOp.OperationID, "."+tc.handler) {
+				t.Errorf("%s %s: operationId %q should be attributed to %s",
+					tc.protected.method, tc.protected.path, pOp.OperationID, tc.handler)
 			}
 
 			// The bearerAuth scheme must be catalogued in components.
