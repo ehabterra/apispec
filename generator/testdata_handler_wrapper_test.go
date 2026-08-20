@@ -83,22 +83,46 @@ func TestTestdata_HandlerWrapperAttribution(t *testing.T) {
 					t.Errorf("%s %s: summary %q, want the handler's %q",
 						pair.method, pair.wrapped, wrapped.Summary, direct.Summary)
 				}
-				if (wrapped.RequestBody == nil) != (direct.RequestBody == nil) {
-					t.Errorf("%s %s: request body presence differs from the direct registration (wrapped=%v direct=%v)",
-						pair.method, pair.wrapped, wrapped.RequestBody != nil, direct.RequestBody != nil)
+				// The body must be the same SCHEMA, not merely present: a
+				// wrapper that resolved to a generic object would pass a
+				// presence check while documenting nothing useful.
+				if got, want := bodySchemaRef(wrapped), bodySchemaRef(direct); got != want {
+					t.Errorf("%s %s: request body schema %q, want the handler's %q",
+						pair.method, pair.wrapped, got, want)
 				}
 				if got, want := sortedStatusKeys(wrapped), sortedStatusKeys(direct); !sameStrings(got, want) {
 					t.Errorf("%s %s: responses %v, want the handler's %v",
 						pair.method, pair.wrapped, got, want)
 				}
+				for _, status := range sortedStatusKeys(direct) {
+					if got, want := responseSchemaRef(wrapped, status), responseSchemaRef(direct, status); got != want {
+						t.Errorf("%s %s: response %s schema %q, want the handler's %q",
+							pair.method, pair.wrapped, status, got, want)
+					}
+				}
 				// The path parameter the handler reads must be found through the
 				// wrapper too — it used to be flagged "present in the path but
-				// not found in the code".
-				for _, p := range wrapped.Parameters {
-					if p.In == "path" && p.Extensions != nil {
-						if _, warned := p.Extensions["x-warning"]; warned {
+				// not found in the code" — and must describe the same thing the
+				// direct registration describes.
+				for _, want := range direct.Parameters {
+					if want.In != "path" {
+						continue
+					}
+					got := paramNamed(wrapped, want.Name, want.In)
+					if got == nil {
+						t.Errorf("%s %s: path parameter %q missing; the direct registration has it",
+							pair.method, pair.wrapped, want.Name)
+						continue
+					}
+					if got.Required != want.Required || schemaType(got.Schema) != schemaType(want.Schema) {
+						t.Errorf("%s %s: path parameter %q is %s/required=%v, want %s/required=%v",
+							pair.method, pair.wrapped, want.Name,
+							schemaType(got.Schema), got.Required, schemaType(want.Schema), want.Required)
+					}
+					if got.Extensions != nil {
+						if _, warned := got.Extensions["x-warning"]; warned {
 							t.Errorf("%s %s: path parameter %q is flagged as not found in the code",
-								pair.method, pair.wrapped, p.Name)
+								pair.method, pair.wrapped, want.Name)
 						}
 					}
 				}
@@ -130,4 +154,65 @@ func sortedStatusKeys(op *intspec.Operation) []string {
 
 func sameStrings(a, b []string) bool {
 	return strings.Join(a, ",") == strings.Join(b, ",")
+}
+
+// bodySchemaRef renders an operation's request-body schema identity.
+func bodySchemaRef(op *intspec.Operation) string {
+	if op.RequestBody == nil {
+		return ""
+	}
+	return wrapperContentSchema(op.RequestBody.Content)
+}
+
+func responseSchemaRef(op *intspec.Operation, status string) string {
+	resp, ok := op.Responses[status]
+	if !ok {
+		return "<missing>"
+	}
+	return wrapperContentSchema(resp.Content)
+}
+
+// wrapperContentSchema renders every media type's schema identity, so two
+// operations' bodies compare by what they describe. Named apart from
+// contentSchemaRef, which answers a narrower question (the first $ref).
+func wrapperContentSchema(content map[string]intspec.MediaType) string {
+	types := make([]string, 0, len(content))
+	for mediaType := range content {
+		types = append(types, mediaType)
+	}
+	sort.Strings(types)
+	parts := make([]string, 0, len(types))
+	for _, mediaType := range types {
+		schema := content[mediaType].Schema
+		switch {
+		case schema == nil:
+			parts = append(parts, mediaType+"=<none>")
+		case schema.Ref != "":
+			parts = append(parts, mediaType+"="+schema.Ref)
+		case schema.Items != nil && schema.Items.Ref != "":
+			parts = append(parts, mediaType+"=[]"+schema.Items.Ref)
+		default:
+			parts = append(parts, mediaType+"="+schema.Type)
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+func paramNamed(op *intspec.Operation, name, in string) *intspec.Parameter {
+	for i := range op.Parameters {
+		if op.Parameters[i].Name == name && op.Parameters[i].In == in {
+			return &op.Parameters[i]
+		}
+	}
+	return nil
+}
+
+func schemaType(s *intspec.Schema) string {
+	if s == nil {
+		return "<none>"
+	}
+	if s.Ref != "" {
+		return s.Ref
+	}
+	return s.Type
 }

@@ -1616,22 +1616,34 @@ func wrappedHandlerDepth(call *metadata.CallArgument, depth int) *metadata.CallA
 // (testdata/generic). Peeling it would rename those operations, which is a
 // separate decision from this one (issue #367).
 //
-// Compared on type NAMES, not on the rendered signature: a parameter records its
-// type unqualified ("Handler") while the result records it qualified
-// ("http.Handler"), so the qualification is trimmed off both — the same naming
-// comparison the argument renderer makes, not a type parse (golden rule #2/#3).
+// Compared as structured type refs, not as rendered strings (golden rule #2):
+// the parameter records its type as WRITTEN (`Handler`) while the result records
+// it RESOLVED (`http.Handler`), so the names are what must match, and a package
+// is compared only when both refs carry one.
 func middlewareShaped(call *metadata.CallArgument) bool {
 	fn := calleeFunctionOf(call)
-	if fn == nil || len(fn.Signature.Args) != 1 {
+	if fn == nil || len(fn.Signature.Args) != 1 || call.Meta == nil {
 		return false
 	}
 	meta := call.Meta
-	if meta == nil {
+	param := baseTypeRef(meta.TypeRefOf(fn.Signature.Args[0].Type))
+	result := baseTypeRef(meta.TypeRefOf(fn.Signature.ResolvedType))
+	if param == nil || result == nil || param.Name == "" {
 		return false
 	}
-	param := baseTypeName(fn.Signature.Args[0].GetType())
-	result := baseTypeName(meta.StringPool.GetString(fn.Signature.ResolvedType))
-	return param != "" && param == result
+	if param.Pkg != "" && result.Pkg != "" && param.Pkg != result.Pkg {
+		return false
+	}
+	return param.Name == result.Name
+}
+
+// baseTypeRef unwraps pointers, so a `*Handler` parameter and a `Handler` result
+// are the same type for this comparison.
+func baseTypeRef(ref *typemodel.TypeRef) *typemodel.TypeRef {
+	for ref != nil && ref.Kind == typemodel.KindPointer && ref.Elem != nil {
+		ref = ref.Elem
+	}
+	return ref
 }
 
 // calleeFunctionOf resolves the function a call invokes, by its own edge when the
@@ -1658,20 +1670,25 @@ func calleeFunctionOf(call *metadata.CallArgument) *metadata.Function {
 	if fun == nil {
 		return nil
 	}
+	recv := ""
 	if fun.GetKind() == metadata.KindSelector && fun.Sel != nil {
+		if fun.X != nil {
+			recv = strings.TrimPrefix(fun.X.GetType(), "*")
+		}
 		fun = fun.Sel
 	}
-	return findFunctionByName(meta, fun.GetPkg(), fun.GetName())
-}
-
-// baseTypeName strips a pointer marker and a package qualification from a type
-// name, so an unqualified parameter type and a qualified result type compare.
-func baseTypeName(typ string) string {
-	typ = strings.TrimPrefix(typ, "*")
-	if dot := strings.LastIndex(typ, "."); dot >= 0 {
-		typ = typ[dot+1:]
+	pkg, name := fun.GetPkg(), fun.GetName()
+	if f := findFunctionByName(meta, pkg, name); f != nil {
+		return f
 	}
-	return typ
+	// A wrapper reached as a METHOD with no recorded edge — `chain.Then(h)`,
+	// the alice-style helper. Without this it resolves to nothing, so its
+	// middleware shape is unknown and a plain-ident handler is not peeled.
+	recv = strings.TrimPrefix(recv, pkg+".")
+	if m := findMethodByName(meta, pkg, recv, name); m != nil {
+		return &metadata.Function{Name: m.Name, Signature: m.Signature}
+	}
+	return nil
 }
 
 // namesAFunction reports whether an argument refers to a function body — a

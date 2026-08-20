@@ -262,6 +262,36 @@ func TestWrapperHelperGuards(t *testing.T) {
 		}
 	})
 
+	t.Run("a wrapper reached as a method", func(t *testing.T) {
+		// `chain.Then(getItem)` — alice's shape: the wrapper is a METHOD, and
+		// with no recorded call edge only the method table can say it is
+		// middleware-shaped.
+		pool := meta.StringPool
+		sig := *metadata.NewCallArgument(meta)
+		param := metadata.NewCallArgument(meta)
+		param.SetKind(metadata.KindIdent)
+		param.Type = pool.Get("Handler")
+		sig.Args = []*metadata.CallArgument{param}
+		sig.ResolvedType = pool.Get("http.Handler")
+		meta.Packages["app"].Files["main.go"].Types = map[string]*metadata.Type{
+			"Chain": {Methods: []metadata.Method{{Name: pool.Get("Then"), Receiver: pool.Get("Chain"), Signature: sig}}},
+		}
+
+		fun := metadata.NewCallArgument(meta)
+		fun.SetKind(metadata.KindSelector)
+		fun.X = wrapperIdent(meta, "chain")
+		fun.X.Type = pool.Get("app.Chain")
+		fun.Sel = wrapperIdent(meta, "Then")
+		call := metadata.NewCallArgument(meta)
+		call.SetKind(metadata.KindCall)
+		call.Fun = fun
+		call.Args = []*metadata.CallArgument{wrapperIdent(meta, "getItem")}
+
+		if got := handlerArgValue(call); got.GetName() != "getItem" {
+			t.Errorf("a method wrapper should peel to the handler it is given, got %q", got.GetName())
+		}
+	})
+
 	t.Run("calleeFunctionOf", func(t *testing.T) {
 		if calleeFunctionOf(nil) != nil {
 			t.Error("nil call")
