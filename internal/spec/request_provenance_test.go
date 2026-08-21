@@ -98,6 +98,36 @@ func TestFollowsControlFlow_ProvenanceGate(t *testing.T) {
 		}
 	})
 
+	t.Run("a wrapper hop beyond the handler argument stays on the route's own path", func(t *testing.T) {
+		// `mux.Handle(p, withLogging(http.HandlerFunc(h)))` puts the handler two
+		// argument hops down — a call, then a conversion — and refusing those
+		// hops lost the handler's request body (issue #364).
+		for _, kind := range []string{metadata.KindCall, metadata.KindTypeConversion} {
+			arg := metadata.NewCallArgument(meta)
+			arg.SetKind(kind)
+			parent := &provNode{edge: provEdge(meta, "app", "routes", "net/http", "Handle"), arg: arg}
+			child := &provNode{edge: provEdge(meta, "app", "getItem", "json", "Decode")}
+			if !e.followsControlFlow(parent, child, handlerArgDepth+2) {
+				t.Errorf("a %s argument is the handler itself; its body must stay reachable", kind)
+			}
+		}
+	})
+
+	t.Run("a value hop beyond the handler argument does not", func(t *testing.T) {
+		// The distinction that keeps #269 closed: the lateral producer relation
+		// hangs every writer of a value under VARIABLE and SELECTOR arguments,
+		// never under a call or a conversion.
+		for _, kind := range []string{metadata.KindIdent, metadata.KindSelector} {
+			arg := metadata.NewCallArgument(meta)
+			arg.SetKind(kind)
+			parent := &provNode{edge: provEdge(meta, "app", "ToView", "app", "estimateView"), arg: arg}
+			child := &provNode{edge: provEdge(meta, "app", "FuncLit:sibling.go:28:9", "httpx", "DecodeJSON")}
+			if e.followsControlFlow(parent, child, handlerArgDepth+2) {
+				t.Errorf("a %s argument deep in the body must not open a sibling handler", kind)
+			}
+		}
+	})
+
 	t.Run("value argument deep in the body does NOT open a sibling handler", func(t *testing.T) {
 		// This is #269: a response converter passes a shared domain field,
 		// producer resolution answers with the sibling handler that writes that

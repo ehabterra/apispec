@@ -1490,13 +1490,240 @@ func (r *RoutePatternMatcherImpl) verbsFromArg(arg *metadata.CallArgument) []str
 // stays as it is, since for a non-handler argument the conversion's own type is
 // usually the answer (a `[]byte(body)` request body, for instance).
 func handlerArgValue(arg *metadata.CallArgument) *metadata.CallArgument {
-	if arg == nil || arg.GetKind() != metadata.KindTypeConversion || len(arg.Args) != 1 {
-		return arg
+	// Bounded because the peel is driven by the code's own nesting: a chain
+	// deeper than this is not a wiring style, and a bound keeps a cyclic or
+	// pathological argument tree from spinning here.
+	for i := 0; i < maxHandlerUnwraps && arg != nil; i++ {
+		switch arg.GetKind() {
+		case metadata.KindTypeConversion:
+			inner := convertedHandler(arg)
+			if inner == nil {
+				return arg
+			}
+			arg = inner
+		case metadata.KindCall:
+			inner := wrappedHandler(arg)
+			if inner == nil {
+				return arg
+			}
+			arg = inner
+		default:
+			return arg
+		}
+	}
+	return arg
+}
+
+// maxHandlerUnwraps bounds how many wrapper layers handlerArgValue peels.
+const maxHandlerUnwraps = 8
+
+// convertedHandler returns what a type conversion converts, when that is
+// something that can BE a handler. Anything else stays as it is, since for a
+// non-handler argument the conversion's own type is usually the answer (a
+// `[]byte(body)` request body, for instance).
+func convertedHandler(arg *metadata.CallArgument) *metadata.CallArgument {
+	if arg == nil || len(arg.Args) != 1 {
+		return nil
 	}
 	switch inner := arg.Args[0]; inner.GetKind() {
 	case metadata.KindIdent, metadata.KindSelector, metadata.KindFuncLit:
 		return inner
 	default:
-		return arg
+		return nil
 	}
+}
+
+// wrappedHandler returns the handler a middleware call wraps, or nil when the
+// call is not wrapping one (issue #364).
+//
+// `mux.Handle(p, withLogging(http.HandlerFunc(getItem)))` passes a CALL at the
+// handler position, and taking it at face value documents the operation as the
+// MIDDLEWARE: its name becomes the operationId, its doc comment the summary, its
+// header reads the parameters, and the handler's own request body and responses
+// are missing entirely.
+//
+// What identifies a wrapper is the shape at this position, not the framework: a
+// call one of whose arguments is itself a handler — an ident or selector naming a
+// function apispec knows, a function literal, or a conversion of one. That covers
+// `func(http.Handler) http.Handler`, `func(http.HandlerFunc) http.HandlerFunc` and
+// every framework's equivalent, plus adapters (`gin.WrapH(mw(h))`), because the
+// caller peels repeatedly.
+//
+// Two shapes deliberately do not peel:
+//
+//   - a handler FACTORY (`h.Create()`) — no argument is a handler, so the call
+//     itself remains the answer, which is what issue #221's factory support needs;
+//   - a call with SEVERAL handler-shaped arguments — which of them serves the
+//     route is genuinely ambiguous, and today's behaviour with a warning-free
+//     wrong answer is better than a guess (golden rule #7).
+func wrappedHandler(call *metadata.CallArgument) *metadata.CallArgument {
+	return wrappedHandlerDepth(call, 0)
+}
+
+func wrappedHandlerDepth(call *metadata.CallArgument, depth int) *metadata.CallArgument {
+	if call == nil || len(call.Args) == 0 || depth >= maxHandlerUnwraps {
+		return nil
+	}
+	// The callee's own shape settles the plain-ident case: `withTiming(getItem)`
+	// carries no conversion to say which argument is the handler, so the wrapper
+	// has to identify itself — a function that takes and returns the same type is
+	// a middleware in any framework.
+	shaped := middlewareShaped(call)
+	var found *metadata.CallArgument
+	for _, arg := range call.Args {
+		candidate := arg
+		switch arg.GetKind() {
+		case metadata.KindTypeConversion:
+			// A conversion of a function AT the handler position is the handler,
+			// whatever the enclosing call is — `http.HandlerFunc(h)` says so
+			// outright. This is what carries the adapters whose own signature is
+			// not middleware-shaped (`gin.WrapH`, `echo.WrapHandler`).
+			inner := convertedHandler(arg)
+			if inner == nil || !namesAFunction(inner) {
+				continue
+			}
+			candidate = inner
+		case metadata.KindCall:
+			// A nested wrapper (`withAuth(withLogging(http.HandlerFunc(h)))`):
+			// the argument is itself wrapping a handler, so it is the handler for
+			// this level. The caller peels it on the next pass.
+			if wrappedHandlerDepth(arg, depth+1) == nil {
+				continue
+			}
+		default:
+			if !shaped || !namesAFunction(candidate) {
+				continue
+			}
+		}
+		if found != nil {
+			return nil // ambiguous: more than one handler-shaped argument
+		}
+		found = candidate
+	}
+	return found
+}
+
+// middlewareShaped reports whether a call's callee takes and returns the same
+// type — the middleware shape in every framework (`func(http.Handler)
+// http.Handler`, `func(echo.HandlerFunc) echo.HandlerFunc`, and a
+// `Chain.Then(http.Handler) http.Handler` helper alike).
+//
+// It exists to tell a middleware from an ADAPTER that also takes a function:
+// `HandleRequest(handleCreateUser)` turns a `func(Req) (Resp, error)` into an
+// http.HandlerFunc, so the function it is given is business logic reached
+// through the adapter, not the HTTP handler the route registers — and the
+// operation is the adapter instantiation, which is what apispec documents today
+// (testdata/generic). Peeling it would rename those operations, which is a
+// separate decision from this one (issue #367).
+//
+// Compared as structured type refs, not as rendered strings (golden rule #2):
+// the parameter records its type as WRITTEN (`Handler`) while the result records
+// it RESOLVED (`http.Handler`), so the names are what must match, and a package
+// is compared only when both refs carry one.
+func middlewareShaped(call *metadata.CallArgument) bool {
+	fn := calleeFunctionOf(call)
+	if fn == nil || len(fn.Signature.Args) != 1 || call.Meta == nil {
+		return false
+	}
+	meta := call.Meta
+	param := baseTypeRef(meta.TypeRefOf(fn.Signature.Args[0].Type))
+	result := baseTypeRef(meta.TypeRefOf(fn.Signature.ResolvedType))
+	if param == nil || result == nil || param.Name == "" {
+		return false
+	}
+	if param.Pkg != "" && result.Pkg != "" && param.Pkg != result.Pkg {
+		return false
+	}
+	return param.Name == result.Name
+}
+
+// baseTypeRef unwraps pointers, so a `*Handler` parameter and a `Handler` result
+// are the same type for this comparison.
+func baseTypeRef(ref *typemodel.TypeRef) *typemodel.TypeRef {
+	for ref != nil && ref.Kind == typemodel.KindPointer && ref.Elem != nil {
+		ref = ref.Elem
+	}
+	return ref
+}
+
+// calleeFunctionOf resolves the function a call invokes, by its own edge when the
+// call graph recorded one, else by the name its Fun carries.
+func calleeFunctionOf(call *metadata.CallArgument) *metadata.Function {
+	if call == nil || call.Meta == nil {
+		return nil
+	}
+	meta := call.Meta
+	if call.Edge != nil {
+		pkg := meta.StringPool.GetString(call.Edge.Callee.Pkg)
+		name := meta.StringPool.GetString(call.Edge.Callee.Name)
+		recv := strings.TrimPrefix(meta.StringPool.GetString(call.Edge.Callee.RecvType), "*")
+		recv = strings.TrimPrefix(recv, pkg+".")
+		if fn := findFunctionByName(meta, pkg, name); fn != nil {
+			return fn
+		}
+		if m := findMethodByName(meta, pkg, recv, name); m != nil {
+			return &metadata.Function{Name: m.Name, Signature: m.Signature}
+		}
+		return nil
+	}
+	fun := call.Fun
+	if fun == nil {
+		return nil
+	}
+	recv := ""
+	if fun.GetKind() == metadata.KindSelector && fun.Sel != nil {
+		if fun.X != nil {
+			recv = strings.TrimPrefix(fun.X.GetType(), "*")
+		}
+		fun = fun.Sel
+	}
+	pkg, name := fun.GetPkg(), fun.GetName()
+	if f := findFunctionByName(meta, pkg, name); f != nil {
+		return f
+	}
+	// A wrapper reached as a METHOD with no recorded edge — `chain.Then(h)`,
+	// the alice-style helper. Without this it resolves to nothing, so its
+	// middleware shape is unknown and a plain-ident handler is not peeled.
+	recv = strings.TrimPrefix(recv, pkg+".")
+	if m := findMethodByName(meta, pkg, recv, name); m != nil {
+		return &metadata.Function{Name: m.Name, Signature: m.Signature}
+	}
+	return nil
+}
+
+// namesAFunction reports whether an argument refers to a function body — a
+// function literal, or an ident/selector that resolves to a declared function or
+// method. It is what keeps wrappedHandler from peeling an ordinary argument: in
+// `h.Create(db)` the `db` ident names a value, not a function, so the factory
+// call stays the handler.
+func namesAFunction(arg *metadata.CallArgument) bool {
+	if arg == nil {
+		return false
+	}
+	if arg.GetKind() == metadata.KindFuncLit {
+		return true
+	}
+	meta := arg.Meta
+	if meta == nil {
+		return false
+	}
+	switch arg.GetKind() {
+	case metadata.KindIdent:
+		return findFunctionByName(meta, arg.GetPkg(), arg.GetName()) != nil
+	case metadata.KindSelector:
+		if arg.Sel == nil {
+			return false
+		}
+		pkg, name := arg.Sel.GetPkg(), arg.Sel.GetName()
+		if findFunctionByName(meta, pkg, name) != nil {
+			return true
+		}
+		recv := ""
+		if arg.X != nil {
+			recv = strings.TrimPrefix(arg.X.GetType(), "*")
+			recv = strings.TrimPrefix(recv, pkg+".")
+		}
+		return findMethodByName(meta, pkg, recv, name) != nil
+	}
+	return false
 }

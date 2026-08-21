@@ -1373,6 +1373,15 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	for _, methodKey := range n.methodBaseKeys() {
 		expandKey(methodKey)
 	}
+	// Converted function (`http.HandlerFunc(getItem)`): the conversion names a
+	// TYPE, which has no body, so without this the function it converts is a dead
+	// end — its parameters, request body and responses never reach the route.
+	// Invisible on a direct registration, where the route's own argument node
+	// carries the function; it bites when the conversion sits inside another call,
+	// which is exactly the middleware shape `mw(http.HandlerFunc(h))` (issue #364).
+	for _, key := range n.convertedValueKeys() {
+		expandKey(key)
+	}
 	// Handler *value* (r.Method(GET, "/health", deps.Health) / mux.Handle("/x", h)):
 	// the argument names no method at all, so the framework's handler-interface
 	// method supplies it — otherwise the handler body is unreachable (issue #204).
@@ -1446,6 +1455,36 @@ func (n *LazyNode) methodBaseKeys() []string {
 	// the eager build's ImplementedBy attachment.
 	keys = append(keys, n.tree.implementerKeys(pkg, recv, selName)...)
 	return keys
+}
+
+// convertedValueKeys resolves a type-conversion argument to the base ID of what
+// it converts, when that is something with a body to expand.
+//
+// `http.HandlerFunc(getItem)` is a conversion: its own key names the TYPE, and a
+// type has no calls, so expansion stops there. What the tracker should follow is
+// getItem. Only an ident, a selector or a function literal is unwrapped — the
+// same shapes handlerArgValue peels for the route's identity — and the key is
+// used exactly like any other: a conversion of a non-function (`[]byte(payload)`)
+// yields a key with no edges, so it expands to nothing rather than to something
+// wrong.
+func (n *LazyNode) convertedValueKeys() []string {
+	if !n.isArgument || n.arg == nil || n.arg.GetKind() != metadata.KindTypeConversion || len(n.arg.Args) != 1 {
+		return nil
+	}
+	inner := n.arg.Args[0]
+	if inner == nil {
+		return nil
+	}
+	switch inner.GetKind() {
+	case metadata.KindIdent, metadata.KindSelector, metadata.KindFuncLit:
+	default:
+		return nil
+	}
+	id := strings.TrimPrefix(inner.ID(), "*")
+	if id == "" {
+		return nil
+	}
+	return []string{metadata.StripToBase(id)}
 }
 
 // handlerValueKeys resolves an argument that is a handler *value* — a variable
