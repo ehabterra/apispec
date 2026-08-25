@@ -64,3 +64,53 @@ func TestBuildResponses_BodylessOmitsContent(t *testing.T) {
 		t.Error("status 200 must keep its content block")
 	}
 }
+
+// TestBuildResponses_NoBodyOmitsContent pins issue #393, and the distinction it
+// turns on. An empty media-type object is not "no body" — it reads as "there IS
+// a body of this type whose shape I cannot describe" — so the two cases that
+// both arrive with a nil Schema must render differently:
+//
+//   - no body was found at all (a bare WriteHeader): no content;
+//   - a body was found but could not be typed: content kept, because claiming
+//     an empty response would be wrong in the other direction.
+//
+// BodyType is what separates them: the extractor sets it alongside Schema in
+// its body branch, so a set BodyType means a body really is written there.
+func TestBuildResponses_NoBodyOmitsContent(t *testing.T) {
+	r := buildResponses(map[string]*ResponseInfo{
+		// `w.WriteHeader(http.StatusForbidden)` and nothing else.
+		"403": {StatusCode: 403, ContentType: "application/json"},
+		// A body was found; the type did not map to a schema.
+		"500": {StatusCode: 500, ContentType: "application/json", BodyType: "internal.Opaque"},
+		// A body that mapped, for contrast.
+		"200": {StatusCode: 200, ContentType: "application/json", BodyType: "Widget",
+			Schema: &Schema{Ref: "#/components/schemas/Widget"}},
+	})
+
+	noBody, ok := r["403"]
+	if !ok {
+		t.Fatal("status 403 missing from responses")
+	}
+	if len(noBody.Content) != 0 {
+		t.Errorf("a status written with no body must have no content, got %v", noBody.Content)
+	}
+	if noBody.Description == "" {
+		t.Error("status 403 should retain a description")
+	}
+
+	untyped, ok := r["500"]
+	if !ok {
+		t.Fatal("status 500 missing from responses")
+	}
+	media, ok := untyped.Content["application/json"]
+	if !ok {
+		t.Fatalf("a body that could not be typed must keep its content block, got %v", untyped.Content)
+	}
+	if media.Schema != nil {
+		t.Errorf("no schema was resolvable, so none should be invented: %v", media.Schema)
+	}
+
+	if resp, ok := r["200"]; !ok || resp.Content["application/json"].Schema == nil {
+		t.Error("a resolved body must keep its schema")
+	}
+}
