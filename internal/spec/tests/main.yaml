@@ -201,6 +201,7 @@ packages:
                   func: 7
                   callee_func: Sprintf
                   callee_pkg: fmt
+            end_line: 14
         imports:
           16: 16
           27: 27

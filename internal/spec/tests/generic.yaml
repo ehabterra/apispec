@@ -556,6 +556,7 @@ packages:
                   position: 40
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 17
           Process:
             name: 58
             pkg: 2
@@ -674,6 +675,14 @@ packages:
                   position: 55
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 25
+            blocks:
+              - kind: if
+                start_line: 21
+                start_col: 21
+                end_line: 23
+                end_col: 2
+                group: 1
           main:
             name: 76
             pkg: 2
@@ -948,6 +957,7 @@ packages:
                   func: 76
                   callee_func: Get
                   callee_pkg: generic
+            end_line: 35
         struct_instances:
           - type: 95
             pkg: 2

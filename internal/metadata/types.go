@@ -952,7 +952,84 @@ type Function struct {
 	// body, so a net/http handler that branches on the verb can be split into
 	// one operation per HTTP method. Empty for handlers that don't dispatch.
 	MethodDispatch []MethodBranch `yaml:"method_dispatch,omitempty"`
+
+	// EndLine is the last line of the declaration (the body's closing brace),
+	// so a statement located by position can be tested for membership in THIS
+	// function rather than merely in the same FILE — which is all Position
+	// alone supports, and is why method-dispatch attribution has to fall back
+	// to a same-file test. Zero for a declaration with no body (an assembly or
+	// cgo stub).
+	EndLine int `yaml:"end_line,omitempty"`
+
+	// Blocks records the body's control-flow regions in source order. See Block:
+	// it is what lets a consumer tell that two statements sit in arms of one
+	// conditional that cannot both run, which line order alone cannot say.
+	Blocks []Block `yaml:"blocks,omitempty"`
 }
+
+// Block is one control-flow region of a function body: an `if` or `else` arm, a
+// `switch`/`select` case, a loop body, a bare block, or a function literal's
+// body. Recorded as a source range rather than as statements, because every
+// consumer of this locates code by the position it already has on a call edge.
+//
+// Ranges carry COLUMNS, not just lines. A one-line `if err != nil { return }`
+// and a call in an `if`'s init statement (`if err := f(); err != nil {`) both
+// share a line with the arm they are not inside, so a line-only range answers
+// containment wrongly for exactly the shapes control flow is being consulted
+// about. MethodBranch predates this and stays line-only; it compares against a
+// case clause, where the distinction does not arise.
+type Block struct {
+	Kind      BlockKind `yaml:"kind,omitempty"`
+	StartLine int       `yaml:"start_line,omitempty"`
+	StartCol  int       `yaml:"start_col,omitempty"`
+	EndLine   int       `yaml:"end_line,omitempty"`
+	EndCol    int       `yaml:"end_col,omitempty"`
+
+	// Parent is the 1-BASED index into Function.Blocks of the enclosing block,
+	// or 0 for a block sitting directly in the function body. One-based so that
+	// "no parent" is the zero value and the field stays out of serialized
+	// metadata; a plain index could not distinguish "block 0" from "none".
+	Parent int `yaml:"parent,omitempty"`
+
+	// Group ties together the arms of ONE conditional — every arm of an
+	// if/else-if/else chain, or every case of one switch or select — with a
+	// 1-based id unique within the function. Two blocks sharing a group are
+	// alternatives: at most one of them runs. Zero for a region whose siblings
+	// are not alternatives (a loop body, a bare block, a function literal).
+	//
+	// This is the fact that line ranges alone cannot supply. Nesting says a
+	// statement is INSIDE a region; only the group says two regions are
+	// mutually exclusive.
+	Group int `yaml:"group,omitempty"`
+}
+
+// BlockKind names what opened a Block. A string rather than a packed enum
+// because these are shared constants (no per-block allocation) and they are
+// read in byte-compared golden metadata, where a number would be unreadable.
+type BlockKind string
+
+const (
+	// BlockIf is the body of an `if` — including each `else if` in a chain,
+	// which is an alternative arm of the same conditional, not a nested one.
+	BlockIf BlockKind = "if"
+	// BlockElse is the final `else` arm of an if chain.
+	BlockElse BlockKind = "else"
+	// BlockCase is one `case` of a switch, type switch, or select.
+	BlockCase BlockKind = "case"
+	// BlockDefault is the `default` arm of a switch or select. It is an
+	// alternative like any case, and unlike MethodBranch — which drops it,
+	// having no verb to name it by — it is recorded here.
+	BlockDefault BlockKind = "default"
+	// BlockLoop is a `for` or `range` body: entered zero or more times, and
+	// exclusive with nothing, so it carries no group.
+	BlockLoop BlockKind = "loop"
+	// BlockPlain is a bare `{ … }` block.
+	BlockPlain BlockKind = "block"
+	// BlockFuncLit is a function literal's body. Recorded inside the enclosing
+	// declaration because a literal gets no Function record of its own, so
+	// without this its extent is invisible.
+	BlockFuncLit BlockKind = "func"
+)
 
 // MethodBranch is one arm of an `r.Method` dispatch: the HTTP method(s) it
 // handles and the source line range of its body, used to attribute each

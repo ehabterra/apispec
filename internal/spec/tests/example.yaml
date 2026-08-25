@@ -613,6 +613,7 @@ packages:
                     resolved_type: -1
                     generic_type_name: -1
                   func: 62
+            end_line: 37
           main:
             name: 73
             pkg: 2
@@ -699,6 +700,7 @@ packages:
                   func: 73
                   callee_func: NewUser
                   callee_pkg: example
+            end_line: 42
         struct_instances:
           - type: 29
             pkg: 2

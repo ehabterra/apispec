@@ -1200,6 +1200,8 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			Returns:        allReturns,
 			AssignmentMap:  assignmentsInFunc,
 			MethodDispatch: detectMethodDispatch(fn.Body, info, fset),
+			EndLine:        bodyEndLine(fn, fset),
+			Blocks:         collectBlocks(fn.Body, fset),
 		}
 
 		f.Functions[fn.Name.Name].SignatureStr = metadata.StringPool.Get(CallArgToString(&f.Functions[fn.Name.Name].Signature))

@@ -426,6 +426,7 @@ packages:
                   func: 19
                   callee_func: NewUser
                   callee_pkg: multipackage/models
+            end_line: 15
         imports:
           7: 7
           21: 21
@@ -970,6 +971,7 @@ packages:
                   position: 79
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 26
         struct_instances:
           - type: 60
             pkg: 7
@@ -1949,6 +1951,7 @@ packages:
                   position: 123
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 14
         struct_instances:
           - type: 34
             pkg: 21
@@ -2697,6 +2700,7 @@ packages:
                   position: 139
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 7
           ValidateAge:
             name: 155
             pkg: 132
@@ -2884,6 +2888,7 @@ packages:
                   position: 147
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 11
         variables:
           DefaultFormat:
             name: 167
