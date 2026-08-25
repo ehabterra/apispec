@@ -796,6 +796,7 @@ packages:
                   position: 80
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 34
           NewService:
             name: 69
             pkg: 2
@@ -973,6 +974,7 @@ packages:
                   position: 68
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 30
           main:
             name: 92
             pkg: 2
@@ -1099,6 +1101,7 @@ packages:
                   func: 92
                   callee_func: NewService
                   callee_pkg: complex
+            end_line: 40
         struct_instances:
           - type: 45
             pkg: 2
