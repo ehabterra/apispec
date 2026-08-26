@@ -26,11 +26,17 @@ type PushFailure struct {
 	Err     error  `json:"err"`
 }
 
-// Sample carries the other types metadata calls primitive but cannot map.
+// Sample carries the other types metadata calls primitive but cannot map,
+// including inside a slice and a map: the fallback has to apply where the
+// schema is BUILT, or a container stores the nil as `items: null` /
+// `additionalProperties: null` one level up.
 type Sample struct {
-	Name    string     `json:"name"`
-	Ratio   complex128 `json:"ratio"`
-	Smaller complex64  `json:"smaller"`
+	Name     string                `json:"name"`
+	Ratio    complex128            `json:"ratio"`
+	Smaller  complex64             `json:"smaller"`
+	Series   []complex64           `json:"series"`
+	ByName   map[string]complex128 `json:"by_name"`
+	Optional *complex64            `json:"optional"`
 }
 
 func failure(w http.ResponseWriter, r *http.Request) {

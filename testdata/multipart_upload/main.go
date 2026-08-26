@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 )
 
@@ -24,7 +25,13 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
+	defer func(file multipart.File) {
+		err := file.Close()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}(file)
 	_ = header.Filename
 	title := r.FormValue("title")
 	_ = title

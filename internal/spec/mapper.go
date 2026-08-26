@@ -3239,7 +3239,23 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			return addRefSchemaForType(goType), schemas
 		}
 
-		return schema, schemas
+		if goType == "" {
+			// No type at all is a different thing from a type that cannot be
+			// mapped: there is nothing to describe, and a caller checking for
+			// nil is asking exactly that. TestMapGoTypeToOpenAPISchema_EdgeCases
+			// pins it.
+			return schema, schemas
+		}
+
+		// A named primitive with no mapping and no $ref of its own —
+		// `complex64`, `complex128`, `nil` — reaches here with nothing
+		// resolved. It must still be a schema: this function is called
+		// RECURSIVELY for a slice's items, a map's values and a pointer's
+		// target, and those callers store what they are given, so a nil here
+		// becomes `items: null` or `additionalProperties: null` one level up
+		// (issue #395). The empty schema says "any JSON value", which is the
+		// honest answer for a type encoding/json cannot marshal at all.
+		return schemaOrAny(schema), schemas
 	}
 }
 

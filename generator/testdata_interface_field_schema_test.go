@@ -60,7 +60,7 @@ func TestTestdata_InterfaceFieldSchema(t *testing.T) {
 	if sample == nil {
 		t.Fatal("Sample component missing")
 	}
-	for _, field := range []string{"ratio", "smaller"} {
+	for _, field := range []string{"ratio", "smaller", "optional"} {
 		s, ok := sample.Properties[field]
 		if !ok {
 			t.Errorf("%s property missing; have %v", field, propertyNames(sample))
@@ -73,5 +73,24 @@ func TestTestdata_InterfaceFieldSchema(t *testing.T) {
 		if s.Type != "" || s.Ref != "" {
 			t.Errorf("%s property = %+v, want the empty schema (any)", field, s)
 		}
+	}
+
+	// A container of an unmappable type: the fallback has to apply where the
+	// schema is BUILT, not only where a property is stored, or the nil is kept
+	// as items/additionalProperties one level up and crashes the same reader.
+	if series := sample.Properties["series"]; series == nil {
+		t.Error("series property missing")
+	} else if series.Items == nil {
+		t.Error("series.items is null — the container form of the same defect")
+	} else if series.Items.Type != "" || series.Items.Ref != "" {
+		t.Errorf("series.items = %+v, want the empty schema", series.Items)
+	}
+
+	if byName := sample.Properties["by_name"]; byName == nil {
+		t.Error("by_name property missing")
+	} else if byName.AdditionalProperties == nil {
+		t.Error("by_name.additionalProperties is null — the map form of the same defect")
+	} else if byName.AdditionalProperties.Type != "" || byName.AdditionalProperties.Ref != "" {
+		t.Errorf("by_name.additionalProperties = %+v, want the empty schema", byName.AdditionalProperties)
 	}
 }
