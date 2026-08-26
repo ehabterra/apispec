@@ -83,6 +83,20 @@ func TestTestdata_Frameworks(t *testing.T) {
 			},
 		},
 		{
+			// echo is a supported framework whose fixture had no structural
+			// coverage at all — it was reachable only through the manual
+			// scripts/compare-spec.sh flow and the eager/lazy parity spike, so a
+			// change to its output could not fail CI.
+			name:     "echo",
+			fallback: spec.DefaultEchoConfig(),
+			routes: []route{
+				{"/api/info", []string{"GET"}},
+				{"/health", []string{"GET"}},
+				{"/v1/users/", []string{"GET", "POST"}},
+				{"/v1/users/{id}", []string{"GET", "PUT", "DELETE"}},
+			},
+		},
+		{
 			name:     "fiber",
 			fallback: spec.DefaultFiberConfig(),
 			routes: []route{
