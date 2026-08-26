@@ -34,6 +34,7 @@ func main() {
 	mux.HandleFunc("GET /loop", statusInLoop)
 	mux.HandleFunc("GET /arms", statusInEveryArm)
 	mux.HandleFunc("GET /before", statusBeforeBranch)
+	mux.HandleFunc("GET /alternatives", statusOverTwoTypes)
 
 	http.ListenAndServe(":8080", mux)
 }
@@ -98,15 +99,22 @@ func statusInEveryArm(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(Item{ID: "1"})
 }
 
+// statusOverTwoTypes writes one status above a branch whose arms send
+// DIFFERENT types. The endpoint really can answer 202 with either, so the
+// response is the alternation of them rather than whichever the walk saw last.
+func statusOverTwoTypes(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusAccepted)
+	if r.URL.Query().Get("detail") != "" {
+		_ = json.NewEncoder(w).Encode(Item{ID: "1", Name: "detailed"})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(APIError{Message: "queued"})
+}
+
 // statusBeforeBranch writes the status unconditionally, then a body on each
 // side of a branch. Every path to both bodies passed the write, so both are
-// 201s.
-//
-// Only the FIRST of them is: a pending status is consumed by the body that
-// claims it, so the second falls through to the implicit 200 (issue #391).
-// That is a separate defect from the dominance rule this fixture is for — the
-// status here dominates both bodies — so the structural test pins the current
-// answer as a change detector and flips when #391 is fixed.
+// 201s — and both bodies are the same type, so the response is one schema
+// (issue #391).
 func statusBeforeBranch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	if r.URL.Query().Get("full") != "" {
