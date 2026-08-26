@@ -75,17 +75,24 @@ func (c *blockCollector) add(kind BlockKind, start, end token.Pos, parent, group
 // terminates reports whether a statement list ends in a way that stops control
 // reaching the code after its conditional.
 //
-// Syntactic certainty only: a `return`, a `panic(...)`, or a branch statement.
-// A call that never returns by convention (os.Exit, log.Fatal) is NOT counted —
-// deciding that needs the type checker and the answer would be a guess for any
-// project-local wrapper, and a wrong "terminates" turns sequential statements
-// into alternatives (golden rule #7).
+// Only `return` and a direct `panic(...)` qualify. A BRANCH statement does not,
+// even though it leaves the region: `break` leaves a switch and lands on the
+// statement after it, `fallthrough` deliberately continues into the next
+// clause, `continue` starts another iteration, and `goto` goes somewhere this
+// cannot know. Counting them would make a body written after a switch an
+// "alternative" of a break-terminated case, which is the opposite of true.
+//
+// A call that never returns by convention (os.Exit, log.Fatal) is not counted
+// either — deciding that needs the type checker and the answer would be a guess
+// for any project-local wrapper. A wrong "terminates" turns sequential
+// statements into alternatives (golden rule #7), so the bar is syntactic
+// certainty.
 func terminates(body []ast.Stmt) bool {
 	if len(body) == 0 {
 		return false
 	}
 	switch last := body[len(body)-1].(type) {
-	case *ast.ReturnStmt, *ast.BranchStmt:
+	case *ast.ReturnStmt:
 		return true
 	case *ast.ExprStmt:
 		call, ok := last.X.(*ast.CallExpr)

@@ -1472,6 +1472,11 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
 			pendingInFrame[f.chain] = f.resp.StatusInFrame
+			// A new status starts a fresh conversation: the bodies that claimed
+			// the PREVIOUS one are not claimants of this one, and leaving them
+			// here would make the next body prove itself exclusive with a
+			// status it has nothing to do with.
+			delete(claimedAt, f.chain)
 		case known:
 			store(f.resp, f.resp.StatusInFrame)
 		case f.resp.StatusUnresolved:

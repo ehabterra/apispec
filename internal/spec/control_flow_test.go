@@ -221,6 +221,14 @@ func TestExclusive(t *testing.T) {
 		t.Error("an arm that falls through must not make what follows an alternative")
 	}
 
+	// A switch case that ends in `break` leaves the switch and lands on the
+	// statement after it, so the two are not alternatives. This is why only
+	// `return` and `panic` set Terminates — see terminates() in metadata.
+	caseArm := meta.Block{Kind: meta.BlockCase, StartLine: 40, StartCol: 1, EndLine: 43, EndCol: 80, Group: 2}
+	if indexOf(caseArm).exclusive(at(41, 3), at(50, 2)) {
+		t.Error("a case that breaks must not make the code after the switch an alternative")
+	}
+
 	// Missing facts answer false: nothing is an alternative on a guess.
 	if idx.exclusive(codePos{}, at(15, 3)) || idx.exclusive(at(11, 3), codePos{}) {
 		t.Error("unknown positions must not be reported as exclusive")

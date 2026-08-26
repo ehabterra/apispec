@@ -240,8 +240,13 @@ func TestCollectBlocksTerminates(t *testing.T) {
 		{"panic ends an arm", "if x() {\n panic(\"no\")\n}", []bool{true}},
 		{"a call that merely looks final does not", "if x() {\n exit()\n}", []bool{false}},
 		{"else returns, if does not", "if x() {\n a()\n} else {\n return\n}", []bool{false, true}},
-		{"break ends a case", "switch v() {\ncase 1:\n a()\n break\ncase 2:\n b()\n}", []bool{true, false}},
-		{"continue ends a loop body", "for x() {\n continue\n}", []bool{true}},
+		// A branch statement leaves the region without ending the path: after a
+		// `break` the statement following the switch runs, which is exactly
+		// what "terminates" must not claim.
+		{"break does not end a case", "switch v() {\ncase 1:\n a()\n break\ncase 2:\n b()\n}", []bool{false, false}},
+		{"fallthrough does not", "switch v() {\ncase 1:\n a()\n fallthrough\ncase 2:\n b()\n}", []bool{false, false}},
+		{"continue does not end a loop body", "for x() {\n continue\n}", []bool{false}},
+		{"return inside a case does", "switch v() {\ncase 1:\n return\ncase 2:\n b()\n}", []bool{true, false}},
 		{"empty arm", "if x() {\n}", []bool{false}},
 	}
 
