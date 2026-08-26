@@ -155,11 +155,48 @@ func (idx *blockIndex) dominates(earlier, later codePos) bool {
 	return true
 }
 
-// Mutual exclusion — two positions in arms of one conditional, which
-// Block.Group records — is the other question these facts answer, and the one a
-// summary of a function's responses needs when it merges the arms of a branch.
-// Dominance already rejects every pair the pairing rule cares about, so no
-// exclusivity query is written here until that summary needs one.
+// exclusive reports whether two positions sit in arms of one conditional and so
+// can never both run.
+//
+// It is what tells `if full { A } else { B }` — two bodies under one status
+// write, of which exactly one is sent — apart from `A; …; B`, two bodies on the
+// same path where the second is a different response entirely. Both are
+// dominated by the write; only the first pair are alternatives (issue #391).
+//
+// Conservative in the direction that preserves behaviour: unknown positions or
+// an unindexed file answer false, so nothing is treated as an alternative on
+// missing facts.
+func (idx *blockIndex) exclusive(a, b codePos) bool {
+	if idx == nil || !a.valid() || !b.valid() || a.file != b.file {
+		return false
+	}
+	blocks := idx.byFile[a.file]
+	for i, armA := range blocks {
+		if armA.Group == 0 || !blockContains(armA, a) || blockContains(armA, b) {
+			continue
+		}
+		// a is in an arm b is outside of. Two ways that makes them exclusive:
+		for j, armB := range blocks {
+			// b is in a sibling arm of the same conditional.
+			if i != j && armB.Group == armA.Group && blockContains(armB, b) {
+				return true
+			}
+		}
+		// Or a's arm exits, so nothing after that conditional runs when a did.
+		// This is the early-return idiom — `if bad { …; return }` above the
+		// success path — which is how most Go handlers are written and would
+		// otherwise read as sequential code.
+		if armA.Terminates && afterBlock(armA, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// afterBlock reports whether a position lies beyond a block's end.
+func afterBlock(b metadata.Block, pos codePos) bool {
+	return pos.line > b.EndLine || (pos.line == b.EndLine && pos.col > b.EndCol)
+}
 
 // controlFlow returns the extractor's block index, built on first use.
 func (e *Extractor) controlFlow() *blockIndex {

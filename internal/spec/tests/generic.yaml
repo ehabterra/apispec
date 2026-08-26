@@ -682,6 +682,7 @@ packages:
                 start_col: 21
                 end_line: 23
                 end_col: 2
+                terminates: true
                 group: 1
           main:
             name: 76

@@ -221,6 +221,51 @@ func TestCollectBlocksExclusivity(t *testing.T) {
 	}
 }
 
+// TestCollectBlocksTerminates pins the fact that makes Go's dominant idiom
+// legible: an arm that exits means nothing after its conditional runs when the
+// arm did, so the two are alternatives even though only one is inside an arm.
+//
+// Only syntactic certainty counts. A call that never returns by convention
+// (os.Exit, log.Fatal) is not one — deciding that needs the type checker, the
+// answer would be a guess for any project-local wrapper, and a wrong
+// "terminates" turns sequential statements into alternatives.
+func TestCollectBlocksTerminates(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []bool // per block, in source order
+	}{
+		{"arm ending in return", "if x() {\n a()\n return\n}", []bool{true}},
+		{"arm falling through", "if x() {\n a()\n}", []bool{false}},
+		{"panic ends an arm", "if x() {\n panic(\"no\")\n}", []bool{true}},
+		{"a call that merely looks final does not", "if x() {\n exit()\n}", []bool{false}},
+		{"else returns, if does not", "if x() {\n a()\n} else {\n return\n}", []bool{false, true}},
+		// A branch statement leaves the region without ending the path: after a
+		// `break` the statement following the switch runs, which is exactly
+		// what "terminates" must not claim.
+		{"break does not end a case", "switch v() {\ncase 1:\n a()\n break\ncase 2:\n b()\n}", []bool{false, false}},
+		{"fallthrough does not", "switch v() {\ncase 1:\n a()\n fallthrough\ncase 2:\n b()\n}", []bool{false, false}},
+		{"continue does not end a loop body", "for x() {\n continue\n}", []bool{false}},
+		{"return inside a case does", "switch v() {\ncase 1:\n return\ncase 2:\n b()\n}", []bool{true, false}},
+		{"empty arm", "if x() {\n}", []bool{false}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			blocks, _, _ := parseBody(t, tc.body)
+			if len(blocks) != len(tc.want) {
+				t.Fatalf("got %d blocks (%s), want %d", len(blocks), shape(blocks), len(tc.want))
+			}
+			for i, want := range tc.want {
+				if blocks[i].Terminates != want {
+					t.Errorf("block %d (%s): Terminates = %v, want %v",
+						i, blocks[i].Kind, blocks[i].Terminates, want)
+				}
+			}
+		})
+	}
+}
+
 func TestCollectBlocksNilSafety(t *testing.T) {
 	if got := collectBlocks(nil, token.NewFileSet()); got != nil {
 		t.Errorf("nil body: want nil, got %v", got)

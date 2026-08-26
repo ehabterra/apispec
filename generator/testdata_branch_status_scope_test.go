@@ -56,11 +56,36 @@ func TestTestdata_BranchStatusScope(t *testing.T) {
 		// honest answer is that it carries neither (golden rule #7). Before the
 		// rule the body took whichever arm the walk saw last.
 		"/arms": {"202": "", "206": "", "200": "Item"},
-		// CHANGE DETECTOR for issue #391, not the behaviour this fixture is
-		// for: the 201 dominates BOTH bodies, but a pending status is consumed
-		// by the first one, so the second falls through to the implicit 200.
-		// When #391 is fixed this becomes {"201": "Item"} alone.
-		"/before": {"201": "Item", "200": "Item"},
+		// The 201 dominates BOTH bodies and is carried by both (#391). They
+		// are the same type, so the response is one schema — nothing to
+		// compose. This used to also document a spurious 200, because a
+		// pending status was consumed by the first body that claimed it.
+		"/before": {"201": "Item"},
+	}
+
+	// One status over two different types: the endpoint can answer 202 with
+	// either, so the response alternates between them rather than keeping
+	// whichever the walk saw last (#391). Asserted apart from the table above,
+	// which describes responses carrying a single schema.
+	alternatives := out.Paths["/alternatives"]
+	if op := opFor(alternatives, "GET"); op == nil {
+		t.Error("GET /alternatives: expected operation, missing")
+	} else if resp, ok := op.Responses["202"]; !ok {
+		t.Errorf("GET /alternatives: response 202 missing; have %v", responseCodesOf(op.Responses))
+	} else {
+		media, ok := resp.Content["application/json"]
+		switch {
+		case !ok || media.Schema == nil:
+			t.Errorf("GET /alternatives 202: no JSON schema, got %v", resp.Content)
+		case len(media.Schema.AnyOf) != 2:
+			t.Errorf("GET /alternatives 202: schema = %+v, want an anyOf of both bodies", media.Schema)
+		default:
+			got := []string{schemaRefName(media.Schema.AnyOf[0]), schemaRefName(media.Schema.AnyOf[1])}
+			sort.Strings(got)
+			if !equalStrings(got, []string{"APIError", "Item"}) {
+				t.Errorf("GET /alternatives 202: anyOf members %v, want [APIError Item]", got)
+			}
+		}
 	}
 
 	for path, wantResponses := range want {
@@ -102,6 +127,15 @@ func TestTestdata_BranchStatusScope(t *testing.T) {
 			}
 		}
 	}
+}
+
+// schemaRefName is the bare component name a schema references.
+func schemaRefName(s *intspec.Schema) string {
+	if s == nil || s.Ref == "" {
+		return ""
+	}
+	name := s.Ref[strings.LastIndexByte(s.Ref, '/')+1:]
+	return name[strings.LastIndexByte(name, '_')+1:]
 }
 
 // schemaNameOf names the schema a response carries: the bare component name for

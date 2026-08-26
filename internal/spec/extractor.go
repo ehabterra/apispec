@@ -180,6 +180,19 @@ type ResponseInfo struct {
 	// Zero means "leave it undetermined", which is what lands under "default".
 	ImplicitStatus int
 
+	// StatusInFrame marks a status resolved from the call site's own argument —
+	// a literal or constant written right there — rather than traced through a
+	// parameter or a struct field several frames up.
+	//
+	// Only an in-frame status has an identity the pairing can trust for more
+	// than one body. A shared responder (`func (ctx *Context) JSON(status int,
+	// obj any)`) writes ONE `WriteHeader(status)` statement for every call in
+	// the program, and which status that is depends on the invocation — a
+	// distinction the tracker cannot make reliably (issue #389). Treating those
+	// as one status carrying several bodies documented an LFS list endpoint's
+	// 200 with the error type, measured on gitea.
+	StatusInFrame bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1394,9 +1407,17 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		return frags[i].col < frags[j].col
 	})
 
-	store := func(resp *ResponseInfo) {
+	// A slot whose status the handler STATED — written explicitly, or claimed
+	// from a write that dominates the body. Only those compose: two bodies that
+	// merely defaulted to the framework's implicit status are not evidence that
+	// one status carries both, and alternating them advertises an error type on
+	// a success response.
+	stated := map[string]bool{}
+	store := func(resp *ResponseInfo, statusStated bool) {
 		slot := fmt.Sprintf("%d", resp.StatusCode)
 		existing := route.Response[slot]
+		wasStated := stated[slot]
+		stated[slot] = wasStated || statusStated
 		switch {
 		case existing == nil:
 			route.Response[slot] = resp
@@ -1404,6 +1425,11 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			route.Response[slot] = resp
 		case existing.BodyType != "" && resp.BodyType == "":
 			// keep the informative one
+		case statusStated && wasStated && alternativeBodies(existing, resp):
+			// One status, two genuinely different bodies: the endpoint really
+			// can send either, so the response alternates between them rather
+			// than keeping whichever the walk saw last.
+			route.Response[slot] = mergeResponseAlternatives(existing, resp)
 		default:
 			route.Response[slot] = preferResponseInfo(existing, resp)
 		}
@@ -1417,6 +1443,17 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// followed by the success body is the shape this rejects — source order
 	// alone hands that body a 400 it can never carry (see control_flow.go).
 	pendingAt := map[string]codePos{}
+	// chain -> the bodies that have already claimed that pending status. A
+	// second body claims it only when it cannot run alongside the first: arms
+	// of one conditional are alternatives under a single status write, while
+	// two bodies on the same path are two different responses and the later one
+	// is not what that write was for (issue #391).
+	claimedAt := map[string][]codePos{}
+	// chain -> whether that pending status was resolved without leaving the
+	// frame. A status traced in from a caller belongs to one invocation, and
+	// the walk cannot tell invocations of a shared responder apart, so such a
+	// status is claimed once as before.
+	pendingInFrame := map[string]bool{}
 	// chain -> a status write on it did NOT resolve. The handler states a
 	// status; we just could not read it. A body written after that is emphatically
 	// NOT the framework's implicit status — the server sends whatever that call
@@ -1430,12 +1467,18 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		known := status >= 100 && status < 600
 		switch {
 		case known && body == "":
-			store(f.resp)
+			store(f.resp, f.resp.StatusInFrame)
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
+			pendingInFrame[f.chain] = f.resp.StatusInFrame
+			// A new status starts a fresh conversation: the bodies that claimed
+			// the PREVIOUS one are not claimants of this one, and leaving them
+			// here would make the next body prove itself exclusive with a
+			// status it has nothing to do with.
+			delete(claimedAt, f.chain)
 		case known:
-			store(f.resp)
+			store(f.resp, f.resp.StatusInFrame)
 		case f.resp.StatusUnresolved:
 			// A status write whose value did not resolve: nothing to store (no
 			// status, no body), but it disqualifies this chain's later bodies
@@ -1446,12 +1489,22 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				f.resp.ImplicitStatus = 0
 			}
 			bodyAt := codePos{file: f.file, line: f.line, col: f.col}
-			if pending[f.chain] && e.controlFlow().dominates(pendingAt[f.chain], bodyAt) {
+			claimable := len(claimedAt[f.chain]) == 0 ||
+				(pendingInFrame[f.chain] && e.exclusiveWithClaimants(claimedAt[f.chain], bodyAt))
+			if pending[f.chain] && claimable && e.controlFlow().dominates(pendingAt[f.chain], bodyAt) {
+				// The status is NOT consumed by the body that claims it: a
+				// write that dominates two bodies is carried by both, and
+				// `WriteHeader(201)` above an if/else sends 201 down either
+				// branch (issue #391). Only a later status write on this chain
+				// supersedes it, by overwriting the pending entries above.
+				//
+				// Consuming it was load-bearing before dominance existed — it
+				// was the only thing stopping a status from leaking onto every
+				// later body in the function, including bodies in branches it
+				// could never reach. The dominance test does that job now.
 				f.resp.StatusCode = pendingStatus[f.chain]
-				delete(pending, f.chain)
-				delete(pendingStatus, f.chain)
-				delete(pendingAt, f.chain)
-				store(f.resp)
+				claimedAt[f.chain] = append(claimedAt[f.chain], bodyAt)
+				store(f.resp, pendingInFrame[f.chain])
 			} else {
 				unpaired = append(unpaired, f)
 			}
@@ -1491,12 +1544,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// undetermined.
 			if f.resp.ImplicitStatus > 0 {
 				f.resp.StatusCode = f.resp.ImplicitStatus
-				store(f.resp)
+				store(f.resp, false)
 				continue
 			}
 			unknown++
 			f.resp.StatusCode = -unknown
-			store(f.resp)
+			store(f.resp, false)
 		}
 	}
 }
@@ -1605,7 +1658,11 @@ func requestIsConcrete(r *RequestInfo) bool {
 		return false
 	}
 	s := r.Schema
-	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
+	// A composed body (anyOf/oneOf) is as resolved as its members. Without
+	// these two, a composition is judged unresolved and the next store for that
+	// status discards it for whichever single body arrived last.
+	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 ||
+		len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.Items != nil
 }
 
 // preferResponseInfo deterministically picks between two responses competing
@@ -1633,6 +1690,96 @@ func requestIsConcrete(r *RequestInfo) bool {
 // time, so the name test decided nothing on any measured code. It was a trap
 // waiting for the first project whose handler writes two differently-named
 // bodies, not a working heuristic.
+// exclusiveWithClaimants reports whether a body may claim a status that earlier
+// bodies already claimed: only when it cannot run alongside any of them.
+//
+// The first claimant always may. After that, a body on the same path is a
+// different response — and letting it in is how a 200 ended up documenting an
+// error type on a large real project, because such a body would otherwise be
+// weighed by call depth in the unpaired pass.
+func (e *Extractor) exclusiveWithClaimants(claimed []codePos, bodyAt codePos) bool {
+	flow := e.controlFlow()
+	for _, prior := range claimed {
+		if !flow.exclusive(prior, bodyAt) {
+			return false
+		}
+	}
+	return true
+}
+
+// alternativeBodies reports whether two responses for one status describe
+// genuinely different payloads, which is the only case worth composing.
+//
+// Both must be CONCRETE and must RENDER differently. Measured on a large real
+// project, composing every collision instead produced 261 alternations of which
+// the overwhelming majority said nothing — `anyOf: [string, string]` (two Go
+// types that render identically), or `anyOf: [integer, string]` from writes
+// whose type resolution differs by path rather than by branch. An alternation
+// of noise is worse than picking one: it claims the endpoint can answer in
+// shapes it never does (golden rule #7).
+func alternativeBodies(cur, next *ResponseInfo) bool {
+	if cur == nil || next == nil {
+		return false
+	}
+	if cur.BodyType == next.BodyType {
+		return false
+	}
+	if !responseIsConcrete(cur) || !responseIsConcrete(next) {
+		return false
+	}
+	return !sameRenderedBody(cur.Schema, next.Schema)
+}
+
+// mergeResponseAlternatives composes the bodies a single status can carry into
+// one `anyOf`, accumulating as later fragments arrive.
+//
+// anyOf rather than oneOf: the alternatives are not claimed to be mutually
+// exclusive, only to be what this status may carry. A payload that happens to
+// validate against two of them is still a valid response, which oneOf would
+// call invalid.
+//
+// A member that constrains nothing is not added — an `anyOf` containing the
+// empty schema matches anything, which says LESS than its other members
+// (issue #395's rule, same reasoning as oneOfSchemaFor).
+func mergeResponseAlternatives(cur, next *ResponseInfo) *ResponseInfo {
+	if cur == nil {
+		return next
+	}
+	if next == nil || next.Schema == nil || isEmptySchema(next.Schema) {
+		return cur
+	}
+	if cur.Schema == nil || isEmptySchema(cur.Schema) {
+		return next
+	}
+
+	members, types := alternativesOf(cur)
+	for _, known := range types {
+		if known == next.BodyType {
+			// Already represented; nothing to add.
+			return cur
+		}
+	}
+	nextMembers, nextTypes := alternativesOf(next)
+	members = append(members, nextMembers...)
+	types = append(types, nextTypes...)
+
+	merged := *cur
+	merged.Schema = &Schema{AnyOf: members}
+	// OneOfTypes is what component collection reads to register every type a
+	// composed body can resolve to; it is not tied to the oneOf keyword.
+	merged.OneOfTypes = types
+	return &merged
+}
+
+// alternativesOf unpacks a response into the schemas and type names it already
+// represents, so merging is accumulative rather than nested.
+func alternativesOf(r *ResponseInfo) ([]*Schema, []string) {
+	if len(r.Schema.AnyOf) > 0 && len(r.OneOfTypes) == len(r.Schema.AnyOf) {
+		return append([]*Schema{}, r.Schema.AnyOf...), append([]string{}, r.OneOfTypes...)
+	}
+	return []*Schema{r.Schema}, []string{r.BodyType}
+}
+
 func preferResponseInfo(cur, next *ResponseInfo) *ResponseInfo {
 	if cur == nil {
 		return next
@@ -1660,7 +1807,11 @@ func responseIsConcrete(r *ResponseInfo) bool {
 		return false
 	}
 	s := r.Schema
-	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 || s.Items != nil
+	// A composed body (anyOf/oneOf) is as resolved as its members. Without
+	// these two, a composition is judged unresolved and the next store for that
+	// status discards it for whichever single body arrived last.
+	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 ||
+		len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.Items != nil
 }
 
 // extractRequestFromNode extracts request information from a node
@@ -2488,6 +2639,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		statusStr := r.contextProvider.GetArgumentInfo(statusArg)
 		if status, ok := r.schemaMapper.MapStatusCode(statusStr); ok {
 			statusResolved = true
+			respInfo.StatusInFrame = true
 			respInfo.StatusCode = status
 		} else if callerArg, _ := resolveArgThroughParams(statusArg, node); callerArg != statusArg {
 			// The status arg is a parameter threaded through one or more
@@ -2517,6 +2669,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	if !statusResolved && r.pattern.DefaultStatus > 0 {
 		respInfo.StatusCode = r.pattern.DefaultStatus
 		statusResolved = true
+		// A pattern's own default is a property of the call, not of who called
+		// it, so it is as frame-local as a literal.
+		respInfo.StatusInFrame = true
 	}
 
 	// A body write that names no status at all takes the framework's implicit

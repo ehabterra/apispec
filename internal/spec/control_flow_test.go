@@ -184,6 +184,61 @@ func TestDominatesColumnsSeparateAOneLineArm(t *testing.T) {
 // step the hand-built indexes above skip: bucketing each function's blocks
 // under the FILE its position names, which is what lets a position be resolved
 // without knowing which declaration (or which function literal) it sits in.
+// TestExclusive covers the question that decides whether one status write can
+// be carried by two bodies: can both of them run?
+func TestExclusive(t *testing.T) {
+	// if (10..13, returns) / else (14..17), and code after at line 20.
+	ifArm := meta.Block{Kind: meta.BlockIf, StartLine: 10, StartCol: 1, EndLine: 13, EndCol: 80, Group: 1, Terminates: true}
+	elseArm := meta.Block{Kind: meta.BlockElse, StartLine: 14, StartCol: 1, EndLine: 17, EndCol: 80, Group: 1}
+	loop := meta.Block{Kind: meta.BlockLoop, StartLine: 30, StartCol: 1, EndLine: 33, EndCol: 80}
+	idx := indexOf(ifArm, elseArm, loop)
+
+	cases := []struct {
+		name string
+		a, b codePos
+		want bool
+	}{
+		{"sibling arms of one conditional", at(11, 3), at(15, 3), true},
+		{"the same arm", at(11, 3), at(12, 3), false},
+		{"an arm that returns, and code after the conditional", at(11, 3), at(20, 2), true},
+		{"code after the conditional, and the arm", at(20, 2), at(11, 3), false},
+		{"a loop body carries no group and exits nothing", at(31, 3), at(35, 2), false},
+		{"neither is in a region", at(20, 2), at(21, 2), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idx.exclusive(tc.a, tc.b); got != tc.want {
+				t.Errorf("exclusive(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+
+	// An arm that does NOT exit leaves the code after it reachable on the same
+	// run, so they are not alternatives — the case a terminator fact is needed
+	// to tell apart, and the one a guess would get wrong.
+	falls := meta.Block{Kind: meta.BlockIf, StartLine: 10, StartCol: 1, EndLine: 13, EndCol: 80, Group: 1}
+	if indexOf(falls).exclusive(at(11, 3), at(20, 2)) {
+		t.Error("an arm that falls through must not make what follows an alternative")
+	}
+
+	// A switch case that ends in `break` leaves the switch and lands on the
+	// statement after it, so the two are not alternatives. This is why only
+	// `return` and `panic` set Terminates — see terminates() in metadata.
+	caseArm := meta.Block{Kind: meta.BlockCase, StartLine: 40, StartCol: 1, EndLine: 43, EndCol: 80, Group: 2}
+	if indexOf(caseArm).exclusive(at(41, 3), at(50, 2)) {
+		t.Error("a case that breaks must not make the code after the switch an alternative")
+	}
+
+	// Missing facts answer false: nothing is an alternative on a guess.
+	if idx.exclusive(codePos{}, at(15, 3)) || idx.exclusive(at(11, 3), codePos{}) {
+		t.Error("unknown positions must not be reported as exclusive")
+	}
+	var nilIdx *blockIndex
+	if nilIdx.exclusive(at(11, 3), at(15, 3)) {
+		t.Error("a nil index must not report exclusivity")
+	}
+}
+
 func TestNewBlockIndexFromMetadata(t *testing.T) {
 	src := `package main
 
