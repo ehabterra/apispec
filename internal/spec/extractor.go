@@ -229,6 +229,9 @@ type Extractor struct {
 	// is over the whole call graph and pairAndFillResponses runs once per
 	// route extraction context.
 	callDepthsByFn map[string]map[string]int
+	// blocks indexes the recorded control-flow regions of every file, for the
+	// dominance question response pairing asks. Built once, on first use.
+	blocks *blockIndex
 	// extractedRouteIDs marks route identities whose subtree walk has
 	// already run in this extraction. Fragment extraction is pure, so a
 	// re-visit of the same (function, mount, path, method) through another
@@ -1408,6 +1411,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 
 	pending := map[string]bool{} // chain -> a bodyless status awaits its body
 	pendingStatus := map[string]int{}
+	// chain -> where that pending status was written. A body may only claim it
+	// if the write DOMINATES the body: same file, written first, and inside no
+	// region the body escaped. `if err != nil { WriteHeader(400); return }`
+	// followed by the success body is the shape this rejects — source order
+	// alone hands that body a 400 it can never carry (see control_flow.go).
+	pendingAt := map[string]codePos{}
 	// chain -> a status write on it did NOT resolve. The handler states a
 	// status; we just could not read it. A body written after that is emphatically
 	// NOT the framework's implicit status — the server sends whatever that call
@@ -1424,6 +1433,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			store(f.resp)
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
+			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
 		case known:
 			store(f.resp)
 		case f.resp.StatusUnresolved:
@@ -1435,10 +1445,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			if statusUnresolved[f.chain] {
 				f.resp.ImplicitStatus = 0
 			}
-			if pending[f.chain] {
+			bodyAt := codePos{file: f.file, line: f.line, col: f.col}
+			if pending[f.chain] && e.controlFlow().dominates(pendingAt[f.chain], bodyAt) {
 				f.resp.StatusCode = pendingStatus[f.chain]
 				delete(pending, f.chain)
 				delete(pendingStatus, f.chain)
+				delete(pendingAt, f.chain)
 				store(f.resp)
 			} else {
 				unpaired = append(unpaired, f)
