@@ -883,6 +883,25 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	return responses
 }
 
+// schemaOrAny replaces a schema that could not be derived with the empty
+// schema, which is OpenAPI for "any JSON value".
+//
+// A property whose value is null is not a weaker description than `{}` — it is
+// an invalid document. The field is genuinely there and its shape is genuinely
+// unknown, so `{}` says exactly that; null says nothing and breaks every reader
+// that walks the schema (issue #395).
+//
+// The types that reach here are the ones metadata calls primitive but has no
+// mapping for — `complex64`, `complex128`, `nil` — which encoding/json cannot
+// marshal at all. Guessing a type for them would be worse than saying nothing
+// (golden rule #7).
+func schemaOrAny(s *Schema) *Schema {
+	if s == nil {
+		return &Schema{}
+	}
+	return s
+}
+
 // isBodylessStatus reports whether an HTTP status code must not carry a
 // response body per RFC 9110 / the OpenAPI spec: 1xx (informational), 204
 // (No Content), 205 (Reset Content), and 304 (Not Modified). Responses for
@@ -1609,7 +1628,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			}
 		}
 
-		schema.Properties[fieldName] = fieldSchema
+		schema.Properties[fieldName] = schemaOrAny(fieldSchema)
 	}
 
 	return schema, schemas
@@ -3174,7 +3193,13 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return &Schema{Type: "boolean"}, schemas
 	case "time.Time":
 		return &Schema{Type: "string", Format: "date-time"}, schemas
-	case "interface{}", "struct{}", "any":
+	case "interface{}", "struct{}", "any", "error":
+		// `error` is an interface like the others, and is mapped like them
+		// rather than left unmapped: metadata calls it primitive, so the
+		// $ref branch below is skipped for it, and what came back was a NIL
+		// schema. A nil stored as a property serializes as `properties: {Err:
+		// null}` — not valid OpenAPI, and enough to crash a reader that
+		// dereferences it (issue #395).
 		return &Schema{Type: "object"}, schemas
 	default:
 		// For custom types, check if it's a struct in metadata
@@ -3311,7 +3336,7 @@ func schemaFromAnonStructLiteral(usedTypes map[string]*Schema, goType string, me
 		if schema.Properties == nil {
 			schema.Properties = map[string]*Schema{}
 		}
-		schema.Properties[propName] = fieldSchema
+		schema.Properties[propName] = schemaOrAny(fieldSchema)
 	}
 	return schema, schemas
 }
