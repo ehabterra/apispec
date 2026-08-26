@@ -902,6 +902,26 @@ func schemaOrAny(s *Schema) *Schema {
 	return s
 }
 
+// isEmptySchema reports whether a schema constrains nothing at all — the `{}`
+// schemaOrAny produces for a type with no mapping.
+//
+// It exists because several callers used to read a NIL schema as "nothing
+// usable here, skip it", and that nil is now an empty schema (issue #395). The
+// judgement they were making is still the right one: composing an empty schema
+// into a oneOf member or an allOf override adds a term that says nothing, so it
+// is noise rather than detail.
+func isEmptySchema(s *Schema) bool {
+	if s == nil {
+		return false
+	}
+	return s.Type == "" && s.Ref == "" && s.Format == "" &&
+		s.Description == "" && s.Title == "" &&
+		s.Default == nil && s.Example == nil && s.Not == nil &&
+		s.Items == nil && s.AdditionalProperties == nil &&
+		len(s.Properties) == 0 && len(s.AllOf) == 0 &&
+		len(s.OneOf) == 0 && len(s.AnyOf) == 0 && len(s.Enum) == 0
+}
+
 // isBodylessStatus reports whether an HTTP status code must not carry a
 // response body per RFC 9110 / the OpenAPI spec: 1xx (informational), 204
 // (No Content), 205 (Reset Content), and 304 (Not Modified). Responses for

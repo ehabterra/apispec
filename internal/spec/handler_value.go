@@ -74,7 +74,10 @@ func oneOfSchemaFor(usedTypes map[string]*Schema, concretes []string, meta *meta
 	members := make([]*Schema, 0, len(concretes))
 	for _, ct := range concretes {
 		schema := mapGoTypeForRoute(usedTypes, ct, meta, cfg)
-		if schema == nil {
+		if schema == nil || isEmptySchema(schema) {
+			// A member that constrains nothing makes the oneOf say less, not
+			// more: "any of these, or anything at all". Skipped like the nil
+			// this used to receive (issue #395).
 			continue
 		}
 		members = append(members, schema)
