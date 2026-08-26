@@ -15,7 +15,9 @@
 package generator
 
 import (
+	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -103,6 +105,57 @@ func noUnresolvedPlaceholders(t *testing.T, out *spec.OpenAPISpec) {
 // component. A dangling $ref (e.g. a specialised `data` ref whose
 // payload type was never registered) is the exact failure Redoc reports
 // as "Invalid reference token".
+// noNullSchemas fails when any schema slot in the document is null.
+//
+// A null is not a vaguer description than the empty schema — it is an invalid
+// document, and a reader that walks properties dereferences it and dies (issue
+// #395). noDanglingRefs cannot catch this: its walker returns early on nil, so
+// a null property looks like the end of a branch rather than a defect.
+func noNullSchemas(t *testing.T, out *spec.OpenAPISpec) {
+	t.Helper()
+	if out.Components == nil {
+		return
+	}
+	var walk func(s *intspec.Schema, path string)
+	walk = func(s *intspec.Schema, path string) {
+		if s == nil {
+			t.Errorf("null schema at %s", path)
+			return
+		}
+		for name, c := range s.Properties {
+			walk(c, path+".properties."+name)
+		}
+		if s.Items != nil {
+			walk(s.Items, path+".items")
+		}
+		if s.AdditionalProperties != nil {
+			walk(s.AdditionalProperties, path+".additionalProperties")
+		}
+		for i, c := range s.AllOf {
+			walk(c, fmt.Sprintf("%s.allOf[%d]", path, i))
+		}
+		for i, c := range s.OneOf {
+			walk(c, fmt.Sprintf("%s.oneOf[%d]", path, i))
+		}
+		for i, c := range s.AnyOf {
+			walk(c, fmt.Sprintf("%s.anyOf[%d]", path, i))
+		}
+	}
+	for name, s := range out.Components.Schemas {
+		walk(s, "components.schemas."+name)
+	}
+}
+
+// propertyNames lists a schema's property names for failure messages.
+func propertyNames(s *intspec.Schema) []string {
+	names := make([]string, 0, len(s.Properties))
+	for name := range s.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func noDanglingRefs(t *testing.T, out *spec.OpenAPISpec) {
 	t.Helper()
 	if out.Components == nil {
