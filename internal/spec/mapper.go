@@ -856,6 +856,20 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 			continue
 		}
 
+		// No body was found at this status, so say so by omitting `content`
+		// (issue #393). An empty media-type object is not "no body" — it reads
+		// as "there IS a body of this type and I cannot describe its shape",
+		// which a handler that only calls WriteHeader never claims.
+		//
+		// A body that WAS found but could not be typed keeps its content block:
+		// BodyType and Schema are set together in the extractor, so a set
+		// BodyType means a body is really written here, and dropping it would
+		// assert an empty response just as wrongly (golden rule #7).
+		if resp.Schema == nil && resp.BodyType == "" {
+			responses[statusCode] = Response{Description: description}
+			continue
+		}
+
 		responses[statusCode] = Response{
 			Description: description,
 			Content: map[string]MediaType{
