@@ -166,6 +166,69 @@ func TestApplyResolvedCalleesClassRules(t *testing.T) {
 	}
 }
 
+// TestApplyResolvedCalleesPoolsSameLineCalls pins what happens to two distinct
+// calls of the same bare name written on ONE line — `left.Read(); right.Read()`.
+//
+// SiteKey is per line, so those two calls share a key and pool their resolved
+// targets. The pooling is not a defect to be fixed by keeping the column: the
+// column is the one thing the two graphs never agree on (see SiteKey). What
+// matters is the direction the imprecision errs in, and this pins it: a pooled
+// site has more than one target, Classify calls that ambiguous, and an ambiguous
+// site is left EXACTLY as metadata recorded it.
+//
+// So the cost is a rewrite not made, never a wrong one — including for the call
+// that VTA did resolve unambiguously.
+func TestApplyResolvedCalleesPoolsSameLineCalls(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	meta.Packages = map[string]*metadata.Package{
+		"app": {Files: map[string]*metadata.File{
+			"types.go": {Types: map[string]*metadata.Type{
+				"Reader": {Name: pool.Get("Reader"), Kind: pool.Get("interface")},
+			}},
+		}},
+	}
+
+	// Both calls are on line 7, both named Read, and each resolves to a
+	// different implementation.
+	edge := func(position string) metadata.CallGraphEdge {
+		return metadata.CallGraphEdge{
+			Position: pool.Get(position),
+			Caller:   metadata.Call{Meta: meta, Name: pool.Get("caller"), Pkg: pool.Get("app")},
+			Callee: metadata.Call{
+				Meta: meta, Name: pool.Get("Read"), Pkg: pool.Get("app"), RecvType: pool.Get("Reader"),
+			},
+		}
+	}
+	meta.CallGraph = []metadata.CallGraphEdge{
+		edge("f.go:7:3"),  // left.Read()
+		edge("f.go:7:20"), // right.Read()
+	}
+
+	// One key, because the key drops the column — carrying both targets.
+	byPosition := map[string][]string{
+		"f.go:7#Read": {"app.fileReader.Read", "app.netReader.Read"},
+	}
+
+	stats := applyResolvedCallees(meta, byPosition)
+
+	if stats.Joined != 2 {
+		t.Errorf("joined %d sites, want 2 — both calls share the line key", stats.Joined)
+	}
+	if stats.Ambiguous != 2 {
+		t.Errorf("left %d ambiguous, want 2 — a pooled site cannot say which call is which", stats.Ambiguous)
+	}
+	if stats.Interface != 0 || stats.Promoted != 0 {
+		t.Errorf("rewrote %d interface / %d promoted, want none: neither call may be rewritten from a pooled target set",
+			stats.Interface, stats.Promoted)
+	}
+	for i := range meta.CallGraph {
+		if got := meta.CallGraph[i].Callee.BaseID(); got != "app.Reader.Read" {
+			t.Errorf("edge %d callee = %q, want the recorded app.Reader.Read left untouched", i, got)
+		}
+	}
+}
+
 // TestRewriteCalleeCarriesTheWrittenReceiver is the change-detector for the
 // second half of issue #260.
 //
