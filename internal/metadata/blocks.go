@@ -57,18 +57,48 @@ type blockCollector struct {
 }
 
 // add records one region and returns its 1-based index, for use as a parent.
-func (c *blockCollector) add(kind BlockKind, start, end token.Pos, parent, group int) int {
+func (c *blockCollector) add(kind BlockKind, start, end token.Pos, parent, group int, body []ast.Stmt) int {
 	sp, ep := c.fset.Position(start), c.fset.Position(end)
 	c.blocks = append(c.blocks, Block{
-		Kind:      kind,
-		StartLine: sp.Line,
-		StartCol:  sp.Column,
-		EndLine:   ep.Line,
-		EndCol:    ep.Column,
-		Parent:    parent,
-		Group:     group,
+		Kind:       kind,
+		StartLine:  sp.Line,
+		StartCol:   sp.Column,
+		EndLine:    ep.Line,
+		EndCol:     ep.Column,
+		Parent:     parent,
+		Group:      group,
+		Terminates: terminates(body),
 	})
 	return len(c.blocks)
+}
+
+// terminates reports whether a statement list ends in a way that stops control
+// reaching the code after its conditional.
+//
+// Syntactic certainty only: a `return`, a `panic(...)`, or a branch statement.
+// A call that never returns by convention (os.Exit, log.Fatal) is NOT counted —
+// deciding that needs the type checker and the answer would be a guess for any
+// project-local wrapper, and a wrong "terminates" turns sequential statements
+// into alternatives (golden rule #7).
+func terminates(body []ast.Stmt) bool {
+	if len(body) == 0 {
+		return false
+	}
+	switch last := body[len(body)-1].(type) {
+	case *ast.ReturnStmt, *ast.BranchStmt:
+		return true
+	case *ast.ExprStmt:
+		call, ok := last.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := call.Fun.(*ast.Ident)
+		return ok && ident.Name == "panic"
+	case *ast.LabeledStmt:
+		return terminates([]ast.Stmt{last.Stmt})
+	default:
+		return false
+	}
 }
 
 // nextGroup mints the id shared by the arms of one conditional.
@@ -92,7 +122,7 @@ func (c *blockCollector) stmt(stmt ast.Stmt, parent int) {
 		return
 
 	case *ast.BlockStmt:
-		idx := c.add(BlockPlain, s.Lbrace, s.Rbrace, parent, 0)
+		idx := c.add(BlockPlain, s.Lbrace, s.Rbrace, parent, 0, s.List)
 		c.stmts(s.List, idx)
 
 	case *ast.IfStmt:
@@ -115,12 +145,12 @@ func (c *blockCollector) stmt(stmt ast.Stmt, parent int) {
 		c.stmt(s.Init, parent)
 		c.exprs(parent, s.Cond)
 		c.stmt(s.Post, parent)
-		idx := c.add(BlockLoop, s.Body.Lbrace, s.Body.Rbrace, parent, 0)
+		idx := c.add(BlockLoop, s.Body.Lbrace, s.Body.Rbrace, parent, 0, s.Body.List)
 		c.stmts(s.Body.List, idx)
 
 	case *ast.RangeStmt:
 		c.exprs(parent, s.Key, s.Value, s.X)
-		idx := c.add(BlockLoop, s.Body.Lbrace, s.Body.Rbrace, parent, 0)
+		idx := c.add(BlockLoop, s.Body.Lbrace, s.Body.Rbrace, parent, 0, s.Body.List)
 		c.stmts(s.Body.List, idx)
 
 	case *ast.LabeledStmt:
@@ -147,14 +177,14 @@ func (c *blockCollector) ifChain(stmt *ast.IfStmt, parent int) {
 		c.stmt(cur.Init, parent)
 		c.exprs(parent, cur.Cond)
 
-		idx := c.add(BlockIf, cur.Body.Lbrace, cur.Body.Rbrace, parent, group)
+		idx := c.add(BlockIf, cur.Body.Lbrace, cur.Body.Rbrace, parent, group, cur.Body.List)
 		c.stmts(cur.Body.List, idx)
 
 		switch alt := cur.Else.(type) {
 		case *ast.IfStmt:
 			cur = alt // `else if`: another arm of this same chain
 		case *ast.BlockStmt:
-			elseIdx := c.add(BlockElse, alt.Lbrace, alt.Rbrace, parent, group)
+			elseIdx := c.add(BlockElse, alt.Lbrace, alt.Rbrace, parent, group, alt.List)
 			c.stmts(alt.List, elseIdx)
 			cur = nil
 		default:
@@ -182,7 +212,7 @@ func (c *blockCollector) clauses(body *ast.BlockStmt, parent int) {
 			c.exprs(parent, cl.List...)
 			// A clause has no braces: its region runs from the colon to the end
 			// of its last statement, so the case expressions stay outside it.
-			idx := c.add(kind, cl.Colon, cl.End(), parent, group)
+			idx := c.add(kind, cl.Colon, cl.End(), parent, group, cl.Body)
 			c.stmts(cl.Body, idx)
 		case *ast.CommClause:
 			kind := BlockCase
@@ -190,7 +220,7 @@ func (c *blockCollector) clauses(body *ast.BlockStmt, parent int) {
 				kind = BlockDefault
 			}
 			c.stmt(cl.Comm, parent)
-			idx := c.add(kind, cl.Colon, cl.End(), parent, group)
+			idx := c.add(kind, cl.Colon, cl.End(), parent, group, cl.Body)
 			c.stmts(cl.Body, idx)
 		}
 	}
@@ -216,7 +246,7 @@ func (c *blockCollector) funcLits(node ast.Node, parent int) {
 		if !ok || lit.Body == nil {
 			return true
 		}
-		idx := c.add(BlockFuncLit, lit.Body.Lbrace, lit.Body.Rbrace, parent, 0)
+		idx := c.add(BlockFuncLit, lit.Body.Lbrace, lit.Body.Rbrace, parent, 0, lit.Body.List)
 		c.stmts(lit.Body.List, idx)
 		return false // this literal's interior is walked by c.stmts, not here
 	})

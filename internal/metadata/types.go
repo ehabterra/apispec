@@ -991,6 +991,21 @@ type Block struct {
 	// metadata; a plain index could not distinguish "block 0" from "none".
 	Parent int `yaml:"parent,omitempty"`
 
+	// Terminates records that control cannot fall out of this region into the
+	// statement after its conditional — the region ends in a `return`, a
+	// `panic`, or a branch statement.
+	//
+	// It is what makes Go's dominant idiom legible. In
+	// `if bad { …; return }` followed by the success path, the two are
+	// alternatives even though only one of them is written inside an arm: the
+	// arm exits, so nothing after the `if` runs when it did. Without this the
+	// only alternatives visible are sibling arms of an if/else, and the
+	// early-return form — far more common — reads as sequential code.
+	//
+	// False whenever the answer is not syntactically certain, so a consumer
+	// never treats sequential statements as alternatives on a guess.
+	Terminates bool `yaml:"terminates,omitempty"`
+
 	// Group ties together the arms of ONE conditional — every arm of an
 	// if/else-if/else chain, or every case of one switch or select — with a
 	// 1-based id unique within the function. Two blocks sharing a group are
