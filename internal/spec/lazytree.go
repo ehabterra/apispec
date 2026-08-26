@@ -1153,9 +1153,16 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		n.tree.instanceCount[scope] = scopeCounts
 	}
 	plan := n.tree.planFor(n)
-	if cap(n.children) < len(plan) {
-		n.children = make([]TrackerNodeInterface, 0, len(plan))
-	}
+	// The children slice is GROWN, not sized from the plan. Nearly every child a
+	// plan lists is refused before it is built — by the barren-subtree prune,
+	// the cycle guard, the per-scope instance cap — so sizing by len(plan)
+	// reserved room for children that never arrive.
+	//
+	// Measured on gitea: 15,662,493 expansions reserved 143,364,946 slots and
+	// used 15,684,231 of them, wasting 89%. 7,020,413 of those expansions keep
+	// NO children at all, and each was reserving a slice for a whole plan.
+	// Leaving it nil means they allocate nothing; append sizes the rest to what
+	// they actually hold, and 91% of expansions hold two children or fewer.
 	childCount := 0
 	for _, spec := range plan {
 		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
