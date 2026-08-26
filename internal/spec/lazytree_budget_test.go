@@ -16,6 +16,7 @@ package spec
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -132,9 +133,10 @@ func TestInstanceBudgetCapsTraversal(t *testing.T) {
 }
 
 // TestNewNodeSlabHandsOutStablePointers pins the property the slab must keep: a
-// node's address never moves. Nodes reference their parent, so a slab that grew
-// in place (append) would copy the backing array and leave every pointer already
-// handed out pointing at a stale copy.
+// node's address never moves, and no later carve writes over a node already
+// handed out. Nodes reference their parent, so a slab that grew in place
+// (append) would copy the backing array and leave every pointer already handed
+// out pointing at a stale copy.
 func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 	tree := &LazyTree{}
 
@@ -143,7 +145,11 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 	nodes := make([]*LazyNode, 0, nodeSlabChunk+16)
 	for i := 0; i < nodeSlabChunk+16; i++ {
 		node := tree.newNode()
-		node.key = "node"
+		// A DISTINCT value per node, not one shared string: identical values
+		// would read back correctly even from memory a later carve had reused,
+		// so the check would pass on an allocator that hands out overlapping
+		// slots.
+		node.key = strconv.Itoa(i)
 		nodes = append(nodes, node)
 	}
 
@@ -153,8 +159,21 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 			t.Fatalf("node %d reuses an address already handed out", i)
 		}
 		seen[node] = true
-		if node.key != "node" {
-			t.Fatalf("node %d was mutated after being handed out: key=%q", i, node.key)
+		if node.key != strconv.Itoa(i) {
+			t.Fatalf("node %d was written over after being handed out: key=%q, want %q",
+				i, node.key, strconv.Itoa(i))
+		}
+	}
+
+	// The slab the tree is carving from must not contain a node it already
+	// handed out: newNode advances past each slot, so the next free slot is
+	// beyond every live node. (A "compare nodes[0] with tree.nodeSlab[0]" check
+	// would assert the opposite and fail on correct code — after any hand-out
+	// nodeSlab[0] is the NEXT slot, never the first one returned.)
+	if len(tree.nodeSlab) > 0 {
+		next := &tree.nodeSlab[0]
+		if seen[next] {
+			t.Error("the next free slot is a node already handed out")
 		}
 	}
 
