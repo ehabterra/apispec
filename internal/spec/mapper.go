@@ -883,6 +883,45 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 	return responses
 }
 
+// schemaOrAny replaces a schema that could not be derived with the empty
+// schema, which is OpenAPI for "any JSON value".
+//
+// A property whose value is null is not a weaker description than `{}` — it is
+// an invalid document. The field is genuinely there and its shape is genuinely
+// unknown, so `{}` says exactly that; null says nothing and breaks every reader
+// that walks the schema (issue #395).
+//
+// The types that reach here are the ones metadata calls primitive but has no
+// mapping for — `complex64`, `complex128`, `nil` — which encoding/json cannot
+// marshal at all. Guessing a type for them would be worse than saying nothing
+// (golden rule #7).
+func schemaOrAny(s *Schema) *Schema {
+	if s == nil {
+		return &Schema{}
+	}
+	return s
+}
+
+// isEmptySchema reports whether a schema constrains nothing at all — the `{}`
+// schemaOrAny produces for a type with no mapping.
+//
+// It exists because several callers used to read a NIL schema as "nothing
+// usable here, skip it", and that nil is now an empty schema (issue #395). The
+// judgement they were making is still the right one: composing an empty schema
+// into a oneOf member or an allOf override adds a term that says nothing, so it
+// is noise rather than detail.
+func isEmptySchema(s *Schema) bool {
+	if s == nil {
+		return false
+	}
+	return s.Type == "" && s.Ref == "" && s.Format == "" &&
+		s.Description == "" && s.Title == "" &&
+		s.Default == nil && s.Example == nil && s.Not == nil &&
+		s.Items == nil && s.AdditionalProperties == nil &&
+		len(s.Properties) == 0 && len(s.AllOf) == 0 &&
+		len(s.OneOf) == 0 && len(s.AnyOf) == 0 && len(s.Enum) == 0
+}
+
 // isBodylessStatus reports whether an HTTP status code must not carry a
 // response body per RFC 9110 / the OpenAPI spec: 1xx (informational), 204
 // (No Content), 205 (Reset Content), and 304 (Not Modified). Responses for
@@ -1609,7 +1648,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			}
 		}
 
-		schema.Properties[fieldName] = fieldSchema
+		schema.Properties[fieldName] = schemaOrAny(fieldSchema)
 	}
 
 	return schema, schemas
@@ -3174,7 +3213,13 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		return &Schema{Type: "boolean"}, schemas
 	case "time.Time":
 		return &Schema{Type: "string", Format: "date-time"}, schemas
-	case "interface{}", "struct{}", "any":
+	case "interface{}", "struct{}", "any", "error":
+		// `error` is an interface like the others, and is mapped like them
+		// rather than left unmapped: metadata calls it primitive, so the
+		// $ref branch below is skipped for it, and what came back was a NIL
+		// schema. A nil stored as a property serializes as `properties: {Err:
+		// null}` — not valid OpenAPI, and enough to crash a reader that
+		// dereferences it (issue #395).
 		return &Schema{Type: "object"}, schemas
 	default:
 		// For custom types, check if it's a struct in metadata
@@ -3214,7 +3259,23 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 			return addRefSchemaForType(goType), schemas
 		}
 
-		return schema, schemas
+		if goType == "" {
+			// No type at all is a different thing from a type that cannot be
+			// mapped: there is nothing to describe, and a caller checking for
+			// nil is asking exactly that. TestMapGoTypeToOpenAPISchema_EdgeCases
+			// pins it.
+			return schema, schemas
+		}
+
+		// A named primitive with no mapping and no $ref of its own —
+		// `complex64`, `complex128`, `nil` — reaches here with nothing
+		// resolved. It must still be a schema: this function is called
+		// RECURSIVELY for a slice's items, a map's values and a pointer's
+		// target, and those callers store what they are given, so a nil here
+		// becomes `items: null` or `additionalProperties: null` one level up
+		// (issue #395). The empty schema says "any JSON value", which is the
+		// honest answer for a type encoding/json cannot marshal at all.
+		return schemaOrAny(schema), schemas
 	}
 }
 
@@ -3311,7 +3372,7 @@ func schemaFromAnonStructLiteral(usedTypes map[string]*Schema, goType string, me
 		if schema.Properties == nil {
 			schema.Properties = map[string]*Schema{}
 		}
-		schema.Properties[propName] = fieldSchema
+		schema.Properties[propName] = schemaOrAny(fieldSchema)
 	}
 	return schema, schemas
 }

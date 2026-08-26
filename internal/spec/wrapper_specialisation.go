@@ -278,7 +278,14 @@ func specialiseWrapperSchema(baseSchema *Schema, overrides []wrapperFieldOverrid
 			continue
 		}
 		propSchema, discovered := mapGoTypeToOpenAPISchema(usedTypes, override.GoType, meta, cfg, nil)
-		if propSchema == nil {
+		if propSchema == nil || isEmptySchema(propSchema) {
+			// An override that constrains nothing is not a specialisation. It
+			// used to arrive here as a nil and be skipped; unmappable types now
+			// resolve to the empty schema instead (issue #395), and composing
+			// THAT would wrap the base $ref in an allOf whose second member
+			// says nothing — measured as 27 responses on a 163-route service
+			// turning `{$ref: Wrapper}` into
+			// `allOf: [{$ref: Wrapper}, {properties: {data: {}}}]`.
 			continue
 		}
 		// mapGoTypeToOpenAPISchema returns the payload's $ref in
