@@ -331,15 +331,12 @@ func paramArgOfEnclosingFunc(arg *metadata.CallArgument, node TrackerNodeInterfa
 	if enclosing == "" {
 		return nil, false
 	}
-	for p := node.GetParent(); p != nil; p = p.GetParent() {
-		pe := p.GetEdge()
-		if pe == nil || pe.Callee.BaseID() != enclosing || pe.ParamArgMap == nil {
-			continue
-		}
-		if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
-			return &callerArg, true
-		}
+	p := enclosingFrame(node, enclosing, true)
+	if p == nil {
 		return nil, false
+	}
+	if callerArg, ok := p.GetEdge().ParamArgMap[arg.GetName()]; ok {
+		return &callerArg, true
 	}
 	return nil, false
 }
