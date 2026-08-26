@@ -20,10 +20,14 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// frameChain builds a node whose ancestors are `depth` frames deep, with the
-// frame that CALLS `enclosing` sitting at `at` (1 = the immediate parent).
-// Frames carry parameter bindings unless their index is in `noParams`.
-func frameChain(t *testing.T, depth, at int, noParams map[int]bool) (TrackerNodeInterface, string) {
+// frameChain builds a statement whose ancestors are `depth` frames deep, with a
+// frame that calls `enclosing` at each depth in `targets` (1 = the immediate
+// parent). A depth listed in `noParams` carries no parameter bindings.
+//
+// It returns the frames by depth so a test can assert WHICH one was chosen:
+// with a single matching frame, "the nearest wins" and "a bindingless frame is
+// skipped" are both unfalsifiable.
+func frameChain(t *testing.T, depth int, targets map[int]bool, noParams map[int]bool) (TrackerNodeInterface, string, []*TrackerNode) {
 	t.Helper()
 	pool := metadata.NewStringPool()
 	meta := &metadata.Metadata{StringPool: pool}
@@ -34,30 +38,29 @@ func frameChain(t *testing.T, depth, at int, noParams map[int]bool) (TrackerNode
 	target := callee("target")
 	enclosing := target.BaseID()
 
-	var node TrackerNodeInterface
+	byDepth := make([]*TrackerNode, depth+1) // 1-based: byDepth[1] is the parent
+	var node *TrackerNode
 	for i := depth; i >= 1; i-- {
 		name := "filler"
-		var params map[string]metadata.CallArgument
-		if i == at {
+		if targets[i] {
 			name = "target"
 		}
+		var params map[string]metadata.CallArgument
 		if !noParams[i] {
 			params = map[string]metadata.CallArgument{"v": {}}
 		}
 		frame := &TrackerNode{
 			CallGraphEdge: &metadata.CallGraphEdge{Callee: callee(name), ParamArgMap: params},
+			Parent:        node,
 		}
-		if node != nil {
-			frame.Parent = node.(*TrackerNode)
-		}
+		byDepth[i] = frame
 		node = frame
 	}
-	// The statement itself hangs below the innermost frame.
 	stmt := &TrackerNode{
 		CallGraphEdge: &metadata.CallGraphEdge{Caller: callee("target")},
-		Parent:        node.(*TrackerNode),
+		Parent:        node,
 	}
-	return stmt, enclosing
+	return stmt, enclosing, byDepth
 }
 
 // TestEnclosingFrameIsBounded pins the limit and the reason it is safe: it sits
@@ -66,27 +69,24 @@ func frameChain(t *testing.T, depth, at int, noParams map[int]bool) (TrackerNode
 // that reaching the root already gives.
 func TestEnclosingFrameIsBounded(t *testing.T) {
 	// Inside the bound: found.
-	node, enclosing := frameChain(t, enclosingFrameLimit+8, enclosingFrameLimit, nil)
-	if got := enclosingFrame(node, enclosing, false); got == nil {
-		t.Errorf("frame at depth %d was not found, and the limit is %d",
-			enclosingFrameLimit, enclosingFrameLimit)
+	node, enclosing, frames := frameChain(t, enclosingFrameLimit+8, map[int]bool{enclosingFrameLimit: true}, nil)
+	if got := enclosingFrame(node, enclosing, false); got != frames[enclosingFrameLimit] {
+		t.Errorf("frame at the limit (%d) was not the one returned: got %v",
+			enclosingFrameLimit, got)
 	}
 
 	// Past the bound: not found, rather than walked to the root.
-	node, enclosing = frameChain(t, enclosingFrameLimit+8, enclosingFrameLimit+4, nil)
+	node, enclosing, _ = frameChain(t, enclosingFrameLimit+8, map[int]bool{enclosingFrameLimit + 4: true}, nil)
 	if got := enclosingFrame(node, enclosing, false); got != nil {
 		t.Errorf("frame beyond the limit of %d was returned; the scan is unbounded again",
 			enclosingFrameLimit)
 	}
 
-	// The nearest frame wins when several match.
-	node, enclosing = frameChain(t, 6, 2, nil)
-	got := enclosingFrame(node, enclosing, false)
-	if got == nil {
-		t.Fatal("no frame found in a chain that contains one")
-	}
-	if got.GetParent() == nil {
-		t.Error("returned the outermost frame, want the nearest matching one")
+	// The NEAREST frame wins when several match — asserted against a chain that
+	// contains two, so returning the farther one fails.
+	node, enclosing, frames = frameChain(t, 8, map[int]bool{2: true, 5: true}, nil)
+	if got := enclosingFrame(node, enclosing, false); got != frames[2] {
+		t.Errorf("with matching frames at depths 2 and 5, got %v, want the one at 2", got)
 	}
 }
 
@@ -94,16 +94,16 @@ func TestEnclosingFrameIsBounded(t *testing.T) {
 // depend on: one stops at the first matching frame whatever it carries, the
 // other keeps looking for a frame that can actually bind the parameter.
 func TestEnclosingFrameParamRequirement(t *testing.T) {
-	// The nearest matching frame carries no bindings; a further one does.
-	node, enclosing := frameChain(t, 8, 2, map[int]bool{2: true})
+	// The nearest matching frame carries no bindings; a farther one does. Both
+	// are needed: with only the near one, "skips it" and "stops at it" look the
+	// same.
+	node, enclosing, frames := frameChain(t, 8, map[int]bool{2: true, 5: true}, map[int]bool{2: true})
 
-	if got := enclosingFrame(node, enclosing, false); got == nil {
-		t.Error("without requireParams the first matching frame must be returned, bindings or not")
+	if got := enclosingFrame(node, enclosing, false); got != frames[2] {
+		t.Errorf("without requireParams the nearest matching frame must be returned whatever it carries: got %v", got)
 	}
-	// With requireParams the bindingless frame is skipped — and since this
-	// fixture has only one matching frame, nothing is found.
-	if got := enclosingFrame(node, enclosing, true); got != nil {
-		t.Error("with requireParams a frame carrying no bindings must be skipped")
+	if got := enclosingFrame(node, enclosing, true); got != frames[5] {
+		t.Errorf("with requireParams the bindingless frame at 2 must be skipped for the bound one at 5: got %v", got)
 	}
 }
 
@@ -111,7 +111,7 @@ func TestEnclosingFrameNilSafety(t *testing.T) {
 	if got := enclosingFrame(nil, "pkg.target", false); got != nil {
 		t.Error("a nil node must yield no frame")
 	}
-	node, _ := frameChain(t, 4, 2, nil)
+	node, _, _ := frameChain(t, 4, map[int]bool{2: true}, nil)
 	if got := enclosingFrame(node, "", false); got != nil {
 		t.Error("an empty enclosing name must yield no frame")
 	}
