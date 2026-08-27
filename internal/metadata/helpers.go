@@ -95,6 +95,37 @@ func getComments(node ast.Node) string {
 		if n.Doc != nil {
 			return strings.TrimSpace(n.Doc.Text())
 		}
+	case *ast.TypeSpec:
+		// Only the GROUPED form carries its doc here — `type ( // C \n T struct{} )`.
+		// For the ordinary `// C \n type T struct{}` the parser attaches the
+		// comment to the enclosing GenDecl and leaves this nil, which is why
+		// typeComments consults both.
+		if n.Doc != nil {
+			return strings.TrimSpace(n.Doc.Text())
+		}
+		if n.Comment != nil {
+			return strings.TrimSpace(n.Comment.Text())
+		}
+	}
+	return ""
+}
+
+// typeComments returns the doc comment of a type declaration.
+//
+// Go's parser attaches the comment to whichever node "owns" it, and that
+// differs between the two ways of writing the same declaration: for
+// `// C` + `type T struct{}` it lands on the GenDecl, while inside a
+// `type ( ... )` group it lands on the TypeSpec. Reading only one of them
+// records nothing for the common form, which is why every generated schema was
+// undocumented (issue #366).
+func typeComments(gd *ast.GenDecl, tspec *ast.TypeSpec) string {
+	if c := getComments(tspec); c != "" {
+		return c
+	}
+	// A grouped declaration's own doc describes the GROUP, not any one type, so
+	// it is not borrowed for a spec that has none of its own.
+	if gd != nil && len(gd.Specs) == 1 {
+		return getComments(gd)
 	}
 	return ""
 }

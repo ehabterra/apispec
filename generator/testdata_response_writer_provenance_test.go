@@ -16,6 +16,7 @@ package generator
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -34,9 +35,27 @@ func TestTestdata_ResponseWriterProvenance(t *testing.T) {
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	// Secret is only ever encoded to non-writer sinks — it must not appear.
-	if blob, err := json.Marshal(out); err == nil && strings.Contains(string(blob), "Secret") {
-		t.Error("Secret leaked into the spec — a non-writer destination was treated as the response")
+	// Secret is only ever encoded to non-writer sinks, so it must reach neither
+	// components nor any $ref.
+	//
+	// Checked as a SCHEMA rather than as a substring of the marshalled spec:
+	// prose can legitimately mention the word — the fixture's own `User` doc
+	// comment says "Secret must never reach the response", and that comment
+	// became a schema description once #366 landed. Matching the word would
+	// fail on documentation that says the right thing.
+	if out.Components != nil {
+		for name := range out.Components.Schemas {
+			if strings.Contains(name, "Secret") {
+				t.Errorf("Secret leaked into components as %q — a non-writer destination was treated as the response", name)
+			}
+		}
+	}
+	if blob, err := json.Marshal(out); err == nil {
+		for _, m := range regexp.MustCompile(`"\$ref":"([^"]*)"`).FindAllStringSubmatch(string(blob), -1) {
+			if strings.Contains(m[1], "Secret") {
+				t.Errorf("Secret leaked into a $ref (%s) — a non-writer destination was treated as the response", m[1])
+			}
+		}
 	}
 
 	// KEEP: destination traces to w → User response present.

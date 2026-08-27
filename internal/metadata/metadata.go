@@ -619,7 +619,7 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 
 		for _, spec := range genDecl.Specs {
 			if tspec, ok := spec.(*ast.TypeSpec); ok {
-				processTypeSpec(tspec, info, pkgName, fset, f, allTypeMethods, allTypes, metadata, false)
+				processTypeSpec(tspec, genDecl, info, pkgName, fset, f, allTypeMethods, allTypes, metadata, false)
 			}
 		}
 	}
@@ -635,7 +635,7 @@ func processTypes(file *ast.File, info *types.Info, pkgName string, fset *token.
 // When local is true the spec came from inside a function body; such a type is
 // only added if its name isn't already taken by a package-level type in this
 // file, so a real package type is never shadowed by a function-local one.
-func processTypeSpec(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset *token.FileSet, f *File, allTypeMethods map[string][]Method, allTypes map[string]*Type, metadata *Metadata, local bool) {
+func processTypeSpec(tspec *ast.TypeSpec, decl *ast.GenDecl, info *types.Info, pkgName string, fset *token.FileSet, f *File, allTypeMethods map[string][]Method, allTypes map[string]*Type, metadata *Metadata, local bool) {
 	if local {
 		if _, exists := f.Types[tspec.Name.Name]; exists {
 			return
@@ -661,7 +661,7 @@ func processTypeSpec(tspec *ast.TypeSpec, info *types.Info, pkgName string, fset
 	}
 
 	// Extract comments
-	t.Comments = metadata.StringPool.Get(getComments(tspec))
+	t.Comments = metadata.StringPool.Get(typeComments(decl, tspec))
 
 	// Process type kind
 	processTypeKind(tspec, info, pkgName, fset, t, allTypes, metadata)
@@ -690,7 +690,7 @@ func processLocalTypes(file *ast.File, info *types.Info, pkgName string, fset *t
 			}
 			for _, spec := range gd.Specs {
 				if tspec, ok := spec.(*ast.TypeSpec); ok {
-					processTypeSpec(tspec, info, pkgName, fset, f, allTypeMethods, allTypes, metadata, true)
+					processTypeSpec(tspec, gd, info, pkgName, fset, f, allTypeMethods, allTypes, metadata, true)
 				}
 			}
 			return true

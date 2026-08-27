@@ -307,6 +307,14 @@ export function ConfigMode() {
             ${area("Description", c.info?.description, (e) => setInfo({ description: e.target.value }))}
           <//>
 
+          <${Section} title="Schema descriptions" help="Go doc comments on your types and struct fields become the 'description' of the matching schema and property. Turn this off if internal comments should stay out of a published spec.">
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!c.excludeTypeComments}
+                onChange=${(e) => setKey("excludeTypeComments", !e.target.checked)} />
+              <span>Document schemas from Go doc comments</span>
+            </label>
+          <//>
+
           <${Section} title="External docs" help="An optional link to documentation hosted elsewhere (e.g. your developer portal or a guide). Renders as a 'Find out more' link in Swagger/Redoc. Example: URL https://docs.example.com, description 'Full developer guide'.">
 
             ${txt("URL", c.externalDocs?.url, (e) => setExtDocs({ url: e.target.value }), "https://…")}
