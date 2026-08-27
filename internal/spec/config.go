@@ -309,10 +309,18 @@ type RoutePattern struct {
 // malformed one-argument call from resolving the handler to the path.
 func (p *RoutePattern) HandlerArgIndexFor(nargs int) (int, bool) {
 	idx := p.HandlerArgIndex
+	// Rejected before the variadic adjustment, not after: a negative index names
+	// no argument, and letting it fall through would turn "there is no handler
+	// here" into "the handler is the last argument" — attributing one where the
+	// config said there is none. Both fields are user-editable, so the
+	// combination is reachable from a hand-written config.
+	if idx < 0 {
+		return 0, false
+	}
 	if p.HandlerArgFromEnd && nargs-1 > idx {
 		idx = nargs - 1
 	}
-	if idx < 0 || idx >= nargs {
+	if idx >= nargs {
 		return 0, false
 	}
 	return idx, true

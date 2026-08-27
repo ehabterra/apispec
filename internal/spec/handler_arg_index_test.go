@@ -51,6 +51,10 @@ func TestHandlerArgIndexFor(t *testing.T) {
 		// A negative index is not a "read from the end" spelling — it names no
 		// argument, and must not index backwards into the slice.
 		{"negative index", RoutePattern{HandlerArgIndex: -1}, 3, 0, false},
+		// Nor does the variadic flag rescue it: resolving to the last argument
+		// here would invent a handler for a pattern that declared none. Both
+		// fields are user-editable, so this pairing is reachable.
+		{"negative index with the variadic flag", RoutePattern{HandlerArgIndex: -1, HandlerArgFromEnd: true}, 3, 0, false},
 	}
 
 	for _, tc := range cases {
