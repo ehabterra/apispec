@@ -1081,7 +1081,12 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		skipped := gen.SkippedPackages()
 		msg := ""
 		if len(skipped) > 0 {
-			msg = fmt.Sprintf("%d package(s) skipped because they failed to type-check — the spec may be incomplete. Ensure the project builds (go build ./...).", len(skipped))
+			// Naming the first package and what went wrong with it is the whole
+			// value of the message: a count alone leaves the user to guess
+			// whether the project has a syntax error or a missing dependency
+			// (issue #237).
+			msg = fmt.Sprintf("%d package(s) skipped — the spec is incomplete. %s %s: %s. Ensure the project builds (go build ./...).",
+				len(skipped), skipped[0].Package, skipped[0].Kind, skipped[0].Reason)
 		}
 		if expansion.Truncated {
 			// The failure mode this guards against is a run that LOOKS fine: the

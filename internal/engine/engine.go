@@ -335,11 +335,73 @@ func (e *Engine) GetResolvedCallGraph() *callgraph.Resolved {
 	return e.resolvedGraph
 }
 
-// SkippedPackage is a package excluded from analysis due to compile/type
-// errors, with a representative reason.
+// SkippedPackage is a package excluded from analysis because it did not load,
+// with a representative reason.
 type SkippedPackage struct {
 	Package string `json:"package"`
 	Reason  string `json:"reason"`
+	// Kind separates "did not parse" from "did not type-check" because the fix
+	// differs: a syntax error is always in the project's own source, while a
+	// type error is as often a missing generated file or an unresolved private
+	// dependency (issue #237). One of skipParse/skipType/skipLoad.
+	Kind string `json:"kind,omitempty"`
+}
+
+// Why a package was excluded, in the words the report uses.
+const (
+	skipParse = "does not parse"
+	skipType  = "does not type-check"
+	skipLoad  = "could not be loaded"
+)
+
+// classifySkip reduces a package's load errors to one kind and one reason.
+//
+// A package that fails to parse reports SEVERAL errors — go/packages emits the
+// driver's `# pkg` blob (ListError) alongside the parser's own message — so the
+// kind cannot be read off the first one, and neither can a useful reason: the
+// parser's message ("expected declaration, found ','") carries no position
+// while the driver's blob does. So the kind comes from the strongest error
+// present and the reason from the first one that names a file.
+func classifySkip(errs []packages.Error) (kind, reason string) {
+	kind = skipLoad
+	for _, e := range errs {
+		switch {
+		case e.Kind == packages.ParseError:
+			kind = skipParse
+		case e.Kind == packages.TypeError && kind != skipParse:
+			kind = skipType
+		}
+	}
+
+	// Prefer an error that names a file: without a position the reason cannot
+	// be acted on. The driver's blob leads with a "# import/path" line, which
+	// only repeats what the report already prints.
+	for _, e := range errs {
+		if msg := trimDriverHeader(e.Msg); strings.Contains(msg, ".go:") {
+			return kind, msg
+		}
+	}
+	if len(errs) > 0 {
+		return kind, trimDriverHeader(errs[0].Msg)
+	}
+	return kind, ""
+}
+
+// trimDriverHeader drops the leading "# import/path" line the go command puts
+// in front of a build error, and folds the rest onto one line so a report stays
+// one package per line.
+func trimDriverHeader(msg string) string {
+	lines := strings.Split(msg, "\n")
+	if len(lines) > 1 && strings.HasPrefix(lines[0], "# ") {
+		lines = lines[1:]
+	}
+	var kept []string
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "; ")
 }
 
 // NewEngine creates a new Engine with the given configuration
@@ -464,11 +526,8 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 			// Record (only in-module packages — third-party type errors are
 			// rarely actionable by the user) so the caller can surface them.
 			if mp := e.moduleImportPath(); mp == "" || pkg.PkgPath == mp || strings.HasPrefix(pkg.PkgPath, mp+"/") {
-				reason := ""
-				if len(pkg.Errors) > 0 {
-					reason = pkg.Errors[0].Msg
-				}
-				e.skipped = append(e.skipped, SkippedPackage{Package: pkg.PkgPath, Reason: reason})
+				kind, reason := classifySkip(pkg.Errors)
+				e.skipped = append(e.skipped, SkippedPackage{Package: pkg.PkgPath, Reason: reason, Kind: kind})
 			}
 			continue
 		}
@@ -484,6 +543,7 @@ func (e *Engine) GenerateMetadataOnlyWithLogger(logger *VerboseLogger) (*metadat
 		logger.Printf("Info: Continuing analysis with %d valid packages (%d packages skipped due to errors)\n",
 			len(validPkgs), errorCount)
 	}
+	e.reportSkippedPackages()
 
 	// Use valid packages instead of all filtered packages
 	filteredPkgs = validPkgs
@@ -1321,6 +1381,46 @@ func (e *Engine) reportNoRoutes() {
 	log.Printf("[engine] if this project serves HTTP, then its router is unsupported, is wired in a style no pattern matched, or was excluded by --include-*/--exclude-* filters — docs/DEBUGGING.md walks through telling those apart")
 }
 
+// maxSkippedPackagesReported bounds the per-package detail. One broken package
+// takes every package that imports it down with it, so on a large project the
+// list is a cascade of one root cause and printing all of it buries the line
+// that matters.
+const maxSkippedPackagesReported = 10
+
+// reportSkippedPackages says so when the project's own packages did not load.
+//
+// This is the diagnostic that turns "apispec found nothing" into "your project
+// does not compile". It was recorded and logged already, but only to the
+// verbose logger, so a default run dropped a package's entire route tree and
+// still printed "Successfully generated" over a thin spec (issue #237) — the
+// same silence #379 removed for the no-routes case, and it is written the same
+// way: log rather than reportPhase, because it is a result and not a phase.
+func (e *Engine) reportSkippedPackages() {
+	if len(e.skipped) == 0 {
+		return
+	}
+	log.Printf("[engine] %d in-module package(s) were not analysed, so the spec is incomplete:", len(e.skipped))
+	shown := e.skipped
+	if len(shown) > maxSkippedPackagesReported {
+		shown = shown[:maxSkippedPackagesReported]
+	}
+	parse := false
+	for _, s := range shown {
+		if s.Kind == skipParse {
+			parse = true
+		}
+		log.Printf("[engine]   %s %s: %s", s.Package, s.Kind, s.Reason)
+	}
+	if rest := len(e.skipped) - len(shown); rest > 0 {
+		log.Printf("[engine]   ... and %d more (one broken package takes its importers with it)", rest)
+	}
+	if parse {
+		log.Printf("[engine] a package that does not parse is a syntax error in the project's own source — `go build ./...` reports the same")
+	} else {
+		log.Printf("[engine] check that the project builds (`go build ./...`); generated files and private dependencies are the usual causes")
+	}
+}
+
 // GetUnresolvedRefs returns the references the most recent generation could not
 // satisfy, after they were repaired. Non-empty means the spec loads but some
 // operation's shape is a placeholder.
@@ -1343,8 +1443,9 @@ func (e *Engine) GetPathParamMismatches() []intspec.PathParamMismatch {
 }
 
 // SkippedPackages returns the in-module packages excluded from the most recent
-// analysis because they failed to type-check. A non-empty result means the
-// spec is likely incomplete — usually the project doesn't build (e.g. an
+// analysis because they failed to parse or type-check (Kind says which). A
+// non-empty result means the spec is likely incomplete — usually the project
+// doesn't build (e.g. a syntax error, a missing generated file, or an
 // unresolved/private dependency).
 func (e *Engine) SkippedPackages() []SkippedPackage {
 	return e.skipped
