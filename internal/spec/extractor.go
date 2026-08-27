@@ -3169,8 +3169,18 @@ func calleeNameOf(fun *metadata.CallArgument) string {
 // same-named constructors across packages); "" skips the package check.
 func findCallEdge(impl *ContextProviderImpl, callerID, calleeFunc, calleePkg, valPos string) *metadata.CallGraphEdge {
 	var first *metadata.CallGraphEdge
-	for i := range impl.meta.CallGraph {
-		e := &impl.meta.CallGraph[i]
+	// The caller's own bucket rather than the whole call graph. Measured on a
+	// 163-route service, scanning every edge here — and building each one's
+	// instance ID to compare it — was 13.4% of the run: 660ms of 4.9s, of which
+	// 340ms was Call.ID assembling strings for edges that could not match.
+	//
+	// Buckets are appended in CallGraph order (see BuildCallGraphMaps), so the
+	// first match is the same edge the scan returned. The lookup key is the
+	// BASE id while callerID is the instance id — identical for a caller, whose
+	// position is never recorded, except that a generic caller's instance id
+	// carries its type arguments. Strip to the base to find the bucket, and
+	// keep comparing the full id inside it so that distinction still decides.
+	for _, e := range impl.meta.Callers[metadata.StripToBase(callerID)] {
 		if e.Caller.ID() != callerID || impl.GetString(e.Callee.Name) != calleeFunc {
 			continue
 		}
