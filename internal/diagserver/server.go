@@ -342,13 +342,23 @@ func (s *Server) getAllData(diagramType string, includeFullDepth bool) *spec.Cyt
 		if includeFullDepth {
 			maxDepth = 1000
 		}
-		trackerTree := spec.NewTrackerTree(s.metadata, metadata.TrackerLimits{
+		// Lazy, because that is the engine the spec is generated with. The
+		// eager tree this used to build expands differently enough to draw a
+		// materially different picture — on a real service it reaches 194 of
+		// 280 routes — so the diagram was not showing the tree the spec came
+		// from (issue #410).
+		//
+		// No entrypoint or handler-interface options: this server resolves
+		// metadata only (GenerateMetadataOnly) and never a framework config, so
+		// the roots are the default ones — the same roots the eager call here
+		// used, since it passed no options either.
+		trackerTree := spec.NewLazyTree(s.metadata, metadata.TrackerLimits{
 			MaxNodesPerTree:    50000,
 			MaxChildrenPerNode: 500,
 			MaxArgsPerFunction: 100,
 			MaxNestedArgsDepth: 100,
 			MaxRecursionDepth:  maxDepth,
-		}, nil)
+		})
 		data = spec.DrawTrackerTreeCytoscapeWithMetadata(trackerTree.GetRoots(), s.metadata)
 	} else {
 		data = spec.DrawCallGraphCytoscape(s.metadata)
