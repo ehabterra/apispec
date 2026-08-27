@@ -179,6 +179,9 @@ func TestFindCallEdge(t *testing.T) {
 		}
 	}
 	meta.CallGraph = []metadata.CallGraphEdge{e("pkgA", "pos1"), e("pkgB", "pos2")}
+	// findCallEdge reads the caller index, which generated and loaded metadata
+	// always have; a hand-built call graph has to say so.
+	meta.BuildCallGraphMaps()
 	callerID := caller.ID()
 
 	// Package-agnostic ("" pkg): position match, first-match fallback, no-match.
@@ -409,6 +412,9 @@ func TestStatusesFromConstructorField_EdgeOnlyAssignment(t *testing.T) {
 		Position:    meta.StringPool.Get("callpos"),
 		ParamArgMap: map[string]metadata.CallArgument{"code": *mkIdent(meta, "statusCode", "")},
 	}}
+	// findCallEdge reads the caller index, which generated and loaded metadata
+	// always have; a hand-built call graph has to say so.
+	meta.BuildCallGraphMaps()
 
 	// arg = e.Code
 	arg := metadata.NewCallArgument(meta)
