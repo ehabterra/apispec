@@ -623,6 +623,49 @@ func (t *LazyTree) traceOrigin(varName, callerName, callerPkg string) (string, s
 	return originVar, originPkg, originFunc
 }
 
+// recvKey identifies a variable by its declaring scope, so two same-named
+// variables in different functions never share a producer.
+type recvKey struct{ name, pkg, fn string }
+
+// argProducerKey resolves the call whose result was passed into a parameter,
+// so the callee's calls on that parameter can be re-parented under it. Two
+// argument shapes produce a router:
+//
+//	g := v1.Group("/x"); register(g)   // IDENT — the producer is the
+//	                                   // assignment's right-hand call
+//	register(v1.Group("/x"))           // CALL  — the argument IS the producer
+//
+// The call form has no assignment to key on, which is why it needs its own
+// branch: without one the callee's registrations hang outside the group and
+// are documented without its prefix (issue #407). Nothing here is
+// framework-specific — a value produced in an argument list belongs to the
+// call that produced it whatever the value is.
+func (t *LazyTree) argProducerKey(arg metadata.CallArgument, edge *metadata.CallGraphEdge, producerByVar map[recvKey]string) (string, bool) {
+	switch arg.GetKind() {
+	case metadata.KindIdent:
+		originVar, originPkg, originFunc := t.traceOrigin(
+			arg.GetName(),
+			getString(t.meta, edge.Caller.Name),
+			getString(t.meta, edge.Caller.Pkg),
+		)
+		key, ok := producerByVar[recvKey{name: originVar, pkg: originPkg, fn: originFunc}]
+		return key, ok
+	case metadata.KindCall:
+		// A call with no Fun has no identity of its own — its ID degenerates to
+		// the bare kind, which would collect every such argument under one key
+		// and claim their edges away from where they belong.
+		if arg.Fun == nil {
+			return "", false
+		}
+		// A call argument's node key IS its ID, both where it hangs under the
+		// registration call and where the receiver chain reaches it under the
+		// enclosing group — so the callee's registrations land under both, and
+		// the one carrying the mount prefix wins in dropSubsumedMountPrefixes.
+		return arg.ID(), true
+	}
+	return "", false
+}
+
 // buildRelations constructs the chain and receiver-variable indexes once.
 func (t *LazyTree) buildRelations() {
 	if t.relationsBuilt {
@@ -656,7 +699,6 @@ func (t *LazyTree) buildRelations() {
 	// separate groups. A bare-name key collides them, piling every group's
 	// edges under one arbitrary producer and claiming them away from the
 	// other nine.
-	type recvKey struct{ name, pkg, fn string }
 	edgesByRecvVar := map[string][]*metadata.CallGraphEdge{}
 	recvEdgeKey := func(varName string, caller *metadata.Call) string {
 		return varName + "\x00" + caller.BaseID()
@@ -772,21 +814,13 @@ func (t *LazyTree) buildRelations() {
 		sort.Strings(params)
 		for _, param := range params {
 			arg := edge.ParamArgMap[param]
-			if arg.GetKind() != metadata.KindIdent {
-				continue
-			}
 			// The callee's calls on this param have Caller == the callee, so
 			// the exact-caller key is (param, callee BaseID).
 			paramEdges := edgesByRecvVar[recvEdgeKey(param, &edge.Callee)]
 			if len(paramEdges) == 0 {
 				continue
 			}
-			originVar, originPkg, originFunc := t.traceOrigin(
-				arg.GetName(),
-				getString(meta, edge.Caller.Name),
-				getString(meta, edge.Caller.Pkg),
-			)
-			producerKey, ok := producerByVar[recvKey{name: originVar, pkg: originPkg, fn: originFunc}]
+			producerKey, ok := t.argProducerKey(arg, edge, producerByVar)
 			if !ok {
 				continue
 			}
