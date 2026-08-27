@@ -330,9 +330,16 @@ func deriveWrapper(cp ContextProvider, params *paramIndex, w *wrapperMethod, inn
 		}
 	}
 	if inner.HandlerFromArg {
-		if i, ok := params.indexOf(w, arg(inner.HandlerArgIndex)); ok {
-			out.Pattern.HandlerFromArg, out.Pattern.HandlerArgIndex = true, i
-			handlerOK = true
+		// Resolved against the call's real arity, so a wrapper that adds its own
+		// middleware — `r.engine.GET(path, r.auth, h)` — still forwards from the
+		// handler and not from the guard it inserted (#386). The DERIVED pattern
+		// keeps a fixed index: the wrapper's own signature is not variadic, so
+		// the handler sits at one parameter position.
+		if i, ok := inner.HandlerArgIndexFor(len(edge.Args)); ok {
+			if j, ok := params.indexOf(w, arg(i)); ok {
+				out.Pattern.HandlerFromArg, out.Pattern.HandlerArgIndex = true, j
+				handlerOK = true
+			}
 		}
 	}
 

@@ -55,13 +55,16 @@ func DefaultGinConfig() *APISpecConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
+					CallRegex:      `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					MethodFromCall: true,
+					PathFromArg:    true,
+					HandlerFromArg: true,
+					PathArgIndex:   0,
+					// gin: GET(relativePath string, handlers ...HandlerFunc) —
+					// per-route middleware precedes the endpoint handler.
+					HandlerArgIndex:   1,
+					HandlerArgFromEnd: true,
+					RecvTypeRegex:     "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
 			RequestContext: ginRequestContext,

@@ -497,9 +497,9 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeI
 	found = r.extractRouteDetails(node, routeInfo)
 
 	// Extract handler information
-	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
+	if hi, ok := r.handlerArgIndex(edge); ok {
 		found = true
-		handlerArg := handlerArgValue(edge.Args[r.pattern.HandlerArgIndex])
+		handlerArg := handlerArgValue(edge.Args[hi])
 		if handlerArg.GetKind() == metadata.KindIdent || handlerArg.GetKind() == metadata.KindFuncLit {
 
 			handlerName := handlerArg.GetName()
@@ -536,11 +536,11 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		routeInfo.Method = r.extractMethodFromFunctionNameWithConfig(funcName, r.pattern.MethodExtraction)
 		routeInfo.MethodExplicit = true
 		found = true
-	} else if r.pattern.MethodFromHandler && r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
+	} else if hi, ok := r.handlerArgIndex(edge); ok && r.pattern.MethodFromHandler {
 		// Extract method from handler function name. Only a real mapping hit
 		// makes the verb explicit — a DefaultMethod fallback keeps the route
 		// open so a `switch r.Method` handler still splits per dispatch verb.
-		handlerArg := edge.Args[r.pattern.HandlerArgIndex]
+		handlerArg := edge.Args[hi]
 		handlerName := r.contextProvider.GetArgumentInfo(handlerArg)
 		if handlerName != "" {
 			var matched bool
@@ -609,8 +609,8 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		found = true
 	}
 
-	if r.pattern.HandlerFromArg && len(edge.Args) > r.pattern.HandlerArgIndex {
-		handlerArg := handlerArgValue(edge.Args[r.pattern.HandlerArgIndex])
+	if hi, ok := r.handlerArgIndex(edge); ok {
+		handlerArg := handlerArgValue(edge.Args[hi])
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
 
@@ -1486,6 +1486,18 @@ func (r *RoutePatternMatcherImpl) verbsFromArg(arg *metadata.CallArgument) []str
 // a selector (`pkg.Handler`, `h.ServeHTTP`) or a literal function. Anything else
 // stays as it is, since for a non-handler argument the conversion's own type is
 // usually the answer (a `[]byte(body)` request body, for instance).
+// handlerArgIndex locates the handler argument of a registration call, or
+// reports false when this pattern does not read one or the call is too short.
+// It is the single place the variadic-chain shape is resolved, so the route's
+// identity, its verb-from-handler-name and its details all read the same
+// argument (issue #386).
+func (r *RoutePatternMatcherImpl) handlerArgIndex(edge *metadata.CallGraphEdge) (int, bool) {
+	if !r.pattern.HandlerFromArg || edge == nil {
+		return 0, false
+	}
+	return r.pattern.HandlerArgIndexFor(len(edge.Args))
+}
+
 func handlerArgValue(arg *metadata.CallArgument) *metadata.CallArgument {
 	// Bounded because the peel is driven by the code's own nesting: a chain
 	// deeper than this is not a wiring style, and a bound keeps a cyclic or
