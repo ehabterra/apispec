@@ -965,6 +965,10 @@ func convertPathToOpenAPI(path string) (string, []string) {
 	// separately as a schema `pattern` on the parameter.
 	path = stripParamPatterns(path)
 
+	// Strip a `<...>` constraint tail from a parameter (fiber: `:id<int>`).
+	// Runs before the :param conversion so the tail never reaches the template.
+	path = stripAngleConstraints(path)
+
 	// Convert :param (gin/echo) -> {param}.
 	// This matches a colon followed by one or more word characters (letters, digits, underscore)
 	re := mustCachedRegex(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
@@ -1111,6 +1115,58 @@ func stripParamPatterns(path string) string {
 		b.WriteString(name)
 		b.WriteByte('}')
 		i = j - 1
+	}
+	return b.String()
+}
+
+// stripAngleConstraints removes a `<...>` constraint tail from a path
+// parameter. fiber writes its whole constraint vocabulary that way — `:id<int>`,
+// `:uid<guid>`, `:day<datetime(2006-01-02)>`, and `;`-separated chains such as
+// `:n<min(1);max(500)>` — and none of it is part of the URL, so carrying the
+// tail into the template emits a path key no request can ever match, keyed to an
+// operation no consumer can route (issue #357).
+//
+// Deliberately not gated on a framework: `<` and `>` are not legal literals in a
+// URL path (RFC 3986 reserves them, so a real one arrives percent-encoded), which
+// makes an angle-bracket tail unambiguous whatever router produced it.
+//
+// Parentheses are tracked rather than stopping at the first `>`, because a
+// constraint's argument is arbitrary text — `regex([^>]+)` closes its own
+// bracket inside the argument, and cutting there would leave the remainder of
+// the pattern in the path.
+func stripAngleConstraints(path string) string {
+	if !strings.ContainsRune(path, '<') {
+		return path
+	}
+	var b strings.Builder
+	b.Grow(len(path))
+	for i := 0; i < len(path); i++ {
+		if path[i] != '<' {
+			b.WriteByte(path[i])
+			continue
+		}
+		depth, closed, j := 0, false, i+1
+		for ; j < len(path) && !closed; j++ {
+			switch path[j] {
+			case '(':
+				depth++
+			case ')':
+				if depth > 0 {
+					depth--
+				}
+			case '>':
+				if depth == 0 {
+					closed = true
+				}
+			}
+		}
+		if !closed {
+			// Unterminated: keep the remainder verbatim rather than swallowing
+			// the rest of the path on what is probably not a constraint at all.
+			b.WriteString(path[i:])
+			return b.String()
+		}
+		i = j - 1 // the loop's i++ steps past the closing '>'
 	}
 	return b.String()
 }
