@@ -142,6 +142,22 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
     error status to `default`; `testdata/cross_package_constructor_status`
     guards it.)
 
+11. **Prefix and scope facts flow by tree containment — a value that reaches a
+    callee any other way needs an explicit producer link.** `mountPath`, tags
+    and carried middleware descend from a node to its children, so a router
+    only prefixes the routes that sit *below* it. Every wiring style that
+    breaks containment has needed its own binding: a router passed in and
+    mounted one function deeper (`MountInfo.RouterArg` +
+    `resolveArgThroughParams`, #275); a group assigned and then passed
+    (`producerByVar`, the param-binding index); and a group created inside the
+    argument list — `RegisterRouter(v1.Group("/mod"))` — which has no
+    assignment to key on and is its own producer (`argProducerKey`, #407).
+    When routes are *found but documented at the wrong path*, look for a
+    missing binding, not a broken matcher. Always probe the shape **with** a
+    variable too: assigning the value first often makes the identical code
+    resolve, which is exactly what hides this class from fixtures.
+    (`testdata/group_arg_inline` covers all four shapes side by side.)
+
 ## Testing conventions
 
 - **Probe every uncovered shape with a fixture.** When you hit a code shape no
@@ -160,6 +176,12 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
 - `used-config.yaml` and `openapi*.yaml` under fixtures are **gitignored**
   compare artifacts (`scripts/compare-spec.sh`); the structural tests are the
   CI source of truth.
+- **`compare-spec.sh`'s MISSING list includes keys that merely MOVED.** A
+  schema that gains a wrapper (`$ref` → `allOf: [$ref, …]`) reports every
+  affected `$ref` path as missing, and a path rename reports the whole subtree.
+  Before treating drift as loss, regenerate and count the *thing itself* —
+  references to the component, operations, responses — instead of reading the
+  key diff.
 - **Metadata goldens**: `internal/spec/tests/*.yaml` are byte-compared;
   regenerate only via `-update` (never by hand, never as a side effect).
 - **Refactors ship with zero output drift**: the full suite (goldens,
@@ -227,3 +249,6 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
 - Never hand-edit generated artifacts (goldens, snapshots, coverage badge).
 - Never let a `go test` run dirty the working tree (that class of bug was
   deliberately eliminated; keep test writes inside `t.TempDir()`).
+- Never commit a binary left behind by building inside a fixture.
+  `TestNoCompiledBinariesUnderTestdata` guards it, but it reads *git* state —
+  so it passes locally against an unstaged binary and only fails in CI.
