@@ -61,9 +61,19 @@ make metrics-view         # interactive metrics viewer (scripts/view_metrics.sh)
 - The extraction walk visits every tracker node: any per-child O(depth)
   work (string concatenation, capped-cap slice appends) goes quadratic over
   deep graphs and shows up as GC dominance (`runtime.scanObject`,
-  `runtime.madvise`) rather than as the guilty frame. Chain identity is
-  interned to int handles (`chainInterner`, extractor.go) for exactly this
-  reason — extend the interner rather than reintroducing key strings.
+  `runtime.madvise`) rather than as the guilty frame. **Never materialise a
+  composed identity per child.** The extraction chain was interned to int
+  handles for this reason (`chainInterner`, 9dc5046) and then beaten by not
+  materialising it at all — 031bd38 carries it on the stack instead, and the
+  interner is gone. So ask in order: can the identity be derived or carried
+  rather than stored? If it genuinely must be stored *and* compared (a map
+  key, an ancestor-walk comparand), intern it — `LazyTree.internKey` does
+  that for node keys, where deriving would rebuild the string per compare.
+- **`LazyNode`'s size is a first-order cost**: a real service materialises
+  millions (15.7M on gitea), slab-allocated, so the struct's Go size class
+  sets the floor on tree memory. It is 72 bytes; adding one pointer field
+  crosses back into the 80-byte class and costs ~8 bytes × every node.
+  Measure any field addition on a large project, not on `testdata/`.
 
 ## Golden rules (hard-won invariants — do not relearn these)
 
