@@ -617,7 +617,7 @@ func TestConvertPathToOpenAPI_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := convertPathToOpenAPI(tt.input)
+			result, _ := convertPathToOpenAPI(tt.input)
 			if result != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, result)
 			}
@@ -681,7 +681,7 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ensureAllPathParams(tt.path, tt.params, tt.patterns)
+			result := ensureAllPathParams(tt.path, tt.params, tt.patterns, nil)
 			if len(result) != tt.expected {
 				t.Errorf("Expected %d parameters, got %d", tt.expected, len(result))
 			}

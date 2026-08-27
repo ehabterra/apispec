@@ -384,7 +384,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 	for _, route := range routes {
 		// Convert path to OpenAPI format
 		rawPath := joinPaths(route.MountPath, route.Path)
-		openAPIPath := convertPathToOpenAPI(rawPath)
+		openAPIPath, catchAllParams := convertPathToOpenAPI(rawPath)
 
 		// Get or create path item
 		pathItem, exists := paths[openAPIPath]
@@ -463,7 +463,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 		// fresh declaration. The matching {name} in the path is then
 		// considered "covered" by ensureAllPathParams below.
 		operation.Parameters = appendDynamicParamRefs(operation.Parameters, route.DynamicParams)
-		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters, pathParamPatterns(rawPath))
+		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters, pathParamPatterns(rawPath), catchAllParams)
 
 		// Add responses
 		operation.Responses = buildResponses(route.Response)
@@ -490,7 +490,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 // the parameters slice. openAPIPath is already normalised (regex constraints
 // stripped); patterns carries any `{name:pattern}` constraints recovered from
 // the raw path so synthesized params still surface them as a schema pattern.
-func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[string]string) []Parameter {
+func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[string]string, catchAll []string) []Parameter {
 	paramMap := make(map[string]bool)
 	for _, p := range params {
 		if p.In == "path" {
@@ -510,20 +510,27 @@ func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[st
 	for _, match := range matches {
 		name := match[1]
 		if !paramMap[name] {
-			// Add default path parameter with warning extension
 			schema := &Schema{Type: "string"}
 			if pat := patterns[name]; pat != "" {
 				schema.Pattern = pat
 			}
-			params = append(params, Parameter{
+			param := Parameter{
 				Name:     name,
 				In:       "path",
 				Required: true,
 				Schema:   schema,
-				Extensions: map[string]any{
+			}
+			if slices.Contains(catchAll, name) {
+				// A catch-all is not a parameter the handler failed to read —
+				// it is the router matching the rest of the path, so it carries
+				// a description rather than the warning below (issue #403).
+				param.Description = "Matches the remainder of the path."
+			} else {
+				param.Extensions = map[string]any{
 					"x-warning": "This parameter is present in the path but not found in the code.",
-				},
-			})
+				}
+			}
+			params = append(params, param)
 		}
 	}
 	return params
@@ -951,7 +958,7 @@ func setOperationOnPathItem(item *PathItem, method string, op *Operation) {
 }
 
 // convertPathToOpenAPI converts a Go path to OpenAPI format
-func convertPathToOpenAPI(path string) string {
+func convertPathToOpenAPI(path string) (string, []string) {
 	// Strip regex constraints from `{name:pattern}` placeholders (gorilla/mux
 	// and chi allow them, e.g. `/users/{id:[0-9]+}`). OpenAPI path templates
 	// cannot carry a regex, so the constraint is removed here and surfaced
@@ -965,7 +972,76 @@ func convertPathToOpenAPI(path string) string {
 	// Replace all matches with {param} format
 	result := re.ReplaceAllString(path, "{$1}")
 
-	return result
+	return convertCatchAll(result)
+}
+
+// convertCatchAll turns a router's catch-all into a path template parameter and
+// reports the names it created.
+//
+// OpenAPI has no wildcard, so a `*` left in the path is emitted verbatim and
+// matches nothing a client could request (issue #403). Every router spells the
+// catch-all differently and only gorilla/mux comes out right today, by accident
+// of stripParamPatterns turning `{rest:.*}` into `{rest}`:
+//
+//	gin          /files/*filepath  ->  /files/{filepath}   (the router names it)
+//	chi, echo    /files/*          ->  /files/{wildcard}
+//	chi          /files*           ->  /files/{wildcard}
+//
+// The last form is a narrowing worth stating: chi's `/files*` also matches
+// `/files` with nothing after it, while `/files/{wildcard}` requires a segment.
+// A template that covers most of the routes beats a literal `*` that covers
+// none, and OpenAPI cannot express the optional tail either way.
+func convertCatchAll(path string) (string, []string) {
+	star := strings.IndexByte(path, '*')
+	if star < 0 {
+		return path, nil
+	}
+
+	head, tail := path[:star], path[star+1:]
+	name := tail // gin writes the name after the star: /files/*filepath
+	if !isPathParamName(name) {
+		name = ""
+	}
+	if name == "" {
+		name = freeCatchAllName(path)
+	}
+
+	head = strings.TrimSuffix(head, "/")
+	return head + "/{" + name + "}", []string{name}
+}
+
+// isPathParamName reports whether s is usable as a template parameter name.
+func isPathParamName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case c >= '0' && c <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// freeCatchAllName picks a name for an unnamed catch-all that no placeholder on
+// this path already uses, so `/files/{wildcard}` cannot collide with a real
+// `{wildcard}` the route declares itself.
+func freeCatchAllName(path string) string {
+	taken := map[string]bool{}
+	forEachPathParam(path, func(name, _ string) { taken[name] = true })
+	if !taken["wildcard"] {
+		return "wildcard"
+	}
+	for i := 2; ; i++ {
+		candidate := "wildcard" + strconv.Itoa(i)
+		if !taken[candidate] {
+			return candidate
+		}
+	}
 }
 
 // forEachPathParam scans a URL path and invokes fn once per `{...}` placeholder
