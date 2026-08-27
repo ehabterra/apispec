@@ -1480,6 +1480,17 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 		}
 	}
 
+	// The type's doc comment, for every kind (issue #366). The struct branch
+	// already applied it, because a struct has to set it BEFORE its field loop
+	// so the `_` marker's cross-field validation note appends rather than
+	// replaces; withDescription leaves an existing description alone, so this is
+	// a no-op there and the sole source for interfaces, aliases and named
+	// container types.
+	//
+	// Before markUsedType, so the schema registered as the component is the one
+	// carrying the description.
+	schema = withDescription(schema, docComment(cfg, meta, typ.Comments))
+
 	markUsedType(usedTypes, key, schema)
 
 	maps.Copy(schemas, newSchemas)
@@ -1645,6 +1656,9 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		Properties: make(map[string]*Schema),
 		Required:   []string{},
 	}
+	// Set before the field loop, so the `_` marker's cross-field validation note
+	// (issue #166) appends to the doc comment rather than replacing it.
+	schema.Description = docComment(cfg, meta, typ.Comments)
 
 	pkgName := getStringFromPool(meta, typ.Pkg)
 
@@ -1780,10 +1794,62 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			}
 		}
 
-		schema.Properties[fieldName] = schemaOrAny(fieldSchema)
+		prop := schemaOrAny(fieldSchema)
+		if doc := docComment(cfg, meta, field.Comments); doc != "" {
+			prop = withDescription(prop, doc)
+		}
+		schema.Properties[fieldName] = prop
 	}
 
 	return schema, schemas
+}
+
+// docComment renders a pooled Go doc comment as schema description text, or ""
+// when there is none or the config opted out (issue #366).
+//
+// The text is kept VERBATIM, including the leading identifier Go convention
+// puts there ("Item is a catalogue item."). Stripping it would read better in
+// isolation, but the convention is not reliable enough to edit automatically —
+// a comment may name a different word than the type, or none at all — and a
+// wrong edit is worse than a slightly redundant sentence (golden rule #7).
+func docComment(cfg *APISpecConfig, meta *metadata.Metadata, idx int) string {
+	if !cfg.typeCommentsEnabled() {
+		return ""
+	}
+	return strings.TrimSpace(getStringFromPool(meta, idx))
+}
+
+// withDescription returns a schema carrying desc, copying rather than mutating.
+//
+// A field's comment describes THAT FIELD, not every use of its type, and the
+// struct walk hands back a schema it does not own in at least one place: the
+// nested-struct branch takes its schema straight out of the map that is then
+// copied into `schemas`, so the property and the component are the same
+// pointer. Writing through it would put one field's prose on a shared type.
+//
+// Stated honestly, the copy is insurance rather than a demonstrated fix: no
+// fixture built for #366 — two fields of one component type, two of one inline
+// type, an anonymous nested struct — produced a leak with in-place mutation,
+// because each of those paths happens to hand back a fresh schema. The hazard
+// is visible in the code rather than in the output, the copy is one small
+// struct per documented field, and a shallow copy marshals identically, so it
+// is kept.
+//
+// An existing description wins: it came from something more specific than a doc
+// comment — the `_` marker's cross-field validation note, or a type mapping.
+func withDescription(s *Schema, desc string) *Schema {
+	if desc == "" {
+		return s
+	}
+	if s == nil {
+		return &Schema{Description: desc}
+	}
+	if s.Description != "" {
+		return s
+	}
+	c := *s
+	c.Description = desc
+	return &c
 }
 
 // generateInterfaceSchema generates a schema for an interface type

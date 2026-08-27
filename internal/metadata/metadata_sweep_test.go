@@ -819,7 +819,7 @@ func TestSweepProcessTypeSpecSkipsLocalShadow(t *testing.T) {
 	m := sweepMeta()
 	f := &File{Types: map[string]*Type{"User": {}}}
 
-	processTypeSpec(&ast.TypeSpec{Name: ast.NewIdent("User")}, nil, "p", nil, f, nil, nil, m, true)
+	processTypeSpec(&ast.TypeSpec{Name: ast.NewIdent("User")}, nil, nil, "p", nil, f, nil, nil, m, true)
 	if len(f.Types) != 1 {
 		t.Errorf("local spec should be skipped, got %d types", len(f.Types))
 	}

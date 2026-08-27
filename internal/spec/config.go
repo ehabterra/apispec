@@ -909,6 +909,21 @@ type APISpecConfig struct {
 	presetsApplied bool                   `yaml:"-" json:"-"`
 	Tags           []Tag                  `yaml:"tags" json:"tags,omitempty"`
 	ExternalDocs   *ExternalDocumentation `yaml:"externalDocs" json:"externalDocs,omitempty"`
+
+	// ExcludeTypeComments suppresses schema and property `description` text
+	// taken from Go doc comments (issue #366).
+	//
+	// Phrased as an OPT-OUT so the zero value documents the schemas: a comment
+	// on an exported type of a served API is written to be read, and a spec
+	// that silently drops it is the surprising behaviour. Projects that treat
+	// internal comments as private set this.
+	ExcludeTypeComments bool `yaml:"excludeTypeComments,omitempty" json:"excludeTypeComments,omitempty"`
+}
+
+// typeCommentsEnabled reports whether doc comments should reach schema
+// descriptions. Nil config documents them, matching the zero value.
+func (c *APISpecConfig) typeCommentsEnabled() bool {
+	return c == nil || !c.ExcludeTypeComments
 }
 
 // ShouldIncludeFile checks if a file should be included based on include/exclude filters
