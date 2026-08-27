@@ -66,13 +66,16 @@ func DefaultFiberConfig() *APISpecConfig {
 		Framework: FrameworkConfig{
 			RoutePatterns: []RoutePattern{
 				{
-					CallRegex:       `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
-					MethodFromCall:  true,
-					PathFromArg:     true,
-					HandlerFromArg:  true,
-					PathArgIndex:    0,
-					HandlerArgIndex: 1,
-					RecvTypeRegex:   `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
+					CallRegex:      `^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$`,
+					MethodFromCall: true,
+					PathFromArg:    true,
+					HandlerFromArg: true,
+					PathArgIndex:   0,
+					// fiber: Get(path string, handlers ...Handler) — the chain is
+					// variadic and the endpoint handler is last, as in gin.
+					HandlerArgIndex:   1,
+					HandlerArgFromEnd: true,
+					RecvTypeRegex:     `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
 				},
 			},
 			RequestContext: fiberRequestContext,

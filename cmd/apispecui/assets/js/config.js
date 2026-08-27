@@ -508,6 +508,7 @@ const PATTERN_FIELDS = {
   routePatterns: [
     ...COMMON_MATCH,
     ["handlerArgIndex", "Handler arg index", "int", "0-based position of the handler argument. e.g. in r.GET(path, handler) the handler is index 1."],
+    ["handlerArgFromEnd", "Handler is the last arg", "bool", "For a router that takes its handler chain variadically with the endpoint handler LAST — gin's and fiber's r.GET(path, mw1, mw2, handler). 'Handler arg index' then marks where the chain starts, and the handler is read from the final argument instead. Leave off for echo-style routers, where the handler comes first and the middleware follows it."],
     ["pathArgIndex", "Path arg index", "int", "0-based position of the path argument. e.g. in r.GET(path, handler) the path is index 0."],
     ["methodArgIndex", "Method arg index", "int", "0-based position of the HTTP-method argument, for routers that take the method as a value. e.g. r.Handle(method, path, h) → 0."],
     ["methodFromCall", "Method from call name", "bool", "Derive the HTTP method from the called function name (e.g. GET())."],

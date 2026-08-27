@@ -254,6 +254,20 @@ type RoutePattern struct {
 	PathArgIndex    int `yaml:"pathArgIndex,omitempty" json:"pathArgIndex,omitempty"`       // Which arg contains path
 	HandlerArgIndex int `yaml:"handlerArgIndex,omitempty" json:"handlerArgIndex,omitempty"` // Which arg contains handler
 
+	// HandlerArgFromEnd marks a registrar that takes its handler chain
+	// VARIADICALLY, with the endpoint handler last: gin's and fiber's
+	// `GET(path, mw1, mw2, handler)`. On such a call HandlerArgIndex names
+	// where the chain starts, not where the handler is, so reading it directly
+	// yields the first MIDDLEWARE and the whole operation is built from it —
+	// the middleware's doc comment as the summary, its own header and param
+	// reads as the operation's parameters, and the handler's request body and
+	// responses missing (issue #386).
+	//
+	// This cannot be a global "last argument wins" rule, which is why it is a
+	// per-config option: echo is the mirror image, `GET(path, h, mw...)`, where
+	// the handler stays at the fixed index and the middleware follows it.
+	HandlerArgFromEnd bool `yaml:"handlerArgFromEnd,omitempty" json:"handlerArgFromEnd,omitempty"`
+
 	// Extraction hints
 	MethodFromCall    bool `yaml:"methodFromCall,omitempty" json:"methodFromCall,omitempty"`       // Extract method from function name
 	MethodFromHandler bool `yaml:"methodFromHandler,omitempty" json:"methodFromHandler,omitempty"` // Extract method from handler function name
@@ -283,6 +297,33 @@ type RoutePattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+}
+
+// HandlerArgIndexFor resolves which argument of a registration call holds the
+// handler, given how many arguments that call actually has. It reports false
+// when the call carries no such argument, so callers replace the old
+// `len(args) > HandlerArgIndex` bound check with it rather than adding to it.
+//
+// The resolved index is never before HandlerArgIndex: on a variadic registrar a
+// call with no middleware has its handler exactly there, and clamping keeps a
+// malformed one-argument call from resolving the handler to the path.
+func (p *RoutePattern) HandlerArgIndexFor(nargs int) (int, bool) {
+	idx := p.HandlerArgIndex
+	// Rejected before the variadic adjustment, not after: a negative index names
+	// no argument, and letting it fall through would turn "there is no handler
+	// here" into "the handler is the last argument" — attributing one where the
+	// config said there is none. Both fields are user-editable, so the
+	// combination is reachable from a hand-written config.
+	if idx < 0 {
+		return 0, false
+	}
+	if p.HandlerArgFromEnd && nargs-1 > idx {
+		idx = nargs - 1
+	}
+	if idx >= nargs {
+		return 0, false
+	}
+	return idx, true
 }
 
 // RequestBodyPattern defines how to extract request body information

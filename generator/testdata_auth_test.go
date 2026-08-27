@@ -109,13 +109,11 @@ func TestTestdata_AuthPresets(t *testing.T) {
 			cfg:       spec.DefaultGinConfig,
 			protected: struct{ method, path string }{"GET", "/users/{id}"},
 			open:      struct{ method, path string }{"GET", "/health"},
-			// KNOWN WRONG, pinned as a change detector: gin takes its handler
-			// chain variadically (`r.GET(path, mw, h)`), so the configured
-			// handler position holds the MIDDLEWARE and the operation is
-			// attributed to it. A sibling-argument chain, not the wrapped-call
-			// shape #364 fixes — tracked as #386; flip this to "getUser"
-			// when it lands.
-			handler: "jwtAuth",
+			// gin takes its handler chain variadically (`r.GET(path, mw, h)`),
+			// so the handler is the LAST argument, not the configured one —
+			// which used to attribute the whole operation to the middleware
+			// (#386, fixed by RoutePattern.HandlerArgFromEnd).
+			handler: "getUser",
 		},
 		{
 			name:      "auth_mux_subrouter",
