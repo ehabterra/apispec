@@ -382,7 +382,7 @@ func TestAnalyzeTrackerSubtree(t *testing.T) {
 func TestCachedTrackerTree_NilMeta(t *testing.T) {
 	analysisMu.Lock()
 	defer analysisMu.Unlock()
-	if cachedTrackerTreeLocked(nil) != nil {
+	if cachedTrackerTreeLocked(nil, nil) != nil {
 		t.Error("nil metadata must yield a nil tree")
 	}
 }
