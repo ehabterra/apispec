@@ -118,7 +118,8 @@ type RouteInfo struct {
 // converted to {param} form) — the same key buildPathsFromRoutes emits, so
 // callers can match a RouteInfo to an OpenAPI path.
 func (r *RouteInfo) OpenAPIPath() string {
-	return convertPathToOpenAPI(joinPaths(r.MountPath, r.Path))
+	path, _ := convertPathToOpenAPI(joinPaths(r.MountPath, r.Path))
+	return path
 }
 
 func NewRouteInfo() *RouteInfo {
@@ -2003,7 +2004,7 @@ func (e *Extractor) recordPathVarKeyMismatches(route *RouteInfo) {
 		if placeholders[key] {
 			continue
 		}
-		openAPIPath := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
+		openAPIPath, _ := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
 		dedup := route.Method + " " + openAPIPath + " " + key
 		if e.pathParamMismatchSet == nil {
 			e.pathParamMismatchSet = make(map[string]struct{})
