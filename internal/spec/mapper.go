@@ -3221,6 +3221,19 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		// null}` — not valid OpenAPI, and enough to crash a reader that
 		// dereferences it (issue #395).
 		return &Schema{Type: "object"}, schemas
+	case "nil":
+		// A handler that answers with a literal nil — `ctx.Status(500).JSON(nil)`
+		// — sends exactly `null`, and the call site says so. Without this case
+		// `nil` falls through to the unmapped-primitive path and comes back as
+		// the empty schema, which claims the response may be an object, an
+		// array, a string or anything else (issue #404).
+		//
+		// `type: "null"` is JSON Schema 2020-12, which is what OpenAPI 3.1 is,
+		// and 3.1 is the default target. Under a 3.0 target the equivalent
+		// spelling is `nullable: true` — the type mapper cannot tell the two
+		// apart yet, and #368 needs the same fact for pointer fields, so
+		// whichever lands first should thread the target version down here.
+		return &Schema{Type: "null"}, schemas
 	default:
 		// For custom types, check if it's a struct in metadata
 		if meta != nil {

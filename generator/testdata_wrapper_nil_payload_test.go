@@ -30,23 +30,38 @@ import (
 // is the envelope itself. A real payload still composes an allOf naming the
 // concrete type.
 //
-// The empty-schema fallback for unmappable types (#395) briefly broke the first
-// half: `nil` stopped resolving to a nil schema, so the override fired with a
-// schema that constrains nothing and wrapped the base $ref in an allOf whose
-// second member said nothing. It cost 27 responses on a 163-route service
-// before it was caught by a snapshot comparison.
+// Both halves compose, and what each one composes is the point. A real payload
+// names its type; a nil payload pins `data` to null, which is what the endpoint
+// actually sends.
+//
+// The empty-schema fallback for unmappable types (#395) briefly made the nil
+// case compose NOTHING useful — `data: {}`, an allOf member that constrains
+// nothing — which cost 27 responses on a 163-route service their plain $ref for
+// no gain. #404 replaced that with `type: "null"`, so the composition is worth
+// making again. `isEmptySchema` still guards the case it was written for: an
+// override that genuinely resolves to nothing is still skipped.
 func TestTestdata_WrapperNilPayload(t *testing.T) {
 	out := loadTestdataWithFixtureConfig(t, "wrapper_nil_payload", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
 	noNullSchemas(t, out)
 
-	// No payload: the envelope, plainly. An allOf here is the defect.
+	// No payload: the envelope with data pinned to null, because that is what
+	// the endpoint sends. This composed to noise — `data: {}` — for as long as a
+	// literal nil had no schema of its own; #404 gave it `type: "null"`, which
+	// says something true and narrows the envelope's `Data any`.
 	logout := responseSchemaOf(t, out, "/logout", "GET", "200")
-	if len(logout.AllOf) != 0 {
-		t.Errorf("GET /logout: composed an allOf for a nil payload: %+v", logout.AllOf)
+	if len(logout.AllOf) != 2 {
+		t.Fatalf("GET /logout: want the envelope composed with its null data, got %+v", logout)
 	}
-	if !strings.HasSuffix(logout.Ref, "_Envelope") {
-		t.Errorf("GET /logout: schema = %+v, want a $ref to Envelope", logout)
+	if !strings.HasSuffix(logout.AllOf[0].Ref, "_Envelope") {
+		t.Errorf("GET /logout: first allOf member = %+v, want the Envelope $ref", logout.AllOf[0])
+	}
+	nulled, ok := logout.AllOf[1].Properties["data"]
+	if !ok {
+		t.Fatalf("GET /logout: second allOf member has no data property: %+v", logout.AllOf[1])
+	}
+	if nulled.Type != "null" {
+		t.Errorf("GET /logout: data = %+v, want type null — the endpoint sends `\"data\": null`", nulled)
 	}
 
 	// A real payload: still specialised, naming the concrete type.
