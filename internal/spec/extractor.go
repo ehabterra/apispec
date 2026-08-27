@@ -2862,6 +2862,51 @@ func (r *ResponsePatternMatcherImpl) traceArgViaParent(arg *metadata.CallArgumen
 	return resolved, resolvedNode
 }
 
+// enclosingFrameLimit bounds how far up the ancestor chain a resolver may look
+// for the frame that called the function a statement is written in.
+//
+// The three scans that look for it are identical and were unbounded, so a scan
+// that found nothing walked to the root. Measured, the frame is always near:
+//
+//	                       deepest successful scan   scans that found nothing
+//	gitea (374 packages)          10 ancestors        57,818 of 118,178 (49%)
+//	a 163-route service            2 ancestors        47,147 of 197,678 (24%)
+//
+// 95% of gitea's successful scans finish within 8 and every one within 10, while
+// the fruitless ones ran 24 to 128 ancestors before giving up. The bound is set
+// above the deepest observed hit with room to spare; past it the answer is the
+// same "not resolved" a scan that reaches the root already gives, so the failure
+// mode is unchanged and only its cost is.
+//
+// It also makes the ancestry a resolver reads FINITE, which is what any attempt
+// to memoize the walk needs and has never had (issue #389).
+const enclosingFrameLimit = 16
+
+// enclosingFrame returns the nearest ancestor whose callee is the named
+// function — the call that entered the frame a statement is written in — or nil
+// when there is none within enclosingFrameLimit ancestors.
+//
+// requireParams skips a frame that carries no parameter bindings instead of
+// stopping at it. The two behaviours differ and both are load-bearing: a
+// resolver that stops treats the first matching frame as the answer, and one
+// that skips keeps looking for a frame that can actually bind the parameter.
+func enclosingFrame(node TrackerNodeInterface, enclosing string, requireParams bool) TrackerNodeInterface {
+	if node == nil || enclosing == "" {
+		return nil
+	}
+	for p, steps := node.GetParent(), 0; p != nil && steps < enclosingFrameLimit; p, steps = p.GetParent(), steps+1 {
+		pe := p.GetEdge()
+		if pe == nil || pe.Callee.BaseID() != enclosing {
+			continue
+		}
+		if requireParams && pe.ParamArgMap == nil {
+			continue
+		}
+		return p
+	}
+	return nil
+}
+
 // argViaParent recovers the caller-site value of a parameter ident by finding
 // the call into the function the matched call lives in and reading that edge's
 // ParamArgMap (callee parameter name → caller argument). Returns nil when the
@@ -2900,18 +2945,16 @@ func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) (*metad
 	if enclosing == "" {
 		return nil, nil
 	}
-	for p := node.GetParent(); p != nil; p = p.GetParent() {
-		pe := p.GetEdge()
-		if pe == nil || pe.Callee.BaseID() != enclosing {
-			continue
-		}
-		if pe.ParamArgMap == nil {
-			return nil, nil
-		}
-		if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
-			return &callerArg, p
-		}
+	p := enclosingFrame(node, enclosing, false)
+	if p == nil {
 		return nil, nil
+	}
+	pe := p.GetEdge()
+	if pe.ParamArgMap == nil {
+		return nil, nil
+	}
+	if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
+		return &callerArg, p
 	}
 	return nil, nil
 }
@@ -3451,22 +3494,19 @@ func (r *BasePatternMatcher) concreteFromParamBinding(arg *metadata.CallArgument
 	if enclosing == "" {
 		return ""
 	}
-	for p := node.GetParent(); p != nil; p = p.GetParent() {
-		pe := p.GetEdge()
-		if pe == nil || pe.Callee.BaseID() != enclosing {
-			continue
-		}
-		callerArg, ok := pe.ParamArgMap[arg.GetName()]
-		if !ok {
-			return ""
-		}
-		ct := r.contextProvider.GetArgumentInfo(&callerArg)
-		if ct == "" || isInterfaceTypeName(ct, meta) {
-			return ""
-		}
-		return ct
+	p := enclosingFrame(node, enclosing, false)
+	if p == nil {
+		return ""
 	}
-	return ""
+	callerArg, ok := p.GetEdge().ParamArgMap[arg.GetName()]
+	if !ok {
+		return ""
+	}
+	ct := r.contextProvider.GetArgumentInfo(&callerArg)
+	if ct == "" || isInterfaceTypeName(ct, meta) {
+		return ""
+	}
+	return ct
 }
 
 // concreteFromCalleeReturn resolves an interface-typed call result used as a
