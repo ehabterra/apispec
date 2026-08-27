@@ -27,6 +27,8 @@ type Item struct {
 	Slug Code `json:"slug"`
 	// Barcode is the second, and must keep its OWN comment.
 	Barcode Code `json:"barcode"`
+	// State is an enum-style alias, which DOES become its own component.
+	State Status `json:"state"`
 	// Dimensions is an anonymous nested struct, whose schema is ALSO registered
 	// as a component — the one path where the field schema is genuinely shared.
 	Dimensions struct {
@@ -37,6 +39,20 @@ type Item struct {
 
 // Code is a named string, which resolves inline rather than to a component.
 type Code string
+
+// Status is the lifecycle state of an item.
+type Status string
+
+// StatusActive means the item is for sale.
+const (
+	StatusActive  Status = "active"
+	StatusRetired Status = "retired"
+)
+
+// Describable is documented too, though an interface schema carries no fields.
+type Describable interface {
+	Describe() string
+}
 
 // Owner is the party responsible for an item.
 type Owner struct {

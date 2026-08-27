@@ -1480,6 +1480,17 @@ func generateSchemaFromType(usedTypes map[string]*Schema, key string, typ *metad
 		}
 	}
 
+	// The type's doc comment, for every kind (issue #366). The struct branch
+	// already applied it, because a struct has to set it BEFORE its field loop
+	// so the `_` marker's cross-field validation note appends rather than
+	// replaces; withDescription leaves an existing description alone, so this is
+	// a no-op there and the sole source for interfaces, aliases and named
+	// container types.
+	//
+	// Before markUsedType, so the schema registered as the component is the one
+	// carrying the description.
+	schema = withDescription(schema, docComment(cfg, meta, typ.Comments))
+
 	markUsedType(usedTypes, key, schema)
 
 	maps.Copy(schemas, newSchemas)
@@ -1827,6 +1838,9 @@ func docComment(cfg *APISpecConfig, meta *metadata.Metadata, idx int) string {
 // An existing description wins: it came from something more specific than a doc
 // comment — the `_` marker's cross-field validation note, or a type mapping.
 func withDescription(s *Schema, desc string) *Schema {
+	if desc == "" {
+		return s
+	}
 	if s == nil {
 		return &Schema{Description: desc}
 	}
