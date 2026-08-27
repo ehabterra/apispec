@@ -275,7 +275,7 @@ func analyzeAdjacency(meta *metadata.Metadata, root string, callersOf func(strin
 // route isn't found in the tree (or has no body there) it falls back to the
 // call graph augmented with structural interface resolution.
 func analyzeFromTrackerTree(meta *metadata.Metadata, cfg *spec.APISpecConfig, method, path, fallbackRoot string) (Metrics, TraceGraph, bool) {
-	if tree := cachedTrackerTreeLocked(meta); tree != nil && cfg != nil {
+	if tree := cachedTrackerTreeLocked(meta, cfg); tree != nil && cfg != nil {
 		for _, r := range spec.NewExtractor(tree, cfg).ExtractRoutes() {
 			if r == nil || r.Node == nil || !strings.EqualFold(r.Method, method) || r.OpenAPIPath() != path {
 				continue
@@ -648,8 +648,9 @@ var analysisMu sync.Mutex
 // cachedTrackerTree builds and memoizes the tracker tree for a metadata,
 // rebuilding only when the metadata pointer changes (after a regenerate).
 var (
-	treeKey *metadata.Metadata
-	treeVal spec.TrackerTreeInterface
+	treeKey    *metadata.Metadata
+	treeCfgKey *spec.APISpecConfig
+	treeVal    spec.TrackerTreeInterface
 )
 
 // cachedTrackerTreeLocked returns the memoized tree. The caller MUST hold
@@ -657,15 +658,34 @@ var (
 // which is the part a self-locking accessor could not express: handing back a
 // mutable shared tree from under a lock is what made this racy in the first
 // place.
-func cachedTrackerTreeLocked(meta *metadata.Metadata) spec.TrackerTreeInterface {
+//
+// The tree is built the way the ENGINE builds the one the spec came from —
+// lazy, with the same entrypoint and handler-interface options. Insight used to
+// build an eager tree here instead, so its metrics described a different tree
+// than the spec they were reported against; on a real service the eager tree
+// finds 194 of 280 routes, which is a difference big enough to make the panel
+// misleading rather than merely approximate (issue #410).
+//
+// cfg is part of the memo key because it selects the entrypoint patterns and
+// the route matcher: a tree built for one framework config does not answer for
+// another.
+func cachedTrackerTreeLocked(meta *metadata.Metadata, cfg *spec.APISpecConfig) spec.TrackerTreeInterface {
 	if meta == nil {
 		return nil
 	}
-	if treeKey == meta && treeVal != nil {
+	if treeKey == meta && treeCfgKey == cfg && treeVal != nil {
 		return treeVal
 	}
-	treeVal = spec.NewTrackerTree(meta, trackerLimits(), nil)
-	treeKey = meta
+	opts := []spec.LazyTreeOption{}
+	if cfg != nil {
+		opts = append(opts,
+			spec.WithHandlerInterfaceMethods(cfg.Framework.HandlerInterfaceMethods),
+			spec.WithEntrypoints(cfg.Framework.EntrypointPatterns,
+				spec.RouteRegistrationMatcher(cfg, meta), nil),
+			spec.WithTerminalRouteMatcher(spec.TerminalRouteMatcher(cfg, meta)))
+	}
+	treeVal = spec.NewLazyTree(meta, trackerLimits(), opts...)
+	treeKey, treeCfgKey = meta, cfg
 	return treeVal
 }
 
