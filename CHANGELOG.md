@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comment never resurrects a field the encoder skips. `excludeTypeComments: true`
   turns it off for projects that treat internal comments as private. (#366)
 
+### Changed
+
+- CI builds and tests on the latest 1.26.x rather than a pinned patch release.
+
 ### Deprecated
 
 - **`--legacy-tracker` (the eager tracker tree) is deprecated and will be
@@ -29,6 +33,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the CLI, README and UI describe it accurately instead of offering it as a
   comparison/escape hatch. If the default engine is missing something, report it
   rather than switching — switching will usually document *fewer* routes. (#410)
+
+### Fixed
+
+- **A route registered with per-route middleware documented the middleware, not
+  the handler.** gin and fiber take their handler chain variadically
+  (`r.GET(path, mw, handler)`), so the endpoint handler is the *last* argument;
+  a fixed argument position held the first middleware and the operation's
+  identity was built from it — the middleware's name as the `operationId` and
+  its doc comment as the summary. Not shared with echo, which puts the handler
+  first and the middleware after, so this is per-framework rather than a global
+  "last argument wins". Repaired four operations on a real fiber service.
+  (#386)
+- **A middleware wrapping the handler at the registration site replaced it.**
+  The wrapped-call form (`mux.Handle(p, mw(http.HandlerFunc(h)))`) is now peeled
+  to the handler underneath. (#364)
+- **A router group created inline in a call argument lost its prefix.**
+  `RegisterRouter(v1.Group("/mod"))` has no assignment to key on, so the
+  callee's registrations hung outside the group and were documented at the root
+  — where two modules registering the same relative path collapse into one, so
+  an endpoint disappeared rather than merely moving. (#407)
+- **A catch-all route kept the router's wildcard in the path.** `/scheduler*`
+  was emitted verbatim, which no OpenAPI consumer can match; it now becomes a
+  path parameter. (#403)
+- **Fiber route constraints leaked into the path template.** `:id<int>` left the
+  `<int>` tail in the emitted path, producing a key no request can match. The
+  constraint is stripped; mapping it onto the parameter's type is still open.
+  (#357)
+- **A project that does not build now says so.** A package that failed to
+  *parse* was dropped silently and the run reported success over a thin spec —
+  the report existed but only reached the verbose logger. The reason now
+  distinguishes "does not parse" (a syntax error in your own source) from "does
+  not type-check" (often a missing generated file), and names the file and line.
+  (#237)
+- **An unmatched router no longer reports success over an empty document.**
+  (#379)
+- **A literal `nil` response body is documented as `type: "null"`** rather than
+  as an unconstrained `{}`. (#404)
+- **A response with no body carries no `content` block**, instead of
+  `content: {application/json: {}}`. (#393)
+- **A body written without `WriteHeader` is documented as `200`**, not
+  `default`. (#369)
+- **A status write is carried by every body it dominates**, so a second body
+  under one status no longer falls through to `default`. (#391, #389)
+- **A field with no schema mapping is no longer emitted as a null property**,
+  which crashed ReDoc. (#395)
+- **Spec output is deterministic on projects large enough to truncate.**
+  Memoized first-match scans over the file and type maps could resolve
+  differently between runs. (#340)
+- **Insight metrics and the tracker-tree diagram describe the tree the spec was
+  built from.** Both constructed an eager tree unconditionally while generation
+  has used the lazy one by default for several releases, so on a real service
+  the diagram was drawn from a tree missing a third of the routes. (#410)
+
+### Performance
+
+- **`LazyNode` is 72 bytes instead of 80**, one Go size class smaller. Node keys
+  are interned to `int32` handles, which also turns the cycle check's ancestor
+  walk and the per-scope instance counters into integer comparisons. Measured on
+  a ~900-path project: mapping **-7.5%**, peak RSS **-4.4%**, output
+  byte-identical.
+- The extraction walk grows a node's child slice instead of sizing it from the
+  plan, bounds the scan for a statement's enclosing frame, and finds a
+  constructor's call edge through the caller index.
 
 ## [0.5.7] - 2026-08-15
 
