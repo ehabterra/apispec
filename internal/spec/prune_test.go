@@ -25,24 +25,38 @@ import (
 // graph shapes they are about rather than as planKey literals.
 func reachCase(t *testing.T, graph map[string][]string, matching []string, roots ...string) map[string]bool {
 	t.Helper()
-	id := func(name string) planKey { return planKey{key: name} }
+	// planKey.key is an interned handle, so the readable graph names are mapped
+	// to handles here and back again for the result.
+	handles := map[string]int32{}
+	names := []string{}
+	id := func(name string) planKey {
+		h, ok := handles[name]
+		if !ok {
+			h = int32(len(names))
+			names = append(names, name)
+			handles[name] = h
+		}
+		return planKey{key: h}
+	}
+	nameOf := func(k planKey) string { return names[k.key] }
+
 	rootIDs := make([]planKey, 0, len(roots))
 	for _, r := range roots {
 		rootIDs = append(rootIDs, id(r))
 	}
 	childrenOf := func(k planKey) []planKey {
-		out := make([]planKey, 0, len(graph[k.key]))
-		for _, c := range graph[k.key] {
+		out := make([]planKey, 0, len(graph[nameOf(k)]))
+		for _, c := range graph[nameOf(k)] {
 			out = append(out, id(c))
 		}
 		return out
 	}
-	matches := func(k planKey) bool { return slices.Contains(matching, k.key) }
+	matches := func(k planKey) bool { return slices.Contains(matching, nameOf(k)) }
 
 	got := computeReach(rootIDs, childrenOf, matches)
 	byName := map[string]bool{}
 	for k, v := range got {
-		byName[k.key] = v
+		byName[nameOf(k)] = v
 	}
 	return byName
 }

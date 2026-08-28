@@ -16,7 +16,6 @@ package spec
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -145,11 +144,11 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 	nodes := make([]*LazyNode, 0, nodeSlabChunk+16)
 	for i := 0; i < nodeSlabChunk+16; i++ {
 		node := tree.newNode()
-		// A DISTINCT value per node, not one shared string: identical values
+		// A DISTINCT value per node, never the same one twice: identical values
 		// would read back correctly even from memory a later carve had reused,
 		// so the check would pass on an allocator that hands out overlapping
-		// slots.
-		node.key = strconv.Itoa(i)
+		// slots. Offset by one so no node carries the zero a fresh slot has.
+		node.key = int32(i) + 1 // +1 so none is the zero value a fresh slot carries
 		nodes = append(nodes, node)
 	}
 
@@ -159,9 +158,9 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 			t.Fatalf("node %d reuses an address already handed out", i)
 		}
 		seen[node] = true
-		if node.key != strconv.Itoa(i) {
-			t.Fatalf("node %d was written over after being handed out: key=%q, want %q",
-				i, node.key, strconv.Itoa(i))
+		if node.key != int32(i)+1 {
+			t.Fatalf("node %d was written over after being handed out: key=%d, want %d",
+				i, node.key, int32(i)+1)
 		}
 	}
 
@@ -179,7 +178,7 @@ func TestNewNodeSlabHandsOutStablePointers(t *testing.T) {
 
 	// A freshly carved node must be zero, not whatever the previous tenant left.
 	fresh := tree.newNode()
-	if fresh.key != "" || fresh.parent != nil || fresh.edge != nil || fresh.expanded {
+	if fresh.key != 0 || fresh.parent != nil || fresh.edge != nil || fresh.expanded {
 		t.Errorf("a new node is not zeroed: %+v", *fresh)
 	}
 }

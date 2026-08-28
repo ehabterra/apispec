@@ -42,9 +42,9 @@ import "github.com/ehabterra/apispec/internal/metadata"
 // would be recorded against an identity the expansion never asks about.
 func specIdentity(spec childSpec) planKey {
 	if spec.arg != nil {
-		return planKey{key: spec.key, edge: spec.argEdge, arg: spec.arg, isArg: true}
+		return planKey{key: spec.keyID, edge: spec.argEdge, arg: spec.arg, isArg: true}
 	}
-	return planKey{key: spec.key, edge: spec.edge, isArg: false}
+	return planKey{key: spec.keyID, edge: spec.edge, isArg: false}
 }
 
 // specEdge is the edge the node built from this spec would carry — the argument's
@@ -61,7 +61,7 @@ func specEdge(spec childSpec) *metadata.CallGraphEdge {
 // no parent, which is safe by buildPlan's own contract: "Nothing here may depend
 // on the node's parent — per-path concerns live in GetChildren."
 func (t *LazyTree) specNode(spec childSpec) *LazyNode {
-	n := &LazyNode{tree: t, key: spec.key}
+	n := &LazyNode{tree: t, key: spec.keyID}
 	if spec.arg != nil {
 		n.edge, n.arg, n.argType, n.isArgument = spec.argEdge, spec.arg, spec.argType, true
 		return n
@@ -116,7 +116,7 @@ func (t *LazyTree) buildReachIndex() {
 		if !ok {
 			continue
 		}
-		spec := childSpec{key: root.key, edge: root.edge, arg: root.arg, argType: root.argType}
+		spec := childSpec{key: t.keyString(root.key), keyID: root.key, edge: root.edge, arg: root.arg, argType: root.argType}
 		id := specIdentity(spec)
 		specOf[id] = spec
 		roots = append(roots, id)

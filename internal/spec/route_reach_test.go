@@ -221,15 +221,15 @@ func TestRouteBudgetIsPerRegistrationNotGlobal(t *testing.T) {
 	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
 
 	// A node that is not a registration stays in the wiring scope.
-	wiring := &LazyNode{tree: tree, key: "example.com/app.main"}
+	wiring := &LazyNode{tree: tree, key: tree.internKey("example.com/app.main")}
 	if got := tree.scopeOf(wiring); got != 0 {
 		t.Errorf("a non-registration node opened scope %d, want the shared wiring scope 0", got)
 	}
 
 	// Each registration opens its OWN scope, so two routes never share a budget.
 	regEdge := edgeTo(t, m, "Get")
-	first := &LazyNode{tree: tree, key: "route-1", edge: regEdge}
-	second := &LazyNode{tree: tree, key: "route-2", edge: regEdge}
+	first := &LazyNode{tree: tree, key: tree.internKey("route-1"), edge: regEdge}
+	second := &LazyNode{tree: tree, key: tree.internKey("route-2"), edge: regEdge}
 	a, b := tree.scopeOf(first), tree.scopeOf(second)
 	if a == 0 || b == 0 {
 		t.Fatalf("a registration did not open its own scope: got %d and %d", a, b)
@@ -259,7 +259,7 @@ func TestRouteTruncationNamesTheRoute(t *testing.T) {
 	m := closureMeta(t)
 	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
 	regEdge := edgeTo(t, m, "Get")
-	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: regEdge})
+	scope := tree.scopeOf(&LazyNode{tree: tree, key: tree.internKey("GET /things"), edge: regEdge})
 
 	tree.noteRouteTruncation(scope)
 
@@ -295,12 +295,12 @@ func TestGroupCallDoesNotOpenARouteScope(t *testing.T) {
 	tree := &LazyTree{meta: m, routeMatch: groupOrRoute, terminalRouteMatch: registersRoute(m)}
 
 	groupEdge := edgeTo(t, m, "Route") // a group
-	if got := tree.scopeOf(&LazyNode{tree: tree, key: "group", edge: groupEdge}); got != 0 {
+	if got := tree.scopeOf(&LazyNode{tree: tree, key: tree.internKey("group"), edge: groupEdge}); got != 0 {
 		t.Errorf("a group call opened budget scope %d; every route inside it would then share one allowance (#264)", got)
 	}
 
 	routeEdge := edgeTo(t, m, "Get") // one route
-	if got := tree.scopeOf(&LazyNode{tree: tree, key: "route", edge: routeEdge}); got == 0 {
+	if got := tree.scopeOf(&LazyNode{tree: tree, key: tree.internKey("route"), edge: routeEdge}); got == 0 {
 		t.Error("a terminal route registration did not open its own budget scope")
 	}
 }
@@ -311,7 +311,7 @@ func TestGroupCallDoesNotOpenARouteScope(t *testing.T) {
 func TestRouteTruncationCountsRoutesNotAttempts(t *testing.T) {
 	m := closureMeta(t)
 	tree := &LazyTree{meta: m, routeMatch: registersRoute(m), terminalRouteMatch: registersRoute(m)}
-	scope := tree.scopeOf(&LazyNode{tree: tree, key: "GET /things", edge: edgeTo(t, m, "Get")})
+	scope := tree.scopeOf(&LazyNode{tree: tree, key: tree.internKey("GET /things"), edge: edgeTo(t, m, "Get")})
 
 	for i := 0; i < 20; i++ {
 		tree.noteRouteTruncation(scope)

@@ -144,7 +144,25 @@ type LazyTree struct {
 	// exponential and would drain the node budget before traversal reaches
 	// later router wiring. Nested by scope to avoid a key concatenation per
 	// child instantiation (visible in profiles).
-	instanceCount map[string]map[string]int
+	instanceCount map[int32]map[int32]int
+
+	// keyStrings / keyIDs intern node keys to int32 handles.
+	//
+	// A node key is a composed identity ("pkg.Type.Method@file:line:col"), and a
+	// real service materialises millions of nodes: carried as a string header
+	// each one costs 16 bytes of the node's 80, which is the difference between
+	// two of Go's size classes. Interning is the right tool HERE — unlike the
+	// extraction chain, which was interned in 9dc5046 and then beaten in 031bd38
+	// by not materialising the identity at all — because this identity is not
+	// derivable on demand: it is the lookup key into chainChildren /
+	// receiverChildren and the comparand of onPath's ancestor walk, so deriving
+	// it would rebuild a composed string per comparison, which is the quadratic
+	// allocation shape 9dc5046 existed to remove.
+	//
+	// The handle also makes onPath and the per-scope counters compare and hash
+	// an int32 instead of a string.
+	keyStrings []string
+	keyIDs     map[string]int32
 	// funcFieldImpls resolves a call through a func-typed struct field
 	// (c.Action()) to the functions that field holds — the urfave/cli wiring
 	// style that left gitea with zero routes (issue #143).
@@ -524,7 +542,7 @@ func (t *LazyTree) scopeOf(n *LazyNode) int32 {
 		t.routeScopeKeys = []string{""}
 	}
 	t.routeScopeNodes = append(t.routeScopeNodes, 0)
-	t.routeScopeKeys = append(t.routeScopeKeys, n.key)
+	t.routeScopeKeys = append(t.routeScopeKeys, t.keyString(n.key))
 	return int32(len(t.routeScopeNodes) - 1)
 }
 
@@ -897,7 +915,7 @@ func (t *LazyTree) addEntrypointRoots(candidates []string) {
 			continue
 		}
 		existing[key] = true
-		t.roots = append(t.roots, &LazyNode{tree: t, key: key})
+		t.roots = append(t.roots, &LazyNode{tree: t, key: t.internKey(key)})
 	}
 }
 
@@ -917,7 +935,7 @@ func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits, opts ..
 			continue
 		}
 		seen[callerID] = true
-		t.roots = append(t.roots, &LazyNode{tree: t, key: strings.TrimPrefix(callerID, "*")})
+		t.roots = append(t.roots, &LazyNode{tree: t, key: t.internKey(strings.TrimPrefix(callerID, "*"))})
 	}
 	return t
 }
@@ -1003,7 +1021,7 @@ func (t *LazyTree) GetMetadata() *metadata.Metadata { return t.meta }
 // `go vet -vettool=$(which fieldalignment)`.
 type LazyNode struct {
 	tree   *LazyTree
-	key    string
+	key    int32
 	parent *LazyNode
 
 	edge *metadata.CallGraphEdge
@@ -1032,7 +1050,7 @@ type LazyNode struct {
 }
 
 // GetKey implements TrackerNodeInterface.
-func (n *LazyNode) GetKey() string { return n.key }
+func (n *LazyNode) GetKey() string { return n.tree.keyString(n.key) }
 
 // GetParent implements TrackerNodeInterface.
 func (n *LazyNode) GetParent() TrackerNodeInterface {
@@ -1088,16 +1106,18 @@ func (n *LazyNode) GetTypeParamMap() map[string]string {
 // node belongs to), or "" at wiring level. Each scope gets its own copy
 // allowance, so shared helpers trace per route while intra-handler diamonds
 // stay bounded.
-func (n *LazyNode) instanceScope() string {
+func (n *LazyNode) instanceScope() int32 {
 	for cur := n; cur != nil; cur = cur.parent {
 		if cur.isArgument {
 			return cur.key
 		}
 	}
-	return ""
+	// -1 is the wiring-level scope: no argument ancestor. Distinct from every
+	// handle, since those start at 0.
+	return -1
 }
 
-func (n *LazyNode) onPath(key string) bool {
+func (n *LazyNode) onPath(key int32) bool {
 	for cur := n; cur != nil; cur = cur.parent {
 		if cur.key == key {
 			return true
@@ -1123,6 +1143,10 @@ type childSpec struct {
 	edge *metadata.CallGraphEdge
 
 	key string
+	// keyID is key's handle, interned once when the plan is built and
+	// memoized with it, so materializing a node copies an int32 rather than
+	// re-interning per copy.
+	keyID int32
 
 	argType ArgumentType
 	// chainParented children are listed under this node but parented at the
@@ -1136,12 +1160,12 @@ type childSpec struct {
 // expansion plan; relevant generic bindings are embedded in the instance key
 // itself ("fn[T=User]@pos"), so binding-distinct instances get distinct plans.
 //
-// FIELD ORDER: the two pointers lead, so the pointer-scan prefix ends before
-// the string's length word rather than spanning the whole struct.
+// FIELD ORDER: the two pointers lead, so the GC's pointer-scan prefix ends
+// before the scalar tail rather than spanning the whole struct.
 type planKey struct {
 	edge  *metadata.CallGraphEdge
 	arg   *metadata.CallArgument
-	key   string
+	key   int32
 	isArg bool
 }
 
@@ -1163,7 +1187,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			n.tree.budgetWarned = true
 			fmt.Fprintf(os.Stderr,
 				"Warning: MaxNodesPerTree limit (%d) reached, truncating the walk that finds routes (first at %s)\n",
-				n.tree.limits.MaxNodesPerTree, n.key)
+				n.tree.limits.MaxNodesPerTree, n.tree.keyString(n.key))
 		}
 		return nil // budget spent: further expansion yields leaves (cheap unwind)
 	}
@@ -1179,11 +1203,11 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 
 	scope := n.instanceScope()
 	if n.tree.instanceCount == nil {
-		n.tree.instanceCount = map[string]map[string]int{}
+		n.tree.instanceCount = map[int32]map[int32]int{}
 	}
 	scopeCounts := n.tree.instanceCount[scope]
 	if scopeCounts == nil {
-		scopeCounts = map[string]int{}
+		scopeCounts = map[int32]int{}
 		n.tree.instanceCount[scope] = scopeCounts
 	}
 	plan := n.tree.planFor(n)
@@ -1202,7 +1226,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
 			continue
 		}
-		if n.onPath(spec.key) {
+		if n.onPath(spec.keyID) {
 			continue // cycle: this call is already on the current path
 		}
 		if !n.tree.canReachMatch(spec) {
@@ -1212,17 +1236,17 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// of the nodes on a real service.
 			continue
 		}
-		if scopeCounts[spec.key] >= n.tree.instanceBudget() {
+		if scopeCounts[spec.keyID] >= n.tree.instanceBudget() {
 			// Diamond inside this scope: stop materializing further copies.
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
 			// bound is a skip — the role the eager per-ID recursion cap plays.
-			n.tree.noteInstanceTruncation(scope, spec.key)
+			n.tree.noteInstanceTruncation(n.tree.keyString(scope), spec.key)
 			continue
 		}
 		child := n.tree.newNode()
 		child.tree = n.tree
-		child.key = spec.key
+		child.key = spec.keyID
 		child.parent = n
 		child.edge = spec.edge
 		child.routeScope = childScope
@@ -1237,7 +1261,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			}
 			childCount++
 		}
-		scopeCounts[spec.key]++
+		scopeCounts[spec.keyID]++
 		// Two different quantities, deliberately kept apart (issue #247).
 		//
 		// nodesMaterialized is the WORK: one node per path a call is reached along,
@@ -1279,6 +1303,30 @@ func (t *LazyTree) newNode() *LazyNode {
 	node := &t.nodeSlab[0]
 	t.nodeSlab = t.nodeSlab[1:]
 	return node
+}
+
+// internKey returns the handle for a node key, assigning one on first sight.
+func (t *LazyTree) internKey(s string) int32 {
+	if id, ok := t.keyIDs[s]; ok {
+		return id
+	}
+	if t.keyIDs == nil {
+		t.keyIDs = map[string]int32{}
+	}
+	id := int32(len(t.keyStrings))
+	t.keyStrings = append(t.keyStrings, s)
+	t.keyIDs[s] = id
+	return id
+}
+
+// keyString resolves a handle back to the key it stands for. The zero handle is
+// a real key (the first interned), so an unset key is not representable here —
+// every node is given one at construction.
+func (t *LazyTree) keyString(id int32) string {
+	if id < 0 || int(id) >= len(t.keyStrings) {
+		return ""
+	}
+	return t.keyStrings[id]
 }
 
 // planFor returns (building on first use) the memoized expansion plan for
@@ -1333,8 +1381,10 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 			if argType == ArgTypeFunctionCall && arg.Edge != nil {
 				argEdge = arg.Edge
 			}
+			argKey := strings.TrimPrefix(argID, "*")
 			plan = append(plan, childSpec{
-				key:     strings.TrimPrefix(argID, "*"),
+				key:     argKey,
+				keyID:   t.internKey(argKey),
 				arg:     arg,
 				argEdge: argEdge,
 				argType: argType,
@@ -1360,12 +1410,12 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 		// that resolve through the ancestor chain, not concrete ones.
 		if genericFilter {
 			calleeTypes := t.genericTypesOf(calleeID)
-			if len(calleeTypes) > 0 && !metadata.IsSubset(t.genericTypesOf(n.key), calleeTypes) {
+			if len(calleeTypes) > 0 && !metadata.IsSubset(t.genericTypesOf(t.keyString(n.key)), calleeTypes) {
 				return
 			}
 		}
 		added[calleeID] = true
-		plan = append(plan, childSpec{key: calleeID, edge: edge, chainParented: chainParented})
+		plan = append(plan, childSpec{key: calleeID, keyID: t.internKey(calleeID), edge: edge, chainParented: chainParented})
 	}
 	appendCallee := func(edge *metadata.CallGraphEdge, chainParented bool) {
 		appendCalleeOpts(edge, chainParented, true)
@@ -1384,7 +1434,7 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 			}
 		}
 	}
-	expandKey(metadata.StripToBase(n.key))
+	expandKey(metadata.StripToBase(t.keyString(n.key)))
 	// Interface-method callee (module.RegisterRoutes(...) where module is an
 	// interface): fan out into the concrete implementers' method bodies —
 	// the eager build's ImplementedBy attachment. Without this, dispatch on
@@ -1442,10 +1492,10 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	// Chain children are listed under this node (so matchers see
 	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group) but
 	// parented at the call-site scope — processChainRelationships' rule.
-	for _, edge := range t.chainChildren[n.key] {
+	for _, edge := range t.chainChildren[t.keyString(n.key)] {
 		appendCallee(edge, true)
 	}
-	for _, edge := range t.receiverChildren[n.key] {
+	for _, edge := range t.receiverChildren[t.keyString(n.key)] {
 		appendCallee(edge, false)
 	}
 
