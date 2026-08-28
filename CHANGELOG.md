@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+
+- **`--legacy-tracker` (the eager tracker tree) is deprecated and will be
+  removed in a future release.** It reads like a safe fallback and is not one:
+  on a real ~280-route service it documents **194 routes** — 31% missing, with
+  no warning — and runs 1.6x slower; across the fixture suite it resolves four
+  wiring shapes incorrectly. Selecting it now prints a deprecation warning, and
+  the CLI, README and UI describe it accurately instead of offering it as a
+  comparison/escape hatch. If the default engine is missing something, report it
+  rather than switching — switching will usually document *fewer* routes. (#410)
+
 ## [0.5.7] - 2026-08-15
 
 Speed and completeness. The walk that builds the spec no longer visits code that
