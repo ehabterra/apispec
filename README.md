@@ -363,6 +363,7 @@ APISpec aims for practical coverage of real-world Go services. A quick survey of
 - External package types automatically resolved to underlying primitives (with `externalTypes` for custom overrides).
 - `go-playground/validator` (`validate:`) tags mapped to OpenAPI constraints — `required`, formats (`email`, `uuid`, …), patterns, and length/value/item constraints that route by field type: `min`/`max` on a string → `minLength`/`maxLength`, on a number → `minimum`/`maximum`, on a slice → `minItems`/`maxItems`. The `dive` tag applies post-`dive` rules to slice/map **elements** (`items.*`). Struct-level (cross-field) rules on a blank marker field (`_ struct{} \`validate:"gtefield=Min"\``) surface as a schema `description` note. A decoded JSON request body is marked `required: true`.
 - Handler Go doc comments mapped to the operation `summary` (first line) and `description` (remaining lines).
+- Type and field Go doc comments mapped to schema and property `description` — a documented struct produces a documented schema, with each field's comment (doc block or trailing line comment) on its own property. Text is kept **verbatim**, including the leading identifier Go convention puts there (`Item is a catalogue item.`): the convention is not reliable enough to edit automatically, and a wrong edit is worse than a slightly redundant sentence. A `json:"-"` field stays absent — a comment never resurrects a field the encoder skips. Set `excludeTypeComments: true` to keep internal comments out of a published spec. See `testdata/schema_doc_comments/`.
 - CGO packages can be skipped to avoid build errors.
 - Dependency-injected route groups.
 - Go 1.22 `net/http.ServeMux` method-aware routing — patterns that carry the verb on the registration (`mux.HandleFunc("GET /users/{id}", getUser)`) are split into method + path, `{id}` wildcards become path parameters, and `r.PathValue("id")` is recognised as a path parameter. ServeMux-only syntax (`{path...}` trailing wildcards, the `{$}` end-of-path anchor) is normalised to OpenAPI templating. See `testdata/servemux/`.
@@ -901,6 +902,44 @@ externalTypes:
         message: { type: string }
         data:    { type: object, additionalProperties: true }
 ```
+
+### Schema descriptions from Go doc comments
+
+Doc comments on the types and struct fields your handlers exchange become the
+`description` of the matching schema and property. This is on by default; turn it
+off when internal comments should not reach a published spec:
+
+```yaml
+excludeTypeComments: true
+```
+
+```go
+// Item is a catalogue item.
+type Item struct {
+	// ID is the unique identifier of the item.
+	ID    string  `json:"id"`
+	Price float64 `json:"price"` // trailing comments are collected too
+}
+```
+
+```yaml
+components:
+  schemas:
+    myapp_Item:
+      type: object
+      description: Item is a catalogue item.
+      properties:
+        id:
+          type: string
+          description: ID is the unique identifier of the item.
+        price:
+          type: number
+          description: trailing comments are collected too
+```
+
+Applies to every type kind — structs, interfaces, aliases and named container
+types. A field's comment is attached to that field only, so two fields of the
+same type keep their own text and the shared component keeps the type's.
 
 ### Request body source disambiguation
 
