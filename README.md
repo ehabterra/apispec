@@ -186,7 +186,7 @@ apispec --output openapi.yaml --skip-cgo
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
 | `--max-recursion-depth`     | `-mrd`    | Max recursion depth (anti-loop)                        | `10`                            |
 | `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `100`                  |
-| `--legacy-tracker`          |           | Use the legacy (eager) tracker tree instead of the default lazy tracker | `false`        |
+| `--legacy-tracker`          |           | **Deprecated**, to be removed in a future release. Use the legacy (eager) tracker tree; documents fewer routes than the default and is slower | `false`        |
 | `--skip-cgo`                |           | Skip CGO packages                                      | `true`                          |
 | `--include-file`            |           | Include files matching pattern (repeatable)            | `""`                            |
 | `--include-package`         |           | Include packages matching pattern (repeatable)         | `""`                            |
@@ -975,9 +975,9 @@ func main() {
 The [tracker tree](#the-pipeline-step-by-step) — the expansion of each route down to its real handler and the calls inside it — can be built by either of two engines. They share the metadata, extraction, and mapping stages, so their **output is equivalent** (guarded by a parity test over the fixtures); they differ only in *how* the tree is built and bounded.
 
 - **Lazy (default).** Expands subtrees on demand, only along the paths a query actually touches. Cost scales with what's *reachable from routes*, not with the total size of the codebase — so it tends to win on large projects where much of the code never participates in routing, and is comparable on projects where almost everything is reachable. It degrades gracefully on dense or cyclic graphs (a cumulative budget, then leaf stubs) rather than expanding exponentially.
-- **Eager (`--legacy-tracker`).** Materializes the whole tree up front. Retained as a comparison/escape hatch; occasionally marginally faster when nearly all code is reachable anyway, but uses more memory (the full tree is held at once).
+- **Eager (`--legacy-tracker`) — deprecated, to be removed in a future release.** Materializes the whole tree up front. It is **not a safe fallback**: on a real ~280-route service it documents 194 routes (31% missing, silently) and runs 1.6x slower, and across the fixture suite it resolves four wiring shapes incorrectly. It uses less memory on small projects, which is the only thing it still wins at.
 
-Choose with `--legacy-tracker` on the CLI, or the analysis-engine selector in the browser UI. When in doubt, keep the default (lazy).
+The default is lazy and there is no reason to change it. If the default is missing something, please [open an issue](https://github.com/ehabterra/apispec/issues) rather than switching engines — switching will usually document *fewer* routes, not more.
 
 ### Limits
 
