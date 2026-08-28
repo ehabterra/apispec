@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Type and field doc comments become schema descriptions.** A documented Go
+  struct now produces a documented schema: the type's doc comment becomes the
+  schema `description`, and each field's comment (doc block or trailing line
+  comment) becomes its property's. Applies to every type kind, not just structs.
+  Text is kept **verbatim**, leading identifier included — Go's naming
+  convention is not reliable enough to edit automatically, and a wrong edit is
+  worse than a slightly redundant sentence. A `json:"-"` field stays absent; a
+  comment never resurrects a field the encoder skips. `excludeTypeComments: true`
+  turns it off for projects that treat internal comments as private. (#366)
+
 ### Deprecated
 
 - **`--legacy-tracker` (the eager tracker tree) is deprecated and will be
