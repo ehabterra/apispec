@@ -5,6 +5,8 @@ This directory contains detailed documentation for the APISpec project.
 ## Documentation Index
 
 ### Core Documentation
+- **[PIPELINE.md](PIPELINE.md)** - The analysis pipeline, stage by stage
+- **[PERFORMANCE.md](PERFORMANCE.md)** - Analysis engines, limits, and profiling
 - **[TRACKER_TREE_USAGE.md](TRACKER_TREE_USAGE.md)** - Comprehensive guide to using TrackerTree for call graph analysis
 - **[CYTOGRAPHE_README.md](CYTOGRAPHE_README.md)** - Documentation for the call graph visualization feature
 
