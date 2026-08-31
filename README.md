@@ -140,7 +140,7 @@ would each misparse the other's calls.
 | Raw `*http.Request` reads (headers, query, `PathValue`) inside framework handlers | ✅ documented as parameters |
 | A framework router **mounted under** a `net/http` mux (`root.Handle("/api/", http.StripPrefix("/api", chiRouter))`) | ✅ the mount prefix composes across the boundary (`/api/users`) |
 | Mounts wired through a *secondary* framework's own `Mount`-style calls | ✅ those patterns are receiver-scoped in their home configs, so they survive the merge |
-| Which framework is *primary* changing the output (it is decided by file-walk order) | ✅ it doesn't — every framework keeps its own patterns and type mappings whether or not it leads |
+| Which framework is *primary* changing the output (it is decided by file-walk order) | ✅ it doesn't — every framework keeps its own patterns and type mappings whichever one leads, pinned by a rename-invariance test that compares the two specs in full |
 | A user-supplied `--config` | framework **patterns** are never auto-augmented — what you write is what matches. Library *presets* still apply on top (auth-scheme mappings by import, and CLI entrypoint fields) |
 
 ## What APISpec Understands
@@ -270,7 +270,7 @@ type Config struct {
 | `e164`               | `pattern: "^\\+[1-9]\\d{1,14}$"`      |
 | `dive`               | rules after it apply to the **elements** (`items.*`) |
 
-Struct-level (cross-field) rules on a blank marker field (`_ struct{} \`validate:"gtefield=Min"\``) surface as a schema `description` note.
+Struct-level (cross-field) rules on a blank marker field (`` _ struct{} `validate:"gtefield=Min"` ``) surface as a schema `description` note.
 
 </details>
 
@@ -536,7 +536,7 @@ Two things worth knowing before a first run on a large project:
 
 **Framework selection matches the CLI.** The UI composes the same multi-framework config the CLI does — the detected primary, every other detected framework merged in receiver-scoped, and the `net/http` surface underneath — so a mixed project documents the same routes either way. The selector chooses which framework *leads*; the rest still merge under it, and the form lists them ("Also detected: gin").
 
-Endpoints exposed:
+Key endpoints (`cmd/apispecui/main.go` registers more — config load/save, generation progress and cancel, project browsing, health):
 
 | Path                        | Purpose                                                |
 |-----------------------------|--------------------------------------------------------|
@@ -969,7 +969,7 @@ make update-badge       # refresh the coverage badge
 go test ./internal/spec -v -run "Test.*Comprehensive"
 ```
 
-Both binaries are gitignored build artifacts. After switching branches, rebuild
+The binaries (`apispec`, `apispecui`, `apidiag`) are gitignored build artifacts. After switching branches, rebuild
 *and restart* a running `apispecui` — it keeps the code it started with, and a
 browser refresh will not pick up a new build.
 

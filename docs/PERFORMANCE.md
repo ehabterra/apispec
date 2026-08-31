@@ -132,7 +132,7 @@ Warning: MaxRecursionDepth limit (10) reached for node example.com/pkg.Function
 ## Profiling
 
 ```bash
-apispec -d ./my-project --cpu-profile --mem-profile --custom-metrics
+apispec -d ./my-project --cpu-profile --mem-profile --trace-profile --custom-metrics
 go tool pprof profiles/cpu.prof
 go tool pprof profiles/mem.prof
 go tool trace   profiles/trace.out
