@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `switch r.Method` written in a closure is now split into one operation per
+  verb.** The split worked for a named handler but not for the shape
+  `http.HandleFunc("/x", func(w, r) { switch r.Method { … } })`: a function
+  literal has no `Function` record, so its arms were folded into the enclosing
+  declaration's — mixed with every other closure's — and unreachable from the
+  route, which fell to the POST default carrying *every* arm's responses. So
+  `GET /x` was undocumented while `POST /x` advertised a body only the GET arm
+  writes. The dispatch of a closure is now recorded under the closure's own
+  identity, with the range that scopes its arms; closures registered from a
+  method are covered too. Attribution also follows the **call chain** rather
+  than only the response statement, so arms that delegate
+  (`case http.MethodGet: h.Get(w, r)`) get their bodies instead of losing them,
+  and a registration that named its verb (`mux.HandleFunc("GET /x", h)`) stops
+  documenting the arms the router never sends it. (#382)
 - **A route registered with per-route middleware documented the middleware, not
   the handler.** gin and fiber take their handler chain variadically
   (`r.GET(path, mw, handler)`), so the endpoint handler is the *last* argument;

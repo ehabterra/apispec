@@ -358,6 +358,11 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 			// Process functions
 			processFunctions(file, info, pkgName, fset, f, fileToInfo, funcMap, metadata)
 
+			// Record the method dispatch of function literals, which have no
+			// Function record of their own (issue #382). Whole-file, so a
+			// closure registered inside a method is covered too.
+			detectLitDispatch(file, info, pkgName, fset, metadata)
+
 			// Process variables and constants
 			processVariables(file, info, pkgName, fset, f, metadata)
 

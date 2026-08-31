@@ -78,6 +78,56 @@ func detectMethodDispatch(body *ast.BlockStmt, info *types.Info, fset *token.Fil
 	return branches
 }
 
+// detectLitDispatch records the r.Method dispatch of every function literal in
+// the file that has one, keyed by the literal's identity — the same
+// `pkg.FuncLit:<stable position>` a closure route carries as its handler.
+//
+// A literal is not in File.Functions, so the dispatch of a closure written at a
+// registration site (`http.HandleFunc("/x", func(w, r) { switch r.Method … })`)
+// had no record reachable from the route's handler: it was folded into the
+// ENCLOSING declaration's MethodDispatch, alongside the arms of every other
+// literal in that function, and a consumer holding the closure's identity could
+// neither find it nor tell the arms apart (issue #382).
+//
+// The whole file is walked rather than each declaration's body, because a
+// registration is as often written inside a method (`func (s *Server) routes()`)
+// as inside a plain function, and methods are not in File.Functions at all.
+//
+// Nested literals are recorded independently, and an outer literal's entry also
+// covers the arms of a literal nested inside it. Both are true statements about
+// where the dispatch is written, and the range each entry carries is what tells
+// a consumer which arms are its own.
+func detectLitDispatch(file *ast.File, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) {
+	if file == nil || info == nil || fset == nil || meta == nil {
+		return
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.FuncLit)
+		if !ok || lit.Body == nil {
+			return true
+		}
+		branches := detectMethodDispatch(lit.Body, info, fset)
+		if len(branches) == 0 {
+			return true
+		}
+		key := pkgName + "." + funcLitName(meta.stablePosition(lit.Pos(), fset))
+		if meta.LitDispatch == nil {
+			meta.LitDispatch = map[string]LitDispatch{}
+		}
+		start, end := fset.Position(lit.Body.Lbrace), fset.Position(lit.Body.Rbrace)
+		meta.LitDispatch[key] = LitDispatch{
+			File: meta.StringPool.Get(start.Filename),
+			Body: Block{
+				Kind:      BlockFuncLit,
+				StartLine: start.Line, StartCol: start.Column,
+				EndLine: end.Line, EndCol: end.Column,
+			},
+			Branches: branches,
+		}
+		return true
+	})
+}
+
 // isRequestMethodExpr reports whether expr is `<request>.Method` where
 // <request> is typed `*net/http.Request`.
 func isRequestMethodExpr(expr ast.Expr, info *types.Info) bool {
