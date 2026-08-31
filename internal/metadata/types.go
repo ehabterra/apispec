@@ -215,6 +215,14 @@ type Metadata struct {
 	// Current module path for external type detection
 	CurrentModulePath string `yaml:"-"`
 
+	// LitDispatch records the r.Method dispatch of every function literal that
+	// has one, keyed by the literal's identity ("pkg.FuncLit:<stable position>").
+	// A literal has no Function record to hang it on, so a closure handler's
+	// dispatch was only visible folded into the enclosing declaration's
+	// MethodDispatch, mixed with every other literal's arms — see
+	// detectLitDispatch (issue #382).
+	LitDispatch map[string]LitDispatch `yaml:"lit_dispatch,omitempty"`
+
 	// ExternalTypes records facts about external (third-party) named types
 	// referenced anywhere in the analyzed code, keyed by every name form
 	// under which the type may later be looked up (full import path and
@@ -965,6 +973,27 @@ type Function struct {
 	// it is what lets a consumer tell that two statements sit in arms of one
 	// conditional that cannot both run, which line order alone cannot say.
 	Blocks []Block `yaml:"blocks,omitempty"`
+}
+
+// LitDispatch is one function literal's r.Method dispatch: the arms, plus where
+// the literal is written so a call site can be attributed to an arm.
+type LitDispatch struct {
+	// File is the pooled ABSOLUTE path of the file holding the literal. The
+	// literal's own identity carries a MODULE-RELATIVE filename, so that a
+	// closure's name (and the operationId built from it) is the same in every
+	// checkout (stablePosition, issue #216) — while every recorded call-site
+	// position is absolute. The two cannot be compared, so the absolute form is
+	// recorded here for the consumer that has to.
+	File int `yaml:"file,omitempty"`
+
+	// Body is the literal's body range. It is what lets a call site be tested
+	// for membership in THIS literal rather than merely in the same FILE — the
+	// distinction that matters as soon as one function registers two closures.
+	Body Block `yaml:"body,omitempty"`
+
+	// Branches are the dispatch arms, exactly as Function.MethodDispatch
+	// records them for a declared handler.
+	Branches []MethodBranch `yaml:"branches,omitempty"`
 }
 
 // Block is one control-flow region of a function body: an `if` or `else` arm, a

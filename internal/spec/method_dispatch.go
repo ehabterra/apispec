@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -22,59 +23,157 @@ import (
 
 // splitMethodDispatchRoutes expands each route whose handler dispatches on
 // r.Method (a `switch r.Method` or `if r.Method == …` chain — recorded as
-// metadata.Function.MethodDispatch) into one route per HTTP method, attributing
-// each verb branch's request and responses to its own operation. Routes whose
-// handler does not dispatch pass through unchanged.
+// metadata.Function.MethodDispatch for a declared handler, or
+// metadata.LitDispatch for a closure) into one route per HTTP method,
+// attributing each verb branch's request and responses to its own operation.
+// Routes whose handler does not dispatch pass through unchanged.
 //
-// Attribution is by source position: a request/response located inside the
-// handler is assigned to the branch whose line range contains it; one located
-// outside the handler (a shared helper in another file, or with no recoverable
-// position) is attached to every method, and one located inside the handler but
-// outside every verb branch (e.g. the `default:` arm's 405) is dropped. Two
-// branches that return the *same* status with different bodies are a known
-// limitation — the earlier status-slot pairing keeps one, so they don't split.
+// Attribution is by source position, over the call sites the walk passed
+// through to reach a body (ResponseInfo.EntrySites) and not only the body's own
+// statement: the statement is usually written in a callee, and it is the call in
+// the arm that says which verb reached it. A body with a site inside the handler
+// belongs to the arms containing such a site; one whose sites are all outside
+// the handler (a shared helper with no recoverable chain) is attached to every
+// method; one written inside the handler but in no arm (the `default:` case's
+// 405) is dropped. Two branches that return the *same* status with different
+// bodies are a known limitation — the earlier status-slot pairing keeps one, so
+// they don't split.
+//
+// A route registered with a concrete verb is not split — the router sends it
+// that verb only — but it IS scoped to the matching arm: the other arms are dead
+// for this route, and their bodies documented a `router.GET` operation with the
+// POST arm's 201.
 func splitMethodDispatchRoutes(routes []*RouteInfo) []*RouteInfo {
 	out := make([]*RouteInfo, 0, len(routes))
 	for _, route := range routes {
-		branches, handlerFile := methodDispatchFor(route)
+		branches, scope := methodDispatchFor(route)
 		if len(branches) == 0 {
 			out = append(out, route)
 			continue
 		}
-		out = append(out, splitRouteByMethodBranches(route, branches, handlerFile)...)
+		if route.MethodExplicit {
+			out = append(out, scopeRouteToDispatchArm(route, branches, scope))
+			continue
+		}
+		out = append(out, splitRouteByMethodBranches(route, branches, scope)...)
 	}
 	return out
 }
 
-// methodDispatchFor returns the handler's r.Method dispatch branches and the
-// source file the handler is defined in (for same-file position scoping), or
-// nil when the route's handler doesn't dispatch on the method.
-func methodDispatchFor(route *RouteInfo) ([]metadata.MethodBranch, string) {
+// scopeRouteToDispatchArm keeps only the bodies the route's own verb produces,
+// for a registration that named its verb.
+//
+// The route is not split and not renamed: it is one operation either way. What
+// changes is that `mux.HandleFunc("GET /x", h)` with an `r.Method` switch in h
+// stops documenting the POST arm's request body and 201 — arms the router never
+// sends this route. When the verb has no arm at all (a handler shared across
+// registrations, or a switch that does not name it) nothing is scoped away:
+// the arms say nothing about this verb, so removing bodies on their say-so
+// would be a guess (golden rule #7).
+func scopeRouteToDispatchArm(route *RouteInfo, branches []metadata.MethodBranch, scope handlerScope) *RouteInfo {
+	ranges, _ := dispatchRanges(branches)
+	rs, ok := ranges[route.Method]
+	if !ok {
+		return route
+	}
+	return routeScopedToArm(route, route.Method, "", rs, scope)
+}
+
+// handlerScope is where a route's handler is written: the file, and the range
+// within it the handler body occupies.
+//
+// The range is what tells a call site written in the handler from one written
+// elsewhere in the same file — which is the whole question as soon as a function
+// registers two closures, since both share the file and every arm of both is
+// recorded against the enclosing declaration.
+type handlerScope struct {
+	file  string
+	start codePos
+	end   codePos
+}
+
+// contains reports whether a call site sits inside the handler's body.
+func (h handlerScope) contains(p codePos) bool {
+	if h.file == "" || !p.valid() || p.file != h.file {
+		return false
+	}
+	if h.start.valid() && !h.start.beforeOrAt(p) {
+		return false
+	}
+	return h.end.line <= 0 || p.line < h.end.line ||
+		(p.line == h.end.line && (h.end.col <= 0 || p.col <= h.end.col))
+}
+
+// methodDispatchFor returns the handler's r.Method dispatch branches and where
+// the handler is written, or nil when the route's handler doesn't dispatch on
+// the method.
+func methodDispatchFor(route *RouteInfo) ([]metadata.MethodBranch, handlerScope) {
 	meta := route.Metadata
 	if meta == nil || route.Function == "" {
-		return nil, ""
-	}
-	// A route registered with a concrete verb (router.GET, "POST /x", …) only
-	// receives that verb, so its handler's incidental r.Method branches are dead
-	// for this route — never split it. Only verb-less registrations dispatch.
-	if route.MethodExplicit {
-		return nil, ""
+		return nil, handlerScope{}
 	}
 	bare := route.Function
 	if route.Package != "" {
 		bare = strings.TrimPrefix(route.Function, route.Package+".")
 	}
+	// A closure handler is identified by where it is written, and its dispatch is
+	// recorded under that identity: it has no Function record to carry it, and
+	// the enclosing declaration's MethodDispatch mixes in every other literal's
+	// arms (issue #382).
+	if strings.HasPrefix(bare, metadata.FuncLitPrefix) {
+		lit, ok := meta.LitDispatch[route.Function]
+		if !ok || len(lit.Branches) == 0 {
+			return nil, handlerScope{}
+		}
+		file := meta.StringPool.GetString(lit.File)
+		return lit.Branches, handlerScope{
+			file:  file,
+			start: codePos{file: file, line: lit.Body.StartLine, col: lit.Body.StartCol},
+			end:   codePos{file: file, line: lit.Body.EndLine, col: lit.Body.EndCol},
+		}
+	}
 	fn := findFunctionByName(meta, route.Package, bare)
 	if fn == nil || len(fn.MethodDispatch) == 0 {
-		return nil, ""
+		return nil, handlerScope{}
 	}
-	return fn.MethodDispatch, fileOfPosition(meta.StringPool.GetString(fn.Position))
+	pos := meta.StringPool.GetString(fn.Position)
+	file, line, col := parsePosition(pos)
+	return fn.MethodDispatch, handlerScope{
+		file:  file,
+		start: codePos{file: file, line: line, col: col},
+		// EndCol 0: the declaration's last line is recorded, its column is not,
+		// so the whole closing line counts as inside.
+		end: codePos{file: file, line: fn.EndLine},
+	}
 }
 
 // splitRouteByMethodBranches builds one RouteInfo per HTTP method named across
 // the dispatch branches, with request/response scoped to that method.
-func splitRouteByMethodBranches(route *RouteInfo, branches []metadata.MethodBranch, handlerFile string) []*RouteInfo {
-	type lineRange struct{ start, end int }
+func splitRouteByMethodBranches(route *RouteInfo, branches []metadata.MethodBranch, scope handlerScope) []*RouteInfo {
+	ranges, order := dispatchRanges(branches)
+	if len(order) == 0 {
+		return []*RouteInfo{route}
+	}
+
+	result := make([]*RouteInfo, 0, len(order))
+	for _, m := range order {
+		// The method is the operationId suffix too: neither verb of a split is
+		// the primary one, and two operations differing only in method would
+		// otherwise collide.
+		result = append(result, routeScopedToArm(route, m, m, ranges[m], scope))
+	}
+	return result
+}
+
+// lineRange is one dispatch arm's source range, lines only (see Block: a case
+// clause is compared against, where the column distinction does not arise).
+type lineRange struct{ start, end int }
+
+// dispatchRanges groups the arms by the HTTP method they name, keeping the
+// methods in source order so a split is deterministic (golden rule #1). One
+// method may have several arms, and one arm several methods
+// (`case http.MethodGet, http.MethodHead:`).
+func dispatchRanges(branches []metadata.MethodBranch) (map[string][]lineRange, []string) {
 	ranges := map[string][]lineRange{}
 	var order []string
 	for _, b := range branches {
@@ -85,16 +184,13 @@ func splitRouteByMethodBranches(route *RouteInfo, branches []metadata.MethodBran
 			ranges[m] = append(ranges[m], lineRange{b.StartLine, b.EndLine})
 		}
 	}
-	if len(order) == 0 {
-		return []*RouteInfo{route}
-	}
+	return ranges, order
+}
 
-	// insideHandler reports whether a call site sits in the handler's own file
-	// (so its line can be compared against the branch ranges).
-	insideHandler := func(file string, line int) bool {
-		return handlerFile != "" && line > 0 && file == handlerFile
-	}
-	inRanges := func(rs []lineRange, line int) bool {
+// routeScopedToArm copies the route with only the request and responses that
+// belong to one verb's arms.
+func routeScopedToArm(route *RouteInfo, method, idSuffix string, rs []lineRange, scope handlerScope) *RouteInfo {
+	inArm := func(line int) bool {
 		for _, r := range rs {
 			if line >= r.start && line <= r.end {
 				return true
@@ -102,37 +198,75 @@ func splitRouteByMethodBranches(route *RouteInfo, branches []metadata.MethodBran
 		}
 		return false
 	}
-	// belongsTo reports whether a call site at (file,line) belongs to method m:
-	// either it's outside the handler (shared → every method) or it falls in one
-	// of m's branch ranges. A site inside the handler but in no branch (default
-	// arm) belongs to no method.
-	belongsTo := func(rs []lineRange, file string, line int) bool {
-		if !insideHandler(file, line) {
-			return true
-		}
-		return inRanges(rs, line)
-	}
-
-	result := make([]*RouteInfo, 0, len(order))
-	for _, m := range order {
-		rs := ranges[m]
-		nr := *route // shallow copy; per-method Method/Request/Response below
-		nr.Method = m
-		nr.OperationIDSuffix = m // keep operationIds unique across the split
-		nr.Response = map[string]*ResponseInfo{}
-		nr.Request = nil
-
-		for slot, resp := range route.Response {
-			if resp != nil && belongsTo(rs, resp.File, resp.Line) {
-				nr.Response[slot] = resp
+	// belongsTo reports whether a body reached through these call sites belongs
+	// to method m. A site inside one of m's arms is decisive; a site inside the
+	// handler but in no arm (the `default:` case, or code before the switch)
+	// belongs to no method; and a body with no site inside the handler at all —
+	// a shared helper whose chain was not recovered — is attached to every
+	// method rather than dropped, since it is genuinely part of this route.
+	//
+	// The test is over the whole set rather than the innermost site, because a
+	// slot's sites can come from several fragments: one status reached from two
+	// arms is a response both arms send (see the merge in pairAndFillResponses).
+	belongsTo := func(sites []codePos) bool {
+		insideHandler := false
+		for _, s := range sites {
+			if !scope.contains(s) {
+				continue
+			}
+			insideHandler = true
+			if inArm(s.line) {
+				return true
 			}
 		}
-		if route.Request != nil && belongsTo(rs, route.Request.File, route.Request.Line) {
-			nr.Request = route.Request
-		}
-		result = append(result, &nr)
+		return !insideHandler
 	}
-	return result
+
+	nr := *route // shallow copy; Method/Request/Response are per-arm below
+	nr.Method = method
+	nr.OperationIDSuffix = idSuffix
+	nr.Response = map[string]*ResponseInfo{}
+	nr.Request = nil
+
+	for slot, resp := range route.Response {
+		if resp != nil && belongsTo(sitesOf(resp.EntrySites, resp.File, resp.Line)) {
+			nr.Response[slot] = resp
+		}
+	}
+	if route.Request != nil &&
+		belongsTo(sitesOf(route.Request.EntrySites, route.Request.File, route.Request.Line)) {
+		nr.Request = route.Request
+	}
+	return &nr
+}
+
+// sitesOf returns the call sites to attribute a body by, falling back to its own
+// statement position when no chain was recorded (a body matched outside the
+// route walk, or one carried over from a route that predates EntrySites).
+func sitesOf(sites []codePos, file string, line int) []codePos {
+	if len(sites) > 0 {
+		return sites
+	}
+	if file == "" || line <= 0 {
+		return nil
+	}
+	return []codePos{{file: file, line: line}}
+}
+
+// parsePosition splits a "file:line:col" position string, tolerating a Windows
+// drive-letter colon the same way fileOfPosition does.
+func parsePosition(pos string) (string, int, int) {
+	file := fileOfPosition(pos)
+	if len(pos) <= len(file) {
+		return file, 0, 0
+	}
+	rest := strings.Split(pos[len(file)+1:], ":")
+	line, _ := strconv.Atoi(rest[0])
+	col := 0
+	if len(rest) > 1 {
+		col, _ = strconv.Atoi(rest[1])
+	}
+	return file, line, col
 }
 
 // fileOfPosition returns the file portion of a "file:line:col" position string,

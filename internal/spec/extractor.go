@@ -152,6 +152,10 @@ type RequestInfo struct {
 	// to attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
 	File string
 	Line int
+
+	// EntrySites are the call sites the walk passed through to reach this body,
+	// the statement's own site last. See ResponseInfo.EntrySites.
+	EntrySites []codePos
 }
 
 // ResponseInfo represents response information
@@ -172,6 +176,16 @@ type ResponseInfo struct {
 	// attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
 	File string
 	Line int
+
+	// EntrySites are the call sites the walk passed through to reach this
+	// response — the frames entered from the route down, the statement's own
+	// site last.
+	//
+	// Attribution needs them because the statement itself is usually NOT in the
+	// handler: `case http.MethodGet: h.Get(w, r)` writes its body inside h.Get,
+	// whose position says nothing about which arm reached it. The site that does
+	// is the call written in the arm, which is one of these (issue #382).
+	EntrySites []codePos
 
 	StatusCode int
 
@@ -1125,6 +1139,10 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNod
 type responseCandidate struct {
 	node  TrackerNodeInterface
 	chain string
+	// sites is the FULL chain of frames the walk entered to reach the node, kept
+	// as call-site positions for method-dispatch attribution. Copied because the
+	// walk reuses one chain buffer; only actual candidates pay for it.
+	sites []codePos
 }
 
 // chainSep separates call-site instance IDs in chain keys.
@@ -1174,6 +1192,25 @@ func frameChainKey(chain []string, node TrackerNodeInterface) string {
 	return "" // route/handler frame
 }
 
+// chainSites renders the walk's current chain as call-site positions, outermost
+// first. Built only for a node that actually carries a body — the chain buffer
+// itself is reused across the walk, so it cannot be retained (see the push/pop
+// in extractRouteChildrenScoped).
+func chainSites(chain []string) []codePos {
+	if len(chain) == 0 {
+		return nil
+	}
+	sites := make([]codePos, 0, len(chain))
+	for _, frame := range chain {
+		file, line, col := positionOfInstanceID(frame)
+		if file == "" || line <= 0 {
+			continue
+		}
+		sites = append(sites, codePos{file: file, line: line, col: col})
+	}
+	return sites
+}
+
 func (e *Extractor) extractRouteChildren(routeNode TrackerNodeInterface, route *RouteInfo, mountTags []string, routes *[]*RouteInfo, visitedEdges map[string]bool, chain *[]string, respCandidates *[]responseCandidate) {
 	e.extractRouteChildrenScoped(routeNode, route, mountTags, routes, visitedEdges, chain, respCandidates, true, true, 0)
 }
@@ -1212,8 +1249,9 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 		if req := e.extractRequestFromNode(child, route); req != nil && childBodyScope {
 			// Record the call site so a method-dispatch handler can attribute
 			// this request body to the right verb branch by line range.
-			if f, l, _ := calleePosition(child); req.File == "" {
+			if f, l, c := calleePosition(child); req.File == "" {
 				req.File, req.Line = f, l
+				req.EntrySites = append(chainSites(*chain), codePos{file: f, line: l, col: c})
 			}
 			route.Request = preferRequestInfo(route.Request, req)
 		}
@@ -1230,7 +1268,11 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 			candKey := candidateKey(*chain, child.GetEdge().Callee.ID())
 			if !visitedEdges[candKey] {
 				visitedEdges[candKey] = true
-				*respCandidates = append(*respCandidates, responseCandidate{node: child, chain: frameChainKey(*chain, child)})
+				*respCandidates = append(*respCandidates, responseCandidate{
+					node:  child,
+					chain: frameChainKey(*chain, child),
+					sites: chainSites(*chain),
+				})
 			}
 		}
 
@@ -1374,6 +1416,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		route.Response = map[string]*ResponseInfo{} // pure extraction: no slot peeking
 		resps := e.extractResponsesMatched(cand.node, route)
 		file, line, col := calleePosition(cand.node)
+		// The sites to attribute this candidate by: the frames it was reached
+		// through, then its own statement. Built once per candidate and shared
+		// by its fragments — nothing mutates it in place (see appendUniqueSites).
+		sites := make([]codePos, 0, len(cand.sites)+1)
+		sites = append(sites, cand.sites...)
+		sites = append(sites, codePos{file: file, line: line, col: col})
 		siteID := cand.node.GetEdge().Callee.ID()
 		caller := cand.node.GetEdge().Caller.BaseID()
 		for _, resp := range resps {
@@ -1390,9 +1438,11 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				continue
 			}
 			seen[dedupeKey] = true
-			// Carry the call-site position so a method-dispatch handler can
-			// attribute this response to the right verb branch by line range.
+			// Carry the call-site position, and the frames it was reached
+			// through, so a method-dispatch handler can attribute this response
+			// to the right verb branch.
 			resp.File, resp.Line = file, line
+			resp.EntrySites = sites
 			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col})
 		}
 	}
@@ -1433,6 +1483,13 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			route.Response[slot] = mergeResponseAlternatives(existing, resp)
 		default:
 			route.Response[slot] = preferResponseInfo(existing, resp)
+		}
+		// Whichever fragment the slot kept, the arms that produced BOTH are
+		// still facts about it: two branches reaching one status is a response
+		// both of them send, and dropping the loser's sites would attribute it
+		// to only one (see ResponseInfo.EntrySites).
+		if kept := route.Response[slot]; kept != nil && existing != nil {
+			kept.EntrySites = appendUniqueSites(appendUniqueSites(nil, existing.EntrySites), resp.EntrySites)
 		}
 	}
 
@@ -1555,6 +1612,24 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	}
 }
 
+// appendUniqueSites appends the sites not already present, so a slot's site set
+// stays a set however many fragments merged into it.
+func appendUniqueSites(dst []codePos, src []codePos) []codePos {
+	for _, s := range src {
+		found := false
+		for _, d := range dst {
+			if d == s {
+				found = true
+				break
+			}
+		}
+		if !found {
+			dst = append(dst, s)
+		}
+	}
+	return dst
+}
+
 // handlerCallDepths returns the call-graph distance (in hops) from the
 // route's handler function to every function reachable from it, via a BFS
 // over meta.Callers. Used to rank undetermined-status response fragments by
@@ -1610,7 +1685,15 @@ func calleePosition(n TrackerNodeInterface) (string, int, int) {
 	if edge == nil {
 		return "", 0, 0
 	}
-	pos := edge.Callee.ID()
+	return positionOfInstanceID(edge.Callee.ID())
+}
+
+// positionOfInstanceID parses the "file:line:col" call-site position out of a
+// call's instance ID ("pkg.Func@file:line:col"). Instance IDs are what the
+// extraction chain is made of, so this is also how a frame the walk passed
+// through is located.
+func positionOfInstanceID(id string) (string, int, int) {
+	pos := id
 	at := strings.LastIndexByte(pos, '@')
 	if at < 0 {
 		return pos, 0, 0
