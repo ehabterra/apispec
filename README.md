@@ -153,7 +153,7 @@ APISpec aims for practical coverage of real-world Go services.
 - Function literals (anonymous handlers) and handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())`), including when dispatched through an interface implemented in another package.
 - **House routers and house contexts, detected automatically** — a project that puts its own type in front of the framework is documented with no configuration. See [Automatic wrapper detection](#automatic-wrapper-detection).
 - Go 1.22 `net/http.ServeMux` method-aware routing — `mux.HandleFunc("GET /users/{id}", …)` splits into method + path, `{id}` wildcards become path parameters, and ServeMux-only syntax (`{path...}`, `{$}`) is normalised to OpenAPI templating.
-- Method dispatch in the handler — one handler registered without a verb that branches on `r.Method` is split into one operation per HTTP method, each with its own body, responses and operationId.
+- Method dispatch in the handler — one handler registered without a verb that branches on `r.Method` is split into one operation per HTTP method, each with its own body, responses and operationId. Named handlers and closures written at the registration site both split, and a body written a call deeper (`case http.MethodGet: h.Get(w, r)`) is attributed to the arm that reached it. A registration that named its verb stays one operation, scoped to the matching arm.
 - **CLI-dispatched services** — routing code hanging off a command library's callback (`&cli.Command{Action: runWeb}`, `&cobra.Command{RunE: runServe}`) has no call edge from your code. APISpec treats those fields as entrypoints and documents everything below them. Presets ship for urfave/cli v1/v2/v3, spf13/cobra and peterbourgon/ff; a house dispatcher declares its own via [`entrypointPatterns`](#entrypoints-cli-dispatched-services).
 - Route registration behind a func-typed struct field invoked in-module — package-level command vars, cross-package function values, method values and inline closures.
 
@@ -196,14 +196,40 @@ registered under `components.securitySchemes`; explicitly-public routes render
 
 ### Not supported (yet)
 
-- Same path + same status code with different schemas.
-- Receiver/parent type tracing is limited; `Decode` on non-body targets may be misclassified (see [Request body source disambiguation](#request-body-source-disambiguation)).
-- Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
-- Routes registered from a **table** rather than a call (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`) — the paths exist only as runtime values.
-- House routers whose registration is **chained through a returned object** (`Combo("/x").Get(h).Post(h)`) are reported as detected-but-incomplete and left unapplied, rather than guessed at.
-- Payloads whose generic type argument is erased to `any` behind a helper, and aliases over an instantiation (`type UserPage = Page[User]`). Cross-package type arguments resolve, but the component name drops the argument's package.
-- `r.Method` dispatch inside a **receiver-method** handler — the split only finds handlers declared as plain functions.
-- Command libraries that dispatch through a **factory map** (`mitchellh/cli`, `hashicorp/cli`) or **reflection-invoked methods** (`alecthomas/kong`).
+- **Two bodies under one status that never state that status.** Alternative
+  bodies on branches that *do* write their status compose into an `anyOf`; two
+  that merely fall back to the framework's implicit status keep the first one
+  and drop the rest. Within an `r.Method` split, an `anyOf` that two arms share
+  is documented on **both** operations rather than divided between them.
+- Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo
+  `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet
+  mapped.
+- **A path that exists only as a runtime value is documented as a placeholder,
+  not skipped.** Routes registered from a **table**
+  (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`) come
+  out under `/{Method} {Path}`, and a house router chained through a returned
+  object (`Combo("/x").Get(h).Post(h)`) under `/{pattern}`. The auto-declared
+  parameters carry an `x-warning` saying the value was not resolvable, and
+  `--verbose` reports the chained wrapper as *incomplete, not applied* — but the
+  operation is still in the spec, so it needs excluding rather than ignoring
+  ([#428](https://github.com/ehabterra/apispec/issues/428)).
+- **A payload erased inside a generic envelope** — a helper that re-wraps the
+  value as `APIResponse[any]{Data: data}` documents `data` as an open object
+  ([#163](https://github.com/ehabterra/apispec/issues/163)).
+  A plain `any`/`interface{}` **parameter** is not affected: that resolves, and
+  keeps resolving when one helper serves several routes with different types.
+  A cross-package type used as a **type argument** also loses its package in the
+  component name (`app_Page_Product`, where the same type returned directly is
+  `app_inner_Product`).
+- **`r.Method` dispatch inside a receiver-method handler** — the split covers
+  plain functions and closures; a method (`func (h *H) Users(w, r)`) stays one
+  operation with every arm's responses on it, because the dispatch is recorded
+  per declared function and methods are not among them
+  ([#427](https://github.com/ehabterra/apispec/issues/427)).
+- Command libraries that dispatch through a **factory map** (`mitchellh/cli`,
+  `hashicorp/cli`) or **reflection-invoked methods** (`alecthomas/kong`) — the
+  command body is never reached from your code, so nothing it registers is
+  documented.
 
 ### Examples
 

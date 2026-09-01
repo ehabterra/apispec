@@ -94,9 +94,15 @@ func entrypointBundles() []entrypointBundle {
 			// gap: nothing to match on, and guessing would break the
 			// honest-over-wrong rule.
 			//
-			// Same for alecthomas/kong and google/subcommands, which dispatch
-			// through an interface METHOD — those already resolve via the
-			// existing interface-implementer fan-out and need no entrypoint.
+			// alecthomas/kong is the same gap for a different reason, and NOT
+			// (as this comment previously claimed) resolved by the
+			// interface-implementer fan-out: kong reaches a command's `Run` by
+			// reflecting over the struct's fields, so the method implements no
+			// interface this module can see and `kong.Context.Run` — the only
+			// caller — lives in a dependency that is never analysed. Measured:
+			// a kong program whose `Run` registers routes documents 0 paths.
+			// Rooting it needs an entrypoint rule keyed on something other than
+			// a field's declared type, which is why there is no preset here.
 			Name:          "",
 			ImportRegexes: nil,
 			Patterns:      nil,
