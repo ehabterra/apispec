@@ -112,20 +112,44 @@ func detectLitDispatch(file *ast.File, info *types.Info, pkgName string, fset *t
 		}
 		key := pkgName + "." + funcLitName(meta.stablePosition(lit.Pos(), fset))
 		if meta.LitDispatch == nil {
-			meta.LitDispatch = map[string]LitDispatch{}
+			meta.LitDispatch = map[string]DispatchScope{}
 		}
-		start, end := fset.Position(lit.Body.Lbrace), fset.Position(lit.Body.Rbrace)
-		meta.LitDispatch[key] = LitDispatch{
-			File: meta.StringPool.Get(start.Filename),
-			Body: Block{
-				Kind:      BlockFuncLit,
-				StartLine: start.Line, StartCol: start.Column,
-				EndLine: end.Line, EndCol: end.Column,
-			},
-			Branches: branches,
-		}
+		meta.LitDispatch[key] = dispatchScope(lit.Body, branches, BlockFuncLit, fset, meta)
 		return true
 	})
+}
+
+// detectBodyDispatch is detectMethodDispatch plus the body range its arms have
+// to be scoped against, or nil when the body does not dispatch on the request
+// method. It is what a METHOD handler needs (issue #427): Method records a
+// Position but no EndLine, so its arms would otherwise be comparable only
+// against the whole file — and a handler routinely shares its file with the
+// helpers it calls.
+func detectBodyDispatch(body *ast.BlockStmt, info *types.Info, fset *token.FileSet, meta *Metadata) *DispatchScope {
+	if body == nil || meta == nil {
+		return nil
+	}
+	branches := detectMethodDispatch(body, info, fset)
+	if len(branches) == 0 {
+		return nil
+	}
+	scope := dispatchScope(body, branches, BlockPlain, fset, meta)
+	return &scope
+}
+
+// dispatchScope pairs the arms with the absolute position of the body they were
+// found in.
+func dispatchScope(body *ast.BlockStmt, branches []MethodBranch, kind BlockKind, fset *token.FileSet, meta *Metadata) DispatchScope {
+	start, end := fset.Position(body.Lbrace), fset.Position(body.Rbrace)
+	return DispatchScope{
+		File: meta.StringPool.Get(start.Filename),
+		Body: Block{
+			Kind:      kind,
+			StartLine: start.Line, StartCol: start.Column,
+			EndLine: end.Line, EndCol: end.Column,
+		},
+		Branches: branches,
+	}
 }
 
 // isRequestMethodExpr reports whether expr is `<request>.Method` where

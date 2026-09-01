@@ -2097,6 +2097,44 @@ func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
 	return field
 }
 
+// handlerDeclName renders a route's handler identity the way it is DECLARED:
+// the package qualification stripped, and TypeSep normalised to a dot.
+//
+// The separator between the package and the rest is TypeSep in some render
+// paths and a plain dot in others, so it is normalised before splitting; the
+// package prefix can then appear twice ("pkg" + TypeSep + "pkg.Recv.Method"),
+// hence the loop. What remains is "Func", "Recv.Method", "FuncLit:<position>",
+// or the field path a handler value was read from.
+func handlerDeclName(route *RouteInfo) string {
+	if route == nil {
+		return ""
+	}
+	name := strings.ReplaceAll(route.Function, TypeSep, ".")
+	if route.Package != "" {
+		for strings.HasPrefix(name, route.Package+".") {
+			name = name[len(route.Package)+1:]
+		}
+	}
+	return name
+}
+
+// handlerMethodDecl resolves a handler that names a METHOD to its declaration,
+// or nil when it names something else. `name` is handlerDeclName's result, so
+// its last segment is the method and what precedes it is a type name or the
+// field path the value was read from.
+//
+// Methods are never in file.Functions (processFunctions skips any decl with a
+// receiver), so every consumer that may be handed a method handler needs this
+// rather than findFunctionByName.
+func handlerMethodDecl(route *RouteInfo, name string) *metadata.Method {
+	i := strings.LastIndexByte(name, '.')
+	if route == nil || i < 0 {
+		return nil
+	}
+	recv := receiverTypeName(route.Metadata, route.Package, name[:i])
+	return findMethodByName(route.Metadata, route.Package, recv, name[i+1:])
+}
+
 // handlerComments returns the Go doc comment recorded for the route's handler,
 // resolving every handler shape. RouteInfo.Function is the rendered handler
 // argument, and the shapes differ (issue #168 originally handled only the first):
@@ -2109,22 +2147,11 @@ func receiverTypeName(meta *metadata.Metadata, pkg, recv string) string {
 // findFunctionByName cannot reach — it indexes only receiver-less declarations.
 // Returns "" for an anonymous (func-literal) or undocumented handler.
 func handlerComments(route *RouteInfo, handlerMethods ...string) string {
-	name := route.Function
-	// The separator between the package and the rest is TypeSep in some render
-	// paths and a plain dot in others, so normalize before splitting. The package
-	// prefix can then appear twice ("pkg" + TypeSep + "pkg.Recv.Method"), hence
-	// the loop.
-	name = strings.ReplaceAll(name, TypeSep, ".")
-	if route.Package != "" {
-		for strings.HasPrefix(name, route.Package+".") {
-			name = name[len(route.Package)+1:]
-		}
-	}
+	name := handlerDeclName(route)
 	// What remains is either "Method" / "Func" or "<recv>.Method", where <recv>
 	// is a type name or a field path.
-	if i := strings.LastIndexByte(name, '.'); i >= 0 {
-		recv := receiverTypeName(route.Metadata, route.Package, name[:i])
-		if m := findMethodByName(route.Metadata, route.Package, recv, name[i+1:]); m != nil {
+	if strings.IndexByte(name, '.') >= 0 {
+		if m := handlerMethodDecl(route, name); m != nil {
 			return getStringFromPool(route.Metadata, m.Comments)
 		}
 		return handlerValueComments(route, name, handlerMethods...)

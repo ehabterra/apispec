@@ -269,7 +269,7 @@ func register() {
 		t.Fatalf("want an entry for each DISPATCHING closure (2), got %d: %v",
 			len(meta.LitDispatch), sortedLitKeys(meta.LitDispatch))
 	}
-	byMethods := map[string]LitDispatch{}
+	byMethods := map[string]DispatchScope{}
 	for key, lit := range meta.LitDispatch {
 		if !strings.HasPrefix(key, "p."+FuncLitPrefix) {
 			t.Errorf("key %q should be the closure's identity (pkg.FuncLit:<position>)", key)
@@ -329,11 +329,115 @@ func (s *server) routes() {
 	}
 }
 
-func sortedLitKeys(m map[string]LitDispatch) []string {
+func sortedLitKeys(m map[string]DispatchScope) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// TestDetectBodyDispatch records a method body's arms together with the range
+// they have to be scoped against — Method carries a Position but no EndLine, so
+// without the range its arms could only be compared against the whole file
+// (issue #427).
+func TestDetectBodyDispatch(t *testing.T) {
+	body, info, fset := typeCheckHandler(t, `switch r.Method {
+	case http.MethodGet:
+		_ = w
+	case http.MethodPost:
+		_ = r
+	}`)
+	meta := &Metadata{StringPool: NewStringPool()}
+
+	ds := detectBodyDispatch(body, info, fset, meta)
+	if ds == nil {
+		t.Fatal("a body dispatching on r.Method must produce a scope")
+	}
+	if got := methodsOf(ds.Branches); got != "GET,POST" {
+		t.Errorf("arms = %q, want GET,POST", got)
+	}
+	if meta.StringPool.GetString(ds.File) != "h.go" {
+		t.Errorf("file = %q, want the file the body is written in", meta.StringPool.GetString(ds.File))
+	}
+	if ds.Body.StartLine <= 0 || ds.Body.EndLine < ds.Body.StartLine || ds.Body.StartCol <= 0 {
+		t.Errorf("body range %+v is not usable", ds.Body)
+	}
+	for _, b := range ds.Branches {
+		if b.StartLine < ds.Body.StartLine || b.EndLine > ds.Body.EndLine {
+			t.Errorf("branch %v at [%d,%d] falls outside the body %+v",
+				b.Methods, b.StartLine, b.EndLine, ds.Body)
+		}
+	}
+}
+
+// A body that does not dispatch records nothing, so the field stays nil on the
+// overwhelming majority of methods.
+func TestDetectBodyDispatchNoDispatch(t *testing.T) {
+	body, info, fset := typeCheckHandler(t, `_ = w
+	_ = r`)
+	meta := &Metadata{StringPool: NewStringPool()}
+	if ds := detectBodyDispatch(body, info, fset, meta); ds != nil {
+		t.Errorf("a body with no r.Method dispatch must record nothing, got %+v", ds)
+	}
+	if ds := detectBodyDispatch(nil, info, fset, meta); ds != nil {
+		t.Error("a bodyless declaration must record nothing")
+	}
+	if ds := detectBodyDispatch(body, info, fset, nil); ds != nil {
+		t.Error("no metadata means no string pool to record into")
+	}
+}
+
+// The dispatch of a method reaches its Method record end to end, which is what
+// the spec layer resolves a method handler through.
+func TestMethodDispatchRecordedOnMethod(t *testing.T) {
+	file, info, fset := typeCheckFile(t, `package p
+
+import "net/http"
+
+type H struct{}
+
+func (h *H) Users(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		_ = w
+	case http.MethodPost:
+		_ = r
+	}
+}
+
+func (h *H) Plain(w http.ResponseWriter, r *http.Request) {
+	_ = w
+}
+`)
+	pkgs := map[string]map[string]*ast.File{"p": {"reg.go": file}}
+	md := GenerateMetadata(pkgs, map[*ast.File]*types.Info{file: info}, map[string]string{"p": "p"}, fset)
+
+	users := findTestMethod(t, md, "p", "Users")
+	if users.Dispatch == nil {
+		t.Fatal("the dispatching method must carry its dispatch")
+	}
+	if got := methodsOf(users.Dispatch.Branches); got != "GET,POST" {
+		t.Errorf("arms = %q, want GET,POST", got)
+	}
+	if plain := findTestMethod(t, md, "p", "Plain"); plain.Dispatch != nil {
+		t.Errorf("a method that does not dispatch must carry nothing, got %+v", plain.Dispatch)
+	}
+}
+
+// findTestMethod returns the named method from the package's per-Type tables.
+func findTestMethod(t *testing.T, md *Metadata, pkg, name string) *Method {
+	t.Helper()
+	for _, p := range md.Packages {
+		for _, typ := range p.Types {
+			for i := range typ.Methods {
+				if md.StringPool.GetString(typ.Methods[i].Name) == name {
+					return &typ.Methods[i]
+				}
+			}
+		}
+	}
+	t.Fatalf("method %s.%s not found", pkg, name)
+	return nil
 }

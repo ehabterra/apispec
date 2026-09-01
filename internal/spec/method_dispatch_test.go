@@ -244,7 +244,7 @@ func TestSplitMethodDispatchRoutes_ClosureHandler(t *testing.T) {
 	const file = "main.go"
 	const key = "pkg.FuncLit:main.go:10:30"
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
-	meta.LitDispatch = map[string]metadata.LitDispatch{
+	meta.LitDispatch = map[string]metadata.DispatchScope{
 		key: {
 			File: meta.StringPool.Get(file),
 			Body: metadata.Block{
@@ -456,5 +456,101 @@ func TestParsePosition(t *testing.T) {
 			t.Errorf("parsePosition(%q) = %q,%d,%d; want %q,%d,%d",
 				c.in, file, line, col, c.file, c.line, c.col)
 		}
+	}
+}
+
+// TestSplitMethodDispatchRoutes_MethodHandler drives the split for a handler
+// that is a METHOD. Methods are not in file.Functions, and their record carries
+// no line range, so the dispatch travels on the declaration as a DispatchScope
+// (issue #427).
+func TestSplitMethodDispatchRoutes_MethodHandler(t *testing.T) {
+	const file = "h.go"
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	dispatch := &metadata.DispatchScope{
+		File: meta.StringPool.Get(file),
+		Body: metadata.Block{
+			StartLine: 10, StartCol: 50,
+			EndLine: 20, EndCol: 2,
+		},
+		Branches: []metadata.MethodBranch{
+			{Methods: []string{"GET"}, StartLine: 12, EndLine: 13},
+			{Methods: []string{"POST"}, StartLine: 14, EndLine: 16},
+		},
+	}
+	meta.Packages = map[string]*metadata.Package{
+		"pkg": {Files: map[string]*metadata.File{
+			file: {Types: map[string]*metadata.Type{
+				"H": {
+					Name: meta.StringPool.Get("H"),
+					Methods: []metadata.Method{
+						{
+							Name:     meta.StringPool.Get("Users"),
+							Receiver: meta.StringPool.Get("H"),
+							Position: meta.StringPool.Get(file + ":10:1"),
+							Dispatch: dispatch,
+						},
+						{
+							Name:     meta.StringPool.Get("Plain"),
+							Receiver: meta.StringPool.Get("H"),
+							Position: meta.StringPool.Get(file + ":30:1"),
+						},
+					},
+				},
+			}},
+		}},
+	}
+
+	route := &RouteInfo{
+		Path: "/users", Method: "POST",
+		// The value-receiver render: the package is separated by TypeSep, which
+		// the resolution has to normalise before it can split off the receiver.
+		Function: "pkg" + TypeSep + "H.Users", Package: "pkg", Metadata: meta,
+		Response: map[string]*ResponseInfo{
+			"200": {StatusCode: 200, BodyType: "User", File: file, Line: 12},
+			"201": {StatusCode: 201, File: file, Line: 15},
+			"405": {StatusCode: 405, File: file, Line: 18}, // default arm
+		},
+	}
+
+	got := splitMethodDispatchRoutes([]*RouteInfo{route})
+	byMethod := map[string]*RouteInfo{}
+	for _, r := range got {
+		byMethod[r.Method] = r
+	}
+	if len(got) != 2 || byMethod["GET"] == nil || byMethod["POST"] == nil {
+		t.Fatalf("want a GET and a POST route, got %d: %v", len(got), byMethod)
+	}
+	if _, ok := byMethod["GET"].Response["200"]; !ok {
+		t.Error("GET should own the 200 written in its arm")
+	}
+	if _, ok := byMethod["POST"].Response["201"]; !ok {
+		t.Error("POST should own the 201 written in its arm")
+	}
+	if _, ok := byMethod["GET"].Response["201"]; ok {
+		t.Error("GET must not carry the POST arm's 201")
+	}
+	for _, m := range []string{"GET", "POST"} {
+		if _, ok := byMethod[m].Response["405"]; ok {
+			t.Errorf("%s must not carry the default arm's 405", m)
+		}
+	}
+
+	// A method that does not dispatch leaves its route alone.
+	plain := &RouteInfo{
+		Path: "/plain", Method: "POST",
+		Function: "pkg.H.Plain", Package: "pkg", Metadata: meta,
+	}
+	if got := splitMethodDispatchRoutes([]*RouteInfo{plain}); len(got) != 1 || got[0] != plain {
+		t.Errorf("a non-dispatching method handler must pass through unchanged, got %+v", got)
+	}
+}
+
+// A recorded scope naming no verb is not a dispatch: the route passes through
+// rather than being "split" into zero operations.
+func TestDispatchScopeOfEmptyBranches(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	branches, scope := dispatchScopeOf(meta, metadata.DispatchScope{File: meta.StringPool.Get("h.go")})
+	if branches != nil || scope.file != "" {
+		t.Errorf("an armless scope must answer as no dispatch, got %v / %+v", branches, scope)
 	}
 }

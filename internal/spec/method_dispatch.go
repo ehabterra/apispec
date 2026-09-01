@@ -23,8 +23,8 @@ import (
 
 // splitMethodDispatchRoutes expands each route whose handler dispatches on
 // r.Method (a `switch r.Method` or `if r.Method == …` chain — recorded as
-// metadata.Function.MethodDispatch for a declared handler, or
-// metadata.LitDispatch for a closure) into one route per HTTP method,
+// metadata.Function.MethodDispatch for a declared function, metadata.LitDispatch
+// for a closure, or Method.Dispatch for a method) into one route per HTTP method,
 // attributing each verb branch's request and responses to its own operation.
 // Routes whose handler does not dispatch pass through unchanged.
 //
@@ -112,25 +112,27 @@ func methodDispatchFor(route *RouteInfo) ([]metadata.MethodBranch, handlerScope)
 	if meta == nil || route.Function == "" {
 		return nil, handlerScope{}
 	}
-	bare := route.Function
-	if route.Package != "" {
-		bare = strings.TrimPrefix(route.Function, route.Package+".")
-	}
+	bare := handlerDeclName(route)
 	// A closure handler is identified by where it is written, and its dispatch is
 	// recorded under that identity: it has no Function record to carry it, and
 	// the enclosing declaration's MethodDispatch mixes in every other literal's
 	// arms (issue #382).
 	if strings.HasPrefix(bare, metadata.FuncLitPrefix) {
 		lit, ok := meta.LitDispatch[route.Function]
-		if !ok || len(lit.Branches) == 0 {
+		if !ok {
 			return nil, handlerScope{}
 		}
-		file := meta.StringPool.GetString(lit.File)
-		return lit.Branches, handlerScope{
-			file:  file,
-			start: codePos{file: file, line: lit.Body.StartLine, col: lit.Body.StartCol},
-			end:   codePos{file: file, line: lit.Body.EndLine, col: lit.Body.EndCol},
+		return dispatchScopeOf(meta, lit)
+	}
+	// A method handler's dispatch is recorded on its own declaration: methods are
+	// not in file.Functions, so findFunctionByName cannot see them, and Method
+	// carries no EndLine for the arms to be scoped against — hence the same
+	// DispatchScope a literal gets (issue #427).
+	if m := handlerMethodDecl(route, bare); m != nil {
+		if m.Dispatch == nil {
+			return nil, handlerScope{}
 		}
+		return dispatchScopeOf(meta, *m.Dispatch)
 	}
 	fn := findFunctionByName(meta, route.Package, bare)
 	if fn == nil || len(fn.MethodDispatch) == 0 {
@@ -144,6 +146,21 @@ func methodDispatchFor(route *RouteInfo) ([]metadata.MethodBranch, handlerScope)
 		// EndCol 0: the declaration's last line is recorded, its column is not,
 		// so the whole closing line counts as inside.
 		end: codePos{file: file, line: fn.EndLine},
+	}
+}
+
+// dispatchScopeOf reads a recorded dispatch into the arms and the scope the
+// split works with. Empty arms answer as "no dispatch", so a body that was
+// recorded but names no verb never splits a route.
+func dispatchScopeOf(meta *metadata.Metadata, ds metadata.DispatchScope) ([]metadata.MethodBranch, handlerScope) {
+	if len(ds.Branches) == 0 {
+		return nil, handlerScope{}
+	}
+	file := meta.StringPool.GetString(ds.File)
+	return ds.Branches, handlerScope{
+		file:  file,
+		start: codePos{file: file, line: ds.Body.StartLine, col: ds.Body.StartCol},
+		end:   codePos{file: file, line: ds.Body.EndLine, col: ds.Body.EndCol},
 	}
 }
 

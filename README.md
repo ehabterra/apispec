@@ -153,7 +153,7 @@ APISpec aims for practical coverage of real-world Go services.
 - Function literals (anonymous handlers) and handler factories — a route registered as a *call* that returns the framework's handler type (`g.POST("/users", h.Create())`), including when dispatched through an interface implemented in another package.
 - **House routers and house contexts, detected automatically** — a project that puts its own type in front of the framework is documented with no configuration. See [Automatic wrapper detection](#automatic-wrapper-detection).
 - Go 1.22 `net/http.ServeMux` method-aware routing — `mux.HandleFunc("GET /users/{id}", …)` splits into method + path, `{id}` wildcards become path parameters, and ServeMux-only syntax (`{path...}`, `{$}`) is normalised to OpenAPI templating.
-- Method dispatch in the handler — one handler registered without a verb that branches on `r.Method` is split into one operation per HTTP method, each with its own body, responses and operationId. Named handlers and closures written at the registration site both split, and a body written a call deeper (`case http.MethodGet: h.Get(w, r)`) is attributed to the arm that reached it. A registration that named its verb stays one operation, scoped to the matching arm.
+- Method dispatch in the handler — one handler registered without a verb that branches on `r.Method` is split into one operation per HTTP method, each with its own body, responses and operationId. Every handler shape splits: a plain function, a closure written at the registration site, and a method (pointer or value receiver, in any package). A body written a call deeper (`case http.MethodGet: h.Get(w, r)`) is attributed to the arm that reached it, and a registration that named its verb stays one operation, scoped to the matching arm.
 - **CLI-dispatched services** — routing code hanging off a command library's callback (`&cli.Command{Action: runWeb}`, `&cobra.Command{RunE: runServe}`) has no call edge from your code. APISpec treats those fields as entrypoints and documents everything below them. Presets ship for urfave/cli v1/v2/v3, spf13/cobra and peterbourgon/ff; a house dispatcher declares its own via [`entrypointPatterns`](#entrypoints-cli-dispatched-services).
 - Route registration behind a func-typed struct field invoked in-module — package-level command vars, cross-package function values, method values and inline closures.
 
@@ -221,11 +221,6 @@ registered under `components.securitySchemes`; explicitly-public routes render
   A cross-package type used as a **type argument** also loses its package in the
   component name (`app_Page_Product`, where the same type returned directly is
   `app_inner_Product`).
-- **`r.Method` dispatch inside a receiver-method handler** — the split covers
-  plain functions and closures; a method (`func (h *H) Users(w, r)`) stays one
-  operation with every arm's responses on it, because the dispatch is recorded
-  per declared function and methods are not among them
-  ([#427](https://github.com/ehabterra/apispec/issues/427)).
 - Command libraries that dispatch through a **factory map** (`mitchellh/cli`,
   `hashicorp/cli`) or **reflection-invoked methods** (`alecthomas/kong`) — the
   command body is never reached from your code, so nothing it registers is
