@@ -321,6 +321,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 					ReturnVars:    returnVars,
 					Returns:       allReturns,
 					Filename:      metadata.StringPool.Get(fileName),
+					Dispatch:      detectBodyDispatch(fn.Body, info, fset, metadata),
 				}
 				m.SignatureStr = metadata.StringPool.Get(CallArgToString(&m.Signature))
 				allTypeMethods[recvType] = append(allTypeMethods[recvType], m)

@@ -220,8 +220,9 @@ type Metadata struct {
 	// A literal has no Function record to hang it on, so a closure handler's
 	// dispatch was only visible folded into the enclosing declaration's
 	// MethodDispatch, mixed with every other literal's arms — see
-	// detectLitDispatch (issue #382).
-	LitDispatch map[string]LitDispatch `yaml:"lit_dispatch,omitempty"`
+	// detectLitDispatch (issue #382). A METHOD does have a record, so its
+	// dispatch lives there instead (Method.Dispatch).
+	LitDispatch map[string]DispatchScope `yaml:"lit_dispatch,omitempty"`
 
 	// ExternalTypes records facts about external (third-party) named types
 	// referenced anywhere in the analyzed code, keyed by every name form
@@ -927,6 +928,17 @@ type Method struct {
 
 	// map of variable name to all assignments (for alias/reassignment tracking)
 	AssignmentMap map[string][]Assignment `yaml:"assignments,omitempty"`
+
+	// Dispatch records an `r.Method` control-flow dispatch written in this
+	// method's body — the shape that makes one verb-less registration serve
+	// several HTTP methods (issue #427).
+	//
+	// A pointer, and a whole DispatchScope rather than the bare
+	// Function.MethodDispatch a declared function carries, for two reasons: a
+	// method that dispatches is a rarity among methods, so nil costs one word
+	// and serializes nothing; and unlike Function, Method records no EndLine, so
+	// the arms would have no body range to be scoped against.
+	Dispatch *DispatchScope `yaml:"dispatch,omitempty"`
 }
 
 // Function represents a function
@@ -975,24 +987,29 @@ type Function struct {
 	Blocks []Block `yaml:"blocks,omitempty"`
 }
 
-// LitDispatch is one function literal's r.Method dispatch: the arms, plus where
-// the literal is written so a call site can be attributed to an arm.
-type LitDispatch struct {
-	// File is the pooled ABSOLUTE path of the file holding the literal. The
-	// literal's own identity carries a MODULE-RELATIVE filename, so that a
-	// closure's name (and the operationId built from it) is the same in every
-	// checkout (stablePosition, issue #216) — while every recorded call-site
-	// position is absolute. The two cannot be compared, so the absolute form is
-	// recorded here for the consumer that has to.
+// DispatchScope is one function body's r.Method dispatch: the arms, plus where
+// that body is written so a call site can be attributed to an arm.
+//
+// It exists for the two handler shapes a plain Function record cannot describe:
+// a function literal, which has no record at all, and a method, whose record
+// carries no line range to scope arms with.
+type DispatchScope struct {
+	// File is the pooled ABSOLUTE path of the file holding the body. A literal's
+	// own identity carries a MODULE-RELATIVE filename, so that a closure's name
+	// (and the operationId built from it) is the same in every checkout
+	// (stablePosition, issue #216) — while every recorded call-site position is
+	// absolute. The two cannot be compared, so the absolute form is recorded
+	// here for the consumer that has to.
 	File int `yaml:"file,omitempty"`
 
-	// Body is the literal's body range. It is what lets a call site be tested
-	// for membership in THIS literal rather than merely in the same FILE — the
-	// distinction that matters as soon as one function registers two closures.
+	// Body is the body's range. It is what lets a call site be tested for
+	// membership in THIS body rather than merely in the same FILE — the
+	// distinction that matters as soon as one function registers two closures,
+	// or a handler shares its file with the helpers it calls.
 	Body Block `yaml:"body,omitempty"`
 
 	// Branches are the dispatch arms, exactly as Function.MethodDispatch
-	// records them for a declared handler.
+	// records them for a declared function.
 	Branches []MethodBranch `yaml:"branches,omitempty"`
 }
 

@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `switch r.Method` written in a method is now split into one operation per
+  verb.** With #382 (closures) this completes the set: every handler shape —
+  plain function, closure, and method with either receiver kind, in any package
+  — splits. A method's dispatch had nowhere to live: `processFunctions` skips
+  any declaration with a receiver, so `detectMethodDispatch` never ran for one,
+  and `metadata.Method` had no field to hold the arms nor the line range to
+  scope them with. It now carries both, and the spec layer resolves a method
+  handler through the per-type methods table instead of giving up when
+  `findFunctionByName` returns nothing. (#427)
 - **A `switch r.Method` written in a closure is now split into one operation per
   verb.** The split worked for a named handler but not for the shape
   `http.HandleFunc("/x", func(w, r) { switch r.Method { … } })`: a function
