@@ -62,17 +62,30 @@ func TestTestdata_MountViaHelper(t *testing.T) {
 			"duplicate must be dropped, or every helper-mounted route appears twice")
 	}
 
-	// CHANGE DETECTOR, not an endorsement: the prefix-as-parameter forms are a
-	// different gap — resolving the sub-router's position is done, resolving the
-	// PREFIX through a parameter is not (resolvePathArg does not trace
-	// parameters). Asserted at today's wrong behaviour so this test fails, and
-	// gets updated, the moment that is fixed.
-	t.Run("prefix through a parameter is still unresolved", func(t *testing.T) {
-		for _, notYet := range []string{"/param/things", "/named/things"} {
-			if _, ok := out.Paths[notYet]; ok {
-				t.Errorf("%s now resolves — the parameter-prefix gap is fixed; "+
-					"update this subtest to assert it properly and close the follow-up", notYet)
-			}
+	// The prefix-as-parameter form resolves since #431: a path argument that is
+	// a bare identifier now goes through the same ladder as one operand of a
+	// concatenation, so `r.Mount(prefix, server)` reads the caller's "/param".
+	t.Run("prefix through a parameter resolves", func(t *testing.T) {
+		if _, ok := out.Paths["/param/things"]; !ok {
+			t.Errorf("missing /param/things; documented %v — a prefix passed as a "+
+				"parameter must be read from the caller's argument", mapPathKeys(out.Paths))
+		}
+	})
+
+	// CHANGE DETECTOR, not an endorsement: a prefix wrapped in a CONVERSION at
+	// the Mount call (`r.Mount(string(prefix), server)`) still does not resolve.
+	// Worse, it renders as the conversion's TYPE, so the fixture's mountNamed
+	// route is documented at /string/things — a path that looks literal and
+	// exists nowhere (issue #433). Asserted at today's wrong behaviour so this
+	// fails, and gets updated, the moment that is fixed.
+	t.Run("prefix through a conversion is still unresolved", func(t *testing.T) {
+		if _, ok := out.Paths["/named/things"]; ok {
+			t.Error("/named/things now resolves — the conversion gap is fixed; " +
+				"assert it properly here and close #433")
+		}
+		if _, ok := out.Paths["/string/things"]; !ok {
+			t.Error("/string/things is gone — the conversion no longer renders as its " +
+				"type; update this subtest and close #433")
 		}
 	})
 }

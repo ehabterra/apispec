@@ -121,7 +121,8 @@ issues, and a Markdown export you can attach to a bug report as-is.
 | Deep/dense project: some routes missing + truncation warning | the budget for the walk that *finds* registrations is spent | raise `--max-nodes` |
 | Named route present but under-detailed + `MaxNodesPerRoute` warning | that one route's own allowance is spent; no other route is affected | raise `--max-nodes-per-route` |
 | Route present, body/params empty | handler not located / binding style unrecognised | insight report (Step 4), check `handlerFound` |
-| Path shows `{someFunc}` placeholder | *part* of the path is built by a function call | statically unknowable; the name comes from the called function, and the rest of the path is real. A path that is **nothing but** a placeholder is not documented at all — see the row above |
+| Path shows `{someFunc}` / `{someVar}` placeholder | *part* of the path is built at runtime | statically unknowable; the name comes from the called function or the variable, and the rest of the path is real. A variable IS traced when its assignments agree (`p := "/users"`), so a placeholder here means a call, a request-time value, or two branches assigning different paths. A path that is **nothing but** a placeholder is not documented at all — see the row above |
+| Path shows a segment named after a TYPE (`/string/…`) | a path wrapped in a type conversion (`string(prefix)`) | [#433](https://github.com/ehabterra/apispec/issues/433) — the conversion is not resolved and renders as its type. Pass the value without the conversion, or set the path literally, until that is fixed |
 
 ## What to include in a bug report
 

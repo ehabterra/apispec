@@ -52,19 +52,35 @@ func NewBasePatternMatcher(cfg *APISpecConfig, contextProvider ContextProvider) 
 // A concatenation (`opts.BaseURL + "/things"`) folds to the joined value —
 // see resolveConcatenatedPath, which is what generated servers need (#274).
 //
-// All other kinds fall through to GetArgumentInfo for backwards
-// compatibility — handling KindIdent (non-const variable) similarly is a
-// possible follow-up.
+// A local variable is traced through its assignments (`p := "/users"`, issue
+// #431) — see variableValue, which resolves it only when every assignment
+// visible at the call site agrees.
+//
+// All other kinds fall through to GetArgumentInfo.
 func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node TrackerNodeInterface) (path string, dynamicNames []string) {
 	if arg == nil {
 		return "", nil
 	}
 	switch arg.GetKind() {
 	case metadata.KindBinary:
-		return b.resolveConcatenatedPath(arg, node)
+		return b.resolveConcatenatedPath(arg, node, 0)
 	case metadata.KindCall:
 		p, name := placeholderFor(arg)
 		return p, dynamicNameList(name)
+	case metadata.KindIdent:
+		// A whole path in one identifier is the same question as one operand of
+		// a concatenation, so it is answered by the same ladder: a constant or
+		// package-level var, the argument a caller passed for this parameter, a
+		// field read off a struct literal, or a local variable's assignments
+		// (issue #431).
+		//
+		// It used to fall through to rendering the argument, which yields the
+		// identifier's TYPE — `mux.HandleFunc(p, h)` came out as `/string`, and
+		// two different helper parameters collapsed onto that one key. A
+		// placeholder says what is true when nothing resolves, and #428 reports
+		// it rather than emitting it.
+		value, name := b.resolvePathOperand(arg, node, 0)
+		return value, dynamicNameList(name)
 	}
 	return b.contextProvider.GetArgumentInfo(arg), nil
 }
@@ -104,7 +120,7 @@ func placeholderFor(arg *metadata.CallArgument) (path, dynamicName string) {
 // order. An operand that cannot be evaluated becomes a {placeholder} rather
 // than disappearing: an unresolved prefix must leave the route addressable and
 // visibly incomplete, not silently shorten its path.
-func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument, node TrackerNodeInterface) (path string, dynamicNames []string) {
+func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument, node TrackerNodeInterface, depth int) (path string, dynamicNames []string) {
 	operands := flattenConcat(arg, nil)
 	if operands == nil {
 		// Not a `+` chain (no other operator builds a path); treat the whole
@@ -115,7 +131,7 @@ func (b *BasePatternMatcher) resolveConcatenatedPath(arg *metadata.CallArgument,
 
 	var sb strings.Builder
 	for _, operand := range operands {
-		value, name := b.resolvePathOperand(operand, node)
+		value, name := b.resolvePathOperand(operand, node, depth)
 		sb.WriteString(value)
 		// EVERY placeholder needs its name reported: each one becomes a declared
 		// path parameter, and a `{name}` left undeclared is an invalid path
@@ -150,7 +166,7 @@ func flattenConcat(arg *metadata.CallArgument, acc []*metadata.CallArgument) []*
 // resolvePathOperand evaluates one operand of a concatenated path. It returns
 // the value to append and, when the operand had to be approximated, the
 // placeholder name the caller registers as a parameter.
-func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node TrackerNodeInterface) (value, dynamicName string) {
+func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node TrackerNodeInterface, depth int) (value, dynamicName string) {
 	if arg == nil {
 		return "", ""
 	}
@@ -172,7 +188,113 @@ func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node
 	if v, ok := b.structFieldValue(arg, node); ok {
 		return v, ""
 	}
+	// A local variable holding this part of the path (issue #431).
+	if v, ok := b.variableValue(arg, node, depth); ok {
+		return v, ""
+	}
 	return placeholderFor(arg)
+}
+
+// maxPathVarDepth bounds the walk through assignments. An alias chain this long
+// is pathological, and the bound is also what makes a cycle (`a = b; b = a`)
+// terminate.
+const maxPathVarDepth = 8
+
+// variableValue resolves an identifier to the path it holds, by reading the
+// assignments visible at the call site (issue #431).
+//
+// `p := "/users"` two lines above the registration is a path that is statically
+// known, and before this it was treated as unreadable — reported and left out
+// of the document by #428, or worse, rendered as the variable's TYPE.
+//
+// Three rules keep it honest (golden rule #7):
+//
+//   - every assignment visible at the site must agree. Two branches assigning
+//     different paths is real ambiguity, and picking one would document an
+//     endpoint the server may not serve;
+//   - an alias chain is followed (`a := "/x"; b := a`), bounded by
+//     maxPathVarDepth;
+//   - a value that is not itself readable — assigned from a call, read off a
+//     request — resolves to nothing, which is the case the placeholder exists
+//     for.
+func (b *BasePatternMatcher) variableValue(arg *metadata.CallArgument, node TrackerNodeInterface, depth int) (string, bool) {
+	if arg == nil || node == nil || depth >= maxPathVarDepth {
+		return "", false
+	}
+	if arg.GetKind() != metadata.KindIdent || arg.GetName() == "" {
+		return "", false
+	}
+	edge := node.GetEdge()
+	if edge == nil {
+		return "", false
+	}
+	assigns := pathVarAssignments(b.contextProvider, edge, arg.GetName())
+	if len(assigns) == 0 {
+		return "", false
+	}
+	value := ""
+	for i := range assigns {
+		v, ok := b.assignedPathValue(&assigns[i], node, depth)
+		if !ok {
+			return "", false
+		}
+		if i > 0 && v != value {
+			return "", false
+		}
+		value = v
+	}
+	return value, true
+}
+
+// pathVarAssignments returns EVERY assignment to name visible at the call site,
+// not only the one in effect there.
+//
+// assignmentsAt is the canonical lookup for "what does this variable hold here",
+// and its edge fast path answers with the LATEST assignment — which is what a
+// request-body or status resolver wants. Reading a path is the opposite
+// question: two assignments with different values mean the path is ambiguous,
+// and taking the latest would document one branch's route as the endpoint
+// (golden rule #7). Measured on `amb := "/one"; if … { amb = "/two" }`, the
+// fast path resolved to "/two" with no sign that "/one" existed.
+//
+// The enclosing function's scope records them all, so it answers when it knows
+// the variable; the edge map remains the fallback. An assignment written AFTER
+// the registration counts too, since a loop can make it the live value — that
+// can only make the path unreadable, never wrong.
+func pathVarAssignments(cp ContextProvider, edge *metadata.CallGraphEdge, name string) []metadata.Assignment {
+	if impl, ok := cp.(*ContextProviderImpl); ok {
+		if am := callerAssignmentMap(impl, edge, name); len(am[name]) > 0 {
+			return am[name]
+		}
+	}
+	if edge == nil {
+		return nil
+	}
+	return edge.AssignmentMap[name]
+}
+
+// assignedPathValue reads one assignment's right-hand side as a path value.
+//
+// A concatenation is accepted only when EVERY operand resolved: a placeholder
+// inside the value would be reported as what the variable holds, which is a
+// worse answer than reporting the variable as unreadable.
+func (b *BasePatternMatcher) assignedPathValue(a *metadata.Assignment, node TrackerNodeInterface, depth int) (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	rhs := &a.Value
+	if v, ok := b.contextProvider.ConstantValue(rhs); ok {
+		return v, true
+	}
+	switch rhs.GetKind() {
+	case metadata.KindIdent:
+		return b.variableValue(rhs, node, depth+1)
+	case metadata.KindBinary:
+		if v, dyn := b.resolveConcatenatedPath(rhs, node, depth+1); len(dyn) == 0 {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 // structFieldValue resolves `x.Field` when x traces back to a composite literal

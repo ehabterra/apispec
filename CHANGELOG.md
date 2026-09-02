@@ -36,6 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A registration path held in a variable is now read, instead of being
+  reported as unknowable.** `p := "/users"` two lines above the registration is
+  a statically-known path, and it was treated as unreadable: left out of the
+  document (since the change below), or — when the whole path was one variable —
+  rendered as the variable's *type*, so `/string` appeared as if it were an
+  endpoint. A path argument that is a bare identifier now goes through the same
+  resolution ladder as one operand of a concatenation, plus the variable's own
+  assignments: a literal, an alias chain, a variable prefix with a literal tail,
+  and a value assembled from parts that all resolve. Only when every assignment
+  visible at the call site agrees — two branches assigning different paths stays
+  reported, because picking one would document an endpoint the server may not
+  serve, and so does a path assigned from a call. This also resolves a prefix
+  passed to a mount helper as a parameter (`mountAt(prefix, r, sub)`), which had
+  its own change-detector test. Measured on a real project: six phantom
+  `/…/string` paths became flagged placeholders, with no route gained or lost.
+  (#431)
 - **A registration whose path is built at runtime is reported instead of
   documented at a placeholder path.** A route table
   (`mux.HandleFunc(rt.Method+" "+rt.Path, rt.Handler)`) was emitted as an
