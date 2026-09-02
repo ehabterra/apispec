@@ -49,7 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   including when another group configures one; and a lookup that is built at
   runtime — or names a source OpenAPI has no apiKey location for, such as a form
   field — keeps the default and is reported on stderr rather than presented as
-  observed. (#370)
+  observed. Two api-key middlewares on one scope stay two credentials: both
+  appear in the operation's requirement (an AND), where collapsing them by
+  middleware identity documented the first and dropped the second. A scheme the
+  user defined themselves is never reshaped; where it contradicts the code, the
+  disagreement is reported. (#370)
 
 - **A path wrapped in a type conversion no longer documents a phantom
   endpoint.** `r.Mount(string(prefix), sub)` rendered as the conversion's

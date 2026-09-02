@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"sort"
 	"testing"
 
 	intspec "github.com/ehabterra/apispec/internal/spec"
@@ -92,6 +93,27 @@ func TestTestdata_AuthEchoKeyLookup(t *testing.T) {
 		if scheme.Type != "apiKey" || scheme.In != c.in || scheme.Name != c.name {
 			t.Errorf("scheme %s = {type:%s in:%s name:%s}, want {apiKey %s %s}",
 				c.scheme, scheme.Type, scheme.In, scheme.Name, c.in, c.name)
+		}
+	}
+
+	// Two key middlewares on one group: echo runs both, so both credentials are
+	// required and both belong in the SAME requirement object (an AND). Keeping
+	// one shape per scheme documented the first and dropped the second.
+	both := requirementNames(t, out, "/both/items", "GET")
+	sort.Strings(both)
+	want := []string{"apiKeyAuthHeaderXTenantKey", "apiKeyAuthQueryApiKey"}
+	if len(both) != 2 || both[0] != want[0] || both[1] != want[1] {
+		t.Errorf("GET /both/items requires %v, want %v", both, want)
+	}
+	if item, ok := out.Paths["/both/items"]; ok {
+		if op := opFor(item, "GET"); op != nil && op.Security != nil && len(*op.Security) != 1 {
+			t.Errorf("want one requirement object holding both schemes (an AND), got %d: %v",
+				len(*op.Security), *op.Security)
+		}
+	}
+	for _, name := range want {
+		if scheme := schemeOf(t, out, name); scheme.Type != "apiKey" {
+			t.Errorf("scheme %s = %+v, want an apiKey scheme", name, scheme)
 		}
 	}
 

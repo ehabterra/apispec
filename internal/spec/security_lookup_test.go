@@ -147,7 +147,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 		return &RouteInfo{
 			Path:                 path,
 			Security:             []SecurityRequirement{{"apiKeyAuth": {}}},
-			SecuritySchemeShapes: map[string]apiKeyShape{"apiKeyAuth": shape},
+			SecuritySchemeShapes: map[string][]apiKeyShape{"apiKeyAuth": {shape}},
 		}
 	}
 	atDefault := func(path string) *RouteInfo {
@@ -243,7 +243,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 			t.Fatalf("both routes reference %q", schemeNameOf(a))
 		}
 		for _, r := range []*RouteInfo{a, b} {
-			want := r.SecuritySchemeShapes["apiKeyAuth"]
+			want := r.SecuritySchemeShapes["apiKeyAuth"][0]
 			got := defs[schemeNameOf(r)]
 			if got.In != want.In || got.Name != want.Name {
 				t.Errorf("route %s -> %s = {%s %s}, want {%s %s}",
@@ -278,7 +278,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 				"apiKeyAuth": {},
 				"bearerAuth": {},
 			}},
-			SecuritySchemeShapes: map[string]apiKeyShape{"apiKeyAuth": {In: "query", Name: "api_key"}},
+			SecuritySchemeShapes: map[string][]apiKeyShape{"apiKeyAuth": {{In: "query", Name: "api_key"}}},
 		}
 		other := shaped("/b", apiKeyShape{In: "cookie", Name: "token"})
 		specializeAPIKeySchemes([]*RouteInfo{route, other}, base, nil)
@@ -288,6 +288,36 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 		}
 		if _, ok := names["apiKeyAuthQueryApiKey"]; !ok {
 			t.Errorf("the shaped scheme must be renamed, got %v", names)
+		}
+	})
+
+	t.Run("two shapes on one route are ANDed in its requirement", func(t *testing.T) {
+		// Two api-key middlewares on one scope are two credentials the server
+		// requires together, so the requirement names both rather than one
+		// replacing the other (found by probing the shape after review).
+		route := &RouteInfo{
+			Path:     "/both",
+			Security: []SecurityRequirement{{"apiKeyAuth": {}}},
+			SecuritySchemeShapes: map[string][]apiKeyShape{"apiKeyAuth": {
+				{In: "query", Name: "api_key"},
+				{In: "header", Name: "X-Tenant-Key"},
+			}},
+		}
+		defs := specializeAPIKeySchemes([]*RouteInfo{route}, base, nil)
+		if len(route.Security) != 1 {
+			t.Fatalf("want one requirement object (an AND), got %d: %v", len(route.Security), route.Security)
+		}
+		req := route.Security[0]
+		for _, want := range []string{"apiKeyAuthQueryApiKey", "apiKeyAuthHeaderXTenantKey"} {
+			if _, ok := req[want]; !ok {
+				t.Errorf("requirement %v is missing %s", req, want)
+			}
+			if def := defs[want]; def.Type != "apiKey" {
+				t.Errorf("definition for %s = %+v", want, def)
+			}
+		}
+		if _, ok := req["apiKeyAuth"]; ok {
+			t.Errorf("the declared name must be replaced, got %v", req)
 		}
 	})
 
@@ -362,6 +392,22 @@ func TestValidateSecurityLookupFields(t *testing.T) {
 // has no apiKey location for — are the honest fallback this change rests on,
 // and no fixture exercises them (both need code a real project would be odd to
 // write).
+func TestAppendUniqueShapes(t *testing.T) {
+	q := apiKeyShape{In: "query", Name: "api_key"}
+	h := apiKeyShape{In: "header", Name: "X-Key"}
+
+	got := appendUniqueShapes(nil, q, h, q)
+	if len(got) != 2 || got[0] != q || got[1] != h {
+		t.Errorf("got %+v, want [query header] with the repeat dropped", got)
+	}
+	if got := appendUniqueShapes(got, h); len(got) != 2 {
+		t.Errorf("appending a shape already present must change nothing, got %+v", got)
+	}
+	if got := appendUniqueShapes(nil); got != nil {
+		t.Errorf("appending nothing to nothing must stay nil, got %+v", got)
+	}
+}
+
 func TestAPIKeyShapeOf(t *testing.T) {
 	meta := newTestMeta()
 
@@ -466,7 +512,7 @@ func TestReportOverriddenShapesAgreement(t *testing.T) {
 	shape := apiKeyShape{In: "query", Name: "api_key"}
 	route := &RouteInfo{
 		Security:             []SecurityRequirement{{"apiKeyAuth": {}}},
-		SecuritySchemeShapes: map[string]apiKeyShape{"apiKeyAuth": shape},
+		SecuritySchemeShapes: map[string][]apiKeyShape{"apiKeyAuth": {shape}},
 	}
 
 	agrees := map[string]SecurityScheme{"apiKeyAuth": {Type: "apiKey", In: "query", Name: "api_key"}}

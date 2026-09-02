@@ -40,6 +40,21 @@ func main() {
 	}))
 	c.GET("/me", session)
 
+	// TWO key middlewares on one group, reading different places: echo runs
+	// both, so both credentials are required and both belong in the
+	// requirement. Keeping one shape per scheme documented the first and
+	// dropped the second silently.
+	both := e.Group("/both")
+	both.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
+		KeyLookup: "header:X-Tenant-Key",
+		Validator: validate,
+	}))
+	both.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
+		KeyLookup: "query:api_key",
+		Validator: validate,
+	}))
+	both.GET("/items", items)
+
 	// Nothing configured: the library default (header:Authorization) is correct.
 	d := e.Group("/default")
 	d.Use(middleware.KeyAuth(validate))

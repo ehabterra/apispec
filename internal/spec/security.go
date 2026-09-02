@@ -16,6 +16,7 @@ package spec
 
 import (
 	"log"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -328,7 +329,7 @@ func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []S
 // A mapping with no LookupField, or one whose lookup is absent or unreadable,
 // contributes no shape and keeps the scheme exactly as declared — the library
 // default, which is right until a project configures otherwise.
-func resolveSecurityWithShapes(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []SecurityRequirement, public bool, unresolved []MiddlewareRef, shapes map[string]apiKeyShape) {
+func resolveSecurityWithShapes(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []SecurityRequirement, public bool, unresolved []MiddlewareRef, shapes map[string][]apiKeyShape) {
 	combined := SecurityRequirement{}
 	var alternatives []SecurityRequirement
 
@@ -355,9 +356,12 @@ func resolveSecurityWithShapes(refs []MiddlewareRef, mappings []SecurityMapping)
 					combined[k] = append([]string{}, v...)
 					if hasShape {
 						if shapes == nil {
-							shapes = map[string]apiKeyShape{}
+							shapes = map[string][]apiKeyShape{}
 						}
-						shapes[k] = shape
+						// Appended, not assigned: two api-key middlewares on one
+						// scope read two different places, and both credentials
+						// are required.
+						shapes[k] = appendUniqueShapes(shapes[k], shape)
 					}
 				}
 			}
@@ -391,6 +395,19 @@ func resolveSecurityWithShapes(refs []MiddlewareRef, mappings []SecurityMapping)
 type apiKeyShape struct {
 	In   string
 	Name string
+}
+
+// appendUniqueShapes adds the shapes not already present, preserving order.
+// Order is first-seen and never reaches the output on its own — the emitted
+// names are derived from the shapes and assigned in sorted order — so this
+// stays a set with a stable rendering.
+func appendUniqueShapes(dst []apiKeyShape, src ...apiKeyShape) []apiKeyShape {
+	for _, shape := range src {
+		if !slices.Contains(dst, shape) {
+			dst = append(dst, shape)
+		}
+	}
+	return dst
 }
 
 // apiKeyShapeOf reads the shape a matched mapping's middleware was configured
