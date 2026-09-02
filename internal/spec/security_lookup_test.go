@@ -148,7 +148,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 
 	t.Run("one shape keeps the declared name", func(t *testing.T) {
 		route := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
-		defs := specializeAPIKeySchemes([]*RouteInfo{route}, base)
+		defs := specializeAPIKeySchemes([]*RouteInfo{route}, base, nil)
 		if got := schemeNameOf(route); got != "apiKeyAuth" {
 			t.Errorf("route requires %q, want the declared name", got)
 		}
@@ -160,7 +160,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 	t.Run("several shapes split, none keeping the plain name", func(t *testing.T) {
 		q := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
 		c := shaped("/b", apiKeyShape{In: "cookie", Name: "token"})
-		defs := specializeAPIKeySchemes([]*RouteInfo{q, c}, base)
+		defs := specializeAPIKeySchemes([]*RouteInfo{q, c}, base, nil)
 		if got := schemeNameOf(q); got != "apiKeyAuthQueryApiKey" {
 			t.Errorf("query route requires %q", got)
 		}
@@ -181,7 +181,7 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 		// default route's credential was documented in the wrong place.
 		q := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
 		d := atDefault("/b")
-		defs := specializeAPIKeySchemes([]*RouteInfo{q, d}, base)
+		defs := specializeAPIKeySchemes([]*RouteInfo{q, d}, base, nil)
 		if got := schemeNameOf(q); got != "apiKeyAuthQueryApiKey" {
 			t.Errorf("configured route requires %q, want its own scheme", got)
 		}
@@ -193,9 +193,69 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 		}
 	})
 
+	t.Run("a scheme the user defined is left alone", func(t *testing.T) {
+		// An explicit definition is a statement of intent: inference may not
+		// rewrite it, and — since the requirement keeps the declared name — must
+		// not route around it with a derived one either (CodeRabbit, PR #439).
+		explicit := map[string]SecurityScheme{
+			"apiKeyAuth": {Type: "apiKey", In: "header", Name: "X-User-Chosen"},
+		}
+		q := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
+		c := shaped("/b", apiKeyShape{In: "cookie", Name: "token"})
+		defs := specializeAPIKeySchemes([]*RouteInfo{q, c}, explicit, explicit)
+		if len(defs) != 0 {
+			t.Errorf("want no discovered definitions for a user-defined scheme, got %+v", defs)
+		}
+		for _, r := range []*RouteInfo{q, c} {
+			if got := schemeNameOf(r); got != "apiKeyAuth" {
+				t.Errorf("route %s requires %q, want the user's own scheme name", r.Path, got)
+			}
+		}
+	})
+
+	t.Run("shapes differing only in punctuation get distinct keys", func(t *testing.T) {
+		// `api_key` and `api-key` render to one CamelCase key; without a
+		// collision suffix one definition overwrote the other and both routes
+		// pointed at it (CodeRabbit, PR #439).
+		a := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
+		b := shaped("/b", apiKeyShape{In: "query", Name: "api-key"})
+		defs := specializeAPIKeySchemes([]*RouteInfo{a, b}, base, nil)
+		if len(defs) != 2 {
+			t.Fatalf("want a definition per shape, got %+v", defs)
+		}
+		if schemeNameOf(a) == schemeNameOf(b) {
+			t.Fatalf("both routes reference %q", schemeNameOf(a))
+		}
+		for _, r := range []*RouteInfo{a, b} {
+			want := r.SecuritySchemeShapes["apiKeyAuth"]
+			got := defs[schemeNameOf(r)]
+			if got.In != want.In || got.Name != want.Name {
+				t.Errorf("route %s -> %s = {%s %s}, want {%s %s}",
+					r.Path, schemeNameOf(r), got.In, got.Name, want.In, want.Name)
+			}
+		}
+	})
+
+	t.Run("key assignment is stable across runs", func(t *testing.T) {
+		// The suffix makes assignment order-dependent, so it is taken in sorted
+		// shape order rather than map order (golden rule #1).
+		names := func() string {
+			a := shaped("/a", apiKeyShape{In: "query", Name: "api_key"})
+			b := shaped("/b", apiKeyShape{In: "query", Name: "api-key"})
+			specializeAPIKeySchemes([]*RouteInfo{a, b}, base, nil)
+			return schemeNameOf(a) + "|" + schemeNameOf(b)
+		}
+		first := names()
+		for i := 0; i < 20; i++ {
+			if got := names(); got != first {
+				t.Fatalf("run %d assigned %q, first run assigned %q", i, got, first)
+			}
+		}
+	})
+
 	t.Run("nothing shaped changes nothing", func(t *testing.T) {
 		d := atDefault("/b")
-		if defs := specializeAPIKeySchemes([]*RouteInfo{d, nil}, base); defs != nil {
+		if defs := specializeAPIKeySchemes([]*RouteInfo{d, nil}, base, nil); defs != nil {
 			t.Errorf("want no definitions, got %+v", defs)
 		}
 		if got := schemeNameOf(d); got != "apiKeyAuth" {

@@ -15,6 +15,9 @@
 package spec
 
 import (
+	"log"
+	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -88,6 +91,61 @@ func lookupValueFromArgs(args []*metadata.CallArgument, index int, field string)
 	return "", false
 }
 
+// sortedShapes orders shapes so scheme keys are assigned the same way on every
+// run — the assignment matters because a collision resolves by suffix.
+func sortedShapes(shapes map[apiKeyShape]bool) []apiKeyShape {
+	out := make([]apiKeyShape, 0, len(shapes))
+	for shape := range shapes {
+		out = append(out, shape)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].In != out[j].In {
+			return out[i].In < out[j].In
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// reportOverriddenShapes says so when a scheme the user defined themselves is
+// contradicted by what the middleware configures.
+//
+// The user's definition wins — it is a statement of intent, and inference must
+// not quietly rewrite it — but silence would hide a real disagreement, so each
+// contradicted scheme is named once.
+func reportOverriddenShapes(routes []*RouteInfo, explicit map[string]SecurityScheme) {
+	if len(explicit) == 0 {
+		return
+	}
+	reported := map[string]bool{}
+	var names []string
+	observed := map[string]apiKeyShape{}
+	for _, route := range routes {
+		if route == nil {
+			continue
+		}
+		for name, shape := range route.SecuritySchemeShapes {
+			def, written := explicit[name]
+			if !written || reported[name] {
+				continue
+			}
+			if def.In == shape.In && def.Name == shape.Name {
+				continue // agrees; nothing to say
+			}
+			reported[name] = true
+			names = append(names, name)
+			observed[name] = shape
+		}
+	}
+	sort.Strings(names) // one line per scheme, in a stable order
+	for _, name := range names {
+		def, shape := explicit[name], observed[name]
+		log.Printf("[security] securitySchemes.%s is defined as {in: %s, name: %s}, but the middleware "+
+			"reads {in: %s, name: %s} — keeping your definition",
+			name, def.In, def.Name, shape.In, shape.Name)
+	}
+}
+
 // apiKeySchemeKey names the scheme for one resolved lookup shape.
 //
 // The base name is kept while a project uses ONE shape, which is the ordinary
@@ -143,7 +201,7 @@ func camelSegment(s string) string {
 // default group redefined the shared name as the configured shape and
 // documented the default group's credential in the wrong place — measured on
 // exactly that shape while building this.
-func specializeAPIKeySchemes(routes []*RouteInfo, base map[string]SecurityScheme) map[string]SecurityScheme {
+func specializeAPIKeySchemes(routes []*RouteInfo, base, explicit map[string]SecurityScheme) map[string]SecurityScheme {
 	// Collect the distinct shapes per declared scheme name, and whether the name
 	// is also referenced by a route that resolved no shape at all.
 	byScheme := map[string]map[apiKeyShape]bool{}
@@ -153,6 +211,9 @@ func specializeAPIKeySchemes(routes []*RouteInfo, base map[string]SecurityScheme
 			continue
 		}
 		for name, shape := range route.SecuritySchemeShapes {
+			if _, written := explicit[name]; written {
+				continue // the user's own definition governs this scheme
+			}
 			if byScheme[name] == nil {
 				byScheme[name] = map[apiKeyShape]bool{}
 			}
@@ -166,6 +227,7 @@ func specializeAPIKeySchemes(routes []*RouteInfo, base map[string]SecurityScheme
 			}
 		}
 	}
+	reportOverriddenShapes(routes, explicit)
 	if len(byScheme) == 0 {
 		return nil
 	}
@@ -175,10 +237,21 @@ func specializeAPIKeySchemes(routes []*RouteInfo, base map[string]SecurityScheme
 	defs := map[string]SecurityScheme{}
 	for name, shapes := range byScheme {
 		renames[name] = map[apiKeyShape]string{}
-		for shape := range shapes {
+		for _, shape := range sortedShapes(shapes) {
 			key := name
 			if len(shapes) > 1 || atDefault[name] {
+				// Two lookups differing only in punctuation (`api_key` and
+				// `api-key`) render to one key, and one definition would then
+				// overwrite the other while both routes pointed at it. Shapes are
+				// keyed in sorted order and a collision takes the next free
+				// suffix, so the assignment is stable across runs (golden rule #1).
 				key = apiKeySchemeKey(name, shape.In, shape.Name)
+				for n := 2; ; n++ {
+					if _, taken := defs[key]; !taken {
+						break
+					}
+					key = apiKeySchemeKey(name, shape.In, shape.Name) + strconv.Itoa(n)
+				}
 			}
 			renames[name][shape] = key
 			def := base[name]

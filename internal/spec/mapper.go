@@ -255,7 +255,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 
 	// Point each apiKey requirement at a scheme that says where the credential
 	// really travels, per the middleware's own configuration (issue #370).
-	discoveredSchemes := specializeAPIKeySchemes(routes, allDeclaredSchemes(cfg))
+	discoveredSchemes := specializeAPIKeySchemes(routes, allDeclaredSchemes(cfg), cfg.SecuritySchemes)
 	for _, r := range unresolvedPaths {
 		where := r.Position
 		if where == "" {
