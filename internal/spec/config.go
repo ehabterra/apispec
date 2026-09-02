@@ -594,6 +594,22 @@ type SecurityMapping struct {
 	Schemes      []SecurityRequirement   `yaml:"schemes,omitempty" json:"schemes,omitempty"`
 	SchemesAnyOf [][]SecurityRequirement `yaml:"schemesAnyOf,omitempty" json:"schemesAnyOf,omitempty"`
 
+	// LookupField names the field of the middleware's own configuration that
+	// says WHERE the credential travels — echo's `KeyAuthConfig.KeyLookup`,
+	// fiber's `keyauth.Config.KeyLookup` — written in the library's own grammar
+	// ("header:X-API-Key", "query:api_key", "cookie:token").
+	//
+	// Without it an apiKey scheme can only be documented at the library's
+	// DEFAULT location, which is wrong for every project that configures one:
+	// a generated client sends `Authorization:` to an API that reads
+	// `?api_key=`, and the spec looks authoritative while being wrong (issue
+	// #370). Empty leaves the mapping's scheme exactly as declared.
+	//
+	// LookupArgIndex is which argument holds that configuration; 0 (the
+	// default) is the config struct of every middleware seen so far.
+	LookupField    string `yaml:"lookupField,omitempty" json:"lookupField,omitempty"`
+	LookupArgIndex int    `yaml:"lookupArgIndex,omitempty" json:"lookupArgIndex,omitempty"`
+
 	// Public marks the matched scope as explicitly unauthenticated: it clears
 	// inherited security for the affected route(s)/subtree (e.g. a skipper or
 	// AllowUnauthenticated middleware), yielding `security: []`.
@@ -658,6 +674,17 @@ func (c *APISpecConfig) ValidateSecurity() error {
 		}
 		if !m.Skip && !m.Public && len(m.Schemes) == 0 && len(m.SchemesAnyOf) == 0 {
 			return fmt.Errorf("securityMappings[%d]: needs schemes, schemesAnyOf, public:true, or skip:true", i)
+		}
+		// A lookup shapes the scheme this mapping declares, so there has to be
+		// one to shape, and an argument index has to exist to read it from.
+		if m.LookupField != "" && len(m.Schemes) == 0 {
+			return fmt.Errorf("securityMappings[%d]: lookupField needs schemes to shape (it sets an apiKey scheme's in/name)", i)
+		}
+		if m.LookupArgIndex < 0 {
+			return fmt.Errorf("securityMappings[%d]: lookupArgIndex must not be negative", i)
+		}
+		if m.LookupArgIndex > 0 && m.LookupField == "" {
+			return fmt.Errorf("securityMappings[%d]: lookupArgIndex has no effect without lookupField", i)
 		}
 		// Reject blank scheme keys: `schemes: [{"": []}]` would emit an invalid
 		// OpenAPI security requirement.

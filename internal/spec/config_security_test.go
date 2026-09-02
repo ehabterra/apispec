@@ -151,7 +151,7 @@ func TestReconcileSecuritySchemes(t *testing.T) {
 		routes := []*RouteInfo{
 			{Security: []SecurityRequirement{{"bearerAuth": {}}}},
 		}
-		out := reconcileSecuritySchemes(cfg, routes)
+		out := reconcileSecuritySchemes(cfg, routes, nil)
 		if _, ok := out["bearerAuth"]; !ok {
 			t.Errorf("referenced bearerAuth not emitted: %v", out)
 		}
@@ -164,7 +164,7 @@ func TestReconcileSecuritySchemes(t *testing.T) {
 		cfg := &APISpecConfig{
 			SecuritySchemes: map[string]SecurityScheme{"apiKeyAuth": schemeAPIKey},
 		}
-		out := reconcileSecuritySchemes(cfg, nil)
+		out := reconcileSecuritySchemes(cfg, nil, nil)
 		if _, ok := out["apiKeyAuth"]; !ok {
 			t.Errorf("user-defined scheme dropped: %v", out)
 		}
@@ -175,7 +175,7 @@ func TestReconcileSecuritySchemes(t *testing.T) {
 			Security:      []SecurityRequirement{{"bearerAuth": {}}},
 			presetSchemes: map[string]SecurityScheme{"bearerAuth": schemeBearerJWT},
 		}
-		out := reconcileSecuritySchemes(cfg, nil)
+		out := reconcileSecuritySchemes(cfg, nil, nil)
 		if _, ok := out["bearerAuth"]; !ok {
 			t.Errorf("globally-referenced preset scheme not emitted: %v", out)
 		}

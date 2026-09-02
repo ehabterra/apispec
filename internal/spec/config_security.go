@@ -138,8 +138,17 @@ func securityLibraryBundles() []securityLibraryBundle {
 	basic := func(fn, pkg string) SecurityMapping {
 		return SecurityMapping{FunctionNameRegex: fn, PkgRegex: pkg, Schemes: []SecurityRequirement{{"basicAuth": {}}}}
 	}
+	// apiKey mappings name the configuration field that says where the key
+	// travels: echo's KeyAuthConfig.KeyLookup and fiber's keyauth.Config
+	// .KeyLookup share the grammar, and both default to header:Authorization
+	// when unset — which is what the scheme keeps if nothing is configured
+	// (issue #370).
 	apiKey := func(fn, pkg string) SecurityMapping {
-		return SecurityMapping{FunctionNameRegex: fn, PkgRegex: pkg, Schemes: []SecurityRequirement{{"apiKeyAuth": {}}}}
+		return SecurityMapping{
+			FunctionNameRegex: fn, PkgRegex: pkg,
+			Schemes:     []SecurityRequirement{{"apiKeyAuth": {}}},
+			LookupField: "KeyLookup",
+		}
 	}
 
 	return []securityLibraryBundle{

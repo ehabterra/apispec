@@ -75,6 +75,14 @@ type RouteInfo struct {
 	// Resolved router group prefix (if any)
 	GroupPrefix string
 
+	// SecuritySchemeShapes records, per scheme name in Security, where the
+	// middleware's own configuration says the credential travels — echo's
+	// `KeyLookup: "query:api_key"` and friends (issue #370). Absent for a
+	// scheme documented at its library default. The mapper turns these into the
+	// emitted scheme definitions, and splits the name when one project uses
+	// several shapes.
+	SecuritySchemeShapes map[string]apiKeyShape
+
 	// Security holds the per-operation OpenAPI security requirements resolved
 	// from auth middleware detected in scope. Semantics:
 	//   nil          -> no per-operation security; the operation inherits the
@@ -781,20 +789,32 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 	var reqs []SecurityRequirement
 	public := false
 
+	var shapes map[string]apiKeyShape
+	keepShapes := func(found map[string]apiKeyShape) {
+		for name, shape := range found {
+			if shapes == nil {
+				shapes = map[string]apiKeyShape{}
+			}
+			shapes[name] = shape
+		}
+	}
+
 	if d := dedupMiddlewareRefs(definite); len(d) > 0 {
 		// Look through custom wrappers (e.g. middleware.Protected() that calls
 		// jwtware.New) to the underlying library scheme.
 		d = e.expandMiddlewareRefs(d)
-		r, pub, unresolved := resolveSecurity(d, e.cfg.SecurityMappings)
+		r, pub, unresolved, found := resolveSecurityWithShapes(d, e.cfg.SecurityMappings)
 		reqs = append(reqs, r...)
 		public = public || pub
+		keepShapes(found)
 		e.recordUnresolved(unresolved)
 	}
 	if sp := dedupMiddlewareRefs(speculative); len(sp) > 0 {
 		sp = e.expandMiddlewareRefs(sp)
-		r, pub, _ := resolveSecurity(sp, e.cfg.SecurityMappings) // ignore unresolved (ambiguous slot)
+		r, pub, _, found := resolveSecurityWithShapes(sp, e.cfg.SecurityMappings) // ignore unresolved (ambiguous slot)
 		reqs = append(reqs, r...)
 		public = public || pub
+		keepShapes(found)
 	}
 
 	reqs = dedupSecurityRequirements(reqs)
@@ -804,6 +824,7 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 		routeInfo.Security = []SecurityRequirement{}
 	case len(reqs) > 0:
 		routeInfo.Security = reqs
+		routeInfo.SecuritySchemeShapes = shapes
 	}
 }
 

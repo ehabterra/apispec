@@ -224,12 +224,39 @@ securityMappings:
   - functionNameRegex: ^authMiddleware$
     schemes:
       - { bearerAuth: [] }
+
+  # An apiKey middleware that says in its own configuration WHERE the key
+  # travels. Without this the scheme can only be documented at the library
+  # default, which is wrong for any project that configures one (#370).
+  - functionNameRegex: ^KeyAuthWithConfig$
+    pkgRegex: ^example\.com/auth$
+    schemes:
+      - { apiKeyAuth: [] }
+    lookupField: KeyLookup     # field holding "<header|query|cookie>:<name>"
+    lookupArgIndex: 0          # which argument holds the config (default 0)
 ```
 
 `securityMappings` is framework-agnostic and works together with
 `framework.securityPatterns` (which describes *scope* — router / subtree / route
 / wrapper). See [`AUTH_DETECTION_DESIGN.md`](AUTH_DETECTION_DESIGN.md) for the
 full model.
+
+### `lookupField` / `lookupArgIndex`
+
+`lookupField` names the configuration field that states where an API key is
+read from, in the grammar echo and fiber share (`"query:api_key"`,
+`"cookie:token"`, `"header:X-API-Key"`). It is read at the call site, so:
+
+- a middleware left unconfigured keeps the library default;
+- two scopes configured differently become **two** schemes, named after the
+  location and key (`apiKeyAuthQueryApiKey`), so neither claims to be the
+  project's single answer;
+- a value built at runtime, or a source OpenAPI cannot express (a form field),
+  keeps the default and is reported on stderr rather than presented as observed.
+
+The presets for echo's `KeyAuth`/`KeyAuthWithConfig` and fiber's `keyauth.New`
+already declare it; this is for a house middleware that carries the same kind of
+configuration.
 
 ## `framework` (advanced)
 

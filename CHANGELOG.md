@@ -36,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An apiKey scheme is documented where the credential actually travels.**
+  `schemeAPIKey` was a constant — `in: header, name: Authorization` — so every
+  API-key middleware was documented at echo's and fiber's *default* lookup, and
+  a project that configures one (`KeyLookup: "query:api_key"`,
+  `"cookie:token"`, `"header:X-API-Key"`) got a spec that reads as
+  authoritative while sending the key to a place the server never looks. The
+  scheme is now shaped from the middleware's own configuration, declared by the
+  mapping rather than hardcoded per library (`lookupField`, `lookupArgIndex`),
+  so a house middleware can describe itself the same way. Two groups configured
+  differently become two schemes; a group left at the default keeps the default,
+  including when another group configures one; and a lookup that is built at
+  runtime — or names a source OpenAPI has no apiKey location for, such as a form
+  field — keeps the default and is reported on stderr rather than presented as
+  observed. (#370)
+
 - **A path wrapped in a type conversion no longer documents a phantom
   endpoint.** `r.Mount(string(prefix), sub)` rendered as the conversion's
   *target type*, so a path named `/string/…` appeared in the document: literal

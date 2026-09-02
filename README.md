@@ -23,7 +23,7 @@
 - **Six routers out of the box** — Gin, Echo, Chi, Fiber, Gorilla Mux and `net/http`, including mixed multi-framework binaries.
 - **Your own router, detected automatically.** House wrapper types and house contexts (`func (r *Router) Get(...)`, `ctx.JSON/Bind/Query`) need no configuration.
 - **Type-aware schemas.** Generics, aliases, enums from constants, arrays, pointers, embedded and inline structs, external package types, and `go-playground/validator` constraints.
-- **Auth-aware.** Bearer/JWT, basic and apiKey schemes, with middleware followed through router-wide `Use`, group closures, per-route chains and handler wrappers.
+- **Auth-aware.** Bearer/JWT, basic and apiKey schemes, with middleware followed through router-wide `Use`, group closures, per-route chains and handler wrappers. An apiKey scheme is documented where the middleware's own configuration says the key travels (`KeyLookup: "query:api_key"`), not at the library default.
 - **Deterministic output.** Regenerating an unchanged project yields a byte-identical file, so the spec can be committed and diffed in CI without false failures.
 - **Debuggable when a route is missed.** Call-graph diagram, metadata dump, and an insight report that says *why* a response has no body.
 - **Extensible without forking.** Framework behaviour is regex patterns in YAML; adding a router touches no core logic.
@@ -192,7 +192,12 @@ Authentication and security detection is framework-agnostic and config-driven �
 see [Security & authentication detection](#security--authentication-detection).
 Protected routes get a per-operation `security` requirement and the scheme is
 registered under `components.securitySchemes`; explicitly-public routes render
-`security: []`.
+`security: []`. An **apiKey** scheme is shaped from the middleware's own
+configuration — echo's `KeyAuthConfig.KeyLookup` and fiber's
+`keyauth.Config.KeyLookup` — so `"query:api_key"` is documented as
+`in: query, name: api_key` rather than the library's default header. Two groups
+configured differently become two schemes; a lookup built at runtime keeps the
+default and says so on stderr.
 
 ### Not supported (yet)
 
@@ -418,6 +423,14 @@ securityMappings:
     recvTypeRegex: Handler           # optional: method-value middleware
     schemes:
       - { bearerAuth: [] }           # entries here are ANDed
+  # An apiKey middleware that carries WHERE the key travels in its own config:
+  # the scheme's in/name are read from that field rather than assumed.
+  - functionNameRegex: ^KeyAuthWithConfig$
+    pkgRegex: ^example\.com/auth$
+    schemes:
+      - { apiKeyAuth: [] }
+    lookupField: KeyLookup           # "<header|query|cookie>:<name>"
+    lookupArgIndex: 0                # default: the first argument
   # OR alternatives (any one satisfies):
   - functionNameRegex: ^New$
     pkgRegex: github\.com/golang-jwt/.*
