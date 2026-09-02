@@ -225,6 +225,12 @@ type SecurityDiagnostics struct {
 	// its shape is not. Reported here rather than only on stderr so the UI and
 	// a CI gate can read it (issue #327).
 	UnresolvedRefs []UnresolvedRef
+
+	// UnresolvedPaths lists registrations left OUT of the document because
+	// their path is built at runtime. The complement of UnresolvedRefs: there
+	// the operation is documented and its shape is not, here there is no
+	// operation to document (issue #428).
+	UnresolvedPaths []UnresolvedPathRoute
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification.
@@ -241,6 +247,20 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 
 	// Extract routes
 	routes := extractor.ExtractRoutes()
+
+	// Drop the registrations whose own path never resolved, before anything
+	// downstream builds an operation out of one. They are reported instead:
+	// a placeholder path is not an endpoint (issue #428).
+	routes, unresolvedPaths := dropUnresolvedPathRoutes(routes)
+	for _, r := range unresolvedPaths {
+		where := r.Position
+		if where == "" {
+			where = "position unknown"
+		}
+		log.Printf("[routes] %s: %s, so handler %s is not documented "+
+			"(it would have been emitted at %s)",
+			where, r.Reason, r.Handler, r.Path)
+	}
 
 	// Warn about auth middleware that was detected but matched no
 	// SecurityMapping, so the user knows what to map. apispecui surfaces the
@@ -330,6 +350,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		UnresolvedMiddleware: extractor.UnresolvedSecurity(),
 		PathParamMismatches:  extractor.PathParamMismatches(),
 		UnresolvedRefs:       unresolvedRefs,
+		UnresolvedPaths:      unresolvedPaths,
 	}
 	return spec, diag, nil
 }

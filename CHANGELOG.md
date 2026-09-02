@@ -36,6 +36,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A registration whose path is built at runtime is reported instead of
+  documented at a placeholder path.** A route table
+  (`mux.HandleFunc(rt.Method+" "+rt.Path, rt.Handler)`) was emitted as an
+  operation at `/{Method} {Path}`, and a house router that carries its pattern
+  on a returned object (`Combo("/x").Get(h).Post(h)`) at `/{pattern}` — paths no
+  request can match, which fail a spec-lint gate, generate client methods for
+  endpoints that do not exist, and keep the path count plausible while the real
+  routes are missing. Such a registration is now named on stderr with its source
+  position and returned by `Generator.UnresolvedPaths()`, and the "0 paths"
+  message says which of the two things happened: nothing matched, or everything
+  that matched builds its path at runtime. A *partly* resolved path is
+  unaffected — an unresolved mount prefix, an unresolved segment before a
+  literal tail, and an unreadable tail under a prefix that IS known (a catch-all
+  seen through a wrapper) all still get their operation, with the placeholder
+  flagged; measured on a real project, judging on the route's own path alone
+  deleted three such operations. For the chained-wrapper shape this also makes two decisions agree: wrapper derivation
+  already declined it as "incomplete, not applied", and the framework call
+  inside the wrapper is no longer documented behind its back. A path held
+  entirely in a local variable is now reported rather than documented under the
+  variable's name; tracing it is #431. (#428)
 - **A `switch r.Method` written in a method is now split into one operation per
   verb.** With #382 (closures) this completes the set: every handler shape —
   plain function, closure, and method with either receiver kind, in any package

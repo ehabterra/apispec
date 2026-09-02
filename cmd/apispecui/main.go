@@ -1097,6 +1097,21 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 			}
 			msg += trunc
 		}
+		if unresolved := gen.GetUnresolvedPaths(); len(unresolved) > 0 {
+			// Same class of silent shortfall: the registration matched and the
+			// handler is known, but its path is built at runtime, so there is no
+			// operation to show and nothing in the document to say so (#428).
+			where := unresolved[0].Position
+			if where == "" {
+				where = unresolved[0].Handler
+			}
+			line := fmt.Sprintf("%d registration(s) build their path at runtime and are not documented (first at %s). Register those paths statically to include them.",
+				len(unresolved), where)
+			if msg != "" {
+				msg += " "
+			}
+			msg += line
+		}
 		resp := GenerateResponse{
 			OK:                 true,
 			Framework:          req.Framework,
