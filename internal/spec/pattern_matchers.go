@@ -67,12 +67,12 @@ func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node Tra
 	case metadata.KindCall:
 		p, name := placeholderFor(arg)
 		return p, dynamicNameList(name)
-	case metadata.KindIdent:
-		// A whole path in one identifier is the same question as one operand of
-		// a concatenation, so it is answered by the same ladder: a constant or
-		// package-level var, the argument a caller passed for this parameter, a
-		// field read off a struct literal, or a local variable's assignments
-		// (issue #431).
+	case metadata.KindIdent, metadata.KindTypeConversion:
+		// A whole path in one identifier — or in a conversion of one — is the
+		// same question as one operand of a concatenation, so it is answered by
+		// the same ladder: a constant or package-level var, the argument a
+		// caller passed for this parameter, a field read off a struct literal,
+		// or a local variable's assignments (issues #431, #433).
 		//
 		// It used to fall through to rendering the argument, which yields the
 		// identifier's TYPE — `mux.HandleFunc(p, h)` came out as `/string`, and
@@ -107,6 +107,22 @@ func placeholderFor(arg *metadata.CallArgument) (path, dynamicName string) {
 		name = "path"
 	}
 	return "{" + name + "}", name
+}
+
+// conversionOperand returns the value a type conversion wraps, and whether the
+// argument is one.
+//
+// Rendering a conversion yields its TARGET TYPE — the right answer for a
+// response body, whose type is the question, and the wrong one for a path,
+// whose value is. That is how `r.Mount(string(prefix), sub)` put a phantom
+// `/string/…` in the document: a key that looks literal, carries no warning,
+// and matches nothing (issue #433). Metadata records the conversion as its own
+// kind, so this is a fact to read rather than a shape to guess at.
+func conversionOperand(arg *metadata.CallArgument) (*metadata.CallArgument, bool) {
+	if arg == nil || arg.GetKind() != metadata.KindTypeConversion || len(arg.Args) != 1 {
+		return nil, false
+	}
+	return arg.Args[0], arg.Args[0] != nil
 }
 
 // resolveConcatenatedPath folds a `+` chain into one path (issue #274).
@@ -170,6 +186,11 @@ func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node
 	if arg == nil {
 		return "", ""
 	}
+	// A conversion changes the TYPE and never the string inside it, so
+	// `string(prefix)` is resolved as `prefix` is (issue #433).
+	if inner, ok := conversionOperand(arg); ok {
+		return b.resolvePathOperand(inner, node, depth)
+	}
 	// Literals and constants, including a const declared in another package.
 	if v, ok := b.contextProvider.ConstantValue(arg); ok {
 		return v, ""
@@ -177,6 +198,11 @@ func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node
 	// A prefix the caller passed in: `registerCRUD(r, "/users")` reaching
 	// `m.Delete(base+"/{id}", h)`, or a generated server handed its base URL.
 	if caller, ok := b.callerArgFor(arg, node); ok {
+		// Through a conversion at the call site too — `mountNamed(RoutePrefix("/named"), …)`
+		// hands the parameter a converted literal.
+		if inner, isConv := conversionOperand(caller); isConv {
+			caller = inner
+		}
 		if v, ok := b.contextProvider.ConstantValue(caller); ok {
 			return v, ""
 		}
@@ -192,7 +218,89 @@ func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node
 	if v, ok := b.variableValue(arg, node, depth); ok {
 		return v, ""
 	}
+	// A parameter of the enclosing function, resolved from that function's CALL
+	// SITES rather than from the tree (issue #433).
+	if v, ok := b.paramValueFromCallSites(arg, node, depth); ok {
+		return v, ""
+	}
 	return placeholderFor(arg)
+}
+
+// paramValueFromCallSites resolves a parameter of the function the call is
+// written in by reading what its callers pass for it, when they all pass the
+// same thing.
+//
+// callerArgFor answers the same question from the TREE, which is better when it
+// works: the frame it walks up to is the invocation this route was reached
+// through. It does not always work. `mountNamed(RoutePrefix("/named"), r, sub)`
+// registers through a helper whose Mount node the walk reaches under a
+// DIFFERENT helper's frame (measured: the parent frame is mountLiteral's), so
+// the parameter has no binding to read there and the prefix stayed a
+// placeholder.
+//
+// Reading the call graph instead is frame-blind, which is exactly why it is the
+// last rung: it can only answer for a function whose callers agree, and it is
+// consulted after every frame-aware rung has declined. A helper called twice
+// with different prefixes keeps its placeholder rather than adopting one of
+// them (golden rule #7).
+func (b *BasePatternMatcher) paramValueFromCallSites(arg *metadata.CallArgument, node TrackerNodeInterface, depth int) (string, bool) {
+	if arg == nil || node == nil || depth >= maxPathVarDepth {
+		return "", false
+	}
+	if arg.GetKind() != metadata.KindIdent || arg.GetName() == "" {
+		return "", false
+	}
+	impl, ok := b.contextProvider.(*ContextProviderImpl)
+	if !ok || impl.meta == nil {
+		return "", false
+	}
+	edge := node.GetEdge()
+	if edge == nil {
+		return "", false
+	}
+	// The function the registration is written IN — its parameters are what an
+	// identifier here can be.
+	enclosing := edge.Caller.BaseID()
+	if enclosing == "" {
+		return "", false
+	}
+	value, found := "", false
+	for _, call := range impl.meta.Callees[enclosing] {
+		bound, ok := call.ParamArgMap[arg.GetName()]
+		if !ok {
+			return "", false // a caller that does not bind it: nothing to agree on
+		}
+		v, resolved := b.callSiteArgValue(&bound, depth)
+		if !resolved {
+			return "", false
+		}
+		if found && v != value {
+			return "", false // callers disagree
+		}
+		value, found = v, true
+	}
+	return value, found
+}
+
+// callSiteArgValue reads an argument written at a call site, without reference
+// to any frame: a literal, a constant, or either of those inside a conversion.
+// Anything whose meaning depends on where it is evaluated — another parameter, a
+// local variable, a call — is deliberately not followed here, since this rung
+// has no frame to evaluate it in.
+func (b *BasePatternMatcher) callSiteArgValue(arg *metadata.CallArgument, depth int) (string, bool) {
+	if arg == nil || depth >= maxPathVarDepth {
+		return "", false
+	}
+	if inner, ok := conversionOperand(arg); ok {
+		return b.callSiteArgValue(inner, depth+1)
+	}
+	if arg.GetKind() == metadata.KindBinary {
+		if v, dyn := b.resolveConcatenatedPath(arg, nil, depth+1); len(dyn) == 0 {
+			return v, true
+		}
+		return "", false
+	}
+	return b.contextProvider.ConstantValue(arg)
 }
 
 // maxPathVarDepth bounds the walk through assignments. An alias chain this long
@@ -283,6 +391,9 @@ func (b *BasePatternMatcher) assignedPathValue(a *metadata.Assignment, node Trac
 		return "", false
 	}
 	rhs := &a.Value
+	if inner, ok := conversionOperand(rhs); ok {
+		rhs = inner // `p := RoutePrefix("/x")` holds the string, not the type
+	}
 	if v, ok := b.contextProvider.ConstantValue(rhs); ok {
 		return v, true
 	}

@@ -195,3 +195,203 @@ func TestPathVarAssignmentsPrefersFunctionScope(t *testing.T) {
 		t.Errorf("the ambiguity must survive the lookup, got %q", v)
 	}
 }
+
+// TestConversionOperand covers reading through a type conversion (issue #433).
+// A conversion changes the TYPE and never the string inside it, but rendering
+// one yields its TARGET TYPE — right for a response body, whose type is the
+// question, and wrong for a path, whose value is. That is how a phantom
+// `/string/…` reached the document.
+func TestConversionOperand(t *testing.T) {
+	meta := newTestMeta()
+
+	conv := func(typeName string, inner *metadata.CallArgument) *metadata.CallArgument {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindTypeConversion)
+		a.Fun = concatIdent(meta, typeName)
+		if inner != nil {
+			a.Args = []*metadata.CallArgument{inner}
+		}
+		return a
+	}
+
+	t.Run("the wrapped value is returned", func(t *testing.T) {
+		inner, ok := conversionOperand(conv("string", concatLit(meta, "/named")))
+		if !ok || inner == nil || inner.GetValue() != `"/named"` {
+			t.Errorf("got (%+v, %v), want the wrapped literal", inner, ok)
+		}
+	})
+
+	t.Run("only a conversion with exactly one operand", func(t *testing.T) {
+		if _, ok := conversionOperand(nil); ok {
+			t.Error("nil is not a conversion")
+		}
+		if _, ok := conversionOperand(concatIdent(meta, "prefix")); ok {
+			t.Error("an identifier is not a conversion")
+		}
+		if _, ok := conversionOperand(conv("string", nil)); ok {
+			t.Error("a conversion with no operand resolves to nothing")
+		}
+	})
+
+	b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+
+	t.Run("a converted literal resolves as the literal", func(t *testing.T) {
+		if path, dyn := b.resolvePathArg(conv("RoutePrefix", concatLit(meta, "/named")), nil); path != "/named" || len(dyn) != 0 {
+			t.Errorf("got (%q, %v), want (\"/named\", no placeholders)", path, dyn)
+		}
+	})
+
+	t.Run("nested conversions resolve", func(t *testing.T) {
+		arg := conv("string", conv("RoutePrefix", concatLit(meta, "/deep")))
+		if path, _ := b.resolvePathArg(arg, nil); path != "/deep" {
+			t.Errorf("got %q, want \"/deep\"", path)
+		}
+	})
+
+	t.Run("a converted variable resolves through its assignments", func(t *testing.T) {
+		node := nodeWithAssignments(meta, map[string][]metadata.Assignment{
+			"p": {assignTo(meta, "p", concatLit(meta, "/converted"))},
+		})
+		if path, _ := b.resolvePathArg(conv("string", concatIdent(meta, "p")), node); path != "/converted" {
+			t.Errorf("got %q, want \"/converted\"", path)
+		}
+	})
+
+	t.Run("an assignment through a conversion resolves", func(t *testing.T) {
+		// `p := RoutePrefix("/x")` holds the string, not the type.
+		node := nodeWithAssignments(meta, map[string][]metadata.Assignment{
+			"p": {assignTo(meta, "p", conv("RoutePrefix", concatLit(meta, "/assigned")))},
+		})
+		if v, ok := b.variableValue(concatIdent(meta, "p"), node, 0); !ok || v != "/assigned" {
+			t.Errorf("got (%q, %v), want (\"/assigned\", true)", v, ok)
+		}
+	})
+
+	t.Run("an unreadable conversion becomes a placeholder named after its value", func(t *testing.T) {
+		// Never named after the TYPE: that is the phantom this replaces.
+		call := metadata.NewCallArgument(meta)
+		call.SetKind(metadata.KindCall)
+		call.SetName("buildPath")
+		path, dyn := b.resolvePathArg(conv("string", call), nil)
+		if path != "{buildPath}" || len(dyn) != 1 || dyn[0] != "buildPath" {
+			t.Errorf("got (%q, %v), want a placeholder named after the wrapped call", path, dyn)
+		}
+	})
+}
+
+// TestParamValueFromCallSites covers the last rung of the path ladder: a
+// parameter read from the CALL SITES of the function the registration is
+// written in (issue #433).
+//
+// The tree answers this better when it can, and for the shape that prompted
+// this it cannot — the walk reaches the registration under a different
+// helper's frame, so there is no binding for the parameter there. Reading the
+// call graph is frame-blind, so it may only answer when every caller agrees.
+func TestParamValueFromCallSites(t *testing.T) {
+	// helperNode returns a node whose edge is a call written INSIDE `helper`,
+	// with metadata recording the given calls to helper.
+	helperNode := func(meta *metadata.Metadata, calls ...map[string]metadata.CallArgument) TrackerNodeInterface {
+		helper := metadata.Call{Meta: meta, Name: meta.StringPool.Get("helper"), Pkg: meta.StringPool.Get("app"), RecvType: -1}
+		meta.Callees = map[string][]*metadata.CallGraphEdge{}
+		for _, bound := range calls {
+			meta.Callees[helper.BaseID()] = append(meta.Callees[helper.BaseID()], &metadata.CallGraphEdge{
+				Caller:      metadata.Call{Meta: meta, Name: meta.StringPool.Get("main"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
+				Callee:      helper,
+				ParamArgMap: bound,
+			})
+		}
+		return &pathNode{edge: &metadata.CallGraphEdge{
+			Caller: helper,
+			Callee: metadata.Call{Meta: meta, Name: meta.StringPool.Get("Mount"), Pkg: meta.StringPool.Get("chi"), RecvType: -1},
+		}}
+	}
+
+	t.Run("one caller's literal resolves", func(t *testing.T) {
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta, map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/named")})
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); !ok || v != "/named" {
+			t.Errorf("got (%q, %v), want (\"/named\", true)", v, ok)
+		}
+	})
+
+	t.Run("a converted literal at the call site resolves", func(t *testing.T) {
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		conv := metadata.NewCallArgument(meta)
+		conv.SetKind(metadata.KindTypeConversion)
+		conv.Fun = concatIdent(meta, "RoutePrefix")
+		conv.Args = []*metadata.CallArgument{concatLit(meta, "/named")}
+		node := helperNode(meta, map[string]metadata.CallArgument{"prefix": *conv})
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); !ok || v != "/named" {
+			t.Errorf("got (%q, %v), want (\"/named\", true)", v, ok)
+		}
+	})
+
+	t.Run("callers that agree resolve", func(t *testing.T) {
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta,
+			map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/same")},
+			map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/same")},
+		)
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); !ok || v != "/same" {
+			t.Errorf("got (%q, %v), want (\"/same\", true)", v, ok)
+		}
+	})
+
+	t.Run("callers that disagree resolve to nothing", func(t *testing.T) {
+		// Two helpers mounted at different prefixes: adopting one would document
+		// the other's routes at the wrong path.
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta,
+			map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/one")},
+			map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/two")},
+		)
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); ok {
+			t.Errorf("want no value when callers disagree, got %q", v)
+		}
+	})
+
+	t.Run("a caller that does not bind the name resolves to nothing", func(t *testing.T) {
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta,
+			map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/one")},
+			map[string]metadata.CallArgument{"other": *concatLit(meta, "/two")},
+		)
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); ok {
+			t.Errorf("want no value when a caller binds nothing for it, got %q", v)
+		}
+	})
+
+	t.Run("a value whose meaning needs a frame resolves to nothing", func(t *testing.T) {
+		// Another parameter, a local, or a call: this rung has no frame to
+		// evaluate them in, so it declines rather than guessing.
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta, map[string]metadata.CallArgument{"prefix": *concatIdent(meta, "outer")})
+		if v, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, 0); ok {
+			t.Errorf("want no value for a frame-dependent argument, got %q", v)
+		}
+	})
+
+	t.Run("guards", func(t *testing.T) {
+		meta := newTestMeta()
+		b := &BasePatternMatcher{contextProvider: NewContextProvider(meta)}
+		node := helperNode(meta, map[string]metadata.CallArgument{"prefix": *concatLit(meta, "/x")})
+		if _, ok := b.paramValueFromCallSites(nil, node, 0); ok {
+			t.Error("nil argument must not resolve")
+		}
+		if _, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), nil, 0); ok {
+			t.Error("no node means no enclosing function to read call sites of")
+		}
+		if _, ok := b.paramValueFromCallSites(concatIdent(meta, "prefix"), node, maxPathVarDepth); ok {
+			t.Error("the depth bound must stop the walk")
+		}
+		if _, ok := b.paramValueFromCallSites(concatIdent(meta, "unknown"), node, 0); ok {
+			t.Error("a name no caller binds must not resolve")
+		}
+	})
+}

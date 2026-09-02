@@ -175,7 +175,7 @@ APISpec aims for practical coverage of real-world Go services.
 
 - Import and type aliases, resolved to underlying primitives.
 - Enum resolution from constants, `enum` tags, or `oneof` validator tags — attributed per declared type, never borrowed between two types sharing an underlying type.
-- Assignment & alias tracking: `:=`, `=`, multi-assign, tuple returns, alias chains, latest-wins shadowing. Registration **paths** are read through the same tracking (`p := "/users"`, an alias chain, a variable prefix with a literal tail) — but only when every assignment agrees: two branches assigning different paths is reported as unresolvable rather than documented at one of them.
+- Assignment & alias tracking: `:=`, `=`, multi-assign, tuple returns, alias chains, latest-wins shadowing. Registration **paths** are read through the same tracking (`p := "/users"`, an alias chain, a variable prefix with a literal tail), through a type conversion (`r.Mount(string(prefix), sub)`), and — for a prefix a helper takes as a parameter — from the helper's call sites. Always subject to agreement: two branches assigning different paths, or two callers passing different prefixes, is reported as unresolvable rather than documented at one of them.
 - Composite literals, maps, slices, fixed-size and variable-length arrays (`[16]byte`, `[5]int`, `[...]int`), pointers and automatic dereferencing, selectors and nested field access.
 - Struct fields, embedded fields, and tag-based metadata (`json`, `xml`, `form`, `validate`, …).
 - Inline (anonymous) struct types as request/response bodies and as nested fields — captured structurally from `go/types`, so the inline schema shows real properties and resolves named field types to `$ref`s.
@@ -216,10 +216,7 @@ registered under `components.securitySchemes`; explicitly-public routes render
   (`/{mountPoint}/clear`), an unresolved segment before a literal tail
   (`/{dynamicBase}/dyn`), and an unreadable tail under a prefix that IS known
   (`/repo/{owner}/{name}/info/lfs/{path}` — a catch-all seen through a wrapper)
-  are all real endpoints, documented approximately. A path wrapped in a type
-  conversion (`r.Mount(string(prefix), sub)`) is a worse case still: it renders
-  as the conversion's type, so a phantom `/string/…` path is documented
-  ([#433](https://github.com/ehabterra/apispec/issues/433)).
+  are all real endpoints, documented approximately.
 - **A payload erased inside a generic envelope** — a helper that re-wraps the
   value as `APIResponse[any]{Data: data}` documents `data` as an open object
   ([#163](https://github.com/ehabterra/apispec/issues/163)).

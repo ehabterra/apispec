@@ -16,6 +16,7 @@ package generator
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/engine"
@@ -72,20 +73,22 @@ func TestTestdata_MountViaHelper(t *testing.T) {
 		}
 	})
 
-	// CHANGE DETECTOR, not an endorsement: a prefix wrapped in a CONVERSION at
-	// the Mount call (`r.Mount(string(prefix), server)`) still does not resolve.
-	// Worse, it renders as the conversion's TYPE, so the fixture's mountNamed
-	// route is documented at /string/things — a path that looks literal and
-	// exists nowhere (issue #433). Asserted at today's wrong behaviour so this
-	// fails, and gets updated, the moment that is fixed.
-	t.Run("prefix through a conversion is still unresolved", func(t *testing.T) {
-		if _, ok := out.Paths["/named/things"]; ok {
-			t.Error("/named/things now resolves — the conversion gap is fixed; " +
-				"assert it properly here and close #433")
+	// A prefix wrapped in a conversion resolves since #433: the conversion is
+	// unwrapped (it changes the type, never the string), and the parameter under
+	// it is read from the helper's call sites — the tree cannot answer for this
+	// one, because the walk reaches this Mount under a different helper's frame.
+	t.Run("prefix through a conversion resolves", func(t *testing.T) {
+		if _, ok := out.Paths["/named/things"]; !ok {
+			t.Errorf("missing /named/things; documented %v — `r.Mount(string(prefix), server)` "+
+				"must resolve to the converted value", mapPathKeys(out.Paths))
 		}
-		if _, ok := out.Paths["/string/things"]; !ok {
-			t.Error("/string/things is gone — the conversion no longer renders as its " +
-				"type; update this subtest and close #433")
+		// The phantom it used to produce: rendering the conversion gave its
+		// TARGET TYPE, so a path named after `string` was documented as if it
+		// were an endpoint.
+		for path := range out.Paths {
+			if strings.HasPrefix(path, "/string/") {
+				t.Errorf("path %q is the conversion's type, not its value", path)
+			}
 		}
 	})
 }
