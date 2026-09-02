@@ -15,6 +15,8 @@
 package spec
 
 import (
+	"log"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -92,6 +94,20 @@ func TestLookupValueFromArgs(t *testing.T) {
 		v, set := lookupValueFromArgs(args, 0, "KeyLookup")
 		if !set || v != "" {
 			t.Errorf("got (%q, %v), want (\"\", true)", v, set)
+		}
+	})
+
+	t.Run("elements that are not keyed fields are skipped", func(t *testing.T) {
+		// A positional literal (`Config{"query:k", nil}`) names no field, and a
+		// nil element is defensive: neither says anything about KeyLookup, so
+		// the scan continues past them rather than reading one as the value.
+		args := []*metadata.CallArgument{config(
+			nil,
+			concatLit(meta, "query:positional"),
+			keyValue("KeyLookup", concatLit(meta, "query:keyed")),
+		)}
+		if v, set := lookupValueFromArgs(args, 0, "KeyLookup"); !set || v != "query:keyed" {
+			t.Errorf("got (%q, %v), want the keyed field's value", v, set)
 		}
 	})
 
@@ -253,6 +269,28 @@ func TestSpecializeAPIKeySchemes(t *testing.T) {
 		}
 	})
 
+	t.Run("a requirement naming another scheme is left alone", func(t *testing.T) {
+		// A route can require several schemes; only the one a shape was resolved
+		// for is rewritten.
+		route := &RouteInfo{
+			Path: "/a",
+			Security: []SecurityRequirement{{
+				"apiKeyAuth": {},
+				"bearerAuth": {},
+			}},
+			SecuritySchemeShapes: map[string]apiKeyShape{"apiKeyAuth": {In: "query", Name: "api_key"}},
+		}
+		other := shaped("/b", apiKeyShape{In: "cookie", Name: "token"})
+		specializeAPIKeySchemes([]*RouteInfo{route, other}, base, nil)
+		names := route.Security[0]
+		if _, ok := names["bearerAuth"]; !ok {
+			t.Errorf("bearerAuth must survive untouched, got %v", names)
+		}
+		if _, ok := names["apiKeyAuthQueryApiKey"]; !ok {
+			t.Errorf("the shaped scheme must be renamed, got %v", names)
+		}
+	})
+
 	t.Run("nothing shaped changes nothing", func(t *testing.T) {
 		d := atDefault("/b")
 		if defs := specializeAPIKeySchemes([]*RouteInfo{d, nil}, base, nil); defs != nil {
@@ -314,5 +352,139 @@ func TestValidateSecurityLookupFields(t *testing.T) {
 		if (err != nil) != c.wantErr {
 			t.Errorf("%s: ValidateSecurity() error = %v, wantErr %v", c.name, err, c.wantErr)
 		}
+	}
+}
+
+// TestAPIKeyShapeOf covers the decision a matched mapping makes about the
+// middleware's configuration: read it, or keep the library default and say so.
+//
+// The two "say so" branches — a lookup built at runtime, and a source OpenAPI
+// has no apiKey location for — are the honest fallback this change rests on,
+// and no fixture exercises them (both need code a real project would be odd to
+// write).
+func TestAPIKeyShapeOf(t *testing.T) {
+	meta := newTestMeta()
+
+	keyValue := func(field string, value *metadata.CallArgument) *metadata.CallArgument {
+		kv := metadata.NewCallArgument(meta)
+		kv.SetKind(metadata.KindKeyValue)
+		kv.X = concatIdent(meta, field)
+		kv.Fun = value
+		return kv
+	}
+	// refWith returns a ref whose constructor was called with this config.
+	refWith := func(elts ...*metadata.CallArgument) MiddlewareRef {
+		lit := metadata.NewCallArgument(meta)
+		lit.SetKind(metadata.KindCompositeLit)
+		lit.Args = elts
+		call := metadata.NewCallArgument(meta)
+		call.SetKind(metadata.KindCall)
+		call.Args = []*metadata.CallArgument{lit}
+		return MiddlewareRef{FunctionName: "KeyAuthWithConfig", Pkg: "echo/middleware", ConfigCall: call}
+	}
+	runtimeValue := func() *metadata.CallArgument {
+		c := metadata.NewCallArgument(meta)
+		c.SetKind(metadata.KindCall)
+		c.SetName("lookupFromEnv")
+		return c
+	}
+
+	withLookup := SecurityMapping{
+		FunctionNameRegex: "^KeyAuthWithConfig$",
+		Schemes:           []SecurityRequirement{{"apiKeyAuth": {}}},
+		LookupField:       "KeyLookup",
+	}
+	noLookup := SecurityMapping{
+		FunctionNameRegex: "^KeyAuthWithConfig$",
+		Schemes:           []SecurityRequirement{{"apiKeyAuth": {}}},
+	}
+
+	cases := []struct {
+		name    string
+		mapping SecurityMapping
+		ref     MiddlewareRef
+		want    apiKeyShape
+		ok      bool
+	}{
+		{
+			name:    "a configured lookup is read",
+			mapping: withLookup,
+			ref:     refWith(keyValue("KeyLookup", concatLit(meta, "query:api_key"))),
+			want:    apiKeyShape{In: "query", Name: "api_key"},
+			ok:      true,
+		},
+		{
+			// The library default is the right answer, so there is nothing to
+			// report either.
+			name:    "an unconfigured middleware keeps the default",
+			mapping: withLookup,
+			ref:     refWith(keyValue("Validator", concatIdent(meta, "validate"))),
+		},
+		{
+			name:    "a mapping that declares no lookup reads nothing",
+			mapping: noLookup,
+			ref:     refWith(keyValue("KeyLookup", concatLit(meta, "query:api_key"))),
+		},
+		{
+			// Configured and unknowable: the default is a fallback that may be
+			// wrong, which is what the warning is for.
+			name:    "a runtime lookup keeps the default",
+			mapping: withLookup,
+			ref:     refWith(keyValue("KeyLookup", runtimeValue())),
+		},
+		{
+			// OpenAPI has no apiKey location for a form field, so inventing
+			// `query` would be the confident wrong answer this change removes.
+			name:    "a form source keeps the default",
+			mapping: withLookup,
+			ref:     refWith(keyValue("KeyLookup", concatLit(meta, "form:api_key"))),
+		},
+		{
+			name:    "middleware that is not a constructor call has no config",
+			mapping: withLookup,
+			ref:     MiddlewareRef{FunctionName: "authMiddleware", Pkg: "app"},
+		},
+	}
+	for _, c := range cases {
+		got, ok := apiKeyShapeOf(c.mapping, c.ref)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: apiKeyShapeOf() = (%+v, %v), want (%+v, %v)", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// A user definition that AGREES with the middleware's configuration is not a
+// disagreement, so it is not reported: the warning exists to surface a genuine
+// contradiction, not to comment on every configured scheme.
+func TestReportOverriddenShapesAgreement(t *testing.T) {
+	var logged strings.Builder
+	restore := log.Writer()
+	log.SetOutput(&logged)
+	log.SetFlags(0)
+	defer func() { log.SetOutput(restore); log.SetFlags(log.LstdFlags) }()
+
+	shape := apiKeyShape{In: "query", Name: "api_key"}
+	route := &RouteInfo{
+		Security:             []SecurityRequirement{{"apiKeyAuth": {}}},
+		SecuritySchemeShapes: map[string]apiKeyShape{"apiKeyAuth": shape},
+	}
+
+	agrees := map[string]SecurityScheme{"apiKeyAuth": {Type: "apiKey", In: "query", Name: "api_key"}}
+	reportOverriddenShapes([]*RouteInfo{route, nil}, agrees)
+	if logged.Len() != 0 {
+		t.Errorf("an agreeing definition must not be reported, logged: %q", logged.String())
+	}
+
+	differs := map[string]SecurityScheme{"apiKeyAuth": {Type: "apiKey", In: "header", Name: "X-Chosen"}}
+	reportOverriddenShapes([]*RouteInfo{route}, differs)
+	if !strings.Contains(logged.String(), "keeping your definition") {
+		t.Errorf("a contradicted definition must be reported once, logged: %q", logged.String())
+	}
+
+	// Nothing user-defined: nothing to compare against.
+	logged.Reset()
+	reportOverriddenShapes([]*RouteInfo{route}, nil)
+	if logged.Len() != 0 {
+		t.Errorf("no user definitions means nothing to report, logged: %q", logged.String())
 	}
 }
