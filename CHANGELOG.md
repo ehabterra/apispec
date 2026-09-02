@@ -36,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A path wrapped in a type conversion no longer documents a phantom
+  endpoint.** `r.Mount(string(prefix), sub)` rendered as the conversion's
+  *target type*, so a path named `/string/…` appeared in the document: literal
+  in appearance, carrying no warning, matching nothing. A conversion changes the
+  type and never the string inside it, so it is now looked through — metadata
+  records it as its own kind, so this reads a fact rather than guessing a shape.
+  Getting the value out also needed the parameter under the conversion, which
+  the tracker cannot bind for this shape (the walk reaches such a registration
+  under a *different* helper's frame), so a last resolution step reads a
+  parameter from the call sites of the function the registration is written in —
+  only when every caller passes the same thing, so a helper mounted at two
+  prefixes keeps its placeholder rather than adopting one. `mount_via_helper`
+  now documents all four of its mount forms, including `/named/things`. (#433)
 - **A registration path held in a variable is now read, instead of being
   reported as unknowable.** `p := "/users"` two lines above the registration is
   a statically-known path, and it was treated as unreadable: left out of the
