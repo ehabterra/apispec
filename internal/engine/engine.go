@@ -292,6 +292,10 @@ type Engine struct {
 	// whose key matches no route placeholder, gathered during the last generation.
 	pathParamMismatches []intspec.PathParamMismatch
 
+	// unresolvedPaths lists registrations left out of the last generation
+	// because their path is built at runtime (issue #428).
+	unresolvedPaths []intspec.UnresolvedPathRoute
+
 	// routeDiscovery records what the route search had to work with and what it
 	// found during the last generation (issue #379).
 	routeDiscovery RouteDiscovery
@@ -912,7 +916,9 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
 		e.pathParamMismatches = secDiag.PathParamMismatches
 		e.unresolvedRefs = secDiag.UnresolvedRefs
+		e.unresolvedPaths = secDiag.UnresolvedPaths
 		e.reportUnresolvedRefs()
+		e.reportUnresolvedPaths()
 	}
 	// Read after mapping: with the lazy tree the entrypoint gate runs during
 	// expansion, which mapping is what triggers.
@@ -1359,6 +1365,27 @@ func (e *Engine) reportUnresolvedRefs() {
 		len(e.unresolvedRefs), sites, b.String()), 0)
 }
 
+// reportUnresolvedPaths says so when a registration was found and understood
+// except for its path, so it is missing from the document.
+//
+// Louder than the mapper's per-route line, and phrased as a count: one
+// table-driven registration inside a loop is every route of that table, so the
+// shortfall is usually the whole API rather than one endpoint.
+func (e *Engine) reportUnresolvedPaths() {
+	if len(e.unresolvedPaths) == 0 {
+		return
+	}
+	first := e.unresolvedPaths[0]
+	where := first.Position
+	if where == "" {
+		where = first.Handler
+	}
+	e.reportPhase(fmt.Sprintf(
+		"%d registration(s) build their path at runtime and are NOT documented (first at %s) — "+
+			"the routes they register are missing from the spec",
+		len(e.unresolvedPaths), where), 0)
+}
+
 // reportNoRoutes says so when the walk analysed real code and matched no route
 // registration in it — the case that used to print "Successfully generated"
 // over an empty document and exit 0, indistinguishable from a project that
@@ -1370,6 +1397,14 @@ func (e *Engine) reportUnresolvedRefs() {
 func (e *Engine) reportNoRoutes() {
 	d := e.routeDiscovery
 	if !d.NothingMatched() {
+		return
+	}
+	// A registration that matched and was then dropped for an unreadable path is
+	// a different diagnosis, and the advice below would send the reader looking
+	// for an unsupported router they do not have (issue #428).
+	if len(e.unresolvedPaths) > 0 {
+		log.Printf("[engine] 0 paths documented: every registration that matched builds its path at runtime — see the %d line(s) above",
+			len(e.unresolvedPaths))
 		return
 	}
 	frameworks := strings.Join(d.Frameworks, ", ")
@@ -1426,6 +1461,14 @@ func (e *Engine) reportSkippedPackages() {
 // operation's shape is a placeholder.
 func (e *Engine) GetUnresolvedRefs() []intspec.UnresolvedRef {
 	return e.unresolvedRefs
+}
+
+// GetUnresolvedPaths returns the registrations the most recent generation left
+// undocumented because their path is built at runtime. Non-empty means the spec
+// is missing endpoints that DO exist in the code — the count is the size of the
+// gap, which a placeholder path used to hide.
+func (e *Engine) GetUnresolvedPaths() []intspec.UnresolvedPathRoute {
+	return e.unresolvedPaths
 }
 
 // GetRouteDiscovery returns what the route search walked and what it found in

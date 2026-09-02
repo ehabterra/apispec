@@ -116,12 +116,12 @@ issues, and a Markdown export you can attach to a bug report as-is.
 | One wiring style missing (e.g. `r.Method(...)`) | no route pattern for it | extend config (Step 1), report the style |
 | Second framework's routes missing in a mixed binary | should work — all detected frameworks merge in (scoped patterns), and `net/http` is always layered underneath | confirm `used-config.yaml` contains both frameworks' patterns (Step 1); if it doesn't, report it |
 | Framework router mounted under a `net/http` mux: routes present but missing the mount prefix (`/users` instead of `/api/users`) | cross-framework mount composition not implemented yet | tracked in [#138](https://github.com/ehabterra/apispec/issues/138); until then apply the prefix via a config override or mount inside one framework |
-| Routes behind `for … range routeTable` missing | runtime values, statically unknowable | register statically, or accept the gap |
+| Routes behind `for … range routeTable` missing | runtime values, statically unknowable | the registration is named on stderr (`[routes] …: path is not statically resolvable`) and listed by `Generator.UnresolvedPaths()`; register statically, or accept the gap |
 | Verb-less registrations show POST | historic default for unknown method | handlers that `switch r.Method` split automatically; otherwise the default applies |
 | Deep/dense project: some routes missing + truncation warning | the budget for the walk that *finds* registrations is spent | raise `--max-nodes` |
 | Named route present but under-detailed + `MaxNodesPerRoute` warning | that one route's own allowance is spent; no other route is affected | raise `--max-nodes-per-route` |
 | Route present, body/params empty | handler not located / binding style unrecognised | insight report (Step 4), check `handlerFound` |
-| Path shows `{someFunc}` placeholder | path built by a function call | statically unknowable; name comes from the called function |
+| Path shows `{someFunc}` placeholder | *part* of the path is built by a function call | statically unknowable; the name comes from the called function, and the rest of the path is real. A path that is **nothing but** a placeholder is not documented at all — see the row above |
 
 ## What to include in a bug report
 

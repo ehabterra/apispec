@@ -601,6 +601,10 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			}
 			path = normalizeServeMuxPath(path)
 		}
+		// Judged on the path AFTER the verb is split off: `"GET "+c.pattern`
+		// resolves its literal half into the method, and what is left for the
+		// path is the placeholder alone.
+		routeInfo.PathUnresolved = pathIsAllPlaceholders(path, dynNames)
 		routeInfo.Path = path
 		if routeInfo.Path == "" {
 			routeInfo.Path = "/"

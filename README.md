@@ -204,15 +204,22 @@ registered under `components.securitySchemes`; explicitly-public routes render
 - Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo
   `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet
   mapped.
-- **A path that exists only as a runtime value is documented as a placeholder,
-  not skipped.** Routes registered from a **table**
-  (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`) come
-  out under `/{Method} {Path}`, and a house router chained through a returned
-  object (`Combo("/x").Get(h).Post(h)`) under `/{pattern}`. The auto-declared
-  parameters carry an `x-warning` saying the value was not resolvable, and
-  `--verbose` reports the chained wrapper as *incomplete, not applied* — but the
-  operation is still in the spec, so it needs excluding rather than ignoring
-  ([#428](https://github.com/ehabterra/apispec/issues/428)).
+- **A path that exists only as a runtime value.** Routes registered from a
+  **table** (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`)
+  or by a house router chained through a returned object
+  (`Combo("/x").Get(h).Post(h)`) cannot be located, so they are **reported and
+  left out** rather than documented at the placeholder standing in for the
+  expression. Each one names the registration site on stderr, and
+  `Generator.UnresolvedPaths()` returns the list, so the gap is countable
+  instead of silent. A path that is only *partly* unresolved keeps its
+  operation, with the placeholder flagged: an unresolved prefix
+  (`/{mountPoint}/clear`), an unresolved segment before a literal tail
+  (`/{dynamicBase}/dyn`), and an unreadable tail under a prefix that IS known
+  (`/repo/{owner}/{name}/info/lfs/{path}` — a catch-all seen through a wrapper)
+  are all real endpoints, documented approximately. A path held *entirely* in a
+  local variable is reported rather than documented even when its value is a
+  literal, since variables are not yet traced for paths
+  ([#431](https://github.com/ehabterra/apispec/issues/431)).
 - **A payload erased inside a generic envelope** — a helper that re-wraps the
   value as `APIResponse[any]{Data: data}` documents `data` as an open object
   ([#163](https://github.com/ehabterra/apispec/issues/163)).

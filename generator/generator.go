@@ -79,6 +79,18 @@ func (g *Generator) PathParamMismatches() []intspec.PathParamMismatch {
 	return g.engine.GetPathParamMismatches()
 }
 
+// UnresolvedPaths returns the registrations the last generation left out of the
+// document because their path is built at runtime — a route table, or a house
+// router that carries the pattern on an object (issue #428). Non-empty means the
+// spec is missing endpoints that exist in the code, which is what a placeholder
+// path like `/{Method} {Path}` used to hide.
+func (g *Generator) UnresolvedPaths() []intspec.UnresolvedPathRoute {
+	if g.engine == nil {
+		return nil
+	}
+	return g.engine.GetUnresolvedPaths()
+}
+
 // UnresolvedRefs returns the $refs the last generation could not satisfy, after
 // they were repaired with a placeholder. Non-empty means the document loads but
 // some type resolved to nothing useful — the actionable fix is usually
