@@ -109,10 +109,13 @@ type RouteInfo struct {
 
 	// PathUnresolved marks a route whose OWN path contributed nothing but such
 	// placeholders — a registration read from a table, or one a house router
-	// carries on an object. It is not documented: there is no endpoint there to
-	// document, at any prefix (see UnresolvedPathRoute, issue #428). Set where
-	// the path is resolved, since only there is the route's own contribution
-	// separable from the mount chain's.
+	// carries on an object. Set where the path is resolved, since only there is
+	// the route's own contribution separable from the mount chain's.
+	//
+	// It is an input to the omission decision, not the decision: a route whose
+	// tail is unreadable under a prefix that IS known stays documented, because
+	// the endpoint is still locatable. undocumentablePath owns the rule
+	// (issue #428).
 	PathUnresolved bool
 
 	// Node is the tracker-tree node where this route was matched (the route
