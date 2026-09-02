@@ -252,6 +252,10 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	// downstream builds an operation out of one. They are reported instead:
 	// a placeholder path is not an endpoint (issue #428).
 	routes, unresolvedPaths := dropUnresolvedPathRoutes(routes)
+
+	// Point each apiKey requirement at a scheme that says where the credential
+	// really travels, per the middleware's own configuration (issue #370).
+	discoveredSchemes := specializeAPIKeySchemes(routes, allDeclaredSchemes(cfg))
 	for _, r := range unresolvedPaths {
 		where := r.Position
 		if where == "" {
@@ -333,7 +337,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	// plus any library-preset schemes actually referenced by a resolved
 	// operation (or the global security). Unused presets are omitted so the spec
 	// stays lean; a referenced-but-undefined scheme is reported.
-	if schemes := reconcileSecuritySchemes(cfg, routes); len(schemes) > 0 {
+	if schemes := reconcileSecuritySchemes(cfg, routes, discoveredSchemes); len(schemes) > 0 {
 		if spec.Components == nil {
 			spec.Components = &Components{}
 		}
@@ -358,10 +362,18 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 // reconcileSecuritySchemes returns the securityScheme catalog to emit: all
 // user-defined schemes, plus preset schemes referenced by an operation or the
 // global security. Referenced names defined in neither are logged as warnings.
-func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo) map[string]SecurityScheme {
+func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo, discovered map[string]SecurityScheme) map[string]SecurityScheme {
 	out := make(map[string]SecurityScheme, len(cfg.SecuritySchemes))
 	for name, scheme := range cfg.SecuritySchemes {
 		out[name] = scheme
+	}
+	// A scheme shaped from the middleware's own configuration describes what the
+	// code does, so it wins over the library default it specialises — but not
+	// over a scheme the user wrote themselves.
+	for name, scheme := range discovered {
+		if _, userDefined := cfg.SecuritySchemes[name]; !userDefined {
+			out[name] = scheme
+		}
 	}
 
 	// Collect referenced scheme names from per-operation and global security.
@@ -395,6 +407,21 @@ func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo) map[strin
 			"(add them to securitySchemes): %s", len(dangling), strings.Join(dangling, ", "))
 	}
 
+	return out
+}
+
+// allDeclaredSchemes is every scheme definition available before discovery: the
+// user's, plus the presets the detected libraries contributed. It is what a
+// discovered shape specialises, so an apiKey scheme keeps whatever else its
+// preset says while its location is corrected.
+func allDeclaredSchemes(cfg *APISpecConfig) map[string]SecurityScheme {
+	out := make(map[string]SecurityScheme, len(cfg.presetSchemes)+len(cfg.SecuritySchemes))
+	for name, scheme := range cfg.presetSchemes {
+		out[name] = scheme
+	}
+	for name, scheme := range cfg.SecuritySchemes {
+		out[name] = scheme
+	}
 	return out
 }
 

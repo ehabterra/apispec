@@ -15,7 +15,9 @@
 package spec
 
 import (
+	"log"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -30,6 +32,19 @@ type MiddlewareRef struct {
 	Pkg          string `json:"pkg"`          // e.g. "app/handler", "github.com/golang-jwt/..."
 	RecvType     string `json:"recvType"`     // receiver type for method values (e.g. "Handler"); empty otherwise
 	Position     string `json:"position"`     // source position, for diagnostics
+
+	// ConfigCall is the constructor call the middleware came from, when it came
+	// from one, kept so a mapping can read the middleware's own configuration —
+	// where an apiKey credential travels, which is knowable only at the call
+	// site and wrong at the library default for every project that configures
+	// it (issue #370).
+	//
+	// A single pointer rather than the argument slice on purpose: MiddlewareRef
+	// is exported and returned to library consumers, and a slice field would
+	// make the struct non-comparable. It is not part of the identity — two
+	// constructions differing only here are the same middleware — and is
+	// excluded from the diagnostics rendering.
+	ConfigCall *metadata.CallArgument `json:"-"`
 }
 
 // String renders a human-readable identity for logs / the UI diagnostics list.
@@ -93,6 +108,7 @@ func middlewareRefFromArg(arg *metadata.CallArgument) (MiddlewareRef, bool) {
 		if fn == nil {
 			return ref, false
 		}
+		ref.ConfigCall = arg
 		switch fn.GetKind() {
 		case metadata.KindSelector:
 			if fn.Sel != nil {
@@ -300,6 +316,19 @@ func (m SecurityMapping) matches(ref MiddlewareRef) bool {
 // The returned reqs is nil when nothing resolved (so callers can distinguish
 // "no security" from "explicitly public").
 func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []SecurityRequirement, public bool, unresolved []MiddlewareRef) {
+	reqs, public, unresolved, _ = resolveSecurityWithShapes(refs, mappings)
+	return reqs, public, unresolved
+}
+
+// resolveSecurityWithShapes is resolveSecurity plus the scheme SHAPES read from
+// the middleware's own configuration: for a mapping that names a LookupField,
+// where the credential actually travels (issue #370). Keyed by the scheme name
+// the mapping declares, so a caller can specialise that scheme.
+//
+// A mapping with no LookupField, or one whose lookup is absent or unreadable,
+// contributes no shape and keeps the scheme exactly as declared — the library
+// default, which is right until a project configures otherwise.
+func resolveSecurityWithShapes(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []SecurityRequirement, public bool, unresolved []MiddlewareRef, shapes map[string]apiKeyShape) {
 	combined := SecurityRequirement{}
 	var alternatives []SecurityRequirement
 
@@ -318,11 +347,18 @@ func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []S
 			if m.Public {
 				public = true
 			}
+			shape, hasShape := apiKeyShapeOf(m, ref)
 			for _, reqObj := range m.Schemes {
 				for k, v := range reqObj {
 					// Non-nil empty slice so it renders as `[]` (OpenAPI requires
 					// an array of scopes), not null.
 					combined[k] = append([]string{}, v...)
+					if hasShape {
+						if shapes == nil {
+							shapes = map[string]apiKeyShape{}
+						}
+						shapes[k] = shape
+					}
 				}
 			}
 			for _, grp := range m.SchemesAnyOf {
@@ -347,7 +383,48 @@ func resolveSecurity(refs []MiddlewareRef, mappings []SecurityMapping) (reqs []S
 	}
 	reqs = append(reqs, alternatives...)
 	reqs = dedupSecurityRequirements(reqs)
-	return reqs, public, unresolved
+	return reqs, public, unresolved, shapes
+}
+
+// apiKeyShape is where an apiKey credential travels, as one middleware's
+// configuration states it.
+type apiKeyShape struct {
+	In   string
+	Name string
+}
+
+// apiKeyShapeOf reads the shape a matched mapping's middleware was configured
+// with. ok is false when the mapping declares no lookup field, when the
+// middleware was constructed without one (the library default applies), or when
+// the configured value is not statically readable — including a source OpenAPI
+// cannot express, such as a form field.
+func apiKeyShapeOf(m SecurityMapping, ref MiddlewareRef) (apiKeyShape, bool) {
+	if m.LookupField == "" {
+		return apiKeyShape{}, false
+	}
+	var args []*metadata.CallArgument
+	if ref.ConfigCall != nil {
+		args = ref.ConfigCall.Args
+	}
+	lookup, set := lookupValueFromArgs(args, m.LookupArgIndex, m.LookupField)
+	if !set {
+		return apiKeyShape{}, false // not configured: the library default is right
+	}
+	in, name, ok := parseAPIKeyLookup(lookup)
+	if !ok {
+		// Configured and not usable — a value built at runtime, or a source
+		// OpenAPI has no apiKey location for (a form field). The scheme keeps
+		// the library default, which is a guess this run cannot check, so it is
+		// reported rather than presented as observed (issue #370).
+		where := "is not statically readable"
+		if lookup != "" {
+			where = "is " + strconv.Quote(lookup) + ", which OpenAPI has no apiKey location for"
+		}
+		log.Printf("[security] %s: %s %s — the scheme keeps the library default, which may be wrong",
+			ref.String(), m.LookupField, where)
+		return apiKeyShape{}, false
+	}
+	return apiKeyShape{In: in, Name: name}, true
 }
 
 // dedupSecurityRequirements removes duplicate requirement objects, preserving
