@@ -85,5 +85,23 @@ func main() {
 	built := buildPath()
 	mux.HandleFunc("GET "+built, fromCall)
 
+	// CHANGE DETECTOR (issue #436): these two ARE knowable, and are not read
+	// today, because assignments are matched by name alone. The inner block
+	// re-declares `shadowed`, and `later` is written after its registration —
+	// so each registration sees two disagreeing values and keeps a placeholder.
+	// Documented approximately rather than wrongly, which is why it is a
+	// precision gap and not a correctness one.
+	shadowed := "/outer"
+	mux.HandleFunc("GET "+shadowed+"/a", list)
+	{
+		shadowed := "/inner"
+		mux.HandleFunc("GET "+shadowed+"/b", list)
+	}
+
+	later := "/first"
+	mux.HandleFunc("GET "+later+"/c", list)
+	later = "/second"
+	_ = later
+
 	http.ListenAndServe(":8080", mux)
 }
