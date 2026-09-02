@@ -196,8 +196,10 @@ registered under `components.securitySchemes`; explicitly-public routes render
 configuration — echo's `KeyAuthConfig.KeyLookup` and fiber's
 `keyauth.Config.KeyLookup` — so `"query:api_key"` is documented as
 `in: query, name: api_key` rather than the library's default header. Two groups
-configured differently become two schemes; a lookup built at runtime keeps the
-default and says so on stderr.
+configured differently become two schemes, and two key middlewares on one scope
+become two required credentials in the same requirement. A lookup built at
+runtime keeps the default and says so on stderr, as does a scheme you defined
+yourself that the code contradicts — your definition is kept.
 
 ### Not supported (yet)
 
