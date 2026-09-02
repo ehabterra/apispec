@@ -258,9 +258,15 @@ func (b *BasePatternMatcher) variableValue(arg *metadata.CallArgument, node Trac
 // fast path resolved to "/two" with no sign that "/one" existed.
 //
 // The enclosing function's scope records them all, so it answers when it knows
-// the variable; the edge map remains the fallback. An assignment written AFTER
-// the registration counts too, since a loop can make it the live value — that
-// can only make the path unreadable, never wrong.
+// the variable; the edge map remains the fallback.
+//
+// KNOWN LIMIT (issue #436): the scope is keyed by NAME, so this also collects
+// assignments that belong to a different binding of it (an inner block's
+// `prefix := …`) or that cannot reach this call (a write below it). Both read as
+// disagreement, so a knowable path keeps its placeholder. That is the safe
+// direction — approximate, never wrong — and it stays until metadata records
+// which binding an assignment writes to; a write below the call cannot simply be
+// filtered out either, since a loop can carry it back.
 func pathVarAssignments(cp ContextProvider, edge *metadata.CallGraphEdge, name string) []metadata.Assignment {
 	if impl, ok := cp.(*ContextProviderImpl); ok {
 		if am := callerAssignmentMap(impl, edge, name); len(am[name]) > 0 {
