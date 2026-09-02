@@ -459,7 +459,7 @@ func TestConcatPathHelpers(t *testing.T) {
 	})
 
 	t.Run("a nil operand contributes nothing", func(t *testing.T) {
-		if value, name := b.resolvePathOperand(nil, nil); value != "" || name != "" {
+		if value, name := b.resolvePathOperand(nil, nil, 0); value != "" || name != "" {
 			t.Errorf("got (%q, %q), want empties", value, name)
 		}
 	})

@@ -2271,9 +2271,13 @@ func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge
 // assignmentsAt returns the assignments to the variable `name` visible at the
 // given call site: the call edge's own AssignmentMap first, then the enclosing
 // function's scope (via callerAssignmentMap) for a variable assigned in the
-// handler body rather than at the edge. The edge map and the function scope
-// record the same assignment for a given variable, so consulting the edge first
-// is a fast path, not a different answer.
+// handler body rather than at the edge.
+//
+// The two scopes agree on the assignment IN EFFECT at the call, which is what
+// every caller here wants — but not on how many there are: for a variable
+// reassigned in a branch, the edge map carries the effective one alone while the
+// function scope carries them all. A consumer that needs to know a value is
+// AMBIGUOUS therefore cannot use this (see pathVarAssignments, issue #431).
 //
 // This is the one canonical call-site assignment lookup (issue #182): the
 // request-body / response-destination resolvers reach it via latestAssignment
