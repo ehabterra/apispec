@@ -124,17 +124,20 @@ func reportOverriddenShapes(routes []*RouteInfo, explicit map[string]SecuritySch
 		if route == nil {
 			continue
 		}
-		for name, shape := range route.SecuritySchemeShapes {
+		for name, list := range route.SecuritySchemeShapes {
 			def, written := explicit[name]
 			if !written || reported[name] {
 				continue
 			}
-			if def.In == shape.In && def.Name == shape.Name {
-				continue // agrees; nothing to say
+			for _, shape := range list {
+				if def.In == shape.In && def.Name == shape.Name {
+					continue // this one agrees; nothing to say about it
+				}
+				reported[name] = true
+				names = append(names, name)
+				observed[name] = shape
+				break
 			}
-			reported[name] = true
-			names = append(names, name)
-			observed[name] = shape
 		}
 	}
 	sort.Strings(names) // one line per scheme, in a stable order
@@ -210,18 +213,20 @@ func specializeAPIKeySchemes(routes []*RouteInfo, base, explicit map[string]Secu
 		if route == nil {
 			continue
 		}
-		for name, shape := range route.SecuritySchemeShapes {
+		for name, list := range route.SecuritySchemeShapes {
 			if _, written := explicit[name]; written {
 				continue // the user's own definition governs this scheme
 			}
 			if byScheme[name] == nil {
 				byScheme[name] = map[apiKeyShape]bool{}
 			}
-			byScheme[name][shape] = true
+			for _, shape := range list {
+				byScheme[name][shape] = true
+			}
 		}
 		for _, req := range route.Security {
 			for name := range req {
-				if _, shaped := route.SecuritySchemeShapes[name]; !shaped {
+				if len(route.SecuritySchemeShapes[name]) == 0 {
 					atDefault[name] = true
 				}
 			}
@@ -268,17 +273,34 @@ func specializeAPIKeySchemes(routes []*RouteInfo, base, explicit map[string]Secu
 			continue
 		}
 		for i, req := range route.Security {
+			// Built fresh rather than edited in place: inserting into a map
+			// while ranging over it leaves whether the new keys are visited up
+			// to the runtime, and the derived names are exactly the kind of key
+			// that could be visited again.
+			replacement := make(SecurityRequirement, len(req))
+			changed := false
 			for name, scopes := range req {
-				shape, ok := route.SecuritySchemeShapes[name]
-				if !ok {
+				// One key per shape, all in THIS requirement object: two
+				// api-key middlewares on one scope are two credentials the
+				// server requires together, so they are ANDed rather than one
+				// replacing the other.
+				keys := make([]string, 0, len(route.SecuritySchemeShapes[name]))
+				for _, shape := range route.SecuritySchemeShapes[name] {
+					if key := renames[name][shape]; key != "" {
+						keys = append(keys, key)
+					}
+				}
+				if len(keys) == 0 {
+					replacement[name] = scopes
 					continue
 				}
-				key := renames[name][shape]
-				if key == "" || key == name {
-					continue
+				for _, key := range keys {
+					replacement[key] = append([]string{}, scopes...)
+					changed = changed || key != name
 				}
-				delete(route.Security[i], name)
-				route.Security[i][key] = scopes
+			}
+			if changed {
+				route.Security[i] = replacement
 			}
 		}
 	}

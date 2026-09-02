@@ -81,7 +81,12 @@ type RouteInfo struct {
 	// scheme documented at its library default. The mapper turns these into the
 	// emitted scheme definitions, and splits the name when one project uses
 	// several shapes.
-	SecuritySchemeShapes map[string]apiKeyShape
+	//
+	// A LIST per scheme name, because one scope can apply two api-key
+	// middlewares that read different places (a tenant key beside a user key).
+	// Both credentials are required, so both belong in the requirement; keeping
+	// one shape per name documented the first and silently dropped the second.
+	SecuritySchemeShapes map[string][]apiKeyShape
 
 	// Security holds the per-operation OpenAPI security requirements resolved
 	// from auth middleware detected in scope. Semantics:
@@ -732,7 +737,19 @@ func (e *Extractor) UnresolvedSecurity() []MiddlewareRef {
 	return e.securityUnresolved
 }
 
-// dedupMiddlewareRefs removes duplicate refs by identity, preserving order.
+// dedupMiddlewareRefs removes duplicate refs, preserving order.
+//
+// Keyed by identity AND the site the middleware was constructed at, because the
+// same constructor applied twice is two applications: two api-key middlewares
+// on one scope can read two different places, and both credentials are required
+// (issue #370). Collapsing them by identity alone documented the first and
+// silently dropped the second — and, once the scheme carries a location, that
+// is a confidently wrong answer rather than a vague one.
+//
+// The same argument seen through several tracker paths has one position, so it
+// still collapses to one ref, which is what this exists for. The unresolved
+// diagnostics list dedupes by identity separately (recordUnresolved), so a
+// middleware applied at several sites is still reported once.
 func dedupMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
 	if len(refs) <= 1 {
 		return refs
@@ -741,6 +758,9 @@ func dedupMiddlewareRefs(refs []MiddlewareRef) []MiddlewareRef {
 	out := refs[:0]
 	for _, r := range refs {
 		key := r.String()
+		if r.Position != "" {
+			key += "@" + r.Position
+		}
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -789,13 +809,13 @@ func (e *Extractor) applyRouteSecurity(node TrackerNodeInterface, routeInfo *Rou
 	var reqs []SecurityRequirement
 	public := false
 
-	var shapes map[string]apiKeyShape
-	keepShapes := func(found map[string]apiKeyShape) {
-		for name, shape := range found {
+	var shapes map[string][]apiKeyShape
+	keepShapes := func(found map[string][]apiKeyShape) {
+		for name, list := range found {
 			if shapes == nil {
-				shapes = map[string]apiKeyShape{}
+				shapes = map[string][]apiKeyShape{}
 			}
-			shapes[name] = shape
+			shapes[name] = appendUniqueShapes(shapes[name], list...)
 		}
 	}
 
