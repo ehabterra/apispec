@@ -94,10 +94,10 @@ func TestMiddlewareRefFromArg(t *testing.T) {
 // (no direct mapping) -> jwtware.New (mapped to bearerAuth).
 func TestExpandMiddlewareRefs_WrapperLookThrough(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
-	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+	tree := NewLazyTree(meta, metadata.TrackerLimits{
 		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
 		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
-	}, nil)
+	})
 
 	// Synthetic call graph: app/mw.Protected's body calls jwtware.New.
 	calleeNew := metadata.Call{
@@ -133,10 +133,10 @@ func TestExpandMiddlewareRefs_WrapperLookThrough(t *testing.T) {
 // known library is left intact (and thus reported unresolved).
 func TestExpandMiddlewareRefs_NoMatchKeepsOriginal(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
-	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+	tree := NewLazyTree(meta, metadata.TrackerLimits{
 		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
 		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
-	}, nil)
+	})
 	calleeLog := metadata.Call{Name: meta.StringPool.Get("Println"), Pkg: meta.StringPool.Get("log")}
 	calleeLog.RecvType = -1
 	meta.Callers = map[string][]*metadata.CallGraphEdge{
@@ -161,10 +161,10 @@ func TestExpandMiddlewareRefs_NoMatchKeepsOriginal(t *testing.T) {
 // and guards only that route.
 func TestCollectChainSecurity(t *testing.T) {
 	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
-	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+	tree := NewLazyTree(meta, metadata.TrackerLimits{
 		MaxNodesPerTree: 1000, MaxChildrenPerNode: 100, MaxArgsPerFunction: 50,
 		MaxNestedArgsDepth: 50, MaxRecursionDepth: 100,
-	}, nil)
+	})
 
 	// With(authmw) edge: callee With on *R, middleware arg = ident authmw.
 	withEdge := &metadata.CallGraphEdge{

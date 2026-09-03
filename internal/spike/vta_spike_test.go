@@ -41,8 +41,6 @@ type vtaTimings struct {
 	load, ssa, vta time.Duration
 }
 
-func (tm vtaTimings) total() time.Duration { return tm.load + tm.ssa + tm.vta }
-
 // buildVTA loads the module at dir (whole program, deps included), builds SSA
 // with generics instantiated, and returns the VTA call graph seeded by CHA.
 func buildVTA(t *testing.T, dir string) (*callgraph.Graph, *ssa.Program, vtaTimings) {

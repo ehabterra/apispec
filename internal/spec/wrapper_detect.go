@@ -251,7 +251,7 @@ func derivationRound(meta *metadata.Metadata, cp ContextProvider, params *paramI
 		if caller == nil {
 			continue
 		}
-		node := &TrackerNode{CallGraphEdge: edge}
+		node := newEdgeNode(edge)
 		for j, matcher := range matchers {
 			if !matcher.MatchNode(node) {
 				continue
@@ -602,7 +602,7 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		if w == nil {
 			continue
 		}
-		node := &TrackerNode{CallGraphEdge: edge}
+		node := newEdgeNode(edge)
 		key := w.fqRecv() + "." + w.name
 
 		// Widened once per method: the pattern has to match where handlers CALL

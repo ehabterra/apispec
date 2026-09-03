@@ -191,21 +191,6 @@ func TestTrackerStringers(t *testing.T) {
 	if got := ak.String(); got != "ptnc" {
 		t.Errorf("assignmentKey.String() = %q, want ptnc", got)
 	}
-	ik := interfaceKey{InterfaceType: "I", StructType: "S", Pkg: "P"}
-	if got := ik.String(); got != "PSI" {
-		t.Errorf("interfaceKey.String() = %q, want PSI", got)
-	}
-}
-
-func TestRegisterAndResolveInterface(t *testing.T) {
-	tr := &TrackerTree{interfaceResolutionMap: map[interfaceKey]string{}}
-	tr.RegisterInterfaceResolution("Storer", "Service", "app", "PgStore")
-	if got := tr.ResolveInterface("Storer", "Service", "app"); got != "PgStore" {
-		t.Errorf("registered resolution = %q, want PgStore", got)
-	}
-	if got := tr.ResolveInterface("Other", "Service", "app"); got != "Other" {
-		t.Errorf("unregistered resolution = %q, want the interface itself", got)
-	}
 }
 
 func TestIsValidHTTPMethodAndGetPattern(t *testing.T) {

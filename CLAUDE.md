@@ -10,9 +10,10 @@ Pipeline (each stage consumes the previous one's output):
 1. **`internal/metadata`** — loads packages (AST + go/types) and records
    *facts*: functions, types, assignments, call-graph edges, string-pooled.
    No spec decisions happen here.
-2. **`internal/spec` tracker** (`tracker.go`, `lazy_tree.go`) — expands the
-   call graph from route-registration sites into a tracker tree
-   (LazyTree is the default engine).
+2. **`internal/spec` tracker** (`lazytree.go`) — expands the call graph from
+   route-registration sites into a tracker tree. LazyTree is the only engine;
+   the eager `tracker.go` was removed in #425, so there is no second engine to
+   compare against or fall back to.
 3. **`internal/spec` extractor** (`extractor.go`, `pattern_matchers.go`) —
    walks the tree with **config-driven patterns** (per-framework
    `config_<framework>.go`) to find routes, request/response bodies, params,

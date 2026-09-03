@@ -29,7 +29,7 @@ import (
 // second is true of an ordinary web service.
 func TestAnalysisInfo(t *testing.T) {
 	t.Run("no entrypoints declared", func(t *testing.T) {
-		got := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{}, spec.ExpansionStats{})
+		got := analysisInfo("chi", []string{"chi"}, spec.EntrypointStats{}, spec.ExpansionStats{})
 		want := insight.AnalysisInfo{Frameworks: []string{"chi"}, Primary: "chi", Engine: "lazy"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("analysisInfo = %+v, want %+v", got, want)
@@ -37,7 +37,7 @@ func TestAnalysisInfo(t *testing.T) {
 	})
 
 	t.Run("entrypoints declared", func(t *testing.T) {
-		got := analysisInfo("mux", []string{"mux", "gin"}, true,
+		got := analysisInfo("mux", []string{"mux", "gin"},
 			spec.EntrypointStats{Declared: 53, Rooted: 1, AlreadyReachable: 0, NoRoutes: 52}, spec.ExpansionStats{})
 		if got.Entrypoints == nil {
 			t.Fatal("entrypoints not reported")
@@ -49,8 +49,10 @@ func TestAnalysisInfo(t *testing.T) {
 	})
 
 	t.Run("the tracker engine is named", func(t *testing.T) {
-		if got := analysisInfo("chi", nil, false, spec.EntrypointStats{}, spec.ExpansionStats{}); got.Engine != "eager" {
-			t.Errorf("engine = %q, want eager", got.Engine)
+		// One engine since issue #425, and the report still names it: a reader
+		// of an exported report should not have to know which release made it.
+		if got := analysisInfo("chi", nil, spec.EntrypointStats{}, spec.ExpansionStats{}); got.Engine != "lazy" {
+			t.Errorf("engine = %q, want lazy", got.Engine)
 		}
 	})
 }
@@ -171,12 +173,12 @@ func TestTrackerLimitsResolved(t *testing.T) {
 // expansion stopped early — and that it says nothing when the walk finished,
 // since an absent block is what "complete" means.
 func TestAnalysisInfoReportsTruncation(t *testing.T) {
-	finished := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{}, spec.ExpansionStats{NodesBuilt: 120, Limit: 50000})
+	finished := analysisInfo("chi", []string{"chi"}, spec.EntrypointStats{}, spec.ExpansionStats{NodesBuilt: 120, Limit: 50000})
 	if finished.Expansion != nil {
 		t.Errorf("a completed walk reported expansion %+v, want nothing", finished.Expansion)
 	}
 
-	cut := analysisInfo("chi", []string{"chi"}, true, spec.EntrypointStats{},
+	cut := analysisInfo("chi", []string{"chi"}, spec.EntrypointStats{},
 		spec.ExpansionStats{NodesBuilt: 50000, Limit: 50000, Truncated: true})
 	if cut.Expansion == nil {
 		t.Fatal("a truncated walk reported nothing")

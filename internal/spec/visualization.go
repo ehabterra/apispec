@@ -720,27 +720,6 @@ func splitNodeLabel(nodeKey string) (string, string) {
 	return nodeKey, ""
 }
 
-func callArgument(callArgument *metadata.CallArgument) *metadata.CallArgument {
-	if callArgument == nil {
-		return nil
-	}
-
-	if callArgument.GetName() != "" || callArgument.GetValue() != "" {
-		return callArgument
-	}
-
-	switch {
-	case callArgument.Fun != nil:
-		return callArgument.Fun
-	case callArgument.Sel != nil:
-		return callArgument.Sel
-	case callArgument.X != nil:
-		return callArgument.X
-	}
-
-	return callArgument
-}
-
 func drawNodeCytoscapeWithDepth(node TrackerNodeInterface, data *CytoscapeData, nodeMap map[string]string, baseKeyToNodeIndex map[string]int, edgeSet map[string]bool, childrenProcessed map[string]bool, edgeCounter, nodeCounter *int, meta *metadata.Metadata, depth int) string {
 	if node == nil {
 		return ""
@@ -794,134 +773,11 @@ func drawNodeCytoscapeWithDepth(node TrackerNodeInterface, data *CytoscapeData, 
 		}
 	}
 
-	// Add tracker tree specific data if available
-	if trackerNode, ok := node.(*TrackerNode); ok {
-		// Determine node type and set appropriate data
-		if trackerNode.IsArgument {
-			// This is an argument node
-			if isNewNode {
-				nodeData.Type = "argument"
-				nodeData.ArgType = trackerNode.ArgType.String()
-				nodeData.ArgIndex = trackerNode.ArgIndex
-				nodeData.ArgContext = trackerNode.ArgContext
-
-				// Add argument information if available
-				if trackerNode.CallArgument != nil {
-					callArgument := callArgument(trackerNode.CallArgument)
-					nodeData.ArgName = callArgument.GetName()
-					nodeData.Package = callArgument.GetPkg()
-					nodeData.ArgValue = callArgument.GetValue()
-					nodeData.ArgType = callArgument.GetType()
-					nodeData.ArgResolvedType = callArgument.GetResolvedType()
-				}
-			}
-		} else if trackerNode.CallGraphEdge != nil {
-			// This is a function node with an edge
-			if isNewNode {
-				nodeData.Type = "function"
-				// Get actual strings from metadata if available
-				// Note: CallGraphEdge is checked for nil above, so we can access Callee directly
-				callee := trackerNode.Callee
-				if meta != nil && meta.StringPool != nil {
-					nodeData.FunctionName = meta.StringPool.GetString(callee.Name)
-					nodeData.Package = meta.StringPool.GetString(callee.Pkg)
-					nodeData.ReceiverType = meta.StringPool.GetString(callee.RecvType)
-					nodeData.SignatureStr = meta.StringPool.GetString(callee.SignatureStr)
-				} else {
-					// Fallback to indices if metadata not available
-					nodeData.FunctionName = fmt.Sprintf("func_%d", callee.Name)
-					nodeData.Package = fmt.Sprintf("pkg_%d", callee.Pkg)
-					nodeData.ReceiverType = fmt.Sprintf("recv_%d", callee.RecvType)
-					nodeData.SignatureStr = fmt.Sprintf("sig_%d", callee.SignatureStr)
-				}
-				nodeData.Scope = callee.GetScope()
-			}
-
-			// Merge CallPathInfo from this occurrence if metadata is available
-			if meta != nil && meta.StringPool != nil {
-				calleeBaseID := trackerNode.Callee.BaseID()
-				callPathInfos := buildCallPathInfos(meta, calleeBaseID)
-
-				// Merge call paths, avoiding duplicates
-				if nodeData.CallPaths == nil {
-					nodeData.CallPaths = make([]CallPathInfo, 0)
-				}
-
-				// Create a map to track unique call paths
-				callPathMap := make(map[string]bool)
-				for _, existingPath := range nodeData.CallPaths {
-					pathKey := fmt.Sprintf("%s.%s:%s", existingPath.CallerPkg, existingPath.CallerName, existingPath.Position)
-					callPathMap[pathKey] = true
-				}
-
-				// Add new call paths that aren't duplicates
-				for _, newPath := range callPathInfos {
-					pathKey := fmt.Sprintf("%s.%s:%s", newPath.CallerPkg, newPath.CallerName, newPath.Position)
-					if !callPathMap[pathKey] {
-						nodeData.CallPaths = append(nodeData.CallPaths, newPath)
-						callPathMap[pathKey] = true
-					}
-				}
-
-				// Set position from edge if not already set from label split
-				edgePosition := meta.StringPool.GetString(trackerNode.Callee.Position)
-				if edgePosition != "" {
-					if nodeData.Position == "" {
-						nodeData.Position = edgePosition
-					} else if !strings.Contains(nodeData.Position, edgePosition) {
-						nodeData.Position += ", " + edgePosition
-					}
-				}
-			}
-		} else if trackerNode.CallArgument != nil {
-			// This is a call argument node (not a function)
-			if isNewNode {
-				nodeData.Type = "call_argument"
-				callArgument := callArgument(trackerNode.CallArgument)
-				nodeData.ArgName = callArgument.GetName()
-				nodeData.Package = callArgument.GetPkg()
-				nodeData.ArgValue = callArgument.GetValue()
-				nodeData.ArgType = callArgument.GetType()
-				nodeData.ArgResolvedType = callArgument.GetResolvedType()
-			}
-		} else {
-			// This is a generic node (variable, literal, etc.)
-			if isNewNode {
-				nodeData.Type = "generic"
-			}
-		}
-
-		// Merge root assignments if available (for any node type)
-		if len(trackerNode.RootAssignmentMap) > 0 {
-			if nodeData.RootAssignments == nil {
-				nodeData.RootAssignments = make(map[string]int)
-			}
-			for key, assignments := range trackerNode.RootAssignmentMap {
-				// Merge assignments count
-				if existingCount, exists := nodeData.RootAssignments[key]; exists {
-					nodeData.RootAssignments[key] = existingCount + len(assignments)
-				} else {
-					nodeData.RootAssignments[key] = len(assignments)
-				}
-			}
-		}
-
-		// Merge type parameters (for any node type)
-		if trackerNode.TypeParams() != nil {
-			if nodeData.Generics == nil {
-				nodeData.Generics = make(map[string]string)
-			}
-			// Merge generics - use the first occurrence or merge if different
-			for key, value := range trackerNode.TypeParams() {
-				if existingValue, exists := nodeData.Generics[key]; !exists || existingValue == "" {
-					nodeData.Generics[key] = value
-				} else if existingValue != value {
-					// If different values, keep both separated by comma
-					nodeData.Generics[key] = existingValue + ", " + value
-				}
-			}
-		}
-	}
+	// The eager tree's node carried argument/function annotations that were
+	// merged in here. With that engine gone (issue #425) the annotations are
+	// gone with it: they were unreachable on the lazy tree, which is why a
+	// default-engine diagram never contained a functionName field. Restoring
+	// them means exposing the lazy node's argument facts — issue #442.
 
 	// Remove package prefix from label (do this for both new and merged nodes)
 	if nodeData.Package != "" {
@@ -972,11 +828,6 @@ func drawNodeCytoscapeWithDepth(node TrackerNodeInterface, data *CytoscapeData, 
 				if !edgeSet[edgeKey] && nodeKey != childKey {
 					// Determine edge type based on node types
 					edgeType := "calls" // Default for function calls
-					if trackerNode, ok := node.(*TrackerNode); ok {
-						if trackerNode.IsArgument || (trackerNode.CallArgument != nil && trackerNode.CallGraphEdge == nil) {
-							edgeType = "argument" // Edge represents argument relationship
-						}
-					}
 
 					edgeID := fmt.Sprintf("%s%d", edgePrefix, *edgeCounter)
 					*edgeCounter++

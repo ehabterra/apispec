@@ -360,14 +360,7 @@ export function ConfigMode() {
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
           <//>
 
-          <${Section} title="Analysis engine" help="Which tracker tree powers the analysis, and how far it is allowed to walk. The lazy tracker (default) expands the call tree on demand. Legacy (eager) is DEPRECATED and will be removed in a future release — it documents fewer routes than the default on real projects and is slower, so it is not a safe fallback; if the default is missing something, please report it. The limits below bound that walk; leave them blank to use the defaults shown.">
-            <div class="field">
-              <label>Tracker tree</label>
-              <select class="input" value=${s.legacyTracker ? "legacy" : "lazy"} onChange=${(e) => setState({ legacyTracker: e.target.value === "legacy" })}>
-                <option value="lazy">Lazy (default)</option>
-                <option value="legacy">Legacy (eager) — deprecated</option>
-              </select>
-            </div>
+          <${Section} title="Analysis limits" help="How far the analysis is allowed to walk the call tree. Raise these when a project is large enough that the default budget stops expansion part-way through its routes; leave them blank to use the defaults shown.">
             <${TrackerLimits} />
           <//>
 

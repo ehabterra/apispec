@@ -17,7 +17,7 @@ package insight
 import (
 	"testing"
 
-	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/spec"
 )
 
@@ -28,22 +28,34 @@ import (
 // locate the handler in the call graph — otherwise the UI shows "the handler
 // couldn't be located in the call graph for this route".
 func TestHandlerFactory_TraceResolvesAcrossPackages(t *testing.T) {
-	meta, err := metadata.LoadMetadata("../../testdata/echo_handler_factory/metadata.yaml")
-	if err != nil {
-		t.Skipf("fixture unavailable: %v", err)
-	}
-	meta.BuildCallGraphMaps()
-
-	tree := spec.NewTrackerTree(meta, metadata.TrackerLimits{
-		MaxNodesPerTree: 50000, MaxChildrenPerNode: 500, MaxArgsPerFunction: 100,
-		MaxNestedArgsDepth: 100, MaxRecursionDepth: 1000,
-	}, nil)
+	// Driven through the ENGINE rather than the checked-in metadata.yaml: the
+	// analysis needs facts a YAML round-trip does not restore, so a tree built
+	// from the file resolves less than the pipeline does. The eager tree
+	// tolerated it; keeping the file as the input would test a shape nothing
+	// ships (issue #425).
 	cfg := spec.DefaultEchoConfig()
-	out, err := spec.MapMetadataToOpenAPI(tree, cfg, spec.GeneratorConfig{
-		OpenAPIVersion: "3.0.3", Title: "factory", APIVersion: "1.0.0",
+	eng := engine.NewEngine(&engine.EngineConfig{
+		InputDir:                     "../../testdata/echo_handler_factory",
+		APISpecConfig:                cfg,
+		OpenAPIVersion:               "3.1.0",
+		MaxNodesPerTree:              engine.DefaultMaxNodesPerTree,
+		MaxChildrenPerNode:           engine.DefaultMaxChildrenPerNode,
+		MaxArgsPerFunction:           engine.DefaultMaxArgsPerFunction,
+		MaxNestedArgsDepth:           engine.DefaultMaxNestedArgsDepth,
+		MaxRecursionDepth:            engine.DefaultMaxRecursionDepth,
+		SkipCGOPackages:              true,
+		AnalyzeFrameworkDependencies: true,
+		AutoIncludeFrameworkPackages: true,
+		AutoExcludeTests:             true,
+		AutoExcludeMocks:             true,
 	})
+	out, err := eng.GenerateOpenAPI()
 	if err != nil {
-		t.Fatalf("MapMetadataToOpenAPI: %v", err)
+		t.Fatalf("GenerateOpenAPI: %v", err)
+	}
+	meta := eng.GetMetadata()
+	if meta == nil {
+		t.Fatal("no metadata from the engine")
 	}
 
 	for _, tc := range []struct{ method, path string }{

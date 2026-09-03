@@ -161,14 +161,6 @@ type EngineConfig struct {
 	// summary-based analyses consume it; enable to expose it via
 	// GetResolvedCallGraph.
 	ResolveCallGraph bool
-	// UseLazyTracker generates the spec with the lazy tracker tree
-	// (docs/TRACKER_REDESIGN.md step 4) — the default. It covers the wiring
-	// styles the legacy eager tree supports (verified by the fixture parity
-	// harness and the cross-codebase meter), resolves some responses/bodies
-	// the eager tree misses, and stays bounded on dense call graphs. Set to
-	// false (CLI --legacy-tracker, UI "Analysis engine") to generate with
-	// the legacy eager tree for comparison.
-	UseLazyTracker bool
 	// SkipHTTPFramework excludes net/http from framework dependency analysis
 	SkipHTTPFramework bool
 	// Auto-exclude common test files and folders (e.g., *_test.go, tests/)
@@ -234,7 +226,6 @@ func DefaultEngineConfig() *EngineConfig {
 		SkipHTTPFramework:            false,
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
-		UseLazyTracker:               true,
 	}
 }
 
@@ -887,21 +878,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		return nil, err
 	}
 	tTree := time.Now()
-	var tree intspec.TrackerTreeInterface
-	if e.config.UseLazyTracker {
-		tree = intspec.NewLazyTree(meta, limits,
-			intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
-			intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
-				intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)),
-			intspec.WithTerminalRouteMatcher(intspec.TerminalRouteMatcher(apispecConfig, meta)))
-		e.reportPhase("tracker tree ready (lazy)", time.Since(tTree))
-	} else {
-		tree = intspec.NewTrackerTree(meta, limits, NewVerboseLogger(e.config.Verbose),
-			intspec.WithEagerHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
-			intspec.WithEagerEntrypoints(apispecConfig.Framework.EntrypointPatterns,
-				intspec.RouteRegistrationMatcher(apispecConfig, meta)))
-		e.reportPhase("tracker tree built", time.Since(tTree))
-	}
+	var tree intspec.TrackerTreeInterface = intspec.NewLazyTree(meta, limits,
+		intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
+		intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
+			intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)),
+		intspec.WithTerminalRouteMatcher(intspec.TerminalRouteMatcher(apispecConfig, meta)))
+	e.reportPhase("tracker tree ready", time.Since(tTree))
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
 	}
