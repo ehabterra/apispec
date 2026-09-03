@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comment never resurrects a field the encoder skips. `excludeTypeComments: true`
   turns it off for projects that treat internal comments as private. (#366)
 
+### Removed
+
+- **The eager tracker tree and `--legacy-tracker` are gone.** The flag read like
+  a safe fallback and was not one: measured against the default on three real
+  services it produced identical output on two, and on the third it documented
+  **194 of 280 routes** — 31% missing, with no warning — while running 1.6×
+  slower; across the fixture suite it resolved four wiring shapes incorrectly.
+  Deprecated in 0.5.8, removed here: `internal/spec/tracker.go` (~2000 lines),
+  the flag, `EngineConfig.UseLazyTracker`, the UI's "Analysis engine" selector,
+  and the five cross-engine parity tests, whose oracle no longer exists — every
+  fixture involved keeps its own structural test, so the behaviour stays covered.
+  Nothing in the output changes: all 108 fixtures and a 894-path real project
+  generate byte-identically. If the analysis is missing something, please report
+  it rather than reaching for an engine that documented less. (#425, closes #410
+  and #286)
+
 ### Changed
 
 - CI builds and tests on the latest 1.26.x rather than a pinned patch release.

@@ -204,33 +204,3 @@ func TestSecurityLookupAssignments(t *testing.T) {
 		t.Error("unknown ident must not resolve")
 	}
 }
-
-func TestTrackerMetadataInterfaceResolution(t *testing.T) {
-	sp := metadata.NewStringPool()
-	m := &metadata.Metadata{StringPool: sp}
-	m.RegisterInterfaceResolution("Storer", "Service", "app", "PgStore", "svc.go:10")
-
-	tr := &TrackerTree{meta: m, interfaceResolutionMap: map[interfaceKey]string{}}
-
-	// Cache miss resolves from metadata and caches locally.
-	if got := tr.ResolveInterfaceFromMetadata("Storer", "Service", "app"); got != "PgStore" {
-		t.Errorf("metadata resolution = %q, want PgStore", got)
-	}
-	// Now the local cache serves it.
-	if got := tr.ResolveInterface("Storer", "Service", "app"); got != "PgStore" {
-		t.Errorf("cached resolution = %q, want PgStore", got)
-	}
-	// Unknown stays itself.
-	if got := tr.ResolveInterfaceFromMetadata("Other", "Service", "app"); got != "Other" {
-		t.Errorf("unknown resolution = %q", got)
-	}
-
-	// SyncInterfaceResolutionsFromMetadata copies the metadata view in bulk.
-	tr2 := &TrackerTree{meta: m, interfaceResolutionMap: map[interfaceKey]string{}}
-	tr2.SyncInterfaceResolutionsFromMetadata()
-	if got := tr2.ResolveInterface("Storer", "Service", "app"); got != "PgStore" {
-		t.Errorf("synced resolution = %q, want PgStore", got)
-	}
-	// Nil metadata is a no-op.
-	(&TrackerTree{interfaceResolutionMap: map[interfaceKey]string{}}).SyncInterfaceResolutionsFromMetadata()
-}

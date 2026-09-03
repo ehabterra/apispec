@@ -2,48 +2,43 @@
 
 APISpec bounds its own analysis so that a deep or cyclic call graph becomes a
 truncation warning instead of a hang. This page explains what each bound does,
-how the two engines differ, and how to profile a slow run.
+how the analysis is bounded, and how to profile a slow run.
 
-## Analysis engine: lazy (default) vs eager
+## Analysis engine
 
 The [tracker tree](PIPELINE.md) — the expansion of each route down to its real
-handler and the calls inside it — can be built by either of two engines. They
-share the metadata, extraction, and mapping stages, so their **output is
-equivalent** (guarded by a parity test over the fixtures); they differ only in
-*how* the tree is built and bounded.
+handler and the calls inside it — is built **lazily**: subtrees are expanded on
+demand, only along the paths a query actually touches. Cost scales with what is
+*reachable from routes* rather than with the size of the codebase, so it tends
+to win on large projects where much of the code never participates in routing,
+and it degrades gracefully on dense or cyclic graphs (a cumulative budget, then
+leaf stubs) instead of expanding exponentially.
 
-- **Lazy (default).** Expands subtrees on demand, only along the paths a query
-  actually touches. Cost scales with what's *reachable from routes*, not with
-  the total size of the codebase — so it tends to win on large projects where
-  much of the code never participates in routing. It degrades gracefully on
-  dense or cyclic graphs (a cumulative budget, then leaf stubs) rather than
-  expanding exponentially.
-- **Eager (`--legacy-tracker`) — deprecated, to be removed in a future
-  release.** Materializes the whole tree up front. It is **not a safe
-  fallback**: on a real ~280-route service it documents 194 routes (31%
-  missing, silently) and runs 1.6× slower, and across the fixture suite it
-  resolves four wiring shapes incorrectly. It uses less memory on small
-  projects, which is the only thing it still wins at.
+There used to be a second, eager engine behind `--legacy-tracker`, which
+materialised the whole tree up front. It was removed in v0.5.9 (issue #425)
+after being measured against the default on three real services: identical
+output on two, and on the third it documented **194 of 280 routes** — 31%
+missing, with no warning — while running 1.6× slower. Across the fixture suite
+it resolved four wiring shapes incorrectly. Its one remaining advantage was
+memory on small projects, which is not worth carrying a second engine that
+silently drops a third of an API.
 
-There is no reason to change the default. If it is missing something, please
-[open an issue](https://github.com/ehabterra/apispec/issues) rather than
-switching engines — switching will usually document *fewer* routes, not more.
+If the analysis is missing something, please
+[open an issue](https://github.com/ehabterra/apispec/issues).
 
 ## Limits
 
-**Not every knob applies to both engines** — the eager engine bounds recursion
-with explicit depth caps, while the lazy engine replaces those with node budgets
-plus an internal per-scope instance cap:
+Expansion is bounded by node budgets plus an internal per-scope instance cap:
 
-| Parameter            | Default  | CLI flag                | Applies to                                                                 |
+| Parameter            | Default  | CLI flag                | Bounds                                                                     |
 |----------------------|----------|-------------------------|----------------------------------------------------------------------------|
-| Max nodes / tree     | 50,000   | `--max-nodes`           | **both** — eager: nodes per route tree; lazy: distinct callees materialized by the walk that *finds* route registrations |
-| Max nodes / route    | 1,000,000 | `--max-nodes-per-route` | **lazy only** — nodes expanded *below* one registration                   |
-| Max children / node  | 500      | `--max-children`        | both                                                                       |
-| Max args / function  | 100      | `--max-args`            | both                                                                       |
-| Max nested arg depth | 100      | `--max-nested-args`     | **eager only**                                                             |
-| Max recursion depth  | 10       | `--max-recursion-depth` | **eager only**                                                             |
-| Max instances / key  | 100      | `--max-instances-per-key` | **lazy only**                                                            |
+| Max nodes / tree     | 50,000   | `--max-nodes`           | distinct callees materialized by the walk that *finds* route registrations |
+| Max nodes / route    | 1,000,000 | `--max-nodes-per-route` | nodes expanded *below* one registration                                   |
+| Max children / node  | 500      | `--max-children`        | children materialized per node                                             |
+| Max args / function  | 100      | `--max-args`            | arguments walked per call                                                   |
+| Max nested arg depth | 100      | `--max-nested-args`     | depth of nested argument expressions                                        |
+| Max recursion depth  | 10       | `--max-recursion-depth` | recursion into repeated callees                                             |
+| Max instances / key  | 100      | `--max-instances-per-key` | copies of one callee within an instance scope                             |
 
 ### Two node budgets, not one
 

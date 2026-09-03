@@ -173,61 +173,6 @@ func splitTypeKey(key string) (pkg, name string, ok bool) {
 	return key[:i], key[i+1:], true
 }
 
-// attachHandlerValueChildren is the eager tree's counterpart to LazyTree's
-// handlerValueKeys expansion: it hangs the handler method's body under the
-// argument node so the route's responses, params and request body are reachable.
-//
-// The lazy tree expands by *key* and lets edgesFor find the bodies; the eager
-// tree materializes nodes up front, so the matching edges are looked up here —
-// every edge whose CALLER is the resolved handler method, which is exactly what
-// the existing method-value branch does for a selector argument.
-func attachHandlerValueChildren(
-	tree *TrackerTree,
-	meta *metadata.Metadata,
-	argNode *TrackerNode,
-	arg *metadata.CallArgument,
-	visited map[string]int,
-	assignmentIndex *assigmentIndexMap,
-	limits metadata.TrackerLimits,
-) {
-	if tree == nil || argNode == nil || len(tree.handlerMethods) == 0 {
-		return
-	}
-	pkg, name := handlerValueTypeOf(arg)
-	keys := handlerMethodKeys(meta, tree.handlerMethods, pkg, name)
-	if len(keys) == 0 {
-		return
-	}
-	for _, key := range keys {
-		methodPkgType, methodName, ok := splitTypeKey(key)
-		if !ok {
-			continue
-		}
-		keyPkg, recvType, ok := splitTypeKey(methodPkgType)
-		if !ok {
-			continue
-		}
-		nameIdx := meta.StringPool.Get(methodName)
-		pkgIdx := meta.StringPool.Get(keyPkg)
-		recvIdx := meta.StringPool.Get(recvType)
-		starRecvIdx := meta.StringPool.Get("*" + recvType)
-		for i := range meta.CallGraph {
-			e := &meta.CallGraph[i]
-			if e.Caller.Name != nameIdx || e.Caller.Pkg != pkgIdx ||
-				(e.Caller.RecvType != recvIdx && e.Caller.RecvType != starRecvIdx) {
-				continue
-			}
-			if child := NewTrackerNode(tree, meta, argNode.Key(), e.Callee.ID(), e, nil, visited, assignmentIndex, limits); child != nil {
-				argNode.AddChild(child)
-			}
-		}
-	}
-}
-
-// implementersOfExternal returns the "pkg.Type" keys of every recorded type
-// implementing the given interface key ("net/http.Handler"), read from the
-// concrete side's Implements facts (issue #178).
-//
 // Interfaces declared outside the analyzed set never become Type entries, so
 // they carry no ImplementedBy list to read the relation from — the concrete
 // types are the only place the fact is recorded. Results are sorted: they feed

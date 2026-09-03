@@ -203,10 +203,6 @@ type GenerateRequest struct {
 	UseRawConfig bool   `json:"useRawConfig"`
 	RawConfig    string `json:"rawConfig"`
 
-	// LegacyTracker switches spec generation to the legacy (eager) tracker
-	// tree; the default is the lazy tracker.
-	LegacyTracker bool `json:"legacyTracker"`
-
 	// Limits bound tree expansion. Every field is optional: a zero keeps the
 	// engine default. They are here because a project can be large enough that
 	// the default budget stops expansion part-way through its routes, and the UI
@@ -946,7 +942,6 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		AutoExcludeTests:             true,
 		AutoExcludeMocks:             true,
 		Verbose:                      s.cfg.Verbose,
-		UseLazyTracker:               !req.LegacyTracker,
 		OnPhase: func(phase string, elapsed time.Duration) {
 			// Pushed by the engine at each major phase boundary. The UI
 			// polls /api/generate/progress to surface this as the live
@@ -1066,7 +1061,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		s.currentSpec = out
 		s.currentCfg = apiCfg
 		s.currentMeta = genMeta
-		s.currentAnalysis = analysisInfo(req.Framework, detectedFrameworks, !req.LegacyTracker, gen.GetEntrypointStats(), expansion)
+		s.currentAnalysis = analysisInfo(req.Framework, detectedFrameworks, gen.GetEntrypointStats(), expansion)
 		s.lastGen = now
 		s.lastErr = ""
 		s.genPhase = ""
@@ -1091,7 +1086,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if expansion.Truncated {
 			// The failure mode this guards against is a run that LOOKS fine: the
 			// routes simply stop, with no error anywhere (issue #233).
-			trunc := fmt.Sprintf("Expansion stopped at the %d-node limit, so routes beyond that point are missing. Raise 'Max nodes' under Analysis engine and generate again.", expansion.Limit)
+			trunc := fmt.Sprintf("Expansion stopped at the %d-node limit, so routes beyond that point are missing. Raise 'Max nodes' under Analysis limits and generate again.", expansion.Limit)
 			if msg != "" {
 				msg += " "
 			}
@@ -1649,7 +1644,7 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 // analysisInfo assembles what the Insight view reports about the run itself.
 // primary is the framework whose patterns led (the request's choice, or the first
 // detected one, which buildAPISpecConfig has already filled in).
-func analysisInfo(primary string, detected []string, lazy bool, ep spec.EntrypointStats, expansion spec.ExpansionStats) insight.AnalysisInfo {
+func analysisInfo(primary string, detected []string, ep spec.EntrypointStats, expansion spec.ExpansionStats) insight.AnalysisInfo {
 	info := insight.AnalysisInfo{Frameworks: detected, Primary: primary}
 	// Either shortfall is worth reporting, and they are independent: the
 	// instance cap can starve response bodies on a run whose node budget was
@@ -1670,11 +1665,9 @@ func analysisInfo(primary string, detected []string, lazy bool, ep spec.Entrypoi
 			RoutesScoped:        expansion.RoutesScoped,
 		}
 	}
-	if lazy {
-		info.Engine = "lazy"
-	} else {
-		info.Engine = "eager"
-	}
+	// One engine since issue #425, and the report still names it: a reader of
+	// an exported report should not have to know which release produced it.
+	info.Engine = "lazy"
 	// Only when the project actually declares entrypoints: a zeroed block would
 	// read as "the gate ran and found nothing", which is a different claim from
 	// "this project has no dispatcher-called functions at all".

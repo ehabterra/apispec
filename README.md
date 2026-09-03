@@ -520,7 +520,6 @@ overrides `--dir` (`apispec ./api -o spec.yaml`).
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
 | `--max-recursion-depth`     | `-mrd`    | Max recursion depth (anti-loop)                        | `10`                            |
 | `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `100`                  |
-| `--legacy-tracker`          |           | **Deprecated**, to be removed in a future release. Use the legacy (eager) tracker tree; documents fewer routes than the default and is slower | `false`        |
 | `--skip-cgo`                |           | Skip CGO packages                                      | `true`                          |
 | `--include-file`            |           | Include files matching pattern (repeatable)            | `""`                            |
 | `--include-package`         |           | Include packages matching pattern (repeatable)         | `""`                            |
@@ -959,20 +958,15 @@ large ones may need the node budgets raised.
 Every truncation is logged with the node it happened at, so a short spec is
 never silent.
 
-The default analysis engine is **lazy**: subtrees are expanded on demand, only
-along the paths a query actually touches.
+The analysis engine is **lazy**: subtrees are expanded on demand, only along the
+paths a query actually touches. There is one engine — the earlier eager tree was
+removed in v0.5.9 after it was measured documenting 31% fewer routes on a real
+service ([#425](https://github.com/ehabterra/apispec/issues/425)); if the
+analysis is missing something, please
+[open an issue](https://github.com/ehabterra/apispec/issues).
 
-> **Deprecated — `--legacy-tracker` (the eager tracker tree) will be removed in a
-> future release.** It reads like a safe fallback and is not one: on a real
-> ~280-route service it documents **194 routes** — 31% missing, with no warning —
-> and runs 1.6× slower, and across the fixture suite it resolves four wiring
-> shapes incorrectly. Selecting it prints a deprecation warning. If the default
-> engine is missing something, please
-> [open an issue](https://github.com/ehabterra/apispec/issues) rather than
-> switching — switching will usually document *fewer* routes, not more.
-
-📖 Engine comparison, the reasoning behind each limit, measured trade-offs, and
-profiling: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+📖 The reasoning behind each limit, measured trade-offs, and profiling:
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Development
 

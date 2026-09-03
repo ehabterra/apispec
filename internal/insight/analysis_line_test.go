@@ -46,8 +46,8 @@ func TestAnalysisLine(t *testing.T) {
 		},
 		{
 			name: "a configured framework with no detection",
-			info: AnalysisInfo{Primary: "echo", Engine: "eager"},
-			want: "Analysed with framework echo, eager tracker.",
+			info: AnalysisInfo{Primary: "echo", Engine: "lazy"},
+			want: "Analysed with framework echo, lazy tracker.",
 		},
 		{
 			// A hand-authored config states its own patterns, so detection has no

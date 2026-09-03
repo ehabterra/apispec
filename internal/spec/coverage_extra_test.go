@@ -21,17 +21,17 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-func loadEchoTree(t *testing.T) (*TrackerTree, *metadata.Metadata) {
+func loadEchoTree(t *testing.T) (*LazyTree, *metadata.Metadata) {
 	t.Helper()
 	meta, err := metadata.LoadMetadata("../../testdata/echo/metadata.yaml")
 	if err != nil {
 		t.Skipf("fixture unavailable: %v", err)
 	}
 	meta.BuildCallGraphMaps()
-	tree := NewTrackerTree(meta, metadata.TrackerLimits{
+	tree := NewLazyTree(meta, metadata.TrackerLimits{
 		MaxNodesPerTree: 50000, MaxChildrenPerNode: 500, MaxArgsPerFunction: 100,
 		MaxNestedArgsDepth: 100, MaxRecursionDepth: 1000,
-	}, nil)
+	})
 	return tree, meta
 }
 

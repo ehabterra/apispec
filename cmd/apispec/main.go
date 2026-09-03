@@ -156,7 +156,6 @@ type CLIConfig struct {
 	MaxRecursionDepth            int
 	MaxInstancesPerKey           int
 	MaxNodesPerRoute             int
-	LegacyTracker                bool
 	ShowVersion                  bool
 	OutputFlagSet                bool
 	IncludeFiles                 []string
@@ -290,11 +289,7 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.MaxInstancesPerKey, "max-instances-per-key", engine.DefaultMaxInstancesPerKey,
 		"Maximum copies of one callee within an instance scope (raise it when a group closure holds more routes than the default budget covers)")
 	fs.IntVar(&config.MaxNodesPerRoute, "max-nodes-per-route", engine.DefaultMaxNodesPerRoute,
-		"Maximum tree nodes expanded below one route registration, bounding a route's detail without starving the others (lazy tracker only; ignored with --legacy-tracker)")
-
-	fs.BoolVar(&config.LegacyTracker, "legacy-tracker", false,
-		"DEPRECATED, to be removed in a future release: use the legacy (eager) tracker tree. "+
-			"It documents FEWER routes than the default on real projects and is slower; do not reach for it to work around a problem")
+		"Maximum tree nodes expanded below one route registration, bounding a route's detail without starving the others")
 
 	// Include/exclude flags
 	fs.Var((*stringSliceFlag)(&config.IncludeFiles), "include-file", "Include files matching pattern (can be specified multiple times)")
@@ -367,28 +362,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	return config, nil
 }
 
-// warnLegacyTracker says so, once, when a run selects the eager tracker.
-//
-// Written as a warning rather than left to the help text because the flag reads
-// like a safe fallback and is not one: on a real ~280-route service the eager
-// tree documents 194 routes, so reaching for it to work around a problem
-// silently returns a SMALLER spec than the default (issue #410). Anyone using it
-// today is the audience for the removal notice.
-func warnLegacyTracker(enabled bool) {
-	if !enabled {
-		return
-	}
-	fmt.Fprintln(os.Stderr,
-		"Warning: --legacy-tracker is deprecated and will be removed in a future release.")
-	fmt.Fprintln(os.Stderr,
-		"         The eager tracker documents FEWER routes than the default on real projects "+
-			"and is slower; if the default is missing something, please report it instead.")
-}
-
 // runGeneration generates the OpenAPI specification and returns the spec object directly (like metadata)
 func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error) {
-	warnLegacyTracker(config.LegacyTracker)
-
 	// Create engine configuration
 	engineConfig := &engine.EngineConfig{
 		InputDir:                     config.InputDir,
@@ -417,7 +392,6 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		MaxRecursionDepth:            config.MaxRecursionDepth,
 		MaxInstancesPerKey:           config.MaxInstancesPerKey,
 		MaxNodesPerRoute:             config.MaxNodesPerRoute,
-		UseLazyTracker:               !config.LegacyTracker,
 		IncludeFiles:                 config.IncludeFiles,
 		IncludePackages:              config.IncludePackages,
 		IncludeFunctions:             config.IncludeFunctions,

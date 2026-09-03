@@ -4,6 +4,14 @@
 > features (mux path params, middleware/security look-through), what the
 > structural problem is, and the recommended path forward.
 > Written 2026-07-09, based on the state of `internal/spec/tracker.go` at that time.
+>
+> **Status: the migration is complete.** The lazy tree is the only engine — the
+> eager `tracker.go` this document diagnoses, and the `--legacy-tracker` escape
+> hatch that selected it, were removed in v0.5.9 (issue #425). Everything below
+> is kept as the record of *why*, so the reasoning behind the current design
+> (and the measurements that settled it) is not lost; read references to "the
+> eager tree" and to `UseLazyTracker` as history rather than as current
+> behaviour.
 
 ---
 

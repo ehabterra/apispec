@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -37,52 +38,33 @@ func covspecFuncNode(meta *metadata.Metadata, key, name, pkg, recv string) *Trac
 }
 
 // TestCovspecDrawNodeCytoscapeWithDepth exercises the tracker-tree drawing
-// function across node types, merging, edges, and argument/generic branches.
+// across node kinds, merging and edges.
+//
+// It used to assert the node ANNOTATIONS too — types, function names, argument
+// classification — but those were read off the eager tree's node struct and
+// went with that engine (issue #425). They never reached a default-engine
+// diagram, which is why removing them changed no output; restoring them for the
+// lazy tree is issue #442, and this test is where that coverage belongs again.
 func TestCovspecDrawNodeCytoscapeWithDepth(t *testing.T) {
 	meta := newTestMeta()
-	sp := meta.StringPool
 
-	// Root function node (main).
 	root := covspecFuncNode(meta, "main.main@f1", "main", "main", "")
-
-	// Child function node with a receiver type.
 	child := covspecFuncNode(meta, "svc.Handler.Serve@f2", "Serve", "svc", "Handler")
-	child.RootAssignmentMap = map[string][]metadata.Assignment{
-		"x": {{VariableName: sp.Get("x")}},
-	}
 
 	// A second occurrence of the same base key (different position) to exercise
 	// the merge path.
 	childDup := covspecFuncNode(meta, "svc.Handler.Serve@f3", "Serve", "svc", "Handler")
 
-	// Argument node.
+	// An argument node, and a node with neither edge nor argument.
 	argCA := metadata.NewCallArgument(meta)
 	argCA.SetKind(metadata.KindIdent)
 	argCA.SetName("payload")
 	argCA.SetType("svc.Payload")
 	argCA.SetPkg("svc")
-	argNode := &TrackerNode{
-		key:          "svc.payload@a1",
-		IsArgument:   true,
-		ArgType:      ArgTypeVariable,
-		ArgIndex:     0,
-		ArgContext:   "body",
-		CallArgument: argCA,
-	}
-
-	// Call-argument node (CallArgument set, no edge, not IsArgument).
-	callArgCA := metadata.NewCallArgument(meta)
-	callArgCA.SetKind(metadata.KindIdent)
-	callArgCA.SetName("cfg")
-	callArgNode := &TrackerNode{
-		key:          "svc.cfg@c1",
-		CallArgument: callArgCA,
-	}
-
-	// Generic node (no edge, no argument).
+	argNode := &TrackerNode{key: "svc.payload@a1", CallArgument: argCA}
 	genNode := &TrackerNode{key: "svc.generic@g1"}
 
-	child.Children = []*TrackerNode{argNode, callArgNode, genNode}
+	child.Children = []*TrackerNode{argNode, genNode}
 	root.Children = []*TrackerNode{child, childDup}
 
 	data := DrawTrackerTreeCytoscapeWithMetadata(
@@ -95,31 +77,15 @@ func TestCovspecDrawNodeCytoscapeWithDepth(t *testing.T) {
 	if len(data.Edges) == 0 {
 		t.Fatal("expected edges")
 	}
-
-	// Verify node types were assigned.
-	types := map[string]int{}
-	for _, n := range data.Nodes {
-		types[n.Data.Type]++
-	}
-	if types["function"] == 0 {
-		t.Errorf("expected a function node, got types=%v", types)
-	}
-	if types["argument"] == 0 {
-		t.Errorf("expected an argument node, got types=%v", types)
-	}
-	if types["generic"] == 0 {
-		t.Errorf("expected a generic node, got types=%v", types)
-	}
-
-	// The two Serve occurrences must have merged into one node.
+	// The two Serve occurrences must still merge into one node.
 	serveCount := 0
 	for _, n := range data.Nodes {
-		if n.Data.FunctionName == "Serve" {
+		if strings.Contains(n.Data.Label, "Serve") {
 			serveCount++
 		}
 	}
 	if serveCount != 1 {
-		t.Errorf("expected merged Serve node, got %d", serveCount)
+		t.Errorf("expected the two Serve occurrences to merge, got %d nodes", serveCount)
 	}
 }
 

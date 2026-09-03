@@ -1370,13 +1370,6 @@ h3 + .info {
   margin-bottom: 4px;
 }
 
-/* Compact analysis-engine selector in the top bar (lazy / legacy tracker). */
-.topbar .engine-select {
-  padding: 3px 6px;
-  font-size: var(--fs-sm);
-  height: auto;
-}
-
 /* ============================================================
    Insight Overview redesign — alerts, resolution quality,
    coverage meters, tree-insight stat blocks.
