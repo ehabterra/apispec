@@ -79,44 +79,77 @@ func effectiveRequirements(route *RouteInfo, global []SecurityRequirement) []Sec
 	return global
 }
 
-// schemeConsumedHeaders returns the headers the named schemes read, lower-cased
-// because HTTP header names are case-insensitive while the parameter and the
-// scheme are written by different hands.
+// schemeConsumedHeaders returns the headers that EVERY way of authenticating
+// this operation consumes.
 //
-// A requirement naming a scheme with no definition contributes nothing: what it
-// consumes is unknown, and suppressing a parameter on a guess is how a real
-// parameter goes missing.
+// The requirement list is a set of alternatives (an OR), and each object within
+// one is a set of schemes required together (an AND). So the headers are
+// intersected across the alternatives: with `[{bearerAuth}, {queryKey}]` a
+// client may authenticate with the query key alone and never send an
+// Authorization credential, so that header is not unambiguously the scheme's
+// and the parameter stays (CodeRabbit, PR #441). Dropping it would remove a
+// header the handler can still require, which is the failure this whole pass is
+// meant to avoid in the other direction.
+//
+// Names are lower-cased because HTTP header names are case-insensitive while
+// the parameter and the scheme are written by different hands.
 func schemeConsumedHeaders(reqs []SecurityRequirement, schemes map[string]SecurityScheme) map[string]bool {
 	var consumed map[string]bool
+	for i, req := range reqs {
+		headers := requirementHeaders(req, schemes)
+		if len(headers) == 0 {
+			return nil // one alternative consumes nothing: nothing is certain
+		}
+		if i == 0 {
+			consumed = headers
+			continue
+		}
+		for header := range consumed {
+			if !headers[header] {
+				delete(consumed, header)
+			}
+		}
+		if len(consumed) == 0 {
+			return nil
+		}
+	}
+	return consumed
+}
+
+// requirementHeaders returns the headers the schemes of ONE requirement object
+// consume — they are required together, so their headers accumulate.
+//
+// A scheme with no definition contributes nothing: what it consumes is unknown,
+// and suppressing a parameter on a guess is how a real one goes missing.
+func requirementHeaders(req SecurityRequirement, schemes map[string]SecurityScheme) map[string]bool {
+	var headers map[string]bool
 	add := func(header string) {
 		if header == "" {
 			return
 		}
-		if consumed == nil {
-			consumed = map[string]bool{}
+		if headers == nil {
+			headers = map[string]bool{}
 		}
-		consumed[strings.ToLower(header)] = true
+		headers[strings.ToLower(header)] = true
 	}
-	for _, req := range reqs {
-		for name := range req {
-			scheme, ok := schemes[name]
-			if !ok {
-				continue
-			}
-			switch strings.ToLower(scheme.Type) {
-			case "http", "oauth2", "openidconnect":
-				// The type implies the header; `bearerFormat` and the flows say
-				// what travels in it, not where.
-				add(authorizationHeader)
-			case "apikey":
-				// Only a header-carried key consumes a header. One in a query
-				// parameter or a cookie leaves any header the handler reads as
-				// genuinely its own (issue #370 made this knowable).
-				if strings.EqualFold(scheme.In, "header") {
-					add(scheme.Name)
-				}
+	for name := range req {
+		scheme, ok := schemes[name]
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(scheme.Type) {
+		case "http", "oauth2", "openidconnect":
+			// The type implies the header; `bearerFormat` and the flows say
+			// what travels in it, not where.
+			add(authorizationHeader)
+		case "apikey":
+			// Only a header-carried key consumes a header. One in a query
+			// parameter or a cookie leaves any header the handler reads as
+			// genuinely its own (issue #370 made this knowable).
+			if strings.EqualFold(scheme.In, "header") {
+				add(scheme.Name)
 			}
 		}
 	}
-	return consumed
+	return headers
 }

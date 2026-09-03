@@ -80,6 +80,31 @@ func TestSchemeConsumedHeaders(t *testing.T) {
 			reqs: []SecurityRequirement{{"notDefinedAnywhere": {}}},
 			want: nil,
 		},
+		{
+			// The requirement list is a set of ALTERNATIVES. A client may
+			// authenticate with the query key alone and never send an
+			// Authorization credential, so that header is not unambiguously the
+			// scheme's and the parameter must stay (CodeRabbit, PR #441).
+			name: "alternatives are intersected, not unioned",
+			reqs: []SecurityRequirement{{"bearerAuth": {}}, {"queryKey": {}}},
+			want: nil,
+		},
+		{
+			// Both alternatives consume it, so it is certain either way.
+			name: "a header every alternative consumes is consumed",
+			reqs: []SecurityRequirement{{"bearerAuth": {}}, {"basicAuth": {}}},
+			want: []string{"authorization"},
+		},
+		{
+			// Within ONE object the schemes are required together, so their
+			// headers accumulate; across objects only the common ones survive.
+			name: "an AND inside an alternative accumulates, the OR intersects",
+			reqs: []SecurityRequirement{
+				{"bearerAuth": {}, "headerKey": {}},
+				{"bearerAuth": {}},
+			},
+			want: []string{"authorization"},
+		},
 		{name: "no requirements", reqs: nil, want: nil},
 	}
 	for _, c := range cases {
@@ -189,6 +214,17 @@ func TestDropSchemeConsumedParams(t *testing.T) {
 		}
 	})
 
+	t.Run("an alternative that consumes nothing keeps every header", func(t *testing.T) {
+		route := &RouteInfo{
+			Security: []SecurityRequirement{{"bearerAuth": {}}, {"queryKey": {}}},
+			Params:   params("Authorization"),
+		}
+		dropSchemeConsumedParams([]*RouteInfo{route}, nil, catalog())
+		if got := headerNames(route); len(got) != 1 {
+			t.Errorf("headers = %v, want the header kept when one alternative does not consume it", got)
+		}
+	})
+
 	t.Run("guards", func(t *testing.T) {
 		route := &RouteInfo{Security: []SecurityRequirement{{"bearerAuth": {}}}, Params: params("Authorization")}
 		dropSchemeConsumedParams([]*RouteInfo{route, nil}, nil, nil) // no catalog: nothing to resolve
@@ -197,4 +233,40 @@ func TestDropSchemeConsumedParams(t *testing.T) {
 		}
 		dropSchemeConsumedParams(nil, nil, catalog())
 	})
+}
+
+// TestEffectiveSchemesPrecedence pins that the catalog the parameter filter
+// reads is the one the document publishes.
+//
+// They are computed in two places — this filter runs before the paths are
+// built, reconcileSecuritySchemes emits after — and if their precedence
+// disagreed, a header parameter could be dropped because of a definition the
+// document never contains (CodeRabbit, PR #441).
+func TestEffectiveSchemesPrecedence(t *testing.T) {
+	user := SecurityScheme{Type: "apiKey", In: "query", Name: "api_key"}
+	inferred := SecurityScheme{Type: "apiKey", In: "header", Name: "X-API-Key"}
+	preset := SecurityScheme{Type: "apiKey", In: "header", Name: "Authorization"}
+
+	cfg := &APISpecConfig{
+		SecuritySchemes: map[string]SecurityScheme{"shared": user},
+		presetSchemes:   map[string]SecurityScheme{"shared": preset, "presetOnly": preset},
+	}
+	discovered := map[string]SecurityScheme{"shared": inferred, "discoveredOnly": inferred}
+
+	filtering := effectiveSchemes(cfg, discovered)
+	routes := []*RouteInfo{{Security: []SecurityRequirement{
+		{"shared": {}}, {"presetOnly": {}}, {"discoveredOnly": {}},
+	}}}
+	emitted := reconcileSecuritySchemes(cfg, routes, discovered)
+
+	for _, name := range []string{"shared", "presetOnly", "discoveredOnly"} {
+		if filtering[name] != emitted[name] {
+			t.Errorf("%s: the filter reads %+v while the document emits %+v",
+				name, filtering[name], emitted[name])
+		}
+	}
+	// And the precedence itself: the user's definition wins over both.
+	if filtering["shared"] != user {
+		t.Errorf("shared = %+v, want the user's own definition", filtering["shared"])
+	}
 }

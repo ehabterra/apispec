@@ -261,7 +261,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	// govern, so a credential is not documented twice (issue #412). After
 	// specialisation, since which header an apiKey scheme consumes is only
 	// settled there.
-	dropSchemeConsumedParams(routes, cfg.Security, mergedSchemes(allDeclaredSchemes(cfg), discoveredSchemes))
+	dropSchemeConsumedParams(routes, cfg.Security, effectiveSchemes(cfg, discoveredSchemes))
 	for _, r := range unresolvedPaths {
 		where := r.Position
 		if where == "" {
@@ -416,18 +416,25 @@ func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo, discovere
 	return out
 }
 
-// mergedSchemes is the scheme catalog as the document will have it: declared
-// (user + preset) with the discovered shapes layered on top, which is the same
-// precedence reconcileSecuritySchemes applies when it emits them.
-func mergedSchemes(declared, discovered map[string]SecurityScheme) map[string]SecurityScheme {
-	if len(discovered) == 0 {
-		return declared
-	}
-	out := make(map[string]SecurityScheme, len(declared)+len(discovered))
-	for name, scheme := range declared {
+// effectiveSchemes is the scheme catalog as the document will have it, with the
+// same precedence reconcileSecuritySchemes emits: a preset, specialised by
+// discovery, overridden by anything the user defined themselves.
+//
+// The two MUST agree. A consumer that filtered on a different definition than
+// the document publishes would drop a header parameter the emitted scheme does
+// not consume (CodeRabbit, PR #441) — so the precedence is asserted by a test
+// rather than left to the two call sites to remember.
+func effectiveSchemes(cfg *APISpecConfig, discovered map[string]SecurityScheme) map[string]SecurityScheme {
+	out := make(map[string]SecurityScheme, len(cfg.presetSchemes)+len(discovered)+len(cfg.SecuritySchemes))
+	for name, scheme := range cfg.presetSchemes {
 		out[name] = scheme
 	}
 	for name, scheme := range discovered {
+		out[name] = scheme
+	}
+	// Last: a definition the user wrote is a statement of intent that beats
+	// both the preset and what was inferred from the code.
+	for name, scheme := range cfg.SecuritySchemes {
 		out[name] = scheme
 	}
 	return out

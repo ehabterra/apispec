@@ -49,7 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   travels in a query parameter or a cookie consumes no header, an operation
   with no security has none to consume, and an explicitly public operation
   overrides the document's. Matching is case-insensitive, since the middleware
-  and the handler are written by different hands. (#412)
+  and the handler are written by different hands, and the requirement list's
+  ALTERNATIVES are intersected: where a client can authenticate one way that
+  consumes the header and another way that does not, the parameter stays.
+  (#412)
 
 - **An apiKey scheme is documented where the credential actually travels.**
   `schemeAPIKey` was a constant — `in: header, name: Authorization` — so every
