@@ -248,6 +248,12 @@ func reqStr(req bool) string {
 // effort — never fatal).
 func readSourceWindow(pos string, before, after int) string {
 	file, line := parsePos(pos)
+	return readSourceWindowAt(file, line, before, after)
+}
+
+// readSourceWindowAt is readSourceWindow for a caller that already has the
+// file and line, so the path it validated is the path that gets opened.
+func readSourceWindowAt(file string, line, before, after int) string {
 	if file == "" || line <= 0 {
 		return ""
 	}
@@ -293,6 +299,17 @@ func PosFile(pos string) string {
 // Best-effort: returns ("", 0, 0) on any problem.
 func SourceSnippet(pos string, before, after int) (code string, startLine, targetLine int) {
 	file, line := parsePos(pos)
+	return SourceSnippetAt(file, line, before, after)
+}
+
+// SourceSnippetAt is SourceSnippet for an explicit file and line.
+//
+// A caller that has checked whether a path may be served MUST use this rather
+// than SourceSnippet: passing the position string back in means the file is
+// re-derived from it and opened, so the path that was validated and the path
+// that is read are two different strings — half of the symlink escape in #424
+// was exactly that.
+func SourceSnippetAt(file string, line, before, after int) (code string, startLine, targetLine int) {
 	if file == "" || line <= 0 {
 		return "", 0, 0
 	}
@@ -300,7 +317,13 @@ func SourceSnippet(pos string, before, after int) (code string, startLine, targe
 	if start < 1 {
 		start = 1
 	}
-	return readSourceWindow(pos, before, after), start, line
+	return readSourceWindowAt(file, line, before, after), start, line
+}
+
+// ParsePos splits a "file:line" or "file:line:col" position into its file and
+// line, returning ("", 0) when it is not a position at all.
+func ParsePos(pos string) (file string, line int) {
+	return parsePos(pos)
 }
 
 // parsePos splits "file:line:col" (col optional). File paths may contain

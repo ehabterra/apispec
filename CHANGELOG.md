@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **apispecui: a symlink inside the analyzed module could no longer be used to
+  read files outside it.** `GET /api/insight/source` serves source only from the
+  analyzed module, GOROOT, or the module cache, but the check was lexical: for a
+  link at `<module>/leak.go` pointing anywhere on disk, the relative path never
+  left the module *as a string*, so the request was allowed and the linked
+  file's contents were returned — reported under the in-module path. Two
+  defects compounded, because the guard also validated one path while
+  `SourceSnippet` re-derived and opened another. Containment is now decided on
+  symlink-resolved paths on both sides, the resolved path is the one read, and a
+  path that cannot be resolved fails closed instead of falling through to the
+  lexical comparison. Resolving the roots as well matters: a module under a
+  symlinked path (on macOS `/tmp` is `/private/tmp`) would otherwise be refused
+  its own source. `apispecui` binds to localhost, so this needed a symlink in a
+  repo the developer chose to analyze — plausible for an untrusted checkout,
+  which is what the tool is for. (#424)
+
 - **An inline struct's schema no longer publishes an interned string as its doc
   comment.** An anonymous-struct request body carried a `description` that was
   never a comment: the synthetic type recorded no `Comments` index, and the zero
