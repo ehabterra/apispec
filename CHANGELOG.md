@@ -36,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A credential is no longer documented twice.** The header read a security
+  scheme was derived from was also emitted as an ordinary header parameter, so
+  one `c.GetHeader("Authorization")` inside a middleware produced both
+  `security: [bearerAuth]` and an `Authorization` parameter — different
+  contracts in OpenAPI, so a generated client grew a second, manually-supplied
+  argument beside the one the scheme drives. A header parameter is now dropped
+  when a security scheme **on that same operation** consumes that header:
+  `http`, `oauth2` and `openIdConnect` schemes consume `Authorization`, and an
+  `apiKey` scheme consumes the header it names — which is knowable since #370.
+  Everything else keeps its parameter, and that is the point: an apiKey that
+  travels in a query parameter or a cookie consumes no header, an operation
+  with no security has none to consume, and an explicitly public operation
+  overrides the document's. Matching is case-insensitive, since the middleware
+  and the handler are written by different hands. (#412)
+
 - **An apiKey scheme is documented where the credential actually travels.**
   `schemeAPIKey` was a constant — `in: header, name: Authorization` — so every
   API-key middleware was documented at echo's and fiber's *default* lookup, and

@@ -256,6 +256,12 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	// Point each apiKey requirement at a scheme that says where the credential
 	// really travels, per the middleware's own configuration (issue #370).
 	discoveredSchemes := specializeAPIKeySchemes(routes, allDeclaredSchemes(cfg), cfg.SecuritySchemes)
+
+	// Drop the header parameters the operation's own security schemes already
+	// govern, so a credential is not documented twice (issue #412). After
+	// specialisation, since which header an apiKey scheme consumes is only
+	// settled there.
+	dropSchemeConsumedParams(routes, cfg.Security, mergedSchemes(allDeclaredSchemes(cfg), discoveredSchemes))
 	for _, r := range unresolvedPaths {
 		where := r.Position
 		if where == "" {
@@ -407,6 +413,23 @@ func reconcileSecuritySchemes(cfg *APISpecConfig, routes []*RouteInfo, discovere
 			"(add them to securitySchemes): %s", len(dangling), strings.Join(dangling, ", "))
 	}
 
+	return out
+}
+
+// mergedSchemes is the scheme catalog as the document will have it: declared
+// (user + preset) with the discovered shapes layered on top, which is the same
+// precedence reconcileSecuritySchemes applies when it emits them.
+func mergedSchemes(declared, discovered map[string]SecurityScheme) map[string]SecurityScheme {
+	if len(discovered) == 0 {
+		return declared
+	}
+	out := make(map[string]SecurityScheme, len(declared)+len(discovered))
+	for name, scheme := range declared {
+		out[name] = scheme
+	}
+	for name, scheme := range discovered {
+		out[name] = scheme
+	}
 	return out
 }
 

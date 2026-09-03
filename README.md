@@ -192,7 +192,11 @@ Authentication and security detection is framework-agnostic and config-driven �
 see [Security & authentication detection](#security--authentication-detection).
 Protected routes get a per-operation `security` requirement and the scheme is
 registered under `components.securitySchemes`; explicitly-public routes render
-`security: []`. An **apiKey** scheme is shaped from the middleware's own
+`security: []`. The credential itself is documented **once**: a header parameter
+is dropped when a scheme on that operation consumes that header, so the
+middleware's `Authorization` read does not also become an argument the client is
+told to supply. A header the handler reads for its own purposes — or one on an
+operation whose apiKey travels in a query parameter — is kept. An **apiKey** scheme is shaped from the middleware's own
 configuration — echo's `KeyAuthConfig.KeyLookup` and fiber's
 `keyauth.Config.KeyLookup` — so `"query:api_key"` is documented as
 `in: query, name: api_key` rather than the library's default header. Two groups
