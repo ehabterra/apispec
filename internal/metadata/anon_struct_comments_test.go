@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/packages"
+	"gopkg.in/yaml.v3"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
@@ -113,5 +114,52 @@ func main() {
 	}
 	if checked == 0 {
 		t.Fatal("no anonymous-struct type was recorded, so nothing was verified")
+	}
+}
+
+// A pool serialized before slot 0 was reserved keeps the string that is there.
+//
+// This is the deliberate answer to "enforce the reserved slot on load": in such
+// a file index 0 is a real value — the goldens from before the change reference
+// `kind: 0`, meaning "ident", a hundred times in one package — so shifting
+// indices to insert "" would rewrite each of those into a different string, and
+// rejecting the file would refuse data that reads back correctly. The ambiguity
+// is unresolvable after the fact; what is fixed is that every pool this code
+// writes reserves the slot, so new metadata is never ambiguous.
+func TestStringPoolLegacyPoolLoadsAsWritten(t *testing.T) {
+	var legacy metadata.StringPool
+	if err := yaml.Unmarshal([]byte("- func_type\n- ident\n"), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if got := legacy.GetString(0); got != "func_type" {
+		t.Errorf("legacy slot 0 = %q, want it left as written (%q)", got, "func_type")
+	}
+	if got := legacy.Get("func_type"); got != 0 {
+		t.Errorf("legacy lookup of the slot-0 string = %d, want 0 — indices must not shift", got)
+	}
+	if got := legacy.GetString(1); got != "ident" {
+		t.Errorf("legacy slot 1 = %q, want %q", got, "ident")
+	}
+
+	// A pool this code writes always reserves the slot, so a fresh one — and
+	// anything round-tripped from it — is unambiguous.
+	fresh := metadata.NewStringPool()
+	fresh.Get("func_type")
+	if got := fresh.GetString(0); got != "" {
+		t.Errorf("fresh slot 0 = %q, want the reserved empty string", got)
+	}
+	out, err := yaml.Marshal(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var round metadata.StringPool
+	if err := yaml.Unmarshal(out, &round); err != nil {
+		t.Fatal(err)
+	}
+	if got := round.GetString(0); got != "" {
+		t.Errorf("round-tripped slot 0 = %q, want the reserved empty string", got)
+	}
+	if round.Get("func_type") != fresh.Get("func_type") {
+		t.Errorf("round-trip moved an index: %d -> %d", fresh.Get("func_type"), round.Get("func_type"))
 	}
 }

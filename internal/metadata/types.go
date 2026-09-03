@@ -166,6 +166,19 @@ func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 		sp.strings[s] = i
 	}
+	// A pool written before slot 0 was reserved is loaded exactly as written,
+	// slot 0 included, and that is deliberate.
+	//
+	// In such a file index 0 is a REAL value: the goldens from before this
+	// change reference `kind: 0` — meaning "ident" — a hundred times in one
+	// package. Shifting every index to insert "" would rewrite each of those
+	// into a different string, and refusing the file would reject data that
+	// reads back correctly. "0 means absent" and "0 means the string at slot
+	// 0" are indistinguishable once written, which is the bug itself; it can
+	// be prevented for new writes (every pool this code creates reserves the
+	// slot) but not diagnosed retroactively.
+	//
+	// TestStringPoolLegacyPoolLoadsAsWritten pins this.
 	sp.reserveEmpty()
 	return nil
 }
