@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A parameter name held in a local variable is documented, not dropped.**
+  `key := "X-Request-ID"; r.Header.Get(key)` produced no parameter at all, while
+  the same name written as a literal produced one — so a header or query
+  parameter went missing with no warning depending only on how the name was
+  spelled. Parameter names now go through the same value-resolution ladder as a
+  registration path, which also resolves a name behind a type conversion.
+  Constants were never affected (a package constant, a package variable and a
+  constant in another package all resolved already). Unresolvable stays
+  unresolved: a name the code rewrites on a branch, or one that cannot be
+  evaluated, is left out rather than guessed, and a parameter is never emitted
+  with an empty name. A field of a package-level struct value is still not
+  resolved (#455). (#453)
+
 - **apispecui: a symlink inside the analyzed module could no longer be used to
   read files outside it.** `GET /api/insight/source` serves source only from the
   analyzed module, GOROOT, or the module cache, but the check was lexical: for a
