@@ -20,6 +20,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/build"
@@ -1793,42 +1794,74 @@ func (s *UIServer) handleInsightSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pos := r.URL.Query().Get("pos")
-	file := insight.PosFile(pos)
-	if file == "" {
+	file, line := insight.ParsePos(pos)
+	if file == "" || line <= 0 {
 		writeError(w, http.StatusBadRequest, "pos is required (file:line)")
 		return
 	}
-	abs, err := filepath.Abs(file)
+	// Resolve and authorize BEFORE reading, and read exactly what was
+	// authorized: `resolved`, never `file` or `pos` again (#424).
+	resolved, err := s.servableSourcePath(file)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "bad path: "+err.Error())
-		return
-	}
-	if !s.sourcePathAllowed(abs) {
+		if errors.Is(err, errSourceMissing) {
+			writeError(w, http.StatusNotFound, "source not available for this position")
+			return
+		}
 		writeError(w, http.StatusForbidden, "source is outside the analyzed module / module cache")
 		return
 	}
 	before := queryInt(r, "before", 3)
 	after := queryInt(r, "after", 26)
-	code, start, line := insight.SourceSnippet(pos, before, after)
+	code, start, target := insight.SourceSnippetAt(resolved, line, before, after)
 	if code == "" {
 		writeError(w, http.StatusNotFound, "source not available for this position")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"file":      abs,
+		"file":      resolved,
 		"code":      code,
 		"startLine": start,
-		"line":      line,
+		"line":      target,
 	})
 }
 
-// sourcePathAllowed reports whether abs is inside a directory we're willing to
-// serve source from: the analyzed module root, GOROOT (stdlib), or the Go
-// module cache (third-party deps). Everything else is rejected.
-func (s *UIServer) sourcePathAllowed(abs string) bool {
+// errSourceMissing and errSourceForbidden separate "there is nothing there" from
+// "you may not read that", so a developer whose file was deleted is not told it
+// lives outside the module.
+var (
+	errSourceMissing   = errors.New("source file does not exist")
+	errSourceForbidden = errors.New("source is outside the analyzed module / module cache")
+)
+
+// servableSourcePath returns the path that may be read for file: the analyzed
+// module root, GOROOT (stdlib), or the module cache (third-party deps).
+// Everything else is refused.
+//
+// Containment is decided on paths with their symlinks resolved, on BOTH sides.
+// A lexical comparison accepted `<module>/leak.go` for a link pointing at
+// ~/.ssh/id_rsa, because as a *string* that path never leaves the module —
+// filepath.Rel reported "leak.go", no leading "..", allowed — and the endpoint
+// then served the key (#424).
+//
+// The roots are resolved too, or the guard would reject a module's own files
+// whenever the module sits under a symlinked path (on macOS /tmp is
+// /private/tmp, so this is the common case, not an exotic one).
+//
+// A path that cannot be resolved fails closed: EvalSymlinks needs the file to
+// exist, and falling back to a lexical comparison when it does not is precisely
+// the hole being closed. The caller MUST read the returned path — validating
+// one string and opening another was the second half of the same bug.
+func (s *UIServer) servableSourcePath(file string) (string, error) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "", errSourceMissing
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", errSourceMissing
+	}
 	root, _ := findModuleRoot(s.currentDir())
-	roots := []string{root, build.Default.GOROOT, goModCache()}
-	for _, base := range roots {
+	for _, base := range []string{root, build.Default.GOROOT, goModCache()} {
 		if base == "" {
 			continue
 		}
@@ -1836,11 +1869,18 @@ func (s *UIServer) sourcePathAllowed(abs string) bool {
 		if err != nil {
 			continue
 		}
-		if rel, err := filepath.Rel(baseAbs, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return true
+		if r, err := filepath.EvalSymlinks(baseAbs); err == nil {
+			baseAbs = r
+		}
+		rel, err := filepath.Rel(baseAbs, resolved)
+		if err != nil {
+			continue
+		}
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return resolved, nil
 		}
 	}
-	return false
+	return "", errSourceForbidden
 }
 
 // goModCache returns the Go module cache directory (where third-party source
