@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One Go type now produces one component, and the right one.** A response type
+  recovered from a call carried the package's *name* (`api.Issue`) while
+  metadata's own type strings carry the import *path* (`example.com/api.Issue`),
+  so the same type became two components — and the short-named one resolved to a
+  **different type entirely**: its qualifier matches no package, so the lookup
+  fell back to a bare-name scan and returned the first same-named declaration in
+  package order. On gitea that was a migration's function-local
+  `type User struct`, so `GET /user/` documented a User with **1 of its 22
+  fields**; seven operations were affected and 31 duplicate or orphan schemas
+  were emitted. A package-name qualifier is now resolved to its import path
+  when exactly one package declares that name and the type; anything ambiguous
+  is left untouched rather than guessed. Metadata now records each package's
+  declared name, because the import path does not carry it — a module major
+  version puts the package in a directory named `v2`, and `gopkg.in/yaml.v3`
+  declares `package yaml` — so reading the name off the path left every
+  versioned dependency broken. (#457)
+
 - **A parameter name held in a local variable is documented, not dropped.**
   `key := "X-Request-ID"; r.Header.Get(key)` produced no parameter at all, while
   the same name written as a literal produced one — so a header or query

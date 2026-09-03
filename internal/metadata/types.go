@@ -541,6 +541,16 @@ func (m *Metadata) SortedTypeNames(pkgName, fileName string) []string {
 // path that falls back to scanning all packages (issue #322). The scan order is
 // preserved exactly: the index is filled in sorted-file order and an earlier
 // file wins, so a name declared twice resolves to the same type it did before.
+// PackageDeclaredName returns a package's declared name, or "" when metadata
+// did not record one (a pool written before the field existed).
+func (m *Metadata) PackageDeclaredName(pkgPath string) string {
+	pkg, ok := m.Packages[pkgPath]
+	if !ok || pkg == nil || pkg.Name <= 0 {
+		return ""
+	}
+	return m.StringPool.GetString(pkg.Name)
+}
+
 func (m *Metadata) TypeInPackage(pkgName, typeName string) *Type {
 	pkg, ok := m.Packages[pkgName]
 	if !ok || pkg == nil {
@@ -911,6 +921,12 @@ func (m *Metadata) CallGraphRoots() []*CallGraphEdge {
 type Package struct {
 	Files map[string]*File `yaml:"files,omitempty"`
 	Types map[string]*Type `yaml:"types,omitempty"`
+	// Name is the package's DECLARED name (the identifier after `package`),
+	// which is not recoverable from the import path that keys this map: a
+	// module major version puts the package in a directory named v2, and
+	// gopkg.in/yaml.v3 declares `package yaml`. The spec layer needs it to
+	// resolve a type qualified by package name back to its path (#457).
+	Name int `yaml:"name,omitempty"`
 }
 
 // File represents a Go source file

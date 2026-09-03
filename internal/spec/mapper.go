@@ -97,6 +97,88 @@ func mapGoTypeForRoute(usedTypes map[string]*Schema, goType string, meta *metada
 	return schema
 }
 
+// canonicalPackageQualifier rewrites a type qualified by a package NAME
+// ("structs.User") into one qualified by its import PATH
+// ("gitea.dev/modules/structs.User"), when metadata names exactly one package
+// that fits.
+//
+// Both forms arrive here for the same type. Metadata's own type strings come
+// from go/types and always carry the full path, but a type recovered by
+// RENDERING an argument carries CallArgument.Pkg, which is the package's name —
+// deliberate naming behavior (golden rule #3), not a bug in itself. The bug was
+// that each form became its own schema key, so one Go type produced two
+// components. On a real project twelve types were emitted twice, and the
+// short-keyed copy was also WRONG: its qualifier matches no package key, so
+// typeByName fell through to a bare-name scan over sorted packages and returned
+// the first same-named type it found — a migration's function-local
+// `type User struct` beat modules/structs.User, and an endpoint documented a
+// User with one of its twenty-two fields (issue #457).
+//
+// Nothing is guessed. A candidate package must both end in that name AND
+// declare the type, and the match must be unique; otherwise the name is left
+// exactly as it came (golden rule #7). Resolution is over SortedPackageNames so
+// the answer cannot depend on map order (golden rule #1).
+func canonicalPackageQualifier(goType string, meta *metadata.Metadata) string {
+	// Cheap gate first: this runs for every type mapped. Only a dotted name
+	// with no slash can be qualified by a bare package name.
+	if meta == nil || goType == "" || strings.Contains(goType, "/") || !strings.Contains(goType, ".") {
+		return goType
+	}
+	ref := typemodel.Parse(goType)
+	core := ref.Core()
+	if core == nil || !core.IsNamed() || core.Pkg == "" || strings.Contains(core.Pkg, "/") {
+		return goType
+	}
+	full, matches := "", 0
+	for _, pkg := range meta.SortedPackageNames() {
+		if pkg == core.Pkg || !packageDeclares(meta, pkg, core.Pkg) {
+			continue
+		}
+		if meta.TypeInPackage(pkg, core.Name) == nil {
+			continue
+		}
+		full = pkg
+		matches++
+	}
+	if matches != 1 {
+		return goType
+	}
+	// Clone before mutating: TypeRefs are shared (golden rule #2).
+	c := ref.Clone()
+	c.Core().Pkg = full
+	return c.String()
+}
+
+// packageDeclares reports whether the package at pkgPath is the one a type
+// qualified by `name` refers to.
+//
+// It asks metadata for the DECLARED package name, because the import path does
+// not carry it: a module major version puts the package in a directory named
+// v2 (github.com/go-chi/chi/v5 declares `package chi`), and gopkg.in/yaml.v3
+// declares `package yaml`. Matching the path's last segment would answer "v5"
+// and "yaml.v3" for those, so a qualifier could never be resolved and the type
+// would keep falling into the bare-name scan this whole change exists to avoid
+// — measurably: a package laid out under a v2 directory documented a
+// migration's throwaway struct instead of the real type.
+//
+// The last segment is the fallback for metadata deserialized before the
+// declared name was recorded, where it is the best available answer and right
+// for every unversioned path.
+func packageDeclares(meta *metadata.Metadata, pkgPath, name string) bool {
+	if declared := meta.PackageDeclaredName(pkgPath); declared != "" {
+		return declared == name
+	}
+	return packageBaseName(pkgPath) == name
+}
+
+// packageBaseName is the last segment of an import path.
+func packageBaseName(pkgPath string) string {
+	if i := strings.LastIndex(pkgPath, "/"); i >= 0 {
+		return pkgPath[i+1:]
+	}
+	return pkgPath
+}
+
 // untypedConstantDefault maps go/types' rendering of an untyped constant to the
 // type it defaults to. Go defines these exactly (spec, "Constants"), so `true`
 // in a response body is a bool and the schema is derived, not guessed. Without
@@ -1292,10 +1374,44 @@ func generateComponentSchemas(meta *metadata.Metadata, cfg *APISpecConfig, route
 	// Collect all types used in routes
 	usedTypes := collectUsedTypesFromRoutes(routes)
 
+	// One Go type, one key: fold a key qualified by a package NAME into the
+	// same type's import-path-qualified key before anything is emitted.
+	mergeShortQualifiedKeys(usedTypes, meta)
+
 	// Generate schemas for used types
 	generateSchemas(usedTypes, cfg, components, meta)
 
 	return components, usedTypes
+}
+
+// mergeShortQualifiedKeys folds a used-type key qualified by a package NAME
+// into the same type's import-path-qualified key, so one Go type yields one
+// component.
+//
+// Both spellings arrive for the same type (see canonicalPackageQualifier) and
+// each used to produce its own entry here. Canonicalising at the mapping entry
+// already sends every $ref to the import-path name, which left the short-keyed
+// components as ORPHANS — 15 of them on a real project, referenced by nothing —
+// so folding the keys is what stops them being emitted at all.
+//
+// Iterates in sorted order: a merge decides which schema survives when both
+// keys carry one, and map order must not (golden rule #1).
+func mergeShortQualifiedKeys(usedTypes map[string]*Schema, meta *metadata.Metadata) {
+	if meta == nil {
+		return
+	}
+	for _, name := range slices.Sorted(maps.Keys(usedTypes)) {
+		canon := canonicalPackageQualifier(name, meta)
+		if canon == name {
+			continue
+		}
+		// A resolved schema wins over an unresolved placeholder; otherwise the
+		// canonical entry stands, since it is the one every $ref now names.
+		if existing, ok := usedTypes[canon]; !ok || existing == nil {
+			usedTypes[canon] = usedTypes[name]
+		}
+		delete(usedTypes, name)
+	}
 }
 
 func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, components Components, meta *metadata.Metadata) {
@@ -3167,6 +3283,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		goType = def
 	}
 	goType = unqualifyContainer(goType)
+	goType = canonicalPackageQualifier(goType, meta)
 
 	isPrimitive := metadata.IsPrimitiveType(goType)
 
