@@ -19,8 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `type User struct`, so `GET /user/` documented a User with **1 of its 22
   fields**; seven operations were affected and 31 duplicate or orphan schemas
   were emitted. A package-name qualifier is now resolved to its import path
-  when exactly one package both ends in that name and declares the type;
-  anything ambiguous is left untouched rather than guessed. (#457)
+  when exactly one package declares that name and the type; anything ambiguous
+  is left untouched rather than guessed. Metadata now records each package's
+  declared name, because the import path does not carry it — a module major
+  version puts the package in a directory named `v2`, and `gopkg.in/yaml.v3`
+  declares `package yaml` — so reading the name off the path left every
+  versioned dependency broken. (#457)
 
 - **A parameter name held in a local variable is documented, not dropped.**
   `key := "X-Request-ID"; r.Header.Get(key)` produced no parameter at all, while

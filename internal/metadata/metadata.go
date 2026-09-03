@@ -264,6 +264,16 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 		pkg := &Package{
 			Files: make(map[string]*File),
 		}
+		// The declared name comes from the source itself (`package thing`), so
+		// it is a fact rather than a convention read off the path. Every file
+		// of a package declares the same one, so the first sorted file settles
+		// it deterministically.
+		for _, fileName := range sortedFileNames {
+			if f := files[fileName]; f != nil && f.Name != nil {
+				pkg.Name = metadata.StringPool.Get(f.Name.Name)
+				break
+			}
+		}
 
 		// Collect methods for types
 		allTypeMethods := make(map[string][]Method)

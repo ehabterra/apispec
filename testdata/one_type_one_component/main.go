@@ -17,16 +17,19 @@ import (
 
 	"twoname/aaamig"
 	"twoname/api"
+	thing "twoname/thing/v2"
 )
 
 func mkConcrete() api.Issue { return api.Issue{} }
 func mkPointer() *api.Issue { return &api.Issue{} }
 func mkAny() any            { return api.Issue{} }
+func mkThing() thing.Thing  { return thing.Thing{} }
 
 func respond(w http.ResponseWriter, v any) { _ = json.NewEncoder(w).Encode(v) }
 
 func main() {
 	_ = aaamig.Migrate()
+	_ = aaamig.MigrateThing()
 
 	// A composite literal: the type string comes from metadata, fully qualified.
 	http.HandleFunc("GET /direct", func(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +56,12 @@ func main() {
 	// Passed to a wrapper, resolved at the wrapper's call site.
 	http.HandleFunc("GET /viawrapper", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, api.Issue{})
+	})
+
+	// A package whose declared name differs from its path's last segment,
+	// which is what a module major version looks like.
+	http.HandleFunc("GET /viaversioned", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(mkThing())
 	})
 
 	// An `any`-returning helper stays unresolved: the concrete type is not

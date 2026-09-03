@@ -63,6 +63,28 @@ func TestTestdata_OneTypeOneComponent(t *testing.T) {
 		t.Errorf("%s carries the migration struct's field: resolved the wrong Issue", comp)
 	}
 
+	// A package whose declared name differs from its path's last segment (a
+	// module major version, `thing` under thing/v2) must resolve to the real
+	// type. Reading the name off the path answers "v2", so this route used to
+	// document aaamig's one-field struct instead.
+	var thingComps []string
+	for name := range out.Components.Schemas {
+		if strings.HasSuffix(name, "Thing") {
+			thingComps = append(thingComps, name)
+		}
+	}
+	if len(thingComps) != 1 {
+		t.Fatalf("want exactly one Thing component, got %v", thingComps)
+	}
+	thingSchema := out.Components.Schemas[thingComps[0]]
+	if thingSchema == nil || len(thingSchema.Properties) != 3 {
+		t.Errorf("%s has %d properties, want 3 — the version-suffixed package resolved to the wrong type",
+			thingComps[0], len(thingSchema.Properties))
+	}
+	if _, bad := thingSchema.Properties["OnlyColumn"]; bad {
+		t.Errorf("%s carries the migration struct's field", thingComps[0])
+	}
+
 	// Every route that can resolve a body points at that one component.
 	for _, path := range []string{"/direct", "/viaconcrete", "/viapointer", "/viavar", "/viawrapper"} {
 		item, ok := out.Paths[path]
@@ -90,14 +112,27 @@ func TestTestdata_OneTypeOneComponent(t *testing.T) {
 
 	// /viaany stays unresolved on purpose: the concrete type is not recoverable
 	// from an `any` return, and guessing one is worse than documenting none.
-	if item, ok := out.Paths["/viaany"]; ok {
-		if op := firstOperation(&item); op != nil {
-			for _, resp := range op.Responses {
-				for _, media := range resp.Content {
-					if media.Schema != nil && strings.HasSuffix(media.Schema.Ref, comp) {
-						t.Errorf("/viaany resolved to %s — an `any` return should not be guessed", comp)
-					}
-				}
+	//
+	// Required, not conditional: if the route or its response disappears, this
+	// fixture silently stops testing the behavior it exists for. And ANY $ref
+	// fails it, not just one to the Issue component — resolving `any` to some
+	// other component would be the same mistake wearing a different name.
+	item, ok := out.Paths["/viaany"]
+	if !ok {
+		t.Fatalf("/viaany missing; have %v", mapPathKeys(out.Paths))
+	}
+	op := firstOperation(&item)
+	if op == nil {
+		t.Fatal("/viaany has no operation")
+	}
+	if len(op.Responses) == 0 {
+		t.Fatal("/viaany has no response, so the unresolved-any guard checked nothing")
+	}
+	for status, resp := range op.Responses {
+		for ct, media := range resp.Content {
+			if media.Schema != nil && media.Schema.Ref != "" {
+				t.Errorf("/viaany %s %s resolved to %q — an `any` return must not be guessed",
+					status, ct, media.Schema.Ref)
 			}
 		}
 	}

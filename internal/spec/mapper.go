@@ -131,7 +131,7 @@ func canonicalPackageQualifier(goType string, meta *metadata.Metadata) string {
 	}
 	full, matches := "", 0
 	for _, pkg := range meta.SortedPackageNames() {
-		if pkg == core.Pkg || packageBaseName(pkg) != core.Pkg {
+		if pkg == core.Pkg || !packageDeclares(meta, pkg, core.Pkg) {
 			continue
 		}
 		if meta.TypeInPackage(pkg, core.Name) == nil {
@@ -149,9 +149,29 @@ func canonicalPackageQualifier(goType string, meta *metadata.Metadata) string {
 	return c.String()
 }
 
-// packageBaseName is the last segment of an import path, which is the package
-// name for all but the versioned-path minority (gopkg.in/yaml.v3). Those simply
-// fail to match, which leaves the name untouched rather than wrong.
+// packageDeclares reports whether the package at pkgPath is the one a type
+// qualified by `name` refers to.
+//
+// It asks metadata for the DECLARED package name, because the import path does
+// not carry it: a module major version puts the package in a directory named
+// v2 (github.com/go-chi/chi/v5 declares `package chi`), and gopkg.in/yaml.v3
+// declares `package yaml`. Matching the path's last segment would answer "v5"
+// and "yaml.v3" for those, so a qualifier could never be resolved and the type
+// would keep falling into the bare-name scan this whole change exists to avoid
+// — measurably: a package laid out under a v2 directory documented a
+// migration's throwaway struct instead of the real type.
+//
+// The last segment is the fallback for metadata deserialized before the
+// declared name was recorded, where it is the best available answer and right
+// for every unversioned path.
+func packageDeclares(meta *metadata.Metadata, pkgPath, name string) bool {
+	if declared := meta.PackageDeclaredName(pkgPath); declared != "" {
+		return declared == name
+	}
+	return packageBaseName(pkgPath) == name
+}
+
+// packageBaseName is the last segment of an import path.
 func packageBaseName(pkgPath string) string {
 	if i := strings.LastIndex(pkgPath, "/"); i >= 0 {
 		return pkgPath[i+1:]

@@ -9,3 +9,10 @@ func Migrate() any {
 	type Issue struct{ OnlyColumn string }
 	return new(Issue)
 }
+
+// MigrateThing is the same trap for the version-suffixed package.
+func MigrateThing() any {
+	// Thing see thing/v2
+	type Thing struct{ OnlyColumn string }
+	return new(Thing)
+}
