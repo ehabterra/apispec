@@ -52,6 +52,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A write the registration never sees no longer makes its path ambiguous.**
+  Path variables are traced by agreement — every assignment visible at the call
+  site has to agree, so an unreadable one is reported rather than guessed
+  (#431) — but "visible" counted every write to that name anywhere in the
+  function, including ones *below* the registration. `p := "/first";
+  register(p); p = "/second"` therefore looked ambiguous and kept a placeholder.
+  Writes that cannot reach the call are now excluded, using the control-flow
+  regions the response pairing already relies on: source order alone would be
+  wrong, because in `for { register(p); p = next(p) }` the write below the call
+  is live on every iteration after the first, so that one is still counted and
+  the path stays approximate. Half of #436; distinguishing two *bindings* of one
+  name (an inner block's `p := …`) still needs a metadata fact that is not
+  recorded, and `testdata/variable_path` pins it. (#436)
+
 - **The call-graph diagram is deterministic.** Two generations of an unchanged
   project emitted the same `--diagram` file with a pair of node labels swapped,
   because a node's parameter labels were collected by ranging the call edge's

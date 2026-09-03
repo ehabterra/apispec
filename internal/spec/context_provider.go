@@ -26,6 +26,12 @@ import (
 // ContextProviderImpl implements ContextProvider
 type ContextProviderImpl struct {
 	meta *metadata.Metadata
+
+	// blocks is the control-flow region index, built on first use and shared:
+	// building it walks every function of every package, and both the response
+	// pairing (via the extractor) and path-variable reachability ask for it, so
+	// one index per run rather than one per asker.
+	blocks *blockIndex
 }
 
 // NewContextProvider creates a new context provider

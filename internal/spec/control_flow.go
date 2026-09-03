@@ -193,15 +193,55 @@ func (idx *blockIndex) exclusive(a, b codePos) bool {
 	return false
 }
 
+// sharesRegion reports whether some recorded region contains both positions.
+//
+// Used to decide whether a write BELOW a call can still be the value at it: in
+// a loop body, code after the call runs before the call's next iteration, so
+// "later in the source" is not "cannot reach" (issue #436). Any enclosing
+// region counts, not only a loop: an `if` arm holding both is a region entered
+// as a unit, and answering yes there keeps the conservative behaviour.
+//
+// Missing facts answer false, which drops the write — so callers must only ask
+// about a position they already know is below the call.
+func (idx *blockIndex) sharesRegion(a, b codePos) bool {
+	if idx == nil || !a.valid() || !b.valid() || a.file != b.file {
+		return false
+	}
+	for _, block := range idx.byFile[a.file] {
+		if blockContains(block, a) && blockContains(block, b) {
+			return true
+		}
+	}
+	return false
+}
+
 // afterBlock reports whether a position lies beyond a block's end.
 func afterBlock(b metadata.Block, pos codePos) bool {
 	return pos.line > b.EndLine || (pos.line == b.EndLine && pos.col > b.EndCol)
 }
 
-// controlFlow returns the extractor's block index, built on first use.
+// controlFlow returns the block index, built on first use.
+//
+// Held on the context provider rather than per asker: the provider is created
+// once per run and handed to every matcher, and building the index walks every
+// function of every package — so this is the one place that cost is paid.
 func (e *Extractor) controlFlow() *blockIndex {
+	if impl, ok := e.contextProvider.(*ContextProviderImpl); ok {
+		return impl.controlFlow()
+	}
 	if e.blocks == nil {
 		e.blocks = newBlockIndex(e.metadata())
 	}
 	return e.blocks
+}
+
+// controlFlow returns the provider's block index, built on first use.
+func (c *ContextProviderImpl) controlFlow() *blockIndex {
+	if c == nil {
+		return nil
+	}
+	if c.blocks == nil {
+		c.blocks = newBlockIndex(c.meta)
+	}
+	return c.blocks
 }
