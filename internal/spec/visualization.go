@@ -16,6 +16,8 @@ package spec
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -656,9 +658,19 @@ func extractParameterInfo(edge *metadata.CallGraphEdge) ([]string, []string) {
 	var paramTypes []string
 	var passedParams []string
 
-	// Extract from ParamArgMap if available (this gives us parameter name -> argument mapping)
+	// Extract from ParamArgMap if available (this gives us parameter name ->
+	// argument mapping).
+	//
+	// Names are visited in SORTED order because both slices built here reach the
+	// diagram (a node's param_types and param_values), and a map range would
+	// order them differently on every run — two generations of an unchanged
+	// project emitted the same file with two labels swapped (issue #443).
+	// Sorting by name rather than by parameter position because the edge records
+	// the mapping by name; position would have to be recovered from the callee's
+	// signature, and an arbitrary-but-stable order is what determinism needs.
 	if edge.ParamArgMap != nil {
-		for paramName, arg := range edge.ParamArgMap {
+		for _, paramName := range slices.Sorted(maps.Keys(edge.ParamArgMap)) {
+			arg := edge.ParamArgMap[paramName]
 			// Get the parameter type
 			argType := arg.GetType()
 			if argType == "" {
