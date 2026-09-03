@@ -250,21 +250,31 @@ func TestTestdata_AnonymousStruct(t *testing.T) {
 	// so "literal", "func_type" or the type's own synthetic key — on the body
 	// and on every property of it (#448). A real project published 211
 	// of them, and the word changed between versions as pooling order moved.
-	for _, p := range []string{"/orders", "/bulk-update", "/tags"} {
-		body := firstRequestSchema(t, out, p)
-		if body == nil {
-			continue
+	//
+	// A missing schema FAILS rather than skipping: a guard that quietly
+	// verifies nothing when the body it inspects disappears is the shape that
+	// let this bug live in the first place.
+	assertUndescribed := func(what string, s *intspec.Schema) {
+		if s == nil {
+			t.Errorf("%s: no inline schema, so the description guard checked nothing", what)
+			return
 		}
-		if body.Description != "" {
-			t.Errorf("%s inline requestBody has description %q, want none", p, body.Description)
+		if s.Description != "" {
+			t.Errorf("%s has description %q, want none", what, s.Description)
 		}
-		for name, prop := range body.Properties {
+		for name, prop := range s.Properties {
 			if prop != nil && prop.Description != "" {
-				t.Errorf("%s inline requestBody property %q has description %q, want none",
-					p, name, prop.Description)
+				t.Errorf("%s property %q has description %q, want none", what, name, prop.Description)
 			}
 		}
 	}
+	for _, p := range []string{"/orders", "/bulk-update", "/tags"} {
+		assertUndescribed(p+" inline requestBody", firstRequestSchema(t, out, p))
+	}
+	// And on a RESPONSE body, which is where gitea's five were — the bug was
+	// never request-only.
+	assertUndescribed("/summary inline 200 response",
+		firstResponseSchemaAtStatus(t, out, "/summary", "200"))
 }
 
 // ---------------------------------------------------------------------
@@ -563,9 +573,9 @@ func TestTestdata_HelperResponseBody(t *testing.T) {
 }
 
 // firstResponseSchemaAtStatus returns the response schema attached to a
-// specific status code on the path's first operation. Helper local to
-// the helper_response_body test because every other test inspects
-// either request bodies or the *first* response only.
+// specific status code on the path's first operation. Used by the
+// helper_response_body test and by anonymous_struct's description guard;
+// every other test inspects either request bodies or the *first* response.
 func firstResponseSchemaAtStatus(t *testing.T, out *spec.OpenAPISpec, path, status string) *intspec.Schema {
 	t.Helper()
 	item, ok := out.Paths[path]
