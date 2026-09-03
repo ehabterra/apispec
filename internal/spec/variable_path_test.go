@@ -15,6 +15,9 @@
 package spec
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -392,6 +395,111 @@ func TestParamValueFromCallSites(t *testing.T) {
 		}
 		if _, ok := b.paramValueFromCallSites(concatIdent(meta, "unknown"), node, 0); ok {
 			t.Error("a name no caller binds must not resolve")
+		}
+	})
+}
+
+// TestAssignmentsReaching covers which writes can be the value at a
+// registration (issue #436).
+//
+// The rule is not source order: a loop runs the body again, so a write BELOW
+// the call is live on the next iteration. What decides is whether the write and
+// the call share an enclosing region.
+func TestAssignmentsReaching(t *testing.T) {
+	const file = "main.go"
+	// blocks: a loop body spanning lines 20-24.
+	meta := newTestMeta()
+	meta.Packages = map[string]*metadata.Package{
+		"app": {Files: map[string]*metadata.File{
+			file: {Functions: map[string]*metadata.Function{
+				"main": {
+					Position: meta.StringPool.Get(file + ":1:1"),
+					EndLine:  40,
+					Blocks: []metadata.Block{{
+						Kind:      metadata.BlockLoop,
+						StartLine: 20, StartCol: 2,
+						EndLine: 24, EndCol: 3,
+					}},
+				},
+			}},
+		}},
+	}
+	cp := NewContextProvider(meta)
+	b := &BasePatternMatcher{contextProvider: cp}
+
+	// nodeAt returns a node whose call site is at this position.
+	nodeAt := func(line, col int) TrackerNodeInterface {
+		callee := metadata.Call{Meta: meta, Name: meta.StringPool.Get("HandleFunc"),
+			Pkg: meta.StringPool.Get("net/http"), RecvType: -1,
+			Position: meta.StringPool.Get(fmt.Sprintf("%s:%d:%d", file, line, col))}
+		return &pathNode{edge: &metadata.CallGraphEdge{
+			Caller: metadata.Call{Meta: meta, Name: meta.StringPool.Get("main"), Pkg: meta.StringPool.Get("app"), RecvType: -1},
+			Callee: callee,
+		}}
+	}
+	assignAt := func(line, col int, value string) metadata.Assignment {
+		a := assignTo(meta, "p", concatLit(meta, value))
+		a.Position = meta.StringPool.Get(fmt.Sprintf("%s:%d:%d", file, line, col))
+		return a
+	}
+	values := func(assigns []metadata.Assignment) []string {
+		out := make([]string, 0, len(assigns))
+		for i := range assigns {
+			out = append(out, strings.Trim(assigns[i].Value.GetValue(), `"`))
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	t.Run("a straight-line write below the call is dropped", func(t *testing.T) {
+		assigns := []metadata.Assignment{assignAt(10, 2, "/first"), assignAt(30, 2, "/second")}
+		got := values(b.assignmentsReaching(assigns, nodeAt(15, 2)))
+		if len(got) != 1 || got[0] != "/first" {
+			t.Errorf("reaching = %v, want [/first]", got)
+		}
+	})
+
+	t.Run("a write below the call inside the same loop is kept", func(t *testing.T) {
+		// `for { register(p); p = next(p) }` — the write is live on every
+		// iteration after the first, so the path stays ambiguous.
+		assigns := []metadata.Assignment{assignAt(10, 2, "/first"), assignAt(23, 3, "/next")}
+		got := values(b.assignmentsReaching(assigns, nodeAt(21, 3)))
+		if len(got) != 2 {
+			t.Errorf("reaching = %v, want both writes kept", got)
+		}
+	})
+
+	t.Run("writes at or before the call are all kept", func(t *testing.T) {
+		assigns := []metadata.Assignment{assignAt(10, 2, "/one"), assignAt(12, 2, "/two")}
+		got := values(b.assignmentsReaching(assigns, nodeAt(15, 2)))
+		if len(got) != 2 {
+			t.Errorf("reaching = %v, want both writes kept (genuine ambiguity)", got)
+		}
+	})
+
+	t.Run("missing facts keep every write", func(t *testing.T) {
+		// An unplaceable write, a node with no position, another file: each
+		// keeps the conservative answer rather than guessing.
+		unplaceable := []metadata.Assignment{assignAt(10, 2, "/first"), assignTo(meta, "p", concatLit(meta, "/nopos"))}
+		if got := values(b.assignmentsReaching(unplaceable, nodeAt(15, 2))); len(got) != 2 {
+			t.Errorf("reaching = %v, want both kept when one has no position", got)
+		}
+		twoBefore := []metadata.Assignment{assignAt(10, 2, "/one"), assignAt(30, 2, "/two")}
+		if got := values(b.assignmentsReaching(twoBefore, nil)); len(got) != 2 {
+			t.Errorf("reaching = %v, want both kept without a node", got)
+		}
+		single := []metadata.Assignment{assignAt(30, 2, "/only")}
+		if got := values(b.assignmentsReaching(single, nodeAt(15, 2))); len(got) != 1 {
+			t.Errorf("reaching = %v, want the single write kept even below the call", got)
+		}
+	})
+
+	t.Run("dropping everything falls back to keeping everything", func(t *testing.T) {
+		// Two writes, both below the call, neither sharing a region: the filter
+		// would empty the set, which says nothing — so the old answer stands.
+		assigns := []metadata.Assignment{assignAt(30, 2, "/one"), assignAt(32, 2, "/two")}
+		if got := values(b.assignmentsReaching(assigns, nodeAt(15, 2))); len(got) != 2 {
+			t.Errorf("reaching = %v, want both kept when nothing reaches", got)
 		}
 	})
 }

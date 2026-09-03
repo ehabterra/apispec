@@ -337,6 +337,7 @@ func (b *BasePatternMatcher) variableValue(arg *metadata.CallArgument, node Trac
 		return "", false
 	}
 	assigns := pathVarAssignments(b.contextProvider, edge, arg.GetName())
+	assigns = b.assignmentsReaching(assigns, node)
 	if len(assigns) == 0 {
 		return "", false
 	}
@@ -385,6 +386,77 @@ func pathVarAssignments(cp ContextProvider, edge *metadata.CallGraphEdge, name s
 		return nil
 	}
 	return edge.AssignmentMap[name]
+}
+
+// assignmentsReaching drops the assignments that cannot be the value at the
+// registration, so a write the call never sees does not make a knowable path
+// ambiguous (issue #436).
+//
+// `p := "/first"; register(p); p = "/second"` is the shape: both writes are
+// recorded on the function, the agreement rule saw two values and gave up, and
+// the route kept a placeholder. Only the second write is excluded here — the
+// first is what `register` was handed.
+//
+// Source order alone is not the test, because a loop runs the body again:
+//
+//	for _, r := range routes {
+//	    register(p)
+//	    p = next(r)   // BELOW the call, and live on every iteration after the first
+//	}
+//
+// So a write is kept unless it DOMINATES nothing at the call — that is, unless
+// the call site comes first AND the write is not in a region the call also sits
+// in. blockIndex.dominates answers exactly that (it is what response pairing
+// uses), and it answers permissively on missing facts, so an unindexed file or
+// an unrecoverable position keeps every assignment and the old behaviour.
+func (b *BasePatternMatcher) assignmentsReaching(assigns []metadata.Assignment, node TrackerNodeInterface) []metadata.Assignment {
+	if len(assigns) <= 1 || node == nil {
+		return assigns
+	}
+	callFile, callLine, callCol := calleePosition(node)
+	call := codePos{file: callFile, line: callLine, col: callCol}
+	if !call.valid() {
+		return assigns
+	}
+	impl, ok := b.contextProvider.(*ContextProviderImpl)
+	if !ok {
+		return assigns
+	}
+	flow := impl.controlFlow()
+
+	kept := make([]metadata.Assignment, 0, len(assigns))
+	for _, a := range assigns {
+		at := assignmentPos(impl.meta, &a)
+		// An unplaceable write stays: dropping it would be a guess, and the
+		// agreement rule is the safe answer when the facts are missing.
+		if !at.valid() || at.file != call.file {
+			kept = append(kept, a)
+			continue
+		}
+		// Written at or before the call: it is a candidate for the value.
+		if at.beforeOrAt(call) {
+			kept = append(kept, a)
+			continue
+		}
+		// Written after the call, but in a region the call is also inside — a
+		// loop body — so a later iteration carries it back.
+		if flow.sharesRegion(at, call) {
+			kept = append(kept, a)
+		}
+	}
+	if len(kept) == 0 {
+		return assigns // nothing reaches: keep the old, conservative answer
+	}
+	return kept
+}
+
+// assignmentPos renders an assignment's recorded position.
+func assignmentPos(meta *metadata.Metadata, a *metadata.Assignment) codePos {
+	if meta == nil || a == nil {
+		return codePos{}
+	}
+	file, line, col := parsePosition(getString(meta, a.Position))
+	return codePos{file: file, line: line, col: col}
 }
 
 // assignedPathValue reads one assignment's right-hand side as a path value.

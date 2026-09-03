@@ -54,23 +54,35 @@ func TestTestdata_VariablePath(t *testing.T) {
 		}
 	}
 
-	// CHANGE DETECTOR, not an endorsement (issue #436): assignments are matched
-	// by NAME, so a shadowed binding and a write after the registration each
-	// look like two disagreeing values and keep a placeholder. Both paths ARE
-	// knowable. Asserted at today's conservative behaviour — approximate rather
-	// than wrong — so this fails, and gets updated, when #436 lands.
-	t.Run("a shadowed binding and a later write are not read yet", func(t *testing.T) {
-		for _, notYet := range []string{"/outer/a", "/inner/b", "/first/c"} {
-			if _, ok := out.Paths[notYet]; ok {
-				t.Errorf("%s now resolves — assignments are matched per binding; "+
-					"assert it properly here and close #436", notYet)
-			}
+	// A write the registration never sees no longer makes its path ambiguous
+	// (issue #436, reachability half): the second write is below the call in
+	// straight-line code, so only the first can be the value there.
+	t.Run("a write below the registration is not counted", func(t *testing.T) {
+		if _, ok := out.Paths["/first/c"]; !ok {
+			t.Errorf("missing /first/c; the write below the registration must not "+
+				"make the path ambiguous; have %v", mapPathKeys(out.Paths))
 		}
-		for _, stillApprox := range []string{"/{shadowed}/a", "/{shadowed}/b", "/{later}/c"} {
-			if _, ok := out.Paths[stillApprox]; !ok {
-				t.Errorf("%s is gone — the route must stay documented (approximately) "+
-					"while its prefix is unreadable; have %v", stillApprox, mapPathKeys(out.Paths))
-			}
+		// Same rule resolves the OUTER of the two shadowed registrations: the
+		// inner block's write comes after it.
+		if _, ok := out.Paths["/outer/a"]; !ok {
+			t.Errorf("missing /outer/a; have %v", mapPathKeys(out.Paths))
+		}
+	})
+
+	// CHANGE DETECTOR, not an endorsement: the inner registration sees BOTH
+	// writes (each at or before it) and they disagree, because assignments are
+	// matched by NAME and nothing recorded says which binding each writes to.
+	// That is #436's second half, blocked on a metadata fact — `Assignment` has
+	// no token, so `:=` and `=` are indistinguishable. Asserted at today's
+	// approximate behaviour so this fails, and gets updated, when that lands.
+	t.Run("a shadowed binding is not distinguished yet", func(t *testing.T) {
+		if _, ok := out.Paths["/inner/b"]; ok {
+			t.Error("/inner/b now resolves — assignments are matched per binding; " +
+				"assert it properly here and close #436")
+		}
+		if _, ok := out.Paths["/{shadowed}/b"]; !ok {
+			t.Errorf("/{shadowed}/b is gone — the route must stay documented "+
+				"(approximately) while its prefix is unreadable; have %v", mapPathKeys(out.Paths))
 		}
 	})
 
