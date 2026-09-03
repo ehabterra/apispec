@@ -52,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The call-graph diagram is deterministic.** Two generations of an unchanged
+  project emitted the same `--diagram` file with a pair of node labels swapped,
+  because a node's parameter labels were collected by ranging the call edge's
+  parameter map. They are now collected in sorted order. The spec has been
+  deterministic since #340 precisely so it can be committed and diffed in CI;
+  the diagram is an output too, and a project that commits `diagram.html` was
+  getting a spurious diff on every run. Content is unchanged — the same labels,
+  in a stable order. (#443)
+
 - **A credential is no longer documented twice.** The header read a security
   scheme was derived from was also emitted as an ordinary header parameter, so
   one `c.GetHeader("Authorization")` inside a middleware produced both
