@@ -1,4 +1,5 @@
 string_pool:
+  - ""
   - func_type
   - func_results
   - literal
@@ -42,14 +43,14 @@ packages:
       main/test.go:
         functions:
           main:
-            name: 7
-            pkg: 7
+            name: 8
+            pkg: 8
             signature:
-              kind: 0
+              kind: 1
               name: -1
               value: -1
               fun:
-                kind: 1
+                kind: 2
                 name: -1
                 value: -1
                 raw: -1
@@ -64,21 +65,21 @@ packages:
               position: -1
               resolved_type: -1
               generic_type_name: -1
-            signature_str: 26
-            position: 25
-            scope: 9
+            signature_str: 27
+            position: 26
+            scope: 10
             comments: -1
             assignments:
               x:
-                - variable_name: 6
-                  pkg: 7
-                  concrete_type: 5
-                  position: 8
-                  scope: 9
+                - variable_name: 7
+                  pkg: 8
+                  concrete_type: 6
+                  position: 9
+                  scope: 10
                   value:
-                    kind: 2
+                    kind: 3
                     name: -1
-                    value: 3
+                    value: 4
                     raw: -1
                     pkg: -1
                     type: -1
@@ -86,26 +87,26 @@ packages:
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 4
-                    name: 6
+                    kind: 5
+                    name: 7
                     value: -1
                     raw: -1
-                    pkg: 7
-                    type: 5
-                    position: 8
+                    pkg: 8
+                    type: 6
+                    position: 9
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 7
+                  func: 8
               "y":
-                - variable_name: 12
-                  pkg: 7
-                  concrete_type: 11
-                  position: 13
-                  scope: 9
+                - variable_name: 13
+                  pkg: 8
+                  concrete_type: 12
+                  position: 14
+                  scope: 10
                   value:
-                    kind: 2
+                    kind: 3
                     name: -1
-                    value: 10
+                    value: 11
                     raw: -1
                     pkg: -1
                     type: -1
@@ -113,227 +114,227 @@ packages:
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 4
-                    name: 12
+                    kind: 5
+                    name: 13
                     value: -1
                     raw: -1
-                    pkg: 7
-                    type: 11
-                    position: 13
+                    pkg: 8
+                    type: 12
+                    position: 14
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 7
+                  func: 8
               z:
-                - variable_name: 23
-                  pkg: 7
-                  concrete_type: 11
-                  position: 24
-                  scope: 9
+                - variable_name: 24
+                  pkg: 8
+                  concrete_type: 12
+                  position: 25
+                  scope: 10
                   value:
-                    kind: 22
+                    kind: 23
                     name: -1
                     value: -1
                     fun:
-                      kind: 21
+                      kind: 22
                       name: -1
                       value: -1
                       x:
-                        kind: 4
-                        name: 16
+                        kind: 5
+                        name: 17
                         value: -1
                         raw: -1
-                        pkg: 16
+                        pkg: 17
                         type: -1
-                        position: 17
+                        position: 18
                         resolved_type: -1
                         generic_type_name: -1
                       sel:
-                        kind: 4
-                        name: 18
+                        kind: 5
+                        name: 19
                         value: -1
                         raw: -1
-                        pkg: 16
-                        type: 19
-                        position: 20
+                        pkg: 17
+                        type: 20
+                        position: 21
                         resolved_type: -1
                         generic_type_name: -1
                       raw: -1
-                      pkg: 16
-                      type: 19
-                      position: 17
+                      pkg: 17
+                      type: 20
+                      position: 18
                       resolved_type: -1
                       generic_type_name: -1
                     args:
-                      - kind: 2
+                      - kind: 3
                         name: -1
-                        value: 14
+                        value: 15
                         raw: -1
                         pkg: -1
                         type: -1
                         position: -1
                         resolved_type: -1
                         generic_type_name: -1
-                      - kind: 4
-                        name: 6
+                      - kind: 5
+                        name: 7
                         value: -1
                         raw: -1
-                        pkg: 7
-                        type: 5
-                        position: 15
+                        pkg: 8
+                        type: 6
+                        position: 16
                         resolved_type: -1
                         generic_type_name: -1
                     raw: -1
                     pkg: -1
-                    type: 11
-                    position: 17
+                    type: 12
+                    position: 18
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 4
-                    name: 23
+                    kind: 5
+                    name: 24
                     value: -1
                     raw: -1
-                    pkg: 7
-                    type: 11
-                    position: 24
+                    pkg: 8
+                    type: 12
+                    position: 25
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 7
+                  func: 8
                   callee_func: Sprintf
                   callee_pkg: fmt
             end_line: 14
         imports:
-          16: 16
-          27: 27
+          17: 17
+          28: 28
 call_graph:
   - caller:
-      name: 7
-      pkg: 7
+      name: 8
+      pkg: 8
       position: -1
       recv_type: -1
-      scope: 9
-      signature_str: 26
+      scope: 10
+      signature_str: 27
     callee:
-      name: 18
-      pkg: 16
-      position: 17
+      name: 19
+      pkg: 17
+      position: 18
       recv_type: -1
-      scope: 28
-      signature_str: 19
-    position: 17
+      scope: 29
+      signature_str: 20
+    position: 18
     args:
-      - kind: 2
+      - kind: 3
         name: -1
-        value: 14
+        value: 15
         raw: -1
         pkg: -1
         type: -1
         position: -1
         resolved_type: -1
         generic_type_name: -1
-      - kind: 4
-        name: 6
+      - kind: 5
+        name: 7
         value: -1
         raw: -1
-        pkg: 7
-        type: 5
-        position: 15
+        pkg: 8
+        type: 6
+        position: 16
         resolved_type: -1
         generic_type_name: -1
     assignments:
       z:
-        - variable_name: 23
-          pkg: 7
-          concrete_type: 11
-          position: 24
-          scope: 9
+        - variable_name: 24
+          pkg: 8
+          concrete_type: 12
+          position: 25
+          scope: 10
           value:
-            kind: 22
+            kind: 23
             name: -1
             value: -1
             fun:
-              kind: 21
+              kind: 22
               name: -1
               value: -1
               x:
-                kind: 4
-                name: 16
+                kind: 5
+                name: 17
                 value: -1
                 raw: -1
-                pkg: 16
+                pkg: 17
                 type: -1
-                position: 17
+                position: 18
                 resolved_type: -1
                 generic_type_name: -1
               sel:
-                kind: 4
-                name: 18
+                kind: 5
+                name: 19
                 value: -1
                 raw: -1
-                pkg: 16
-                type: 19
-                position: 20
+                pkg: 17
+                type: 20
+                position: 21
                 resolved_type: -1
                 generic_type_name: -1
               raw: -1
-              pkg: 16
-              type: 19
-              position: 17
+              pkg: 17
+              type: 20
+              position: 18
               resolved_type: -1
               generic_type_name: -1
             args:
-              - kind: 2
+              - kind: 3
                 name: -1
-                value: 14
+                value: 15
                 raw: -1
                 pkg: -1
                 type: -1
                 position: -1
                 resolved_type: -1
                 generic_type_name: -1
-              - kind: 4
-                name: 6
+              - kind: 5
+                name: 7
                 value: -1
                 raw: -1
-                pkg: 7
-                type: 5
-                position: 15
+                pkg: 8
+                type: 6
+                position: 16
                 resolved_type: -1
                 generic_type_name: -1
             raw: -1
             pkg: -1
-            type: 11
-            position: 17
+            type: 12
+            position: 18
             resolved_type: -1
             generic_type_name: -1
           lhs:
-            kind: 4
-            name: 23
+            kind: 5
+            name: 24
             value: -1
             raw: -1
-            pkg: 7
-            type: 11
-            position: 24
+            pkg: 8
+            type: 12
+            position: 25
             resolved_type: -1
             generic_type_name: -1
-          func: 7
+          func: 8
           callee_func: Sprintf
           callee_pkg: fmt
     param_arg_map:
       a:
-        kind: 4
-        name: 6
+        kind: 5
+        name: 7
         value: -1
         raw: -1
-        pkg: 7
-        type: 5
-        position: 15
+        pkg: 8
+        type: 6
+        position: 16
         resolved_type: -1
         generic_type_name: -1
       format:
-        kind: 2
+        kind: 3
         name: -1
-        value: 14
+        value: 15
         raw: -1
         pkg: -1
         type: -1
@@ -342,74 +343,74 @@ call_graph:
         generic_type_name: -1
     callee_recv_var_name: z
   - caller:
-      name: 7
-      pkg: 7
+      name: 8
+      pkg: 8
       position: -1
       recv_type: -1
-      scope: 9
-      signature_str: 26
+      scope: 10
+      signature_str: 27
     callee:
-      name: 31
-      pkg: 16
-      position: 30
+      name: 32
+      pkg: 17
+      position: 31
       recv_type: -1
-      scope: 28
-      signature_str: 32
-    position: 30
+      scope: 29
+      signature_str: 33
+    position: 31
     args:
-      - kind: 4
-        name: 23
+      - kind: 5
+        name: 24
         value: -1
         raw: -1
-        pkg: 7
-        type: 11
-        position: 29
+        pkg: 8
+        type: 12
+        position: 30
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
       a:
-        kind: 4
-        name: 23
+        kind: 5
+        name: 24
         value: -1
         raw: -1
-        pkg: 7
-        type: 11
-        position: 29
+        pkg: 8
+        type: 12
+        position: 30
         resolved_type: -1
         generic_type_name: -1
   - caller:
-      name: 7
-      pkg: 7
+      name: 8
+      pkg: 8
       position: -1
       recv_type: -1
-      scope: 9
-      signature_str: 26
+      scope: 10
+      signature_str: 27
     callee:
-      name: 35
-      pkg: 27
-      position: 34
+      name: 36
+      pkg: 28
+      position: 35
       recv_type: -1
-      scope: 28
-      signature_str: 36
-    position: 34
+      scope: 29
+      signature_str: 37
+    position: 35
     args:
-      - kind: 4
-        name: 12
+      - kind: 5
+        name: 13
         value: -1
         raw: -1
-        pkg: 7
-        type: 11
-        position: 33
+        pkg: 8
+        type: 12
+        position: 34
         resolved_type: -1
         generic_type_name: -1
     param_arg_map:
       s:
-        kind: 4
-        name: 12
+        kind: 5
+        name: 13
         value: -1
         raw: -1
-        pkg: 7
-        type: 11
-        position: 33
+        pkg: 8
+        type: 12
+        position: 34
         resolved_type: -1
         generic_type_name: -1

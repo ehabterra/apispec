@@ -72,21 +72,42 @@ type StringPool struct {
 }
 
 func NewStringPool() *StringPool {
-	return &StringPool{
+	sp := &StringPool{
 		strings: make(map[string]int, 1000), // Pre-allocate with estimated capacity
 		values:  make([]string, 0, 1000),    // Pre-allocate slice capacity
+	}
+	sp.reserveEmpty()
+	return sp
+}
+
+// reserveEmpty keeps slot 0 of the pool as the empty string, so that the Go
+// zero value of a pooled-index field means "no string" by construction.
+//
+// Without it, 0 is the first string interned in the run, so a struct literal
+// that omits an index field does not read as absent — it reads as whatever
+// that string happens to be. That shipped 211 junk `description` values in a
+// real spec (#448), was invisible in fixtures because the junk is plausible
+// prose ("literal", "func_type"), and moved between versions with interning
+// order, so it surfaced as unexplained drift rather than as a bug (#449).
+//
+// It is called from Get as well as the constructor: a pool built as a struct
+// literal would otherwise reintroduce exactly that, and the check costs one
+// length comparison.
+func (sp *StringPool) reserveEmpty() {
+	if len(sp.values) == 0 {
+		sp.values = append(sp.values, "")
 	}
 }
 
 // NoString is the index that means "no string here". Get returns it for the
 // empty string, and GetString maps it back to "".
 //
-// It is NOT zero: zero is a perfectly valid index (the first string pooled in
-// a run), so a struct that leaves a pooled-index field unset points at that
-// string rather than at nothing. Fields are therefore set explicitly to
-// NoString when absent — see buildAnonStructType, where the omission published
-// pool entry 0 as a doc comment (#448). Reserving slot 0 for "" would retire
-// the footgun itself; that is #449.
+// It is not zero, and zero is no longer a live index either: slot 0 of the pool
+// is reserved for "" (reserveEmpty, #449), so an unset field reads as absent
+// rather than as the first string interned in the run. Setting a field to
+// NoString explicitly when it is absent — as buildAnonStructType does, after
+// the omission published pool entry 0 as a doc comment (#448) — states the
+// intent at the site and does not rely on that reservation.
 const NoString = -1
 
 func (sp *StringPool) Get(s string) int {
@@ -102,6 +123,7 @@ func (sp *StringPool) Get(s string) int {
 		return NoString
 	}
 
+	sp.reserveEmpty()
 	idx := len(sp.values)
 	sp.strings[s] = idx
 	sp.values = append(sp.values, s)
@@ -115,7 +137,9 @@ func (sp *StringPool) GetString(idx int) string {
 	return ""
 }
 
-// GetSize returns the number of unique strings in the pool
+// GetSize returns the number of slots in the pool, which is one more than the
+// number of interned strings: slot 0 is the reserved empty string (#449). It
+// bounds a valid index, so callers iterating i < GetSize() stay in range.
 func (sp *StringPool) GetSize() int {
 	return len(sp.values)
 }
@@ -135,8 +159,27 @@ func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	sp.values = values
 	sp.strings = make(map[string]int)
 	for i, s := range values {
+		// "" is never interned (Get returns NoString for it), so skipping it
+		// makes a round-tripped pool behave exactly like a fresh one.
+		if s == "" {
+			continue
+		}
 		sp.strings[s] = i
 	}
+	// A pool written before slot 0 was reserved is loaded exactly as written,
+	// slot 0 included, and that is deliberate.
+	//
+	// In such a file index 0 is a REAL value: the goldens from before this
+	// change reference `kind: 0` — meaning "ident" — a hundred times in one
+	// package. Shifting every index to insert "" would rewrite each of those
+	// into a different string, and refusing the file would reject data that
+	// reads back correctly. "0 means absent" and "0 means the string at slot
+	// 0" are indistinguishable once written, which is the bug itself; it can
+	// be prevented for new writes (every pool this code creates reserves the
+	// slot) but not diagnosed retroactively.
+	//
+	// TestStringPoolLegacyPoolLoadsAsWritten pins this.
+	sp.reserveEmpty()
 	return nil
 }
 

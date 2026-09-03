@@ -1240,8 +1240,9 @@ func TestStringPool(t *testing.T) {
 	assert.Equal(t, "", pool.GetString(-1))
 	assert.Equal(t, "", pool.GetString(1000))
 
-	// Test size
-	assert.Equal(t, 2, pool.GetSize()) // "test" and "another"
+	// Test size: "test", "another", and the reserved empty slot 0 (#449)
+	assert.Equal(t, 3, pool.GetSize())
+	assert.Equal(t, "", pool.GetString(0))
 }
 
 // TestMethodChaining tests the ability to analyze method chaining patterns

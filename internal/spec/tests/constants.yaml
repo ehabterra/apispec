@@ -1,4 +1,5 @@
 string_pool:
+  - ""
   - literal
   - "100"
   - '"test"'
@@ -47,14 +48,14 @@ packages:
       constants/const.go:
         functions:
           UseConstants:
-            name: 23
-            pkg: 10
+            name: 24
+            pkg: 11
             signature:
-              kind: 4
+              kind: 5
               name: -1
               value: -1
               fun:
-                kind: 5
+                kind: 6
                 name: -1
                 value: -1
                 raw: -1
@@ -69,75 +70,75 @@ packages:
               position: -1
               resolved_type: -1
               generic_type_name: -1
-            signature_str: 16
-            position: 29
-            scope: 12
+            signature_str: 17
+            position: 30
+            scope: 13
             comments: -1
             assignments:
               name:
-                - variable_name: 27
-                  pkg: 10
-                  concrete_type: 8
-                  position: 28
-                  scope: 15
+                - variable_name: 28
+                  pkg: 11
+                  concrete_type: 9
+                  position: 29
+                  scope: 16
                   value:
-                    kind: 7
-                    name: 24
-                    value: 2
+                    kind: 8
+                    name: 25
+                    value: 3
                     raw: -1
-                    pkg: 10
-                    type: 25
-                    position: 26
+                    pkg: 11
+                    type: 26
+                    position: 27
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 7
-                    name: 27
+                    kind: 8
+                    name: 28
                     value: -1
                     raw: -1
-                    pkg: 10
-                    type: 8
-                    position: 28
+                    pkg: 11
+                    type: 9
+                    position: 29
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 23
+                  func: 24
               size:
-                - variable_name: 21
-                  pkg: 10
-                  concrete_type: 20
-                  position: 22
-                  scope: 15
+                - variable_name: 22
+                  pkg: 11
+                  concrete_type: 21
+                  position: 23
+                  scope: 16
                   value:
-                    kind: 7
-                    name: 17
+                    kind: 8
+                    name: 18
                     value: -1
                     raw: -1
-                    pkg: 10
-                    type: 18
-                    position: 19
+                    pkg: 11
+                    type: 19
+                    position: 20
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 7
-                    name: 21
+                    kind: 8
+                    name: 22
                     value: -1
                     raw: -1
-                    pkg: 10
-                    type: 20
-                    position: 22
+                    pkg: 11
+                    type: 21
+                    position: 23
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 23
+                  func: 24
             end_line: 23
           init:
-            name: 13
-            pkg: 10
+            name: 14
+            pkg: 11
             signature:
-              kind: 4
+              kind: 5
               name: -1
               value: -1
               fun:
-                kind: 5
+                kind: 6
                 name: -1
                 value: -1
                 raw: -1
@@ -152,21 +153,21 @@ packages:
               position: -1
               resolved_type: -1
               generic_type_name: -1
-            signature_str: 16
-            position: 14
-            scope: 15
+            signature_str: 17
+            position: 15
+            scope: 16
             comments: -1
             assignments:
               Message:
-                - variable_name: 9
-                  pkg: 10
-                  concrete_type: 8
-                  position: 11
-                  scope: 12
+                - variable_name: 10
+                  pkg: 11
+                  concrete_type: 9
+                  position: 12
+                  scope: 13
                   value:
-                    kind: 0
+                    kind: 1
                     name: -1
-                    value: 6
+                    value: 7
                     raw: -1
                     pkg: -1
                     type: -1
@@ -174,66 +175,66 @@ packages:
                     resolved_type: -1
                     generic_type_name: -1
                   lhs:
-                    kind: 7
-                    name: 9
+                    kind: 8
+                    name: 10
                     value: -1
                     raw: -1
-                    pkg: 10
-                    type: 8
-                    position: 11
+                    pkg: 11
+                    type: 9
+                    position: 12
                     resolved_type: -1
                     generic_type_name: -1
-                  func: 13
+                  func: 14
             end_line: 16
         variables:
           GlobalVar:
-            name: 37
-            tok: 38
-            pkg: 10
-            type: 20
-            value: 40
-            position: 39
+            name: 38
+            tok: 39
+            pkg: 11
+            type: 21
+            value: 41
+            position: 40
             comments: -1
             group_index: 1
           MaxSize:
-            name: 17
-            tok: 30
-            pkg: 10
+            name: 18
+            tok: 31
+            pkg: 11
             type: -1
-            resolved_type: 18
-            value: 1
+            resolved_type: 19
+            value: 2
             computed_value: 100
-            position: 31
-            comments: -1
-            group_index: 1
-          Message:
-            name: 9
-            tok: 38
-            pkg: 10
-            type: 8
-            position: 41
-            comments: -1
-            group_index: 1
-          Name:
-            name: 24
-            tok: 30
-            pkg: 10
-            type: -1
-            resolved_type: 25
-            value: 33
-            computed_value: {}
             position: 32
             comments: -1
             group_index: 1
-          Pi:
-            name: 34
-            tok: 30
-            pkg: 10
+          Message:
+            name: 10
+            tok: 39
+            pkg: 11
+            type: 9
+            position: 42
+            comments: -1
+            group_index: 1
+          Name:
+            name: 25
+            tok: 31
+            pkg: 11
             type: -1
-            resolved_type: 36
-            value: 3
+            resolved_type: 26
+            value: 34
             computed_value: {}
-            position: 35
+            position: 33
+            comments: -1
+            group_index: 1
+          Pi:
+            name: 35
+            tok: 31
+            pkg: 11
+            type: -1
+            resolved_type: 37
+            value: 4
+            computed_value: {}
+            position: 36
             comments: -1
             group_index: 1
         imports: {}
