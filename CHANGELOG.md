@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An inline struct's schema no longer publishes an interned string as its doc
+  comment.** An anonymous-struct request body carried a `description` that was
+  never a comment: the synthetic type recorded no `Comments` index, and the zero
+  value is a *valid* pool index — the first string interned in that run — so the
+  body and every property of it were described as `literal`, `func_type`, or the
+  type's own internal key. One real service published 211 of them. Because the
+  text is "whatever was pooled first", it also moved with pooling order, so an
+  unchanged project drifted between versions. Inline structs now say they have
+  no comment; documented named types are unaffected. (#448)
+
 ### Added
 
 - **Type and field doc comments become schema descriptions.** A documented Go

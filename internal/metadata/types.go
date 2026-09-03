@@ -78,9 +78,20 @@ func NewStringPool() *StringPool {
 	}
 }
 
+// NoString is the index that means "no string here". Get returns it for the
+// empty string, and GetString maps it back to "".
+//
+// It is NOT zero: zero is a perfectly valid index (the first string pooled in
+// a run), so a struct that leaves a pooled-index field unset points at that
+// string rather than at nothing. Fields are therefore set explicitly to
+// NoString when absent — see buildAnonStructType, where the omission published
+// pool entry 0 as a doc comment (#448). Reserving slot 0 for "" would retire
+// the footgun itself; that is #449.
+const NoString = -1
+
 func (sp *StringPool) Get(s string) int {
 	if s == "" {
-		return -1
+		return NoString
 	}
 
 	if idx, exists := sp.strings[s]; exists {
@@ -88,7 +99,7 @@ func (sp *StringPool) Get(s string) int {
 	}
 
 	if sp.strings == nil {
-		return -1
+		return NoString
 	}
 
 	idx := len(sp.values)
