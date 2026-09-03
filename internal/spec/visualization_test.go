@@ -87,33 +87,32 @@ func TestDrawCallGraphCytoscape(t *testing.T) {
 }
 
 func TestBuildCallPathInfos(t *testing.T) {
-	// Create a simple metadata with call graph
+	// Intern first and use the indices Get hands back. Writing 0 and 1 here
+	// assumed the first string interned lands at slot 0, which is no longer
+	// true — slot 0 is the reserved empty string (#449) — and was never
+	// something a test needed to know.
+	pool := metadata.NewStringPool()
+	mainIdx := pool.Get("main")
+	fooIdx := pool.Get("foo")
+
 	meta := &metadata.Metadata{
-		StringPool: metadata.NewStringPool(),
+		StringPool: pool,
 		CallGraph: []metadata.CallGraphEdge{
 			{
 				Caller: metadata.Call{
-					Name:     0,   // "main" (function name) - index 0
-					Pkg:      0,   // "main" (package) - index 0
+					Name:     mainIdx,
+					Pkg:      mainIdx,
 					Position: -1,  // No position
 					Meta:     nil, // Will be set after metadata creation
 				},
 				Callee: metadata.Call{
-					Name: 1,   // "foo" (function name) - index 1
-					Pkg:  0,   // "main" (package) - index 0
+					Name: fooIdx,
+					Pkg:  mainIdx,
 					Meta: nil, // Will be set after metadata creation
 				},
 			},
 		},
 	}
-
-	// Add strings to string pool in the correct order
-	// Index 0: "main" (package)
-	// Index 1: "main" (function name)
-	// Index 2: "foo" (function name)
-	meta.StringPool.Get("main") // Index 0 - package
-	meta.StringPool.Get("main") // Index 1 - function name
-	meta.StringPool.Get("foo")  // Index 2 - function name
 
 	// Set Meta field on Call objects
 	meta.CallGraph[0].Caller.Meta = meta
@@ -142,27 +141,38 @@ func TestExtractParameterInfo(t *testing.T) {
 		StringPool: metadata.NewStringPool(),
 	}
 
+	// Intern first, then use the returned indices — see TestBuildCallPathInfos.
+	//
+	// Kind is set too, and that is the point of this comment: it used to be
+	// left at 0, so callArgToString fell to `default: return arg.GetRaw()` with
+	// Raw also 0 — which resolved to pool slot 0, the first string interned,
+	// which in this test happened to be "value1". The assertion below passed by
+	// reading a field the test never set. With slot 0 reserved (#449) an unset
+	// index reads as "", so the argument now has to say what it is: an ident
+	// named "value1" of type "string".
+	identIdx := meta.StringPool.Get(metadata.KindIdent)
+	valueIdx := meta.StringPool.Get("value1")
+	stringIdx := meta.StringPool.Get("string")
+	argIdx := meta.StringPool.Get("arg1")
+
 	// Create a call graph edge with parameter information
 	edge := &metadata.CallGraphEdge{
 		ParamArgMap: map[string]metadata.CallArgument{
 			"param1": {
-				Name: 0, // "value1"
-				Type: 1, // "string"
+				Kind: identIdx,
+				Name: valueIdx,
+				Type: stringIdx,
 				Meta: meta,
 			},
 		},
 		Args: []*metadata.CallArgument{
 			{
-				Name: 2, // "arg1"
+				Kind: identIdx,
+				Name: argIdx,
 				Meta: meta,
 			},
 		},
 	}
-
-	// Add strings to string pool
-	meta.StringPool.Get("value1")
-	meta.StringPool.Get("string")
-	meta.StringPool.Get("arg1")
 
 	paramTypes, passedParams := extractParameterInfo(edge)
 

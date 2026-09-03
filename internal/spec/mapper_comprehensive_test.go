@@ -760,6 +760,27 @@ func TestDeduplicateParameters_Comprehensive(t *testing.T) {
 			},
 			expected: 3,
 		},
+		{
+			// OpenAPI requires `name`, and a parameter without one cannot be
+			// sent, matched or validated — gitea published such a header
+			// parameter, readable only because the unset name index resolved
+			// to pool slot 0 ("func_type") before #449 reserved it. (#452)
+			name: "nameless_inline_param_dropped",
+			params: []Parameter{
+				{Name: "id", In: "path"},
+				{In: "header"},
+			},
+			expected: 1,
+		},
+		{
+			// A $ref is exempt: its name lives in the component it points at.
+			name: "nameless_ref_param_kept",
+			params: []Parameter{
+				{Ref: "#/components/parameters/PathParam"},
+				{In: "header"},
+			},
+			expected: 1,
+		},
 	}
 
 	for _, tt := range tests {

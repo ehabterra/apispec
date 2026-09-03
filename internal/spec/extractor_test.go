@@ -151,14 +151,18 @@ func TestContextProvider(t *testing.T) {
 	meta := &metadata.Metadata{
 		StringPool: metadata.NewStringPool(),
 	}
-	meta.StringPool.Get("test") // Add a string to the pool
+	idx := meta.StringPool.Get("test") // Add a string to the pool
 
 	contextProvider := NewContextProvider(meta)
 
-	// Test GetString
-	result := contextProvider.GetString(0)
+	// Test GetString. The index comes from Get rather than being written as 0:
+	// slot 0 is the reserved empty string (#449).
+	result := contextProvider.GetString(idx)
 	if result != "test" {
 		t.Errorf("Expected 'test', got '%s'", result)
+	}
+	if got := contextProvider.GetString(0); got != "" {
+		t.Errorf("slot 0 is reserved for the empty string, got %q", got)
 	}
 
 	// Test GetString with invalid index

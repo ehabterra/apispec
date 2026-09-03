@@ -709,6 +709,20 @@ func deduplicateParameters(params []Parameter) []Parameter {
 	seen := make(map[string]struct{})
 	result := make([]Parameter, 0, len(params))
 	for _, p := range params {
+		// A nameless inline parameter never reaches the document: OpenAPI
+		// requires `name`, and one without it cannot be sent, matched or
+		// validated, so emitting it makes the spec invalid while saying
+		// nothing. A $ref is exempt — it carries its name in the component it
+		// points at.
+		//
+		// These were previously emitted under whichever string sat at pool
+		// slot 0 (`name: func_type` on a real project), which read as a real
+		// header until slot 0 was reserved (#449) and left the name empty.
+		// This keeps the document valid; why a parameter is recorded with no
+		// name is #452.
+		if p.Name == "" && p.Ref == "" {
+			continue
+		}
 		key := p.Name + ":" + p.In
 		if _, exists := seen[key]; !exists {
 			seen[key] = struct{}{}

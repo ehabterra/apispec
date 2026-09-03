@@ -81,10 +81,12 @@ func main() {
 
 	meta := metadata.GenerateMetadata(pkgFiles, fileToInfo, importPaths, fset)
 
-	// The trap this guards: index 0 is a legitimate, non-empty pooled string,
-	// so an unset index reads as prose rather than as nothing.
-	if first := meta.StringPool.GetString(0); first == "" {
-		t.Fatal("pool index 0 is empty, so this test can no longer tell an unset index from an absent one")
+	// Slot 0 is now reserved for "" (#449), so an unset index no longer reads
+	// as prose. The explicit NoString below is still what this test pins: the
+	// reservation is a backstop, and stating "no comment" at the site is what
+	// keeps the metadata honest if the reservation ever moves.
+	if first := meta.StringPool.GetString(0); first != "" {
+		t.Errorf("slot 0 should be the reserved empty string, got %q", first)
 	}
 
 	var checked int

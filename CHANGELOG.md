@@ -24,6 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own source. `apispecui` binds to localhost, so this needed a symlink in a
   repo the developer chose to analyze — plausible for an untrusted checkout,
   which is what the tool is for. (#424)
+- **A metadata field that records no string now reads as absent, not as an
+  arbitrary one.** Pooled strings are stored by index, and 0 was a valid index —
+  the first string interned in a run — so any record that left an index field
+  unset pointed at that string instead of at nothing. That is what published 211
+  junk schema `description` values (#448), and it was silent by construction:
+  the junk is plausible prose, and it changed with interning order, so it read
+  as version drift rather than as a bug. Slot 0 of the pool is now reserved for
+  the empty string, so the Go zero value means "no string" by construction.
+  Every pool index shifts by one, which regenerates the metadata goldens; all
+  109 fixture specs are byte-identical. (#449)
+- **A parameter with no name is no longer emitted.** OpenAPI requires `name`,
+  and a parameter without one cannot be sent, matched or validated. One was
+  reaching a real project's spec, readable only because the unset name index
+  resolved to a pooled string (`name: func_type`) — reserving pool slot 0
+  exposed it. A `$ref` parameter is unaffected, since its name lives in the
+  component it points at. Why a parameter is recorded without a name is tracked
+  separately in #452. (#449)
 
 - **An inline struct's schema no longer publishes an interned string as its doc
   comment.** An anonymous-struct request body carried a `description` that was
