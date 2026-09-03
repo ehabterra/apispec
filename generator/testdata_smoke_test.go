@@ -244,6 +244,27 @@ func TestTestdata_AnonymousStruct(t *testing.T) {
 		}
 	}
 	noUnresolvedPlaceholders(t, out)
+
+	// An inline struct has no doc comment, so it must carry no description.
+	// It used to carry pool entry 0 — whichever string the run pooled first,
+	// so "literal", "func_type" or the type's own synthetic key — on the body
+	// and on every property of it (#448). A real project published 211
+	// of them, and the word changed between versions as pooling order moved.
+	for _, p := range []string{"/orders", "/bulk-update", "/tags"} {
+		body := firstRequestSchema(t, out, p)
+		if body == nil {
+			continue
+		}
+		if body.Description != "" {
+			t.Errorf("%s inline requestBody has description %q, want none", p, body.Description)
+		}
+		for name, prop := range body.Properties {
+			if prop != nil && prop.Description != "" {
+				t.Errorf("%s inline requestBody property %q has description %q, want none",
+					p, name, prop.Description)
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------

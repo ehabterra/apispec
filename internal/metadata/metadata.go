@@ -1022,6 +1022,14 @@ func buildAnonStructType(s *types.Struct, name, pkgName string, metadata *Metada
 		Name: metadata.StringPool.Get(name),
 		Pkg:  metadata.StringPool.Get(pkgName),
 		Kind: metadata.StringPool.Get("struct"),
+		// An inline struct has no doc comment, and saying so has to be
+		// explicit: the zero value is pool index 0 — a real string, whichever
+		// one the run pooled first — so leaving it unset published that string
+		// as the schema's description, on the body and on every property of
+		// it. What it read was arbitrary ("literal", "func_type", the type's
+		// own synthetic key) and changed with pooling order, so the same source
+		// drifted between runs of different versions (#448).
+		Comments: NoString,
 	}
 	for i := 0; i < s.NumFields(); i++ {
 		fv := s.Field(i)
@@ -1029,9 +1037,10 @@ func buildAnonStructType(s *types.Struct, name, pkgName string, metadata *Metada
 		fieldType := fv.Type()
 
 		f := Field{
-			Name: metadata.StringPool.Get(fv.Name()),
-			Type: metadata.StringPool.Get(fieldType.String()),
-			Tag:  metadata.StringPool.Get(tag),
+			Name:     metadata.StringPool.Get(fv.Name()),
+			Type:     metadata.StringPool.Get(fieldType.String()),
+			Tag:      metadata.StringPool.Get(tag),
+			Comments: NoString, // as above: a field of an inline struct has none
 		}
 
 		// Inline-struct field: record it as a NestedType so the
