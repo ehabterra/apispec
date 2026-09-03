@@ -3484,6 +3484,12 @@ func (p *ParamPatternMatcherImpl) paramWireName(arg *metadata.CallArgument, node
 	if arg == nil {
 		return "", false
 	}
+	// A conversion changes the TYPE and never the string inside it, so
+	// `Get(string(headerKind("X-Converted")))` is the name inside it — the same
+	// rung the registration path walks (issue #433).
+	if inner, ok := conversionOperand(arg); ok {
+		return p.paramWireName(inner, node)
+	}
 	if value, ok := p.contextProvider.ConstantValue(arg); ok {
 		return value, true
 	}
@@ -3497,6 +3503,25 @@ func (p *ParamPatternMatcherImpl) paramWireName(arg *metadata.CallArgument, node
 			return value, true
 		}
 	}
+	// A field of a struct value: `Get(hdr.Config.Key)`.
+	if value, ok := p.structFieldValue(arg, node); ok && value != "" {
+		return value, true
+	}
+	// A local variable holding the name: `key := "X-Local"; r.Header.Get(key)`.
+	//
+	// This is the same value-resolution ladder a registration path walks
+	// (issues #431 and #436), so it inherits the property that matters here:
+	// every assignment the call can actually reach has to agree. A name
+	// assigned once resolves; one the code rewrites on a branch stays
+	// unresolved and the parameter is left out (issue #453).
+	if value, ok := p.variableValue(arg, node, 0); ok && value != "" {
+		return value, true
+	}
+	// An empty resolution is NOT a name. For a path the empty string is a
+	// legitimate contribution (a zero-value URL prefix contributes nothing),
+	// but a parameter needs something a client can send: emitting one with an
+	// empty name produces a document that is invalid rather than approximate
+	// (issue #452), so it stays unresolved and is dropped.
 	return "", false
 }
 
