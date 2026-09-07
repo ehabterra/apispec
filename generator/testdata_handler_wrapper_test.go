@@ -73,11 +73,30 @@ func TestTestdata_HandlerWrapperAttribution(t *testing.T) {
 						pair.method, pair.wrapped, pair.direct, mapPathKeys(out.Paths))
 				}
 
-				// Same handler ⇒ same operationId, modulo the path it was
-				// registered at (operationIds carry the handler, not the route).
-				if wrapped.OperationID != direct.OperationID {
-					t.Errorf("%s %s: operationId %q, but the same handler registered directly is %q — the wrapper replaced it",
-						pair.method, pair.wrapped, wrapped.OperationID, direct.OperationID)
+				// Attribution is asserted by what the operation SAYS — summary,
+				// request schema, responses, below — not by a shared
+				// operationId.
+				//
+				// This used to require the wrapped and direct routes to carry
+				// the SAME operationId, on the reasoning that an operationId
+				// carries the handler rather than the route. That is what
+				// OpenAPI forbids: an operationId identifies an operation and
+				// must be unique across the document, so two distinct
+				// operations sharing one is a spec violation, and a client
+				// generator cannot give two methods a single name. A real
+				// project reached 700 ids for 1109 operations this way
+				// (issue #459).
+				//
+				// So the invariant is inverted: distinct operations must have
+				// distinct ids, and neither may be empty.
+				if wrapped.OperationID == direct.OperationID {
+					t.Errorf("%s %s: wrapped and direct share operationId %q — distinct operations need distinct ids",
+						pair.method, pair.wrapped, wrapped.OperationID)
+				}
+				for label, op := range map[string]*intspec.Operation{"wrapped": wrapped, "direct": direct} {
+					if op.OperationID == "" {
+						t.Errorf("%s %s: %s operation has no operationId", pair.method, pair.wrapped, label)
+					}
 				}
 				if wrapped.Summary != direct.Summary {
 					t.Errorf("%s %s: summary %q, want the handler's %q",

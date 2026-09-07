@@ -53,12 +53,88 @@ func applyNaming(spec *OpenAPISpec, cfg *APISpecConfig, usedTypes map[string]*Sc
 	}
 	switch cfg.Naming.OperationID {
 	case "", NamingFull:
+		repairOperationIDs(spec)
 	case NamingReceiverMethod, NamingMethodPath:
 		applyOperationIDs(spec, cfg.Naming.OperationID)
 	default:
 		log.Printf("[naming] unknown operationId %q, keeping %q", cfg.Naming.OperationID, NamingFull)
+		repairOperationIDs(spec)
 	}
 }
+
+// repairOperationIDs replaces the operationIds that cannot serve as one, and
+// leaves every other id exactly as it was.
+//
+// An operationId must be unique across the document — a client generator keys
+// its method names on it — and the fully-qualified handler symbol is not, for
+// a reason no amount of resolution fixes: a shared middleware or wrapper IS the
+// resolved handler for many routes. On gitea that put 1109 operations under 700
+// ids, `reqToken` alone accounting for 46 (issue #459).
+//
+// Two kinds of id are replaced:
+//
+//   - one claimed by more than one operation. ALL of its holders are replaced,
+//     not the runners-up: the symbol has been shown not to identify an
+//     operation, so keeping it for whichever route sorted first would be
+//     arbitrary in a way a reader cannot see.
+//   - one that is not an identifier at all. `invalid type` is go/types
+//     rendering Typ[Invalid] — a handler whose type did not check — and it
+//     reached 153 operations on gitea. It says nothing and cannot be dropped
+//     into generated code.
+//
+// The replacement is the operation's own method-and-path identity, which is
+// derived from the document rather than from the code, so it exists for every
+// operation and describes the one thing that is unique about it. Assignment is
+// in sorted (path, method) order and skips ids already spoken for, so the
+// result is a pure function of the document (golden rule #1).
+func repairOperationIDs(spec *OpenAPISpec) {
+	ops := sortedOperations(spec)
+	if len(ops) == 0 {
+		return
+	}
+
+	counts := map[string]int{}
+	for _, o := range ops {
+		counts[o.op.OperationID]++
+	}
+
+	// Ids that stay are spoken for, so a replacement never lands on one.
+	taken := map[string]bool{}
+	for _, o := range ops {
+		if id := o.op.OperationID; counts[id] == 1 && usableOperationID(id) {
+			taken[id] = true
+		}
+	}
+
+	for _, o := range ops {
+		id := o.op.OperationID
+		if counts[id] == 1 && usableOperationID(id) {
+			continue
+		}
+		for _, want := range operationIDCandidates(NamingMethodPath, o.method, o.path, id, len(ops)) {
+			if want == "" || taken[want] {
+				continue
+			}
+			taken[want] = true
+			o.op.OperationID = want
+			break
+		}
+	}
+}
+
+// usableOperationID reports whether an id can serve as an operationId at all.
+//
+// "invalid type" is go/types' rendering of Typ[Invalid], which reaches the
+// handler identity when a package does not type-check; it is prose, not a
+// name. An empty id is no better.
+func usableOperationID(id string) bool {
+	return id != "" && !strings.Contains(id, invalidTypeRendering)
+}
+
+// invalidTypeRendering is what go/types prints for Typ[Invalid]. Matched as a
+// string because that is the only form it arrives in here — the spec layer sees
+// a rendered name, not a types.Type.
+const invalidTypeRendering = "invalid type"
 
 // shortEntry is one component considered for shortening: the key it has now,
 // the import path of its Go type, and the unqualified rendering of that type.
@@ -251,22 +327,7 @@ func applySchemaRenames(spec *OpenAPISpec, renames map[string]string) {
 // unreachable belt-and-braces. Operations are visited in sorted (path, method) order, so which one
 // takes the plain name is decided by the document, not by map order.
 func applyOperationIDs(spec *OpenAPISpec, style string) {
-	type opRef struct {
-		path, method string
-		op           *Operation
-	}
-	var ops []opRef
-	for _, path := range slices.Sorted(maps.Keys(spec.Paths)) {
-		item := spec.Paths[path]
-		byMethod := operationsByMethod(&item)
-		for _, method := range slices.Sorted(maps.Keys(byMethod)) {
-			if op := byMethod[method]; op != nil {
-				ops = append(ops, opRef{path: path, method: method, op: op})
-			}
-		}
-		spec.Paths[path] = item
-	}
-
+	ops := sortedOperations(spec)
 	taken := map[string]bool{}
 	for _, o := range ops {
 		for _, want := range operationIDCandidates(style, o.method, o.path, o.op.OperationID, len(ops)) {
@@ -407,4 +468,30 @@ func operationsByMethod(item *PathItem) map[string]*Operation {
 		}
 	}
 	return out
+}
+
+// opRef is one operation with the path and method that identify it.
+type opRef struct {
+	path, method string
+	op           *Operation
+}
+
+// sortedOperations lists every operation in (path, method) order, so a pass
+// that assigns names cannot depend on map order (golden rule #1).
+func sortedOperations(spec *OpenAPISpec) []opRef {
+	if spec == nil {
+		return nil
+	}
+	var ops []opRef
+	for _, path := range slices.Sorted(maps.Keys(spec.Paths)) {
+		item := spec.Paths[path]
+		byMethod := operationsByMethod(&item)
+		for _, method := range slices.Sorted(maps.Keys(byMethod)) {
+			if op := byMethod[method]; op != nil {
+				ops = append(ops, opRef{path: path, method: method, op: op})
+			}
+		}
+		spec.Paths[path] = item
+	}
+	return ops
 }
