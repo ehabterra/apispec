@@ -53,6 +53,26 @@ func TestTestdata_ReceiverFieldPath(t *testing.T) {
 		t.Errorf("/plain missing; have %v", mapPathKeys(out.Paths))
 	}
 
+	// The builder's real path is RECOVERED, not merely left honest: the path was
+	// given once to the constructor (`r.Combo("/items")`) and each verb reads it
+	// back off the receiver, so it is resolved by following the chain to the call
+	// that built the receiver and reading the field out of the literal it
+	// returns (issue #461).
+	//
+	// Both verbs must appear, which is what pins the chain WALK: `.Post` links
+	// to `.Get`, not to the constructor, and a verb returns its receiver rather
+	// than a literal, so a single hop would recover only the first.
+	item, ok := out.Paths["/items"]
+	if !ok {
+		t.Fatalf("/items missing — the builder's path was not recovered; have %v", mapPathKeys(out.Paths))
+	}
+	if item.Get == nil {
+		t.Error("/items has no GET (r.Combo(\"/items\").Get)")
+	}
+	if item.Post == nil {
+		t.Error("/items has no POST — the chained verb links to Get, not to the constructor")
+	}
+
 	// What replaces a fabricated segment is a declared placeholder, not a
 	// silent shortening — the route stays addressable and visibly incomplete
 	// (issue #34), and #428 reports the registration.

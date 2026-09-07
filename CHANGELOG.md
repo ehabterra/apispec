@@ -25,6 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A path held on a builder's receiver is resolved, not just reported.** The
+  builder shape gives the path once, to a constructor, and reads it back off the
+  receiver for each verb — `r.Combo("/items").Get(list).Post(create)` — so the
+  registration itself has no path to read. #463 stopped the argument being
+  rendered as a Go symbol, which left an honest `{pattern}`; this resolves what
+  it stood for, by following the call chain back to the call that BUILT the
+  receiver and reading the field out of the literal it returns. On a real
+  project that recovered **33 endpoints** (899 paths → 932), turning collapsed
+  placeholders into real routes like `/-/admin/auths/new` and
+  `/notifications/threads/{id}`. Nothing is matched by name: a candidate call
+  qualifies only by returning a composite literal of the receiver's type
+  declaring that field, positional literals are matched against the struct's
+  declared field order, and the value must resolve to a constant or to the
+  argument bound to the parameter the literal stores — anything else stays a
+  placeholder. (#461)
+
 - **A path is never a rendered Go symbol.** When a path argument was a shape the
   resolver had no case for — a selector such as `c.pattern` or `settings.Path` —
   the argument was *rendered*, and rendering a selector yields a Go symbol. One

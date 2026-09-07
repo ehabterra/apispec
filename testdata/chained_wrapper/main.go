@@ -3,10 +3,17 @@
 // returned value, so by the time the framework call runs, the path is a field
 // read rather than a literal.
 //
-// Wrapper derivation already declines this shape — `--verbose` reports it as
-// "incomplete, not applied" — but the framework call inside the wrapper was
-// then matched on its own and documented at `/{pattern}` (issue #428). The two
-// decisions now agree: the registration is reported and left out.
+// Wrapper derivation declines this shape — `--verbose` reports it as
+// "incomplete, not applied" — and the framework call inside the wrapper was
+// then matched on its own and documented at `/{pattern}` (issue #428), then
+// reported and left out.
+//
+// It now RESOLVES: the chain leads back to the call that built the receiver,
+// whose returned literal stores the constructor's parameter, and the argument
+// bound to that parameter is recorded — so `/items` is derived from facts
+// rather than guessed (issue #461). The keyed literal here (`&Combo{r: r,
+// pattern: pattern}`) is the counterpart to receiver_field_path's positional
+// one; both spellings must resolve.
 //
 // The ordinary method on the SAME router must still resolve, which is what
 // separates "this wiring style is not supported" from "this router is not".

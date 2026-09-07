@@ -127,8 +127,26 @@ func TestTestdata_ChainedWrapper(t *testing.T) {
 	if _, ok := out.Paths["/{pattern}"]; ok {
 		t.Error("the chained registration must not be documented under its placeholder path")
 	}
-	if _, ok := out.Paths["/items"]; ok {
-		t.Error("the chained pattern is not readable at the framework call; documenting /items would be a guess")
+
+	// /items is now DERIVED, not guessed, so this expectation is inverted.
+	//
+	// It used to assert the opposite — "documenting /items would be a guess" —
+	// and that was right while the pattern was unreadable at the framework
+	// call. It is readable now: the chain leads back to the call that built the
+	// receiver (`Combo("/items")`), whose returned literal stores the
+	// constructor's parameter, and the argument bound to that parameter is
+	// recorded. Every step is a fact metadata holds, which is what separates
+	// this from a guess (issue #461).
+	items, ok := out.Paths["/items"]
+	if !ok {
+		t.Fatalf("the chained pattern is readable through the constructor; /items should be documented. have %v",
+			mapPathKeys(out.Paths))
+	}
+	if opFor(items, "GET") == nil {
+		t.Error("GET /items missing (Combo(\"/items\").Get)")
+	}
+	if opFor(items, "POST") == nil {
+		t.Error("POST /items missing — the chained verb links to Get rather than to the constructor, so the walk must continue past it")
 	}
 
 	// The ordinary method on the same router still resolves: what is unsupported
@@ -141,8 +159,10 @@ func TestTestdata_ChainedWrapper(t *testing.T) {
 		t.Error("GET /health missing")
 	}
 
-	// Both chained calls are reported.
-	if reports := gen.UnresolvedPaths(); len(reports) != 2 {
-		t.Errorf("want the chained Get and Post reported, got %d: %+v", len(reports), reports)
+	// Nothing is left to report: both chained calls resolve, so neither is an
+	// unresolved path any more. This is the other half of the inversion — the
+	// reports were the honest answer while the value was unreachable.
+	if reports := gen.UnresolvedPaths(); len(reports) != 0 {
+		t.Errorf("want no unresolved-path reports now that the chain resolves, got %d: %+v", len(reports), reports)
 	}
 }

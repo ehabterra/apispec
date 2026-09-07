@@ -242,6 +242,13 @@ func (b *BasePatternMatcher) resolvePathOperand(arg *metadata.CallArgument, node
 	if v, ok := b.paramValueFromCallSites(arg, node, depth); ok {
 		return v, ""
 	}
+	// A field of the RECEIVER, resolved through the call that constructed it —
+	// the builder shape `r.Combo("/items").Get(h)`, where the path was given to
+	// the constructor and every verb reads it back (issue #461). Last, so it is
+	// only asked once everything else has failed.
+	if v, ok := b.receiverFieldValue(arg, node); ok && v != "" {
+		return v, ""
+	}
 	return placeholderFor(arg)
 }
 
