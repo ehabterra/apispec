@@ -119,6 +119,19 @@ func shortSchemaNames(components *Components, usedTypes map[string]*Schema) map[
 
 	renames := map[string]string{}
 	taken := map[string]string{} // proposed name -> component key that claimed it
+	// A component this pass skips — wrapper-typed, unqualified, opaque — keeps
+	// the key it has. Reserve those first: a short name that happened to equal
+	// one would put two schemas under a single key, and the map would keep only
+	// the last, silently redirecting the other's $refs to the wrong type.
+	shortened := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		shortened[e.key] = true
+	}
+	for key := range components.Schemas {
+		if !shortened[key] {
+			taken[key] = key
+		}
+	}
 	for _, bare := range slices.Sorted(maps.Keys(byBare)) {
 		group := byBare[bare]
 		level := 0
@@ -231,10 +244,11 @@ func applySchemaRenames(spec *OpenAPISpec, renames map[string]string) {
 // generators reject.
 //
 // So a clash escalates rather than surrendering: receiver-method falls back to
-// the operation's own method-and-path identity, which is unique by construction
-// (OpenAPI cannot hold two operations for one method and path), and only a
-// clash there — two paths normalizing to the same identifier — takes a numeric
-// suffix. Operations are visited in sorted (path, method) order, so which one
+// the operation's own method-and-path identity, and a clash THERE — two paths
+// normalizing to one identifier, since /a-b and /a/b both read as "getAB" —
+// takes a numeric suffix. The pair is unique in OpenAPI; the identifier derived
+// from it is not, which is why the numbering exists rather than being
+// unreachable belt-and-braces. Operations are visited in sorted (path, method) order, so which one
 // takes the plain name is decided by the document, not by map order.
 func applyOperationIDs(spec *OpenAPISpec, style string) {
 	type opRef struct {
@@ -255,7 +269,7 @@ func applyOperationIDs(spec *OpenAPISpec, style string) {
 
 	taken := map[string]bool{}
 	for _, o := range ops {
-		for _, want := range operationIDCandidates(style, o.method, o.path, o.op.OperationID) {
+		for _, want := range operationIDCandidates(style, o.method, o.path, o.op.OperationID, len(ops)) {
 			if want == "" || taken[want] {
 				continue
 			}
@@ -268,9 +282,13 @@ func applyOperationIDs(spec *OpenAPISpec, style string) {
 
 // operationIDCandidates lists the ids to try for one operation, best first: the
 // chosen style, then the method-and-path identity, then that identity numbered.
-// The last is reached only when two paths normalize to the same string, and it
-// terminates because the counter is unbounded while the operations are finite.
-func operationIDCandidates(style, method, path, current string) []string {
+//
+// The numbering is not decoration. A method and path pair is unique in OpenAPI,
+// but the IDENTIFIER derived from it is not: methodPathID drops every
+// non-alphanumeric character, so /a-b, /a/b and /aB all read as "getAB". The
+// suffix is bounded by the number of operations, so a name is always available
+// — with n operations, at most n-1 can be ahead of this one on any given name.
+func operationIDCandidates(style, method, path, current string, operations int) []string {
 	byPath := methodPathID(method, path)
 	var out []string
 	switch style {
@@ -279,7 +297,7 @@ func operationIDCandidates(style, method, path, current string) []string {
 	case NamingReceiverMethod:
 		out = []string{receiverMethodID(current), byPath}
 	}
-	for i := 2; i <= 64; i++ {
+	for i := 2; i <= operations+1; i++ {
 		out = append(out, byPath+strconv.Itoa(i))
 	}
 	return out

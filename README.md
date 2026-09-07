@@ -865,8 +865,9 @@ components:
 Short names collide — two packages with a `Components` type is ordinary — so
 when they do, **every member of the colliding group is qualified** with the
 shortest package-path suffix that tells them apart (`billing_Components`,
-`estimate_Components`), never just one of them. `method-path` ids need no such
-rule: a method and path pair is unique in OpenAPI.
+`estimate_Components`), never just one of them. `method-path` ids need no
+package qualification, but they are not collision-free either — `/a-b` and
+`/a/b` both read as `getAB` — so a clash there takes a numeric suffix.
 
 Nothing changes unless you ask: a project that sets no `naming` block gets the
 same document it got before, byte for byte. See

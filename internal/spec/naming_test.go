@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -146,6 +147,9 @@ func TestApplySchemaRenamesRewritesEveryRefSite(t *testing.T) {
 					Parameters: []Parameter{{Name: "p", In: "query", Schema: ref("old")}},
 					RequestBody: &RequestBody{Content: map[string]MediaType{
 						"application/json": {Schema: &Schema{Properties: map[string]*Schema{"nested": ref("old")}}},
+						"multipart/form-data": {Encoding: map[string]Encoding{
+							"part": {Headers: map[string]Header{"X-Part": {Schema: ref("old")}}},
+						}},
 					}},
 					Responses: map[string]Response{
 						"200": {
@@ -183,5 +187,87 @@ func TestApplySchemaRenamesRewritesEveryRefSite(t *testing.T) {
 	})
 	if len(stale) != 0 {
 		t.Errorf("%d $ref sites still point at the old name", len(stale))
+	}
+}
+
+// A component this pass skips keeps its key, so a short name must not be
+// allowed to land on it: the components map would keep one schema and the
+// other's $refs would silently point at the wrong type.
+func TestShortSchemaNamesDoesNotClaimASkippedKey(t *testing.T) {
+	usedTypes := map[string]*Schema{
+		"github.com/acme/svc/internal/api.Reference": {Type: "object"},
+	}
+	components := &Components{Schemas: map[string]*Schema{
+		schemaComponentNameReplacer.Replace("github.com/acme/svc/internal/api.Reference"): {Type: "object"},
+		// Already unqualified, so shortSchemaNames skips it — and "Reference"
+		// is exactly what the qualified type above would shorten to.
+		"Reference": {Type: "string"},
+	}}
+
+	renames := shortSchemaNames(components, usedTypes)
+
+	spec := &OpenAPISpec{Paths: map[string]PathItem{}, Components: components}
+	applySchemaRenames(spec, renames)
+
+	if len(spec.Components.Schemas) != 2 {
+		t.Fatalf("a schema was dropped: %v", mapKeys(spec.Components.Schemas))
+	}
+	if got := spec.Components.Schemas["Reference"]; got == nil || got.Type != "string" {
+		t.Errorf("the skipped component was overwritten: %+v", got)
+	}
+}
+
+// Distinct paths can normalize to one identifier (/a-b and /a/b both read as
+// "getAB"), so the numeric fallback is load-bearing rather than decorative.
+func TestApplyOperationIDsNumbersNormalizedCollisions(t *testing.T) {
+	op := func(id string) *Operation { return &Operation{OperationID: id} }
+	spec := &OpenAPISpec{Paths: map[string]PathItem{
+		"/a-b": {Get: op("pkg.first")},
+		"/a/b": {Get: op("pkg.second")},
+		"/aB":  {Get: op("pkg.third")},
+	}}
+
+	applyOperationIDs(spec, NamingMethodPath)
+
+	seen := map[string]string{}
+	for path, item := range spec.Paths {
+		item := item
+		id := item.Get.OperationID
+		if prev, dup := seen[id]; dup {
+			t.Errorf("operationId %q used by both %s and %s", id, prev, path)
+		}
+		seen[id] = path
+	}
+	if len(seen) != 3 {
+		t.Errorf("want 3 distinct ids, got %v", seen)
+	}
+}
+
+// The numeric fallback must not run out. More operations normalizing to one
+// identifier than a fixed cap allows used to leave the overflow sharing an id;
+// the bound is the operation count, so a name is always available.
+func TestApplyOperationIDsFallbackScalesWithOperationCount(t *testing.T) {
+	const n = 70 // more than the fixed cap the first version used
+	paths := map[string]PathItem{}
+	for i := 0; i < n; i++ {
+		// Each path differs only in characters methodPathID drops, so all n
+		// normalize to the same identifier.
+		paths["/a"+strings.Repeat("-", i+1)+"b"] = PathItem{Get: &Operation{OperationID: "pkg.shared"}}
+	}
+	spec := &OpenAPISpec{Paths: paths}
+
+	applyOperationIDs(spec, NamingMethodPath)
+
+	seen := map[string]string{}
+	for path, item := range spec.Paths {
+		item := item
+		id := item.Get.OperationID
+		if prev, dup := seen[id]; dup {
+			t.Errorf("operationId %q shared by %s and %s", id, prev, path)
+		}
+		seen[id] = path
+	}
+	if len(seen) != n {
+		t.Errorf("got %d distinct ids for %d operations", len(seen), n)
 	}
 }

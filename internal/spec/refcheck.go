@@ -215,6 +215,16 @@ func mapSchemaRefs(spec *OpenAPISpec, rewrite func(ref string) string) {
 	walkContent := func(content map[string]MediaType) {
 		for ct, mt := range content {
 			walk(mt.Schema)
+			// A multipart part's own headers carry schemas too, and a $ref
+			// there needs a target like any other. Example/Examples hold
+			// values rather than schemas, so they have nothing to visit.
+			for name, enc := range mt.Encoding {
+				for hn, h := range enc.Headers {
+					walk(h.Schema)
+					enc.Headers[hn] = h
+				}
+				mt.Encoding[name] = enc
+			}
 			content[ct] = mt
 		}
 	}

@@ -245,10 +245,14 @@ Letting one `Components` keep the bare name would make the winner depend on
 nothing a reader can see. Groups are resolved in sorted order, so the result is
 reproducible run to run.
 
-`method-path` needs no such rule: a method and path pair is unique in OpenAPI,
-so the ids are unique by construction. They are also longer than a handler
-name — `deleteReposByOwnerByRepoIssuesByIndex` — which is the trade for
-carrying no Go symbol at all. `receiver-method` keeps them short.
+`method-path` needs no *package* qualification, but it is not collision-free
+either: a method and path pair is unique in OpenAPI, while the identifier
+derived from it is not — every non-alphanumeric character is dropped, so
+`/a-b`, `/a/b` and `/aB` all read as `getAB`. A collision there takes a numeric
+suffix (`getAB2`), assigned in sorted path order. These ids are also longer
+than a handler name — `deleteReposByOwnerByRepoIssuesByIndex` — which is the
+trade for carrying no Go symbol at all. `receiver-method` keeps them short, and
+falls back to the method-path form when a handler serves more than one route.
 
 A component whose type is a pointer or slice is left fully qualified: such a
 key is an artifact rather than a type anyone references, and shortening it
