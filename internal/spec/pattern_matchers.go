@@ -81,8 +81,27 @@ func (b *BasePatternMatcher) resolvePathArg(arg *metadata.CallArgument, node Tra
 		// it rather than emitting it.
 		value, name := b.resolvePathOperand(arg, node, 0)
 		return value, dynamicNameList(name)
+	case metadata.KindLiteral:
+		// The literal IS the path, and this is the overwhelmingly common case:
+		// 2389 of 2605 path arguments on a real project.
+		return b.contextProvider.GetArgumentInfo(arg), nil
 	}
-	return b.contextProvider.GetArgumentInfo(arg), nil
+	// Everything else — a selector (`c.pattern`, `settings.Path`), an index, a
+	// star — is answered by the same ladder, and becomes a {placeholder} when
+	// nothing resolves.
+	//
+	// It used to fall through to rendering the argument, and rendering a
+	// selector yields a Go SYMBOL, never a path. On one real project 216 path
+	// arguments took that branch, which put
+	// `gitea.dev/modules/web.Combo.pattern` into 60 paths as though it were a
+	// literal segment — endpoints that do not exist, with nothing to warn a
+	// reader (issue #461). The internal separator leaked too:
+	// `/recvfield-->Config.Path`.
+	//
+	// A placeholder is the honest answer instead, and #428 reports the
+	// registration rather than emitting a path built at runtime.
+	value, name := b.resolvePathOperand(arg, node, 0)
+	return value, dynamicNameList(name)
 }
 
 // dynamicNameList wraps a single synthesized name, or nil when there is none.
