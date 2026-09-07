@@ -102,6 +102,18 @@ func TestForEachSchemaRefVisitsEveryLocation(t *testing.T) {
 			return &OpenAPISpec{Paths: map[string]PathItem{}, Components: &Components{
 				Headers: map[string]*Header{"h": {Schema: refTo("T")}}}}
 		},
+		// A multipart part's own headers carry schemas, and a $ref there needs
+		// a target like any other. Found in review of #298: neither this
+		// walker nor the rename that now shares it looked inside Encoding.
+		"encoding headers": func() *OpenAPISpec {
+			return &OpenAPISpec{Paths: map[string]PathItem{"/x": {Post: &Operation{
+				RequestBody: &RequestBody{Content: map[string]MediaType{
+					"multipart/form-data": {Encoding: map[string]Encoding{
+						"part": {Headers: map[string]Header{"X-Part": {Schema: refTo("T")}}},
+					}},
+				}},
+			}}}}
+		},
 		"nested two deep": func() *OpenAPISpec {
 			return specWithSchemas(map[string]*Schema{"Outer": {Type: "array", Items: &Schema{
 				Properties: map[string]*Schema{"f": {Type: "array", Items: refTo("T")}}}}})

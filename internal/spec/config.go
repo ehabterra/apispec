@@ -886,6 +886,28 @@ type Defaults struct {
 	ResponseStatus      int    `yaml:"responseStatus,omitempty" json:"responseStatus,omitempty"`
 }
 
+// Naming selects how operationIds and component names are spelled.
+//
+// The default for both is "full": the fully-qualified Go symbol, which is
+// collision-free and reproducible. It also reproduces the module path, the
+// internal package layout and unexported handler names in a document that is
+// usually served over HTTP, and it makes 80-character TypeScript identifiers
+// downstream — so it is a choice rather than a law (issue #298).
+type Naming struct {
+	// OperationID is "full" (default), "receiver-method" or "method-path".
+	OperationID string `yaml:"operationId,omitempty" json:"operationId,omitempty"`
+	// SchemaNames is "full" (default) or "short".
+	SchemaNames string `yaml:"schemaNames,omitempty" json:"schemaNames,omitempty"`
+}
+
+// Naming style values.
+const (
+	NamingFull           = "full"
+	NamingShort          = "short"
+	NamingReceiverMethod = "receiver-method"
+	NamingMethodPath     = "method-path"
+)
+
 // ExternalType defines an external type that should be treated as known
 type ExternalType struct {
 	Name        string  `yaml:"name" json:"name,omitempty"`               // Full type name (e.g., "primitive.ObjectID")
@@ -913,6 +935,10 @@ type APISpecConfig struct {
 
 	// Defaults
 	Defaults Defaults `yaml:"defaults" json:"defaults,omitempty"`
+
+	// Naming selects how operationIds and component names are spelled
+	// (issue #298). Both default to the fully-qualified Go symbol.
+	Naming Naming `yaml:"naming,omitempty" json:"naming,omitempty"`
 
 	// OpenAPI metadata
 	Info            Info                      `yaml:"info" json:"info,omitempty"`

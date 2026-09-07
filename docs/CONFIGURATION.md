@@ -40,6 +40,7 @@ apispec --output-config used-config.yaml     # dump the effective config
 | `overrides` | list | Per-handler summary/description/response overrides. |
 | `include` / `exclude` | object | Filter which files/packages/functions/types are analysed. |
 | `defaults` | object | Fallback content types and response status. |
+| `naming` | object | How operationIds and component names are spelled. |
 | `security` | list | Document-level security requirements. |
 | `securitySchemes` | map | OpenAPI `securitySchemes` definitions. |
 | `securityMappings` | list | Map detected auth middleware to a scheme. |
@@ -200,6 +201,73 @@ defaults:
 | `requestContentType` | string | Default request body media type. |
 | `responseContentType` | string | Default response media type. |
 | `responseStatus` | int | Default success status when none is detected. |
+
+## `naming`
+
+By default every `operationId` is the fully-qualified Go symbol and every
+component name is that symbol with separators replaced. Those names are
+collision-free and reproducible, which is why they are the default — but they
+also reproduce the module path, the internal package layout and unexported
+handler names in a document that is usually served over HTTP, and they make
+80-character identifiers in a generated client.
+
+```yaml
+naming:
+  operationId: full          # full (default) | receiver-method | method-path
+  schemaNames: full          # full (default) | short
+```
+
+| Field | Value | Result |
+|-------|-------|--------|
+| `schemaNames` | `full` (default) | `github_com_acme_api_internal_estimate_LineInput` |
+| | `short` | `LineInput` |
+| `operationId` | `full` (default) | `github.com/acme/api/internal/httpapi.estimateHandler.updateLine` |
+| | `receiver-method` | `estimateHandler.updateLine` |
+| | `method-path` | `putEstimatesByIdLine` |
+
+An unknown value logs a warning and keeps `full`, so a typo cannot silently
+change the names your consumers depend on.
+
+### Collisions
+
+Two packages with a `Components` type are ordinary, and short names collide.
+When they do, **every member of the colliding group is qualified** — never just
+one of them — with the shortest suffix of its package path that tells them
+apart, extended a segment at a time:
+
+```yaml
+billing_Components      # from internal/billing
+estimate_Components     # from internal/estimate
+LineInput               # unique, so it stays bare
+```
+
+Letting one `Components` keep the bare name would make the winner depend on
+nothing a reader can see. Groups are resolved in sorted order, so the result is
+reproducible run to run.
+
+`method-path` needs no *package* qualification, but it is not collision-free
+either: a method and path pair is unique in OpenAPI, while the identifier
+derived from it is not — every non-alphanumeric character is dropped, so
+`/a-b`, `/a/b` and `/aB` all read as `getAB`. A collision there takes a numeric
+suffix (`getAB2`), assigned in sorted path order. These ids are also longer
+than a handler name — `deleteReposByOwnerByRepoIssuesByIndex` — which is the
+trade for carrying no Go symbol at all. `receiver-method` keeps them short, and
+falls back to the method-path form when a handler serves more than one route.
+
+A component whose type is a pointer or slice is left fully qualified: such a
+key is an artifact rather than a type anyone references, and shortening it
+would collide with the component for the type itself.
+
+### Trying it on your project
+
+A `-c` config **replaces** the framework preset rather than merging with it, so
+write the effective config out first and edit that:
+
+```bash
+apispec --dir . --output-config used-config.yaml   # what apispec composed
+# add a `naming:` block to used-config.yaml
+apispec --dir . -c used-config.yaml -o openapi.yaml
+```
 
 ## Security: `security`, `securitySchemes`, `securityMappings`
 

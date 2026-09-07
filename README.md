@@ -833,6 +833,46 @@ there. A `json:"-"` field stays absent — a comment never resurrects a field th
 encoder skips. Applies to every type kind: structs, interfaces, aliases and
 named container types.
 
+### Naming: shorter operationIds and component names
+
+By default an `operationId` is the fully-qualified Go symbol and a component
+name is that symbol with separators replaced. Those names never collide, which
+is why they are the default — but they also put your module path, internal
+package layout and unexported handler names into a document you probably serve
+over HTTP, and they make identifiers long enough that a generated client needs
+an alias for every type.
+
+```yaml
+naming:
+  operationId: method-path   # full (default) | receiver-method | method-path
+  schemaNames: short         # full (default) | short
+```
+
+```yaml
+# full (default)
+operationId: github.com/acme/api/internal/httpapi.estimateHandler.updateLine
+components:
+  schemas:
+    github_com_acme_api_internal_estimate_LineInput: {}
+
+# naming: {operationId: method-path, schemaNames: short}
+operationId: putEstimatesByIdLine
+components:
+  schemas:
+    LineInput: {}
+```
+
+Short names collide — two packages with a `Components` type is ordinary — so
+when they do, **every member of the colliding group is qualified** with the
+shortest package-path suffix that tells them apart (`billing_Components`,
+`estimate_Components`), never just one of them. `method-path` ids need no
+package qualification, but they are not collision-free either — `/a-b` and
+`/a/b` both read as `getAB` — so a clash there takes a numeric suffix.
+
+Nothing changes unless you ask: a project that sets no `naming` block gets the
+same document it got before, byte for byte. See
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md#naming) for the full table.
+
 ### Request body source disambiguation
 
 Generic decoders like `json.Decode`, `json.Unmarshal`, and `render.DecodeJSON` are used both for request bodies *and* for unrelated decoding (config files, internal payloads). The `requestContext` block tells APISpec which receivers represent a request context and which method names yield the body. A decoder call is classified as a request-body decoder only when its source argument can be traced — through selectors, idents, assignments, and parameter boundaries — back to a body accessor on a request-context root.

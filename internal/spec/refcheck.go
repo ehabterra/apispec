@@ -144,13 +144,39 @@ func goTypeByComponentName(usedTypes map[string]*Schema) map[string]string {
 // walking the typed document rather than the schemas map alone — request
 // bodies, responses, headers, parameters and the components section each carry
 // their own.
+// forEachSchemaRef visits the component name behind every $ref in the spec.
+//
+// Implemented on top of mapSchemaRefs so the enumeration the dangling-ref
+// check trusts and the rewrite the naming pass performs cannot drift apart:
+// one traversal, two uses. A ref site added to the walk is therefore both
+// counted and rewritable, which is what keeps a rename from dangling.
 func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
+	mapSchemaRefs(spec, func(ref string) string {
+		if name, ok := componentSchemaName(ref); ok {
+			visit(name)
+		}
+		return ref
+	})
+}
+
+// mapSchemaRefs replaces every $ref in the spec with rewrite(ref), in place.
+//
+// rewrite is called with the whole ref string and returns its replacement, so
+// returning the argument unchanged makes this a pure traversal. Value-typed
+// containers (a Parameter in a slice, a MediaType or Response in a map) are
+// written back explicitly; a pointer-typed Schema is updated through the
+// pointer.
+func mapSchemaRefs(spec *OpenAPISpec, rewrite func(ref string) string) {
+	if spec == nil {
+		return
+	}
 	// A RECURSION STACK, not a global visited set: the same *Schema can be
 	// mounted in two operations, and both are references that need a target.
 	// Deduplicating globally would visit it once and undercount Sites, which
 	// is the number telling a user how much of their spec is affected. Only a
 	// schema currently being walked is skipped, which is what makes a
-	// self-referential type terminate.
+	// self-referential type terminate. Rewriting is idempotent, so a schema
+	// reached twice is rewritten twice to the same value.
 	onPath := map[*Schema]bool{}
 
 	var walk func(s *Schema)
@@ -161,9 +187,7 @@ func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
 		onPath[s] = true
 		defer delete(onPath, s)
 
-		if name, ok := componentSchemaName(s.Ref); ok {
-			visit(name)
-		}
+		s.Ref = rewrite(s.Ref)
 		for _, p := range s.Properties {
 			walk(p)
 		}
@@ -175,31 +199,47 @@ func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
 				walk(member)
 			}
 		}
+		if s.Discriminator != nil {
+			for k, v := range s.Discriminator.Mapping {
+				s.Discriminator.Mapping[k] = rewrite(v)
+			}
+		}
 	}
 
 	walkParams := func(params []Parameter) {
-		for _, p := range params {
-			if name, ok := componentSchemaName(p.Ref); ok {
-				visit(name)
-			}
-			walk(p.Schema)
+		for i := range params {
+			params[i].Ref = rewrite(params[i].Ref)
+			walk(params[i].Schema)
 		}
 	}
 	walkContent := func(content map[string]MediaType) {
-		for _, mt := range content {
+		for ct, mt := range content {
 			walk(mt.Schema)
+			// A multipart part's own headers carry schemas too, and a $ref
+			// there needs a target like any other. Example/Examples hold
+			// values rather than schemas, so they have nothing to visit.
+			for name, enc := range mt.Encoding {
+				for hn, h := range enc.Headers {
+					walk(h.Schema)
+					enc.Headers[hn] = h
+				}
+				mt.Encoding[name] = enc
+			}
+			content[ct] = mt
 		}
 	}
 	walkResponses := func(responses map[string]Response) {
-		for _, r := range responses {
+		for status, r := range responses {
 			walkContent(r.Content)
-			for _, h := range r.Headers {
+			for name, h := range r.Headers {
 				walk(h.Schema)
+				r.Headers[name] = h
 			}
+			responses[status] = r
 		}
 	}
 
-	for _, item := range spec.Paths {
+	for path, item := range spec.Paths {
 		walkParams(item.Parameters)
 		for _, op := range []*Operation{item.Get, item.Post, item.Put, item.Delete, item.Patch, item.Head, item.Options} {
 			if op == nil {
@@ -211,6 +251,7 @@ func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
 			}
 			walkResponses(op.Responses)
 		}
+		spec.Paths[path] = item
 	}
 
 	if spec.Components == nil {
@@ -223,6 +264,7 @@ func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
 		if p == nil {
 			continue
 		}
+		p.Ref = rewrite(p.Ref)
 		walk(p.Schema)
 	}
 	for _, rb := range spec.Components.RequestBodies {
@@ -236,8 +278,9 @@ func forEachSchemaRef(spec *OpenAPISpec, visit func(name string)) {
 			continue
 		}
 		walkContent(r.Content)
-		for _, h := range r.Headers {
+		for name, h := range r.Headers {
 			walk(h.Schema)
+			r.Headers[name] = h
 		}
 	}
 	for _, h := range spec.Components.Headers {
