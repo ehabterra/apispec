@@ -432,6 +432,11 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		spec.Components.SecuritySchemes = schemes
 	}
 
+	// Rename before the consistency check, not after: if a rename ever missed a
+	// $ref site, the repair below reports it instead of the spec shipping a
+	// dangling reference (issue #298).
+	applyNaming(spec, cfg, usedTypes)
+
 	// Last, once every component is registered: make the document internally
 	// consistent. Anything still pointing at nothing is repaired with the
 	// honest placeholder and reported, so a spec that cannot resolve never

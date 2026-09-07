@@ -19,6 +19,17 @@ const txt = (label, value, onInput, ph = "") => html`
     <input class="input" value=${value || ""} placeholder=${ph} onInput=${onInput} />
   </div>
 `;
+const sel = (label, value, options, onChange, help = "") => html`
+  <div class="field">
+    <label>${label}</label>
+    <select class="input" onChange=${onChange}>
+      ${options.map(
+        (o) => html`<option value=${o.value} selected=${(value || options[0].value) === o.value}>${o.label}</option>`,
+      )}
+    </select>
+    ${help ? html`<div class="hint">${help}</div>` : null}
+  </div>
+`;
 const area = (label, value, onInput, ph = "") => html`
   <div class="field">
     <label>${label}</label>
@@ -253,6 +264,7 @@ export function ConfigMode() {
 
   const setInfo = (patch) => setConfig({ info: { ...c.info, ...patch } });
   const setDefaults = (patch) => setConfig({ defaults: { ...c.defaults, ...patch } });
+  const setNaming = (patch) => setConfig({ naming: { ...c.naming, ...patch } });
   const setFilter = (which, field, value) =>
     setConfig({ [which]: { ...(c[which] || {}), [field]: value } });
   const setExtDocs = (patch) =>
@@ -358,6 +370,28 @@ export function ConfigMode() {
             ${txt("Request content-type", c.defaults?.requestContentType, (e) => setDefaults({ requestContentType: e.target.value }), "application/json")}
             ${txt("Response content-type", c.defaults?.responseContentType, (e) => setDefaults({ responseContentType: e.target.value }), "application/json")}
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
+          <//>
+
+          <${Section} title="Naming" help="How operationIds and component names are spelled. The default, 'full', is the fully-qualified Go symbol: collision-free and reproducible, but it puts your module path, package layout and unexported handler names into a document you may serve publicly, and it makes very long identifiers in a generated client. Short names are qualified only where they would collide, and then every member of the colliding group is qualified — so no name wins for invisible reasons.">
+            ${sel(
+              "operationId",
+              c.naming?.operationId,
+              [
+                { value: "full", label: "full — github.com/acme/api/internal/httpapi.handler.update" },
+                { value: "receiver-method", label: "receiver-method — handler.update" },
+                { value: "method-path", label: "method-path — putEstimatesByIdLine" },
+              ],
+              (e) => setNaming({ operationId: e.target.value }),
+            )}
+            ${sel(
+              "schemaNames",
+              c.naming?.schemaNames,
+              [
+                { value: "full", label: "full — github_com_acme_api_internal_estimate_LineInput" },
+                { value: "short", label: "short — LineInput" },
+              ],
+              (e) => setNaming({ schemaNames: e.target.value }),
+            )}
           <//>
 
           <${Section} title="Analysis limits" help="How far the analysis is allowed to walk the call tree. Raise these when a project is large enough that the default budget stops expansion part-way through its routes; leave them blank to use the defaults shown.">

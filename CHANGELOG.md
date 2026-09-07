@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`naming`: choose how operationIds and component names are spelled.** Both
+  default to the fully-qualified Go symbol, which is collision-free and
+  reproducible — and also reproduces the module path, the internal package
+  layout and unexported handler names in a document that is usually served over
+  HTTP, in identifiers long enough that a generated client needs an alias for
+  every type. `schemaNames: short` gives `LineInput`; `operationId:
+  receiver-method` gives `estimateHandler.updateLine`, and `method-path` gives
+  `putEstimatesByIdLine`, which carries no Go symbol at all. When short names
+  collide — two packages with a `Components` type is ordinary — **every member
+  of the group is qualified**, with the shortest package-path suffix that tells
+  them apart, so no name wins for reasons a reader cannot see. The default is
+  unchanged in every respect: a project that says nothing about naming gets the
+  same document, byte for byte. (#298)
+
 ### Fixed
 
 - **One Go type now produces one component, and the right one.** A response type
