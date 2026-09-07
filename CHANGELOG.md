@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A path is never a rendered Go symbol.** When a path argument was a shape the
+  resolver had no case for — a selector such as `c.pattern` or `settings.Path` —
+  the argument was *rendered*, and rendering a selector yields a Go symbol. One
+  real project had **60 paths** reading
+  `/-/admin/auths/gitea.dev/modules/web.Combo.pattern`: endpoints that do not
+  exist, with nothing to warn a reader, so a consumer would call a URL that
+  404s. The internal type separator leaked too (`/recvfield-->Config.Path`).
+  Such an argument now goes through the same value-resolution ladder as any
+  other path, and becomes a declared `{placeholder}` when nothing resolves — the
+  route stays addressable and visibly incomplete instead of fabricated. A path
+  written as a literal is unaffected, which is 2389 of 2605 path arguments on
+  that project. (#461)
+
 - **operationIds are unique, and never prose.** An `operationId` identifies an
   operation and must be unique — a client generator turns it into a method name
   — but the fully-qualified handler symbol cannot carry that, because a shared
