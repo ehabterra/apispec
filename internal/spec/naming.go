@@ -289,6 +289,12 @@ func operationIDCandidates(style, method, path, current string) []string {
 // keeping the receiver and method that identify the handler in its own package
 // ("…/internal/httpapi.estimateHandler.updateLine" -> "estimateHandler.updateLine").
 //
+// A generic handler is qualified INSIDE its type argument as well
+// ("…/modules/web.Bind[…/services/forms.InstallForm]"), so the base and the
+// argument list are unqualified separately. Trimming the whole string at its
+// last "/" would cut inside the brackets and leave "InstallForm]" — which is
+// how gitea's spec looked before this was split out.
+//
 // A closure has no receiver and its tail is a source position
 // ("pkg.FuncLit:router.go:998:21"); dropping the path is still an improvement,
 // and method-path is the better choice for a codebase written that way.
@@ -296,15 +302,35 @@ func receiverMethodID(full string) string {
 	if full == "" {
 		return ""
 	}
-	tail := full
-	if i := strings.LastIndex(tail, "/"); i >= 0 {
-		tail = tail[i+1:]
+	base, args := full, ""
+	if i := strings.Index(full, "["); i >= 0 {
+		base, args = full[:i], full[i:]
+	}
+	base = unqualifySymbol(base)
+	if args == "" {
+		return base
+	}
+	// Each type argument is unqualified the same way, so Bind[…forms.X] reads
+	// as Bind[X] rather than carrying a second import path.
+	inner := strings.TrimSuffix(strings.TrimPrefix(args, "["), "]")
+	parts := strings.Split(inner, ",")
+	for i, p := range parts {
+		parts[i] = unqualifySymbol(strings.TrimSpace(p))
+	}
+	return base + "[" + strings.Join(parts, ", ") + "]"
+}
+
+// unqualifySymbol drops an import path and the package name from a qualified Go
+// symbol, keeping everything that identifies it within its own package.
+func unqualifySymbol(sym string) string {
+	if i := strings.LastIndex(sym, "/"); i >= 0 {
+		sym = sym[i+1:]
 	}
 	// What remains is "pkgname.Rest"; drop the package name.
-	if i := strings.Index(tail, "."); i >= 0 && i+1 < len(tail) {
-		tail = tail[i+1:]
+	if i := strings.Index(sym, "."); i >= 0 && i+1 < len(sym) {
+		sym = sym[i+1:]
 	}
-	return tail
+	return sym
 }
 
 // methodPathID builds "getUsersByIdItems" from GET /users/{id}/items: the verb,

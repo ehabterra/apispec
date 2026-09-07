@@ -46,6 +46,12 @@ func TestReceiverMethodID(t *testing.T) {
 		// A closure's tail is a source position. Dropping the module path is
 		// still an improvement; method-path suits such a codebase better.
 		{"github.com/acme/api/internal/http.FuncLit:router.go:998:21", "FuncLit:router.go:998:21"},
+		// A generic handler is qualified inside its type argument too, so the
+		// base and the argument are unqualified separately. Trimming the whole
+		// string at its last "/" cut inside the brackets and left
+		// "InstallForm]" in a real spec.
+		{"gitea.dev/modules/web.Bind[gitea.dev/services/forms.InstallForm]", "Bind[InstallForm]"},
+		{"acme.dev/web.Bind[acme.dev/forms.A, acme.dev/forms.B]", "Bind[A, B]"},
 		{"", ""},
 	} {
 		if got := receiverMethodID(tc.full); got != tc.want {
