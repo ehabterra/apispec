@@ -271,3 +271,71 @@ func TestApplyOperationIDsFallbackScalesWithOperationCount(t *testing.T) {
 		t.Errorf("got %d distinct ids for %d operations", len(seen), n)
 	}
 }
+
+// "invalid type" is go/types rendering Typ[Invalid] — a handler whose type did
+// not check. It reached 153 operationIds on a real project (issue #459). It is
+// prose, not a name, so it is replaced even when it is not duplicated.
+func TestRepairOperationIDsReplacesUnusableIDs(t *testing.T) {
+	spec := &OpenAPISpec{Paths: map[string]PathItem{
+		"/a": {Get: &Operation{OperationID: "invalid type"}},
+		"/b": {Get: &Operation{OperationID: ""}},
+		"/c": {Get: &Operation{OperationID: "pkg.realHandler"}},
+	}}
+
+	repairOperationIDs(spec)
+
+	if got := spec.Paths["/a"].Get.OperationID; got != "getA" {
+		t.Errorf("/a: operationId %q, want %q", got, "getA")
+	}
+	if got := spec.Paths["/b"].Get.OperationID; got != "getB" {
+		t.Errorf("/b: operationId %q, want %q", got, "getB")
+	}
+	// Unique and usable: left exactly as it was.
+	if got := spec.Paths["/c"].Get.OperationID; got != "pkg.realHandler" {
+		t.Errorf("/c: operationId %q, want it untouched", got)
+	}
+}
+
+// Every holder of a duplicated id is replaced, not the runners-up: keeping it
+// for whichever route sorted first would be arbitrary in a way a reader cannot
+// see.
+func TestRepairOperationIDsReplacesEveryHolderOfADuplicate(t *testing.T) {
+	spec := &OpenAPISpec{Paths: map[string]PathItem{
+		"/x": {Get: &Operation{OperationID: "pkg.shared"}},
+		"/y": {Get: &Operation{OperationID: "pkg.shared"}},
+		"/z": {Get: &Operation{OperationID: "pkg.unique"}},
+	}}
+
+	repairOperationIDs(spec)
+
+	for path, want := range map[string]string{"/x": "getX", "/y": "getY", "/z": "pkg.unique"} {
+		if got := spec.Paths[path].Get.OperationID; got != want {
+			t.Errorf("%s: operationId %q, want %q", path, got, want)
+		}
+	}
+}
+
+// A replacement never lands on an id that a kept operation already holds.
+func TestRepairOperationIDsAvoidsKeptIDs(t *testing.T) {
+	spec := &OpenAPISpec{Paths: map[string]PathItem{
+		// Both duplicates normalize to "getA"...
+		"/a-": {Get: &Operation{OperationID: "pkg.shared"}},
+		"/a":  {Get: &Operation{OperationID: "pkg.shared"}},
+		// ...and this operation already owns "getA" outright.
+		"/A": {Get: &Operation{OperationID: "getA"}},
+	}}
+
+	repairOperationIDs(spec)
+
+	seen := map[string]string{}
+	for path, item := range spec.Paths {
+		id := item.Get.OperationID
+		if prev, dup := seen[id]; dup {
+			t.Errorf("operationId %q shared by %s and %s", id, prev, path)
+		}
+		seen[id] = path
+	}
+	if got := spec.Paths["/A"].Get.OperationID; got != "getA" {
+		t.Errorf("/A: operationId %q, want it untouched", got)
+	}
+}

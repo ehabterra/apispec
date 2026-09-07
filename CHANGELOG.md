@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **operationIds are unique, and never prose.** An `operationId` identifies an
+  operation and must be unique — a client generator turns it into a method name
+  — but the fully-qualified handler symbol cannot carry that, because a shared
+  middleware or wrapper genuinely *is* the resolved handler for many routes. One
+  real project had **1109 operations under 700 ids**, `reqToken` alone
+  accounting for 46, and 153 operations whose id was the string `invalid type`
+  (go/types rendering a handler whose type did not check). A duplicated or
+  unusable id is now replaced — for **every** route holding it, not the
+  runners-up — by the operation's own method-and-path identity; an id that is
+  unique and usable is left exactly as it was. On that project 617 of 1109 ids
+  are untouched and the remaining 492 are repaired. A wrapped route and the same
+  handler registered directly therefore no longer share an id: attribution is
+  what the operation says (summary, request schema, responses), not its name.
+  (#459)
+
 - **One Go type now produces one component, and the right one.** A response type
   recovered from a call carried the package's *name* (`api.Issue`) while
   metadata's own type strings carry the import *path* (`example.com/api.Issue`),
