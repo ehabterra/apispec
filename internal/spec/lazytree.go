@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 // LazyTree implements TrackerTreeInterface over metadata, expanding on demand.
@@ -227,6 +228,14 @@ type LazyTree struct {
 	// using it directly would let one `foo(q.Get("x"))` anywhere suppress
 	// every `Values.Get` call site in the project.
 	argInstanceIDs map[string]bool
+
+	// funcTypes memoizes funcValued by type string (see funcValued).
+	funcTypes map[string]bool
+
+	// boundArgs interns the value bound to a parameter at one invocation, so a
+	// substituted child has ONE identity across the prune's index and the
+	// expansion (see internBoundArg).
+	boundArgs map[boundArgKey]*metadata.CallArgument
 
 	// plans memoizes each node content-identity's expansion plan — the
 	// "(edgeID, relevant bindings)" memoization from the redesign doc §7:
@@ -1169,6 +1178,202 @@ type planKey struct {
 	isArg bool
 }
 
+// boundSpec substitutes an argument that is a forwarded PARAMETER with the
+// value the caller bound to it, so the child carries something expandable.
+//
+// A handler passed down a wrapper — `Combo.Get(h)` reaching
+// `mux.HandleFunc(path, h)` — is the parameter `h` at the registration, and a
+// parameter has no body: the argument child expands to nothing, so the route
+// documents no responses, no request body and no summary. The concrete handler
+// is never *called* anywhere either, only passed, so nothing else pulls it into
+// the tree (issue #466).
+//
+// It cannot live in buildPlan: plans are memoized per content identity and
+// built before the node is attached, so the parent — and therefore the binding
+// — is not available there. That is the documented split, not an accident.
+//
+// Narrow on purpose. The substitution only happens when the bound value has
+// calls of its own, which is the whole point (a body to expand) and keeps the
+// hot path from re-keying every forwarded string and int in the graph.
+func (n *LazyNode) boundSpec(spec childSpec) childSpec {
+	if spec.arg == nil || n.parent == nil || spec.arg.GetKind() != metadata.KindIdent {
+		return spec
+	}
+	inv := n.parent.edge
+	if inv == nil || len(inv.ParamArgMap) == 0 {
+		return spec
+	}
+	name := spec.arg.GetName()
+	if name == "" {
+		return spec
+	}
+	if _, ok := inv.ParamArgMap[name]; !ok {
+		return spec
+	}
+	if sub, ok := n.tree.substituteBound(spec, inv, name); ok {
+		return sub
+	}
+	return spec
+}
+
+// substituteBound rewrites spec to carry `bound` instead of the parameter it
+// forwards, or reports false when there is nothing to gain.
+//
+// One rule, two callers, deliberately: the per-path substitution in boundSpec
+// and the enumeration the prune's index needs (boundSpecVariants). If they
+// disagreed, the index would answer for an identity the expansion never builds
+// — or, as it did before this was shared, the expansion would build one the
+// index has never heard of and the prune would drop it.
+func (t *LazyTree) substituteBound(spec childSpec, inv *metadata.CallGraphEdge, name string) (childSpec, bool) {
+	boundArg := t.internBoundArg(inv, name)
+	if boundArg == nil || spec.arg == nil || boundArg.GetName() == spec.arg.GetName() {
+		return spec, false
+	}
+	// Only a FUNCTION-valued argument. This is what the substitution is for — a
+	// handler forwarded through a wrapper — and on gitea it is the difference
+	// between 446,034 substitutions and 49,544: 60% of the rest are plain
+	// `string` parameters, then `[]any` and `[]byte`. Those cannot open a route
+	// the walk could not already see, and marking their identities reachable
+	// un-prunes subtrees the barren-subtree prune exists to drop, which cost
+	// +81% node materialisation for one extra response body (issue #466).
+	if !t.funcValued(spec.arg) && !t.funcValued(boundArg) {
+		return spec, false
+	}
+	key := strings.TrimPrefix(boundArg.ID(), "*")
+	if key == "" || key == spec.key {
+		return spec, false
+	}
+	// Base key, as the plan's own callee lookup does: an argument ID carries a
+	// position suffix, and edgesFor is keyed by the position-stripped form.
+	if len(t.edgesFor(metadata.StripToBase(key))) == 0 {
+		return spec, false // nothing to expand: leave the argument as written
+	}
+	spec.arg = boundArg
+	spec.key = key
+	spec.keyID = t.internKey(key)
+	spec.argType = classifyArgument(boundArg)
+	return spec, true
+}
+
+// funcValued reports whether an argument's type is a function.
+//
+// Two forms, because both occur: a literal signature ("func(w
+// net/http.ResponseWriter, r *net/http.Request)"), and a NAMED type whose
+// underlying is one — `net/http.HandlerFunc`. A named type records its
+// underlying in Target, so the check is a fact lookup rather than a guess about
+// the name. Both are consulted for the parameter AND the bound value, since a
+// stdlib named type may not be in metadata at all while the value bound to it
+// still renders as a signature.
+func (t *LazyTree) funcValued(arg *metadata.CallArgument) bool {
+	if arg == nil {
+		return false
+	}
+	ts := arg.GetType()
+	if ts == "" {
+		return false
+	}
+	// Memoized by type string. The uncached version parsed a type and walked
+	// metadata for every candidate, and substituteBound runs per child per
+	// materialised node — putting an allocating parse on the expansion hot path
+	// took the spec-mapping stage from 2m38 to 7m45 on gitea. Distinct type
+	// strings are a few thousand; nodes are millions.
+	if v, ok := t.funcTypes[ts]; ok {
+		return v
+	}
+	v := strings.HasPrefix(ts, "func(")
+	if !v {
+		if core := typemodel.Parse(ts).Core(); core != nil && core.Name != "" {
+			if typ := typeByName(core.Pkg, core.Name, t.meta); typ != nil {
+				v = strings.HasPrefix(getStringFromPool(t.meta, typ.Target), "func(")
+			}
+		}
+	}
+	if t.funcTypes == nil {
+		t.funcTypes = map[string]bool{}
+	}
+	t.funcTypes[ts] = v
+	return v
+}
+
+// internBoundArg returns ONE pointer per (invocation, parameter) for the value
+// bound there.
+//
+// This is not an optimisation. A spec's identity compares its argument by
+// POINTER (specIdentity), and `bound := edge.ParamArgMap[name]` copies — map
+// values are not addressable — so building the argument twice yields two
+// identities for one value. The prune's index would then enumerate one and the
+// expansion would materialise the other, the reach lookup would miss, and the
+// child would be pruned exactly as if it had never been enumerated. That is the
+// shape that made the first attempt at this look correct and change nothing.
+func (t *LazyTree) internBoundArg(inv *metadata.CallGraphEdge, name string) *metadata.CallArgument {
+	if inv == nil {
+		return nil
+	}
+	if t.boundArgs == nil {
+		t.boundArgs = map[boundArgKey]*metadata.CallArgument{}
+	}
+	bk := boundArgKey{edge: inv, name: name}
+	if arg, ok := t.boundArgs[bk]; ok {
+		return arg
+	}
+	bound, ok := inv.ParamArgMap[name]
+	if !ok {
+		t.boundArgs[bk] = nil
+		return nil
+	}
+	arg := handlerArgValue(&bound)
+	t.boundArgs[bk] = arg
+	return arg
+}
+
+// boundArgKey identifies a binding: which call, which parameter.
+type boundArgKey struct {
+	edge *metadata.CallGraphEdge
+	name string
+}
+
+// boundSpecVariants lists every substitution this argument could take across
+// the call sites of the function whose body writes it.
+//
+// The prune's reach index is built from PLANS, and a substituted child is an
+// identity no plan lists — so without enumerating them here, canReachMatch
+// answers with the zero value (false) and the barren-subtree prune skips every
+// handler that arrived through a wrapper, which is exactly what it did
+// (issue #466).
+//
+// Enumerating all bindings rather than one is what makes this sound at index
+// time: the index is over content identities, not paths, and any of these
+// bindings can be the one a given path carries.
+func (t *LazyTree) boundSpecVariants(spec childSpec) []childSpec {
+	if spec.arg == nil || spec.arg.GetKind() != metadata.KindIdent || spec.argEdge == nil {
+		return nil
+	}
+	name := spec.arg.GetName()
+	if name == "" {
+		return nil
+	}
+	// The argument is written in the body of the function that makes this call,
+	// so its bindings are on the edges INTO that function.
+	enclosing := spec.argEdge.Caller.BaseID()
+	if enclosing == "" {
+		return nil
+	}
+	var out []childSpec
+	seen := map[int32]bool{}
+	for _, in := range t.meta.Callees[enclosing] {
+		if _, ok := in.ParamArgMap[name]; !ok {
+			continue
+		}
+		sub, ok := t.substituteBound(spec, in, name)
+		if !ok || seen[sub.keyID] {
+			continue
+		}
+		seen[sub.keyID] = true
+		out = append(out, sub)
+	}
+	return out
+}
+
 // GetChildren implements TrackerNodeInterface, expanding on first access.
 // The expansion PLAN (which children exist, structurally) is memoized per
 // content identity; only the per-path guards — cycle check, per-scope
@@ -1223,6 +1428,12 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 	// they actually hold, and 91% of expansions hold two children or fewer.
 	childCount := 0
 	for _, spec := range plan {
+		// Per-path, because the plan cannot know it: a value forwarded through
+		// this function's PARAMETER is bound by the call that reached it, and
+		// that binding lives on this node's parent frame. Substituted here, so
+		// the cycle guard, the prune and the instance caps all judge the child
+		// that will actually be built (issue #466).
+		spec = n.boundSpec(spec)
 		if spec.arg == nil && childCount >= n.tree.limits.MaxChildrenPerNode {
 			continue
 		}

@@ -73,6 +73,22 @@ func TestTestdata_ReceiverFieldPath(t *testing.T) {
 		t.Error("/items has no POST — the chained verb links to Get, not to the constructor")
 	}
 
+	// The handlers are only ever PASSED to the builder, never called, and they
+	// arrive at the registration as the wrapper's parameter — so their bodies
+	// were invisible to the walk and both verbs documented the framework's
+	// "no response found" default. With the binding substituted, the handler's
+	// own encode/WriteHeader is read (issue #466).
+	if item.Get != nil {
+		if _, ok := item.Get.Responses["200"]; !ok {
+			t.Errorf("GET /items responses = %v, want the 200 its handler encodes", sortedStatusKeys(item.Get))
+		}
+	}
+	if item.Post != nil {
+		if _, ok := item.Post.Responses["201"]; !ok {
+			t.Errorf("POST /items responses = %v, want the 201 its handler writes", sortedStatusKeys(item.Post))
+		}
+	}
+
 	// What replaces a fabricated segment is a declared placeholder, not a
 	// silent shortening — the route stays addressable and visibly incomplete
 	// (issue #34), and #428 reports the registration.
