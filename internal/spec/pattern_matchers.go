@@ -957,6 +957,25 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 
 	if hi, ok := r.handlerArgIndex(edge); ok {
 		handlerArg := handlerArgValue(edge.Args[hi])
+		// A handler that reached the registration through a wrapper parameter is
+		// a PARAMETER here, and rendering a parameter yields its TYPE
+		// ("net/http.HandlerFunc"), which identifies no function. Everything
+		// about the operation hangs off this one value — its responses, request
+		// body, doc-comment summary and operationId — so a wrapper's routes were
+		// documented at the right path with no body at all, while the same
+		// handlers registered directly resolved fully (issue #466).
+		//
+		// The binding is recorded: the enclosing function's invocation carries
+		// ParamArgMap["h"] = listItems. resolveArgThroughParams already walks
+		// exactly that, hop by hop, and returns the argument unchanged when
+		// there is nothing to follow — so a handler named directly is untouched.
+		//
+		// This is #463's rule ("never render an argument") applied to the other
+		// argument of a registration: rendering a path yields a Go symbol,
+		// rendering a handler yields a type.
+		if resolved, _ := resolveArgThroughParams(handlerArg, node); resolved != nil {
+			handlerArg = handlerArgValue(resolved)
+		}
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
 
