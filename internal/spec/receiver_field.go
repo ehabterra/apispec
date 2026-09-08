@@ -16,6 +16,7 @@ package spec
 
 import (
 	"github.com/ehabterra/apispec/internal/metadata"
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 // receiverFieldValue resolves `c.field` where `c` is the receiver of the method
@@ -73,16 +74,20 @@ func (b *BasePatternMatcher) receiverFieldValue(arg *metadata.CallArgument, node
 	if recvName == "" {
 		return "", false
 	}
-	// The base must BE the receiver, checked by type. Without this, any
-	// identifier selector entered the walk: an unrelated `other.pattern` inside
-	// a builder method would resolve `pattern` from the builder's constructor
-	// and fabricate a route from a value that has nothing to do with it.
+	// The base must BE the receiver, checked by type IDENTITY — package path
+	// included. Without the check at all, any identifier selector entered the
+	// walk: an unrelated `other.pattern` inside a builder method would resolve
+	// `pattern` from the builder's constructor and fabricate a route from a
+	// value that has nothing to do with it. Without the PACKAGE, `one.Combo`
+	// and `two.Combo` are both "Combo" — the bare-name collision that put a
+	// migration's throwaway struct into a real schema in #457, which is not a
+	// mistake worth repeating here.
 	//
-	// By type rather than by name, because the receiver's variable name is not
+	// By type rather than by variable name, because the receiver's name is not
 	// recorded — CalleeRecvVarName is the receiver expression at the CALL site
 	// and is empty for a chained call, so comparing names would decline every
-	// case this rung exists for. The base's own type is recorded, and it is the
-	// fact that matters.
+	// case this rung exists for. The base's own type is recorded, fully
+	// qualified, and the invocation records the receiver's package and type.
 	//
 	// Two limits this leaves, both measured rather than assumed:
 	//
@@ -96,7 +101,7 @@ func (b *BasePatternMatcher) receiverFieldValue(arg *metadata.CallArgument, node
 	//     registration for the pair, not two — so the value resolved here is
 	//     the first chain's, and the others were already lost upstream. That
 	//     collapse is #465, not something this rung can see.
-	if bareTypeName(arg.X.GetType()) != recvName {
+	if !receiverTypeMatches(arg.X.GetType(), recvPkg, recvName) {
 		return "", false
 	}
 	for e, hops := inv.ChainParent, 0; e != nil && hops < maxChainHops; e, hops = e.ChainParent, hops+1 {
@@ -224,4 +229,21 @@ func structFieldIndex(meta *metadata.Metadata, pkg, name, field string) (int, bo
 		}
 	}
 	return 0, false
+}
+
+// receiverTypeMatches reports whether baseType is the same named type as the
+// receiver (recvPkg, recvName), comparing package path as well as name.
+//
+// An unqualified baseType never matches: it cannot be shown to be the
+// receiver's type, and resolving from the wrong builder is worse than resolving
+// nothing (golden rule #7).
+func receiverTypeMatches(baseType, recvPkg, recvName string) bool {
+	if baseType == "" || recvPkg == "" || recvName == "" {
+		return false
+	}
+	core := typemodel.Parse(baseType).Core()
+	if core == nil || core.Pkg == "" {
+		return false
+	}
+	return core.Pkg == recvPkg && core.Name == recvName
 }

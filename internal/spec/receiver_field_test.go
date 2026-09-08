@@ -199,3 +199,34 @@ func TestLiteralFieldElementKeepsEmptyValue(t *testing.T) {
 		t.Errorf("value = %q, want the empty string", v)
 	}
 }
+
+// Two packages with a `Combo` builder is ordinary, and comparing bare names
+// would make `two.Combo`'s field resolve from `one.Combo`'s constructor — a
+// route stated confidently from the wrong value. That is the bare-name
+// collision #457 was about; the check carries the package path (review of
+// #464).
+func TestReceiverTypeMatchesRequiresPackageIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		baseType string
+		recvPkg  string
+		recvName string
+		want     bool
+	}{
+		{"same package and name", "*example.com/one.Combo", "example.com/one", "Combo", true},
+		{"pointer-free base", "example.com/one.Combo", "example.com/one", "Combo", true},
+		{"same name, DIFFERENT package", "*example.com/two.Combo", "example.com/one", "Combo", false},
+		{"same package, different name", "*example.com/one.Router", "example.com/one", "Combo", false},
+		// A base with no package cannot be shown to be the receiver's type.
+		{"unqualified base", "*Combo", "example.com/one", "Combo", false},
+		{"empty base", "", "example.com/one", "Combo", false},
+		{"no receiver package", "*example.com/one.Combo", "", "Combo", false},
+		// A path-suffix coincidence must not pass either.
+		{"package suffix collision", "*evil.com/example.com/one.Combo", "example.com/one", "Combo", false},
+	} {
+		if got := receiverTypeMatches(tc.baseType, tc.recvPkg, tc.recvName); got != tc.want {
+			t.Errorf("%s: receiverTypeMatches(%q, %q, %q) = %v, want %v",
+				tc.name, tc.baseType, tc.recvPkg, tc.recvName, got, tc.want)
+		}
+	}
+}
