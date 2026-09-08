@@ -165,3 +165,37 @@ func TestReceiverFieldValueGuards(t *testing.T) {
 		}
 	}
 }
+
+// An empty constructor argument is a RESOLVED value, not an unresolved one:
+// ConstantValue("") returns ("", true), and the caller must honour that rather
+// than testing the string, or a builder constructed with "" would emit a
+// {placeholder} for a path it had actually resolved (review of #464).
+func TestLiteralFieldElementKeepsEmptyValue(t *testing.T) {
+	meta := comboMeta()
+	lit := metadata.NewCallArgument(meta)
+	lit.Kind = meta.StringPool.Get(metadata.KindCompositeLit)
+
+	kv := metadata.NewCallArgument(meta)
+	kv.Kind = meta.StringPool.Get(metadata.KindKeyValue)
+	key := metadata.NewCallArgument(meta)
+	key.Kind = meta.StringPool.Get(metadata.KindIdent)
+	key.Name = meta.StringPool.Get("pattern")
+	val := metadata.NewCallArgument(meta)
+	val.Kind = meta.StringPool.Get(metadata.KindLiteral)
+	val.Value = meta.StringPool.Get(`""`)
+	kv.X, kv.Fun = key, val
+	lit.Args = []*metadata.CallArgument{kv}
+
+	elt, ok := literalFieldElement(meta, lit, "pattern", "example.com/app", "Combo")
+	if !ok || elt == nil {
+		t.Fatal("an empty value must still be found")
+	}
+	cp := NewContextProvider(meta)
+	v, resolved := cp.ConstantValue(elt)
+	if !resolved {
+		t.Error("an empty string literal is resolved, so the ladder must not treat it as a failure")
+	}
+	if v != "" {
+		t.Errorf("value = %q, want the empty string", v)
+	}
+}

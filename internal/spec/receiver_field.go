@@ -73,6 +73,32 @@ func (b *BasePatternMatcher) receiverFieldValue(arg *metadata.CallArgument, node
 	if recvName == "" {
 		return "", false
 	}
+	// The base must BE the receiver, checked by type. Without this, any
+	// identifier selector entered the walk: an unrelated `other.pattern` inside
+	// a builder method would resolve `pattern` from the builder's constructor
+	// and fabricate a route from a value that has nothing to do with it.
+	//
+	// By type rather than by name, because the receiver's variable name is not
+	// recorded — CalleeRecvVarName is the receiver expression at the CALL site
+	// and is empty for a chained call, so comparing names would decline every
+	// case this rung exists for. The base's own type is recorded, and it is the
+	// fact that matters.
+	//
+	// Two limits this leaves, both measured rather than assumed:
+	//
+	//   - a different value of the SAME builder type passes the check, and is
+	//     read from this chain's constructor. Narrowing that needs the
+	//     receiver's identity, which metadata does not carry.
+	//   - when one registration serves SEVERAL builder chains
+	//     (`r.Combo("/alpha").Get(a)` and `r.Combo("/beta").Get(b)` share the
+	//     call site inside Get), the extractor collapses them into ONE route
+	//     before this rung is asked — the floor reports a single unresolved
+	//     registration for the pair, not two — so the value resolved here is
+	//     the first chain's, and the others were already lost upstream. That
+	//     collapse is #465, not something this rung can see.
+	if bareTypeName(arg.X.GetType()) != recvName {
+		return "", false
+	}
 	for e, hops := inv.ChainParent, 0; e != nil && hops < maxChainHops; e, hops = e.ChainParent, hops+1 {
 		if value, ok := b.fieldFromReturnedLiteral(e, field, recvPkg, recvName); ok {
 			return value, true
