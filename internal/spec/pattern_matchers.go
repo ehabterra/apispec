@@ -957,6 +957,23 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 
 	if hi, ok := r.handlerArgIndex(edge); ok {
 		handlerArg := handlerArgValue(edge.Args[hi])
+		// A handler that reached the registration through a wrapper parameter is
+		// a PARAMETER here, and rendering a parameter yields its TYPE
+		// ("net/http.HandlerFunc"), which identifies no function. Everything
+		// about the operation hangs off this one value — its responses, request
+		// body, doc-comment summary and operationId — so a wrapper's routes were
+		// documented at the right path with no body at all, while the same
+		// handlers registered directly resolved fully (issue #466).
+		//
+		// The binding is recorded: the enclosing function's invocation carries
+		// ParamArgMap["h"] = listItems. resolveArgThroughParams already walks
+		// exactly that, hop by hop, and returns the argument unchanged when
+		// there is nothing to follow — so a handler named directly is untouched.
+		//
+		// This is #463's rule ("never render an argument") applied to the other
+		// argument of a registration: rendering a path yields a Go symbol,
+		// rendering a handler yields a type.
+		handlerArg = resolveHandlerArg(handlerArg, node)
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
 
@@ -971,6 +988,44 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 	}
 
 	return found
+}
+
+// resolveHandlerArg follows a handler argument to the concrete function, through
+// any number of parameter hops and wrapper layers, in either order.
+//
+// The two steps feed each other, which is why one pass of each is not enough:
+// resolving a parameter can expose a wrapper CALL (`ParamArgMap["h"] =
+// withLogging(h2)`), and unwrapping that call exposes another parameter (`h2`)
+// that still has to be resolved — one pass stops at the wrapper and documents
+// the middleware as the handler. resolveArgThroughParams only accepts idents,
+// so it cannot make that second hop itself.
+//
+// The node travels with the argument: resolveArgThroughParams returns the frame
+// where the value resolved, and resolving the next hop from the original node
+// would read a binding belonging to a frame this value never passed through.
+//
+// Bounded by the same budget as the unwrap peel, and it stops as soon as a pass
+// changes nothing, so a handler named directly costs one failed lookup.
+func resolveHandlerArg(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
+	cur, curNode := arg, node
+	for i := 0; i < maxHandlerUnwraps && cur != nil; i++ {
+		next := cur
+		if resolved, resolvedNode := resolveArgThroughParams(next, curNode); resolved != nil {
+			next = resolved
+			if resolvedNode != nil {
+				curNode = resolvedNode
+			}
+		}
+		next = handlerArgValue(next)
+		if next == nil || next == cur {
+			break
+		}
+		cur = next
+	}
+	if cur == nil {
+		return arg
+	}
+	return cur
 }
 
 // isValidHTTPMethod checks if a string is a valid HTTP method
