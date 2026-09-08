@@ -1196,11 +1196,25 @@ type planKey struct {
 // calls of its own, which is the whole point (a body to expand) and keeps the
 // hot path from re-keying every forwarded string and int in the graph.
 func (n *LazyNode) boundSpec(spec childSpec) childSpec {
-	if spec.arg == nil || n.parent == nil || spec.arg.GetKind() != metadata.KindIdent {
+	if spec.arg == nil || spec.argEdge == nil || n.parent == nil || spec.arg.GetKind() != metadata.KindIdent {
 		return spec
 	}
 	inv := n.parent.edge
 	if inv == nil || len(inv.ParamArgMap) == 0 {
+		return spec
+	}
+	// The frame has to be an invocation OF the function whose body writes this
+	// argument. `n.parent` usually is — an argument of this node's own call —
+	// but not always: an argument node holding a nested call plans the NESTED
+	// call's arguments (buildPlan's ownerEdge), and a chain-parented child is
+	// re-parented at the call-site scope, so the parent frame can belong to
+	// another function entirely. Taking it on trust would bind from a function
+	// that merely shares a parameter NAME, and would disagree with
+	// boundSpecVariants — which enumerates the edges into spec.argEdge.Caller —
+	// so the identity built here would be one the prune index never saw and the
+	// child would be dropped anyway. Declining is the honest branch: the
+	// argument stays as written.
+	if inv.Callee.BaseID() != spec.argEdge.Caller.BaseID() {
 		return spec
 	}
 	name := spec.arg.GetName()
@@ -1359,16 +1373,25 @@ func (t *LazyTree) boundSpecVariants(spec childSpec) []childSpec {
 		return nil
 	}
 	var out []childSpec
-	seen := map[int32]bool{}
+	// Deduplicated on the FULL identity, not the key: two call sites binding
+	// values that render the same ID still intern to different pointers, and
+	// specIdentity compares the argument by pointer — so keying on the key
+	// alone would drop a variant the expansion can build, which is precisely
+	// the miss this index exists to prevent.
+	seen := map[planKey]bool{}
 	for _, in := range t.meta.Callees[enclosing] {
 		if _, ok := in.ParamArgMap[name]; !ok {
 			continue
 		}
 		sub, ok := t.substituteBound(spec, in, name)
-		if !ok || seen[sub.keyID] {
+		if !ok {
 			continue
 		}
-		seen[sub.keyID] = true
+		id := specIdentity(sub)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		out = append(out, sub)
 	}
 	return out
