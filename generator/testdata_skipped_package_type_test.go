@@ -43,6 +43,11 @@ func TestTestdata_SkippedPackageType(t *testing.T) {
 			mapPathKeys(out.Paths))
 	}
 
+	if out.Components == nil {
+		// Fataling here rather than ranging a nil pointer: a panic would replace
+		// the diagnostic this test exists to print.
+		t.Fatal("no components at all — expected one for broken.Row and one for twin.Row")
+	}
 	var brokenRow, twinRow *spec.Schema
 	for name, schema := range out.Components.Schemas {
 		switch {
