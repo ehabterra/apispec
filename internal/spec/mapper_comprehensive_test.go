@@ -681,7 +681,11 @@ func TestEnsureAllPathParams_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ensureAllPathParams(tt.path, tt.params, tt.patterns, nil)
+			constraints := map[string]pathParamConstraint{}
+			for name, pattern := range tt.patterns {
+				constraints[name] = pathParamConstraint{schema: &Schema{Type: "string", Pattern: pattern}}
+			}
+			result := ensureAllPathParams(tt.path, tt.params, constraints, nil)
 			if len(result) != tt.expected {
 				t.Errorf("Expected %d parameters, got %d", tt.expected, len(result))
 			}

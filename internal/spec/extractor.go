@@ -2074,15 +2074,12 @@ func (e *Extractor) completeMapKeyPathParams(route *RouteInfo) {
 		return
 	}
 
-	patterns := pathParamPatterns(route.Path)
+	constraints := pathParamConstraints(route.Path)
 	for _, name := range placeholders {
 		if covered[name] {
 			continue
 		}
-		schema := &Schema{Type: "string"}
-		if pat := patterns[name]; pat != "" {
-			schema.Pattern = pat
-		}
+		schema := constraints[name].clone()
 		route.Params = append(route.Params, Parameter{
 			Name:     name,
 			In:       accessor.ParamIn,
@@ -3901,9 +3898,52 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 	// Ensure path parameters are always required
 	if p.pattern.ParamIn == "path" {
 		param.Required = true
+		// What the ROUTER enforces beats what the accessor returns. Every
+		// framework's path accessor hands back a string — `c.Params("id")` is
+		// string even when the route is `:id<int>` — so the accessor's type is a
+		// fact about the API surface, not about the value, and the constraint is
+		// the only statement of what the value may be (issue #357).
+		if route != nil {
+			applyPathConstraint(param, route.Path)
+		}
 	}
 
 	return param
+}
+
+// applyPathConstraint refines a path parameter with what the route pattern
+// states about it. Fields the constraint does not mention are left alone.
+func applyPathConstraint(param *Parameter, rawPath string) {
+	c, ok := pathParamConstraints(rawPath)[param.Name]
+	if !ok || !c.described {
+		return
+	}
+	if param.Schema == nil {
+		param.Schema = c.clone()
+		return
+	}
+	from := c.schema
+	if from.Type != "" {
+		param.Schema.Type = from.Type
+	}
+	if from.Format != "" {
+		param.Schema.Format = from.Format
+	}
+	if from.Pattern != "" {
+		param.Schema.Pattern = from.Pattern
+	}
+	if from.MinLength != 0 {
+		param.Schema.MinLength = from.MinLength
+	}
+	if from.MaxLength != 0 {
+		param.Schema.MaxLength = from.MaxLength
+	}
+	if from.Minimum != 0 {
+		param.Schema.Minimum = from.Minimum
+	}
+	if from.Maximum != 0 {
+		param.Schema.Maximum = from.Maximum
+	}
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters

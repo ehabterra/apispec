@@ -628,7 +628,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 		// fresh declaration. The matching {name} in the path is then
 		// considered "covered" by ensureAllPathParams below.
 		operation.Parameters = appendDynamicParamRefs(operation.Parameters, route.DynamicParams)
-		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters, pathParamPatterns(rawPath), catchAllParams)
+		operation.Parameters = ensureAllPathParams(openAPIPath, operation.Parameters, pathParamConstraints(rawPath), catchAllParams)
 
 		// Add responses
 		operation.Responses = buildResponses(route.Response)
@@ -655,7 +655,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 // the parameters slice. openAPIPath is already normalised (regex constraints
 // stripped); patterns carries any `{name:pattern}` constraints recovered from
 // the raw path so synthesized params still surface them as a schema pattern.
-func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[string]string, catchAll []string) []Parameter {
+func ensureAllPathParams(openAPIPath string, params []Parameter, constraints map[string]pathParamConstraint, catchAll []string) []Parameter {
 	paramMap := make(map[string]bool)
 	for _, p := range params {
 		if p.In == "path" {
@@ -675,22 +675,25 @@ func ensureAllPathParams(openAPIPath string, params []Parameter, patterns map[st
 	for _, match := range matches {
 		name := match[1]
 		if !paramMap[name] {
-			schema := &Schema{Type: "string"}
-			if pat := patterns[name]; pat != "" {
-				schema.Pattern = pat
-			}
+			constraint := constraints[name]
 			param := Parameter{
 				Name:     name,
 				In:       "path",
 				Required: true,
-				Schema:   schema,
+				Schema:   constraint.clone(),
 			}
-			if slices.Contains(catchAll, name) {
+			switch {
+			case slices.Contains(catchAll, name):
 				// A catch-all is not a parameter the handler failed to read —
 				// it is the router matching the rest of the path, so it carries
 				// a description rather than the warning below (issue #403).
 				param.Description = "Matches the remainder of the path."
-			} else {
+			case constraint.described:
+				// The route pattern TYPED this parameter (`:id<int>`), so it is
+				// better attested than one a handler happens to read, and
+				// warning that it was "not found in the code" reads as a defect
+				// where there is none (issue #357).
+			default:
 				param.Extensions = map[string]any{
 					"x-warning": "This parameter is present in the path but not found in the code.",
 				}

@@ -20,12 +20,19 @@ func main() {
 	app.Get("/pages/:n<min(1);max(500)>", getPage)
 	// An unconstrained parameter alongside, which must be unaffected.
 	app.Get("/plain/:name", getPlain)
+	// Constrained and NOT read in the handler: the route pattern is what
+	// attests it.
+	app.Get("/unread/:code<int>", getUnread)
+	// A constraint nothing in the table understands: strips, states nothing.
+	app.Get("/odd/:x<mystery(7)>", getOdd)
 
 	_ = app.Listen(":8080")
 }
 
-func getItem(c *fiber.Ctx) error  { return c.JSON(Item{ID: c.Params("id")}) }
-func getUser(c *fiber.Ctx) error  { return c.JSON(Item{ID: c.Params("uid")}) }
-func getEvent(c *fiber.Ctx) error { return c.JSON(Item{ID: c.Params("day")}) }
-func getPage(c *fiber.Ctx) error  { return c.JSON(Item{ID: c.Params("n")}) }
-func getPlain(c *fiber.Ctx) error { return c.JSON(Item{ID: c.Params("name")}) }
+func getItem(c *fiber.Ctx) error   { return c.JSON(Item{ID: c.Params("id")}) }
+func getUser(c *fiber.Ctx) error   { return c.JSON(Item{ID: c.Params("uid")}) }
+func getEvent(c *fiber.Ctx) error  { return c.JSON(Item{ID: c.Params("day")}) }
+func getPage(c *fiber.Ctx) error   { return c.JSON(Item{ID: c.Params("n")}) }
+func getPlain(c *fiber.Ctx) error  { return c.JSON(Item{ID: c.Params("name")}) }
+func getUnread(c *fiber.Ctx) error { return c.JSON(Item{}) }
+func getOdd(c *fiber.Ctx) error    { return c.JSON(Item{}) }
