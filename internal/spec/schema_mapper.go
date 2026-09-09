@@ -257,14 +257,3 @@ func (s *SchemaMapperImpl) MapStatusCode(statusStr string) (int, bool) {
 
 	return status, true
 }
-
-// MapMethodFromFunctionName extracts HTTP method from function name
-func (s *SchemaMapperImpl) MapMethodFromFunctionName(funcName string) string {
-	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
-	for _, method := range methods {
-		if strings.Contains(strings.ToUpper(funcName), method) {
-			return method
-		}
-	}
-	return ""
-}

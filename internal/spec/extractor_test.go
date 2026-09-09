@@ -204,12 +204,6 @@ func TestSchemaMapper(t *testing.T) {
 	if !ok || status != 303 {
 		t.Error("Expected status code 303")
 	}
-
-	// Test method extraction
-	method := mapper.MapMethodFromFunctionName("GetUsers")
-	if method != "GET" {
-		t.Errorf("Expected 'GET', got '%s'", method)
-	}
 }
 
 func TestOverrideApplier(t *testing.T) {
