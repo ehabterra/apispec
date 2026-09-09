@@ -61,6 +61,15 @@ func TestTestdata_RendererContentTypes(t *testing.T) {
 		// destination cannot be shown to be the response writer, which is what
 		// keeps a serializer from inventing a route's media type (issue #471).
 		{"/items/away", "application/json"},
+		// No Content-Type header: Go sniffs the payload and actually sends
+		// text/plain; charset=utf-8, because the encoder does not write the
+		// `<?xml` declaration the sniffer looks for. What is documented is what
+		// the ENCODER writes, which describes the payload rather than a handler
+		// that forgot its header — and saying text/plain here would be the old
+		// application/json bug wearing a different label. Reading an explicit
+		// header so it can win is the remaining step of #354; when that lands,
+		// this case is the one that changes.
+		{"/items/xml-no-header", "application/xml"},
 	}
 	for _, tc := range cases {
 		item, ok := out.Paths[tc.path]

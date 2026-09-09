@@ -16,6 +16,17 @@ type Item struct {
 }
 
 func getItemXML(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/xml")
+	_ = xml.NewEncoder(w).Encode(Item{})
+}
+
+// The same encode with NO Content-Type header. Go then sniffs the payload and
+// sends text/plain; charset=utf-8 (the sniffer only says text/xml when the
+// document starts with the `<?xml` declaration, which the encoder does not
+// write). The encoder still says the body is XML, and that is what is
+// documented today — reading the header, so it can win, is #354's remaining
+// step.
+func getItemXMLNoHeader(w http.ResponseWriter, r *http.Request) {
 	_ = xml.NewEncoder(w).Encode(Item{})
 }
 
@@ -37,6 +48,7 @@ func main() {
 	mux.HandleFunc("GET /items/json", getItemJSON)
 	mux.HandleFunc("GET /items/both", getItemBoth)
 	mux.HandleFunc("GET /items/away", encodeAway)
+	mux.HandleFunc("GET /items/xml-no-header", getItemXMLNoHeader)
 	_ = http.ListenAndServe(":8080", mux)
 }
 
