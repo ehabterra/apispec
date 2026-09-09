@@ -32,16 +32,15 @@ var echoRequestContext = RequestContextConfig{
 // DefaultEchoConfig returns a default configuration for the Echo framework.
 func DefaultEchoConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
+	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
+		StatusArgIndex: 0,
+		TypeArgIndex:   1,
+		TypeFromArg:    true,
+		StatusFromArg:  true,
+		Deref:          true,
+		RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
+	})...)
 	responsePatterns = append(responsePatterns,
-		ResponsePattern{
-			CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-			StatusArgIndex: 0,
-			TypeArgIndex:   1,
-			TypeFromArg:    true,
-			StatusFromArg:  true,
-			Deref:          true,
-			RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
-		},
 		ResponsePattern{
 			CallRegex:      `^(?i)(NoContent)$`,
 			StatusArgIndex: 0,
@@ -49,8 +48,9 @@ func DefaultEchoConfig() *APISpecConfig {
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
 		},
-		jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 	)
+	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{
 		Framework: FrameworkConfig{

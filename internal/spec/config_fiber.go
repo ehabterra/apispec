@@ -52,6 +52,10 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeArgIndex:   0,
 			TypeFromArg:    true,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+			// c.SendString writes a string body, which fiber sends as
+			// text/plain; documenting it as JSON says the consumer should parse
+			// it (issue #354).
+			DefaultContentType: contentTypeText,
 		},
 		ResponsePattern{
 			CallRegex:      `^SendStatus$`,
@@ -59,8 +63,9 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 		},
-		jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 	)
+	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{
 		Framework: FrameworkConfig{

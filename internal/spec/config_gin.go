@@ -35,21 +35,19 @@ func DefaultGinConfig() *APISpecConfig {
 	const ginContextRecv = "^github\\.com/gin-gonic/gin\\.\\*Context$"
 
 	responsePatterns := netHTTPResponsePatterns()
-	responsePatterns = append(responsePatterns,
-		// Scoped to gin's Context: this reads the status from arg 0, which is a
-		// gin convention — unscoped it would misread a status-less call like
-		// fiber's c.JSON(obj), which is why SecondaryView dropped it and a
-		// secondary gin lost its responses (issue #211).
-		ResponsePattern{
-			CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-			StatusArgIndex: 0,
-			TypeArgIndex:   1,
-			TypeFromArg:    true,
-			StatusFromArg:  true,
-			RecvTypeRegex:  ginContextRecv,
-		},
-		jsonEncodePattern(""),
-	)
+	// Scoped to gin's Context: this reads the status from arg 0, which is a
+	// gin convention — unscoped it would misread a status-less call like
+	// fiber's c.JSON(obj), which is why SecondaryView dropped it and a
+	// secondary gin lost its responses (issue #211).
+	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
+		StatusArgIndex: 0,
+		TypeArgIndex:   1,
+		TypeFromArg:    true,
+		StatusFromArg:  true,
+		RecvTypeRegex:  ginContextRecv,
+	})...)
+	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{
 		Framework: FrameworkConfig{

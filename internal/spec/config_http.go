@@ -62,24 +62,22 @@ func DefaultHTTPConfig() *APISpecConfig {
 	// only HTTP-specific renderer is the (?i)(JSON|String|XML|...) catch-all
 	// for the helper packages that wrap ResponseWriter.
 	responsePatterns := netHTTPResponsePatterns()
-	responsePatterns = append(responsePatterns,
-		ResponsePattern{
-			CallRegex:      `^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$`,
-			StatusArgIndex: 0,
-			TypeArgIndex:   1,
-			TypeFromArg:    true,
-			Deref:          true,
-			// Anchored on the writer being SOMEWHERE in the call (issue #302).
-			// Unanchored, this matched any call with one of these names in any
-			// reached package — a protobuf helper, an encoding library, anything
-			// named Data or File — and documented its second argument as this
-			// endpoint's response. There is no fixed writer position to name here,
-			// because the helpers this exists for do not share a signature.
-			RequireResponseDestination: true,
-			DestFromAnyArg:             true,
-		},
-		jsonEncodePattern(""),
-	)
+	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
+		StatusArgIndex: 0,
+		TypeArgIndex:   1,
+		TypeFromArg:    true,
+		Deref:          true,
+		// Anchored on the writer being SOMEWHERE in the call (issue #302).
+		// Unanchored, this matched any call with one of these names in any
+		// reached package — a protobuf helper, an encoding library, anything
+		// named Data or File — and documented its second argument as this
+		// endpoint's response. There is no fixed writer position to name here,
+		// because the helpers this exists for do not share a signature.
+		RequireResponseDestination: true,
+		DestFromAnyArg:             true,
+	})...)
+	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{
 		Framework: FrameworkConfig{

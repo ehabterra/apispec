@@ -2750,7 +2750,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			if !r.destResolver.AnyArgReachesWriter(node.GetEdge()) {
 				return nil
 			}
-		} else if dst, dstEdge := r.destination(node); dst != nil && r.destResolver.ShouldDrop(dst, dstEdge) {
+		} else if dst, dstEdge := r.destination(node); dst != nil {
+			if r.destResolver.ShouldDrop(dst, dstEdge) {
+				return nil
+			}
+		} else if r.pattern.DropUnresolvedDestination {
+			// Nothing to vet: this pattern asked to be dropped rather than
+			// guessed at (see DropUnresolvedDestination).
 			return nil
 		}
 	}
