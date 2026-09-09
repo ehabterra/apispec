@@ -718,38 +718,41 @@ func splitMethodFromPath(raw string) (method, path string) {
 	return candidate, strings.TrimSpace(raw[i+1:])
 }
 
-// serveMuxHost matches the HOST component of a Go 1.22 ServeMux pattern: a
-// dotted name (or localhost), optionally with a port, followed by the "/" that
-// starts the path.
-//
-// Deliberately narrower than Go's own grammar, which treats ANY text before the
-// first "/" as the host — so `mux.Handle("items/x", h)` really does register
-// host "items". Applying that rule here would be destructive, because a path
-// arriving at this function has already been through resolution and may have
-// lost its leading slash (a concatenated prefix, a mount join): stripping "v1"
-// off "v1/users" as a host would delete a real segment. A dotless single label
-// is indistinguishable from that, so only something that LOOKS like a host is
-// treated as one (golden rule #7).
-var serveMuxHost = mustCachedRegex(`^(?:[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+|localhost)(?::[0-9]+)?/`)
-
-// splitHostFromPath splits the HOST component off a Go 1.22 ServeMux pattern.
+// splitHostFromPath splits a NAMED host off a Go 1.22 ServeMux pattern.
 //
 // The grammar is "[METHOD ][HOST]/[PATH]", and the host is not part of the URL
 // a client requests — it selects which mux entry serves it. Folded into the
 // path it produced `/api.example.com/items`, an endpoint that does not exist
 // and that no consumer can call (issue #356).
 //
+// Only a host the CONFIG names is split off. Go's own rule — everything before
+// the first "/" is the host — cannot be applied here, because a path reaching
+// this function has already been through resolution and may have lost its
+// leading slash (a concatenated prefix, a mount join): under that rule
+// "v1/users" is host "v1", and stripping it would delete a real segment.
+// Deciding by the SHAPE of the text is the same guess wearing a regex, so the
+// host set is declared rather than inferred (golden rules #5 and #7). A project
+// that declares no hosts keeps today's behaviour exactly.
+//
 // The host is returned rather than discarded so a caller can document it; this
 // one only needs the path.
-func splitHostFromPath(raw string) (host, path string) {
-	if raw == "" || raw[0] == '/' {
+func splitHostFromPath(raw string, hosts []string) (host, path string) {
+	if raw == "" || raw[0] == '/' || len(hosts) == 0 {
 		return "", raw
 	}
-	m := serveMuxHost.FindString(raw)
-	if m == "" {
-		return "", raw
+	slash := strings.IndexByte(raw, '/')
+	if slash <= 0 {
+		return "", raw // no path component: not a pattern this rule applies to
 	}
-	return strings.TrimSuffix(m, "/"), raw[len(m)-1:]
+	candidate := raw[:slash]
+	for _, h := range hosts {
+		// Host names are case-insensitive (RFC 4343), and a config is written
+		// by hand.
+		if strings.EqualFold(candidate, h) {
+			return candidate, raw[slash:]
+		}
+	}
+	return "", raw
 }
 
 // normalizeServeMuxPath rewrites ServeMux-specific path syntax into OpenAPI
@@ -977,7 +980,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			}
 			// The host selects the mux entry; it is not part of the requested
 			// URL (issue #356).
-			if _, rest := splitHostFromPath(path); rest != path {
+			if _, rest := splitHostFromPath(path, r.cfg.knownHosts()); rest != path {
 				path = rest
 			}
 			path = normalizeServeMuxPath(path)

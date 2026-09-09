@@ -17,6 +17,7 @@ package spec
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -971,6 +972,20 @@ type APISpecConfig struct {
 	// (issue #298). Both default to the fully-qualified Go symbol.
 	Naming Naming `yaml:"naming,omitempty" json:"naming,omitempty"`
 
+	// Hosts names the virtual hosts this project's routes are registered
+	// under, so a registration pattern that carries one — a Go 1.22 ServeMux
+	// pattern is "[METHOD ][HOST]/[PATH]" — is documented at its real path
+	// rather than at `/api.example.com/items` (issue #356).
+	//
+	// Declared rather than inferred. A path reaching the matcher has already
+	// been through resolution and may have lost its leading slash, so Go's own
+	// rule (everything before the first "/" is the host) would read "v1" as the
+	// host of "v1/users" and delete a real segment; deciding by the shape of the
+	// text is the same guess in another form (golden rule #7). Hosts named in
+	// Servers count too, since a project that declares its servers has already
+	// said what its hosts are.
+	Hosts []string `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+
 	// OpenAPI metadata
 	Info            Info                      `yaml:"info" json:"info,omitempty"`
 	Servers         []Server                  `yaml:"servers" json:"servers,omitempty"`
@@ -1380,4 +1395,30 @@ func (c *APISpecConfig) UnanchoredResponsePatterns() []string {
 		out = append(out, fmt.Sprintf("responsePatterns[%d] (callRegex %q)", i, p.CallRegex))
 	}
 	return out
+}
+
+// knownHosts returns the virtual hosts a route registration may carry: those
+// named in Hosts, plus the host of every configured server URL.
+//
+// Servers are included because declaring `servers: [{url: https://api.example.com}]`
+// already says what the project's hosts are, and requiring the same name twice
+// would be a trap rather than a safeguard. A server URL that does not parse, or
+// that is relative (OpenAPI allows both), simply contributes nothing.
+func (c *APISpecConfig) knownHosts() []string {
+	if c == nil {
+		return nil
+	}
+	hosts := make([]string, 0, len(c.Hosts)+len(c.Servers))
+	hosts = append(hosts, c.Hosts...)
+	for _, s := range c.Servers {
+		u, err := url.Parse(s.URL)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		hosts = append(hosts, u.Host)
+	}
+	if len(hosts) == 0 {
+		return nil
+	}
+	return hosts
 }
