@@ -1599,32 +1599,86 @@ func findTypesInMetadata(meta *metadata.Metadata, typeName string) map[string]*m
 	return metaTypes
 }
 
-// typeByName looks a type up in metadata by its parsed core: first in the
-// named package, then across all packages. Metadata keys a type by its bare
-// declared name (tspec.Name.Name — a generic declaration is stored as "Page",
-// its parameters in Type.TypeParams), so callers pass the structured core
-// name (typemodel.Parse(...).Core().Name), never a bracketed form.
+// typeByName looks a type up in metadata by its parsed core. Metadata keys a
+// type by its bare declared name (tspec.Name.Name — a generic declaration is
+// stored as "Page", its parameters in Type.TypeParams), so callers pass the
+// structured core name (typemodel.Parse(...).Core().Name), never a bracketed
+// form.
+//
+// The rule is that a package qualifier is EVIDENCE, and evidence is not
+// discarded on a miss. It used to be: when the qualified lookup found nothing,
+// this scanned every package in sorted order and returned the first type with
+// a matching bare name. Sorting made the answer deterministic, which is what
+// the old comment was about, but not right — the component kept the name of the
+// package that was asked for and got the fields and doc comment of a different
+// one, with nothing in the output saying so. On a real 280-path service one
+// package published five components filled from three other packages: 58
+// property and enum keys vanished and 5 descriptions described a different type
+// (issue #447).
+//
+// So: the named package answers, or the qualifier is resolved as a package NAME
+// (the same unique-fit rule canonicalPackageQualifier uses, because a type
+// recovered by rendering an argument carries the package's name rather than its
+// path — golden rule #3), or nothing. Only a caller with NO qualifier falls back
+// to the bare name, and then only when it is unambiguous: with two packages
+// declaring it there is nothing to choose between them, and a wrong type is
+// worse than an unresolved one (golden rule #7).
 func typeByName(pkgName, typeName string, meta *metadata.Metadata) *metadata.Type {
-	if meta == nil {
+	if meta == nil || typeName == "" {
 		return nil
 	}
 
-	if pkgName != "" && typeName != "" {
+	if pkgName != "" {
 		if typ := meta.TypeInPackage(pkgName, typeName); typ != nil {
 			return typ
 		}
+		if strings.Contains(pkgName, "/") {
+			return nil // an import path that does not declare it: asked and answered
+		}
+		return uniqueTypeInNamedPackage(pkgName, typeName, meta)
 	}
 
-	// Fallback: the bare type name may exist in several packages. Iterate in a
-	// stable (cached) sorted order so the chosen type is deterministic across
-	// runs — otherwise map iteration would pick a different package's type and
-	// flip the schema between runs.
+	return uniqueTypeByBareName(typeName, meta)
+}
+
+// uniqueTypeInNamedPackage resolves a qualifier that is a package NAME
+// ("scheduling") rather than an import path, by finding the one package that
+// both fits the name and declares the type. Two candidates mean the qualifier
+// does not identify a package, so nothing is returned.
+func uniqueTypeInNamedPackage(pkgName, typeName string, meta *metadata.Metadata) *metadata.Type {
+	var found *metadata.Type
 	for _, pkg := range meta.SortedPackageNames() {
-		if typ := meta.TypeInPackage(pkg, typeName); typ != nil {
-			return typ
+		if !packageDeclares(meta, pkg, pkgName) {
+			continue
 		}
+		typ := meta.TypeInPackage(pkg, typeName)
+		if typ == nil {
+			continue
+		}
+		if found != nil {
+			return nil
+		}
+		found = typ
 	}
-	return nil
+	return found
+}
+
+// uniqueTypeByBareName resolves an UNQUALIFIED name, which is the one case
+// where the bare name is all the evidence there is. Sorted so a second
+// declaration is found rather than raced past (golden rule #1).
+func uniqueTypeByBareName(typeName string, meta *metadata.Metadata) *metadata.Type {
+	var found *metadata.Type
+	for _, pkg := range meta.SortedPackageNames() {
+		typ := meta.TypeInPackage(pkg, typeName)
+		if typ == nil {
+			continue
+		}
+		if found != nil {
+			return nil
+		}
+		found = typ
+	}
+	return found
 }
 
 // normalizeGenericInstanceName rewrites a generic instantiation rendered in
