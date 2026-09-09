@@ -136,6 +136,19 @@ func (t *LazyTree) buildReachIndex() {
 				specOf[childID] = child
 			}
 			out = append(out, childID)
+			// A forwarded parameter is substituted per path when the child is
+			// materialised (LazyNode.boundSpec), which produces an identity no
+			// plan lists. Enumerate those too, or this index answers with the
+			// zero value for every one of them and the prune skips the subtree
+			// — which is how a handler passed through a wrapper lost its
+			// responses (issue #466).
+			for _, sub := range t.boundSpecVariants(child) {
+				subID := specIdentity(sub)
+				if _, seen := specOf[subID]; !seen {
+					specOf[subID] = sub
+				}
+				out = append(out, subID)
+			}
 		}
 		return out
 	}

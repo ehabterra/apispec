@@ -149,6 +149,21 @@ func TestTestdata_ChainedWrapper(t *testing.T) {
 		t.Error("POST /items missing — the chained verb links to Get rather than to the constructor, so the walk must continue past it")
 	}
 
+	// The handler's own responses, which is the point of resolving the handler
+	// through the wrapper parameter: `listItems` encodes []Item and
+	// `createItem` writes 201. Before, both routes documented only the
+	// framework's "no response found" default (issue #466).
+	if get := opFor(items, "GET"); get != nil {
+		if _, ok := get.Responses["200"]; !ok {
+			t.Errorf("GET /items responses = %v, want a 200 from the handler's Encode", sortedStatusKeys(get))
+		}
+	}
+	if post := opFor(items, "POST"); post != nil {
+		if _, ok := post.Responses["201"]; !ok {
+			t.Errorf("POST /items responses = %v, want the 201 the handler writes", sortedStatusKeys(post))
+		}
+	}
+
 	// The ordinary method on the same router still resolves: what is unsupported
 	// is the chained wiring, not this project's router.
 	item, ok := out.Paths["/health"]
