@@ -35,6 +35,17 @@ const (
 	contentTypeFormURLEncoded = "application/x-www-form-urlencoded"
 	contentTypeMultipartForm  = "multipart/form-data"
 
+	// Response media types a RENDERER names outright. Unlike the two above,
+	// these are not inferred from how the handler behaves — `c.XML(…)` and
+	// `xml.NewEncoder(w).Encode(…)` say what they write, and documenting them
+	// as JSON is a statement the consumer will act on and be wrong about
+	// (issue #354).
+	contentTypeXML      = "application/xml"
+	contentTypeYAML     = "application/yaml"
+	contentTypeText     = "text/plain; charset=utf-8"
+	contentTypeHTML     = "text/html; charset=utf-8"
+	contentTypeProtobuf = "application/x-protobuf"
+
 	// Sentinel ParamPattern.ParamIn values. These are not OpenAPI parameter
 	// locations: the mapper consumes them (resolveFormParams) and turns them
 	// into a request body, so none of them can reach the output as an `in:`.
@@ -384,6 +395,26 @@ type ResponsePattern struct {
 	DefaultStatus int `yaml:"defaultStatus,omitempty" json:"defaultStatus,omitempty"`
 	// DefaultContentType overrides the config default content type when set
 	DefaultContentType string `yaml:"defaultContentType,omitempty" json:"defaultContentType,omitempty"`
+
+	// DropUnresolvedDestination turns the write-destination gate from
+	// permissive into strict FOR THIS PATTERN: an encode whose destination
+	// cannot be resolved is dropped instead of kept.
+	//
+	// The default is permissive on purpose — an unresolvable destination is
+	// usually a resolution gap, not evidence of a non-response, and dropping on
+	// it would lose real bodies. That bet is only safe when the pattern is
+	// already likely to be a response: a JSON encoder in a web handler almost
+	// always is. It inverts for the formats a project mostly uses AWAY from the
+	// wire — measured on a large real project, every yaml encode reached from a
+	// route wrote to a buffer or a file (a workflow serializer, a migration
+	// dumper) and not one wrote a response. Keeping those on an unresolved
+	// destination documents endpoints that answer YAML and do not exist
+	// (issue #354).
+	//
+	// It costs the encodes that reach the response THROUGH a buffer, which the
+	// gate cannot see either way — issue #471; recovering those is what would
+	// let this be turned back off.
+	DropUnresolvedDestination bool `yaml:"dropUnresolvedDestination,omitempty" json:"dropUnresolvedDestination,omitempty"`
 
 	// RequireResponseDestination gates the pattern on write-destination: the
 	// encoded value is only a response when its destination writer traces (via
@@ -1112,18 +1143,111 @@ func netHTTPResponsePatterns() []ResponsePattern {
 // recvTypeRegex varies between frameworks: pass "" to match any receiver,
 // or `.*json(iter)?\.\*?Encoder` to restrict to JSON encoders specifically.
 func jsonEncodePattern(recvTypeRegex string) ResponsePattern {
+	return encodePattern(recvTypeRegex, "")
+}
+
+// encodePattern is jsonEncodePattern generalised over WHICH encoder writes.
+//
+// Every encoder in the ecosystem spells the call `Encode`, so the call name
+// cannot tell them apart — only the receiver can. A config that matches
+// `^Encode$` with no receiver scope therefore documents
+// `xml.NewEncoder(w).Encode(v)` as JSON, and one scoped to the json encoders
+// does not document it at all (issue #354).
+//
+// contentType is empty for JSON, which leaves the response on
+// Defaults.ResponseContentType — the knob a project sets to say what its JSON
+// endpoints serve (`application/hal+json`, a vendor type). A non-JSON encoder
+// overrides it, because there the media type is a fact about the encoder, not
+// a project default.
+func encodePattern(recvTypeRegex, contentType string) ResponsePattern {
 	return ResponsePattern{
-		CallRegex:     `^Encode$`,
-		TypeArgIndex:  0,
-		TypeFromArg:   true,
-		Deref:         true,
-		RecvTypeRegex: recvTypeRegex,
+		CallRegex:          `^Encode$`,
+		TypeArgIndex:       0,
+		TypeFromArg:        true,
+		Deref:              true,
+		RecvTypeRegex:      recvTypeRegex,
+		DefaultContentType: contentType,
+		// A non-JSON encode is documented only when its destination can be
+		// shown to be the response writer (see DropUnresolvedDestination).
+		DropUnresolvedDestination: contentType != "",
 		// Gate on write destination: json.NewEncoder(x).Encode(v) is a response
 		// only when x traces to the response writer (issue #170). Inert unless
 		// the framework config populates ResponseContext.
 		RequireResponseDestination: true,
 		DestFromReceiver:           true,
 	}
+}
+
+// nonJSONEncodePatterns returns the Encode patterns for the encoders that do
+// NOT write JSON, to be placed AHEAD of the JSON one.
+//
+// Order is the whole mechanism: responseMatcherIndex takes the FIRST matcher
+// that accepts an edge, not the highest-priority one, so a receiver-scoped
+// encoder only wins while it precedes the unscoped `^Encode$`. Behind it, it is
+// unreachable.
+//
+// Framework-agnostic by construction (golden rule #5): the receiver is the
+// encoder's own package, so the same two patterns serve net/http, chi, mux,
+// gin, echo and fiber — a handler reaches for `encoding/xml` the same way in
+// all of them.
+func nonJSONEncodePatterns() []ResponsePattern {
+	return []ResponsePattern{
+		encodePattern(`^encoding/xml\.\*?Encoder$`, contentTypeXML),
+		// The yaml packages in common use (gopkg.in/yaml.v2 and v3,
+		// sigs.k8s.io/yaml, goccy/go-yaml) all expose *Encoder, and none of
+		// them is in the stdlib, so the path cannot be pinned the way xml's can.
+		encodePattern(`.*yaml.*\.\*?Encoder$`, contentTypeYAML),
+	}
+}
+
+// rendererMediaTypes maps a renderer method NAME to the media type that
+// renderer writes.
+//
+// Only the renderers whose media type is knowable FROM THE NAME are listed.
+// Deliberately absent:
+//
+//   - JSON — left to Defaults.ResponseContentType, so a project serving
+//     `application/hal+json` keeps saying so.
+//   - Data — takes its content type as an argument, so the name says nothing.
+//   - File — depends on the file being served.
+//   - Redirect — writes no body at all; documenting one is a separate defect.
+//
+// Those keep the catch-all and today's default rather than a guess (golden
+// rule #7).
+var rendererMediaTypes = []struct {
+	call      string
+	mediaType string
+}{
+	{"XML", contentTypeXML},
+	{"YAML", contentTypeYAML},
+	{"String", contentTypeText},
+	{"HTML", contentTypeHTML},
+	{"ProtoBuf", contentTypeProtobuf},
+}
+
+// rendererCatchAllCalls are the renderer names that keep the shared pattern
+// because their media type is not derivable from the call (see
+// rendererMediaTypes).
+const rendererCatchAllCalls = `^(?i)(JSON|Data|File|Redirect)$`
+
+// rendererResponsePatterns expands one renderer catch-all into a pattern per
+// renderer, each carrying what that renderer actually writes.
+//
+// base supplies everything else the framework's renderer pattern needs — the
+// receiver scope, the status/type argument positions, the write-destination
+// gate — so the split changes the media type and nothing else. Callers pass
+// the pattern they used to write out by hand.
+func rendererResponsePatterns(base ResponsePattern) []ResponsePattern {
+	out := make([]ResponsePattern, 0, len(rendererMediaTypes)+1)
+	for _, r := range rendererMediaTypes {
+		p := base
+		p.CallRegex = `^(?i)` + r.call + `$`
+		p.DefaultContentType = r.mediaType
+		out = append(out, p)
+	}
+	p := base
+	p.CallRegex = rendererCatchAllCalls
+	return append(out, p)
 }
 
 // jsonDecodeRequestPattern returns the json.Decoder.Decode request-body

@@ -578,6 +578,7 @@ const PATTERN_FIELDS = {
     ["requireResponseDestination", "Require response destination", "bool", "Only classify as a response when the value being written traces to the response writer — keeps json.NewEncoder(&buf).Encode(v) or an encode to a file from being read as the response body. Pair with Response context below."],
     ["destFromReceiver", "Destination from receiver", "bool", "Resolve that destination from the call RECEIVER's factory argument — the x in json.NewEncoder(x).Encode(v)."],
     ["destFromAnyArg", "Destination from any argument", "bool", "Satisfy the destination requirement when ANY argument traces to the response writer. For catch-all patterns matching helpers with no agreed signature, where no single argument position is the writer."],
+    ["dropUnresolvedDestination", "Drop unresolved destination", "bool", "When the destination cannot be resolved at all, drop the response instead of keeping it. The default keeps it, because an unresolved destination is usually a resolution gap rather than proof of a non-response. Turn it on for a format a project mostly writes away from the wire (yaml to a config file, xml to a buffer), where keeping it invents endpoints."],
     ...SCOPE_FILTERS,
   ],
   paramPatterns: [
