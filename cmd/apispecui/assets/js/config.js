@@ -349,6 +349,18 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("servers", { url: "", description: "" })}>+ Add server</button>
           <//>
 
+          <${Section} title="Virtual hosts" help="Host names your routes are registered under, for routers whose registration pattern can carry one — a Go 1.22 ServeMux pattern is '[METHOD ][HOST]/[PATH]', so mux.HandleFunc(\"GET api.example.com/items\", h) serves /items on that host. Listing a host here documents the route at /items instead of /api.example.com/items. Hosts are listed rather than detected because a pattern that lost its leading slash is indistinguishable from one carrying a host. Hosts already named in Servers count too." hint=${`${(c.hosts || []).length}`}>
+            ${(c.hosts || []).map(
+              (h, i) => html`
+                <div class="row">
+                  ${txt("", h, (e) => setKey("hosts", (c.hosts || []).map((v, j) => (j === i ? e.target.value : v))), "api.example.com")}
+                  <span class="spacer"></span>${RowDelete(() => setKey("hosts", (c.hosts || []).filter((_, j) => j !== i)))}
+                </div>
+              `,
+            )}
+            <button class="btn secondary sm" onClick=${() => addTo("hosts", "")}>+ Add host</button>
+          <//>
+
           <${Section} title="Tags" help="Named groups that organise operations into sections in the docs UI. Routes are usually tagged automatically from their mount/group prefix; add tags here to give them an order and a description. Example: name 'Users', description 'Account and profile endpoints'." hint=${`${(c.tags || []).length}`}>
             ${(c.tags || []).map(
               (t, i) => html`

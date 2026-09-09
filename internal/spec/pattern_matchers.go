@@ -718,6 +718,43 @@ func splitMethodFromPath(raw string) (method, path string) {
 	return candidate, strings.TrimSpace(raw[i+1:])
 }
 
+// splitHostFromPath splits a NAMED host off a Go 1.22 ServeMux pattern.
+//
+// The grammar is "[METHOD ][HOST]/[PATH]", and the host is not part of the URL
+// a client requests — it selects which mux entry serves it. Folded into the
+// path it produced `/api.example.com/items`, an endpoint that does not exist
+// and that no consumer can call (issue #356).
+//
+// Only a host the CONFIG names is split off. Go's own rule — everything before
+// the first "/" is the host — cannot be applied here, because a path reaching
+// this function has already been through resolution and may have lost its
+// leading slash (a concatenated prefix, a mount join): under that rule
+// "v1/users" is host "v1", and stripping it would delete a real segment.
+// Deciding by the SHAPE of the text is the same guess wearing a regex, so the
+// host set is declared rather than inferred (golden rules #5 and #7). A project
+// that declares no hosts keeps today's behaviour exactly.
+//
+// The host is returned rather than discarded so a caller can document it; this
+// one only needs the path.
+func splitHostFromPath(raw string, hosts []string) (host, path string) {
+	if raw == "" || raw[0] == '/' || len(hosts) == 0 {
+		return "", raw
+	}
+	slash := strings.IndexByte(raw, '/')
+	if slash <= 0 {
+		return "", raw // no path component: not a pattern this rule applies to
+	}
+	candidate := raw[:slash]
+	for _, h := range hosts {
+		// Host names are case-insensitive (RFC 4343), and a config is written
+		// by hand.
+		if strings.EqualFold(candidate, h) {
+			return candidate, raw[slash:]
+		}
+	}
+	return "", raw
+}
+
 // normalizeServeMuxPath rewrites ServeMux-specific path syntax into OpenAPI
 // path templating: trailing wildcards ({path...}) collapse to {path}, and the
 // {$} end-of-path anchor is dropped.
@@ -939,6 +976,11 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 			if method, rest := splitMethodFromPath(path); method != "" {
 				routeInfo.Method = method
 				routeInfo.MethodExplicit = true
+				path = rest
+			}
+			// The host selects the mux entry; it is not part of the requested
+			// URL (issue #356).
+			if _, rest := splitHostFromPath(path, r.cfg.knownHosts()); rest != path {
 				path = rest
 			}
 			path = normalizeServeMuxPath(path)
