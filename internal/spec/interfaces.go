@@ -171,9 +171,6 @@ type SchemaMapper interface {
 
 	// MapStatusCode maps a status code string to HTTP status code
 	MapStatusCode(statusStr string) (int, bool)
-
-	// MapMethodFromFunctionName extracts HTTP method from function name
-	MapMethodFromFunctionName(funcName string) string
 }
 
 // OverrideApplier defines the interface for applying overrides
