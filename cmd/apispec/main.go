@@ -155,6 +155,7 @@ type CLIConfig struct {
 	MaxNestedArgsDepth           int
 	MaxRecursionDepth            int
 	MaxInstancesPerKey           int
+	MaxResponseInstancesPerKey   int
 	MaxNodesPerRoute             int
 	ShowVersion                  bool
 	OutputFlagSet                bool
@@ -287,7 +288,9 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.IntVar(&config.MaxRecursionDepth, "max-recursion-depth", engine.DefaultMaxRecursionDepth, "Maximum recursion depth to prevent infinite loops")
 	fs.IntVar(&config.MaxRecursionDepth, "mrd", engine.DefaultMaxRecursionDepth, "Shorthand for --max-recursion-depth")
 	fs.IntVar(&config.MaxInstancesPerKey, "max-instances-per-key", engine.DefaultMaxInstancesPerKey,
-		"Maximum copies of one callee within an instance scope (raise it when a group closure holds more routes than the default budget covers)")
+		"Maximum copies of one callee within an instance scope — the bound on call diamonds")
+	fs.IntVar(&config.MaxResponseInstancesPerKey, "max-response-instances-per-key", engine.DefaultMaxResponseInstancesPerKey,
+		"Maximum copies of a call a response pattern is looking for, within an instance scope. Higher than the general bound: these are the calls a route's body is resolved from, and a shared responder needs one copy per route that reaches it")
 	fs.IntVar(&config.MaxNodesPerRoute, "max-nodes-per-route", engine.DefaultMaxNodesPerRoute,
 		"Maximum tree nodes expanded below one route registration, bounding a route's detail without starving the others")
 
@@ -391,6 +394,7 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		MaxNestedArgsDepth:           config.MaxNestedArgsDepth,
 		MaxRecursionDepth:            config.MaxRecursionDepth,
 		MaxInstancesPerKey:           config.MaxInstancesPerKey,
+		MaxResponseInstancesPerKey:   config.MaxResponseInstancesPerKey,
 		MaxNodesPerRoute:             config.MaxNodesPerRoute,
 		IncludeFiles:                 config.IncludeFiles,
 		IncludePackages:              config.IncludePackages,

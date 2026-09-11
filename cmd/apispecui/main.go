@@ -216,26 +216,28 @@ type GenerateRequest struct {
 // Zero means "use the engine default", so a client that knows nothing about
 // limits sends nothing and gets today's behaviour.
 type TrackerLimits struct {
-	MaxNodesPerTree    int `json:"maxNodesPerTree,omitempty"`
-	MaxNodesPerRoute   int `json:"maxNodesPerRoute,omitempty"`
-	MaxChildrenPerNode int `json:"maxChildrenPerNode,omitempty"`
-	MaxArgsPerFunction int `json:"maxArgsPerFunction,omitempty"`
-	MaxNestedArgsDepth int `json:"maxNestedArgsDepth,omitempty"`
-	MaxRecursionDepth  int `json:"maxRecursionDepth,omitempty"`
-	MaxInstancesPerKey int `json:"maxInstancesPerKey,omitempty"`
+	MaxNodesPerTree            int `json:"maxNodesPerTree,omitempty"`
+	MaxNodesPerRoute           int `json:"maxNodesPerRoute,omitempty"`
+	MaxChildrenPerNode         int `json:"maxChildrenPerNode,omitempty"`
+	MaxArgsPerFunction         int `json:"maxArgsPerFunction,omitempty"`
+	MaxNestedArgsDepth         int `json:"maxNestedArgsDepth,omitempty"`
+	MaxRecursionDepth          int `json:"maxRecursionDepth,omitempty"`
+	MaxInstancesPerKey         int `json:"maxInstancesPerKey,omitempty"`
+	MaxResponseInstancesPerKey int `json:"maxResponseInstancesPerKey,omitempty"`
 }
 
 // defaultTrackerLimits is what the engine uses when the request says nothing. The
 // UI shows these so a user can see what they are changing.
 func defaultTrackerLimits() TrackerLimits {
 	return TrackerLimits{
-		MaxNodesPerTree:    engine.DefaultMaxNodesPerTree,
-		MaxNodesPerRoute:   engine.DefaultMaxNodesPerRoute,
-		MaxChildrenPerNode: engine.DefaultMaxChildrenPerNode,
-		MaxArgsPerFunction: engine.DefaultMaxArgsPerFunction,
-		MaxNestedArgsDepth: engine.DefaultMaxNestedArgsDepth,
-		MaxRecursionDepth:  engine.DefaultMaxRecursionDepth,
-		MaxInstancesPerKey: engine.DefaultMaxInstancesPerKey,
+		MaxNodesPerTree:            engine.DefaultMaxNodesPerTree,
+		MaxNodesPerRoute:           engine.DefaultMaxNodesPerRoute,
+		MaxChildrenPerNode:         engine.DefaultMaxChildrenPerNode,
+		MaxArgsPerFunction:         engine.DefaultMaxArgsPerFunction,
+		MaxNestedArgsDepth:         engine.DefaultMaxNestedArgsDepth,
+		MaxRecursionDepth:          engine.DefaultMaxRecursionDepth,
+		MaxInstancesPerKey:         engine.DefaultMaxInstancesPerKey,
+		MaxResponseInstancesPerKey: engine.DefaultMaxResponseInstancesPerKey,
 	}
 }
 
@@ -262,6 +264,9 @@ func (l TrackerLimits) resolved() TrackerLimits {
 	}
 	if l.MaxInstancesPerKey <= 0 {
 		l.MaxInstancesPerKey = d.MaxInstancesPerKey
+	}
+	if l.MaxResponseInstancesPerKey <= 0 {
+		l.MaxResponseInstancesPerKey = d.MaxResponseInstancesPerKey
 	}
 	return l
 }
@@ -937,6 +942,7 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		MaxNestedArgsDepth:           limits.MaxNestedArgsDepth,
 		MaxRecursionDepth:            limits.MaxRecursionDepth,
 		MaxInstancesPerKey:           limits.MaxInstancesPerKey,
+		MaxResponseInstancesPerKey:   limits.MaxResponseInstancesPerKey,
 		SkipCGOPackages:              true,
 		AnalyzeFrameworkDependencies: true,
 		AutoIncludeFrameworkPackages: true,

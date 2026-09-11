@@ -155,14 +155,27 @@ func TestTrackerLimitsResolved(t *testing.T) {
 		t.Errorf("raising the per-route budget changed the discovery budget to %d", perRoute.MaxNodesPerTree)
 	}
 
+	// The instance caps are independent too: a project bounding call diamonds
+	// harder must not also cut the calls its response bodies are resolved from
+	// (issue #224).
+	perResponse := TrackerLimits{MaxInstancesPerKey: 25}.resolved()
+	if perResponse.MaxInstancesPerKey != 25 {
+		t.Errorf("max instances per key = %d, want the requested 25", perResponse.MaxInstancesPerKey)
+	}
+	if perResponse.MaxResponseInstancesPerKey != defaults.MaxResponseInstancesPerKey {
+		t.Errorf("lowering the general instance cap changed the response cap to %d",
+			perResponse.MaxResponseInstancesPerKey)
+	}
+
 	all := TrackerLimits{
-		MaxNodesPerTree:    1,
-		MaxNodesPerRoute:   7,
-		MaxChildrenPerNode: 2,
-		MaxArgsPerFunction: 3,
-		MaxNestedArgsDepth: 4,
-		MaxRecursionDepth:  5,
-		MaxInstancesPerKey: 6,
+		MaxNodesPerTree:            1,
+		MaxNodesPerRoute:           7,
+		MaxChildrenPerNode:         2,
+		MaxArgsPerFunction:         3,
+		MaxNestedArgsDepth:         4,
+		MaxRecursionDepth:          5,
+		MaxInstancesPerKey:         6,
+		MaxResponseInstancesPerKey: 8,
 	}
 	if got := all.resolved(); got != all {
 		t.Errorf("fully specified limits were altered: %+v, want %+v", got, all)

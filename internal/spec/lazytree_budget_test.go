@@ -131,6 +131,60 @@ func TestInstanceBudgetCapsTraversal(t *testing.T) {
 	}
 }
 
+// TestResponseCallsHaveTheirOwnBudget is the fix for #224 at unit level: the
+// calls a response pattern is looking for are what the document is made of, so
+// the GENERAL cap must not be what decides how many of them exist.
+//
+// The same six callers and the same shared helper as above, and the same
+// general budget of three — but now the helper is a call a response pattern
+// matches, so it is counted against its own number instead. Before, the fourth
+// caller's copy was dropped, and on a real service that was 363 of 503
+// operations losing their 2xx body at a general cap of 10 while the same run at
+// 100 had all of them.
+func TestResponseCallsHaveTheirOwnBudget(t *testing.T) {
+	const callers = 6
+	limits := metadata.TrackerLimits{
+		MaxNodesPerTree:    10000,
+		MaxChildrenPerNode: 100,
+		MaxInstancesPerKey: 3,
+	}
+	always := func(*metadata.CallGraphEdge) bool { return true }
+
+	// The response budget applies, not the general one.
+	spared := NewLazyTree(sharedHelperGraph(callers), limits, WithResponseCallMatcher(always))
+	if got := countKey(spared.GetRoots(), "shared"); got != callers {
+		t.Errorf("a response call admitted %d copies under a general budget of 3, want all %d — "+
+			"the general cap must not decide whether a route has a body", got, callers)
+	}
+
+	// And it is a BUDGET, not an exemption. This is the property the measurement
+	// bought: exempting these calls outright recovered the same bodies and took
+	// gitea's mapping stage from two minutes to over thirty, because a response
+	// call reached along millions of paths is still a diamond.
+	own := limits
+	own.MaxResponseInstancesPerKey = 2
+	capped := NewLazyTree(sharedHelperGraph(callers), own, WithResponseCallMatcher(always))
+	if got := countKey(capped.GetRoots(), "shared"); got != 2 {
+		t.Errorf("a response call admitted %d copies under a response budget of 2, want 2 — "+
+			"these calls are bounded by their own number, not unbounded", got)
+	}
+
+	// Nothing else changes: a call no response pattern is looking for is still
+	// bounded by the general cap, which is the diamond it exists for.
+	bounded := NewLazyTree(sharedHelperGraph(callers), limits,
+		WithResponseCallMatcher(func(*metadata.CallGraphEdge) bool { return false }))
+	if got := countKey(bounded.GetRoots(), "shared"); got != 3 {
+		t.Errorf("a non-response call admitted %d copies under a general budget of 3, want 3", got)
+	}
+
+	// No matcher at all is the pre-#224 behaviour, so a tree built without the
+	// option cannot accidentally become unbounded.
+	none := NewLazyTree(sharedHelperGraph(callers), limits)
+	if got := countKey(none.GetRoots(), "shared"); got != 3 {
+		t.Errorf("with no matcher the general cap admitted %d copies, want 3", got)
+	}
+}
+
 // TestNewNodeSlabHandsOutStablePointers pins the property the slab must keep: a
 // node's address never moves, and no later carve writes over a node already
 // handed out. Nodes reference their parent, so a slab that grew in place
@@ -260,10 +314,31 @@ func TestInstanceTruncationIsRecordedAndNamed(t *testing.T) {
 }
 
 func TestScopeLabelRendersTheWiringLevel(t *testing.T) {
-	if got := scopeLabel(""); got != "<router wiring>" {
-		t.Errorf("scopeLabel(\"\") = %q — an empty scope is the wiring level, not missing data", got)
+	if got := scopeLabelText(""); got != "<router wiring>" {
+		t.Errorf("scopeLabelText(\"\") = %q — an empty scope is the wiring level, not missing data", got)
 	}
-	if got := scopeLabel("pkg.handler"); got != "pkg.handler" {
-		t.Errorf("scopeLabel(%q) = %q, want it unchanged", "pkg.handler", got)
+	if got := scopeLabelText("pkg.handler"); got != "pkg.handler" {
+		t.Errorf("scopeLabelText(%q) = %q, want it unchanged", "pkg.handler", got)
+	}
+}
+
+// The report names the ROUTE as well as the argument subtree, because the
+// argument key alone cannot separate a diamond the cap is bounding correctly
+// from a route being starved (issue #224).
+func TestScopeLabelNamesTheRoute(t *testing.T) {
+	tree := &LazyTree{routeScopeKeys: []string{"", "chi.Router.Get@router.go:903"}}
+	tree.internKey("pkg.handler")
+	scope := tree.internKey("pkg.handler")
+
+	if got := tree.scopeLabel(scope, 1); got != "pkg.handler under route chi.Router.Get@router.go:903" {
+		t.Errorf("scopeLabel with a route = %q", got)
+	}
+	// The wiring walk has no route to name.
+	if got := tree.scopeLabel(scope, 0); got != "pkg.handler" {
+		t.Errorf("scopeLabel at wiring level = %q, want the argument subtree alone", got)
+	}
+	// A route id past the end names nothing rather than panicking.
+	if got := tree.scopeLabel(scope, 99); got != "pkg.handler" {
+		t.Errorf("scopeLabel with an unknown route = %q", got)
 	}
 }
