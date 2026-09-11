@@ -327,9 +327,15 @@ type ExpansionStats struct {
 	// from the failure case, where a scope spanning several routes means one
 	// route's expansion is consuming another's budget.
 	InstanceTruncations int
-	InstanceLimit       int
-	InstanceFirstScope  string
-	InstanceFirstKey    string
+
+	// InstanceLimit is the budget that actually fired on the FIRST truncation,
+	// not whichever one is configured: a response call is bounded by
+	// MaxResponseInstancesPerKey and everything else by MaxInstancesPerKey, so
+	// reporting a fixed one would send a reader to the flag that would not have
+	// helped. Zero when nothing was truncated.
+	InstanceLimit      int
+	InstanceFirstScope string
+	InstanceFirstKey   string
 
 	// RouteTruncations counts route subtrees cut short by their OWN budget, and
 	// RouteFirstTruncated names the first. This shortfall is local: the route is

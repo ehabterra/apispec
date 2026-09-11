@@ -294,8 +294,8 @@ func TestBudgetCountsKeysWhileStatsReportWork(t *testing.T) {
 func TestInstanceTruncationIsRecordedAndNamed(t *testing.T) {
 	tree := &LazyTree{limits: metadata.TrackerLimits{MaxInstancesPerKey: 3}}
 
-	tree.noteInstanceTruncation("pkg.handler", "pkg.helper@a.go:1:1")
-	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:2:1")
+	tree.noteInstanceTruncation("pkg.handler", "pkg.helper@a.go:1:1", 3)
+	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:2:1", 3)
 
 	if tree.instanceTruncations != 2 {
 		t.Errorf("counted %d truncations, want 2", tree.instanceTruncations)
@@ -311,6 +311,32 @@ func TestInstanceTruncationIsRecordedAndNamed(t *testing.T) {
 	// ExpansionStats' propagation of these is asserted end to end by
 	// TestGroupClosureInstanceCapIsReported, which has a real tree; calling it
 	// here would only exercise relation-building.
+}
+
+// The number in the report has to be the budget that actually fired. Two can:
+// a response call is bounded by MaxResponseInstancesPerKey and everything else
+// by MaxInstancesPerKey, so a fixed choice would report a drop at a response
+// budget of 2 as a 100-copy cap — sending the reader to the flag that would not
+// have helped (issue #224).
+func TestInstanceTruncationReportsTheBudgetThatFired(t *testing.T) {
+	tree := &LazyTree{limits: metadata.TrackerLimits{
+		MaxInstancesPerKey:         3,
+		MaxResponseInstancesPerKey: 40,
+	}}
+
+	tree.noteInstanceTruncation("pkg.handler", "pkg.responder@a.go:1:1", 40)
+	if tree.instanceFirstLimit != 40 {
+		t.Errorf("reported limit %d, want the response budget 40 that refused the copy",
+			tree.instanceFirstLimit)
+	}
+
+	// The FIRST one is what is kept, so a later drop at the other budget does
+	// not overwrite the number the report will print.
+	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:9:1", 3)
+	if tree.instanceFirstLimit != 40 {
+		t.Errorf("reported limit became %d after a later drop at a different budget, want the first one",
+			tree.instanceFirstLimit)
+	}
 }
 
 func TestScopeLabelRendersTheWiringLevel(t *testing.T) {

@@ -104,6 +104,7 @@ type LazyTree struct {
 	// is exactly the distinction the number alone cannot make.
 	instanceTruncations int
 	instanceFirstScope  string
+	instanceFirstLimit  int
 	instanceFirstKey    string
 	instanceWarned      bool
 
@@ -417,17 +418,27 @@ func (t *LazyTree) instanceBudget() int {
 // a handler scope that runs out is the cap doing its job on a deep diamond, while
 // a scope spanning several routes means one route's expansion is consuming
 // another's budget.
-func (t *LazyTree) noteInstanceTruncation(scope, key string) {
+// The budget is passed in rather than re-read, because two of them can fire:
+// a response call is bounded by MaxResponseInstancesPerKey and everything else
+// by MaxInstancesPerKey, so recomputing here would report a drop at a response
+// budget of 2 as a 100-copy cap. A report that names the wrong number is worse
+// than a quiet one — it sends the reader to the flag that would not have helped.
+func (t *LazyTree) noteInstanceTruncation(scope, key string, budget int) {
 	t.instanceTruncations++
 	if t.instanceFirstKey == "" {
 		t.instanceFirstScope = scope
 		t.instanceFirstKey = key
+		t.instanceFirstLimit = budget
 	}
 	if !t.instanceWarned {
 		t.instanceWarned = true
+		name := "MaxInstancesPerKey"
+		if budget == t.responseInstanceBudget() && budget != t.instanceBudget() {
+			name = "MaxResponseInstancesPerKey"
+		}
 		fmt.Fprintf(os.Stderr,
-			"Warning: MaxInstancesPerKey limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
-			t.instanceBudget(), key, scope)
+			"Warning: %s limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
+			name, budget, key, scope)
 	}
 }
 
@@ -1004,7 +1015,7 @@ func (t *LazyTree) ExpansionStats() ExpansionStats {
 		Limit:               t.limits.MaxNodesPerTree,
 		Truncated:           t.truncated,
 		InstanceTruncations: t.instanceTruncations,
-		InstanceLimit:       t.instanceBudget(),
+		InstanceLimit:       t.instanceFirstLimit,
 		InstanceFirstScope:  t.instanceFirstScope,
 		InstanceFirstKey:    t.instanceFirstKey,
 		RouteTruncations:    t.routeTruncations,
@@ -1492,7 +1503,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
 			// bound is a skip — the role the eager per-ID recursion cap plays.
-			n.tree.noteInstanceTruncation(n.tree.scopeLabel(scope, childScope), spec.key)
+			n.tree.noteInstanceTruncation(n.tree.scopeLabel(scope, childScope), spec.key, budget)
 			continue
 		}
 		child := n.tree.newNode()
