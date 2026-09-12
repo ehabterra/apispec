@@ -2568,6 +2568,15 @@ func (r *ResponsePatternMatcherImpl) resolveArgType(arg *metadata.CallArgument, 
 		}
 	}
 
+	// A TYPE PARAMETER is resolved from the instantiation this route registered
+	// (issue #367). Last, because everything above may narrow the type first —
+	// and applied even when nothing did, since the value written by a generic
+	// adapter is a plain ident whose declared type is the parameter itself.
+	if resolved, isParam := resolveTypeParam(bodyType, typeNode, r.metadata()); isParam {
+		bodyType = resolved
+		oneOfTypes = nil // the instantiation is the answer; there is no ambiguity to report
+	}
+
 	// Inferred generic instantiations arrive as the go/types string
 	// (pkg.Envelope[pkg.Product]); fold them into the internal form so they
 	// key to the same clean component as a written Envelope[Product].
