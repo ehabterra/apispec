@@ -51,6 +51,10 @@ func TestResolveTypeParam(t *testing.T) {
 		// out whole rather than being flattened to its core.
 		{"slice of the parameter", "[]Res", "[]example.com/app.User", true},
 		{"pointer to the parameter", "*Res", "*example.com/app.User", true},
+		// Through a map's VALUE too: typemodel's Core() stops at a map, and a
+		// handler answering map[string]Res is one additionalProperties away
+		// from the same bogus $ref.
+		{"map value", "map[string]Res", "map[string]example.com/app.User", true},
 
 		// Not a type parameter: returned unchanged, and reported as such so the
 		// caller does not discard what it already resolved.
@@ -69,6 +73,24 @@ func TestResolveTypeParam(t *testing.T) {
 					tc.in, got, isParam, tc.want, tc.isParam)
 			}
 		})
+	}
+
+	// The BINDING can carry constructors of its own, which is the ordinary list
+	// endpoint: `func listUsers(ctx) ([]User, error)` binds Res to []User.
+	// Grafting only the binding's core dropped them and documented an object
+	// where the handler sends an array.
+	sliceBound := &typeParamNode{bindings: map[string]string{"Res": "[]example.com/app.User"}}
+	sliceCases := []struct{ in, want string }{
+		{"Res", "[]example.com/app.User"},
+		{"[]Res", "[][]example.com/app.User"}, // both sides' constructors survive
+		{"*Res", "*[]example.com/app.User"},
+	}
+	for _, tc := range sliceCases {
+		got, isParam := resolveTypeParam(tc.in, sliceBound, nil)
+		if got != tc.want || !isParam {
+			t.Errorf("with Res bound to a slice, resolveTypeParam(%q) = (%q, %v), want (%q, true)",
+				tc.in, got, isParam, tc.want)
+		}
 	}
 
 	// A nil node has no bindings to read and must not panic.
@@ -100,6 +122,12 @@ func TestResolveTypeParamFallsBackToTheGeneralType(t *testing.T) {
 	}
 	// No bindings at all: the instantiation could not be recovered.
 	node := &typeParamNode{bindings: map[string]string{}, edge: edge}
+
+	// An unresolved parameter under a constructor keeps it: []Res becomes
+	// []any, an array of unknowns, not a bare object.
+	if got, isParam := resolveTypeParam("[]Res", node, meta); !isParam || got != "[]"+unresolvedTypeParamType {
+		t.Errorf("unresolved []Res = (%q, %v), want an array of the general type", got, isParam)
+	}
 
 	got, isParam := resolveTypeParam("Res", node, meta)
 	if !isParam {

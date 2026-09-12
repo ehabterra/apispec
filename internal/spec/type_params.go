@@ -40,14 +40,16 @@ import (
 // could print it. All that was needed was to look.
 //
 // Substitution is structural, through the type model rather than by string
-// surgery (golden rule #2), so a parameter under a constructor comes out whole:
-// `[]Res` becomes `[]pkg.User`, not `pkg.User`.
+// surgery (golden rule #2), so constructors survive on BOTH sides: `[]Res`
+// becomes `[]pkg.User` rather than `pkg.User`, and a `Res` bound to `[]User` —
+// the ordinary list endpoint — stays an array rather than collapsing to the
+// element.
 func resolveTypeParam(goType string, node TrackerNodeInterface, meta *metadata.Metadata) (string, bool) {
 	if goType == "" || node == nil {
 		return goType, false
 	}
 	ref := typemodel.Parse(goType)
-	core := ref.Core()
+	core := paramOccurrence(ref)
 	if core == nil || core.Name == "" {
 		return goType, false
 	}
@@ -58,7 +60,7 @@ func resolveTypeParam(goType string, node TrackerNodeInterface, meta *metadata.M
 		// wrote this value declares it as one, and that case must not reach the
 		// mapper either — see unresolvedTypeParamType.
 		if isDeclaredTypeParam(core.Name, node, meta) {
-			return unresolvedTypeParamType, true
+			return substituteCore(ref, typemodel.Parse(unresolvedTypeParamType)), true
 		}
 		return goType, false
 	}
@@ -66,17 +68,48 @@ func resolveTypeParam(goType string, node TrackerNodeInterface, meta *metadata.M
 		return goType, false
 	}
 
-	boundCore := typemodel.Parse(bound).Core()
-	if boundCore == nil || boundCore.Name == "" {
+	boundRef := typemodel.Parse(bound)
+	if c := paramOccurrence(boundRef); c == nil || c.Name == "" {
 		return goType, false
 	}
-	// Clone before mutating: TypeRefs are shared (golden rule #2).
+	return substituteCore(ref, boundRef), true
+}
+
+// paramOccurrence returns the node a type parameter would occupy: the type with
+// its constructors peeled off.
+//
+// typemodel's own Core() stops at a map, and the map case is not exotic — a
+// handler answering `map[string]Res` is one `additionalProperties` away from
+// the same defect, emitting a `$ref` to a component named after the parameter.
+// The VALUE type is followed rather than the key, because a parameter used as a
+// map key cannot reach an OpenAPI schema anyway: property names are strings.
+func paramOccurrence(t *typemodel.TypeRef) *typemodel.TypeRef {
+	for t != nil {
+		switch t.Kind {
+		case typemodel.KindPointer, typemodel.KindSlice, typemodel.KindArray,
+			typemodel.KindChan, typemodel.KindMap:
+			t = t.Elem
+		default:
+			return t
+		}
+	}
+	return nil
+}
+
+// substituteCore replaces the type-parameter node inside ref with the WHOLE
+// bound type, so constructors on both sides survive.
+//
+// Each side can carry its own, and grafting the binding's core alone dropped
+// them: `Res` bound to `[]User` — an ordinary list endpoint — came out as
+// `User`, documenting an object where the handler sends an array, and `[]Res`
+// bound to `[]User` came out as `[]User` rather than `[][]User`. Core() returns
+// a pointer INTO the tree, so overwriting the node it names keeps whatever the
+// occurrence wrapped it in.
+func substituteCore(ref, bound *typemodel.TypeRef) string {
+	// Clone both: TypeRefs are shared, and the graft mutates (golden rule #2).
 	out := ref.Clone()
-	outCore := out.Core()
-	outCore.Pkg = boundCore.Pkg
-	outCore.Name = boundCore.Name
-	outCore.Args = boundCore.Args
-	return out.String(), true
+	*paramOccurrence(out) = *bound.Clone()
+	return out.String()
 }
 
 // unresolvedTypeParamType is what an unresolved type parameter becomes: the
