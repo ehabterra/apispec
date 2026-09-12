@@ -104,6 +104,7 @@ type LazyTree struct {
 	// is exactly the distinction the number alone cannot make.
 	instanceTruncations int
 	instanceFirstScope  string
+	instanceFirstLimit  int
 	instanceFirstKey    string
 	instanceWarned      bool
 
@@ -193,6 +194,11 @@ type LazyTree struct {
 	// groups) must not, or every route inside a group shares one allowance —
 	// see TerminalRouteMatcher.
 	terminalRouteMatch func(*metadata.CallGraphEdge) bool
+
+	// responseCallMatch marks the calls a response pattern is looking for, so
+	// the instance cap can spare them (see GetChildren). Nil leaves the cap
+	// applying to everything, which is what it did before issue #224.
+	responseCallMatch func(*metadata.CallGraphEdge) bool
 	// routeReach is routeMatch's transitive closure — the functions whose
 	// expansion leads to a route registration. Used to ORDER a node's callee
 	// children so the budget is spent on routing code first (issue #264); never
@@ -412,23 +418,33 @@ func (t *LazyTree) instanceBudget() int {
 // a handler scope that runs out is the cap doing its job on a deep diamond, while
 // a scope spanning several routes means one route's expansion is consuming
 // another's budget.
-func (t *LazyTree) noteInstanceTruncation(scope, key string) {
+// The budget is passed in rather than re-read, because two of them can fire:
+// a response call is bounded by MaxResponseInstancesPerKey and everything else
+// by MaxInstancesPerKey, so recomputing here would report a drop at a response
+// budget of 2 as a 100-copy cap. A report that names the wrong number is worse
+// than a quiet one — it sends the reader to the flag that would not have helped.
+func (t *LazyTree) noteInstanceTruncation(scope, key string, budget int) {
 	t.instanceTruncations++
 	if t.instanceFirstKey == "" {
 		t.instanceFirstScope = scope
 		t.instanceFirstKey = key
+		t.instanceFirstLimit = budget
 	}
 	if !t.instanceWarned {
 		t.instanceWarned = true
+		name := "MaxInstancesPerKey"
+		if budget == t.responseInstanceBudget() && budget != t.instanceBudget() {
+			name = "MaxResponseInstancesPerKey"
+		}
 		fmt.Fprintf(os.Stderr,
-			"Warning: MaxInstancesPerKey limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
-			t.instanceBudget(), key, scopeLabel(scope))
+			"Warning: %s limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
+			name, budget, key, scope)
 	}
 }
 
-// scopeLabel renders an instance scope for a human. The empty scope is the
+// scopeLabelText renders an instance scope for a human. The empty scope is the
 // wiring level — above any argument node — and "" would read as missing data.
-func scopeLabel(scope string) string {
+func scopeLabelText(scope string) string {
 	if scope == "" {
 		return "<router wiring>"
 	}
@@ -892,6 +908,14 @@ func WithTerminalRouteMatcher(match func(*metadata.CallGraphEdge) bool) LazyTree
 	return func(t *LazyTree) { t.terminalRouteMatch = match }
 }
 
+// WithResponseCallMatcher supplies the predicate that marks a call as one a
+// response pattern is looking for. Those calls are what the document is FOR, so
+// the instance cap spares them (issue #224); everything else is bounded as
+// before.
+func WithResponseCallMatcher(match func(*metadata.CallGraphEdge) bool) LazyTreeOption {
+	return func(t *LazyTree) { t.responseCallMatch = match }
+}
+
 // SetEdgeMatcher supplies the predicate deciding whether an edge is one some
 // matcher family accepts, enabling the barren-subtree prune. Set by the
 // extractor before it walks, because the matcher families are its own; the tree
@@ -991,7 +1015,7 @@ func (t *LazyTree) ExpansionStats() ExpansionStats {
 		Limit:               t.limits.MaxNodesPerTree,
 		Truncated:           t.truncated,
 		InstanceTruncations: t.instanceTruncations,
-		InstanceLimit:       t.instanceBudget(),
+		InstanceLimit:       t.instanceFirstLimit,
 		InstanceFirstScope:  t.instanceFirstScope,
 		InstanceFirstKey:    t.instanceFirstKey,
 		RouteTruncations:    t.routeTruncations,
@@ -1470,12 +1494,16 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// of the nodes on a real service.
 			continue
 		}
-		if scopeCounts[spec.keyID] >= n.tree.instanceBudget() {
+		budget := n.tree.instanceBudget()
+		if n.tree.isResponseCall(spec) {
+			budget = n.tree.responseInstanceBudget()
+		}
+		if scopeCounts[spec.keyID] >= budget {
 			// Diamond inside this scope: stop materializing further copies.
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
 			// bound is a skip — the role the eager per-ID recursion cap plays.
-			n.tree.noteInstanceTruncation(n.tree.keyString(scope), spec.key)
+			n.tree.noteInstanceTruncation(n.tree.scopeLabel(scope, childScope), spec.key, budget)
 			continue
 		}
 		child := n.tree.newNode()
@@ -1915,4 +1943,68 @@ func (t *LazyTree) implementerKeys(pkg, recv, method string) []string {
 		}
 	}
 	return out
+}
+
+// isResponseCall reports whether a child is a call a response pattern is
+// looking for.
+func (t *LazyTree) isResponseCall(spec childSpec) bool {
+	return t.responseCallMatch != nil && spec.edge != nil && t.responseCallMatch(spec.edge)
+}
+
+// responseInstanceBudget is the cap in force for a call a response pattern is
+// looking for: its own number, not the general one.
+func (t *LazyTree) responseInstanceBudget() int {
+	if t.limits.MaxResponseInstancesPerKey > 0 {
+		return t.limits.MaxResponseInstancesPerKey
+	}
+	return DefaultMaxResponseInstancesPerKey
+}
+
+// DefaultMaxResponseInstancesPerKey bounds copies of a call a RESPONSE pattern
+// is looking for, separately from the general cap above.
+//
+// One number was doing two jobs (issue #224). The general cap exists to bound
+// call diamonds, where every extra copy buys nothing, and it cannot tell such a
+// diamond from the one path that carries a route's response type: both are
+// copies of the same callee key inside one scope. So on a service whose
+// handlers reach a shared `respond(w, code, v)` helper along many paths, the
+// copies that resolved a body were simply the ones that arrived after the
+// budget ran out — 363 of 503 operations lost their 2xx body at a cap of 10 —
+// and the only remedy was raising the number until it happened to be enough.
+// That is what "no project can know it is safe" means: what pushed a route over
+// the line was how many OTHER routes shared its helper.
+//
+// Splitting the two makes the general number stop deciding. Measured on that
+// service, every one of its 433 bodies is documented at a general cap of 5, 10
+// or 25, where a cap of 10 previously documented 70.
+//
+// 100, and NOT unbounded. Exempting these calls from the cap entirely recovered
+// the same bodies and then took gitea's mapping stage from two minutes to over
+// thirty: a response call reached along millions of paths is still a diamond,
+// and the per-route node budget is far too loose to be the only bound (golden
+// rule #6). A second bounded budget keeps both properties.
+//
+// The two numbers are independent on purpose. Because bodies no longer depend
+// on the general cap, that one can be LOWERED to bound diamonds harder: gitea
+// documents 940 paths in 1m40 at a general cap of 25, against 930 in 2m05 at
+// the uniform 100 it used to run — ten more paths for twenty per cent less
+// time, because the work saved on diamonds is spent finding routes instead.
+const DefaultMaxResponseInstancesPerKey = 100
+
+// scopeLabel renders an instance scope for the truncation report: which
+// argument subtree ran out, and under which route it was reached.
+//
+// The route is worth the extra words. The argument key alone cannot separate a
+// diamond the cap is bounding correctly from a route being starved, and reading
+// that report is how the shape behind #224 was finally identified — the scopes
+// that ran out were business-logic argument nodes deep inside ONE route, not
+// the group closure the issue first blamed.
+func (t *LazyTree) scopeLabel(scope, route int32) string {
+	arg := scopeLabelText(t.keyString(scope))
+	if route > 0 && int(route) < len(t.routeScopeKeys) {
+		if key := t.routeScopeKeys[route]; key != "" {
+			return arg + " under route " + key
+		}
+	}
+	return arg
 }

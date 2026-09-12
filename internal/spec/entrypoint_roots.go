@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"regexp"
 	"sort"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -188,6 +189,55 @@ func TerminalRouteMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(*met
 	return registrationMatcher(cfg, meta, false)
 }
 
+// ResponseCallMatcher matches the calls a response pattern is looking for.
+//
+// Used by the tracker to spare those calls from the per-key instance cap
+// (issue #224): they are what the document is made of, and the cap cannot tell
+// the copy that carries a route's response type from the diamond it exists to
+// bound.
+//
+// Matched on the call NAME alone, deliberately wider than the pattern that will
+// eventually run. The receiver scope is what makes an extractor pattern
+// precise, but here a false positive costs a few extra node copies while a
+// false negative costs a response body — and the node the receiver would be
+// read from is the one being decided about. The route and wiring budgets still
+// bound what this lets through.
+func ResponseCallMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(*metadata.CallGraphEdge) bool {
+	never := func(*metadata.CallGraphEdge) bool { return false }
+	if cfg == nil || meta == nil {
+		return never
+	}
+	res := make([]*regexp.Regexp, 0, len(cfg.Framework.ResponsePatterns))
+	for _, p := range cfg.Framework.ResponsePatterns {
+		if p.CallRegex == "" {
+			continue
+		}
+		re, err := regexp.Compile(p.CallRegex)
+		if err != nil {
+			continue // an unusable pattern spares nothing, as it matches nothing
+		}
+		res = append(res, re)
+	}
+	if len(res) == 0 {
+		return never
+	}
+	return func(edge *metadata.CallGraphEdge) bool {
+		if edge == nil {
+			return false
+		}
+		name := getString(meta, edge.Callee.Name)
+		if name == "" {
+			return false
+		}
+		for _, re := range res {
+			if re.MatchString(name) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func registrationMatcher(cfg *APISpecConfig, meta *metadata.Metadata, includeMounts bool) func(*metadata.CallGraphEdge) bool {
 	if cfg == nil || meta == nil {
 		return func(*metadata.CallGraphEdge) bool { return false }
@@ -277,9 +327,15 @@ type ExpansionStats struct {
 	// from the failure case, where a scope spanning several routes means one
 	// route's expansion is consuming another's budget.
 	InstanceTruncations int
-	InstanceLimit       int
-	InstanceFirstScope  string
-	InstanceFirstKey    string
+
+	// InstanceLimit is the budget that actually fired on the FIRST truncation,
+	// not whichever one is configured: a response call is bounded by
+	// MaxResponseInstancesPerKey and everything else by MaxInstancesPerKey, so
+	// reporting a fixed one would send a reader to the flag that would not have
+	// helped. Zero when nothing was truncated.
+	InstanceLimit      int
+	InstanceFirstScope string
+	InstanceFirstKey   string
 
 	// RouteTruncations counts route subtrees cut short by their OWN budget, and
 	// RouteFirstTruncated names the first. This shortfall is local: the route is

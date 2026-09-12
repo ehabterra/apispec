@@ -1845,6 +1845,11 @@ type TrackerLimits struct {
 	// off. Zero means that default.
 	MaxInstancesPerKey int
 
+	// MaxResponseInstancesPerKey is the same bound for the calls a response
+	// pattern is looking for — see the lazy tree's
+	// DefaultMaxResponseInstancesPerKey.
+	MaxResponseInstancesPerKey int
+
 	// MaxNodesPerRoute bounds the nodes materialised BELOW one route
 	// registration, so a single deep handler cannot consume the allowance the
 	// rest of the routes still need. MaxNodesPerTree then bounds only the

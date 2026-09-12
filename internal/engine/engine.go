@@ -99,6 +99,8 @@ const (
 	// DefaultMaxInstancesPerKey mirrors the lazy tree's own default, so the
 	// engine reports one number rather than two that can drift.
 	DefaultMaxInstancesPerKey = intspec.DefaultMaxInstancesPerKey
+	// DefaultMaxResponseInstancesPerKey mirrors the lazy tree's own default.
+	DefaultMaxResponseInstancesPerKey = intspec.DefaultMaxResponseInstancesPerKey
 	// DefaultMaxNodesPerRoute mirrors the lazy tree's own default.
 	DefaultMaxNodesPerRoute = intspec.DefaultMaxNodesPerRoute
 	DefaultMetadataFile     = "metadata.yaml"
@@ -137,6 +139,10 @@ type EngineConfig struct {
 	// MaxInstancesPerKey bounds copies of one callee within an instance scope.
 	// Zero uses DefaultMaxInstancesPerKey.
 	MaxInstancesPerKey int
+
+	// MaxResponseInstancesPerKey is the same bound for the calls a response
+	// pattern is looking for. Zero uses DefaultMaxResponseInstancesPerKey.
+	MaxResponseInstancesPerKey int
 	// MaxNodesPerRoute bounds the nodes expanded below ONE route registration,
 	// so a deep handler cannot consume the allowance the undiscovered routes
 	// still need. Zero uses DefaultMaxNodesPerRoute. Lazy tracker only: the
@@ -866,13 +872,14 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 
 	// Construct the tracker tree
 	limits := metadata.TrackerLimits{
-		MaxNodesPerTree:    e.config.MaxNodesPerTree,
-		MaxChildrenPerNode: e.config.MaxChildrenPerNode,
-		MaxArgsPerFunction: e.config.MaxArgsPerFunction,
-		MaxNestedArgsDepth: e.config.MaxNestedArgsDepth,
-		MaxRecursionDepth:  e.config.MaxRecursionDepth,
-		MaxInstancesPerKey: e.config.MaxInstancesPerKey,
-		MaxNodesPerRoute:   e.config.MaxNodesPerRoute,
+		MaxNodesPerTree:            e.config.MaxNodesPerTree,
+		MaxChildrenPerNode:         e.config.MaxChildrenPerNode,
+		MaxArgsPerFunction:         e.config.MaxArgsPerFunction,
+		MaxNestedArgsDepth:         e.config.MaxNestedArgsDepth,
+		MaxRecursionDepth:          e.config.MaxRecursionDepth,
+		MaxInstancesPerKey:         e.config.MaxInstancesPerKey,
+		MaxResponseInstancesPerKey: e.config.MaxResponseInstancesPerKey,
+		MaxNodesPerRoute:           e.config.MaxNodesPerRoute,
 	}
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
@@ -882,7 +889,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		intspec.WithHandlerInterfaceMethods(apispecConfig.Framework.HandlerInterfaceMethods),
 		intspec.WithEntrypoints(apispecConfig.Framework.EntrypointPatterns,
 			intspec.RouteRegistrationMatcher(apispecConfig, meta), NewVerboseLogger(e.config.Verbose)),
-		intspec.WithTerminalRouteMatcher(intspec.TerminalRouteMatcher(apispecConfig, meta)))
+		intspec.WithTerminalRouteMatcher(intspec.TerminalRouteMatcher(apispecConfig, meta)),
+		intspec.WithResponseCallMatcher(intspec.ResponseCallMatcher(apispecConfig, meta)))
 	e.reportPhase("tracker tree ready", time.Since(tTree))
 	if err := e.ctx().Err(); err != nil {
 		return nil, err
