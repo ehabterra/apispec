@@ -265,22 +265,22 @@ if status_diffs:
         if lost:   parts.append("lost "   + ",".join(lost))
         if gained: parts.append("gained " + ",".join(gained))
         print(f"    ! {m} {p}: {'; '.join(parts)}")
-else:
-    print("  STATUS CHANGES (0) — response status sets unchanged.")
+# else:
+#     print("  STATUS CHANGES (0) — response status sets unchanged.")
 
 if missing:
     print(f"  MISSING ({len(missing)}) — in snapshot, absent from generated:")
     for k in missing:
         print(f"    - {show(k)} = {ref[k]!r}")
-else:
-    print("  MISSING (0) — nothing from the snapshot was dropped.")
+# else:
+#    print("  MISSING (0) — nothing from the snapshot was dropped.")
 
 if changed:
     print(f"  CHANGED ({len(changed)}) — same key, different value:")
     for k in changed:
         print(f"    ~ {show(k)}: {ref[k]!r} -> {gen[k]!r}")
-else:
-    print("  CHANGED (0) — no in-place value changes.")
+# else:
+#     print("  CHANGED (0) — no in-place value changes.")
 
 if show_added and added:
     print(f"  ADDED ({len(added)}) — new in generated:")
