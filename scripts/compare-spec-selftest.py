@@ -62,11 +62,32 @@ def run(script, ref, gen, flags):
 
 
 def count(out, label):
+    """Number of entries the comparator reported under label.
+
+    An ABSENT section means zero. The comparator prints a section only when it
+    has something to report, so a clean comparison prints nothing at all — and
+    reading that absence as "unknown" made every zero-expecting case fail the
+    moment the "(0)" lines were dropped.
+
+    Reading it as zero is only safe because a comparator that died is caught
+    separately (see crashed), so silence cannot be mistaken for success.
+    """
     for line in out.splitlines():
         line = line.strip()
         if line.startswith(label + " ("):
             return int(line.split("(", 1)[1].split(")", 1)[0])
-    return -1
+    return 0
+
+
+def crashed(out):
+    """Whether the comparator failed instead of reporting.
+
+    An uncaught exception exits 1, which is also the exit code for "drift
+    found", so the status alone cannot tell them apart — and with an absent
+    section now counting as zero, a crash would otherwise read as a clean
+    comparison.
+    """
+    return "Traceback (most recent call last)" in out
 
 
 PATH_ID = {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
@@ -120,14 +141,18 @@ def main():
     failures = 0
     for name, ref, gen, want_missing, want_changed, want_added, want_fail, flags in CASES:
         code, out = run(script, ref, gen, flags)
+        # ADDED is only printed under --all, so without it the count says
+        # nothing either way and the expectation stands in for it.
         got_added = count(out, "ADDED") if "--all" in flags else want_added
         got = (count(out, "MISSING"), count(out, "CHANGED"), got_added)
         want = (want_missing, want_changed, want_added)
-        if got == want and bool(code) == want_fail:
+        if got == want and bool(code) == want_fail and not crashed(out):
             print(f"  ok   {name}")
             continue
         failures += 1
         print(f"  FAIL {name}")
+        if crashed(out):
+            print("       the comparator crashed; the counts below are not meaningful")
         print(f"       want missing/changed/added={want} fails={want_fail}")
         print(f"       got  missing/changed/added={got} fails={bool(code)}")
         for line in out.splitlines():
