@@ -97,9 +97,26 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex: ginContextRecv,
 				},
 				{
-					CallRegex:     "^DefaultQuery$",
+					CallRegex:       "^DefaultQuery$",
+					ParamIn:         "query",
+					ParamArgIndex:   0,
+					DefaultArgIndex: 1,
+					RecvTypeRegex:   ginContextRecv,
+				},
+				{
+					// The comma-ok twin of Query: the same parameter, with the
+					// handler additionally checking whether it was sent.
+					CallRegex:     "^GetQuery$",
 					ParamIn:       "query",
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
+				},
+				{
+					// Repeatable query keys: ?tag=a&tag=b.
+					CallRegex:     "^(QueryArray|QueryMap)$",
+					ParamIn:       "query",
+					ParamArgIndex: 0,
+					Multi:         true,
 					RecvTypeRegex: ginContextRecv,
 				},
 				{
@@ -109,13 +126,42 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex: ginContextRecv,
 				},
 				{
+					CallRegex:     "^Cookie$",
+					ParamIn:       "cookie",
+					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
+				},
+				{
+					// gin's alternate path accessor. Its receiver is the Params
+					// SLICE rather than the Context, which is why every
+					// Context-scoped pattern above misses it.
+					CallRegex:     "^ByName$",
+					ParamIn:       "path",
+					ParamArgIndex: 0,
+					RecvTypeRegex: "^github\\.com/gin-gonic/gin\\.Params$",
+				},
+				{
 					// gin's form-value read. The other configs all had their
 					// FormValue equivalent (#171); gin's was missing, so a gin
 					// form body documented no fields at all — including the text
 					// parts of a multipart upload (issue #207).
-					CallRegex:     "^(PostForm|DefaultPostForm)$",
+					CallRegex:     "^(PostForm|GetPostForm)$",
 					ParamIn:       paramInForm,
 					ParamArgIndex: 0,
+					RecvTypeRegex: ginContextRecv,
+				},
+				{
+					CallRegex:       "^DefaultPostForm$",
+					ParamIn:         paramInForm,
+					ParamArgIndex:   0,
+					DefaultArgIndex: 1,
+					RecvTypeRegex:   ginContextRecv,
+				},
+				{
+					CallRegex:     "^(PostFormArray|PostFormMap)$",
+					ParamIn:       paramInForm,
+					ParamArgIndex: 0,
+					Multi:         true,
 					RecvTypeRegex: ginContextRecv,
 				},
 			}, ctxMultipartParamPatterns(ginContextRecv)...),
