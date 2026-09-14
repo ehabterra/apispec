@@ -113,7 +113,12 @@ func DefaultGinConfig() *APISpecConfig {
 				},
 				{
 					// Repeatable query keys: ?tag=a&tag=b.
-					CallRegex:     "^(QueryArray|QueryMap)$",
+					//
+					// QueryMap is NOT here. It also takes a name, but returns
+					// map[string]string — the deep-object form (?ids[a]=1&ids[b]=2)
+					// — and an array schema would misdescribe it. That shape needs
+					// its own encoding and stays out (issue #365).
+					CallRegex:     "^QueryArray$",
 					ParamIn:       "query",
 					ParamArgIndex: 0,
 					Multi:         true,
@@ -158,7 +163,7 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex:   ginContextRecv,
 				},
 				{
-					CallRegex:     "^(PostFormArray|PostFormMap)$",
+					CallRegex:     "^PostFormArray$",
 					ParamIn:       paramInForm,
 					ParamArgIndex: 0,
 					Multi:         true,

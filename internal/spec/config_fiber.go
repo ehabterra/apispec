@@ -141,14 +141,11 @@ func DefaultFiberConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
-				{
-					// Repeatable query keys.
-					CallRegex:     "^(Queries|QueryParser)$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					Multi:         true,
-					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-				},
+				// No pattern for Queries() or QueryParser(out): neither NAMES a
+				// parameter. Queries() takes no argument and returns every query
+				// pair as a map, and QueryParser binds the whole query into a
+				// struct — which is issue #355, not this one. A pattern for
+				// either would match a call it cannot read a name from.
 			}, ctxMultipartParamPatterns(`^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`)...),
 			SecurityPatterns: fiberSecurityPatterns(),
 			MountPatterns: []MountPattern{
