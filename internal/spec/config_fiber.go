@@ -127,6 +127,25 @@ func DefaultFiberConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
+				{
+					// fiber spells the request-header read `Get`, and the config
+					// had no header pattern at all — so no fiber handler could
+					// ever produce an `in: header` parameter, and a required
+					// tenant or API-version header was invisible to every client
+					// generated from the document (issue #365).
+					//
+					// Scoped to fiber's own Ctx, which is what keeps it from
+					// matching the many other `Get` methods in a project.
+					CallRegex:     "^Get$",
+					ParamIn:       "header",
+					ParamArgIndex: 0,
+					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				// No pattern for Queries() or QueryParser(out): neither NAMES a
+				// parameter. Queries() takes no argument and returns every query
+				// pair as a map, and QueryParser binds the whole query into a
+				// struct — which is issue #355, not this one. A pattern for
+				// either would match a call it cannot read a name from.
 			}, ctxMultipartParamPatterns(`^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`)...),
 			SecurityPatterns: fiberSecurityPatterns(),
 			MountPatterns: []MountPattern{

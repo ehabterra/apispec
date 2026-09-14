@@ -477,6 +477,23 @@ type ParamPattern struct {
 	TypeFromArg bool `yaml:"typeFromArg,omitempty" json:"typeFromArg,omitempty"` // Extract type from argument
 	Deref       bool `yaml:"deref,omitempty" json:"deref,omitempty"`             // Dereference pointer types
 
+	// Multi marks an accessor that returns MANY values for one key —
+	// `c.QueryArray("tag")`, `r.URL.Query()["tag"]`, `Header.Values(k)`. The
+	// parameter is the same parameter; what differs is that the client may
+	// repeat it, so the schema becomes an array of the single-value type.
+	// OpenAPI's default style for query and header (form/simple, explode true)
+	// already describes the repeated-key form, so nothing else has to be said.
+	Multi bool `yaml:"multi,omitempty" json:"multi,omitempty"`
+
+	// DefaultArgIndex names the argument holding this accessor's fallback value
+	// — the "1" in `c.DefaultQuery("page", "1")`. A literal there becomes the
+	// schema's `default`, and the parameter is no longer required: the handler
+	// has said what it does when the client omits it.
+	//
+	// Zero means "no default", which is unambiguous because index 0 is always
+	// the parameter NAME; a fallback can never be the first argument.
+	DefaultArgIndex int `yaml:"defaultArgIndex,omitempty" json:"defaultArgIndex,omitempty"`
+
 	// NameFromMapKey extracts parameter names from the string-literal keys used
 	// to index this call's map result inside the handler, rather than from a
 	// call argument. This is the gorilla/mux idiom `mux.Vars(r)["id"]`, where

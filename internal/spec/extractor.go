@@ -3904,6 +3904,22 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 		param.Schema = &Schema{Type: "string"}
 	}
 
+	// A multi-value accessor documents the same parameter, repeated. The schema
+	// becomes an array of what one occurrence holds; OpenAPI's default style for
+	// query and header already describes the repeated-key form (issue #365).
+	if p.pattern.Multi {
+		param.Schema = &Schema{Type: "array", Items: param.Schema}
+	}
+
+	// A fallback the handler supplies is both a `default` and the reason the
+	// parameter is not required: the code has said what it does when the client
+	// omits it (issue #365).
+	if idx := p.pattern.DefaultArgIndex; idx > 0 && idx < len(edge.Args) {
+		if value, ok := p.contextProvider.ConstantValue(edge.Args[idx]); ok {
+			param.Schema.Default = strings.Trim(value, "\"`")
+		}
+	}
+
 	// Ensure path parameters are always required
 	if p.pattern.ParamIn == "path" {
 		param.Required = true

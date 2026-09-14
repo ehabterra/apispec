@@ -149,6 +149,17 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ExcludeRecvOriginRegex: responseWriterOriginRegex,
 				},
 				{
+					// r.Header.Values("X-Foo") — the repeatable twin of Get, and
+					// the same header either way: what differs is that the client
+					// may send it more than once (issue #365).
+					CallRegex:              "^Values$",
+					ParamIn:                "header",
+					ParamArgIndex:          0,
+					Multi:                  true,
+					RecvType:               "net/http.Header",
+					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+				},
+				{
 					// r.URL.Query().Get("q") — query parameter. Query()
 					// returns net/url.Values, whose Get reads a query key.
 					CallRegex:     "^Get$",

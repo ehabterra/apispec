@@ -600,6 +600,8 @@ const PATTERN_FIELDS = {
     ["typeArgIndex", "Type arg index", "int", "Index of the argument whose type is the parameter type (for typed getters)."],
     ["typeFromArg", "Type from arg", "bool", "Use the matched argument's type as the parameter type (otherwise defaults to string)."],
     ["deref", "Dereference pointer", "bool", "Strip a leading * from the resolved type."],
+    ["multi", "Multi-value", "bool", "The accessor returns MANY values for one key (c.QueryArray('tag'), r.Header.Values('X-Foo')). Same parameter, repeatable: the schema becomes an array of the single-value type. OpenAPI's default style for query and header already describes the repeated-key form."],
+    ["defaultArgIndex", "Default arg index", "int", "Index of the argument holding this accessor's FALLBACK value — the '1' in c.DefaultQuery('page', '1'). A literal there becomes schema.default, and the parameter stops being required. Leave 0 for no default: index 0 is always the parameter name, so a fallback can never be there."],
     ["nameFromMapKey", "Name from map key", "bool", "The name is a KEY used to index this call's map result, not an argument — the gorilla/mux idiom vars := mux.Vars(r); vars['id']. Only keys that also appear as {placeholders} in the route path are emitted."],
     ["excludeRecvOriginRegex", "Exclude receiver origin", "text", "Drop the match when the receiver came FROM a type matching this regex. net/http.Header is the header map of the request AND the response, so a read is only a request parameter by provenance: w.Header().Get(k) and c.Response().Header().Get(k) read headers the server SENDS. An origin that cannot be resolved keeps the parameter."],
     ...SCOPE_FILTERS,

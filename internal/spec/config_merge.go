@@ -99,6 +99,15 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					ExcludeRecvOriginRegex: responseWriterOriginRegex,
 				},
 				{
+					// The repeatable twin of Get (issue #365).
+					CallRegex:              "^Values$",
+					ParamIn:                "header",
+					ParamArgIndex:          0,
+					Multi:                  true,
+					RecvType:               "net/http.Header",
+					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+				},
+				{
 					CallRegex:     "^Get$",
 					ParamIn:       "query",
 					ParamArgIndex: 0,
