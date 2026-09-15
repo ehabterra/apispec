@@ -1059,13 +1059,21 @@ func buildResponses(respInfo map[string]*ResponseInfo) map[string]Response {
 			continue
 		}
 
+		// One entry per representation this status can carry. Usually exactly
+		// one; a content-negotiating handler contributes the rest (issue #470).
+		content := map[string]MediaType{
+			resp.ContentType: {Schema: resp.Schema},
+		}
+		for _, ct := range sortedKeys(resp.Alternates) {
+			if _, taken := content[ct]; taken {
+				continue // the primary pair wins its own media type
+			}
+			content[ct] = MediaType{Schema: resp.Alternates[ct]}
+		}
+
 		responses[statusCode] = Response{
 			Description: description,
-			Content: map[string]MediaType{
-				resp.ContentType: {
-					Schema: resp.Schema,
-				},
-			},
+			Content:     content,
 		}
 	}
 
@@ -4070,4 +4078,18 @@ func parseArraySize(sizeStr string) *int {
 
 	// If it's not a number, return nil (no size constraint)
 	return nil
+}
+
+// sortedKeys returns a map's keys in sorted order, so iteration that reaches
+// the output cannot depend on map order (golden rule #1).
+func sortedKeys[V any](m map[string]V) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

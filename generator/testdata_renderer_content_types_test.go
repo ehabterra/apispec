@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"slices"
 	"sort"
 	"testing"
 
@@ -83,15 +84,17 @@ func TestTestdata_RendererContentTypes(t *testing.T) {
 		}
 	}
 
-	// A handler that writes BOTH on one operation documents only one of them.
-	// One status carries one media type, because RouteInfo.Response is keyed by
-	// status alone — a structural limit, not a matching failure (issue #470).
-	// Pinned so this flips when that is fixed: the assertion to write then is
-	// both media types, not whichever won.
+	// A handler that writes BOTH on one operation documents BOTH. A
+	// content-negotiating endpoint sends one representation or the other
+	// depending on Accept, and a document naming only one tells a client the
+	// other does not exist — while which one it named was decided by
+	// response-fragment ordering, not by anything about the handler
+	// (issue #470).
 	both := contentTypesOf(opFor(out.Paths["/items/both"], "GET"), "200")
-	if len(both) != 1 {
-		t.Errorf("GET /items/both 200 content = %v; a status can currently hold one media type — "+
-			"if this now holds both, the structural limit is fixed and this test should assert both", both)
+	want := []string{"application/json", "application/xml"}
+	if !slices.Equal(both, want) {
+		t.Errorf("GET /items/both 200 content = %v, want %v — the handler encodes XML or JSON "+
+			"depending on Accept, and both are true of the endpoint", both, want)
 	}
 }
 

@@ -196,6 +196,26 @@ type ResponseInfo struct {
 	ContentType string
 	BodyType    string
 
+	// Alternates holds the OTHER media types this one status can carry, keyed
+	// by content type — the representations a content-negotiating handler picks
+	// between:
+	//
+	//	if r.Header.Get("Accept") == "application/xml" {
+	//		xml.NewEncoder(w).Encode(item); return
+	//	}
+	//	json.NewEncoder(w).Encode(item)
+	//
+	// Both fragments are found and typed correctly, and a status is one map key,
+	// so the second used to be merged away: whichever the walk saw last won, and
+	// the document advertised one representation as if it were the only one
+	// (issue #470). ContentType and Schema stay the primary pair — every
+	// existing consumer reads them unchanged — and this carries the rest.
+	//
+	// Not a slice of ResponseInfo: nothing else about these fragments differs,
+	// and a second ResponseInfo would invite the status, entry sites and
+	// description to diverge from the response they belong to.
+	Alternates map[string]*Schema
+
 	// File and Line locate the call site that produced this response, used to
 	// attribute it to an r.Method dispatch branch (see splitMethodDispatchRoutes).
 	File string
@@ -1485,7 +1505,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				status = -1 // normalize "unknown"
 				resp.StatusCode = -1
 			}
-			dedupeKey := cand.chain + chainSep + siteID + chainSep + strconv.Itoa(status) + chainSep + resp.BodyType
+			// The media type is part of the identity: one handler encoding the
+			// same value as XML and as JSON produces two fragments that agree on
+			// everything else, and without it the second is dropped here before
+			// the store below ever sees it (issue #470).
+			dedupeKey := cand.chain + chainSep + siteID + chainSep + strconv.Itoa(status) +
+				chainSep + resp.BodyType + chainSep + resp.ContentType
 			if seen[dedupeKey] {
 				continue
 			}
@@ -1528,6 +1553,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			route.Response[slot] = resp
 		case existing.BodyType != "" && resp.BodyType == "":
 			// keep the informative one
+		case otherMediaType(existing, resp):
+			// The same status in a DIFFERENT representation: a
+			// content-negotiating handler sends one or the other, and both are
+			// true of the endpoint. They compose into the response's `content`
+			// rather than displacing each other (issue #470).
+			route.Response[slot] = addAlternateMediaType(existing, resp)
 		case statusStated && wasStated && alternativeBodies(existing, resp):
 			// One status, two genuinely different bodies: the endpoint really
 			// can send either, so the response alternates between them rather
@@ -4053,4 +4084,148 @@ func (o *OverrideApplierImpl) HasOverride(functionName string) bool {
 		}
 	}
 	return false
+}
+
+// otherMediaType reports whether two fragments of one status describe DIFFERENT
+// representations rather than competing descriptions of the same one.
+//
+// Both must actually be resolved: a fragment with no body is not a
+// representation, and letting one in would advertise a media type the handler
+// never writes.
+func otherMediaType(cur, next *ResponseInfo) bool {
+	if cur == nil || next == nil {
+		return false
+	}
+	if cur.ContentType == "" || next.ContentType == "" || cur.ContentType == next.ContentType {
+		return false
+	}
+	return serialisedBody(cur) && serialisedBody(next)
+}
+
+// serialisedBody reports whether a fragment describes a value the handler
+// actually WRITES, as opposed to one the resolution merely landed on.
+//
+// The test is that the body is not an untyped constant. An untyped constant is
+// a literal written in the source, and no handler encodes one as its payload —
+// where it turns up, it is an argument that was read as the body. Measured on a
+// large real project, every single one of the eighteen second representations
+// this would otherwise have admitted was `untyped int`, all of them the STATUS
+// argument of an error helper:
+//
+//	ctx.HTTPError(http.StatusUnprocessableEntity, "unsupported render mode")
+//
+// whose real body is the string, already documented as text/plain by the
+// http.Error underneath it. Admitting the other reading would advertise
+// `application/json: {type: integer}` on eighteen error responses that send no
+// such thing.
+//
+// The mis-resolution itself is older than this and is not fixed here — it was
+// simply invisible while one fragment per status displaced the other. This rule
+// is a STOPGAP that keeps composing representations from surfacing it, filed as
+// issue #485 with the evidence and a suggested direction; when that lands, this
+// gate comes out.
+//
+// It has a cost, which is why it is filed rather than called a fix: a genuine
+// payload that happens to be a named untyped constant (`const legacyCode = 7`,
+// encoded in two formats) is rejected too, and only one of its representations
+// is documented. A string or numeric LITERAL is unaffected — determineLiteralType
+// resolves `Encode("ok")` to `string`, not to an untyped form.
+func serialisedBody(r *ResponseInfo) bool {
+	if r == nil || r.BodyType == "" {
+		return false
+	}
+	_, untyped := untypedConstantDefault(r.BodyType)
+	return !untyped
+}
+
+// addAlternateMediaType records next's representation on cur.
+//
+// cur keeps the primary pair, so which fragment is "first" decides only the
+// order the media types are written in, never whether one survives. Sorted
+// iteration in the mapper makes the emitted document independent of that
+// anyway (golden rule #1).
+func addAlternateMediaType(cur, next *ResponseInfo) *ResponseInfo {
+	merged := *cur
+	merged.Alternates = make(map[string]*Schema, len(cur.Alternates)+1)
+	for ct, s := range cur.Alternates {
+		merged.Alternates[ct] = s
+	}
+	// next may itself have collected alternates already — three representations
+	// arrive as two merges.
+	for ct, s := range next.Alternates {
+		if ct != merged.ContentType {
+			addAlternateSchema(merged.Alternates, ct, s, next.BodyType)
+		}
+	}
+	if next.ContentType != merged.ContentType {
+		addAlternateSchema(merged.Alternates, next.ContentType, next.Schema, next.BodyType)
+	}
+	// Every alternate's type is recorded, because component collection reads
+	// OneOfTypes (or BodyType), never the alternate schemas — so a `$ref` that
+	// only ever appears under a second media type would name a component
+	// nothing registered, and dangle.
+	merged.OneOfTypes = appendUniqueStrings(merged.OneOfTypes, alternateBodyTypes(cur, next)...)
+	return &merged
+}
+
+// addAlternateSchema records one representation, COMPOSING with whatever that
+// media type already holds rather than replacing it.
+//
+// One media type can carry more than one body — `application/xml` for the item
+// on success and for the error on failure — and the two arrive as separate
+// fragments. Overwriting kept whichever came last, so a third fragment silently
+// deleted the second: JSON Item, XML Item, XML Error documented the XML error
+// alone (CodeRabbit on #470). anyOf, for the same reason
+// mergeResponseAlternatives uses it — these are what the status MAY carry, not
+// a claim that they are mutually exclusive.
+func addAlternateSchema(into map[string]*Schema, ct string, add *Schema, bodyType string) {
+	if add == nil {
+		return
+	}
+	existing, ok := into[ct]
+	if !ok || existing == nil {
+		into[ct] = add
+		return
+	}
+	if sameRenderedBody(existing, add) {
+		return // the same representation twice
+	}
+	// Reuse the composition rule rather than restating it: the empty-schema
+	// case and accumulation into an existing anyOf both matter here too. The
+	// body types are carried because mergeResponseAlternatives keys "already
+	// represented" on them — without them every addition looks like a repeat of
+	// the unnamed body already there.
+	composed := mergeResponseAlternatives(
+		&ResponseInfo{Schema: existing, BodyType: alternateTypeKey(existing)},
+		&ResponseInfo{Schema: add, BodyType: bodyType},
+	)
+	into[ct] = composed.Schema
+}
+
+// alternateTypeKey names the body a stored alternate schema describes, well
+// enough for the repeat check in mergeResponseAlternatives. The schema's own
+// $ref is that name where there is one; a composed schema is already plural and
+// answers with nothing, which lets the addition through to be compared member
+// by member.
+func alternateTypeKey(s *Schema) string {
+	if s == nil {
+		return ""
+	}
+	return s.Ref
+}
+
+// alternateBodyTypes lists the Go types two merging fragments describe, so none
+// is lost to component collection.
+func alternateBodyTypes(cur, next *ResponseInfo) []string {
+	var out []string
+	for _, r := range []*ResponseInfo{cur, next} {
+		if r == nil {
+			continue
+		}
+		if r.BodyType != "" {
+			out = append(out, r.BodyType)
+		}
+		out = append(out, r.OneOfTypes...)
+	}
+	return out
 }
