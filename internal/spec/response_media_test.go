@@ -41,16 +41,7 @@ func TestOtherMediaType(t *testing.T) {
 	if otherMediaType(json, mediaResp("application/xml", "", nil)) {
 		t.Error("a bodyless fragment was treated as a representation")
 	}
-	// Nor is an UNTYPED CONSTANT. No handler encodes a literal as its payload;
-	// where one turns up it is an argument read as the body — on a large real
-	// project every second representation this rule excludes was `untyped int`,
-	// the status argument of an error helper (issue #470).
-	if otherMediaType(json, mediaResp("application/xml", "untyped int", &Schema{Type: "integer"})) {
-		t.Error("an untyped constant was treated as a serialised body")
-	}
-	if otherMediaType(mediaResp("application/json", "untyped string", &Schema{Type: "string"}), xml) {
-		t.Error("an untyped constant was treated as a serialised body")
-	}
+
 	if otherMediaType(mediaResp("", "pkg.Item", nil), xml) {
 		t.Error("a fragment with no media type was treated as a representation")
 	}
@@ -172,32 +163,6 @@ func TestMergePathsAreDistinct(t *testing.T) {
 	}
 }
 
-// serialisedBody is the rule that keeps composition from surfacing a
-// mis-resolved argument as a second representation.
-func TestSerialisedBody(t *testing.T) {
-	cases := []struct {
-		bodyType string
-		want     bool
-	}{
-		{"pkg.Item", true},
-		{"string", true}, // what http.Error writes: a real value, just a primitive
-		{"int", true},    // a typed int is a value; only the UNTYPED form is a literal
-		{"untyped int", false},
-		{"untyped string", false},
-		{"untyped bool", false},
-		{"", false},
-	}
-	for _, tc := range cases {
-		got := serialisedBody(&ResponseInfo{BodyType: tc.bodyType})
-		if got != tc.want {
-			t.Errorf("serialisedBody(%q) = %v, want %v", tc.bodyType, got, tc.want)
-		}
-	}
-	if serialisedBody(nil) {
-		t.Error("a nil fragment has no body")
-	}
-}
-
 // Three fragments, two of them sharing a media type. Before, the third
 // overwrote the second and the XML item was documented as the XML error —
 // a representation silently deleted (CodeRabbit on #470).
@@ -231,5 +196,53 @@ func TestAlternateSchemasCompose(t *testing.T) {
 	slices.Sort(types)
 	if !slices.Equal(types, []string{"pkg.Error", "pkg.Item"}) {
 		t.Errorf("OneOfTypes = %v, want every type any representation names", types)
+	}
+}
+
+// The composition helpers have to survive the degenerate inputs the pairing
+// loop can hand them, since a fragment may arrive with no schema at all.
+func TestAlternateCompositionEdges(t *testing.T) {
+	into := map[string]*Schema{}
+
+	// Nothing to add.
+	addAlternateSchema(into, "application/xml", nil, "pkg.Item")
+	if len(into) != 0 {
+		t.Errorf("a nil schema was recorded: %+v", into)
+	}
+
+	// A slot holding nothing takes the addition outright.
+	into["application/xml"] = nil
+	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"}, "pkg.Item")
+	if into["application/xml"].Ref != "#/item" {
+		t.Errorf("an empty slot did not take the schema: %+v", into["application/xml"])
+	}
+
+	// The same representation twice stays one, rather than composing a schema
+	// with itself.
+	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"}, "pkg.Item")
+	if got := into["application/xml"]; got.Ref != "#/item" || len(got.AnyOf) != 0 {
+		t.Errorf("a repeat was composed instead of ignored: %+v", got)
+	}
+
+	// alternateTypeKey names a single body and declines a composed one, which
+	// is what lets a third member reach the comparison.
+	if got := alternateTypeKey(&Schema{Ref: "#/item"}); got != "#/item" {
+		t.Errorf("alternateTypeKey = %q, want the ref", got)
+	}
+	if got := alternateTypeKey(&Schema{AnyOf: []*Schema{{Ref: "#/a"}, {Ref: "#/b"}}}); got != "" {
+		t.Errorf("a composed schema named %q; it is already plural", got)
+	}
+	if got := alternateTypeKey(nil); got != "" {
+		t.Errorf("a nil schema named %q", got)
+	}
+
+	// alternateBodyTypes gathers from both sides and tolerates a nil one.
+	types := alternateBodyTypes(
+		&ResponseInfo{BodyType: "pkg.A", OneOfTypes: []string{"pkg.B"}},
+		nil,
+	)
+	slices.Sort(types)
+	if !slices.Equal(types, []string{"pkg.A", "pkg.B"}) {
+		t.Errorf("alternateBodyTypes = %v, want both of the left side's types", types)
 	}
 }

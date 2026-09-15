@@ -664,10 +664,18 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 			entry.Response.StatusFromArg, entry.Response.StatusArgIndex = true, i
 		}
 	}
+	statusOnly := false
 	if inner.TypeFromArg && !entry.Response.TypeFromArg {
 		if i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex)); ok {
-			entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
-			entry.Response.Deref = inner.Deref
+			if sameAsStatusParam(entry.Response, i) {
+				// The body resolved to the parameter the status comes from, so
+				// it is not a body (see sameAsStatusParam). The STATUS half is
+				// still sound, and is what this responder is for.
+				statusOnly = true
+			} else {
+				entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
+				entry.Response.Deref = inner.Deref
+			}
 		}
 	}
 	if inner.DefaultStatus != 0 && entry.Response.DefaultStatus == 0 {
@@ -675,8 +683,44 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 	}
 
 	// A body is what makes a responder worth describing: a status alone documents
-	// nothing a client can use.
-	entry.Complete = entry.Response.TypeFromArg
+	// nothing a client can use — UNLESS the body was declined because it
+	// resolved to the status parameter. There the status is known and the body
+	// is known not to exist, which is a complete description of
+	// `ctx.HTTPError(404)`: that endpoint really can answer 404, and saying so
+	// with no body beats both inventing one and dropping the status with it.
+	// Keeping the pattern is worth 186 statuses on a large real project, every
+	// one of which had been resting on the invented body (issue #485).
+	entry.Complete = entry.Response.TypeFromArg || statusOnly
+}
+
+// sameAsStatusParam reports whether a derived pattern would read its BODY from
+// the parameter it already reads its STATUS from.
+//
+// One parameter cannot be both. Where the derivation arrives at that answer it
+// has followed a local back to the wrong source:
+//
+//	func (b *Base) HTTPError(status int, contents ...string) {
+//		v := http.StatusText(status)      // <- v traces back to `status`
+//		if len(contents) > 0 {
+//			v = contents[0]               //    ...and to `contents` as well
+//		}
+//		http.Error(b.Resp, v, status)
+//	}
+//
+// The inner `http.Error` names its body at argument 1 and its status at 2, which
+// is right. Mapping those back onto HTTPError's parameters, the status lands on
+// `status` — correct — and the body follows `v` through the first assignment it
+// finds and lands on `status` too. The derived pattern then reads a status
+// CONSTANT as the payload, and on a large real project that documented eighteen
+// error responses as `application/json: {type: integer}` bodies they never send
+// (issue #485).
+//
+// Declining is the honest outcome, not a lesser one: a responder whose body
+// cannot be located contributes no body, and the status half of the pattern
+// still works. Guessing the other branch of that assignment would be a coin
+// flip between `contents` and nothing (golden rule #7).
+func sameAsStatusParam(p *ResponsePattern, typeIdx int) bool {
+	return p != nil && p.StatusFromArg && p.StatusArgIndex == typeIdx
 }
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —
