@@ -332,12 +332,17 @@ func deriveWrapper(cp ContextProvider, params *paramIndex, w *wrapperMethod, inn
 	if inner.HandlerFromArg {
 		// Resolved against the call's real arity, so a wrapper that adds its own
 		// middleware — `r.engine.GET(path, r.auth, h)` — still forwards from the
-		// handler and not from the guard it inserted (#386). The DERIVED pattern
-		// keeps a fixed index: the wrapper's own signature is not variadic, so
-		// the handler sits at one parameter position.
+		// handler and not from the guard it inserted (#386).
 		if i, ok := inner.HandlerArgIndexFor(len(edge.Args)); ok {
 			if j, ok := params.indexOf(w, arg(i)); ok {
 				out.Pattern.HandlerFromArg, out.Pattern.HandlerArgIndex = true, j
+				// ...and when the wrapper forwards a VARIADIC chain, the derived
+				// pattern has to say so too. The inner call is written once,
+				// `r.engine.GET(path, handlers...)`, so it has two arguments
+				// whatever the caller passes — which fixes the handler at index
+				// 1, and a later `r.Get("/users", auth, endpoint)` then reads
+				// the middleware (issue #416).
+				out.Pattern.HandlerArgFromEnd = params.isVariadic(w, j)
 				handlerOK = true
 			}
 		}

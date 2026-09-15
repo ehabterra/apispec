@@ -32,10 +32,55 @@ type paramIndex struct {
 	meta *metadata.Metadata
 	// byMethod caches a method's parameter names in declaration order.
 	byMethod map[string][]string
+	// variadicAt caches, per method, whether each parameter position is
+	// variadic — see isVariadic.
+	variadic map[string][]bool
 }
 
 func newParamIndex(meta *metadata.Metadata) *paramIndex {
-	return &paramIndex{meta: meta, byMethod: map[string][]string{}}
+	return &paramIndex{
+		meta:     meta,
+		byMethod: map[string][]string{},
+		variadic: map[string][]bool{},
+	}
+}
+
+// isVariadic reports whether the wrapper method's parameter at idx is declared
+// `...T` rather than `[]T`.
+//
+// The two are a genuinely different fact and the derivation turns on it: a
+// wrapper forwarding a variadic chain — `func (r *Router) Get(path string,
+// handlers ...gin.HandlerFunc)` calling `r.engine.GET(path, handlers...)` —
+// derives from an inner call of exactly TWO arguments, so the handler's position
+// is recorded as a fixed index 1. A later three-argument call through the wrapper
+// then reads index 1 and finds the MIDDLEWARE, documenting the whole operation
+// from it: the middleware's doc comment as the summary, its parameter reads as
+// the operation's, and the real handler's body and responses missing
+// (issues #416, #386).
+//
+// Issue #416 filed this as blocked on a metadata gap, on the grounds that
+// `...T` collapses to `[]T` in the type model and survives only in the rendered
+// signature string — which golden rule #2 forbids parsing. That is true of
+// TypeRef, and it is not the whole picture: the parameter's own CallArgument in
+// the recorded signature keeps KindEllipsis, distinct from the KindArrayType a
+// `[]T` parameter gets. The fact is already recorded, on the parameter rather
+// than on the type, which is where the issue itself guessed it would belong.
+func (p *paramIndex) isVariadic(w *wrapperMethod, idx int) bool {
+	if p == nil || w == nil || idx < 0 {
+		return false
+	}
+	key := w.fqRecv() + "." + w.name
+	flags, ok := p.variadic[key]
+	if !ok {
+		if m := p.methodOf(w); m != nil {
+			flags = make([]bool, 0, len(m.Signature.Args))
+			for _, param := range m.Signature.Args {
+				flags = append(flags, param.GetKind() == metadata.KindEllipsis)
+			}
+		}
+		p.variadic[key] = flags
+	}
+	return idx < len(flags) && flags[idx]
 }
 
 // wrapperExprDepth bounds the walk over one argument expression. Real forwarding
