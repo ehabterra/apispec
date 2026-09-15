@@ -197,3 +197,39 @@ func TestSerialisedBody(t *testing.T) {
 		t.Error("a nil fragment has no body")
 	}
 }
+
+// Three fragments, two of them sharing a media type. Before, the third
+// overwrote the second and the XML item was documented as the XML error —
+// a representation silently deleted (CodeRabbit on #470).
+func TestAlternateSchemasCompose(t *testing.T) {
+	jsonItem := mediaResp("application/json", "pkg.Item", &Schema{Ref: "#/item"})
+	xmlItem := mediaResp("application/xml", "pkg.Item", &Schema{Ref: "#/item"})
+	xmlErr := mediaResp("application/xml", "pkg.Error", &Schema{Ref: "#/err"})
+
+	got := addAlternateMediaType(addAlternateMediaType(jsonItem, xmlItem), xmlErr)
+
+	if got.ContentType != "application/json" || got.Schema.Ref != "#/item" {
+		t.Errorf("the primary pair moved: %q %+v", got.ContentType, got.Schema)
+	}
+	xml := got.Alternates["application/xml"]
+	if xml == nil {
+		t.Fatal("the xml representation is gone")
+	}
+	if len(xml.AnyOf) != 2 {
+		t.Fatalf("xml schema = %+v, want an anyOf of BOTH bodies it can carry", xml)
+	}
+	refs := []string{xml.AnyOf[0].Ref, xml.AnyOf[1].Ref}
+	slices.Sort(refs)
+	if !slices.Equal(refs, []string{"#/err", "#/item"}) {
+		t.Errorf("xml anyOf = %v, want both the item and the error", refs)
+	}
+
+	// Every type is registered for component collection, which reads
+	// OneOfTypes — not the alternate schemas — so a $ref appearing only under a
+	// second media type would otherwise dangle.
+	types := append([]string(nil), got.OneOfTypes...)
+	slices.Sort(types)
+	if !slices.Equal(types, []string{"pkg.Error", "pkg.Item"}) {
+		t.Errorf("OneOfTypes = %v, want every type any representation names", types)
+	}
+}

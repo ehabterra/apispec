@@ -4147,11 +4147,78 @@ func addAlternateMediaType(cur, next *ResponseInfo) *ResponseInfo {
 	// arrive as two merges.
 	for ct, s := range next.Alternates {
 		if ct != merged.ContentType {
-			merged.Alternates[ct] = s
+			addAlternateSchema(merged.Alternates, ct, s, next.BodyType)
 		}
 	}
 	if next.ContentType != merged.ContentType {
-		merged.Alternates[next.ContentType] = next.Schema
+		addAlternateSchema(merged.Alternates, next.ContentType, next.Schema, next.BodyType)
 	}
+	// Every alternate's type is recorded, because component collection reads
+	// OneOfTypes (or BodyType), never the alternate schemas — so a `$ref` that
+	// only ever appears under a second media type would name a component
+	// nothing registered, and dangle.
+	merged.OneOfTypes = appendUniqueStrings(merged.OneOfTypes, alternateBodyTypes(cur, next)...)
 	return &merged
+}
+
+// addAlternateSchema records one representation, COMPOSING with whatever that
+// media type already holds rather than replacing it.
+//
+// One media type can carry more than one body — `application/xml` for the item
+// on success and for the error on failure — and the two arrive as separate
+// fragments. Overwriting kept whichever came last, so a third fragment silently
+// deleted the second: JSON Item, XML Item, XML Error documented the XML error
+// alone (CodeRabbit on #470). anyOf, for the same reason
+// mergeResponseAlternatives uses it — these are what the status MAY carry, not
+// a claim that they are mutually exclusive.
+func addAlternateSchema(into map[string]*Schema, ct string, add *Schema, bodyType string) {
+	if add == nil {
+		return
+	}
+	existing, ok := into[ct]
+	if !ok || existing == nil {
+		into[ct] = add
+		return
+	}
+	if sameRenderedBody(existing, add) {
+		return // the same representation twice
+	}
+	// Reuse the composition rule rather than restating it: the empty-schema
+	// case and accumulation into an existing anyOf both matter here too. The
+	// body types are carried because mergeResponseAlternatives keys "already
+	// represented" on them — without them every addition looks like a repeat of
+	// the unnamed body already there.
+	composed := mergeResponseAlternatives(
+		&ResponseInfo{Schema: existing, BodyType: alternateTypeKey(existing)},
+		&ResponseInfo{Schema: add, BodyType: bodyType},
+	)
+	into[ct] = composed.Schema
+}
+
+// alternateTypeKey names the body a stored alternate schema describes, well
+// enough for the repeat check in mergeResponseAlternatives. The schema's own
+// $ref is that name where there is one; a composed schema is already plural and
+// answers with nothing, which lets the addition through to be compared member
+// by member.
+func alternateTypeKey(s *Schema) string {
+	if s == nil {
+		return ""
+	}
+	return s.Ref
+}
+
+// alternateBodyTypes lists the Go types two merging fragments describe, so none
+// is lost to component collection.
+func alternateBodyTypes(cur, next *ResponseInfo) []string {
+	var out []string
+	for _, r := range []*ResponseInfo{cur, next} {
+		if r == nil {
+			continue
+		}
+		if r.BodyType != "" {
+			out = append(out, r.BodyType)
+		}
+		out = append(out, r.OneOfTypes...)
+	}
+	return out
 }
