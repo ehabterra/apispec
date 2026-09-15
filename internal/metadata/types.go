@@ -941,18 +941,33 @@ type File struct {
 
 // Type represents a Go type
 type Type struct {
-	Name          int      `yaml:"name,omitempty"`
-	Pkg           int      `yaml:"pkg,omitempty"`
-	Kind          int      `yaml:"kind,omitempty"`
-	Target        int      `yaml:"target,omitempty"`
-	Implements    []int    `yaml:"implements,omitempty"`
-	ImplementedBy []int    `yaml:"implemented_by,omitempty"`
-	Embeds        []int    `yaml:"embeds,omitempty"`
-	Fields        []Field  `yaml:"fields,omitempty"`
-	Scope         int      `yaml:"scope,omitempty"`
-	Methods       []Method `yaml:"methods,omitempty"`
-	Comments      int      `yaml:"comments,omitempty"`
-	Tags          []int    `yaml:"tags,omitempty"`
+	Name          int   `yaml:"name,omitempty"`
+	Pkg           int   `yaml:"pkg,omitempty"`
+	Kind          int   `yaml:"kind,omitempty"`
+	Target        int   `yaml:"target,omitempty"`
+	Implements    []int `yaml:"implements,omitempty"`
+	ImplementedBy []int `yaml:"implemented_by,omitempty"`
+	Embeds        []int `yaml:"embeds,omitempty"`
+
+	// EmbedTags holds each embedded field's struct tag, positionally aligned
+	// with Embeds and empty where there is none.
+	//
+	// The tag decides what an embed MEANS to encoding/json: without one the
+	// embedded type's fields are promoted into this struct, and with one
+	// (`Named \`json:"named"\``) they are nested under that name instead.
+	// Recording only the type name made the two indistinguishable, so the spec
+	// layer could not promote an embed without risking the wrong answer for the
+	// other form (issue #487).
+	//
+	// A parallel slice rather than a field on Embeds: every existing reader
+	// indexes Embeds as names, and omitempty keeps it out of the goldens of the
+	// many types that embed nothing tagged.
+	EmbedTags []int    `yaml:"embed_tags,omitempty"`
+	Fields    []Field  `yaml:"fields,omitempty"`
+	Scope     int      `yaml:"scope,omitempty"`
+	Methods   []Method `yaml:"methods,omitempty"`
+	Comments  int      `yaml:"comments,omitempty"`
+	Tags      []int    `yaml:"tags,omitempty"`
 
 	// Declared type-parameter names for generic types, e.g. ["T"] for
 	// `type Page[T any] struct{...}`. The spec layer zips these positionally

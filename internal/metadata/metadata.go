@@ -1095,8 +1095,10 @@ func processStructFields(structType *ast.StructType, pkgName string, metadata *M
 		}
 
 		if len(field.Names) == 0 {
-			// Embedded (anonymous) field
+			// Embedded (anonymous) field. The tag travels with it because it is
+			// what tells promotion from nesting — see Type.EmbedTags.
 			t.Embeds = append(t.Embeds, metadata.StringPool.Get(fieldType))
+			t.EmbedTags = append(t.EmbedTags, metadata.StringPool.Get(tag))
 			continue
 		}
 
