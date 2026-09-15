@@ -1,7 +1,6 @@
-// Package main is a house router whose Get forwards a VARIADIC handler chain.
-//
-// It documents a known gap rather than a supported shape — see
-// generator/testdata_variadic_wrapper_test.go.
+// Package main is a house router whose Get forwards a VARIADIC handler chain —
+// the wiring style where the endpoint handler is LAST and everything before it
+// is middleware (issue #416).
 package main
 
 import "github.com/gin-gonic/gin"

@@ -21,30 +21,27 @@ import (
 	"github.com/ehabterra/apispec/spec"
 )
 
-// TestTestdata_VariadicWrapper is a CHANGE DETECTOR for a known gap, not a
-// statement that the current output is right.
-//
-// A house router that forwards the chain variadically —
+// A house router that forwards its handler chain variadically —
 //
 //	func (r *Router) Get(path string, handlers ...gin.HandlerFunc) {
 //		r.engine.GET(path, handlers...)
 //	}
 //
-// derives a wrapper pattern with a FIXED handler index, because the inner call
-// passes one spread argument. A later `r.Get("/users", auth, endpoint)` then
-// reads that fixed index and attributes the operation to `auth`: the same
-// symptom #386 fixed for direct registrations, reached through the wrapper.
+// derives its pattern from an inner call written ONCE, `GET(path, handlers...)`,
+// which has two arguments whatever the caller passes. That fixed the handler at
+// index 1, so a later `r.Get("/users", auth, endpoint)` read the MIDDLEWARE and
+// built the whole operation from it — auth's doc comment as the summary, its
+// parameter reads as the operation's, and endpoint's responses missing. The same
+// symptom #386 fixed for direct registrations, reached through the wrapper
+// wiring style that golden rule #5 requires be covered alongside it (issue #416).
 //
-// It is not fixed here because it cannot be fixed honestly yet. Deriving
-// HandlerArgFromEnd for the wrapper needs to know that the mapped parameter is
-// variadic, and the type model erases that: `typemodel.FromExpr` maps
-// `*ast.Ellipsis` to `KindSlice`, and metadata records the parameter's type as
-// `[]gin.HandlerFunc`. The `...` survives only inside the rendered
-// SignatureStr, so recovering it would mean parsing a type string — golden rule
-// #2. Filed as the metadata gap instead (golden rule #9).
-//
-// So this asserts what happens TODAY. When the gap is closed the assertion
-// flips to `endpoint`, and this test failing is the signal that it worked.
+// The derived pattern now carries HandlerArgFromEnd when the parameter it mapped
+// to is variadic. Issue #416 filed that as blocked — `...T` collapses to `[]T`
+// in the type model, surviving only in the rendered signature string, which
+// golden rule #2 forbids parsing. True of TypeRef, and not the whole picture:
+// the parameter's own CallArgument in the recorded signature keeps
+// KindEllipsis, where a `[]T` parameter gets KindArrayType. The fact was already
+// recorded, on the parameter rather than on the type.
 func TestTestdata_VariadicWrapper(t *testing.T) {
 	out := loadTestdata(t, "variadic_wrapper", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -69,12 +66,19 @@ func TestTestdata_VariadicWrapper(t *testing.T) {
 	if op == nil {
 		t.Fatal("/users: no GET operation")
 	}
-	// KNOWN WRONG — pinned deliberately. Flip to ".endpoint" when the variadic
-	// gap is closed.
-	if !strings.HasSuffix(op.OperationID, ".auth") {
-		t.Errorf("/users operationId = %q; this fixture pins the CURRENT (wrong) "+
-			"attribution to the middleware `auth`. If it now names `endpoint`, the "+
-			"variadic-wrapper gap is fixed — flip this assertion and delete the note.",
+	if !strings.HasSuffix(op.OperationID, ".endpoint") {
+		t.Errorf("/users operationId = %q, want the endpoint handler — a variadic chain puts the "+
+			"handler LAST, and everything about the operation hangs off which argument is read",
 			op.OperationID)
+	}
+
+	// The whole operation, not just its name: reading the middleware instead
+	// took the summary and the response with it.
+	if op.Summary != "" && !strings.Contains(op.Summary, "endpoint") {
+		t.Errorf("/users summary = %q, which is not the endpoint handler's", op.Summary)
+	}
+	if _, ok := op.Responses["200"]; !ok {
+		t.Errorf("/users documents %v, but the endpoint handler writes a 200 — the responses "+
+			"follow whichever handler was attributed", sortedStatusKeys(op))
 	}
 }
