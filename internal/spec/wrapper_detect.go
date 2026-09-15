@@ -51,6 +51,14 @@ type DetectedWrapper struct {
 	// parameter. An incomplete derivation is reported but never applied: half a
 	// registration produces a route with the wrong path rather than no route.
 	Complete bool
+
+	// bodyIsStatus records that the response's body role was DECLINED because it
+	// resolved to the same parameter as its status (see normaliseResponseRoles).
+	// Such a responder is still complete — the status is known and the body is
+	// known not to exist — and the flag lives on the entry rather than in the
+	// merge that discovered it, because roles accumulate across edges in
+	// whatever order the call graph stores them.
+	bodyIsStatus bool
 }
 
 // wrapperDetectRounds bounds the transitive search. Delegation chains are short
@@ -670,13 +678,78 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 			entry.Response.Deref = inner.Deref
 		}
 	}
+	normaliseResponseRoles(entry)
 	if inner.DefaultStatus != 0 && entry.Response.DefaultStatus == 0 {
 		entry.Response.DefaultStatus = inner.DefaultStatus
 	}
 
 	// A body is what makes a responder worth describing: a status alone documents
-	// nothing a client can use.
-	entry.Complete = entry.Response.TypeFromArg
+	// nothing a client can use — UNLESS the body was declined because it
+	// resolved to the status parameter. There the status is known and the body
+	// is known not to exist, which is a complete description of
+	// `ctx.HTTPError(404)`: that endpoint really can answer 404, and saying so
+	// with no body beats both inventing one and dropping the status with it.
+	// Keeping the pattern is worth 186 statuses on a large real project, every
+	// one of which had been resting on the invented body (issue #485).
+	entry.Complete = entry.Response.TypeFromArg || entry.bodyIsStatus
+}
+
+// sameAsStatusParam reports whether a derived pattern would read its BODY from
+// the parameter it already reads its STATUS from.
+//
+// One parameter cannot be both. Where the derivation arrives at that answer it
+// has followed a local back to the wrong source:
+//
+//	func (b *Base) HTTPError(status int, contents ...string) {
+//		v := http.StatusText(status)      // <- v traces back to `status`
+//		if len(contents) > 0 {
+//			v = contents[0]               //    ...and to `contents` as well
+//		}
+//		http.Error(b.Resp, v, status)
+//	}
+//
+// The inner `http.Error` names its body at argument 1 and its status at 2, which
+// is right. Mapping those back onto HTTPError's parameters, the status lands on
+// `status` — correct — and the body follows `v` through the first assignment it
+// finds and lands on `status` too. The derived pattern then reads a status
+// CONSTANT as the payload, and on a large real project that documented eighteen
+// error responses as `application/json: {type: integer}` bodies they never send
+// (issue #485).
+//
+// Declining is the honest outcome, not a lesser one: a responder whose body
+// cannot be located contributes no body, and the status half of the pattern
+// still works. Guessing the other branch of that assignment would be a coin
+// flip between `contents` and nothing (golden rule #7).
+func sameAsStatusParam(p *ResponsePattern, typeIdx int) bool {
+	return p != nil && p.StatusFromArg && p.StatusArgIndex == typeIdx
+}
+
+// normaliseResponseRoles enforces the one-parameter-one-role rule over the
+// roles accumulated SO FAR, whichever order they arrived in.
+//
+// Checking it only while adding the body was order-dependent: a body-only edge
+// reaching the merge first sets the body role with no status recorded yet — so
+// nothing to collide with — and a status-only edge afterwards then lands on the
+// same parameter, reproducing the state the check exists to prevent by the
+// other route. detectValueRound walks the call graph in stored order, so which
+// edge arrives first is not something the derivation gets to assume
+// (CodeRabbit on #486).
+//
+// The STATUS is what survives a collision. It is read straight from an argument
+// the caller passes, while the body reached the same parameter by following a
+// local through an assignment — the weaker inference, and the one that was
+// wrong in every observed case (issue #485).
+func normaliseResponseRoles(entry *DetectedWrapper) {
+	p := entry.Response
+	if p == nil || !p.TypeFromArg || !sameAsStatusParam(p, p.TypeArgIndex) {
+		return
+	}
+	p.TypeFromArg = false
+	p.TypeArgIndex = -1
+	p.Deref = false
+	// Sticky: a later merge must not read the absence of a body role as "no
+	// body was ever found" and drop the status with it.
+	entry.bodyIsStatus = true
 }
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —

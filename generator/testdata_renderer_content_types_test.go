@@ -90,8 +90,29 @@ func TestTestdata_RendererContentTypes(t *testing.T) {
 	// other does not exist — while which one it named was decided by
 	// response-fragment ordering, not by anything about the handler
 	// (issue #470).
-	both := contentTypesOf(opFor(out.Paths["/items/both"], "GET"), "200")
 	want := []string{"application/json", "application/xml"}
+
+	// A NAMED UNTYPED CONSTANT as the payload, in both formats. #484 gated
+	// composition on the body not being untyped, to suppress a mis-resolved
+	// status argument, and that cost this case one of its representations; #485
+	// fixed the mis-resolution at its source, so the gate is gone and this has
+	// to keep working — with the constant's default type on each side, not a
+	// $ref to something invented.
+	legacy := opFor(out.Paths["/items/legacy"], "GET")
+	if got := contentTypesOf(legacy, "200"); !slices.Equal(got, want) {
+		t.Errorf("GET /items/legacy 200 content = %v, want %v — an untyped constant is still a "+
+			"payload, and it is sent in both formats", got, want)
+	}
+	if legacy != nil {
+		for ct, mt := range legacy.Responses["200"].Content {
+			if mt.Schema == nil || mt.Schema.Type != "integer" {
+				t.Errorf("GET /items/legacy 200 %s schema = %+v, want the constant's default type",
+					ct, mt.Schema)
+			}
+		}
+	}
+
+	both := contentTypesOf(opFor(out.Paths["/items/both"], "GET"), "200")
 	if !slices.Equal(both, want) {
 		t.Errorf("GET /items/both 200 content = %v, want %v — the handler encodes XML or JSON "+
 			"depending on Accept, and both are true of the endpoint", both, want)

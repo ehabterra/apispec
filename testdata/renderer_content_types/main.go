@@ -42,6 +42,22 @@ func getItemBoth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(Item{})
 }
 
+// legacyCode is a NAMED UNTYPED CONSTANT. Encoding one is unusual but legal,
+// and it is the case a gate in #484 wrongly rejected: that gate excluded untyped
+// bodies from media-type composition to suppress a mis-resolved status argument,
+// so a genuine constant payload lost one of its two representations. #485 fixed
+// the mis-resolution at its source, and this keeps the recovered case honest.
+const legacyCode = 7
+
+func legacyBoth(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Accept") == "application/xml" {
+		w.Header().Set("Content-Type", "application/xml")
+		_ = xml.NewEncoder(w).Encode(legacyCode)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(legacyCode)
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /items/xml", getItemXML)
@@ -49,6 +65,7 @@ func main() {
 	mux.HandleFunc("GET /items/both", getItemBoth)
 	mux.HandleFunc("GET /items/away", encodeAway)
 	mux.HandleFunc("GET /items/xml-no-header", getItemXMLNoHeader)
+	mux.HandleFunc("GET /items/legacy", legacyBoth)
 	_ = http.ListenAndServe(":8080", mux)
 }
 

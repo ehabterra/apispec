@@ -4099,43 +4099,7 @@ func otherMediaType(cur, next *ResponseInfo) bool {
 	if cur.ContentType == "" || next.ContentType == "" || cur.ContentType == next.ContentType {
 		return false
 	}
-	return serialisedBody(cur) && serialisedBody(next)
-}
-
-// serialisedBody reports whether a fragment describes a value the handler
-// actually WRITES, as opposed to one the resolution merely landed on.
-//
-// The test is that the body is not an untyped constant. An untyped constant is
-// a literal written in the source, and no handler encodes one as its payload —
-// where it turns up, it is an argument that was read as the body. Measured on a
-// large real project, every single one of the eighteen second representations
-// this would otherwise have admitted was `untyped int`, all of them the STATUS
-// argument of an error helper:
-//
-//	ctx.HTTPError(http.StatusUnprocessableEntity, "unsupported render mode")
-//
-// whose real body is the string, already documented as text/plain by the
-// http.Error underneath it. Admitting the other reading would advertise
-// `application/json: {type: integer}` on eighteen error responses that send no
-// such thing.
-//
-// The mis-resolution itself is older than this and is not fixed here — it was
-// simply invisible while one fragment per status displaced the other. This rule
-// is a STOPGAP that keeps composing representations from surfacing it, filed as
-// issue #485 with the evidence and a suggested direction; when that lands, this
-// gate comes out.
-//
-// It has a cost, which is why it is filed rather than called a fix: a genuine
-// payload that happens to be a named untyped constant (`const legacyCode = 7`,
-// encoded in two formats) is rejected too, and only one of its representations
-// is documented. A string or numeric LITERAL is unaffected — determineLiteralType
-// resolves `Encode("ok")` to `string`, not to an untyped form.
-func serialisedBody(r *ResponseInfo) bool {
-	if r == nil || r.BodyType == "" {
-		return false
-	}
-	_, untyped := untypedConstantDefault(r.BodyType)
-	return !untyped
+	return cur.BodyType != "" && next.BodyType != ""
 }
 
 // addAlternateMediaType records next's representation on cur.
