@@ -73,9 +73,15 @@ func TestTestdata_VariadicWrapper(t *testing.T) {
 	}
 
 	// The whole operation, not just its name: reading the middleware instead
-	// took the summary and the response with it.
-	if op.Summary != "" && !strings.Contains(op.Summary, "endpoint") {
-		t.Errorf("/users summary = %q, which is not the endpoint handler's", op.Summary)
+	// took the summary and the response with it. Asserted unconditionally —
+	// both handlers carry a doc comment precisely so this can tell them apart,
+	// and an empty summary is a failure rather than a pass.
+	if !strings.Contains(op.Summary, "endpoint") {
+		t.Errorf("/users summary = %q, want the endpoint handler's doc comment — the summary "+
+			"follows whichever handler was attributed", op.Summary)
+	}
+	if strings.Contains(op.Summary, "guards the route") {
+		t.Errorf("/users summary = %q — that is the MIDDLEWARE's doc comment", op.Summary)
 	}
 	if _, ok := op.Responses["200"]; !ok {
 		t.Errorf("/users documents %v, but the endpoint handler writes a 200 — the responses "+
