@@ -4120,9 +4120,16 @@ func otherMediaType(cur, next *ResponseInfo) bool {
 // such thing.
 //
 // The mis-resolution itself is older than this and is not fixed here — it was
-// simply invisible while one fragment per status displaced the other. What this
-// rule guarantees is that composing representations cannot surface it (golden
-// rule #7).
+// simply invisible while one fragment per status displaced the other. This rule
+// is a STOPGAP that keeps composing representations from surfacing it, filed as
+// issue #485 with the evidence and a suggested direction; when that lands, this
+// gate comes out.
+//
+// It has a cost, which is why it is filed rather than called a fix: a genuine
+// payload that happens to be a named untyped constant (`const legacyCode = 7`,
+// encoded in two formats) is rejected too, and only one of its representations
+// is documented. A string or numeric LITERAL is unaffected — determineLiteralType
+// resolves `Encode("ok")` to `string`, not to an untyped form.
 func serialisedBody(r *ResponseInfo) bool {
 	if r == nil || r.BodyType == "" {
 		return false
