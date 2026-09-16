@@ -536,7 +536,10 @@ func (b *BasePatternMatcher) structFieldValue(arg *metadata.CallArgument, node T
 	}
 	base = unwrapComposite(base)
 	if base == nil || base.GetKind() != metadata.KindCompositeLit {
-		return "", false
+		// Not a literal in scope here. A PACKAGE-LEVEL value keeps its literal
+		// in its own declaration, which metadata records structurally
+		// (issue #455).
+		return b.packageValueField(arg.X, field)
 	}
 
 	for _, elt := range base.Args {

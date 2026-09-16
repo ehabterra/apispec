@@ -60,6 +60,10 @@ func TestTestdata_ParamNameSources(t *testing.T) {
 		"/pkgvar":     {"X-Trace", "header"},
 		"/crosspkg":   {"X-From-Package", "header"}, // const in another package
 		"/viaparam":   {"X-Via-Param", "header"},    // passed in by a wrapper
+		// A field of a PACKAGE-LEVEL struct value. Its literal is in the
+		// declaration rather than in scope at the call, so it is read from the
+		// struct instance metadata records there (#455).
+		"/structfield": {"X-From-Field", "header"},
 	}
 	for path, want := range resolved {
 		got := paramNamesAt(t, out, path)
@@ -77,18 +81,23 @@ func TestTestdata_ParamNameSources(t *testing.T) {
 
 	// Honest failure: neither may be guessed, and neither may be emitted with
 	// an empty name.
-	for _, path := range []string{"/unresolvable", "/ambiguous"} {
+	for _, path := range []string{
+		// A call whose body is a CONSTANT, and one nothing in the source
+		// decides. Both are declined by the same rung, which is the rule being
+		// pinned: a call is not a value. The first is written with a constant
+		// body on purpose, so this cannot be read as "apispec detected
+		// dynamism".
+		"/unresolvable", "/fromenv",
+		"/ambiguous",
+		// A package-level value resolves only where its DECLARATION settles the
+		// field. Set from a call, never set, or built by a function: each is
+		// left out rather than guessed at — and in particular the call must not
+		// come back as its own rendering (#452, #455).
+		"/fieldfromcall", "/fieldunset", "/fieldbuilt",
+	} {
 		if got := paramNamesAt(t, out, path); len(got) != 0 {
 			t.Errorf("%s: want no parameter (the name cannot be resolved), got %v", path, got)
 		}
-	}
-
-	// Change detector, not an endorsement: a field of a PACKAGE-LEVEL struct
-	// value (`hdr.Config.Key`) is still not resolved — structFieldValue is
-	// scoped to a struct the caller passed in. Tracked in #455; when that is
-	// fixed this flips and the case moves up into `resolved` above.
-	if got := paramNamesAt(t, out, "/structfield"); len(got) != 0 {
-		t.Errorf("/structfield resolved (#455 fixed?) — move this case into the resolved table: %v", got)
 	}
 
 	// Nothing anywhere may carry an empty name (issue #452).

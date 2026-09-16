@@ -709,6 +709,9 @@ packages:
             fields:
               6: 46
               23: 21
+            field_kinds:
+              6: 2
+              23: 2
         imports: {}
     types:
       Ager:
