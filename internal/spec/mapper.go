@@ -1940,25 +1940,44 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 
 	pkgName := getStringFromPool(meta, typ.Pkg)
 
+	// The blank marker field (`_ struct{} `validate:"gtefield=Min"`) carries
+	// struct-level, cross-field validation that OpenAPI cannot express natively,
+	// surfaced as a note on the description so it is not silently dropped
+	// (issue #166). Read from the type's OWN fields, before the loop: it never
+	// serialises, so the effective-field set below correctly excludes it, and
+	// leaving the note in there is what made it vanish when that set arrived.
 	for _, field := range typ.Fields {
+		if getStringFromPool(meta, field.Name) != "_" {
+			continue
+		}
+		if note := structLevelValidationNote(getStringFromPool(meta, field.Tag)); note != "" {
+			schema.Description = appendConstraintNote(schema.Description, note)
+		}
+	}
+
+	// Embedded types contribute their fields, resolved the way encoding/json
+	// resolves them — promotion, shadowing and all (issue #487). For a struct
+	// that embeds nothing this is exactly typ.Fields.
+	for _, ef := range effectiveJSONFields(meta, typ) {
+		field := ef.field
 		fieldName := getStringFromPool(meta, field.Name)
 		fieldType := getStringFromPool(meta, field.Type)
+		// A promoted field's type names resolve against the package that
+		// DECLARES it, not the one embedding it.
+		pkgName := pkgName
+		if ef.owner != nil {
+			if owner := getStringFromPool(meta, ef.owner.Pkg); owner != "" {
+				pkgName = owner
+			}
+		}
+		_ = pkgName
 
 		// Skip fields that encoding/json never serializes: a `json:"-"` tag,
 		// or an unexported field. Mirrors the anonymous-struct path so both
 		// stay consistent.
-		if jsonFieldOmitted(getStringFromPool(meta, field.Tag)) || !ast.IsExported(fieldName) {
-			// A blank marker field (`_ struct{} `validate:"gtefield=Min"`)
-			// carries struct-level, cross-field validation that OpenAPI cannot
-			// express natively. Surface it as a note on the schema description so
-			// it is not silently dropped (issue #166).
-			if fieldName == "_" {
-				if note := structLevelValidationNote(getStringFromPool(meta, field.Tag)); note != "" {
-					schema.Description = appendConstraintNote(schema.Description, note)
-				}
-			}
-			continue
-		}
+		// Fields encoding/json never serialises are already gone — the
+		// effective-field set applies the `json:"-"` and unexported rules while
+		// resolving embeds, so both paths cannot drift apart.
 
 		if concreteGenerics {
 			fieldType = substituteTypeParams(fieldType, genericTypes)
