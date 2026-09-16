@@ -221,20 +221,41 @@ func ResponseCallMatcher(cfg *APISpecConfig, meta *metadata.Metadata) func(*meta
 	if len(res) == 0 {
 		return never
 	}
+	// Memoized on the callee's string-pool HANDLE, because the answer depends on
+	// nothing else — the patterns are fixed above, and the name is all that is
+	// read. LazyTree asks this per child spec while materialising the tree, so on
+	// gitea it ran over 15.7M nodes carrying a few thousand distinct names, and
+	// re-deciding "Render" for the hundred-thousandth time was 7.1% of the run in
+	// regexp.MatchString alone — plus the per-match onePassMachine each execution
+	// allocates and frees, which is why removing it is worth far more than 7%.
+	//
+	// The memo is only correct while the NAME is the whole input. Reading the
+	// receiver or the package here as well would be silently wrong: the first
+	// edge with a given name would answer for every later one.
+	// TestResponseCallMatcherIsDecidedByTheCalleeNameAlone pins that.
+	//
+	// A plain map: the walk is single-threaded and this closure is built per
+	// tree, so there is nothing to share it with. (cachedMatch takes a lock
+	// because it is a package-level cache keyed by pattern text; this is neither.)
+	memo := make(map[int]bool)
 	return func(edge *metadata.CallGraphEdge) bool {
 		if edge == nil {
 			return false
 		}
-		name := getString(meta, edge.Callee.Name)
-		if name == "" {
-			return false
+		if hit, seen := memo[edge.Callee.Name]; seen {
+			return hit
 		}
-		for _, re := range res {
-			if re.MatchString(name) {
-				return true
+		matched := false
+		if name := getString(meta, edge.Callee.Name); name != "" {
+			for _, re := range res {
+				if re.MatchString(name) {
+					matched = true
+					break
+				}
 			}
 		}
-		return false
+		memo[edge.Callee.Name] = matched
+		return matched
 	}
 }
 

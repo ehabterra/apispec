@@ -259,3 +259,65 @@ func TestMatchesEntrypoint(t *testing.T) {
 		t.Error("no patterns must match nothing")
 	}
 }
+
+// TestResponseCallMatcherIsDecidedByTheCalleeNameAlone pins the premise the
+// matcher's memo rests on.
+//
+// The decision is cached per string-pool handle of the callee's name, because
+// that is the only thing the matcher reads — deliberate, and documented on
+// ResponseCallMatcher: matching wider than the eventual pattern costs node
+// copies, matching narrower costs response bodies.
+//
+// If an edit ever makes the decision read the receiver or the package as well,
+// the memo answers from whichever edge asked FIRST and every later edge sharing
+// that name silently inherits it. Asking one matcher cannot detect that — the
+// memo is what hides it. So this asks two FRESH matchers the same pair of edges
+// in opposite orders: a decision that depends on anything but the name makes
+// them disagree, while a decision that reads only the name cannot.
+func TestResponseCallMatcherIsDecidedByTheCalleeNameAlone(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	edge := func(name, recv, pkg string) *metadata.CallGraphEdge {
+		callee := metadata.Call{Name: meta.StringPool.Get(name), Pkg: meta.StringPool.Get(pkg), Meta: meta}
+		if recv != "" {
+			callee.RecvType = meta.StringPool.Get(recv)
+		}
+		return &metadata.CallGraphEdge{Callee: callee}
+	}
+	cfg := &APISpecConfig{Framework: FrameworkConfig{
+		ResponsePatterns: []ResponsePattern{{CallRegex: "^JSON$"}},
+	}}
+
+	// One name, nothing else in common.
+	gin := edge("JSON", "*gin.Context", "github.com/gin-gonic/gin")
+	echo := edge("JSON", "*echo.Context", "github.com/labstack/echo/v4")
+
+	forward := ResponseCallMatcher(cfg, meta)
+	gotGinFirst, gotEchoSecond := forward(gin), forward(echo)
+
+	reverse := ResponseCallMatcher(cfg, meta)
+	gotEchoFirst, gotGinSecond := reverse(echo), reverse(gin)
+
+	if gotGinFirst != gotGinSecond || gotEchoSecond != gotEchoFirst {
+		t.Errorf("order changed the answer (gin %v then %v, echo %v then %v): the "+
+			"decision reads more than the callee name, which the memo cannot key on",
+			gotGinFirst, gotGinSecond, gotEchoFirst, gotEchoSecond)
+	}
+	if !gotGinFirst {
+		t.Error("a call named JSON did not match ^JSON$")
+	}
+
+	// A different name must still be decided on its own merits — a memo that
+	// collapsed every edge onto one entry would answer true here too.
+	if forward(edge("String", "*gin.Context", "github.com/gin-gonic/gin")) {
+		t.Error("a call named String matched ^JSON$")
+	}
+	// The memoized answer must equal the computed one.
+	for i := range 3 {
+		if forward(gin) != gotGinFirst {
+			t.Errorf("repeat %d disagreed with the first answer", i)
+		}
+	}
+	if forward(nil) {
+		t.Error("a nil edge matched")
+	}
+}
