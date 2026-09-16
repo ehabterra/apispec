@@ -16,25 +16,11 @@ package spec
 
 import (
 	"go/ast"
+	"maps"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
-
-// maxEmbedDepth bounds how far promotion follows embedding.
-//
-// Deliberately a constant and not a limit anyone can set. Measured on gitea —
-// the largest project available, with ~232 anonymous embedded fields — the walk
-// reaches depth 1 and never 2, so six is already six times the deepest observed
-// use. The cycle guard is the visited set below, not this; Go forbids recursive
-// embedding outright, so reaching either would mean metadata that cannot
-// describe a program that compiles.
-//
-// The limits that ARE configurable became so because a real project measurably
-// needed a different number (MaxNodesPerTree, MaxInstancesPerKey). Adding a
-// flag, an engine field and a UI control for this one would be a knob with
-// nothing on the other end.
-const maxEmbedDepth = 6
 
 // effectiveField is one field of a struct as the WIRE sees it: the field
 // itself, the type that declares it, and how deep the embedding was.
@@ -84,13 +70,34 @@ func effectiveJSONFields(meta *metadata.Metadata, typ *metadata.Type) []effectiv
 // collectJSONFields gathers every candidate field breadth-first by depth,
 // before any collision is resolved: Go's rule compares candidates across the
 // whole tree, so none can be discarded while walking it.
+//
+// There is no depth cap. A chain of seven untagged embeds is legal Go whose
+// leaf fields encoding/json promotes, and a cap would have silently dropped
+// them; termination comes from the per-path visited set below instead
+// (CodeRabbit on #488).
 func collectJSONFields(meta *metadata.Metadata, typ *metadata.Type, depth int, visited map[*metadata.Type]bool, out *[]effectiveField) {
-	if typ == nil || depth > maxEmbedDepth || visited[typ] {
+	if typ == nil || visited[typ] {
 		return
 	}
 	visited[typ] = true
 
-	for _, f := range typ.Fields {
+	// Walked in DECLARATION order, interleaving the two lists metadata keeps
+	// separately: before the i-th named field, every embed recorded as sitting
+	// at position i. Field order is part of what a struct says — an embed
+	// declared first promotes its fields ahead of the outer ones — and reading
+	// the lists one after the other put every promoted field last regardless
+	// (Type.EmbedAt, issue #487).
+	next := 0
+	emitEmbedsBefore := func(pos int) {
+		for ; next < len(typ.Embeds); next++ {
+			if embedAt(typ, next) > pos {
+				return
+			}
+			collectEmbed(meta, typ, next, depth, visited, out)
+		}
+	}
+	for i, f := range typ.Fields {
+		emitEmbedsBefore(i)
 		*out = append(*out, effectiveField{
 			field:  f,
 			owner:  typ,
@@ -98,61 +105,85 @@ func collectJSONFields(meta *metadata.Metadata, typ *metadata.Type, depth int, v
 			tagged: extractJSONName(getStringFromPool(meta, f.Tag)) != "",
 		})
 	}
+	emitEmbedsBefore(len(typ.Fields))
+}
 
-	for i, embedIdx := range typ.Embeds {
-		name := getStringFromPool(meta, embedIdx)
-		if name == "" {
-			continue
-		}
-		tag := ""
-		if i < len(typ.EmbedTags) {
-			tag = getStringFromPool(meta, typ.EmbedTags[i])
-		}
-		// `json:"-"` on an embed drops it whole, promotion and all.
-		if jsonFieldOmitted(tag) {
-			continue
-		}
-		if jsonName := extractJSONName(tag); jsonName != "" {
-			// Tagged: an ordinary field carrying the embedded object, not a
-			// promotion. Synthesised as a field so the rest of the pipeline —
-			// schema mapping, collision resolution — treats it like any other.
-			*out = append(*out, effectiveField{
-				field: metadata.Field{
-					Name: embedIdx,
-					Type: embedIdx,
-					Tag:  typ.EmbedTags[i],
-				},
-				owner:  typ,
-				depth:  depth,
-				tagged: true,
-			})
-			continue
-		}
-
-		embedded := embeddedType(meta, name, getStringFromPool(meta, typ.Pkg))
-		if embedded == nil {
-			// The declaration is not visible — an external type, most often.
-			// encoding/json promotes whatever exported fields it has, and we
-			// cannot see them, so this embed contributes NOTHING. Inventing a
-			// field named for the type would be wrong for the common case: a
-			// `url.Userinfo` embed publishes no properties at all, because every
-			// field it has is unexported (golden rule #7).
-			continue
-		}
-		if !isStructType(meta, embedded) {
-			// An embedded NON-STRUCT — `type ID string` — is one field named for
-			// the type. Only claimed when the declaration is visible enough to
-			// show it is not a struct; otherwise the branch above applies.
-			*out = append(*out, effectiveField{
-				field:  metadata.Field{Name: meta.StringPool.Get(embeddedFieldName(name)), Type: embedIdx},
-				owner:  typ,
-				depth:  depth,
-				tagged: false,
-			})
-			continue
-		}
-		collectJSONFields(meta, embedded, depth+1, visited, out)
+// embedAt is the position the i-th embed was declared at, or the end when the
+// metadata predates EmbedAt — which keeps a deserialised older metadata.yaml
+// working, with the embeds last rather than not at all.
+func embedAt(typ *metadata.Type, i int) int {
+	if i < len(typ.EmbedAt) {
+		return typ.EmbedAt[i]
 	}
+	return len(typ.Fields)
+}
+
+// collectEmbed resolves one embedded field into the candidates it contributes.
+func collectEmbed(meta *metadata.Metadata, typ *metadata.Type, i, depth int, visited map[*metadata.Type]bool, out *[]effectiveField) {
+	embedIdx := typ.Embeds[i]
+	name := getStringFromPool(meta, embedIdx)
+	if name == "" {
+		return
+	}
+	tag := ""
+	if i < len(typ.EmbedTags) {
+		tag = getStringFromPool(meta, typ.EmbedTags[i])
+	}
+	// `json:"-"` on an embed drops it whole, promotion and all.
+	if jsonFieldOmitted(tag) {
+		return
+	}
+	if jsonName := extractJSONName(tag); jsonName != "" {
+		// Tagged: an ordinary field carrying the embedded object, not a
+		// promotion. Synthesised as a field so the rest of the pipeline —
+		// schema mapping, collision resolution — treats it like any other.
+		*out = append(*out, effectiveField{
+			field: metadata.Field{
+				Name: embedIdx,
+				Type: embedIdx,
+				Tag:  typ.EmbedTags[i],
+			},
+			owner:  typ,
+			depth:  depth,
+			tagged: true,
+		})
+		return
+	}
+
+	embedded := embeddedType(meta, name, getStringFromPool(meta, typ.Pkg))
+	if embedded == nil {
+		// The declaration is not visible — an external type, most often.
+		// encoding/json promotes whatever exported fields it has, and we cannot
+		// see them, so this embed contributes NOTHING. Inventing a field named
+		// for the type would be wrong for the common case: a `url.Userinfo`
+		// embed publishes no properties at all, because every field it has is
+		// unexported (golden rule #7).
+		return
+	}
+	if !isStructType(meta, embedded) {
+		// An embedded NON-STRUCT — `type ID string` — is one field named for the
+		// type. Only claimed when the declaration is visible enough to show it
+		// is not a struct; otherwise the branch above applies.
+		*out = append(*out, effectiveField{
+			field:  metadata.Field{Name: meta.StringPool.Get(embeddedFieldName(name)), Type: embedIdx},
+			owner:  typ,
+			depth:  depth,
+			tagged: false,
+		})
+		return
+	}
+	// A per-PATH guard, cloned rather than shared. Two embeds reaching the same
+	// type are two candidates at equal depth — which is exactly the ambiguity
+	// encoding/json resolves by sending NEITHER — and a single set collapsed
+	// them into one, publishing a property the encoder drops: `Outer{A; B}`
+	// where both embed Base emitted Base's fields, where Go emits none of them
+	// (CodeRabbit on #488).
+	//
+	// It still terminates without a depth cap: each step adds a type to this
+	// path's set and never revisits it, and the set of declared types is finite.
+	// Go forbids recursive embedding outright, so the guard is for metadata that
+	// could not describe a compiling program.
+	collectJSONFields(meta, embedded, depth+1, maps.Clone(visited), out)
 }
 
 // resolveFieldCollisions applies Go's shallowest-wins rule to candidates that

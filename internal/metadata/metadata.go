@@ -1068,6 +1068,20 @@ func buildAnonStructType(s *types.Struct, name, pkgName string, metadata *Metada
 }
 
 func processStructFields(structType *ast.StructType, pkgName string, metadata *Metadata, t *Type, info *types.Info) {
+	// EmbedTags is positional, so it is filled for every embed and then dropped
+	// whole when NONE of them carried a tag — which is nearly always. Kept as a
+	// slice of NoString it would be non-empty, defeating its own omitempty and
+	// writing `embed_tags: [-1, -1]` into the metadata of every type that embeds
+	// anything (CodeRabbit on #488).
+	defer func() {
+		for _, tag := range t.EmbedTags {
+			if tag != NoString {
+				return
+			}
+		}
+		t.EmbedTags = nil
+	}()
+
 	for _, field := range structType.Fields.List {
 		fieldType := getTypeName(field.Type, info)
 		tag := getFieldTag(field)
@@ -1096,9 +1110,13 @@ func processStructFields(structType *ast.StructType, pkgName string, metadata *M
 
 		if len(field.Names) == 0 {
 			// Embedded (anonymous) field. The tag travels with it because it is
-			// what tells promotion from nesting — see Type.EmbedTags.
+			// what tells promotion from nesting (Type.EmbedTags), and its
+			// position because field order is part of what the struct says
+			// (Type.EmbedAt). This loop walks the declaration in source order,
+			// so len(t.Fields) is exactly how many named fields precede it.
 			t.Embeds = append(t.Embeds, metadata.StringPool.Get(fieldType))
 			t.EmbedTags = append(t.EmbedTags, metadata.StringPool.Get(tag))
+			t.EmbedAt = append(t.EmbedAt, len(t.Fields))
 			continue
 		}
 

@@ -62,16 +62,8 @@ func equalNames(got, want []string) bool {
 	return true
 }
 
-// Each expectation is the property SET encoding/json emits for the same type,
-// checked by running the encoder.
-//
-// The ORDER here is fields-then-embeds, which is not always Go's declaration
-// order — `Tagged{Named; Extra}` serialises `named` first while this yields
-// `Extra` first. Metadata records Fields and Embeds as two lists with no record
-// of how they interleaved, so true declaration order is not recoverable without
-// another metadata fact. It reaches the document only through the `required`
-// array, whose order carries no meaning, and `properties` is a map — which is
-// why all 123 fixtures are byte-identical.
+// Each expectation is what encoding/json emits for the same type — the property
+// set AND its order, both captured by running the encoder.
 func TestEffectiveJSONFields(t *testing.T) {
 	meta := embedMeta(t, `
 type Base struct {
@@ -119,13 +111,13 @@ type Unexported struct {
 		want     []string
 		why      string
 	}{
-		{"Plain", []string{"Extra", "ID", "kind"}, "an untagged embed promotes, carrying its own tags"},
-		{"Tagged", []string{"Extra", "named"}, "a tagged embed nests instead of promoting"},
-		{"Pointer", []string{"Extra", "Page"}, "a pointer embed promotes exactly as a value does"},
-		{"NonStruct", []string{"Extra", "Ref"}, "an embedded non-struct is one field named for the type"},
+		{"Plain", []string{"ID", "kind", "Extra"}, "an untagged embed promotes, carrying its own tags"},
+		{"Tagged", []string{"named", "Extra"}, "a tagged embed nests instead of promoting"},
+		{"Pointer", []string{"Page", "Extra"}, "a pointer embed promotes exactly as a value does"},
+		{"NonStruct", []string{"Ref", "Extra"}, "an embedded non-struct is one field named for the type"},
 		{"Dropped", []string{"Extra"}, "`json:\"-\"` on an embed drops it whole"},
-		{"Shadowed", []string{"kind", "ID"}, "the shallower field wins a name collision"},
-		{"Unexported", []string{"Extra", "ID", "kind"}, "an unexported field never serialises"},
+		{"Shadowed", []string{"ID", "kind"}, "the shallower field wins a name collision"},
+		{"Unexported", []string{"ID", "kind", "Extra"}, "an unexported field never serialises"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.typeName, func(t *testing.T) {
@@ -175,8 +167,8 @@ type Resolved struct {
 	// A tag RENAMES rather than competing: `dup` and `Dup` are different names,
 	// so there is no collision and encoding/json sends both —
 	// {"dup":"","Dup":"","Extra":""}, checked against the encoder.
-	if got := fieldNames(meta, "Resolved"); !equalNames(got, []string{"Extra", "dup", "Dup"}) {
-		t.Errorf("Resolved = %v, want [Extra dup Dup] — a tag renames the field, so these two "+
+	if got := fieldNames(meta, "Resolved"); !equalNames(got, []string{"dup", "Dup", "Extra"}) {
+		t.Errorf("Resolved = %v, want [dup Dup Extra] — a tag renames the field, so these two "+
 			"never collide", got)
 	}
 }
@@ -269,5 +261,112 @@ func TestEmbeddedFieldNameAndType(t *testing.T) {
 	}
 	if isStructType(meta, nil) {
 		t.Error("a nil type is not a struct")
+	}
+}
+
+// Field ORDER is part of what a struct says, and metadata keeps named fields
+// and embeds in two lists — so the position each embed was declared at has to
+// travel with it, or every promoted field lands after every declared one
+// whatever the source said (Type.EmbedAt, issue #487).
+func TestDeclarationOrderIsPreserved(t *testing.T) {
+	meta := embedMeta(t, `
+type Base struct {
+	ID   int
+	Kind string `+"`json:\"kind\"`"+`
+}
+type Leading struct {
+	Base
+	Extra string
+}
+type Trailing struct {
+	First string
+	Base
+	Last string
+}
+type Between struct {
+	A string
+	Base
+	B string
+}
+`)
+	// Each is what json.Marshal emits for the same type.
+	for _, tc := range []struct {
+		typeName string
+		want     []string
+	}{
+		{"Leading", []string{"ID", "kind", "Extra"}},
+		{"Trailing", []string{"First", "ID", "kind", "Last"}},
+		{"Between", []string{"A", "ID", "kind", "B"}},
+	} {
+		if got := fieldNames(meta, tc.typeName); !equalNames(got, tc.want) {
+			t.Errorf("%s = %v, want %v — the embed sits where it was declared, not at the end",
+				tc.typeName, got, tc.want)
+		}
+	}
+}
+
+// Metadata written before EmbedAt existed has no positions to read, and must
+// still resolve — with the embeds last, which is the best available answer
+// rather than dropping them.
+func TestMissingEmbedAtFallsBackToLast(t *testing.T) {
+	meta := embedMeta(t, `
+type Base struct{ ID int }
+type Old struct {
+	Base
+	Extra string
+}
+`)
+	typ := findType(meta, "p", "Old")
+	if typ == nil {
+		t.Fatal("Old not found")
+	}
+	typ.EmbedAt = nil // as a deserialised older metadata.yaml would be
+
+	got := fieldNames(meta, "Old")
+	if !equalNames(got, []string{"Extra", "ID"}) {
+		t.Errorf("Old = %v, want [Extra ID] — with no recorded position the embed goes last, "+
+			"but it must not go missing", got)
+	}
+}
+
+// Two embeds reaching the SAME type are two candidates at equal depth, and
+// encoding/json resolves that by sending neither. A visited set shared across
+// the whole walk collapsed them into one and published a property the encoder
+// drops (CodeRabbit on #488).
+func TestDiamondEmbedDropsTheAmbiguousField(t *testing.T) {
+	meta := embedMeta(t, `
+type Base struct{ ID int }
+type A struct{ Base }
+type B struct{ Base }
+type Outer struct {
+	A
+	B
+	Extra string
+}
+`)
+	// json.Marshal(Outer{}) = {"Extra":""}
+	if got := fieldNames(meta, "Outer"); !equalNames(got, []string{"Extra"}) {
+		t.Errorf("Outer = %v, want [Extra] — A and B both embed Base, so `ID` has two "+
+			"equal-depth claimants and encoding/json sends neither", got)
+	}
+}
+
+// A long chain of embeds is legal Go whose leaf fields encoding/json promotes,
+// so the walk must follow it however deep. A fixed cap would have dropped them
+// silently; termination comes from the per-path visited set instead.
+func TestDeepEmbeddingHasNoCap(t *testing.T) {
+	meta := embedMeta(t, `
+type L1 struct{ Deep string }
+type L2 struct{ L1 }
+type L3 struct{ L2 }
+type L4 struct{ L3 }
+type L5 struct{ L4 }
+type L6 struct{ L5 }
+type L7 struct{ L6 }
+type Deep8 struct{ L7 }
+`)
+	if got := fieldNames(meta, "Deep8"); !equalNames(got, []string{"Deep"}) {
+		t.Errorf("Deep8 = %v, want [Deep] — eight levels of embedding is legal Go and "+
+			"encoding/json promotes the leaf", got)
 	}
 }
