@@ -1235,6 +1235,16 @@ type StructInstance struct {
 	Pkg      int         `yaml:"pkg,omitempty"`
 	Position int         `yaml:"position,omitempty"`
 	Fields   map[int]int `yaml:"fields,omitempty"`
+
+	// FieldKinds is the KIND of the expression each field was set from, keyed
+	// like Fields.
+	//
+	// Fields holds those expressions RENDERED, which is a value only when the
+	// expression was one — the same distinction Variable.ValueKind exists for
+	// (issue #452). Without it, `Settings{Key: compute()}` hands back
+	// `func() string()` as though it were the field's contents, and a header
+	// name read from that field is one no client can send (issue #455).
+	FieldKinds map[int]int `yaml:"field_kinds,omitempty"`
 }
 
 // Assignment represents a variable assignment

@@ -1340,15 +1340,23 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 	}
 
 	fields := map[int]int{}
+	fieldKinds := map[int]int{}
 	for _, elt := range cl.Elts {
 		if kv, ok := elt.(*ast.KeyValueExpr); ok {
 			key := CallArgToString(ExprToCallArgument(kv.Key, info, pkgName, fset, metadata))
-			val := CallArgToString(ExprToCallArgument(kv.Value, info, pkgName, fset, metadata))
+			valArg := ExprToCallArgument(kv.Value, info, pkgName, fset, metadata)
+			val := CallArgToString(valArg)
+			// The kind travels with the rendering, because the rendering alone
+			// cannot say whether it is a value (StructInstance.FieldKinds).
+			kind := valArg.GetKind()
 
 			// Use constant value if available
 			if ident, ok := kv.Value.(*ast.Ident); ok {
 				if cval, exists := constMap[ident.Name]; exists {
 					val = cval
+					// Substituted from the const table, so what is stored is the
+					// constant's VALUE and no longer the ident.
+					kind = KindLiteral
 				}
 			}
 
@@ -1358,15 +1366,18 @@ func processStructInstance(cl *ast.CompositeLit, info *types.Info, pkgName strin
 				registerEmbeddedInterfaceResolution(kv, typeName, pkgName, metadata, info, fset)
 			}
 
-			fields[metadata.StringPool.Get(key)] = metadata.StringPool.Get(val)
+			keyIdx := metadata.StringPool.Get(key)
+			fields[keyIdx] = metadata.StringPool.Get(val)
+			fieldKinds[keyIdx] = metadata.StringPool.Get(kind)
 		}
 	}
 
 	f.StructInstances = append(f.StructInstances, StructInstance{
-		Type:     metadata.StringPool.Get(typeName),
-		Pkg:      metadata.StringPool.Get(pkgName),
-		Position: metadata.positionIndex(cl.Pos(), fset),
-		Fields:   fields,
+		Type:       metadata.StringPool.Get(typeName),
+		Pkg:        metadata.StringPool.Get(pkgName),
+		Position:   metadata.positionIndex(cl.Pos(), fset),
+		Fields:     fields,
+		FieldKinds: fieldKinds,
 	})
 }
 

@@ -982,6 +982,9 @@ packages:
             fields:
               44: 71
               54: 75
+            field_kinds:
+              44: 7
+              54: 7
         imports: {}
     types:
       User:
@@ -1962,6 +1965,8 @@ packages:
             position: 121
             fields:
               91: 129
+            field_kinds:
+              91: 4
         imports:
           9: 9
           41: 41

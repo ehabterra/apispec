@@ -1109,11 +1109,15 @@ packages:
             position: 62
             fields:
               6: 6
+            field_kinds:
+              6: 2
           - type: 61
             pkg: 1
             position: 77
             fields:
               43: 79
+            field_kinds:
+              43: 2
         imports:
           27: 27
     types:

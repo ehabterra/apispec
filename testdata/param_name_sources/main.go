@@ -60,6 +60,19 @@ func main() {
 		_ = r.Header.Get(hdr.Config.Key)
 	})
 
+	// The same shape, where the declaration does NOT settle the field: set from
+	// a call, never set at all, and a value built by a function. Each must be
+	// left out rather than guessed at or rendered.
+	mux.HandleFunc("GET /fieldfromcall", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.Header.Get(hdr.FromCall.Key)
+	})
+	mux.HandleFunc("GET /fieldunset", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.Header.Get(hdr.Unset.Key)
+	})
+	mux.HandleFunc("GET /fieldbuilt", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.Header.Get(hdr.Built.Key)
+	})
+
 	// A query parameter, to show this is not header-specific.
 	mux.HandleFunc("GET /queryvar", func(w http.ResponseWriter, r *http.Request) {
 		page := "page"
