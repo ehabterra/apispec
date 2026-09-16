@@ -193,6 +193,7 @@ packages:
             pkg: 1
             type: 21
             value: 41
+            value_kind: 2
             position: 40
             comments: -1
             group_index: 1
@@ -203,6 +204,7 @@ packages:
             type: -1
             resolved_type: 19
             value: 3
+            value_kind: 2
             computed_value: 100
             position: 32
             comments: -1
@@ -222,6 +224,7 @@ packages:
             type: -1
             resolved_type: 26
             value: 34
+            value_kind: 2
             computed_value: {}
             position: 33
             comments: -1
@@ -233,6 +236,7 @@ packages:
             type: -1
             resolved_type: 37
             value: 5
+            value_kind: 2
             computed_value: {}
             position: 36
             comments: -1

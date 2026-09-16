@@ -1308,7 +1308,11 @@ func processVariables(file *ast.File, info *types.Info, pkgName string, fset *to
 				}
 
 				if len(vspec.Values) > i {
-					v.Value = metadata.StringPool.Get(CallArgToString(ExprToCallArgument(vspec.Values[i], info, pkgName, fset, metadata)))
+					init := ExprToCallArgument(vspec.Values[i], info, pkgName, fset, metadata)
+					v.Value = metadata.StringPool.Get(CallArgToString(init))
+					// The kind travels with the rendering, because the rendering
+					// alone cannot say whether it is a value (Variable.ValueKind).
+					v.ValueKind = metadata.StringPool.Get(init.GetKind())
 				}
 
 				f.Variables[name.Name] = v

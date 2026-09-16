@@ -16,6 +16,7 @@ package spec
 
 import (
 	"fmt"
+	"go/constant"
 	"slices"
 	"strings"
 
@@ -108,7 +109,7 @@ func (c *ContextProviderImpl) constantInPackage(pkgKey string, arg *metadata.Cal
 			continue
 		}
 		if variable, ok := file.Variables[name]; ok && variable != nil {
-			return strings.Trim(c.GetString(variable.Value), "\""), true
+			return c.declaredValue(variable)
 		}
 	}
 	return "", false
@@ -492,3 +493,71 @@ func builtinPassThrough(ref *typemodel.TypeRef) bool {
 
 // strPtr returns a pointer to the given string (helper for separator passing)
 func strPtr(s string) *string { return &s }
+
+// declaredValue returns what a declared name HOLDS, and reports false when the
+// declaration does not settle it.
+//
+// Variable.Value is the initializer rendered, which is a value only when the
+// initializer was one. Returning it regardless put a rendered Go expression
+// into the document as a parameter name:
+//
+//	var AuthUser = key("REVERSE_PROXY_AUTHENTICATION_USER").MustString("X-WEBAUTH-USER")
+//	req.Header.Get(AuthUser)
+//
+//	name: func(s string) setting.k(REVERSE_PROXY_AUTHENTICATION_USER).MustString(X-WEBAUTH-USER)
+//
+// — a header no client can send, and the same class of defect as rendering an
+// argument as a path (issue #461). On gitea that expression rendered empty,
+// producing a parameter with no name at all, which is where issue #452 started.
+//
+// A value whose initializer is a call, a binary expression or another name is
+// NOT resolved here. It may well be knowable — `"X-" + "Joined"` is — but the
+// flattened rendering is not the place to learn it, and a wrong name is worse
+// than an absent parameter (golden rule #7).
+func (c *ContextProviderImpl) declaredValue(variable *metadata.Variable) (string, bool) {
+	// The rendered LITERAL first, and the computed value only after it. A
+	// go/constant renders through String(), which TRUNCATES past 72 characters
+	// and appends "..." — on gitea that silently shortened a 76-character route
+	// const and moved a whole endpoint to a path no client could call:
+	//
+	//	/_apis/…/steps/{step_index}/summary  ->  /_apis/…/steps/{step_index}...
+	//
+	// Caught by the fixture A/B, not by reasoning. The literal's own rendering
+	// is exact, so it answers wherever there is one.
+	switch c.GetString(variable.ValueKind) {
+	case metadata.KindLiteral:
+		return strings.Trim(c.GetString(variable.Value), "\""), true
+	}
+	// A computed constant — `A + B`, an iota — has no literal to read, and
+	// go/types has already evaluated it. StringVal unquotes a string constant
+	// exactly; anything else formats as itself.
+	if variable.ComputedValue != nil {
+		return computedValueString(variable.ComputedValue), true
+	}
+	switch c.GetString(variable.ValueKind) {
+	case "":
+		// Metadata written before ValueKind existed, where the rendering is all
+		// there is. Kept resolving rather than regressing every deserialised
+		// metadata.yaml at once.
+		return strings.Trim(c.GetString(variable.Value), "\""), true
+	}
+	return "", false
+}
+
+// computedValueString renders a constant go/types evaluated.
+//
+// NOT via %v: a go/constant formats through String(), which truncates past 72
+// characters and appends "..." — a silent corruption for anything long, and
+// route paths and header names are exactly the long strings this resolves.
+// StringVal returns a string constant's value in full and unquoted;
+// ExactString covers the numeric and boolean forms without truncating.
+func computedValueString(v any) string {
+	if cv, ok := v.(constant.Value); ok {
+		if cv.Kind() == constant.String {
+			return constant.StringVal(cv)
+		}
+		return cv.ExactString()
+	}
+	// A deserialised metadata.yaml carries it as a plain value.
+	return strings.Trim(fmt.Sprintf("%v", v), "\"")
+}

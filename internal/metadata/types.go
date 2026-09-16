@@ -1200,12 +1200,22 @@ type MethodBranch struct {
 
 // Variable represents a variable
 type Variable struct {
-	Name          int         `yaml:"name,omitempty"`
-	Tok           int         `yaml:"tok,omitempty"`
-	Pkg           int         `yaml:"pkg,omitempty"`
-	Type          int         `yaml:"type,omitempty"`
-	ResolvedType  int         `yaml:"resolved_type,omitempty"` // underlying type from types.Info
-	Value         int         `yaml:"value,omitempty"`
+	Name         int `yaml:"name,omitempty"`
+	Tok          int `yaml:"tok,omitempty"`
+	Pkg          int `yaml:"pkg,omitempty"`
+	Type         int `yaml:"type,omitempty"`
+	ResolvedType int `yaml:"resolved_type,omitempty"` // underlying type from types.Info
+	Value        int `yaml:"value,omitempty"`
+
+	// ValueKind is the KIND of the initializer Value was flattened from — a
+	// literal, a call, a binary expression, an ident.
+	//
+	// Value is the initializer RENDERED, which is only a value when the
+	// initializer was one. Without the kind a consumer cannot tell
+	// `var K = "X-Thing"` from `var K = envOr("CFG", "X-Default")`, and reading
+	// the second as a value put a rendered Go expression into a response
+	// document as a header NAME — something no client can send (issue #452).
+	ValueKind     int         `yaml:"value_kind,omitempty"`
 	ComputedValue interface{} `yaml:"computed_value,omitempty"` // actual value from types.Info (for constants)
 	Position      int         `yaml:"position,omitempty"`
 	Comments      int         `yaml:"comments,omitempty"`
