@@ -2901,6 +2901,7 @@ packages:
             pkg: 134
             type: -1
             value: 173
+            value_kind: 4
             position: 171
             comments: -1
             group_index: 1
@@ -2911,6 +2912,7 @@ packages:
             type: -1
             resolved_type: 166
             value: 132
+            value_kind: 4
             computed_value: 149
             position: 168
             comments: -1
@@ -2922,6 +2924,7 @@ packages:
             type: -1
             resolved_type: 166
             value: 131
+            value_kind: 4
             computed_value: 1
             position: 165
             comments: -1
