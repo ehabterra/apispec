@@ -253,3 +253,87 @@ func TestReleaseWorkflowPublishesEveryFormulaAsset(t *testing.T) {
 		})
 	}
 }
+
+// TestTapFormulaeRequireGoOnPathNotTheKeg pins how the tap asks for Go.
+//
+// `depends_on "go"` can only be satisfied by Homebrew's own keg, so it
+// downloaded the newest Go onto every machine that installed apispec — including
+// the many that already had a toolchain from go.dev, gvm, asdf or a distro
+// package, and whose apispec then used that one anyway, because it shells out to
+// whatever `go` PATH resolves to. The keg was pure download. A `GoRequirement`
+// satisfied by `which("go")` accepts any of them.
+//
+// Checked on the TEMPLATES, which are what the release ships. Reverting to the
+// dependency is a one-word edit that nothing else would notice until a user
+// reported the download.
+func TestTapFormulaeRequireGoOnPathNotTheKeg(t *testing.T) {
+	for _, f := range formulae {
+		t.Run(f.tool, func(t *testing.T) {
+			tmpl := readFile(t, templatePathFor(f.tool))
+			if regexp.MustCompile(`(?m)^\s*depends_on "go"`).MatchString(tmpl) {
+				t.Error(`formula declares depends_on "go", which installs Homebrew's keg ` +
+					"even on a machine that already has Go; use the GoRequirement")
+			}
+			if !strings.Contains(tmpl, "depends_on GoRequirement") {
+				t.Error("formula does not depend on GoRequirement, so nothing checks for a " +
+					"go binary and the first run fails with \"go command required\"")
+			}
+			if !strings.Contains(tmpl, `satisfy(build_env: false) { which("go") }`) {
+				t.Error("GoRequirement is not satisfied by a go on PATH; build_env: false is " +
+					"what makes it read the USER's PATH rather than Homebrew's sanitised one")
+			}
+			// Without `fatal`, an unsatisfied requirement is a warning: the install
+			// succeeds and the first run is what fails.
+			if !regexp.MustCompile(`(?m)^\s*fatal true`).MatchString(tmpl) {
+				t.Error("GoRequirement is not fatal, so a machine with no Go installs " +
+					"apispec anyway and only finds out on the first run")
+			}
+		})
+	}
+}
+
+// TestTapFormulaeDeclareGoRequirementIdentically guards the one hazard of
+// declaring a class in two formula files: a tap loads them into ONE Ruby
+// process, so the second definition reopens the first class rather than
+// defining its own. That is harmless only while the two bodies agree — if they
+// drift, which one wins depends on load order, and the formula a user reads is
+// not the one that runs.
+func TestTapFormulaeDeclareGoRequirementIdentically(t *testing.T) {
+	bodies := map[string]string{}
+	for _, f := range formulae {
+		bodies[f.tool] = goRequirementBody(t, readFile(t, templatePathFor(f.tool)))
+	}
+	var first, firstTool string
+	for _, f := range formulae {
+		if firstTool == "" {
+			first, firstTool = bodies[f.tool], f.tool
+			continue
+		}
+		if bodies[f.tool] != first {
+			t.Errorf("%s and %s declare GoRequirement differently; load order would decide "+
+				"which definition runs\n--- %s\n%s\n--- %s\n%s",
+				firstTool, f.tool, firstTool, first, f.tool, bodies[f.tool])
+		}
+	}
+}
+
+// goRequirementBody is the class declaration, from its `class` line to the
+// `end` that closes it at column zero.
+func goRequirementBody(t *testing.T, formula string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?s)^class GoRequirement < Requirement\n.*?\nend\n`).
+		FindString(formula[indexOrFail(t, formula, "class GoRequirement < Requirement"):])
+	if m == "" {
+		t.Fatal("no GoRequirement class declaration found")
+	}
+	return m
+}
+
+func indexOrFail(t *testing.T, s, sub string) int {
+	t.Helper()
+	i := strings.Index(s, sub)
+	if i < 0 {
+		t.Fatalf("formula does not contain %q", sub)
+	}
+	return i
+}

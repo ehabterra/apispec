@@ -3,11 +3,23 @@
 `brew install ehabterra/tap/apispec` installs the **pre-built release binary**,
 so it compiles nothing and takes seconds.
 
-It does pull in Go, as a **runtime** dependency (`depends_on "go"`, not
-`=> :build`). apispec analyses a project by loading its packages through
-`go/packages`, which shells out to `go list`, so without the go binary on PATH
-every run exits with `go command required, not found`. The toolchain is needed
-to *use* the tool, not to install it — nothing is compiled at install time.
+It does need Go, at **runtime**. apispec analyses a project by loading its
+packages through `go/packages`, which shells out to `go list`, so without the go
+binary on PATH every run exits with `go command required, not found`. The
+toolchain is needed to *use* the tool, not to install it — nothing is compiled at
+install time.
+
+That is a `GoRequirement` (`satisfy { which("go") }`) and **not**
+`depends_on "go"`. A formula dependency can only be satisfied by Homebrew's own
+keg, so the old declaration downloaded the newest Go onto machines that already
+had a working toolchain from go.dev, gvm, asdf or a distro package — and then did
+not use it, since apispec runs whatever `go` PATH resolves to. The requirement
+checks for that binary instead, and being `fatal` it still stops the install on a
+machine with no Go at all, with a message pointing at `brew install go`.
+
+`apispec.rb.tmpl` and `apispecui.rb.tmpl` declare the class **word for word**: a
+tap loads its formulae into one Ruby process, so the second definition reopens
+the first rather than conflicting with it — but only while they stay identical.
 
 ## Files here
 

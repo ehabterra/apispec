@@ -43,8 +43,9 @@ which shells out to `go list`. Without `go` on PATH every run exits with
     failed to load filtered packages: err: go command required, not found
 
 So "nothing to compile" below means exactly that, and never that Go is optional.
-Homebrew reflects this — the formula declares `go` as a runtime dependency and
-installs it for you.
+Homebrew reflects this: the formula checks for a `go` on your PATH and refuses to
+install without one. **Any** Go satisfies it — go.dev, gvm, asdf, your distro —
+and only a machine with none is asked to `brew install go`.
 
 Additionally, for the from-source methods:
 
