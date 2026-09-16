@@ -31,6 +31,11 @@ class Apispec < Formula
   # through go/packages, which shells out to `go list` — without the go binary on
   # PATH it exits with "go command required, not found". A :build dependency is
   # also absent from `brew test`, so the test block would fail on CI.
+  #
+  # The TAP formula uses a GoRequirement instead, so any Go already on PATH
+  # satisfies it. Not here: homebrew-core rejects formula-defined requirements,
+  # and a core formula builds from source anyway — it needs the keg to compile,
+  # whatever else the machine has.
   depends_on "go"
 
   def install
