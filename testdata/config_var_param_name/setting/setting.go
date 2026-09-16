@@ -2,8 +2,15 @@
 // level vars whose values are read at RUNTIME, not constants.
 package setting
 
-// AuthUser is what a reverse-proxy auth header is called, and it is not
-// knowable from the source — the deployment decides it.
+// AuthUser mirrors the real shape: a package-level var initialised by a call.
+//
+// The helpers below are STUBS — the real ones read an ini file, so the value is
+// decided by the deployment. Here MustString just returns its argument, which
+// means this particular value is in fact knowable by inlining. That is
+// deliberate and it does not weaken the case: the initializer is declined
+// because it is a CALL, and nothing about the ladder inspects what the call
+// would return. Keeping the stub trivial keeps the fixture free of machinery
+// that has nothing to do with what is being tested.
 var AuthUser = key("REVERSE_PROXY_AUTHENTICATION_USER").MustString("X-WEBAUTH-USER")
 
 // Fixed is a var that really does hold a literal, which must keep resolving.

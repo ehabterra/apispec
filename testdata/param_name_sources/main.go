@@ -90,8 +90,18 @@ func main() {
 	})
 
 	// Honest failure: not evaluable at all.
+	// A call whose body IS a constant. Declined because the ladder does not
+	// follow calls, not because the value is unknowable — the distinction the
+	// fixture exists to keep straight.
 	mux.HandleFunc("GET /unresolvable", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.Header.Get(hdr.Dynamic())
+	})
+
+	// A call nothing in the source decides. Declined by the same rung, which is
+	// the point: the rule is "a call is not a value", not "we detected
+	// dynamism".
+	mux.HandleFunc("GET /fromenv", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.Header.Get(hdr.FromEnv())
 	})
 
 	// Honest failure: two assignments that disagree.

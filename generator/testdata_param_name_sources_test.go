@@ -82,7 +82,13 @@ func TestTestdata_ParamNameSources(t *testing.T) {
 	// Honest failure: neither may be guessed, and neither may be emitted with
 	// an empty name.
 	for _, path := range []string{
-		"/unresolvable", "/ambiguous",
+		// A call whose body is a CONSTANT, and one nothing in the source
+		// decides. Both are declined by the same rung, which is the rule being
+		// pinned: a call is not a value. The first is written with a constant
+		// body on purpose, so this cannot be read as "apispec detected
+		// dynamism".
+		"/unresolvable", "/fromenv",
+		"/ambiguous",
 		// A package-level value resolves only where its DECLARATION settles the
 		// field. Set from a call, never set, or built by a function: each is
 		// left out rather than guessed at — and in particular the call must not
