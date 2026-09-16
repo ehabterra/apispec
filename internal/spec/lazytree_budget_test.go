@@ -294,8 +294,10 @@ func TestBudgetCountsKeysWhileStatsReportWork(t *testing.T) {
 func TestInstanceTruncationIsRecordedAndNamed(t *testing.T) {
 	tree := &LazyTree{limits: metadata.TrackerLimits{MaxInstancesPerKey: 3}}
 
-	tree.noteInstanceTruncation("pkg.handler", "pkg.helper@a.go:1:1", 3)
-	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:2:1", 3)
+	handler := tree.internKey("pkg.handler")
+	other := tree.internKey("pkg.other")
+	tree.noteInstanceTruncation(handler, 0, "pkg.helper@a.go:1:1", 3)
+	tree.noteInstanceTruncation(other, 0, "pkg.helper@a.go:2:1", 3)
 
 	if tree.instanceTruncations != 2 {
 		t.Errorf("counted %d truncations, want 2", tree.instanceTruncations)
@@ -324,7 +326,7 @@ func TestInstanceTruncationReportsTheBudgetThatFired(t *testing.T) {
 		MaxResponseInstancesPerKey: 40,
 	}}
 
-	tree.noteInstanceTruncation("pkg.handler", "pkg.responder@a.go:1:1", 40)
+	tree.noteInstanceTruncation(tree.internKey("pkg.handler"), 0, "pkg.responder@a.go:1:1", 40)
 	if tree.instanceFirstLimit != 40 {
 		t.Errorf("reported limit %d, want the response budget 40 that refused the copy",
 			tree.instanceFirstLimit)
@@ -332,7 +334,7 @@ func TestInstanceTruncationReportsTheBudgetThatFired(t *testing.T) {
 
 	// The FIRST one is what is kept, so a later drop at the other budget does
 	// not overwrite the number the report will print.
-	tree.noteInstanceTruncation("pkg.other", "pkg.helper@a.go:9:1", 3)
+	tree.noteInstanceTruncation(tree.internKey("pkg.other"), 0, "pkg.helper@a.go:9:1", 3)
 	if tree.instanceFirstLimit != 40 {
 		t.Errorf("reported limit became %d after a later drop at a different budget, want the first one",
 			tree.instanceFirstLimit)

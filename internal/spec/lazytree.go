@@ -423,23 +423,34 @@ func (t *LazyTree) instanceBudget() int {
 // by MaxInstancesPerKey, so recomputing here would report a drop at a response
 // budget of 2 as a 100-copy cap. A report that names the wrong number is worse
 // than a quiet one — it sends the reader to the flag that would not have helped.
-func (t *LazyTree) noteInstanceTruncation(scope, key string, budget int) {
+// The scope arrives as its two HANDLES rather than as a rendered label, and the
+// label is built for the FIRST truncation only — the one every report names.
+//
+// It used to take the string, so every caller built it — a concatenation of two
+// interned keys — on each refused copy. The cap fires 31,401,153 times on gitea,
+// which made this one line of output 6.89 GB of allocation, 42% of everything
+// the run allocated. That is the "never materialise a composed identity per
+// child" rule in CLAUDE.md, and this is what breaking it costs.
+func (t *LazyTree) noteInstanceTruncation(scope, route int32, key string, budget int) {
 	t.instanceTruncations++
-	if t.instanceFirstKey == "" {
-		t.instanceFirstScope = scope
-		t.instanceFirstKey = key
-		t.instanceFirstLimit = budget
+	// Counted on every drop, described on the first. The counter is what says
+	// which one that is: keying off instanceFirstKey would re-render the label
+	// for as long as the keys kept coming back empty.
+	if t.instanceTruncations > 1 {
+		return
 	}
-	if !t.instanceWarned {
-		t.instanceWarned = true
-		name := "MaxInstancesPerKey"
-		if budget == t.responseInstanceBudget() && budget != t.instanceBudget() {
-			name = "MaxResponseInstancesPerKey"
-		}
-		fmt.Fprintf(os.Stderr,
-			"Warning: %s limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
-			name, budget, key, scope)
+	t.instanceFirstScope = t.scopeLabel(scope, route)
+	t.instanceFirstKey = key
+	t.instanceFirstLimit = budget
+
+	t.instanceWarned = true
+	name := "MaxInstancesPerKey"
+	if budget == t.responseInstanceBudget() && budget != t.instanceBudget() {
+		name = "MaxResponseInstancesPerKey"
 	}
+	fmt.Fprintf(os.Stderr,
+		"Warning: %s limit (%d) reached, dropping repeated call copies (first: key %s in scope %s)\n",
+		name, budget, key, t.instanceFirstScope)
 }
 
 // scopeLabelText renders an instance scope for a human. The empty scope is the
@@ -1503,7 +1514,7 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 			// Reusing an existing instance instead would make the tree cyclic
 			// (consumers of a memoized subtree could reach themselves), so the
 			// bound is a skip — the role the eager per-ID recursion cap plays.
-			n.tree.noteInstanceTruncation(n.tree.scopeLabel(scope, childScope), spec.key, budget)
+			n.tree.noteInstanceTruncation(scope, childScope, spec.key, budget)
 			continue
 		}
 		child := n.tree.newNode()
