@@ -54,7 +54,7 @@ func TestTestdata_ConfigVarParamName(t *testing.T) {
 		if p.Ref == "" && p.Name == "" {
 			t.Error("a parameter with no name — invalid OpenAPI, and unmatchable by any client")
 		}
-		for _, tell := range []string{"(", ")", "func", " + ", "/"} {
+		for _, tell := range []string{"(", ")", "func", " + ", "/", "`"} {
 			if strings.Contains(p.Name, tell) {
 				t.Errorf("parameter name %q carries %q — that is a rendered Go expression, "+
 					"not a header a client can send", p.Name, tell)
@@ -62,9 +62,21 @@ func TestTestdata_ConfigVarParamName(t *testing.T) {
 		}
 	}
 
+	// An ALIAS — `var Alias = Fixed` — renders as the name `Fixed`, a string
+	// indistinguishable from a literal spelling the same thing. Only the
+	// recorded KIND separates them, and without it a Go identifier is
+	// documented as a header a client should send.
+	for _, n := range names {
+		if n == "Fixed" || n == "Alias" {
+			t.Errorf("parameter %q is a Go identifier, not a header — an alias's rendering is "+
+				"the name it points at, which no text inspection can tell from a literal", n)
+		}
+	}
+
 	// The names the source DOES settle must survive: declining the unknowable
-	// one must not cost the knowable ones.
-	for _, want := range []string{"X-Fixed", "X-Literal"} {
+	// one must not cost the knowable ones. X-Raw is a RAW string literal, whose
+	// rendering keeps its backticks.
+	for _, want := range []string{"X-Fixed", "X-Raw", "X-Literal"} {
 		found := false
 		for _, n := range names {
 			if n == want {
@@ -76,8 +88,8 @@ func TestTestdata_ConfigVarParamName(t *testing.T) {
 				"argument are both resolvable", want, names)
 		}
 	}
-	if len(names) != 2 {
-		t.Errorf("parameters = %v, want exactly the two resolvable ones — the config-var header "+
-			"is not knowable from the source and must contribute nothing", names)
+	if len(names) != 3 {
+		t.Errorf("parameters = %v, want exactly the three resolvable ones — the config-var header "+
+			"and the alias are not knowable from the source and must contribute nothing", names)
 	}
 }

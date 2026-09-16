@@ -9,6 +9,17 @@ var AuthUser = key("REVERSE_PROXY_AUTHENTICATION_USER").MustString("X-WEBAUTH-US
 // Fixed is a var that really does hold a literal, which must keep resolving.
 var Fixed = "X-Fixed"
 
+// Raw is a RAW string literal. Its rendering keeps the backticks it was written
+// with, and a header called `X-Raw` — backticks included — is not one any client
+// can send.
+var Raw = `X-Raw`
+
+// Alias holds another NAME, and its rendering is that name — a string
+// indistinguishable from a literal spelling the same thing. Only the recorded
+// KIND separates them, which is why metadata has to carry it: without it this
+// documents a Go identifier as a header.
+var Alias = Fixed
+
 type k string
 
 func key(s string) k { return k(s) }

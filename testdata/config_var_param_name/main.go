@@ -29,6 +29,8 @@ func whoami(w http.ResponseWriter, r *http.Request) {
 	_ = userName(r)
 	// Alongside it, two names the source DOES settle, which must survive.
 	_ = r.Header.Get(setting.Fixed)
+	_ = r.Header.Get(setting.Raw)
+	_ = r.Header.Get(setting.Alias)
 	_ = r.Header.Get("X-Literal")
 	_ = json.NewEncoder(w).Encode(Reply{OK: true})
 }

@@ -43,6 +43,13 @@ func TestDeclaredValue(t *testing.T) {
 			want:     "X-Thing", ok: true,
 		},
 		{
+			// A RAW string literal renders with the backticks it was written
+			// with, and `X-Raw` is not a header anyone can send.
+			name:     "a raw string literal loses its backticks",
+			variable: &metadata.Variable{Value: pool.Get("`X-Raw`"), ValueKind: pool.Get(metadata.KindLiteral)},
+			want:     "X-Raw", ok: true,
+		},
+		{
 			name: "a call initializer is not",
 			variable: &metadata.Variable{
 				Value:     pool.Get(`func(s string) pkg.k(CFG).MustString(X-Default)`),
@@ -60,11 +67,26 @@ func TestDeclaredValue(t *testing.T) {
 			want: "", ok: false,
 		},
 		{
-			name: "another name is not",
+			// THE case that needs the recorded kind. `var Alias = Other`
+			// renders as `Other`, which is byte-for-byte what `var X = "Other"`
+			// renders as — so no inspection of the rendering can separate them,
+			// and reading this one as a value documents a Go identifier as a
+			// header name.
+			name: "another name is not, and only the kind can say so",
 			variable: &metadata.Variable{
 				Value: pool.Get(`Other`), ValueKind: pool.Get(metadata.KindIdent),
 			},
 			want: "", ok: false,
+		},
+		{
+			// The same rendering, declared as a literal, IS a value — which is
+			// the half of the pair that proves the two are indistinguishable
+			// without the kind.
+			name: "the identical rendering, declared as a literal, resolves",
+			variable: &metadata.Variable{
+				Value: pool.Get(`Other`), ValueKind: pool.Get(metadata.KindLiteral),
+			},
+			want: "Other", ok: true,
 		},
 		{
 			// A computed constant has no literal to read, and go/types has

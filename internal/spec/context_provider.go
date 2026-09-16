@@ -526,7 +526,7 @@ func (c *ContextProviderImpl) declaredValue(variable *metadata.Variable) (string
 	// is exact, so it answers wherever there is one.
 	switch c.GetString(variable.ValueKind) {
 	case metadata.KindLiteral:
-		return strings.Trim(c.GetString(variable.Value), "\""), true
+		return unquoteLiteral(c.GetString(variable.Value)), true
 	}
 	// A computed constant — `A + B`, an iota — has no literal to read, and
 	// go/types has already evaluated it. StringVal unquotes a string constant
@@ -560,4 +560,13 @@ func computedValueString(v any) string {
 	}
 	// A deserialised metadata.yaml carries it as a plain value.
 	return strings.Trim(fmt.Sprintf("%v", v), "\"")
+}
+
+// unquoteLiteral strips the quoting a rendered string literal carries.
+//
+// BACKTICKS as well as double quotes: a raw string literal renders with the
+// backticks it was written with, and a header called `X-Raw` — backticks
+// included — is not one any client can send.
+func unquoteLiteral(s string) string {
+	return strings.Trim(s, "\"`")
 }
