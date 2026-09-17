@@ -15,6 +15,10 @@
 package spec
 
 import (
+	"bytes"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -108,4 +112,50 @@ func TestPresetsAnchorTheirResponsePatterns(t *testing.T) {
 		})
 	}
 
+}
+
+// TestUnanchoredResponseAdviceNamesAnApplicableRemedy pins what the warning
+// TELLS the user to do, because for the pattern it fires on most the obvious
+// two remedies do not exist.
+//
+// `json.Marshal(v)` has no receiver, so recvType/recvTypeRegex match nothing;
+// and it is handed no writer, so requireResponseDestination has nothing to gate
+// on. A message offering only those is advice the reader cannot follow, and the
+// reader is already looking at a spec with spurious `default:` blocks in it.
+//
+// So the message must name calleePkgPatterns — which at least pins WHICH
+// Marshal — and must say that dropping the pattern is the honest fix when the
+// call carries no destination at all. UnanchoredResponsePatterns' own doc
+// records the measurement behind that: one such pattern accounted for 40 of 41
+// spurious default blocks on a ~500-route service.
+func TestUnanchoredResponseAdviceNamesAnApplicableRemedy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "apispec.yaml")
+	if err := os.WriteFile(path, []byte(
+		"framework:\n  responsePatterns:\n    - callRegex: ^Marshal$\n      typeFromArg: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	if _, err := LoadAPISpecConfig(path); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	got := buf.String()
+	if got == "" {
+		t.Fatal("an unanchored ^Marshal$ pattern produced no advisory at all")
+	}
+	for _, want := range []string{
+		"responsePatterns[0]", // which pattern
+		"^Marshal$",           // and its regex
+		"calleePkgPatterns",   // the remedy that fits a package-level func
+		"drop the pattern",    // and the one that fits a bare serializer
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("advisory does not mention %q; it said:\n%s", want, got)
+		}
+	}
 }
