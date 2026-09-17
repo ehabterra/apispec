@@ -991,13 +991,44 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		// Judged on the path AFTER the verb is split off: `"GET "+c.pattern`
 		// resolves its literal half into the method, and what is left for the
 		// path is the placeholder alone.
-		routeInfo.PathUnresolved = pathIsAllPlaceholders(path, dynNames)
-		routeInfo.Path = path
-		if routeInfo.Path == "" {
-			routeInfo.Path = "/"
+		unresolved := pathIsAllPlaceholders(path, dynNames)
+
+		// A NESTED registration must not overwrite a path the enclosing one
+		// already resolved, when all it has to offer is a placeholder.
+		//
+		// handleRouteNode re-extracts into the same RouteInfo from the node's
+		// children, because that is how a chain-style route resolves — the
+		// outer `Methods("GET")` arrives with no path and `.Path("/x")` supplies
+		// it. But a router WRAPPER descends into the same walk, and there the
+		// registration below is the same route, a hop further from the literal:
+		//
+		//	func (r *Router) Methods(pattern string, h ...any) {
+		//		full := r.getPattern(pattern)
+		//		r.With(r.mw...).register(full, handler)  // ← path is `full`
+		//	}
+		//
+		// `full` is a local assigned from a call, so it resolves to `{full}`,
+		// which then replaced the caller's own `/assets/site-manifest.json`. The
+		// route was dropped and the endpoint vanished from the spec with no
+		// warning — 10 of them on gitea, where whether the walk got this deep at
+		// all came down to MaxInstancesPerKey (issue #494).
+		//
+		// This is the informative-wins rule mergeRouteExtraction already applies
+		// to bodies and responses, and golden rule #7: a resolved literal is
+		// strictly more honest than a placeholder standing in for the same value,
+		// so it is kept. A nested path that RESOLVES still wins, which is what
+		// leaves chain-style routes working.
+		if unresolved && routeInfo.Path != "" && !routeInfo.PathUnresolved {
+			found = true
+		} else {
+			routeInfo.PathUnresolved = unresolved
+			routeInfo.Path = path
+			if routeInfo.Path == "" {
+				routeInfo.Path = "/"
+			}
+			routeInfo.DynamicParams = appendUniqueStrings(routeInfo.DynamicParams, dynNames...)
+			found = true
 		}
-		routeInfo.DynamicParams = appendUniqueStrings(routeInfo.DynamicParams, dynNames...)
-		found = true
 	}
 
 	if hi, ok := r.handlerArgIndex(edge); ok {
