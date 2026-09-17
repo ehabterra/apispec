@@ -276,9 +276,18 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 	// the endpoint can never return) looks like a resolution bug, not a config
 	// one, to anyone reading the generated spec.
 	if bare := config.UnanchoredResponsePatterns(); len(bare) > 0 {
+		// The remedies are listed in the order they can actually be applied, and
+		// the last sentence exists because the first two do not fit the pattern
+		// this fires on most. `json.Marshal(v)` has no receiver to match and
+		// takes no writer, so requireResponseDestination has nothing to gate on;
+		// telling someone to add one of those is advice they cannot follow.
+		// calleePkgPatterns at least pins WHICH Marshal, and dropping the pattern
+		// is what the measurement in UnanchoredResponsePatterns' doc supports.
 		log.Printf("[config] %d response pattern(s) match a bare call name anywhere in the call graph "+
-			"and may document an outbound request body as a response: %s — scope with "+
-			"recvType/recvTypeRegex, or set requireResponseDestination",
+			"and may document an outbound request body as a response: %s — anchor each with "+
+			"recvType/recvTypeRegex (a method), calleePkgPatterns (a package-level function), "+
+			"or requireResponseDestination (a call handed the response writer). A serializer "+
+			"that just returns bytes has none of those, so there the honest fix is to drop the pattern",
 			len(bare), strings.Join(bare, ", "))
 	}
 
