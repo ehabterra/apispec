@@ -91,6 +91,28 @@ func (g *Generator) UnresolvedPaths() []intspec.UnresolvedPathRoute {
 	return g.engine.GetUnresolvedPaths()
 }
 
+// TruncatedOperations returns the endpoints an expansion limit cut short in the
+// last generation. Non-empty means those operations are documented with less
+// than the code supports — a missing parameter or response rather than a
+// missing endpoint, which is why nothing in the document itself says so.
+func (g *Generator) TruncatedOperations() []intspec.TruncatedOperation {
+	if g.engine == nil {
+		return nil
+	}
+	return g.engine.GetTruncatedOperations()
+}
+
+// ThinOperations returns the responses that came out with no schema — content
+// present, nothing under it. This is what an expansion limit costs when it costs
+// anything, and the number to read a refused-copy count against: millions of
+// refused copies are routinely harmless, and a handful can delete a body.
+func (g *Generator) ThinOperations() []intspec.ThinOperation {
+	if g.engine == nil {
+		return nil
+	}
+	return g.engine.GetThinOperations()
+}
+
 // UnresolvedRefs returns the $refs the last generation could not satisfy, after
 // they were repaired with a placeholder. Non-empty means the document loads but
 // some type resolved to nothing useful — the actionable fix is usually

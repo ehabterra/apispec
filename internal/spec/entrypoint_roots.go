@@ -368,4 +368,23 @@ type ExpansionStats struct {
 	RouteLimit          int
 	RouteFirstTruncated string
 	RoutesScoped        int
+
+	// RouteTruncatedKeys names every route scope the per-route budget cut short,
+	// as registration keys in the order the walk opened them.
+	//
+	// The counts above answer "how much"; this answers "where", which is the
+	// part a reader can act on. A count of 8 truncated subtrees says nothing
+	// about which endpoints came out thinner, and the single "first at …"
+	// example names one of them; finding the rest meant diffing two runs
+	// (issue #503).
+	//
+	// Keys, not operations: the tree has no paths — it has registrations. The
+	// join to method and path happens where routes exist, in
+	// truncatedOperations.
+	//
+	// There is deliberately no equivalent for the instance cap. It fires in
+	// nearly every scope, so the list ran to 1,219 entries on gitea and buried
+	// the six that mattered; what it costs is measured on the document instead
+	// (SecurityDiagnostics.ThinOperations, issue #296).
+	RouteTruncatedKeys []string
 }
