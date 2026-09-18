@@ -856,14 +856,34 @@ func (r *RoutePatternMatcherImpl) ExtractRoute(node TrackerNodeInterface, routeI
 	found := false
 
 	edge := node.GetEdge()
-	if routeInfo == nil || routeInfo.File == "" || routeInfo.Package == "" {
-		*routeInfo = RouteInfo{
-			Method:    http.MethodPost, // Default method
-			Package:   r.contextProvider.GetString(edge.Callee.Pkg),
-			File:      r.contextProvider.GetString(edge.Position),
-			Response:  make(map[string]*ResponseInfo),
-			UsedTypes: make(map[string]*Schema),
-		}
+	// FILL what is missing; never replace the struct.
+	//
+	// This used to be `*routeInfo = RouteInfo{…}` whenever File or Package was
+	// empty, which conflates "not initialised yet" with "initialised but short
+	// one field" — and handleRouteNode re-extracts into the SAME RouteInfo from
+	// the node's children, so the second call wiped everything the first had
+	// resolved. A registration that had already read `/captcha/*` off its call
+	// site lost it, and the nested read then supplied `{fullPattern}` into what
+	// now looked like a blank route, walking straight past the guard below that
+	// exists to stop exactly that substitution (issues #494, #498).
+	//
+	// Filling field-wise is safe because a RouteInfo is created per traversal
+	// node and only ever shared DOWNWARD, with the re-extraction meant to add to
+	// it — that is how a chain-style route gets its path at all.
+	if routeInfo.Package == "" {
+		routeInfo.Package = r.contextProvider.GetString(edge.Callee.Pkg)
+	}
+	if routeInfo.File == "" {
+		routeInfo.File = r.contextProvider.GetString(edge.Position)
+	}
+	if routeInfo.Method == "" {
+		routeInfo.Method = http.MethodPost // Default method
+	}
+	if routeInfo.Response == nil {
+		routeInfo.Response = make(map[string]*ResponseInfo)
+	}
+	if routeInfo.UsedTypes == nil {
+		routeInfo.UsedTypes = make(map[string]*Schema)
 	}
 
 	if edge != nil {
