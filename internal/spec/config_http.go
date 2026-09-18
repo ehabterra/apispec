@@ -103,6 +103,22 @@ func DefaultHTTPConfig() *APISpecConfig {
 					PathArgIndex:    0,
 					MethodArgIndex:  -1,
 					HandlerArgIndex: 1,
+					// Scoped to net/http's own receiver, exactly as ^HandleFunc$
+					// above is. Without it, `Handle` matched on the NAME alone —
+					// and `Handle` is what a house router calls its own
+					// registration method:
+					//
+					//	func (c *Combo) Handle(h http.HandlerFunc) *Combo {
+					//		c.r.mux.HandleFunc(c.pattern, h)
+					//	}
+					//
+					// That took argument 0 of `Combo.Handle(listItems)` as the
+					// path — the HANDLER — and documented the route at
+					// `{listItems}`, while the real registration inside the
+					// method was never reached. A placeholder built from a
+					// handler's name is not a path any client can call
+					// (issue #506).
+					RecvTypeRegex: `^net/http(\.\*ServeMux)?$`,
 				},
 			},
 			SecurityPatterns: httpSecurityPatterns(),
