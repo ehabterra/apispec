@@ -388,7 +388,44 @@ const (
 // at 25 was `notify.New.params`: the argument node of a constructor call in the
 // composition root, above every handler it reaches. Which node that is depends
 // on how an app is wired, which is precisely why no fixed number is safe.
-const DefaultMaxInstancesPerKey = 100
+// LOWERED TO 75, and the reason is that the measurement above no longer
+// reproduces. The nine empty bodies that bought 100 were a BUG, not a budget:
+// a nested registration overwrote a resolved path with a placeholder, so a
+// deeper walk produced WORSE output (#494, #497) and then a re-extraction wiped
+// the route outright (#498, #501). Re-measured after both, on its own metric —
+// a 2xx whose content is present and whose schema is missing:
+//
+//	                                 cap 25   cap 50   cap 75   cap 100
+//	that service, now 549 paths       0/620    0/620    0/620     0/620
+//	gitea (970 paths)                 0/506    0/508    0/508     0/508
+//	photoprism (112 paths)            0/111    0/111    0/111     0/111
+//
+// Zero at every setting, including on the service the raise was made for. What
+// the cap still buys is a handful of PARAMETERS and request bodies, and it
+// stops buying them before 100:
+//
+//	                    25 -> 50            50 -> 75          75 -> 100   cost 25 -> 100
+//	549-path service    +2 Retry-After      +1 Retry-After    nothing     flat
+//	gitea               +2 req, +1 resp     +4 ops' params    +3 ops'     +34%
+//	                                                          params,
+//	                                                          -2 lost to
+//	                                                          truncation
+//	photoprism          nothing             nothing           nothing     +84%
+//	106-path service    nothing             nothing           nothing     flat
+//	19-path project     nothing             nothing           nothing     flat
+//
+// So 75 is the smallest value that buys everything measurable on five projects,
+// and nothing anywhere gains from 75 -> 100. The old argument for 100 — that a
+// number which is safe today stops being safe when you edit elsewhere — is
+// unchanged in principle and is why this is 75 rather than 25: 25 is where both
+// large services measurably lose parameters.
+//
+// The per-route budget is the reason 100 can be actively worse. Copies are
+// charged to MaxNodesPerRoute, so a higher cap truncates more route subtrees —
+// on gitea 1/2/6/8 at 25/50/75/100, and the two extra at 100 cost `/compare`
+// its `sort` and `template` query parameters. Confirmed by re-running at 100
+// with a 5x per-route budget, which restores them.
+const DefaultMaxInstancesPerKey = 75
 
 // instanceBudget is the cap in force for this tree: the configured value, or the
 // default. It is configurable because the right number depends on a project's

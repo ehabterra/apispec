@@ -519,7 +519,7 @@ overrides `--dir` (`apispec ./api -o spec.yaml`).
 | `--max-args`                | `-ma`     | Max arguments per function                             | `100`                           |
 | `--max-nested-args`         | `-md`     | Max depth for nested arguments                         | `100`                           |
 | `--max-recursion-depth`     | `-mrd`    | Max recursion depth (anti-loop)                        | `10`                            |
-| `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `100`                  |
+| `--max-instances-per-key`   |           | Max copies of one callee within an instance scope (lazy engine) | `75`                   |
 | `--skip-cgo`                |           | Skip CGO packages                                      | `true`                          |
 | `--include-file`            |           | Include files matching pattern (repeatable)            | `""`                            |
 | `--include-package`         |           | Include packages matching pattern (repeatable)         | `""`                            |
@@ -993,7 +993,7 @@ large ones may need the node budgets raised.
 | Max nodes / route    | 1,000,000 | `--max-nodes-per-route`   | one named route is **less detailed**   |
 | Max children / node  | 500       | `--max-children`          | children of a node truncated           |
 | Max args / function  | 100       | `--max-args`              | arguments truncated                    |
-| Max instances / key  | 100       | `--max-instances-per-key` | a shared helper's copies capped, so some response bodies may be empty |
+| Max instances / key  | 75        | `--max-instances-per-key` | a shared helper's copies capped, so some response bodies may be empty |
 
 Every truncation is logged with the node it happened at, so a short spec is
 never silent.
