@@ -38,7 +38,7 @@ Expansion is bounded by node budgets plus an internal per-scope instance cap:
 | Max args / function  | 100      | `--max-args`            | arguments walked per call                                                   |
 | Max nested arg depth | 100      | `--max-nested-args`     | depth of nested argument expressions                                        |
 | Max recursion depth  | 10       | `--max-recursion-depth` | recursion into repeated callees                                             |
-| Max instances / key  | 100      | `--max-instances-per-key` | copies of one callee within an instance scope                             |
+| Max instances / key  | 75       | `--max-instances-per-key` | copies of one callee within an instance scope                             |
 
 ### Two node budgets, not one
 
@@ -84,9 +84,9 @@ measured across several services:
 | `--max-instances-per-key` | success bodies (330-route service) | time (107-route service) | 374-route service | 163-route service | this repo (34 routes) |
 |---|---|---|---|---|---|
 | 5   | 77 / 391  | — | — | — | — |
-| 25 (previous default) | 391 / 391 | 66s | 9 bodies empty, 8s | identical spec, 7s | 1 body empty, 8.6s |
+| 25  | 391 / 391 | 66s | 9 bodies empty, 8s | identical spec, 7s | 1 body empty, 8.6s |
 | 40  | 391 / 391 | 82s | — | — | — |
-| 100 (default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s | 0 bodies empty, 9.2s |
+| 100 (previous default) | 391 / 391 | — | 0 bodies empty, 9s | identical spec, 13s | 0 bodies empty, 9.2s |
 
 The last three columns are one measurement session on one machine. Absolute wall
 clock varies with hardware, and so does the gap between two rows — what carries
@@ -94,11 +94,47 @@ across machines is the **ratio**: the 163-route service's 13s / 7s = 1.8× is th
 comparable figure, not the "+6s". "Empty" means a response that rendered as
 `application/json: {}` — content present, schema missing.
 
-The default is 100 rather than 25 because of how 25 failed rather than how
-often: on the 374-route service, adding three handlers in an unrelated feature
-pushed a shared response helper past 25 copies and silently removed the response
-body of an endpoint nobody had touched. The threshold moves when you edit
-elsewhere, so no project can tell whether it is safe.
+That table is kept because it is what the 25 → 100 decision was made on, but
+**it no longer reproduces.** The nine empty bodies were a bug, not a budget: a
+nested registration overwrote a resolved path with a placeholder, so a deeper
+walk produced *worse* output
+([#494](https://github.com/ehabterra/apispec/issues/494),
+[#497](https://github.com/ehabterra/apispec/pull/497)), and a re-extraction then
+wiped the route outright
+([#498](https://github.com/ehabterra/apispec/issues/498),
+[#501](https://github.com/ehabterra/apispec/pull/501)). Re-measured after both,
+on the same metric — a 2xx whose content is present and whose schema is missing:
+
+| project | cap 25 | cap 50 | cap 75 | cap 100 |
+|---|---|---|---|---|
+| that service, now 549 paths | 0 / 620 | 0 / 620 | 0 / 620 | 0 / 620 |
+| gitea (970 paths) | 0 / 506 | 0 / 508 | 0 / 508 | 0 / 508 |
+| photoprism (112 paths) | 0 / 111 | 0 / 111 | 0 / 111 | 0 / 111 |
+
+Zero at every setting, including on the service the raise was made for. What the
+cap still buys is a few parameters and request bodies, and it stops buying them
+before 100:
+
+| project | 25 → 50 | 50 → 75 | 75 → 100 | cost 25 → 100 |
+|---|---|---|---|---|
+| 549-path service | +2 `Retry-After` | +1 `Retry-After` | nothing | flat |
+| gitea (970 paths) | +2 request bodies, +1 response | +4 operations' params | +3 operations' params, −2 lost to truncation | +34% |
+| photoprism (112 paths) | nothing | nothing | nothing | +84% |
+| 106-path service | nothing | nothing | nothing | flat |
+| 19-path project | nothing | nothing | nothing | flat |
+
+**75 is the smallest value that buys everything measurable across those five
+projects, and nothing anywhere gains from 75 → 100.** It is not 25 because 25 is
+where both large services measurably lose parameters, and because the original
+argument still stands in principle: a number that is safe today stops being safe
+when you edit elsewhere.
+
+A higher cap can also be actively worse. Copies are charged against
+`--max-nodes-per-route`, so raising it truncates more route subtrees — on gitea
+1 / 2 / 6 / 8 at 25 / 50 / 75 / 100 — and the two extra at 100 cost
+`/{username}/{reponame}/compare` its `sort` and `template` query parameters.
+Re-running at 100 with a 5× per-route budget restores them, which is what
+identifies the budget rather than the cap as the mechanism.
 
 **The cost is uneven, and on some projects it is large.** Medium projects (~20
 paths) show no measurable change. The 374-route service pays about 1.1× for the
@@ -111,8 +147,11 @@ is safe *for the code as it stands today*, which is exactly the guarantee the
 default gives up in exchange for not depending on where the next endpoint is
 added.
 
-Raise it above 100 when success responses are still missing bodies on a project
-with very large route groups.
+Raise it above 75 when success responses are still missing bodies on a project
+with very large route groups, and lower it to 25 when the spec is unchanged by
+doing so — the lower cap is safe *for the code as it stands today*, which is the
+guarantee the default gives up in exchange for not depending on where the next
+endpoint is added.
 
 ### Truncation warnings
 
