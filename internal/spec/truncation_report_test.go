@@ -162,3 +162,28 @@ func TestThinOperationsCoversEveryVerb(t *testing.T) {
 		}
 	}
 }
+
+// A schema that constrains the body without naming a type still says something.
+// The check used to enumerate fields and missed Enum — which a configured
+// TypeMapping can return on its own — so an enum-only response was reported as
+// a lost body, in a report whose value is that its usual answer is zero
+// (CodeRabbit on #504).
+func TestThinOperationsKeepsSchemasThatConstrainWithoutAType(t *testing.T) {
+	for name, schema := range map[string]*Schema{
+		"enum only":        {Enum: []interface{}{"a", "b"}},
+		"format only":      {Format: "date-time"},
+		"description only": {Description: "an opaque token"},
+		"example only":     {Example: "abc"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			spec := &OpenAPISpec{Paths: map[string]PathItem{
+				"/x": {Get: &Operation{Responses: map[string]Response{
+					"200": {Content: map[string]MediaType{"application/json": {Schema: schema}}},
+				}}},
+			}}
+			if got := thinOperations(spec); len(got) != 0 {
+				t.Errorf("a schema carrying %s was reported as saying nothing: %+v", name, got)
+			}
+		})
+	}
+}

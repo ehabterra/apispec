@@ -14,7 +14,10 @@
 
 package spec
 
-import "sort"
+import (
+	"reflect"
+	"sort"
+)
 
 // ThinOperation is an operation that is documented but whose response says
 // nothing: content is present and the schema under it is empty.
@@ -90,16 +93,17 @@ func thinOperations(spec *OpenAPISpec) []ThinOperation {
 	return out
 }
 
-// schemaSaysNothing reports whether a schema carries no information at all.
+// schemaSaysNothing reports whether a schema carries no information at all —
+// the `application/json: {}` this metric is defined by.
 //
-// A `$ref`, a type, properties, a composition keyword — any of them is a claim
-// about the body. Nothing but an empty object is the case #296 named, and it is
-// what a starved response looks like: the media type is there because the
-// handler clearly writes JSON, and what it writes was never resolved.
+// Compared against the ZERO schema rather than against a list of fields. The
+// list version missed `Enum`, which a configured TypeMapping can return on its
+// own, and would have missed `Format`, `Description` and every field added
+// later — each a false positive reported as a lost response body, in a report
+// whose whole value is that its usual answer is zero (CodeRabbit on #504).
+//
+// Runs once per response media entry at the end of a generation, so the
+// reflection costs nothing worth naming.
 func schemaSaysNothing(s *Schema) bool {
-	if s == nil {
-		return true
-	}
-	return s.Ref == "" && s.Type == "" && len(s.Properties) == 0 && len(s.AllOf) == 0 &&
-		len(s.OneOf) == 0 && len(s.AnyOf) == 0 && s.Items == nil && s.AdditionalProperties == nil
+	return s == nil || reflect.DeepEqual(s, &Schema{})
 }

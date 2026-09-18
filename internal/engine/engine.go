@@ -1400,15 +1400,29 @@ func (e *Engine) thinSummary() string {
 	if len(e.thinOperations) == 0 {
 		return "no operation lost a response schema"
 	}
+	// Counted per OPERATION, listed per response. thinOperations holds one entry
+	// per (status, media type), so an operation whose 200 and 500 both came out
+	// empty is one endpoint and two entries — and the claim here is about
+	// endpoints (CodeRabbit on #504).
 	var names []string
+	seen := map[string]bool{}
+	operations := 0
 	for _, t := range e.thinOperations {
+		if op := t.Method + " " + t.Path; !seen[op] {
+			seen[op] = true
+			operations++
+		}
 		names = append(names, fmt.Sprintf("%s %s (%s)", t.Method, t.Path, t.Status))
 	}
-	if len(names) > maxNamed {
-		return fmt.Sprintf("%d operations lost a response schema: %s, and %d more",
-			len(names), strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
+	noun := "operations"
+	if operations == 1 {
+		noun = "operation"
 	}
-	return fmt.Sprintf("%d operation(s) lost a response schema: %s", len(names), strings.Join(names, ", "))
+	if len(names) > maxNamed {
+		return fmt.Sprintf("%d %s lost a response schema: %s, and %d more responses",
+			operations, noun, strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
+	}
+	return fmt.Sprintf("%d %s lost a response schema: %s", operations, noun, strings.Join(names, ", "))
 }
 
 // GetThinOperations returns the responses that came out with no schema in the

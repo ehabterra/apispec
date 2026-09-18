@@ -15,6 +15,7 @@
 package engine
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -37,7 +38,7 @@ func TestThinSummaryNamesTheOperationsThatLostASchema(t *testing.T) {
 		{Method: "POST", Path: "/widgets", Status: "201"},
 	}}
 	got := e.thinSummary()
-	for _, want := range []string{"2 operation(s)", "GET /widgets (200)", "POST /widgets (201)"} {
+	for _, want := range []string{"2 operations", "GET /widgets (200)", "POST /widgets (201)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary %q does not mention %q", got, want)
 		}
@@ -50,7 +51,9 @@ func TestThinSummaryNamesTheOperationsThatLostASchema(t *testing.T) {
 func TestThinSummaryCapsALongList(t *testing.T) {
 	var many []intspec.ThinOperation
 	for i := 0; i < 25; i++ {
-		many = append(many, intspec.ThinOperation{Method: "GET", Path: "/p", Status: "200"})
+		many = append(many, intspec.ThinOperation{
+			Method: "GET", Path: fmt.Sprintf("/p%d", i), Status: "200",
+		})
 	}
 	got := (&Engine{thinOperations: many}).thinSummary()
 	if !strings.Contains(got, "and 15 more") {
@@ -58,6 +61,30 @@ func TestThinSummaryCapsALongList(t *testing.T) {
 	}
 	if !strings.Contains(got, "25 operations") {
 		t.Errorf("summary %q does not give the true total", got)
+	}
+}
+
+// The count is of ENDPOINTS, the list is of responses. thinOperations holds one
+// entry per (status, media type), so an operation whose 200 and 500 both came
+// out empty is one endpoint and two entries — and counting entries as
+// operations overstated the damage in a report whose usual answer is zero
+// (CodeRabbit on #504).
+func TestThinSummaryCountsOperationsNotResponses(t *testing.T) {
+	e := &Engine{thinOperations: []intspec.ThinOperation{
+		{Method: "GET", Path: "/widgets", Status: "200", MediaType: "application/json"},
+		{Method: "GET", Path: "/widgets", Status: "500", MediaType: "application/json"},
+		{Method: "GET", Path: "/widgets", Status: "200", MediaType: "application/xml"},
+	}}
+	got := e.thinSummary()
+	if !strings.Contains(got, "1 operation lost") {
+		t.Errorf("summary %q counts responses; three entries on one endpoint are one operation", got)
+	}
+	// The responses are still listed, because which status lost its body is the
+	// actionable detail.
+	for _, want := range []string{"(200)", "(500)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary %q drops the response detail %s", got, want)
+		}
 	}
 }
 
