@@ -35,6 +35,14 @@ func compileBufferSinks(sinks []BufferSink) []bufferSinkMatcher {
 		if s.CallRegex == "" {
 			continue
 		}
+		// A negative index names no argument, and the bounds checks at the use
+		// site test only the upper end — so `Args[-1]` would panic on the first
+		// call this matched. Both fields are user-editable YAML, so the value is
+		// reachable from a hand-written config; dropped here for the same reason
+		// an unusable regex is, and with the same effect (CodeRabbit on #510).
+		if s.WriterArgIndex < 0 || (!s.BufferFromReceiver && s.BufferArgIndex < 0) {
+			continue
+		}
 		call, err := cachedRegex(s.CallRegex)
 		if err != nil {
 			continue // an unusable pattern matches nothing, which spares nothing
@@ -103,7 +111,7 @@ func (r *responseDestResolver) bufferReachesWriter(arg *metadata.CallArgument, e
 			if !r.sinkNamesBuffer(sink, sibling, name) {
 				continue
 			}
-			if sink.writerArg >= len(sibling.Args) {
+			if sink.writerArg < 0 || sink.writerArg >= len(sibling.Args) {
 				continue
 			}
 			// The writer side is judged by the SAME rule the gate applies to a
@@ -151,7 +159,7 @@ func (r *responseDestResolver) sinkNamesBuffer(sink bufferSinkMatcher, call *met
 		// these calls are written `_, _ = buf.WriteTo(w)`.
 		return call.CalleeVarName == buffer
 	}
-	if sink.bufferArg >= len(call.Args) {
+	if sink.bufferArg < 0 || sink.bufferArg >= len(call.Args) {
 		return false
 	}
 	return bufferVarName(call.Args[sink.bufferArg]) == buffer
