@@ -542,7 +542,7 @@ func (e *Extractor) traverseForRoutesWithVisited(node TrackerNodeInterface, moun
 	// the sub-tree under a different mount). Cycles within a single mount
 	// context still short-circuit because mountPath only changes when a
 	// Mount call introduces a new prefix — see issue #34 follow-up.
-	nodeKey := node.GetKey() + "@" + mountPath
+	nodeKey := visitKey(node, mountPath)
 	if visited[nodeKey] {
 		return
 	}
@@ -1033,15 +1033,33 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	// The same route CALL SITE reached again through another traversal
 	// context reproduces byte-identical extraction (fragments are pure and
 	// children expansions are memoized), so the expensive subtree walk runs
-	// once per site. The key must be the matched call site's identity, not
-	// the extracted fields: chain-style routes (Methods("GET").Path(...).
-	// HandlerFunc(...)) arrive here with Function/Path still empty — they
-	// resolve from chain children during extraction — so field-based keys
-	// would alias every such chain in the package onto one identity.
-	// Distinct mount contexts have distinct keys and still run — their
-	// fragments merge below.
+	// once per site. Distinct mount contexts have distinct keys and still run —
+	// their fragments merge below.
+	//
+	// The call site alone is NOT the identity, though, which is what #465 was.
+	// A builder chain registers every one of its routes from one call site:
+	//
+	//	func (c *Combo) Get(h http.HandlerFunc) *Combo {
+	//		c.r.mux.HandleFunc("GET "+c.pattern, h)
+	//		return c
+	//	}
+	//
+	// so `r.Combo("/alpha").Get(alpha)` and `r.Combo("/beta").Get(beta)` arrive
+	// here with the same callee and the same empty mount path. The second was
+	// dropped as already-extracted, and the document stated `/alpha`
+	// confidently while saying nothing at all about `/beta`.
+	//
+	// The resolved path and method are therefore part of the key — but only as
+	// an ADDITION to the call site, never instead of it. That distinction is the
+	// whole reason this was keyed on the site in the first place: chain-style
+	// routes (`Methods("GET").Path(...).HandlerFunc(...)`) arrive with Path
+	// still empty and resolve it from chain children during extraction, so a
+	// key made of fields alone would alias every such chain in the package onto
+	// one identity. Empty fields contribute nothing and leave those exactly as
+	// they were.
 	if edge := node.GetEdge(); edge != nil {
-		routeID := routeInfo.MountPath + chainSep + edge.Callee.ID()
+		routeID := routeInfo.MountPath + chainSep + edge.Callee.ID() +
+			chainSep + routeInfo.Path + chainSep + routeInfo.Method
 		if e.extractedRouteIDs[routeID] {
 			return
 		}
@@ -4192,4 +4210,37 @@ func alternateBodyTypes(cur, next *ResponseInfo) []string {
 		out = append(out, r.OneOfTypes...)
 	}
 	return out
+}
+
+// visitKey identifies a node FOR THE ROUTE WALK: its own identity, the mount
+// context it is being walked under, and the call it was reached through.
+//
+// The caller is the part that was missing. A builder chain registers from one
+// call site —
+//
+//	func (c *Combo) Get(h http.HandlerFunc) *Combo {
+//		c.r.mux.HandleFunc("GET "+c.pattern, h)
+//		return c
+//	}
+//
+// — so `r.Combo("/alpha").Get(alpha)` and `r.Combo("/beta").Get(beta)` reach the
+// SAME HandleFunc node, with the same key and the same (empty) mount path. The
+// walk visited it twice and the second visit was dropped as already-seen, so
+// `/beta` never reached handleRouteNode at all: the document stated `/alpha`
+// confidently and said nothing about the other chain, with no warning (#465).
+//
+// Two chains differ in the call that reached them, which is exactly what the
+// parent node is. Adding it is the same move mountPath already made for
+// sub-routers mounted at several prefixes — one more axis along which the same
+// node is genuinely a different route.
+//
+// Only the immediate parent, not the whole ancestry: it separates the chains
+// that matter while keeping the key O(1) to build, and the walk still cannot
+// revisit a (node, caller, mount) triple it has finished.
+func visitKey(node TrackerNodeInterface, mountPath string) string {
+	key := node.GetKey() + "@" + mountPath
+	if parent := node.GetParent(); parent != nil {
+		key += "|" + parent.GetKey()
+	}
+	return key
 }
