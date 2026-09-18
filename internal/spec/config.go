@@ -180,6 +180,26 @@ type ResponseContextConfig struct {
 	// never a response.
 	BodyTransforms []BodyTransform `yaml:"bodyTransforms,omitempty" json:"bodyTransforms,omitempty"`
 
+	// BufferSinks describe calls that flush a BUFFER's contents to a writer.
+	//
+	// The write-destination gate resolves an encode's destination backwards —
+	// through assignments, parameters and struct construction — to see whether
+	// it is the response writer. That sees one hop, so it cannot tell these
+	// apart, and both encode into a *bytes.Buffer:
+	//
+	//	xml.NewEncoder(buf).Encode(v); buf.WriteTo(w)   // the buffer IS the response
+	//	yaml.NewEncoder(&buf).Encode(v); return buf     // the buffer is internal
+	//
+	// A buffer named here as reaching a writer makes the first one a response
+	// without making the second one one. Measured on a 930-path project: the
+	// first shape is 18 correct application/xml responses that were dropped,
+	// and every yaml encode reached from a route there wrote away from the wire
+	// (issue #471).
+	//
+	// Serializer-level rather than framework-level, like BodyTransforms: a
+	// handler reaches for bytes.Buffer the same way under every router.
+	BufferSinks []BufferSink `yaml:"bufferSinks,omitempty" json:"bufferSinks,omitempty"`
+
 	// ImplicitStatus is the status the framework sends when a handler writes a
 	// body without stating one — net/http's first Write sends 200. It fills
 	// exactly that gap: a body write whose pattern carries no status source at
@@ -210,6 +230,25 @@ type BodyTransform struct {
 	PkgRegex string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
 	// ArgIndex is the position of the payload argument (json.Marshal(v) -> 0).
 	ArgIndex int `yaml:"argIndex,omitempty" json:"argIndex,omitempty"`
+}
+
+// BufferSink describes one call that moves a buffer's bytes to a writer, so a
+// destination that is "only" a buffer can still be shown to reach the response.
+type BufferSink struct {
+	// CallRegex matches the callee function name, e.g. "^WriteTo$".
+	CallRegex string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	// PkgRegex matches the callee package path, e.g. "^io$". Empty matches any.
+	PkgRegex string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
+
+	// WriterArgIndex is the argument the bytes go TO — `io.Copy(w, buf)` and
+	// `buf.WriteTo(w)` both put the writer at 0.
+	WriterArgIndex int `yaml:"writerArgIndex,omitempty" json:"writerArgIndex,omitempty"`
+
+	// BufferFromReceiver says the buffer is the call's RECEIVER (buf.WriteTo(w)).
+	BufferFromReceiver bool `yaml:"bufferFromReceiver,omitempty" json:"bufferFromReceiver,omitempty"`
+	// BufferArgIndex is where the buffer sits when it is an argument
+	// (io.Copy(w, buf) -> 1). Ignored when BufferFromReceiver is set.
+	BufferArgIndex int `yaml:"bufferArgIndex,omitempty" json:"bufferArgIndex,omitempty"`
 }
 
 // RequestContextConfig describes the types and accessors that identify an

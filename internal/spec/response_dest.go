@@ -34,6 +34,9 @@ type responseDestResolver struct {
 	contextProvider ContextProvider
 	writerTypeREs   []*regexp.Regexp // types that ARE a response writer
 	compatibleREs   []*regexp.Regexp // interfaces a response writer satisfies (io.Writer, ...)
+	// bufferSinks are the calls that flush a buffer's bytes to a writer, which
+	// is the one forward question this otherwise-backward resolver asks (#471).
+	bufferSinks []bufferSinkMatcher
 }
 
 // newResponseDestResolver compiles the configured regexes once. Enabled()
@@ -44,6 +47,7 @@ func newResponseDestResolver(cfg *APISpecConfig, contextProvider ContextProvider
 	if cfg == nil {
 		return r
 	}
+	r.bufferSinks = compileBufferSinks(cfg.Framework.ResponseContext.BufferSinks)
 	for _, p := range cfg.Framework.ResponseContext.WriterTypeRegexes {
 		if re, err := cachedRegex(p); err == nil {
 			r.writerTypeREs = append(r.writerTypeREs, re)
@@ -76,6 +80,12 @@ func (r *responseDestResolver) ShouldDrop(arg *metadata.CallArgument, edge *meta
 	}
 	if r.reachesWriter(arg, edge, make(map[string]bool, 4)) {
 		return false // provenance reaches the handler's response writer — it's the response
+	}
+	// Backwards says where the destination came from; a buffer's answer is
+	// always "a buffer". Forwards is the question the two shapes differ on:
+	// whether anything takes this buffer's bytes to the writer (issue #471).
+	if r.bufferReachesWriter(arg, edge, make(map[string]bool, 4)) {
+		return false
 	}
 	t := r.leafType(arg, edge, make(map[string]bool, 4))
 	if t == "" || matchAny(r.compatibleREs, t) {
