@@ -289,6 +289,12 @@ type Engine struct {
 	// whose key matches no route placeholder, gathered during the last generation.
 	pathParamMismatches []intspec.PathParamMismatch
 
+	// truncatedOperations names the endpoints an expansion limit cut short in
+	// the last generation, for the UI and a CI gate (issues #296, #503).
+	truncatedOperations []intspec.TruncatedOperation
+	// thinOperations lists responses that say nothing — content present, schema
+	// empty — which is what the instance cap costs when it costs anything (#296).
+	thinOperations []intspec.ThinOperation
 	// unresolvedPaths lists registrations left out of the last generation
 	// because their path is built at runtime (issue #428).
 	unresolvedPaths []intspec.UnresolvedPathRoute
@@ -907,6 +913,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		e.pathParamMismatches = secDiag.PathParamMismatches
 		e.unresolvedRefs = secDiag.UnresolvedRefs
 		e.unresolvedPaths = secDiag.UnresolvedPaths
+		e.truncatedOperations = secDiag.TruncatedOperations
+		e.thinOperations = secDiag.ThinOperations
 		e.reportUnresolvedRefs()
 		e.reportUnresolvedPaths()
 	}
@@ -929,8 +937,11 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		if n := e.expansionStats.RouteTruncations; n > 0 {
 			// Local, unlike the whole-walk truncation above: these routes are
 			// documented in less detail and no other route is affected (#264).
-			e.reportPhase(fmt.Sprintf("per-route limit (%d) truncated %d of %d route subtrees — those routes are less detailed (first at %s)",
-				e.expansionStats.RouteLimit, n, e.expansionStats.RoutesScoped, e.expansionStats.RouteFirstTruncated), 0)
+			// The endpoints are NAMED rather than counted — a count and one
+			// example left the rest undiscoverable (#503).
+			e.reportPhase(fmt.Sprintf("per-route limit (%d) truncated %d of %d route subtrees — less detail on: %s",
+				e.expansionStats.RouteLimit, n, e.expansionStats.RoutesScoped,
+				e.truncatedSummary(intspec.TruncatedByRouteBudget, e.expansionStats.RouteFirstTruncated)), 0)
 		}
 		if n := e.expansionStats.InstanceTruncations; n > 0 {
 			// The other, quieter shortfall, reported separately because it is a
@@ -938,8 +949,14 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			// still dropped call copies, which is how a response body goes missing
 			// with nothing in the output to say so (issue #224). The scope is named
 			// because it is what tells a bounded diamond from a starved route.
-			e.reportPhase(fmt.Sprintf("instance cap (%d) dropped %d call copies — first: %s in scope %s",
-				e.expansionStats.InstanceLimit, n, e.expansionStats.InstanceFirstKey, e.expansionStats.InstanceFirstScope), 0)
+			// The count alone is unreadable: 25 million refused copies on gitea
+			// cost nothing at all, while a handful can delete a response body.
+			// So it is paired with what the DOCUMENT shows — the responses that
+			// came out empty — and zero of those is the useful, common answer
+			// (issue #296).
+			e.reportPhase(fmt.Sprintf("instance cap (%d) dropped %d call copies (first: %s in scope %s) — %s",
+				e.expansionStats.InstanceLimit, n, e.expansionStats.InstanceFirstKey, e.expansionStats.InstanceFirstScope,
+				e.thinSummary()), 0)
 		}
 	}
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
@@ -1376,6 +1393,69 @@ func (e *Engine) reportUnresolvedPaths() {
 		len(e.unresolvedPaths), where), 0)
 }
 
+// thinSummary says what the document lost, which is the only way to read a
+// refused-copy count. Names the operations when there are few enough to name.
+func (e *Engine) thinSummary() string {
+	const maxNamed = 10
+	if len(e.thinOperations) == 0 {
+		return "no operation lost a response schema"
+	}
+	var names []string
+	for _, t := range e.thinOperations {
+		names = append(names, fmt.Sprintf("%s %s (%s)", t.Method, t.Path, t.Status))
+	}
+	if len(names) > maxNamed {
+		return fmt.Sprintf("%d operations lost a response schema: %s, and %d more",
+			len(names), strings.Join(names[:maxNamed], ", "), len(names)-maxNamed)
+	}
+	return fmt.Sprintf("%d operation(s) lost a response schema: %s", len(names), strings.Join(names, ", "))
+}
+
+// GetThinOperations returns the responses that came out with no schema in the
+// most recent generation — content present, nothing under it.
+func (e *Engine) GetThinOperations() []intspec.ThinOperation {
+	return e.thinOperations
+}
+
+// truncatedSummary renders the operations one limit cut short.
+//
+// Capped at maxNamedTruncations because the point is to be readable: a run that
+// truncates hundreds of routes has a different problem, and printing hundreds of
+// lines would bury the numbers above it. The full list is on ExpansionStats and
+// in the diagnostics, which is what a CI gate should read.
+//
+// Falls back to the registration site when nothing could be joined to an
+// operation — which is itself informative: the registration produced no
+// documented endpoint at all.
+func (e *Engine) truncatedSummary(limit, fallback string) string {
+	const maxNamedTruncations = 10
+	var names []string
+	for _, op := range e.truncatedOperations {
+		if op.Limit != limit {
+			continue
+		}
+		switch {
+		case op.Method != "" && op.Path != "":
+			names = append(names, op.Method+" "+op.Path)
+		case op.Path != "":
+			names = append(names, op.Path)
+		default:
+			names = append(names, op.Registration+" (operation not attributed)")
+		}
+	}
+	if len(names) == 0 {
+		if fallback != "" {
+			return "first at " + fallback
+		}
+		return "no operation could be attributed"
+	}
+	if len(names) > maxNamedTruncations {
+		return strings.Join(names[:maxNamedTruncations], ", ") +
+			fmt.Sprintf(", and %d more", len(names)-maxNamedTruncations)
+	}
+	return strings.Join(names, ", ")
+}
+
 // reportNoRoutes says so when the walk analysed real code and matched no route
 // registration in it — the case that used to print "Successfully generated"
 // over an empty document and exit 0, indistinguishable from a project that
@@ -1459,6 +1539,17 @@ func (e *Engine) GetUnresolvedRefs() []intspec.UnresolvedRef {
 // gap, which a placeholder path used to hide.
 func (e *Engine) GetUnresolvedPaths() []intspec.UnresolvedPathRoute {
 	return e.unresolvedPaths
+}
+
+// GetTruncatedOperations returns the endpoints an expansion limit cut short in
+// the most recent generation, and which limit did it.
+//
+// Distinct from GetUnresolvedPaths: there the operation is absent, here it is
+// PRESENT and reads as finished while carrying fewer parameters or responses
+// than the code supports. That is the harder failure to notice, which is why it
+// is reported per endpoint rather than as a count (issues #296, #503).
+func (e *Engine) GetTruncatedOperations() []intspec.TruncatedOperation {
+	return e.truncatedOperations
 }
 
 // GetRouteDiscovery returns what the route search walked and what it found in

@@ -322,6 +322,19 @@ type SecurityDiagnostics struct {
 	// the operation is documented and its shape is not, here there is no
 	// operation to document (issue #428).
 	UnresolvedPaths []UnresolvedPathRoute
+
+	// TruncatedOperations names the endpoints the per-route node budget cut
+	// short. A third way the document can be quietly incomplete, and the one
+	// that was hardest to see: the operation IS there and reads as finished, it
+	// simply has fewer parameters or responses than the code supports (#503).
+	TruncatedOperations []TruncatedOperation
+
+	// ThinOperations names the responses that say nothing — content present,
+	// schema empty. This is what the instance cap costs WHEN it costs anything,
+	// and the number issue #296 asked for: the cap's own count runs to millions
+	// on a large project and is almost always harmless, so it cannot be read on
+	// its own.
+	ThinOperations []ThinOperation
 }
 
 // MapMetadataToOpenAPI maps metadata to OpenAPI specification.
@@ -458,6 +471,17 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		UnresolvedRefs:       unresolvedRefs,
 		UnresolvedPaths:      unresolvedPaths,
 	}
+	// Joined here because this is the one place both halves exist: the tree
+	// knows which registrations a limit cut short, and `routes` is what those
+	// registrations became. Asked of the tree AFTER extraction, since with the
+	// lazy tree the expansion those limits bound is what extraction triggers.
+	if reporter, ok := tree.(interface {
+		TruncatedScopes() []int32
+		ScopeRegistration(int32) string
+	}); ok {
+		diag.TruncatedOperations = truncatedOperations(routes, reporter.TruncatedScopes(), reporter.ScopeRegistration)
+	}
+	diag.ThinOperations = thinOperations(spec)
 	return spec, diag, nil
 }
 

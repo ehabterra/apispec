@@ -1070,7 +1070,54 @@ func (t *LazyTree) ExpansionStats() ExpansionStats {
 		RouteLimit:          t.routeBudget(),
 		RouteFirstTruncated: t.routeFirstTruncated,
 		RoutesScoped:        max(len(t.routeScopeNodes)-1, 0),
+
+		RouteTruncatedKeys: t.scopeKeysWhere(t.routeScopeCut),
 	}
+}
+
+// TruncatedScopes returns the route scope ids the per-route node budget cut
+// short.
+//
+// Only that budget. The instance cap fires in nearly every scope by design —
+// bounding a diamond is its job — so the scopes it touched are not a signal;
+// what it COSTS is measured on the document instead (thinOperations, #296).
+func (t *LazyTree) TruncatedScopes() []int32 {
+	return scopeIDsWhere(t.routeScopeCut)
+}
+
+// ScopeRegistration names a route scope, for a report that has nothing better.
+func (t *LazyTree) ScopeRegistration(id int32) string {
+	if id <= 0 || int(id) >= len(t.routeScopeKeys) {
+		return ""
+	}
+	return t.routeScopeKeys[id]
+}
+
+// scopeIDsWhere lists the marked scopes in id order — the order the walk opened
+// them, stable for a given tree without sorting.
+func scopeIDsWhere(mark []bool) []int32 {
+	var out []int32
+	for id := 1; id < len(mark); id++ {
+		if mark[id] {
+			out = append(out, int32(id))
+		}
+	}
+	return out
+}
+
+// scopeKeysWhere returns the registration key of every route scope the mark is
+// set for, in scope-id order — which is the order the walk opened them, and is
+// therefore stable for a given tree without sorting (golden rule #1).
+//
+// Scope 0 is the wiring walk rather than a registration, and is never included.
+func (t *LazyTree) scopeKeysWhere(mark []bool) []string {
+	var out []string
+	for id := 1; id < len(t.routeScopeKeys) && id < len(mark); id++ {
+		if mark[id] {
+			out = append(out, t.routeScopeKeys[id])
+		}
+	}
+	return out
 }
 
 // EntrypointStats reports what the entrypoint gate decided during this tree's

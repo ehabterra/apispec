@@ -70,3 +70,25 @@ func TestTestdata_RouterWrapperPattern(t *testing.T) {
 		}
 	}
 }
+
+// A tight instance cap is the quickest way to make the tree drop copies, which
+// is what the reporting added for #296 and #503 has to describe.
+//
+// The assertion is about the REPORT, not about the cap: whatever the run loses,
+// the generator must be able to say which operations lost a response schema
+// rather than leaving a reader with a refused-copy count. On this fixture the
+// honest answer is "none", and that is the answer that was impossible to get
+// before — 25 million drops on gitea also cost nothing, and looked identical.
+func TestTestdata_RouterWrapperReportsWhatTruncationCost(t *testing.T) {
+	out, gen := generateWithReports(t, "router_wrapper_pattern")
+	noDanglingRefs(t, out)
+
+	// Every response this fixture emits resolves, so nothing is thin.
+	if thin := gen.ThinOperations(); len(thin) != 0 {
+		t.Errorf("no response here is starved, but %d were reported: %+v", len(thin), thin)
+	}
+	// Nothing hit the per-route node budget either, at default limits.
+	if trunc := gen.TruncatedOperations(); len(trunc) != 0 {
+		t.Errorf("no route here exhausts its node budget, but %d were reported: %+v", len(trunc), trunc)
+	}
+}
