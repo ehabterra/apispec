@@ -7,7 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-09-18
+
+Routes that were silently missing. Three separate defects each dropped
+registrations without a word — a builder's chains collapsing onto one route, a
+nested registration overwriting a path the outer one had resolved, and a
+re-extraction wiping the route outright — and together they cost **89 endpoints
+on a ~900-route project (899 → 988 paths)**. The same project now documents the
+same path set at every `--max-instances-per-key` setting, where it previously
+differed by ten, so the tuning limit decides a route's detail rather than which
+endpoints exist. What the limits *do* cost is now reported per endpoint instead
+of as a count. Two allocation fixes take the run back to v0.5.8's wall clock
+while carrying those extra routes.
+
 ### Added
+
+- **The document says which endpoints an expansion limit cost.** Two reports
+  gave a count and one example, so the endpoints they affected were
+  undiscoverable: finding that `/{username}/{reponame}/compare` had quietly lost
+  its `sort` and `template` query parameters took a four-point sweep of
+  `--max-instances-per-key`, a diff of two specs and a control run. The two
+  limits needed **opposite** treatments. The per-route node budget cuts a handful
+  of subtrees, so they are now named. The instance cap fires in nearly every
+  scope by design — listing them produced 1,219 entries on a 970-path project and
+  buried the six that mattered — so what it *costs* is measured on the document
+  instead: responses that rendered as `application/json: {}`. The common answer
+  is the useful one, and it was previously impossible to get:
+  `instance cap (75) dropped 25267970 call copies — no operation lost a response
+  schema`. Exposed on `SecurityDiagnostics`, `Engine` and `Generator` so a CI
+  gate can read it without parsing logs. (#296, #503)
+
+- **An encode into a buffer that is flushed to the writer is a response.** The
+  write-destination gate resolves a destination *backwards*, which answers where
+  a value came from — and a buffer's answer is always "a buffer", for the one
+  that becomes the response and the one that is thrown away alike. The question
+  they differ on is forward: does anything take these bytes to a writer?
+  `ResponseContext.BufferSinks` names the calls that do (`buf.WriteTo(w)`,
+  `io.Copy(w, buf)`), config-driven and serializer-level so every net/http-family
+  framework shares them. A resolved non-writer still fails, so a buffer flushed
+  to another buffer or to a file stays undocumented. (#471)
+
+- **A route constraint is read for what it says about a path parameter.** A
+  purely numeric mux constraint (`{id:[0-9]+}`) now produces `type: integer`
+  rather than an untyped string. (#345)
 
 - **`naming`: choose how operationIds and component names are spelled.** Both
   default to the fully-qualified Go symbol, which is collision-free and
@@ -23,7 +65,167 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged in every respect: a project that says nothing about naming gets the
   same document, byte for byte. (#298)
 
+### Changed
+
+- **`--max-instances-per-key` defaults to 75, down from 100.** The measurement
+  that raised it does not reproduce: the nine empty response bodies it was based
+  on were a *bug*, not a budget — a nested registration overwrote a resolved path
+  with a placeholder, so a deeper walk produced worse output, and a re-extraction
+  then wiped the route outright (both fixed below). Re-measured on the same
+  metric across five projects, the count is **0 at every cap setting**, including
+  on the service the raise was made for. Swept 25/50/75/100: nothing anywhere
+  gains from 75 → 100, while 100 costs +34% wall on a 970-path project and +84%
+  on another for a byte-identical document. It is not 25 because that is where
+  two large services measurably lose parameters. A higher cap can also be
+  actively worse: copies are charged against `--max-nodes-per-route`, so raising
+  it truncates more route subtrees. (#224, #502)
+
+- **Homebrew accepts any Go on PATH instead of installing its own keg.**
+  `depends_on "go"` can only be satisfied by Homebrew's own build, so
+  `brew install` pulled down the newest Go — hundreds of megabytes — onto
+  machines that already had a working toolchain, and then did not use it: apispec
+  shells out to whatever `go` PATH resolves to. The tap formulae now declare a
+  requirement satisfied by `which("go")`, still fatal, so a machine with no Go is
+  stopped at install time with a message rather than on the first run. (#492)
+
+### Removed
+
+- **The eager tracker tree and `--legacy-tracker` are gone.** The flag read like
+  a safe fallback and was not one: measured against the default on three real
+  services it produced identical output on two, and on the third it documented
+  **194 of 280 routes** — 31% missing, with no warning — while running 1.6×
+  slower; across the fixture suite it resolved four wiring shapes incorrectly.
+  Deprecated in 0.5.8, removed here: `internal/spec/tracker.go` (~2000 lines),
+  the flag, `EngineConfig.UseLazyTracker`, the UI's "Analysis engine" selector,
+  and the five cross-engine parity tests, whose oracle no longer exists — every
+  fixture involved keeps its own structural test, so the behaviour stays covered.
+  Nothing in the output changes: all 108 fixtures and a 894-path real project
+  generate byte-identically. If the analysis is missing something, please report
+  it rather than reaching for an engine that documented less. (#425, closes #410
+  and #286)
+
 ### Fixed
+
+- **A builder's chains are separate routes, not one.** A builder registers
+  every route it makes from one call site, so `r.Combo("/alpha").Get(a)` and
+  `r.Combo("/beta").Get(b)` reach the same node with the same key and the same
+  empty mount path. Both gates that dedupe the route walk keyed on exactly that
+  and dropped every chain after the first — silently: no placeholder, no warning,
+  just a document that stated one path confidently and omitted the others. On a
+  970-path project this recovers **18 endpoints** — `/user/repos`,
+  `/repositories/{id}`, an issue's reactions, deadline and dependencies — with
+  none lost and no measurable time cost. (#465)
+
+- **A nested registration no longer overwrites a path the outer one resolved.**
+  Route extraction re-reads a route from its children, because that is how a
+  chain-style route gets its path. A router *wrapper* descends into the same
+  walk, and what it reaches is the same route one hop further from the literal —
+  whose path operand is a local assigned from a call, which resolves to nothing.
+  That placeholder replaced the caller's own `/assets/site-manifest.json`, and
+  the route was dropped. Worse, it also defeated the diagnostic meant to catch
+  it: because the placeholder *replaced* a resolved path, the route counted as
+  documented and never reached the unresolved-registration report. Which
+  endpoints this cost even depended on `--max-instances-per-key`, since a lower
+  cap truncated the walk before it could overwrite anything. (#494)
+
+- **A re-extraction fills a route in; it does not wipe it.** `ExtractRoute`
+  replaced the whole `RouteInfo` whenever `File` or `Package` was empty, which
+  conflates "not initialised yet" with "initialised but short one field" — so the
+  second read discarded everything the first had resolved, before the guard above
+  could defend it. With both fixed, a 970-path project documents the **same path
+  set at every cap setting**, where it previously differed by ten and then two:
+  the cap decides a route's detail again rather than which endpoints exist.
+  (#498)
+
+- **`Handle` is matched on net/http's receiver, not on the name alone.** The
+  `^Handle$` route pattern carried no receiver constraint, unlike the
+  `^HandleFunc$` pattern beside it — and `Handle` is what a house router calls
+  its own registration method. Argument 0 of `Combo.Handle(listItems)` is the
+  *handler*, and it was read as the path, so the route was documented at
+  `{listItems}` while the real registration inside the method was never reached.
+  It also ends a silence: that shape previously produced no path, no placeholder
+  and no diagnostic at all. (#506)
+
+- **An embedded struct contributes its fields.** A struct that embeds another
+  documented none of the embedded fields, so any response whose type embeds a
+  shared `Base`, `Meta` or `Envelope` was under-documented by exactly what the
+  embed carries — silently. The rules are `encoding/json`'s rather than an
+  approximation: an untagged embed promotes at one greater depth, a tagged embed
+  is an ordinary field, an embedded non-struct contributes one field named for
+  its type, and where names collide the shallowest wins — with a per-path visited
+  set, so two embeds reaching one type are two candidates at equal depth and Go
+  sends neither. Field order is recorded and honoured, because an embed declared
+  first promotes its fields ahead of the outer ones. (#166, #487)
+
+- **A status can carry more than one representation.** A handler that answers
+  one status as JSON and another as XML had its alternates overwritten rather
+  than merged. (#354, #470)
+
+- **A wrapper's status parameter is not its response body.** A helper taking a
+  status code had that argument read as the body type, and the status/body role
+  collision resolved differently depending on which role arrived first. (#416,
+  #484, #485)
+
+- **Parameter accessors are covered evenly across frameworks.** The
+  per-framework lists had drifted, so the same parameter source was detected on
+  one router and silently dropped on the next — fiber had no header pattern at
+  all, so no fiber handler could ever produce an `in: header` parameter. gin
+  gains Cookie, GetQuery, QueryArray/QueryMap, GetPostForm, PostFormArray/Map and
+  Params.ByName; fiber gains its header accessor and Queries; net/http gains
+  Header.Values. Two knobs carry the fidelity: a multi-value accessor becomes an
+  array of the single-value type, and a documented fallback
+  (`DefaultQuery("page", "1")`) becomes `schema.default` and clears `required`.
+  (#355, #365)
+
+- **A ServeMux pattern's host is not part of the path.** Go 1.22 patterns are
+  `[METHOD ][HOST]/[PATH]`, so a host folded into the path and emitted an
+  endpoint no client calls. Hosts are read from the config (`hosts:`, plus any
+  configured server URL) and never guessed, because a pattern that lost its
+  leading slash is indistinguishable from one carrying a host. (#356)
+
+- **A generic adapter's response type resolves from its instantiation**, and
+  constructors survive on both sides of a type-parameter substitution. (#367,
+  #477)
+
+- **A package qualifier is evidence, so a miss does not answer with a twin.**
+  A lookup that failed on the qualified name fell back to a same-named type from
+  another package. (#447)
+
+- **A handler forwarded through a wrapper parameter is followed**, including
+  alternating parameter and wrapper hops, and the frame must be an invocation of
+  the argument's own function rather than one that merely shares a parameter
+  name. (#466, #467, #468)
+
+- **A receiver's type identity includes its package.** `one.Combo` and
+  `two.Combo` are both "Combo", and the bare-name collision is what put a
+  migration's throwaway struct into a real schema. (#464)
+
+- **A package's declared name is recorded**, and qualifiers resolve with it
+  rather than with the directory name. (#458)
+
+- **The verb matcher no longer matches inside a word.** A substring match made
+  "get" fire inside "widget", which golden rule #8 forbids. (#283)
+
+- **Security alternatives intersect, a user-defined scheme is kept, and derived
+  keys are collision-safe.** Two api-key middlewares on one scope reading
+  different places — a tenant key beside a user key — documented the first and
+  silently dropped the second; once a scheme asserts a location that is a
+  confidently wrong answer rather than a vague one. (#439, #441)
+
+- **apispecui: the Configure tab renders again.** One escaped quote in a help
+  string blanked the whole tab. Inside a JavaScript template literal `\"` is not
+  an escape — it resolves to a plain `"` — so the attribute value ended early and
+  the rest of the sentence was parsed as markup, where every bare `/` popped the
+  element stack. The error surfaced at the template's last line with no mention
+  of the string that caused it. A guard now forbids the sequence across every UI
+  script, because nothing in the Go suite parses that markup: a whole tab can go
+  blank with CI green. (#499)
+
+- **The unanchored-response advisory names a remedy that applies.** It told the
+  reader to add `recvType` or `requireResponseDestination` — but `json.Marshal`
+  has no receiver and is handed no writer, so neither can work. It now names
+  `calleePkgPatterns` and says that a serializer carrying no destination at all
+  is one to drop. (#500)
 
 - **A path held on a builder's receiver is resolved, not just reported.** The
   builder shape gives the path once, to a constructor, and reads it back off the
@@ -114,6 +316,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own source. `apispecui` binds to localhost, so this needed a symlink in a
   repo the developer chose to analyze — plausible for an untrusted checkout,
   which is what the tool is for. (#424)
+
 - **A metadata field that records no string now reads as absent, not as an
   arbitrary one.** Pooled strings are stored by index, and 0 was a valid index —
   the first string interned in a run — so any record that left an index field
@@ -124,6 +327,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the empty string, so the Go zero value means "no string" by construction.
   Every pool index shifts by one, which regenerates the metadata goldens; all
   109 fixture specs are byte-identical. (#449)
+
 - **A parameter with no name is no longer emitted.** OpenAPI requires `name`,
   and a parameter without one cannot be sent, matched or validated. One was
   reaching a real project's spec, readable only because the unset name index
@@ -141,51 +345,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text is "whatever was pooled first", it also moved with pooling order, so an
   unchanged project drifted between versions. Inline structs now say they have
   no comment; documented named types are unaffected. (#448)
-
-### Added
-
-- **Type and field doc comments become schema descriptions.** A documented Go
-  struct now produces a documented schema: the type's doc comment becomes the
-  schema `description`, and each field's comment (doc block or trailing line
-  comment) becomes its property's. Applies to every type kind, not just structs.
-  Text is kept **verbatim**, leading identifier included — Go's naming
-  convention is not reliable enough to edit automatically, and a wrong edit is
-  worse than a slightly redundant sentence. A `json:"-"` field stays absent; a
-  comment never resurrects a field the encoder skips. `excludeTypeComments: true`
-  turns it off for projects that treat internal comments as private. (#366)
-
-### Removed
-
-- **The eager tracker tree and `--legacy-tracker` are gone.** The flag read like
-  a safe fallback and was not one: measured against the default on three real
-  services it produced identical output on two, and on the third it documented
-  **194 of 280 routes** — 31% missing, with no warning — while running 1.6×
-  slower; across the fixture suite it resolved four wiring shapes incorrectly.
-  Deprecated in 0.5.8, removed here: `internal/spec/tracker.go` (~2000 lines),
-  the flag, `EngineConfig.UseLazyTracker`, the UI's "Analysis engine" selector,
-  and the five cross-engine parity tests, whose oracle no longer exists — every
-  fixture involved keeps its own structural test, so the behaviour stays covered.
-  Nothing in the output changes: all 108 fixtures and a 894-path real project
-  generate byte-identically. If the analysis is missing something, please report
-  it rather than reaching for an engine that documented less. (#425, closes #410
-  and #286)
-
-### Changed
-
-- CI builds and tests on the latest 1.26.x rather than a pinned patch release.
-
-### Deprecated
-
-- **`--legacy-tracker` (the eager tracker tree) is deprecated and will be
-  removed in a future release.** It reads like a safe fallback and is not one:
-  on a real ~280-route service it documents **194 routes** — 31% missing, with
-  no warning — and runs 1.6x slower; across the fixture suite it resolves four
-  wiring shapes incorrectly. Selecting it now prints a deprecation warning, and
-  the CLI, README and UI describe it accurately instead of offering it as a
-  comparison/escape hatch. If the default engine is missing something, report it
-  rather than switching — switching will usually document *fewer* routes. (#410)
-
-### Fixed
 
 - **A write the registration never sees no longer makes its path ambiguous.**
   Path variables are traced by agreement — every assignment visible at the call
@@ -260,6 +419,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when every caller passes the same thing, so a helper mounted at two
   prefixes keeps its placeholder rather than adopting one. `mount_via_helper`
   now documents all four of its mount forms, including `/named/things`. (#433)
+
 - **A registration path held in a variable is now read, instead of being
   reported as unknowable.** `p := "/users"` two lines above the registration is
   a statically-known path, and it was treated as unreadable: left out of the
@@ -276,6 +436,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own change-detector test. Measured on a real project: six phantom
   `/…/string` paths became flagged placeholders, with no route gained or lost.
   (#431)
+
 - **A registration whose path is built at runtime is reported instead of
   documented at a placeholder path.** A route table
   (`mux.HandleFunc(rt.Method+" "+rt.Path, rt.Handler)`) was emitted as an
@@ -296,6 +457,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inside the wrapper is no longer documented behind its back. A path held
   entirely in a local variable is now reported rather than documented under the
   variable's name; tracing it is #431. (#428)
+
 - **A `switch r.Method` written in a method is now split into one operation per
   verb.** With #382 (closures) this completes the set: every handler shape —
   plain function, closure, and method with either receiver kind, in any package
@@ -305,6 +467,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scope them with. It now carries both, and the spec layer resolves a method
   handler through the per-type methods table instead of giving up when
   `findFunctionByName` returns nothing. (#427)
+
 - **A `switch r.Method` written in a closure is now split into one operation per
   verb.** The split worked for a named handler but not for the shape
   `http.HandleFunc("/x", func(w, r) { switch r.Method { … } })`: a function
@@ -319,6 +482,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`case http.MethodGet: h.Get(w, r)`) get their bodies instead of losing them,
   and a registration that named its verb (`mux.HandleFunc("GET /x", h)`) stops
   documenting the arms the router never sends it. (#382)
+
+### Performance
+
+- **The response-call matcher is memoized, recovering a 45% regression.** It
+  runs the configured response patterns over a call's name, and the lazy tree
+  asks it per child spec — 15.7M nodes on a 970-path project, carrying a few
+  thousand distinct names — with nothing caching the answer. On that project:
+  **291s → 160s wall, 1.302T → 0.620T instructions retired**, output
+  byte-identical. That was the whole of the regression the response budget had
+  introduced. (#496)
+
+- **The instance-cap report no longer renders its own label 31 million times.**
+  `noteInstanceTruncation` took the scope as a rendered string, so every caller
+  built it — a concatenation of two interned keys — on each refused copy, to
+  produce one line of output naming the first. That was **6.89 GB, 42% of
+  everything the run allocated**. It now takes the two handles and renders once.
+  (#491)
+
+## [0.5.8] - 2026-08-28
+
+Released without a changelog entry; this section is written from the commit
+range for the record.
+
+Response fidelity and route discovery. A body written without `WriteHeader` is
+documented as `200`, a response with no body carries no `content` block, and a
+status write is carried by every body it dominates. Router groups created inline
+keep their prefix, catch-all routes lose the router's wildcard, and a project
+that does not build says so instead of reporting success over an empty document.
+`--legacy-tracker` is deprecated here and removed in 0.5.9.
+
+### Added
+
+- **Type and field doc comments become schema descriptions.** A documented Go
+  struct now produces a documented schema: the type's doc comment becomes the
+  schema `description`, and each field's comment (doc block or trailing line
+  comment) becomes its property's. Applies to every type kind, not just structs.
+  Text is kept **verbatim**, leading identifier included — Go's naming
+  convention is not reliable enough to edit automatically, and a wrong edit is
+  worse than a slightly redundant sentence. A `json:"-"` field stays absent; a
+  comment never resurrects a field the encoder skips. `excludeTypeComments: true`
+  turns it off for projects that treat internal comments as private. (#366)
+
+### Changed
+
+- CI builds and tests on the latest 1.26.x rather than a pinned patch release.
+
+### Deprecated
+
+- **`--legacy-tracker` (the eager tracker tree) is deprecated and will be
+  removed in a future release.** It reads like a safe fallback and is not one:
+  on a real ~280-route service it documents **194 routes** — 31% missing, with
+  no warning — and runs 1.6x slower; across the fixture suite it resolves four
+  wiring shapes incorrectly. Selecting it now prints a deprecation warning, and
+  the CLI, README and UI describe it accurately instead of offering it as a
+  comparison/escape hatch. If the default engine is missing something, report it
+  rather than switching — switching will usually document *fewer* routes. (#410)
+
+### Fixed
+
 - **A route registered with per-route middleware documented the middleware, not
   the handler.** gin and fiber take their handler chain variadically
   (`r.GET(path, mw, handler)`), so the endpoint handler is the *last* argument;
@@ -328,42 +550,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first and the middleware after, so this is per-framework rather than a global
   "last argument wins". Repaired four operations on a real fiber service.
   (#386)
+
 - **A middleware wrapping the handler at the registration site replaced it.**
   The wrapped-call form (`mux.Handle(p, mw(http.HandlerFunc(h)))`) is now peeled
   to the handler underneath. (#364)
+
 - **A router group created inline in a call argument lost its prefix.**
   `RegisterRouter(v1.Group("/mod"))` has no assignment to key on, so the
   callee's registrations hung outside the group and were documented at the root
   — where two modules registering the same relative path collapse into one, so
   an endpoint disappeared rather than merely moving. (#407)
+
 - **A catch-all route kept the router's wildcard in the path.** `/scheduler*`
   was emitted verbatim, which no OpenAPI consumer can match; it now becomes a
   path parameter. (#403)
+
 - **Fiber route constraints leaked into the path template.** `:id<int>` left the
   `<int>` tail in the emitted path, producing a key no request can match. The
   constraint is stripped; mapping it onto the parameter's type is still open.
   (#357)
+
 - **A project that does not build now says so.** A package that failed to
   *parse* was dropped silently and the run reported success over a thin spec —
   the report existed but only reached the verbose logger. The reason now
   distinguishes "does not parse" (a syntax error in your own source) from "does
   not type-check" (often a missing generated file), and names the file and line.
   (#237)
+
 - **An unmatched router no longer reports success over an empty document.**
   (#379)
+
 - **A literal `nil` response body is documented as `type: "null"`** rather than
   as an unconstrained `{}`. (#404)
+
 - **A response with no body carries no `content` block**, instead of
   `content: {application/json: {}}`. (#393)
+
 - **A body written without `WriteHeader` is documented as `200`**, not
   `default`. (#369)
+
 - **A status write is carried by every body it dominates**, so a second body
   under one status no longer falls through to `default`. (#391, #389)
+
 - **A field with no schema mapping is no longer emitted as a null property**,
   which crashed ReDoc. (#395)
+
 - **Spec output is deterministic on projects large enough to truncate.**
   Memoized first-match scans over the file and type maps could resolve
   differently between runs. (#340)
+
 - **Insight metrics and the tracker-tree diagram describe the tree the spec was
   built from.** Both constructed an eager tree unconditionally while generation
   has used the lazy one by default for several releases, so on a real service
@@ -768,7 +1003,9 @@ Baseline release. Static-analysis OpenAPI 3.1 generation for gin, echo, chi,
 fiber, gorilla/mux, and net/http, with framework-agnostic auth detection, a
 structured type model, and the `apispecui`/`apidiag` companion tools.
 
-[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.9...HEAD
+[0.5.9]: https://github.com/ehabterra/apispec/compare/v0.5.8...v0.5.9
+[0.5.8]: https://github.com/ehabterra/apispec/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/ehabterra/apispec/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/ehabterra/apispec/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/ehabterra/apispec/compare/v0.5.4...v0.5.5
