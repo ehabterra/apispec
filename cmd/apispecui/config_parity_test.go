@@ -50,6 +50,7 @@ func TestConfigEditorCoversEveryField(t *testing.T) {
 		// Nested objects — see the doc comment.
 		"methodExtraction": "nested MethodExtractionConfig; defaults live in Go",
 		"bodyTransforms":   "nested BodyTransform list; edited in YAML mode",
+		"bufferSinks":      "nested BufferSink list; edited in YAML mode, like bodyTransforms",
 	}
 
 	// Every config struct whose fields the structured editor is expected to reach.

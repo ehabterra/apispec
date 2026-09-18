@@ -51,6 +51,16 @@ var netHTTPResponseContext = ResponseContextConfig{
 		{CallRegex: `^Marshal$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
 		{CallRegex: `^MarshalIndent$`, PkgRegex: `^encoding/json$`, ArgIndex: 0},
 	},
+	// The two ways a handler moves a buffer's bytes to the writer. Both put the
+	// writer at argument 0; they differ only in where the buffer is. Serializer-
+	// level like BodyTransforms above, so every net/http-family framework shares
+	// them (issue #471).
+	BufferSinks: []BufferSink{
+		// buf.WriteTo(w) — bytes.Buffer, strings.Builder and every io.WriterTo.
+		{CallRegex: `^WriteTo$`, BufferFromReceiver: true, WriterArgIndex: 0},
+		// io.Copy(w, buf) and io.CopyBuffer(w, buf, scratch).
+		{CallRegex: `^Copy(Buffer)?$`, PkgRegex: `^io$`, WriterArgIndex: 0, BufferArgIndex: 1},
+	},
 	// net/http: "If WriteHeader is not called explicitly, the first call to
 	// Write will trigger an implicit WriteHeader(http.StatusOK)".
 	ImplicitStatus: http.StatusOK,
