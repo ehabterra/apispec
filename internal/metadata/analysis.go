@@ -581,7 +581,7 @@ func traceVariableOriginHelper(
 				}
 				// If the assignment is from a function call, follow the return value
 				if assign.CalleeFunc != "" && assign.CalleePkg != "" {
-					for calleeFileName, calleeFile := range metadata.SortedFiles(assign.CalleePkg) {
+					for _, calleeFile := range metadata.SortedFiles(assign.CalleePkg) {
 						if calleeFn, ok := calleeFile.Functions[assign.CalleeFunc]; ok {
 							retIdx := assign.ReturnIndex
 							if retIdx < len(calleeFn.ReturnVars) {
@@ -606,58 +606,45 @@ func traceVariableOriginHelper(
 							}
 						}
 
-						// Looking for methods with caching
-						methodKey := assign.CalleePkg + "." + assign.CalleeFunc
-						var calleeMethod *Method
-						var exists bool
-						if metadata.methodLookupCache != nil {
-							calleeMethod, exists = metadata.methodLookupCache[methodKey]
-						}
-						if !exists {
-							// Sorted: two types in one file can declare the same
-							// method name, and the first match wins — and is
-							// cached for the whole run.
-							for _, t := range metadata.SortedTypes(assign.CalleePkg, calleeFileName) {
-								for _, method := range t.Methods {
-									if metadata.StringPool.GetString(method.Name) == assign.CalleeFunc {
-										calleeMethod = &method
-										if metadata.methodLookupCache != nil {
-											metadata.methodLookupCache[methodKey] = calleeMethod
-										}
-										break
-									}
-								}
-								if calleeMethod != nil {
-									break
+					}
+
+					// The METHOD lookup is PACKAGE-wide, so it sits after the
+					// file loop rather than inside it.
+					//
+					// It used to run per file, scanning only that file's types
+					// and then caching its miss under a package-scoped key — so
+					// the second file read `exists, nil` from the cache and
+					// skipped its own scan. A method was found only if it was
+					// declared in the package's FIRST file, and otherwise the
+					// trace stopped at the local assignment: the variable
+					// resolved to itself, the tracker found no producer, and
+					// whatever that producer's subtree carried — request and
+					// response bodies, parameters reached through a builder —
+					// was silently absent (issue #380).
+					//
+					// A function still wins over a method, because the loop
+					// above returns on the first file that declares one.
+					if calleeMethod := metadata.methodInPackage(assign.CalleePkg, assign.CalleeFunc); calleeMethod != nil {
+						retIdx := assign.ReturnIndex
+						if retIdx < len(calleeMethod.ReturnVars) {
+							retArg := calleeMethod.ReturnVars[retIdx]
+						OuterLoop2:
+							for retArg.GetKind() != KindIdent {
+								switch retArg.GetKind() {
+								case KindSelector:
+									retArg = *retArg.Sel
+								case KindUnary, KindCompositeLit:
+									retArg = *retArg.X
+								default:
+									break OuterLoop2
 								}
 							}
-							// Cache nil result to avoid repeated lookups
-							if calleeMethod == nil && metadata.methodLookupCache != nil {
-								metadata.methodLookupCache[methodKey] = nil
+							if retArg.GetKind() == KindIdent && retArg.Name != -1 {
+								_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
+								return retArg.GetName(), assign.CalleePkg, t, f
 							}
-						}
-						if calleeMethod != nil {
-							retIdx := assign.ReturnIndex
-							if retIdx < len(calleeMethod.ReturnVars) {
-								retArg := calleeMethod.ReturnVars[retIdx]
-							OuterLoop2:
-								for retArg.GetKind() != KindIdent {
-									switch retArg.GetKind() {
-									case KindSelector:
-										retArg = *retArg.Sel
-									case KindUnary, KindCompositeLit:
-										retArg = *retArg.X
-									default:
-										break OuterLoop2
-									}
-								}
-								if retArg.GetKind() == KindIdent && retArg.Name != -1 {
-									_, _, t, f := traceVariableOriginHelper(retArg.GetName(), assign.CalleeFunc, assign.CalleePkg, metadata, visited)
-									return retArg.GetName(), assign.CalleePkg, t, f
-								}
-								// For literals or other expressions, return as is
-								return retArg.GetName(), assign.CalleePkg, &retArg, funcName
-							}
+							// For literals or other expressions, return as is
+							return retArg.GetName(), assign.CalleePkg, &retArg, funcName
 						}
 					}
 				}
@@ -680,4 +667,81 @@ func traceVariableOriginHelper(
 		metadata.cacheMutex.Unlock()
 	}
 	return varName, pkgName, nil, funcName
+}
+
+// methodInPackage finds a method by name anywhere in a package.
+//
+// Previously the scan ran per FILE and cached its miss under a package-scoped
+// key, so a method declared anywhere but the first file was never found — and
+// that negative answer was reused for the rest of the run. The trace then
+// stopped at the local assignment: the variable resolved to itself, the tracker
+// found no producer, and whatever that producer's subtree carried was silently
+// absent (issue #380).
+//
+// Indexed per package rather than memoized per (package, method), because the
+// correct lookup has to read every file: answering one method name would
+// otherwise walk the whole package, and a package is asked about many names.
+// Building once turns N of those walks into one.
+func (m *Metadata) methodInPackage(pkgName, methodName string) *Method {
+	if m == nil || pkgName == "" || methodName == "" {
+		return nil
+	}
+	return m.packageMethodIndex(pkgName)[methodName]
+}
+
+// packageMethodIndex maps every method name a package declares to its
+// declaration, built once per package.
+//
+// Files and types are walked in sorted order and the FIRST match for a name is
+// kept, which is what makes the answer the same on every run: two types in one
+// package can declare the same method name (issue #340).
+//
+// The pkgShape guard is not optional here. analyzeAssignmentValue traces
+// variables while metadata is still being assembled, so this can be asked about
+// a package whose files are not installed yet; caching what that returns would
+// make the package permanently methodless — the exact failure #380 was about,
+// in a new place. Mirrors TypeInPackage.
+func (m *Metadata) packageMethodIndex(pkgName string) map[string]*Method {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	shape := shapeOf(pkg)
+
+	m.methodIndexMutex.RLock()
+	idx, cached := m.methodIndex[pkgName]
+	builtFor := m.methodIndexFor[pkgName]
+	m.methodIndexMutex.RUnlock()
+	if cached && builtFor == shape {
+		return idx
+	}
+
+	m.methodIndexMutex.Lock()
+	defer m.methodIndexMutex.Unlock()
+	if idx, ok := m.methodIndex[pkgName]; ok && m.methodIndexFor[pkgName] == shape {
+		return idx // another goroutine won the race
+	}
+	idx = make(map[string]*Method, shape.types)
+	// Safe under methodIndexMutex: SortedFileNames and SortedTypes take
+	// sortedFilesMutex / sortedTypeNamesMutex only.
+	for _, fileName := range m.SortedFileNames(pkgName) {
+		for _, t := range m.SortedTypes(pkgName, fileName) {
+			for _, method := range t.Methods {
+				name := m.StringPool.GetString(method.Name)
+				if name == "" {
+					continue
+				}
+				if _, seen := idx[name]; !seen {
+					idx[name] = &method
+				}
+			}
+		}
+	}
+	if m.methodIndex == nil {
+		m.methodIndex = make(map[string]map[string]*Method, len(m.Packages))
+		m.methodIndexFor = make(map[string]pkgShape, len(m.Packages))
+	}
+	m.methodIndex[pkgName] = idx
+	m.methodIndexFor[pkgName] = shape
+	return idx
 }

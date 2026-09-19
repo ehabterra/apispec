@@ -451,6 +451,36 @@ func TestFunctionInPackageInvalidatesOnGrowth(t *testing.T) {
 	}
 }
 
+// TestMethodInPackageSurvivesEarlyLookup covers the order assembly really runs
+// in: a package's files are processed — and analyzeAssignmentValue traces
+// variables through them — BEFORE Packages[pkg] is installed. A lookup made in
+// that window finds nothing, correctly; remembering that answer would leave the
+// package methodless for the rest of the run, which is issue #380 again through
+// a different door.
+func TestMethodInPackageSurvivesEarlyLookup(t *testing.T) {
+	pool := NewStringPool()
+	m := &Metadata{StringPool: pool, Packages: map[string]*Package{}}
+
+	if got := m.methodInPackage("app", "WithArgs"); got != nil {
+		t.Fatalf("method in a package not installed yet = %p, want nil", got)
+	}
+
+	m.Packages["app"] = &Package{Files: map[string]*File{
+		"a.go": {Types: map[string]*Type{"Builder": {Methods: []Method{{Name: pool.Get("WithArgs")}}}}},
+	}}
+	if m.methodInPackage("app", "WithArgs") == nil {
+		t.Fatal("the early miss was cached: WithArgs is declared and must resolve once the package exists")
+	}
+
+	// A type arriving in a new file after the index was built.
+	m.Packages["app"].Files["b.go"] = &File{Types: map[string]*Type{
+		"Runner": {Methods: []Method{{Name: pool.Get("Run")}}},
+	}}
+	if m.methodInPackage("app", "Run") == nil {
+		t.Error("a method in a newly added file must not be hidden by the stale index")
+	}
+}
+
 // TestFunctionAnywhereIsDeterministic pins the fallback's contract: the first
 // package in SORTED order that declares the bare name wins, so a name declared
 // by several packages cannot resolve differently between runs (golden rule #1).
