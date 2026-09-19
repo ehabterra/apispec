@@ -695,11 +695,35 @@ func (m *Metadata) methodInPackage(pkgName, methodName string) *Method {
 // Files and types are walked in sorted order and the FIRST match for a name is
 // kept, which is what makes the answer the same on every run: two types in one
 // package can declare the same method name (issue #340).
+//
+// The pkgShape guard is not optional here. analyzeAssignmentValue traces
+// variables while metadata is still being assembled, so this can be asked about
+// a package whose files are not installed yet; caching what that returns would
+// make the package permanently methodless — the exact failure #380 was about,
+// in a new place. Mirrors TypeInPackage.
 func (m *Metadata) packageMethodIndex(pkgName string) map[string]*Method {
-	if idx, ok := m.methodIndexCache[pkgName]; ok {
+	pkg, ok := m.Packages[pkgName]
+	if !ok || pkg == nil {
+		return nil
+	}
+	shape := shapeOf(pkg)
+
+	m.methodIndexMutex.RLock()
+	idx, cached := m.methodIndex[pkgName]
+	builtFor := m.methodIndexFor[pkgName]
+	m.methodIndexMutex.RUnlock()
+	if cached && builtFor == shape {
 		return idx
 	}
-	idx := map[string]*Method{}
+
+	m.methodIndexMutex.Lock()
+	defer m.methodIndexMutex.Unlock()
+	if idx, ok := m.methodIndex[pkgName]; ok && m.methodIndexFor[pkgName] == shape {
+		return idx // another goroutine won the race
+	}
+	idx = make(map[string]*Method, shape.types)
+	// Safe under methodIndexMutex: SortedFileNames and SortedTypes take
+	// sortedFilesMutex / sortedTypeNamesMutex only.
 	for _, fileName := range m.SortedFileNames(pkgName) {
 		for _, t := range m.SortedTypes(pkgName, fileName) {
 			for _, method := range t.Methods {
@@ -713,8 +737,11 @@ func (m *Metadata) packageMethodIndex(pkgName string) map[string]*Method {
 			}
 		}
 	}
-	if m.methodIndexCache != nil {
-		m.methodIndexCache[pkgName] = idx
+	if m.methodIndex == nil {
+		m.methodIndex = make(map[string]map[string]*Method, len(m.Packages))
+		m.methodIndexFor = make(map[string]pkgShape, len(m.Packages))
 	}
+	m.methodIndex[pkgName] = idx
+	m.methodIndexFor[pkgName] = shape
 	return idx
 }

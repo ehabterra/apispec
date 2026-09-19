@@ -244,7 +244,18 @@ type Metadata struct {
 	funcIndexFor   map[string]pkgShape
 	funcAnywhere   map[string]*Function
 	funcIndexMutex sync.RWMutex
-	Args           map[string][]*CallGraphEdge `yaml:"-"`
+
+	// methodIndex is the same index for METHODS: every method name a package
+	// declares, mapped to its declaration. It carries the pkgShape guard for
+	// the reason issue #380 was filed — the lookup it serves is keyed by
+	// package, so an index built while that package was still being assembled
+	// (analyzeAssignmentValue traces variables during construction, before
+	// Packages[pkg] is installed) would otherwise answer "no such method"
+	// forever.
+	methodIndex      map[string]map[string]*Method
+	methodIndexFor   map[string]pkgShape
+	methodIndexMutex sync.RWMutex
+	Args             map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
 
@@ -255,7 +266,6 @@ type Metadata struct {
 
 	// Performance optimization caches
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
-	methodIndexCache     map[string]map[string]*Method                   `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
 	sortedPkgNames       []string                                        `yaml:"-"` // cached, lazily built
 	typeRefCache         map[int]*typemodel.TypeRef                      `yaml:"-"` // pooled type string -> parsed ref, lazily built
