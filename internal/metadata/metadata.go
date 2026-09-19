@@ -241,7 +241,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 
 		// Initialize performance optimization caches
 		traceVariableCache: make(map[string]TraceVariableResult),
-		methodLookupCache:  make(map[string]*Method),
+		methodIndexCache:   make(map[string]map[string]*Method),
 
 		// Set the current module path
 		CurrentModulePath: currentModulePath,

@@ -255,7 +255,7 @@ type Metadata struct {
 
 	// Performance optimization caches
 	traceVariableCache   map[string]TraceVariableResult                  `yaml:"-"`
-	methodLookupCache    map[string]*Method                              `yaml:"-"`
+	methodIndexCache     map[string]map[string]*Method                   `yaml:"-"`
 	interfaceResolutions map[InterfaceResolutionKey]*InterfaceResolution `yaml:"-"`
 	sortedPkgNames       []string                                        `yaml:"-"` // cached, lazily built
 	typeRefCache         map[int]*typemodel.TypeRef                      `yaml:"-"` // pooled type string -> parsed ref, lazily built

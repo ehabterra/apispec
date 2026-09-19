@@ -81,21 +81,102 @@ func TestTraceVariableOriginDeterministic(t *testing.T) {
 	cfg := exportModules(t, []testModule{traceOriginFixture})
 
 	type answer struct{ variable, pkg, caller string }
-	// The sorted scan reaches builder/aux.go first, which declares no method,
-	// so the trace stops at the local assignment instead of following the
-	// builder's receiver. Pinned, not just compared run to run: a flip is only
-	// caught here if some run lands on the other order.
+	// The trace follows `WithArgs` to the builder's receiver, which is the
+	// producer the assignment names. Pinned, not just compared run to run: a
+	// flip is only caught here if some run lands on the other file order.
 	//
-	// That the receiver is NOT followed is issue #380 — the method lookup
-	// caches its miss package-wide after scanning one file — so this value is
-	// also a change detector: when #380 is fixed the answer becomes the
-	// builder's receiver and this expectation moves with it.
-	want := answer{variable: "cmd", pkg: "traceorigin/svc", caller: "Build"}
+	// This expectation moved when #380 was fixed. It used to be the LOCAL
+	// assignment — `{cmd, traceorigin/svc, Build}`, the variable resolving to
+	// itself — because the method lookup scanned one file and cached its miss
+	// for the whole package, and `builder/aux.go` (no methods) sorts before
+	// `builder/command.go` (which declares the method). The fixture is built
+	// that way on purpose: with the lookup now package-wide, the file order
+	// that used to decide the answer no longer can.
+	want := answer{variable: "c", pkg: "traceorigin/builder", caller: "WithArgs"}
 	for run := 0; run < 12; run++ {
 		meta := generateMetaOnce(t, cfg)
 		v, p, _, caller := metadata.TraceVariableOrigin("cmd", "Build", "traceorigin/svc", meta)
 		if got := (answer{v, p, caller}); got != want {
 			t.Fatalf("run %d traced `cmd` to %+v, want %+v", run, got, want)
 		}
+	}
+}
+
+// methodLookupFileOrderFixture declares the method in the file that sorts
+// FIRST, which is the arrangement the old lookup happened to get right.
+//
+// traceOriginFixture is the other one: there the method is in the second file
+// and the trace stopped at the local assignment. Pinning both is the point —
+// the defect was never "methods are not found", it was "methods are found only
+// in the first file", so a fixture in either arrangement alone reports the bug
+// as absent (issue #380).
+var methodLookupFileOrderFixture = testModule{
+	Name: "methodorder",
+	Files: map[string]interface{}{
+		"main.go": `package main
+
+import "methodorder/svc"
+
+func main() { svc.Build() }
+`,
+		"svc/svc.go": `package svc
+
+import "methodorder/builder"
+
+func Build() {
+	cmd := builder.New().WithArgs("clone")
+	builder.Run(cmd)
+}
+`,
+		// "a_command.go" sorts BEFORE "zz_aux.go", so the method is in the
+		// first file scanned.
+		"builder/a_command.go": `package builder
+
+type Command struct{ args []string }
+
+func New() *Command { return &Command{} }
+
+func (c *Command) WithArgs(args ...string) *Command {
+	c.args = args
+	return c
+}
+
+func Run(c *Command) {}
+`,
+		"builder/zz_aux.go": `package builder
+
+const unused = "aux"
+`,
+	},
+}
+
+// The answer must not depend on which file declares the method.
+//
+// Both fixtures are the same program with the builder's two files renamed, so
+// the only difference is sort order. Before #380 they disagreed: the method was
+// found only when it sorted first, and the miss was then cached package-wide
+// for the rest of the run.
+func TestTraceVariableOriginIsIndependentOfFileOrder(t *testing.T) {
+	type answer struct{ variable, pkg, caller string }
+	trace := func(mod testModule, module string) answer {
+		cfg := exportModules(t, []testModule{mod})
+		meta := generateMetaOnce(t, cfg)
+		v, p, _, caller := metadata.TraceVariableOrigin("cmd", "Build", module+"/svc", meta)
+		return answer{v, p, caller}
+	}
+
+	methodSecond := trace(traceOriginFixture, "traceorigin")
+	methodFirst := trace(methodLookupFileOrderFixture, "methodorder")
+
+	// Same shape, so the same resolution — only the package name differs.
+	if methodSecond.variable != methodFirst.variable || methodSecond.caller != methodFirst.caller {
+		t.Errorf("file order changed the answer: method-in-second-file gave %+v, "+
+			"method-in-first-file gave %+v — the lookup is per file again, and a method "+
+			"declared outside the first file is invisible", methodSecond, methodFirst)
+	}
+	// And it is the producer, not the variable resolving to itself.
+	if methodSecond.variable != "c" || methodSecond.caller != "WithArgs" {
+		t.Errorf("traced to %+v, want the builder's receiver — a trace that stops at the "+
+			"local assignment leaves the tracker with no producer to expand", methodSecond)
 	}
 }
