@@ -5,27 +5,86 @@ per-framework defaults are enough and no config is needed — pass `--config`
 only when you want to add OpenAPI metadata, map custom types, or teach the
 resolver about a framework/wiring style the defaults don't cover.
 
-This document is the field-by-field reference. For a task-oriented introduction
-with worked examples, see the [Configuration section of the
-README](../README.md#configuration).
+This document is the field-by-field reference. Start from the [minimal
+example](#minimal-example-gin) below, or from the effective config that
+`--output-config` dumps for your project.
 
 ## How config is loaded and merged
 
 - **No `--config`** — APISpec detects the framework and loads its built-in
   default config (`internal/spec/config_<framework>.go`).
-- **`--config path.yaml`** — your file is loaded *on top of* the detected
-  defaults. You only need to specify the keys you want to add or change; the
-  framework patterns you omit still apply.
+- **`--config path.yaml`** — your file is used **instead of** the detected
+  framework defaults, not merged on top of them. What you write is what matches:
+  a config with no `framework:` block has no route patterns, and the run
+  documents nothing. This is deliberate for the pattern system — gin's
+  `Handle(method, path, h)` and mux's `Handle(path, h)` would misparse each
+  other's calls — but it does mean **a custom config must carry the framework
+  patterns too**.
+- **So always start from `--output-config`.** `apispec --output-config
+  apispec.yaml` (or `-oc`) writes the complete effective configuration that
+  actually ran — detected framework patterns, auto-applied presets and derived
+  wrappers included. Edit *that* file rather than writing one from scratch.
+- **Presets still apply on top of your config.** Import-gated security/auth
+  mappings, CLI entrypoint fields and derived router-wrapper patterns are added
+  to whatever you supply; your own entries take precedence.
 - **CLI flags win.** Values such as `--title`, `--api-version`, and
   `--description` override the corresponding config-file values.
-- **Inspect the effective config.** `apispec --output-config used-config.yaml`
-  (or `-oc`) writes the fully merged config that was actually used, which is the
-  best starting point for a custom file.
 
 ```bash
-apispec --config apispec.yaml --output openapi.yaml
-apispec --output-config used-config.yaml     # dump the effective config
+apispec --output-config apispec.yaml --output openapi.yaml   # 1. dump what ran
+$EDITOR apispec.yaml                                         # 2. edit it
+apispec --config apispec.yaml --output openapi.yaml          # 3. use it
 ```
+
+## Minimal example (Gin)
+
+A hand-written config has to carry its own `framework` block — this is what the
+smallest useful one looks like. In practice you will want the richer set that
+`--output-config` dumps; this is here to show the shape.
+
+```yaml
+info:
+  title: My API
+  version: 1.0.0
+  description: A comprehensive API for user management
+
+framework:
+  routePatterns:
+    - callRegex: ^(?i)(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)$
+      recvTypeRegex: ^github\.com/gin-gonic/gin\.\*(Engine|RouterGroup)$
+      handlerArgIndex: 1
+      methodFromCall: true
+      pathFromArg: true
+      handlerFromArg: true
+    # A registrar whose verb travels as an ARGUMENT, and may name several:
+    # `Methods("GET,POST", "/search", h)` registers both.
+    - callRegex: ^Methods$
+      recvTypeRegex: ^example\.com/app\.\*?Router$
+      methodFromArg: true
+      methodArgIndex: 0
+      pathFromArg: true
+      pathArgIndex: 1
+      handlerFromArg: true
+      handlerArgIndex: 2
+  requestBodyPatterns:
+    - callRegex: ^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$
+      typeFromArg: true
+      deref: true
+  responsePatterns:
+    - callRegex: ^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$
+      typeArgIndex: 1
+      statusFromArg: true
+      typeFromArg: true
+  paramPatterns:
+    - callRegex: ^Param$
+      paramIn: path
+    - callRegex: ^Query$
+      paramIn: query
+    - callRegex: ^GetHeader$
+      paramIn: header
+```
+
+---
 
 ## Top-level keys
 
@@ -44,6 +103,7 @@ apispec --output-config used-config.yaml     # dump the effective config
 | `security` | list | Document-level security requirements. |
 | `securitySchemes` | map | OpenAPI `securitySchemes` definitions. |
 | `securityMappings` | list | Map detected auth middleware to a scheme. |
+| `excludeTypeComments` | bool | Keep Go doc comments out of schema `description`s. |
 | `framework` | object | Framework detection/extraction patterns (advanced). |
 
 ---
@@ -272,7 +332,7 @@ apispec --dir . -c used-config.yaml -o openapi.yaml
 ## Security: `security`, `securitySchemes`, `securityMappings`
 
 Most auth setups are detected with **no config** (see the README
-[Security & authentication detection](../README.md#security--authentication-detection)
+[Security & authentication detection](CAPABILITIES.md#security--authentication-detection)
 section). Add config only for custom middleware.
 
 ```yaml
@@ -479,9 +539,148 @@ way to author a custom pattern is to dump the effective config with
 
 ---
 
+## Schema descriptions from Go doc comments
+
+Doc comments on the types and struct fields your handlers exchange become the
+`description` of the matching schema and property. This is on by default; turn it
+off when internal comments should not reach a published spec:
+
+```yaml
+excludeTypeComments: true
+```
+
+```go
+// Item is a catalogue item.
+type Item struct {
+	// ID is the unique identifier of the item.
+	ID    string  `json:"id"`
+	Price float64 `json:"price"` // trailing comments are collected too
+}
+```
+
+```yaml
+components:
+  schemas:
+    myapp_Item:
+      type: object
+      description: Item is a catalogue item.
+      properties:
+        id:
+          type: string
+          description: ID is the unique identifier of the item.
+        price:
+          type: number
+          description: trailing comments are collected too
+```
+
+Text is kept **verbatim**, including the leading identifier Go convention puts
+there. A `json:"-"` field stays absent — a comment never resurrects a field the
+encoder skips. Applies to every type kind: structs, interfaces, aliases and
+named container types.
+
+---
+
+## Entrypoints (CLI-dispatched services)
+
+A function parked in a struct field and called back by a library has no call edge
+from your code, so nothing reaches the routes it registers. `entrypointPatterns`
+names those fields. Presets for urfave/cli, cobra and ffcli apply automatically
+from your imports — you only need this for a **house dispatcher**:
+
+```yaml
+framework:
+  entrypointPatterns:
+    # "a function stored in Cmd.Handle is invoked by something outside this
+    #  module — root it if nothing else reaches it"
+    - fieldRegex: ^Handle$
+      recvTypeRegex: ^example\.com/internal/cli\.Cmd$
+```
+
+The owner type is matched as metadata renders it (`example.com/internal/cli.Cmd`),
+and nothing is needed from the owning package — which is why this works for types
+declared in a third-party library that APISpec never analyses. Leaving the owner
+unconstrained is treated as a misconfiguration rather than a wildcard, since it
+would claim every same-named field in the project.
+
+Only entrypoints that are otherwise unreachable *and* whose subtree actually
+registers routes are rooted, so a CLI with 50 subcommands pays for the one that
+serves HTTP. Run with `--verbose` to see what it did:
+
+```text
+Entrypoints: 53 declared, 1 rooted (0 already reachable, 52 register no routes)
+```
+
+---
+
+## Automatic wrapper detection
+
+Plenty of projects do not call the framework directly. They put their own router in front of it, and answer through their own context:
+
+```go
+func (r *Router) Get(pattern string, h ...any) { r.Methods("GET", pattern, h...) }
+func (r *Router) Methods(methods, pattern string, h ...any) {
+	r.chiRouter.Method(methods, r.getPattern(pattern), unwrap(h))     // the framework call is in HERE
+}
+
+func (c *Ctx) JSON(status int, body any) { c.Resp.WriteHeader(status); json.NewEncoder(c.Resp).Encode(body) }
+func (c *Ctx) Bind(dst any) error       { return json.NewDecoder(c.Req.Body).Decode(dst) }
+```
+
+The framework's own patterns cannot see any of it: by the time the chi call happens, the path and handler are the wrapper's *parameters*, not literals. APISpec derives the patterns instead, from one fact — **a method of a project type that forwards its own parameters into a call APISpec already recognises**:
+
+| written as | derived as |
+|---|---|
+| `Get(pattern, h...)` → `Methods("GET", …)` → chi | a route pattern, verb from the method name |
+| `Methods(verb, pattern, h...)` | a route pattern, verb from the argument (`GET,POST` registers both) |
+| `Group(prefix, func(){…})` | a mount pattern — the prefix applies to everything inside |
+| `Ctx.JSON(status, body)` | a response pattern, status and body merged from the two calls it makes |
+| `Ctx.Bind(dst)` | a request-body pattern |
+| `Ctx.Query(name)` | a parameter pattern, location taken from what it reads |
+
+Derivation is transitive (verb methods → one registrar → the framework, and a context that encodes through the project's own json package), and it follows a value through a call, an index or a chain of assignments — so a router that unwraps a variadic `...any` resolves like one that forwards directly.
+
+What it deliberately does **not** do is guess:
+
+- a method that names its route with literals (`func (s *Server) routes() { r.Get("/users", h) }`) is a registration, not a way of registering, and derives nothing;
+- a plain function is skipped — there is no type to scope a pattern to;
+- a dependency's method is skipped — describing it would not document your project;
+- a derivation that cannot resolve every role it needs is **reported but not applied**, because a pattern missing its path produces routes at the wrong path.
+
+Everything derived is listed with `--verbose` and lands in `--output-config`, so it can be reviewed, pinned into a config file, or corrected:
+
+```text
+Router wrappers: example.com/app.*Router [Delete Get Post Put] route via example.com/app.Methods (applied);
+                 example.com/app.*Router [Group] mount via prefix held by example.com/app.*Router (applied);
+                 example.com/app.*Ctx [JSON] response via net/http.WriteHeader (applied);
+                 example.com/app.*Combo [Get] route via example.com/app.Get (incomplete, not applied)
+```
+
+---
+
+## Request body source disambiguation
+
+Generic decoders like `json.Decode`, `json.Unmarshal`, and `render.DecodeJSON` are used both for request bodies *and* for unrelated decoding (config files, internal payloads). The `requestContext` block tells APISpec which receivers represent a request context and which method names yield the body. A decoder call is classified as a request-body decoder only when its source argument can be traced — through selectors, idents, assignments, and parameter boundaries — back to a body accessor on a request-context root.
+
+```yaml
+framework:
+  requestContext:
+    typeRegexes:
+      - ^net/http\.\*Request$
+      - ^github\.com/gin-gonic/gin\.\*Context$
+    bodyAccessors:
+      - ^Body$
+      - ^GetRawData$
+```
+
+When omitted, APISpec falls back to its prior receiver-only matching, so existing configs keep working unchanged.
+
+---
+
 ## See also
 
-- [README → Configuration](../README.md#configuration) — examples and quick start
+- [README](../README.md) — quick start and what APISpec does without any config
+- [`CAPABILITIES.md`](CAPABILITIES.md) — which code shapes are resolved
+- [`LIMITATIONS.md`](LIMITATIONS.md) — which are not, and what to do about it
 - [`TYPE_MODEL.md`](TYPE_MODEL.md) — how Go types become OpenAPI schemas
 - [`AUTH_DETECTION_DESIGN.md`](AUTH_DETECTION_DESIGN.md) — security detection model
 - [`INTERFACE_RESOLUTION.md`](INTERFACE_RESOLUTION.md) — interface/return resolution
