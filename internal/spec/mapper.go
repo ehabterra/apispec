@@ -265,6 +265,11 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Whether the FILE said anything about framework patterns, which a
+	// zero-valued struct cannot tell us apart from "said nothing" — and the
+	// caller needs that distinction to decide whether the detected patterns
+	// survive (issue #524).
+	config.declaresFramework = yamlDeclaresKey(data, "framework")
 
 	if err := config.ValidateSecurity(); err != nil {
 		return nil, err
@@ -4313,4 +4318,16 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// yamlDeclaresKey reports whether a YAML document has the given key at the top
+// level. Read from the raw bytes because unmarshalling cannot tell an omitted
+// struct key from one written empty.
+func yamlDeclaresKey(data []byte, key string) bool {
+	var top map[string]yaml.Node
+	if err := yaml.Unmarshal(data, &top); err != nil {
+		return false
+	}
+	_, ok := top[key]
+	return ok
 }

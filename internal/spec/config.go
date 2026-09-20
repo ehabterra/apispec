@@ -1086,6 +1086,13 @@ type APISpecConfig struct {
 	// presets (see config_security.go). They are added to the output components
 	// only when actually referenced by a resolved operation, so unused presets
 	// don't bloat the spec. Not serialized.
+	// declaresFramework records whether the file this config was loaded from
+	// had a `framework:` key at all. A FrameworkConfig is a struct, so "the
+	// user wrote an empty framework block" and "the user never mentioned
+	// framework" are the same zero value — and they mean opposite things for
+	// whether the detected patterns should survive (issue #524).
+	declaresFramework bool `yaml:"-" json:"-"`
+
 	presetSchemes map[string]SecurityScheme `yaml:"-" json:"-"`
 
 	// presetsApplied guards ApplySecurityPresets against appending the same
@@ -1506,4 +1513,62 @@ func (c *APISpecConfig) knownHosts() []string {
 		return nil
 	}
 	return hosts
+}
+
+// DeclaresFramework reports whether the config's source declared a `framework:`
+// key. False for a config built in code, which is what AdoptFrameworkPatterns
+// then keys on.
+func (c *APISpecConfig) DeclaresFramework() bool {
+	return c != nil && c.declaresFramework
+}
+
+// AdoptFrameworkPatterns fills in the detected framework's patterns when this
+// config expresses no opinion about routing.
+//
+// A supplied config REPLACES the composed framework configuration rather than
+// layering over it, which is deliberate for a config that names its own
+// patterns: gin's `Handle(method, path, h)` and mux's `Handle(path, h)`
+// misparse each other's calls, so "what you write is what matches" is the rule
+// that keeps a mixed-framework project honest (issues #211, #212).
+//
+// It is not deliberate for a config that says nothing about `framework` at all.
+// A file containing only `info:` — the first thing anyone writes — has expressed
+// no opinion about route patterns, and replacing them left the run documenting
+// ZERO paths while exiting 0 (issue #524).
+//
+// The `framework:` block stays all-or-nothing: declaring one still replaces the
+// composed one wholesale, so the property above is unchanged for every config
+// that was working before.
+func (c *APISpecConfig) AdoptFrameworkPatterns(composed *APISpecConfig) {
+	if c == nil || composed == nil || c.declaresFramework || c.hasFrameworkOpinion() {
+		return
+	}
+	c.Framework = composed.Framework
+	// Defaults travel with the framework — the response content type a router
+	// answers in is part of describing it, not a separate opinion — and are
+	// taken only where this config states none of its own.
+	if c.Defaults.ResponseContentType == "" {
+		c.Defaults.ResponseContentType = composed.Defaults.ResponseContentType
+	}
+	if c.Defaults.RequestContentType == "" {
+		c.Defaults.RequestContentType = composed.Defaults.RequestContentType
+	}
+}
+
+// hasFrameworkOpinion reports whether this config's framework block says
+// anything about how to find or read routes.
+//
+// declaresFramework answers that for a config read from a FILE, where the key
+// is either written or not. A config built in CODE has no file to inspect, and
+// the library API is full of them — `NewGenerator(DefaultChiConfig())`, or that
+// with its patterns narrowed — so keying on the file alone would replace a
+// caller's deliberately scoped patterns with the detected defaults. That is the
+// same silent loss #524 is about, pointed the other way.
+func (c *APISpecConfig) hasFrameworkOpinion() bool {
+	f := c.Framework
+	return len(f.RoutePatterns) > 0 || len(f.MountPatterns) > 0 ||
+		len(f.RequestBodyPatterns) > 0 || len(f.ResponsePatterns) > 0 ||
+		len(f.ParamPatterns) > 0 || len(f.SecurityPatterns) > 0 ||
+		len(f.EntrypointPatterns) > 0 || len(f.RequestContext.TypeRegexes) > 0 ||
+		len(f.ResponseContext.WriterTypeRegexes) > 0
 }

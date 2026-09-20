@@ -326,8 +326,18 @@ type RouteDiscovery struct {
 	Packages int
 	// Paths is how many paths the generated document ended up with.
 	Paths int
-	// Frameworks names the pattern sets in effect, primary first.
+	// Frameworks names the framework(s) DETECTED, primary first. Detection is
+	// independent of whether those patterns survived into the config that ran —
+	// see RoutePatterns.
 	Frameworks []string
+	// RoutePatterns is how many route patterns the config that ran actually
+	// carried. Zero with a framework detected means the patterns were replaced,
+	// which is the one cause the old message could not name and actively argued
+	// against (issue #524).
+	RoutePatterns int
+	// UserConfig is true when the run was given a config file or an in-code
+	// config, i.e. when replacement was possible at all.
+	UserConfig bool
 }
 
 // NothingMatched reports the condition worth telling the user about: code was
@@ -794,6 +804,10 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			frameworks, framework, frameworks[1:])
 	}
 
+	// Composed the one way everything composes them — from the frameworks
+	// detected above, so the import scan happens once per run.
+	composedConfig, _ := ComposeFrameworkConfigFrom(frameworks, "")
+
 	var apispecConfig *spec.APISpecConfig
 	if e.config.APISpecConfig != nil {
 		// Use the directly provided config
@@ -805,10 +819,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 	} else {
-		// Composed the one way everything composes them — from the frameworks
-		// detected above, so the import scan happens once per run.
-		apispecConfig, _ = ComposeFrameworkConfigFrom(frameworks, "")
+		apispecConfig = composedConfig
 	}
+
+	// A supplied config REPLACES the framework patterns rather than layering
+	// over them, which is right for one that names its own (issues #211/#212)
+	// and wrong for one that never mentions `framework` — a file setting only
+	// `info:` documented ZERO paths and exited 0, which is the first thing a
+	// user hits after reading the README's advice to set `naming` (issue #524).
+	apispecConfig.AdoptFrameworkPatterns(composedConfig)
 
 	// Merge built-in auth/security library presets based on the project's
 	// imports (framework preset -> library presets -> user config; user wins).
@@ -962,10 +981,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
 	e.routeDiscovery = RouteDiscovery{
-		CallEdges:  len(meta.CallGraph),
-		Packages:   len(meta.Packages),
-		Paths:      len(openAPISpec.Paths),
-		Frameworks: frameworks,
+		CallEdges:     len(meta.CallGraph),
+		Packages:      len(meta.Packages),
+		Paths:         len(openAPISpec.Paths),
+		Frameworks:    frameworks,
+		RoutePatterns: len(apispecConfig.Framework.RoutePatterns),
+		UserConfig:    e.config.APISpecConfig != nil || e.config.ConfigFile != "",
 	}
 	e.reportNoRoutes()
 
@@ -1495,8 +1516,22 @@ func (e *Engine) reportNoRoutes() {
 	if frameworks == "" {
 		frameworks = "no framework"
 	}
-	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %s patterns in effect",
-		d.CallEdges, d.Packages, frameworks)
+	// Nothing could have matched, because nothing was there to match with. Said
+	// first and on its own: the generic advice below sends the reader looking
+	// for an unsupported router they do not have, and the old message asserted
+	// that the detected framework's patterns were "in effect" at the exact
+	// moment they had been replaced (issue #524).
+	if d.RoutePatterns == 0 {
+		if d.UserConfig {
+			log.Printf("[engine] 0 paths documented: the supplied config carries no route patterns, and a config REPLACES the detected %s ones rather than adding to them — remove the `framework:` key to keep them, or start from --output-config",
+				frameworks)
+			return
+		}
+		log.Printf("[engine] 0 paths documented: no route patterns were configured at all (detected: %s)", frameworks)
+		return
+	}
+	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %d %s route pattern(s) in effect",
+		d.CallEdges, d.Packages, d.RoutePatterns, frameworks)
 	log.Printf("[engine] if this project serves HTTP, then its router is unsupported, is wired in a style no pattern matched, or was excluded by --include-*/--exclude-* filters — docs/DEBUGGING.md walks through telling those apart")
 }
 

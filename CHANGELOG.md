@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A partial `--config` no longer erases the detected framework's route
+  patterns.** A supplied config REPLACED the composed framework configuration
+  rather than layering over it, so a file setting only `info:` or `naming:` —
+  the first thing anyone writes, and what the README suggests for readable
+  operation ids — carried no route patterns and documented **zero paths while
+  exiting 0**. A config that declares its own `framework:` block still replaces
+  it wholesale, which is what keeps a mixed-framework project honest (#211,
+  #212); omitting the key now keeps what was detected, because a file that never
+  mentions `framework` has expressed no opinion about routing. (#524)
+
+- **The empty-spec diagnostic names the real cause.** It reported "with gin
+  patterns in effect" from the *detected* framework — a fact independent of
+  whether those patterns survived into the config that ran — so it asserted they
+  were in effect at the exact moment a config had replaced them, and the
+  follow-up line sent the reader looking for an unsupported router they did not
+  have. It now reports the patterns actually in effect, and when there are none
+  it says so instead of offering advice that cannot apply. (#524)
+
 - **A serializer contributes a response only when its bytes reach the writer.**
   `json.Marshal(v)` takes a value and returns bytes, so nothing about the call
   says where those bytes go — and a response pattern naming one is therefore
