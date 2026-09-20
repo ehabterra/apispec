@@ -103,6 +103,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 		DestFromAnyArg:             true,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, streamWriterPatterns()...)
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{

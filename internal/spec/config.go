@@ -42,6 +42,8 @@ const (
 	// `xml.NewEncoder(w).Encode(…)` say what they write, and documenting them
 	// as JSON is a statement the consumer will act on and be wrong about
 	// (issue #354).
+	contentTypeCSV      = "text/csv"
+	contentTypeOctet    = "application/octet-stream"
 	contentTypeXML      = "application/xml"
 	contentTypeYAML     = "application/yaml"
 	contentTypeText     = "text/plain; charset=utf-8"
@@ -1412,6 +1414,70 @@ func nonJSONEncodePatterns() []ResponsePattern {
 		// sigs.k8s.io/yaml, goccy/go-yaml) all expose *Encoder, and none of
 		// them is in the stdlib, so the path cannot be pinned the way xml's can.
 		encodePattern(`.*yaml.*\.\*?Encoder$`, contentTypeYAML),
+	}
+}
+
+// streamWriterPatterns are the calls that put a body on the wire WITHOUT
+// serialising a value into it — a writer built on the response writer, or the
+// writer handed to a copy.
+//
+// These were invisible: response detection recognises a value being encoded, so
+// a handler that streams has nothing for it to see and the operation documented
+// no success at all — only whatever error branch happened to use a recognised
+// helper. On the reporting service, 21 downloads and one CSV export came out
+// that way, the export claiming it can only fail (issue #517).
+//
+// They carry no body TYPE (TypeArgIndex -1): what reaches the wire is bytes,
+// and the schema says so rather than naming a Go type that was never encoded.
+// The status comes from ImplicitStatus, since none of these writes one.
+//
+// Serializer-level, like nonJSONEncodePatterns, so every framework shares them:
+// a handler reaches for csv.NewWriter or io.Copy the same way under any router.
+func streamWriterPatterns() []ResponsePattern {
+	// A writer CONSTRUCTED on the response writer: the receiver traces back to
+	// the constructor's argument, which is what DestFromReceiver resolves.
+	// The receiver is matched in BOTH spellings metadata uses: a method call on
+	// *csv.Writer records RecvType as the bare `*Writer` with the path in Pkg,
+	// while a pattern elsewhere sees the qualified form. CalleePkgPatterns is
+	// what keeps a bare `^\*?Writer$` from claiming every type called Writer.
+	viaReceiver := func(pkg, typeName, callRegex, contentType string) ResponsePattern {
+		return ResponsePattern{
+			CallRegex:                  callRegex,
+			RecvTypeRegex:              `^\*?(` + pkg + `\.)?` + typeName + `$`,
+			CalleePkgPatterns:          []string{`^` + pkg + `$`},
+			TypeArgIndex:               -1,
+			DefaultContentType:         contentType,
+			RequireResponseDestination: true,
+			DestFromReceiver:           true,
+			// A writer built over a file or a buffer is not the response, and
+			// an unresolved destination is not guessed into one.
+			DropUnresolvedDestination: true,
+		}
+	}
+	// A call HANDED the writer. There is no single argument position that holds
+	// it across these (io.Copy takes it first, fmt.Fprintf first, but
+	// http.ServeContent third), so the anchor is that the writer is in there
+	// somewhere — the same reasoning DestFromAnyArg exists for (issue #302).
+	viaArg := func(pkgRegex, callRegex, contentType string) ResponsePattern {
+		return ResponsePattern{
+			CallRegex:                  callRegex,
+			RecvTypeRegex:              pkgRegex,
+			TypeArgIndex:               -1,
+			DefaultContentType:         contentType,
+			RequireResponseDestination: true,
+			DestFromAnyArg:             true,
+		}
+	}
+	return []ResponsePattern{
+		viaReceiver(`encoding/csv`, `Writer`, `^Write(All)?$`, contentTypeCSV),
+		// A compressed or buffered writer wrapping the response writer streams
+		// whatever it is given; the bytes are the body either way.
+		viaReceiver(`compress/gzip`, `Writer`, `^Write$`, ""),
+		viaReceiver(`bufio`, `Writer`, `^Write(String)?$`, ""),
+		viaArg(`^io$`, `^Copy(N|Buffer)?$`, contentTypeOctet),
+		viaArg(`^fmt$`, `^Fprint(f|ln)?$`, contentTypeText),
+		viaArg(`^io$`, `^WriteString$`, contentTypeText),
+		viaArg(`^net/http$`, `^Serve(Content|File)$`, contentTypeOctet),
 	}
 }
 

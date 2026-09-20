@@ -66,6 +66,7 @@ func DefaultFiberConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, streamWriterPatterns()...)
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{

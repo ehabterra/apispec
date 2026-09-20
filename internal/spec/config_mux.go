@@ -99,8 +99,9 @@ func DefaultMuxConfig() *APISpecConfig {
 				jsonDecodeRequestPattern(".*json(iter)?\\.\\*?Decoder"),
 				jsonUnmarshalRequestPattern("json"),
 			},
-			ResponsePatterns: append(append(netHTTPResponsePatterns(),
+			ResponsePatterns: append(append(append(netHTTPResponsePatterns(),
 				nonJSONEncodePatterns()...),
+				streamWriterPatterns()...),
 				jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 			),
 			ParamPatterns: append([]ParamPattern{

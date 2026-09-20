@@ -48,6 +48,7 @@ func DefaultGinConfig() *APISpecConfig {
 		RecvTypeRegex:  ginContextRecv,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, streamWriterPatterns()...)
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{
