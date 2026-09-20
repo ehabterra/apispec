@@ -449,7 +449,7 @@ Sub-keys of `framework`:
 | `entrypointPatterns` | Struct fields holding a function a library calls back (a CLI `Action`/`RunE`), so routes registered there are reachable. Presets apply from your imports. |
 | `handlerInterfaceMethods` | Method names that make a type a handler (`ServeHTTP`), so a route registered with a handler *value* is followed into it. |
 | `requestContext` | Which receivers/accessors mark a "request body" source. |
-| `responseContext` | Which types are the response *writer*, for response patterns gated on write destination (`requireResponseDestination`). Parameter reads state their own exclusion per pattern (`excludeRecvOriginRegex`). |
+| `responseContext` | Which types are the response *writer*, for response patterns gated on write destination (`requireResponseDestination`). An **empty `writerTypeRegexes` disables that gate**, and with it every streamed body — the `Content-Type` declaration is then unplaceable, so nothing is claimed. Parameter reads state their own exclusion per pattern (`excludeRecvOriginRegex`). |
 
 ### Anchoring a response pattern
 

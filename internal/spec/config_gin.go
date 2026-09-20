@@ -75,6 +75,11 @@ func DefaultGinConfig() *APISpecConfig {
 				// still gets one.
 				// gin: c.Header("Content-Type", v).
 				ContentTypeWrites: frameworkContentTypeWrites(`^\*?(github\.com/gin-gonic/gin\.)?Context$`, `^Header$`),
+				// gin's writer is `c.Writer`, of gin's own ResponseWriter
+				// interface, which embeds net/http's. Both spellings, since a
+				// method call records the bare type name with the path in Pkg.
+				WriterTypeRegexes:           frameworkWriterTypes(`^\*?(github\.com/gin-gonic/gin\.)?ResponseWriter$`),
+				WriterCompatibleTypeRegexes: writerCompatibleTypes(),
 			},
 			CredentialReads: frameworkCredentialReads(`^github\.com/gin-gonic/gin\.\*?Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{
