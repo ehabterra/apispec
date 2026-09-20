@@ -203,6 +203,12 @@ func (r *ResponsePatternMatcherImpl) matchBodyTransform(calleeFunc, calleePkg st
 		return 0, false
 	}
 	for _, t := range r.cfg.Framework.ResponseContext.BodyTransforms {
+		// A negative ArgIndex declines the transform rather than being
+		// returned: it comes from a user's config, and every caller here
+		// bounds it from above only, so it would index out of range.
+		if t.ArgIndex < 0 {
+			continue
+		}
 		if t.CallRegex != "" {
 			re, err := cachedRegex(t.CallRegex)
 			if err != nil || !re.MatchString(calleeFunc) {

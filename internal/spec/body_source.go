@@ -35,11 +35,17 @@ type bodySourceResolver struct {
 
 // matchBodyReader reports whether a call is a configured body reader, and where
 // its source argument sits. An empty PkgRegex matches any package.
+//
+// A negative SourceArgIndex declines the reader rather than being returned: the
+// value comes from a user's config file, and every caller indexes with it.
 func (r *bodySourceResolver) matchBodyReader(calleeFunc, calleePkg string) (int, bool) {
 	if calleeFunc == "" {
 		return 0, false
 	}
 	for _, reader := range r.readers {
+		if reader.SourceArgIndex < 0 {
+			continue
+		}
 		if reader.CallRegex != "" {
 			re, err := cachedRegex(reader.CallRegex)
 			if err != nil || !re.MatchString(calleeFunc) {
@@ -175,6 +181,20 @@ func (r *bodySourceResolver) check(arg *metadata.CallArgument, edge *metadata.Ca
 // documents the body instead, and the derivation itself did not consult this
 // check at all — so it could not tell a context's own `c.Req.Body` from an
 // outbound `http.Response` decode, and read both as request bodies (#513).
+//
+// Walking past the root is allowed only when the root is something the handler
+// was GIVEN — a parameter or a receiver — and not a local it built. Both of
+// these reach an `*http.Request` one accessor in, and only the first is the
+// request being served:
+//
+//	c.Req.Body           // c is the receiver: the context holds our request
+//	resp.Request.Body    // resp came from http.Get: the request we SENT
+//
+// A local's own type is still read at i == 0, which is how
+// `req := r; req.Body` keeps working — and is why an outbound request assigned
+// to a local is accepted there, as it always has been. Closing that needs
+// provenance run to the handler's own parameter, which is what #513 describes
+// in full and this does not attempt.
 func (r *bodySourceResolver) chainMatches(root *metadata.CallArgument, segs []chainSegment, edge *metadata.CallGraphEdge) bool {
 	if root == nil || root.GetKind() != metadata.KindIdent || len(segs) == 0 {
 		return false
@@ -183,13 +203,14 @@ func (r *bodySourceResolver) chainMatches(root *metadata.CallArgument, segs []ch
 	// offers the root, 1 the root plus one accessor, and so on. The last
 	// segment is never offered, since something has to remain to match as the
 	// body accessor.
+	rootIsGiven := len(assignmentsAt(r.contextProvider, edge, root.GetName())) == 0
 	for i := range segs {
 		typ := ""
 		if i == 0 {
 			// The root alone, where a traced origin can supply the type a bare
 			// ident does not carry.
 			typ = r.identType(root, edge)
-		} else {
+		} else if rootIsGiven {
 			typ = segs[i-1].chainType()
 		}
 		if typ == "" || !matchAny(r.typeREs, typ) {

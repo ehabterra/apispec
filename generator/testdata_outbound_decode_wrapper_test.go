@@ -102,6 +102,16 @@ func TestTestdata_OutboundDecodeWrapper(t *testing.T) {
 			method: "POST", path: "/items/remote", want: "",
 			why: "an *http.Response read the same way is still not a request body",
 		},
+		{
+			name: "the request a response carries",
+			// An *http.Response holds the request that was SENT in a field, so
+			// `resp.Request.Body` reaches a request-typed value one accessor
+			// in — structurally identical to a house context's `c.Req.Body`.
+			// What separates them is that `resp` is a local the handler built,
+			// where a receiver or parameter is one it was given.
+			method: "POST", path: "/items/echo", want: "",
+			why: "the request we sent is not the request we are serving",
+		},
 	}
 
 	for _, tc := range cases {
@@ -161,4 +171,69 @@ func requestBodyRef(op *intspec.Operation) string {
 		return "<inline " + mt.Schema.Type + ">"
 	}
 	return mt.Schema.Ref
+}
+
+// TestTestdata_OutboundDecodeWrapperGin is the same rule under a different
+// router, because none of it is chi's: derivation and the source check are
+// shared, and only the configured requestContext differs (golden rule #5).
+//
+// The house context here holds a *gin.Context, so the request sits two
+// accessors from the root (`c.G.Request.Body`) rather than one.
+func TestTestdata_OutboundDecodeWrapperGin(t *testing.T) {
+	out := loadTestdataWithFixtureConfig(t, "outbound_decode_wrapper_gin", intspec.DefaultGinConfig())
+	noDanglingRefs(t, out)
+	noUnresolvedPlaceholders(t, out)
+
+	cases := []struct {
+		name         string
+		method, path string
+		want         string
+		why          string
+	}{
+		{
+			name:   "house wrapper over gin's context",
+			method: "POST", path: "/settings", want: "Settings",
+			why: "c.G.Request.Body is this request's body, two accessors from the root",
+		},
+		{
+			name:   "outbound client with the same shape",
+			method: "POST", path: "/contacts/sync", want: "",
+			why: "the only decode reachable is an *http.Response",
+		},
+		{
+			name:   "both, in one handler",
+			method: "PUT", path: "/settings", want: "Settings",
+			why: "the handler's own body must not be displaced by an outbound decode",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			op := opFor(out.Paths[tc.path], tc.method)
+			if op == nil {
+				t.Fatalf("%s %s missing; have %v", tc.method, tc.path, mapPathKeys(out.Paths))
+			}
+			if tc.want == "" {
+				if op.RequestBody != nil {
+					t.Errorf("%s %s documents a request body (%s), want none — %s",
+						tc.method, tc.path, requestBodyRef(op), tc.why)
+				}
+				return
+			}
+			if op.RequestBody == nil {
+				t.Fatalf("%s %s documents no request body, want one naming %q — %s",
+					tc.method, tc.path, tc.want, tc.why)
+			}
+			if ref := requestBodyRef(op); !strings.HasSuffix(ref, "_"+tc.want) {
+				t.Errorf("%s %s request body = %q, want it to name %q — %s",
+					tc.method, tc.path, ref, tc.want, tc.why)
+			}
+		})
+	}
+
+	for name := range out.Components.Schemas {
+		if strings.HasSuffix(name, "_providerReply") {
+			t.Errorf("component %q is a third-party client's reply type and is published in the spec", name)
+		}
+	}
 }

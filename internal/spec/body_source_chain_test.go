@@ -182,45 +182,77 @@ func TestChainMatchesFindsRequestPastTheRoot(t *testing.T) {
 	}
 }
 
-// TestChainMatchesAcceptsAnyRequestTyped records a LIMIT, not a guarantee: the
-// check asks whether a value is an *http.Request, never whose — so a request the
-// handler BUILT to send is accepted the same as the one it was serving.
+// TestChainMatchesWalksPastTheRootOnlyForGivenValues pins the provenance rule
+// that keeps the chain walk from reaching a request the handler SENT.
 //
-// This is not new. An outbound request has always matched at the root
-// (`req, _ := http.NewRequest(...)`; `json.NewDecoder(req.Body)`), and walking
-// the chain only makes the same imprecision reachable one accessor deeper, via
-// the `Request` field an *http.Response carries. Both would go away together the
-// day provenance runs to the handler's own parameter, which is what issue #513
-// asks for in full; this pins today's answer so that change is visible when it
-// lands rather than silently flipping a test nobody wrote.
-func TestChainMatchesAcceptsAnyRequestTyped(t *testing.T) {
+// Both of these hold an *http.Request one accessor in, and only the first is
+// the request being served:
+//
+//	c.Req.Body          // c is the receiver — the context holds our request
+//	resp.Request.Body   // resp came from http.Get — the request we sent
+//
+// What separates them is where the root came from: a parameter or receiver is
+// something the handler was given, while `resp` is a local it built. So the
+// walk past the root is offered only to the former.
+func TestChainMatchesWalksPastTheRootOnlyForGivenValues(t *testing.T) {
 	meta := newTestMeta()
 	r := newBodySourceResolver(&APISpecConfig{
 		Framework: FrameworkConfig{RequestContext: netHTTPRequestContext},
 	}, NewContextProvider(meta))
-	edge := &metadata.CallGraphEdge{}
 
-	t.Run("an outbound request at the root", func(t *testing.T) {
-		expr := mkTypedSelector(meta,
-			mkIdent(meta, "outReq", "*net/http.Request"),
-			mkIdent(meta, "Body", ""), "io.ReadCloser")
-		root, segs := peelAccessorChain(expr)
-		if !r.chainMatches(root, segs, edge) {
-			t.Error("chainMatches = false; today every *http.Request counts, and this test records that")
+	// `resp, err := http.Get(…)` — what makes resp a local rather than a
+	// parameter, and the only thing that tells the two chains apart.
+	assigned := func(name string) *metadata.CallGraphEdge {
+		call := metadata.NewCallArgument(meta)
+		call.SetKind(metadata.KindCall)
+		return &metadata.CallGraphEdge{
+			AssignmentMap: map[string][]metadata.Assignment{
+				name: {{Value: *call, CalleeFunc: "Get", CalleePkg: "net/http"}},
+			},
 		}
-	})
+	}
 
-	t.Run("the request a response carries", func(t *testing.T) {
-		// resp.Request is the request that was SENT, so this is an outbound
-		// body. It answered false before the chain walk, purely because the
-		// walk stopped at the root, and true after.
-		expr := mkTypedSelector(meta,
+	respRequestBody := func() *metadata.CallArgument {
+		return mkTypedSelector(meta,
 			mkTypedSelector(meta,
 				mkIdent(meta, "resp", "*net/http.Response"),
 				mkIdent(meta, "Request", ""), "*net/http.Request"),
 			mkIdent(meta, "Body", ""), "io.ReadCloser")
+	}
+
+	t.Run("the request a response carries, from a local", func(t *testing.T) {
+		root, segs := peelAccessorChain(respRequestBody())
+		if r.chainMatches(root, segs, assigned("resp")) {
+			t.Error("chainMatches = true; resp.Request is the request that was SENT, not the one being served")
+		}
+	})
+
+	t.Run("a context field, from the receiver", func(t *testing.T) {
+		// The shape the walk exists for. No assignment for `c`: it is the
+		// method's receiver.
+		expr := mkTypedSelector(meta,
+			mkTypedSelector(meta,
+				mkIdent(meta, "c", "*github.com/x/p.Ctx"),
+				mkIdent(meta, "Req", ""), "*net/http.Request"),
+			mkIdent(meta, "Body", ""), "io.ReadCloser")
 		root, segs := peelAccessorChain(expr)
-		if !r.chainMatches(root, segs, edge) {
+		if !r.chainMatches(root, segs, &metadata.CallGraphEdge{}) {
+			t.Error("chainMatches = false; a house context holds the request in a field and must still resolve")
+		}
+	})
+
+	// A LIMIT, recorded rather than guaranteed: at the root the check asks
+	// whether a value is an *http.Request, never whose, so a request the
+	// handler built to send is accepted. That predates the chain walk — it is
+	// how `req := r; req.Body` keeps working — and closing it needs provenance
+	// run to the handler's own parameter, which #513 describes in full and this
+	// does not attempt.
+	t.Run("an outbound request at the root is still accepted", func(t *testing.T) {
+		expr := mkTypedSelector(meta,
+			mkIdent(meta, "outReq", "*net/http.Request"),
+			mkIdent(meta, "Body", ""), "io.ReadCloser")
+		root, segs := peelAccessorChain(expr)
+		if !r.chainMatches(root, segs, assigned("outReq")) {
 			t.Error("chainMatches = false; if this now fails, provenance got tighter — update the comment above, it is an improvement")
 		}
 	})

@@ -75,6 +75,19 @@ func (c *Ctx) readBody(dst any) error {
 	return json.Unmarshal(data, dst)
 }
 
+// fetchSentRequest decodes the request that was SENT. An *http.Response carries
+// the outbound *http.Request in a field, so this reaches a request-typed value
+// one accessor in — exactly like a house context's `c.Req.Body`, and not the
+// request being served.
+func (c *client) fetchSentRequest(out any) error {
+	resp, err := http.Get(c.base + "/echo")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(resp.Request.Body).Decode(out)
+}
+
 // fetchBytes is readBody's outbound twin, reading the provider's reply the same
 // way. The two differ only in which reader they are given.
 func (c *client) fetchBytes(out any) error {
@@ -193,6 +206,16 @@ func (h *handler) replaceSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// echoRemote reads only the outbound request's body, and must document none.
+func (h *handler) echoRemote(w http.ResponseWriter, r *http.Request) {
+	var out providerReply
+	if err := h.svc.fetchSentRequest(&out); err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // listRemoteItems reads only the provider's bytes, and must document no body.
 func (h *handler) listRemoteItems(w http.ResponseWriter, r *http.Request) {
 	var out providerReply
@@ -215,6 +238,7 @@ func main() {
 	r.Patch("/settings", h.patchSettings)
 	r.Post("/settings/replace", h.replaceSettings)
 	r.Post("/items/remote", h.listRemoteItems)
+	r.Post("/items/echo", h.echoRemote)
 
 	_ = http.ListenAndServe(":8080", r)
 }
