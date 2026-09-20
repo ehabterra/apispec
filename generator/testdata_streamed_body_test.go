@@ -49,6 +49,18 @@ func TestTestdata_StreamedBody(t *testing.T) {
 			path: "/file.pdf", mediaType: "application/pdf",
 			why: "the exact type the handler declares, not a per-writer guess",
 		},
+		{
+			// What real code does: media types live in one place, not inlined
+			// at each handler. Reading only a bare literal missed all of them.
+			name: "the media type named by a constant",
+			path: "/const.csv", mediaType: "text/csv",
+			why: "a constant is as much a declaration as an inline string",
+		},
+		{
+			name: "declared inside a shared header helper",
+			path: "/helper.csv", mediaType: "text/csv",
+			why: "the declaration is often beside the other download headers",
+		},
 	}
 
 	for _, tc := range cases {
