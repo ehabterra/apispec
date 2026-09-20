@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An operation declares only the path parameters its own template binds.**
+  Parameters are attributed to a HANDLER, and a handler can be mounted at more
+  than one template — `/codes/{codeId}/thing` and
+  `/groups/{id}/codes/{codeId}/thing` in the same router. It reads the union of
+  their names, so both were emitted on both operations, and the shorter one
+  declared an `id` its path has nowhere to bind. That is not merely imprecise:
+  OpenAPI requires every `in: path` parameter to appear in the template, so the
+  operation is invalid — `redocly lint` reports `path-parameters-defined`, and a
+  generated client gets a required argument it cannot place. Query, header and
+  cookie parameters are untouched, being unbound to the template by nature.
+  (#514)
+
+- **A path variable no route declares is reported for every framework, not
+  just gorilla/mux.** The diagnostic was driven by the map-key recovery, which
+  only mux needs; everywhere else the name reached the route as a resolved
+  parameter and nothing checked it, so a misspelled `chi.URLParam(r, "teamID")`
+  was emitted as a real path parameter in silence. It is now dropped and
+  reported. Conversely the warning no longer fires for a handler mounted at
+  several templates, where each route legitimately lacks its sibling's names —
+  it said "likely typo" about correct code on every such handler. (#514)
+
 ## [0.5.9] - 2026-09-18
 
 Routes that were silently missing. Three separate defects each dropped
