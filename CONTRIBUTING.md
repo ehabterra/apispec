@@ -39,6 +39,32 @@ Thank you for your interest in contributing to APISpec! Your contributions, feed
    make test
    ```
 
+### Project layout
+
+```text
+apispec/
+├── cmd/
+│   ├── apispec/       # CLI generator
+│   ├── apispecui/     # Browser UI + spec preview
+│   └── apidiag/       # Paginated call-graph server
+├── generator/         # High-level generator interface
+├── internal/
+│   ├── core/          # Framework detection & shared logic
+│   ├── diagserver/    # Shared call-graph HTTP server (used by apidiag + apispecui)
+│   ├── engine/        # Processing engine
+│   ├── metadata/      # AST analysis & metadata extraction
+│   └── spec/          # OpenAPI generation & mapping
+├── pkg/patterns/      # Public pattern helpers
+├── spec/              # Public spec package (configs, types)
+├── testdata/          # Example projects used in tests
+├── scripts/           # Build & utility scripts
+└── docs/              # Long-form documentation
+```
+
+The binaries (`apispec`, `apispecui`, `apidiag`) are gitignored build artifacts.
+After switching branches, rebuild *and restart* a running `apispecui` — it keeps
+the code it started with, and a browser refresh will not pick up a new build.
+
 ## Before Making Changes
 
 Before writing a feature or fixing an issue, please:
@@ -96,8 +122,9 @@ This helps us work together effectively and ensures contributions align with the
 
 - Run tests: `make test`
 - Check coverage: `make coverage`
-- Run specific tests: `go test ./internal/spec -v`
+- Run specific tests: `go test ./internal/spec -v -run "Test.*Comprehensive"`
 - Add test cases in `testdata/` for framework-specific features
+- Refresh the coverage badge if coverage moves: `make update-badge`
 
 ## Adding Framework Support
 
@@ -106,7 +133,7 @@ To add support for a new web framework:
 1. **Add a registry entry** in `internal/core/frameworks.go` — the single source for detection patterns, dependency analysis and the UI picker
 2. **Add the default configuration** in `internal/spec/config_<framework>.go` (each framework lives in its own file alongside `config.go`) and map it in `internal/spec/framework_config.go`
 3. **Add a fixture project** under `testdata/<framework>/` and a corresponding test case
-4. **Update documentation** in `README.md`
+4. **Update documentation**: the support matrix in `README.md` and, if the framework needs config, [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
 Nothing else needs editing: the detector, the dependency analyser and the UI all
 project the registry, and `TestFrameworkConfigsCoverRegistry` fails if step 2's

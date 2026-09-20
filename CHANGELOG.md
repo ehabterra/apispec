@@ -58,6 +58,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `requestContext` alone, so a house context wrapping any framework's is covered
   by construction. (#513)
 
+### Documentation
+
+- **The README is now a getting-started document, not the manual.** It opens
+  with a fit table — what APISpec is good at (internal type sources, CI drift
+  checks, documenting an undocumented service), what needs review first
+  (published contracts), and what it is the wrong tool for (spec-first
+  workflows, runtime-assembled routes) — so a reader can decide in a minute.
+  It also carries a worked before/after (Go in, OpenAPI out) and a triage table
+  for a missing route. The reference material moved out, in full, to
+  `docs/CAPABILITIES.md` (every shape resolved, with examples),
+  `docs/LIMITATIONS.md` (what it cannot see, what it does not state, and the
+  guardrails to add), `docs/TOOLS.md` (all flags and the `apispecui` HTTP API),
+  `docs/CONFIGURATION.md` (wrapper detection, entrypoints, `requestContext` and
+  doc-comment descriptions joined the reference there) and `CONTRIBUTING.md`
+  (project layout, build and test).
+
+- **`--config` semantics corrected.** `docs/CONFIGURATION.md` said a supplied
+  config was merged *on top of* the detected framework defaults. It is not: the
+  file replaces them, so a config carrying only a `naming` or `info` block
+  matches no routes and documents nothing — filed as #524. Both the README and
+  the reference now state that, and point at `--output-config` as the way to
+  build a config.
+
 ## [0.5.9] - 2026-09-18
 
 Routes that were silently missing. Three separate defects each dropped
