@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +43,50 @@ func (s *stringSliceFlag) Set(value string) error {
 	*s = append(*s, value)
 	return nil
 }
+
+// strictFlag implements --strict, which is both a switch and a list: `--strict`
+// enables every quality gate, `--strict=security,paths` only those.
+//
+// IsBoolFlag is what makes the bare form legal — without it the flag package
+// would swallow the next argument as the value, so `apispec --strict ./api`
+// would set the categories to "./api" and lose the directory. The cost is that
+// the value MUST be attached with `=`, which is the same rule Go's own bool
+// flags follow, and the help text says so.
+type strictFlag struct {
+	enabled    bool
+	categories []engine.StrictCategory
+}
+
+func (s *strictFlag) String() string {
+	if !s.enabled {
+		return ""
+	}
+	names := make([]string, 0, len(s.categories))
+	for _, c := range s.categories {
+		names = append(names, string(c))
+	}
+	return strings.Join(names, ",")
+}
+
+func (s *strictFlag) Set(value string) error {
+	// `--strict=false` turns the gate off, so a wrapper script can neutralise a
+	// --strict baked into a Makefile without editing it.
+	if strings.EqualFold(value, "false") {
+		s.enabled, s.categories = false, nil
+		return nil
+	}
+	if strings.EqualFold(value, "true") {
+		value = ""
+	}
+	categories, err := engine.ParseStrictCategories(value)
+	if err != nil {
+		return err
+	}
+	s.enabled, s.categories = true, categories
+	return nil
+}
+
+func (s *strictFlag) IsBoolFlag() bool { return true }
 
 // Version info - can be injected at build time via -ldflags or detected at runtime
 var (
@@ -159,6 +204,7 @@ type CLIConfig struct {
 	MaxNodesPerRoute             int
 	ShowVersion                  bool
 	OutputFlagSet                bool
+	Strict                       strictFlag
 	IncludeFiles                 []string
 	IncludePackages              []string
 	IncludeFunctions             []string
@@ -334,6 +380,13 @@ func parseFlags(args []string) (*CLIConfig, error) {
 
 	fs.BoolVar(&config.AutoExcludeMocks, "auto-exclude-mocks", true, "Auto-exclude mock files")
 	fs.BoolVar(&config.AutoExcludeMocks, "aem", true, "Shorthand for --auto-exclude-mocks")
+
+	// No backquotes in this usage string: PrintDefaults reads a backquoted word
+	// as the flag's value name.
+	fs.Var(&config.Strict, "strict",
+		"Exit "+strconv.Itoa(strictExitCode)+" when the spec came out incomplete, instead of only warning about it. "+
+			"Bare --strict gates on everything; --strict=<categories> (comma-separated, attached with =) gates on "+
+			strings.Join(engine.StrictCategoryNames(), ", ")+" only")
 
 	// Verbose output control
 	fs.BoolVar(&config.Verbose, "verbose", false, "Enable verbose output")
@@ -638,4 +691,47 @@ func main() {
 	}
 
 	fmt.Printf("Time elapsed: %s\n", time.Since(start))
+
+	// Last, after the document has been written: --strict decides an exit code,
+	// never a document. The spec a strict run produces is byte-identical to the
+	// one a normal run produces, and it is still written when the gate fails —
+	// a CI job that fails the gate should still be able to publish the artifact
+	// and diff it, which is how anyone works out what was lost.
+	if code := strictExit(config, genEngine); code != 0 {
+		// The deferred profiler stop does not run past os.Exit, so unwind it
+		// here; nothing else in main defers anything that matters.
+		if prof != nil {
+			if err := prof.Stop(); err != nil {
+				log.Printf("Failed to stop profiling: %v", err)
+			}
+		}
+		os.Exit(code)
+	}
+}
+
+// strictExitCode is what --strict exits with when a gate fails.
+//
+// Deliberately not 1: a CI script has to be able to tell "apispec could not
+// run" from "apispec ran and the result is below the bar", because the second
+// is a spec problem to look at and the first is a build problem. 2 is taken —
+// the flag package exits with it on a usage error.
+const strictExitCode = 3
+
+// strictExit reports the exit code a --strict run should end with, after
+// printing what failed.
+func strictExit(config *CLIConfig, genEngine *engine.Engine) int {
+	if !config.Strict.enabled {
+		return 0
+	}
+	findings := genEngine.StrictFindings(config.Strict.categories)
+	if len(findings) == 0 {
+		return 0
+	}
+	// On stderr, alongside the warnings these promote, and phrased so the line
+	// stands on its own: in a folded CI log this may be the only thing read.
+	log.Printf("[strict] %d quality gate(s) failed:", len(findings))
+	for _, f := range findings {
+		log.Printf("[strict]   %s", f)
+	}
+	return strictExitCode
 }

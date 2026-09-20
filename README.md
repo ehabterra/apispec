@@ -93,6 +93,32 @@ apispec -o openapi.json           # JSON
 apispec ./cmd/api -o openapi.yaml # or point at a subdirectory
 ```
 
+### Fail the build when the spec comes out incomplete
+
+By default every shortfall is a warning on stderr, and the run exits `0`. In CI
+those lines scroll past, and their effect is invisible in the spec diff: an
+operation whose `security` block was dropped reads exactly like an operation
+that genuinely has none. `--strict` turns them into exit code **3** — distinct
+from `1`, so a script can tell "apispec could not run" from "apispec ran and
+the result is below the bar".
+
+```bash
+apispec -o openapi.yaml --strict                      # gate on everything
+apispec -o openapi.yaml --strict=security,paths       # only these (attach with =)
+```
+
+| Category | Fails when | What it costs the document |
+|---|---|---|
+| `security` | auth middleware matched no `securityMappings` entry | the endpoints behind it are documented as **public** |
+| `paths` | a registration's path is built at runtime, or nothing matched | the endpoint is **missing entirely** |
+| `schemas` | a response came out with an empty schema, or a `$ref` had no component | the operation is there, its **shape is not** |
+| `truncation` | an expansion budget (`--max-nodes`, `--max-nodes-per-route`) cut the walk short | the operation reads as finished with **fewer params/responses** than the code has |
+| `packages` | in-module packages failed to load or parse | whatever they registered is absent, by an **unknown amount** |
+
+The spec is written either way, and is byte-identical to a non-strict run —
+`--strict` decides an exit code, never a document — so a failing job can still
+publish the artifact and diff it.
+
 ### What comes out
 
 Given ordinary Gin code with no annotations:

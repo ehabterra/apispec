@@ -55,6 +55,7 @@ make build
 | `--cpu-profile` | Enable CPU profiling | `false` |
 | `--mem-profile` | Enable memory profiling | `false` |
 | `--skip-cgo` | Skip CGO packages during analysis | `true` |
+| `--strict[=categories]` | Exit `3` when the spec came out incomplete, instead of only warning. Categories: `security`, `paths`, `schemas`, `truncation`, `packages` — see [docs/TOOLS.md](../../docs/TOOLS.md) | off |
 
 ## Examples
 
@@ -73,6 +74,9 @@ make build
 
 # Show version information
 ./apispec --version
+
+# CI: fail the build if any endpoint lost its documented auth or its path
+./apispec --output openapi.yaml --strict=security,paths
 ```
 
 ## Configuration
