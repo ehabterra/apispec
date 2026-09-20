@@ -2343,6 +2343,21 @@ func callerAssignmentMap(impl *ContextProviderImpl, edge *metadata.CallGraphEdge
 			return fn.AssignmentMap
 		}
 	}
+	// The caller may itself be a METHOD, which findFunctionByName cannot see:
+	// methods are stored per-Type rather than in the file's function table. The
+	// method scope was reached only through ParentFunction, i.e. only for a
+	// closure declared inside one — so for a call written directly in a method
+	// body, every variable assigned in that body was invisible, and each
+	// resolver reading this lookup fell back to its "cannot tell" answer.
+	//
+	// `body, _ := io.ReadAll(r.Body)` followed by `json.Unmarshal(body, &v)` in
+	// the same method is the shape that shows it (#513).
+	if recv := impl.GetString(edge.Caller.RecvType); recv != "" {
+		if am := methodAssignmentMap(impl.meta, impl.GetString(edge.Caller.Pkg), recv,
+			impl.GetString(edge.Caller.Name), varName); am != nil {
+			return am
+		}
+	}
 	pf := edge.ParentFunction
 	if pf == nil {
 		return nil

@@ -269,6 +269,35 @@ type RequestContextConfig struct {
 	//   echo     -> "^Request\\(\\)\\.Body$"
 	//   fiber    -> "^Body\\(\\)$"
 	BodyAccessors []string `yaml:"bodyAccessors,omitempty" json:"bodyAccessors,omitempty"`
+
+	// BodyReaders describe calls that READ a reader into bytes, so a decode of
+	// those bytes is still a decode of whatever was read:
+	//
+	//	data, _ := io.ReadAll(r.Body)
+	//	json.Unmarshal(data, &v)        // -> a request body
+	//
+	// Without them the source check answers "not the request" for the read
+	// form exactly as it does for an outbound response, conflating "provably
+	// not" with "cannot see" — and that costs the request body of every handler
+	// written this way (issue #513).
+	//
+	// The mirror of ResponseContext.BodyTransforms, which unwraps a serializer
+	// on the way out, and named for the same two reasons: a walk into every
+	// call a value came from runs an origin trace per argument (10% of a run on
+	// a large project, measured), and naming the readers keeps the rule
+	// declarative. Serializer-level, so every framework shares them.
+	BodyReaders []BodyReader `yaml:"bodyReaders,omitempty" json:"bodyReaders,omitempty"`
+}
+
+// BodyReader describes one call that reads a reader's bytes, for tracing a
+// decode back past it to the reader it was given.
+type BodyReader struct {
+	// CallRegex matches the callee function name, e.g. "^ReadAll$".
+	CallRegex string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	// PkgRegex matches the callee package path, e.g. "^io$". Empty matches any.
+	PkgRegex string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
+	// SourceArgIndex is the reader argument (io.ReadAll(src) -> 0).
+	SourceArgIndex int `yaml:"sourceArgIndex,omitempty" json:"sourceArgIndex,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names

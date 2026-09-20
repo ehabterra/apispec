@@ -30,6 +30,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   several templates, where each route legitimately lacks its sibling's names —
   it said "likely typo" about correct code on every such handler. (#514)
 
+- **`json.RawMessage` documents any JSON value, not a string.** It is bytes
+  copied into the document verbatim — object, array, number, string or null —
+  and the marshaler fallback called it a string, which is the one answer that is
+  almost never right: a client validating against the spec rejects every real
+  payload, and a generated TypeScript client types the field as `string` and
+  casts. It is a standard-library type with a fully known contract, so it joins
+  the built-in registry next to `time.Time` and `uuid.UUID` rather than needing
+  a `typeMapping` in every project, and it carries no "assumed string" note
+  because nothing was assumed. The pointer and slice forms follow. A marshaler
+  whose JSON form *is* knowable still resolves precisely. (#518)
+
+- **An unconstrained schema is inlined instead of named.** A schema that
+  constrains nothing has no content to share, so promoting it to a component
+  published an empty definition and a `$ref` pointing at it. Schemas are now
+  judged inline-or-named by whether they constrain anything, of which
+  "primitive-shaped" was only the first half. (#518)
+
+- **A third-party client's reply is no longer documented as the handler's
+  request body.** A decoder wrapper is recognised by shape — a method forwarding
+  its own parameter into a decode — and an outbound HTTP client has that shape
+  too:
+
+  ```go
+  func (c *Ctx) Bind(dst any) error     { return json.NewDecoder(c.Req.Body).Decode(dst) }
+  func (c *client) fetch(out any) error { return json.NewDecoder(resp.Body).Decode(out) }
+  ```
+
+  Only where the bytes come from tells them apart, which is what a request
+  pattern's `requireRequestSource` asks at extraction time — and derivation
+  never asked it, so the second produced a pattern as readily as the first.
+  Every handler calling it then documented the provider's type, *replacing* the
+  handler's own body rather than appearing beside it, with nothing on stderr.
+  Derivation now resolves the inner decode's source: a method that reads the
+  request derives as before, a method that reads what it is HANDED carries the
+  check to its call sites (so the same helper given `r.Body` documents a body
+  and given a file does not), and a method that reads anything else derives
+  nothing. (#513)
+
+- **A request body read into bytes before being unmarshalled is found.**
+  `data, _ := io.ReadAll(r.Body)` followed by `json.Unmarshal(data, &v)` is an
+  ordinary way to write a handler, and the source check could not see past the
+  read — so it answered "not the request" exactly as it does for an outbound
+  response, and the operation documented no body at all. A new
+  `requestContext.bodyReaders` names the calls that turn a reader into bytes
+  (`io.ReadAll`, `io/ioutil.ReadAll`), the mirror of
+  `responseContext.bodyTransforms` on the way out; a decode of those bytes asks
+  about the reader they came from. Serializer-level, so every framework shares
+  them. Found through #513, and wrong on its own well before it: on gitea it
+  recovers `POST /restore_repo`, which reads its body this way.
+
+- **A variable assigned in a method body is visible to the resolvers that read
+  it.** The canonical call-site assignment lookup reached a method's scope only
+  through `ParentFunction`, i.e. only for a closure declared inside one, because
+  methods live in `Type.Methods` rather than in the file's function table. For a
+  call written directly in a method body, every local assigned in that body was
+  invisible, and each resolver reading the lookup fell back to its "cannot tell"
+  answer. (#513)
+
+- **The request the chain names is found past the root.** A project's own
+  context holds the request in a field, so `c.Req.Body` has a root typed
+  `*Ctx`; reading the root's type alone answered "reads nothing from the
+  request" for every project that owns a context type. Every prefix of the chain
+  is now offered its turn as the request, driven by the configured
+  `requestContext` alone, so a house context wrapping any framework's is covered
+  by construction. (#513)
+
+### Documentation
+
+- **The README is now a getting-started document, not the manual.** It opens
+  with a fit table — what APISpec is good at (internal type sources, CI drift
+  checks, documenting an undocumented service), what needs review first
+  (published contracts), and what it is the wrong tool for (spec-first
+  workflows, runtime-assembled routes) — so a reader can decide in a minute.
+  It also carries a worked before/after (Go in, OpenAPI out) and a triage table
+  for a missing route. The reference material moved out, in full, to
+  `docs/CAPABILITIES.md` (every shape resolved, with examples),
+  `docs/LIMITATIONS.md` (what it cannot see, what it does not state, and the
+  guardrails to add), `docs/TOOLS.md` (all flags and the `apispecui` HTTP API),
+  `docs/CONFIGURATION.md` (wrapper detection, entrypoints, `requestContext` and
+  doc-comment descriptions joined the reference there) and `CONTRIBUTING.md`
+  (project layout, build and test).
+
+- **`--config` semantics corrected.** `docs/CONFIGURATION.md` said a supplied
+  config was merged *on top of* the detected framework defaults. It is not: the
+  file replaces them, so a config carrying only a `naming` or `info` block
+  matches no routes and documents nothing — filed as #524. Both the README and
+  the reference now state that, and point at `--output-config` as the way to
+  build a config.
+
+
 ## [0.5.9] - 2026-09-18
 
 Routes that were silently missing. Three separate defects each dropped
