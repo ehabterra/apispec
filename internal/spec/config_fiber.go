@@ -66,7 +66,7 @@ func DefaultFiberConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(frameworkContentTypeWrites(`^\*?(github\.com/gofiber/fiber(/v\d+)?\.)?Ctx$`, `^Set$`)))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{

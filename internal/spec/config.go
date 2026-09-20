@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/ehabterra/apispec/pkg/patterns"
@@ -1489,40 +1490,59 @@ func nonJSONEncodePatterns() []ResponsePattern {
 // The calls themselves are config (ResponseContext.ContentTypeWrites), so
 // gin's `c.Header(k, v)` and fiber's `c.Set(k, v)` are entries rather than
 // special cases; this pattern is the response side of reading them.
-func contentTypeResponsePattern() ResponsePattern {
+func contentTypeResponsePattern(writes []ContentTypeWrite) ResponsePattern {
 	return ResponsePattern{
-		// Matching is done against ContentTypeWrites at extraction time, where
-		// the header NAME argument can be checked — a pattern cannot express
-		// "argument 0 must be Content-Type".
-		// Matching is refined against ContentTypeWrites at extraction time,
-		// where the header NAME argument can be checked — a pattern cannot
-		// express "argument 0 must be Content-Type". The CallRegex is the
-		// coarse filter that keeps every other call out, and every configured
-		// spelling is a Set-or-Header style setter.
-		CallRegex:                  `^(Set|Header|Type)$`,
+		// DERIVED from the configured writes, never a fixed list. MatchNode
+		// applies this before ExtractResponse can look at the header NAME
+		// argument, so a hardcoded `^(Set|Header|Type)$` silently discarded any
+		// project that configured its own setter — `SetContentType` on a house
+		// context would never have been evaluated, which defeats the point of
+		// the calls being configuration at all.
+		CallRegex:                  anyCallRegex(writes),
 		ContentTypeFromHeaderWrite: true,
 		TypeArgIndex:               -1,
 		OpaqueBody:                 true,
-		// DefaultStatus rather than ImplicitStatus, KNOWINGLY and temporarily.
-		//
-		// ImplicitStatus is the semantically right field — a status taken only
-		// if no explicit write claims the body first — and with it a handler
-		// that writes `WriteHeader(201)` below the header keeps its 201 alone.
-		// But an opaque fragment carrying only an implicit status does not
-		// survive to become a fragment at all, so the streamed body it exists
-		// for is never documented, which is the whole of issue #517.
-		//
-		// So the status is resolved here instead. The cost is stated in the PR
-		// and reproducible: a handler that declares a content type and THEN
-		// states a different status documents a spurious 200 beside the real
-		// one. Four fixtures show it. Moving to ImplicitStatus is the fix, and
-		// needs the fragment-assembly gap closed first.
-		DefaultStatus: http.StatusOK,
-		// The declaration is only about the response when it is made on the
-		// response writer.
+		// The declaration is about the RESPONSE only when it is made on the
+		// response writer. Without that, a `Header().Set("Content-Type", …)`
+		// on an OUTBOUND request — the shape issues #513 and #519 are about,
+		// pointed a third way — becomes an opaque body on the operation that
+		// reaches it.
 		RequireResponseDestination: true,
 		DestFromReceiver:           true,
+		// See the note on DefaultStatus vs ImplicitStatus in the PR: this
+		// resolves the status so the streamed body appears at all.
+		DefaultStatus: http.StatusOK,
 	}
+}
+
+// matchNothingRegex matches no input at all — a character class that requires
+// one character which is neither whitespace nor non-whitespace. `$^` does NOT
+// do this: it matches the empty string, so an unconfigured pattern would have
+// claimed every call whose name renders empty.
+const matchNothingRegex = `[^\s\S]`
+
+// anyCallRegex ORs the configured call patterns into one, so the coarse filter
+// admits exactly the calls the configuration names and nothing else. Returns a
+// regex matching nothing when there are none, which keeps the pattern inert
+// rather than matching everything.
+func anyCallRegex(writes []ContentTypeWrite) string {
+	parts := make([]string, 0, len(writes))
+	seen := map[string]struct{}{}
+	for _, w := range writes {
+		if w.CallRegex == "" {
+			continue
+		}
+		if _, dup := seen[w.CallRegex]; dup {
+			continue
+		}
+		seen[w.CallRegex] = struct{}{}
+		parts = append(parts, "(?:"+w.CallRegex+")")
+	}
+	if len(parts) == 0 {
+		return matchNothingRegex
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }
 
 // rendererMediaTypes maps a renderer method NAME to the media type that

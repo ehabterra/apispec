@@ -104,7 +104,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 		DestFromAnyArg:             true,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(netHTTPResponseContext.ContentTypeWrites))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{

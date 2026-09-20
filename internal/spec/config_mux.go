@@ -101,7 +101,7 @@ func DefaultMuxConfig() *APISpecConfig {
 			},
 			ResponsePatterns: append(append(append(netHTTPResponsePatterns(),
 				nonJSONEncodePatterns()...),
-				contentTypeResponsePattern()),
+				contentTypeResponsePattern(netHTTPResponseContext.ContentTypeWrites)),
 				jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"),
 			),
 			ParamPatterns: append([]ParamPattern{

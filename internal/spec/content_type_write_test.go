@@ -27,7 +27,7 @@ func TestContentTypeHeaderWrite(t *testing.T) {
 	meta := newTestMeta()
 	sp := meta.StringPool
 	cfg := DefaultChiConfig()
-	m := NewResponsePatternMatcher(contentTypeResponsePattern(), cfg, NewContextProvider(meta))
+	m := NewResponsePatternMatcher(contentTypeResponsePattern(stdlibContentTypeWrites()), cfg, NewContextProvider(meta))
 
 	lit := func(v string) *metadata.CallArgument {
 		a := metadata.NewCallArgument(meta)
@@ -106,4 +106,53 @@ func TestFrameworkContentTypeWrites(t *testing.T) {
 				empty[0], empty[1], len(got), base)
 		}
 	}
+}
+
+// TestAnyCallRegexComesFromConfig pins that the coarse filter is DERIVED from
+// the configured writes.
+//
+// MatchNode applies it before ExtractResponse can inspect the header-NAME
+// argument, so a hardcoded list silently discarded any project that configured
+// its own setter — the calls being configuration would have meant nothing.
+func TestAnyCallRegexComesFromConfig(t *testing.T) {
+	re := anyCallRegex([]ContentTypeWrite{
+		{CallRegex: `^Set$`},
+		{CallRegex: `^SetContentType$`},
+		{CallRegex: `^Set$`}, // duplicate: one alternative, not two
+	})
+
+	compiled, err := cachedRegex(re)
+	if err != nil {
+		t.Fatalf("derived regex does not compile: %q: %v", re, err)
+	}
+	for _, name := range []string{"Set", "SetContentType"} {
+		if !compiled.MatchString(name) {
+			t.Errorf("%q is configured and does not match %q", name, re)
+		}
+	}
+	for _, name := range []string{"Write", "Encode", "Header"} {
+		if compiled.MatchString(name) {
+			t.Errorf("%q is not configured but matches %q", name, re)
+		}
+	}
+
+	t.Run("no writes configured", func(t *testing.T) {
+		// Must match NOTHING rather than everything: an empty alternation
+		// would make the pattern claim every call it sees.
+		empty, err := cachedRegex(anyCallRegex(nil))
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		for _, name := range []string{"Set", "Write", ""} {
+			if empty.MatchString(name) {
+				t.Errorf("an unconfigured pattern matched %q", name)
+			}
+		}
+	})
+
+	t.Run("an entry with no call regex is skipped", func(t *testing.T) {
+		if got := anyCallRegex([]ContentTypeWrite{{CallRegex: ""}}); got != matchNothingRegex {
+			t.Errorf("= %q, want the match-nothing regex", got)
+		}
+	})
 }

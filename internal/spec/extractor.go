@@ -2893,6 +2893,16 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// that does not name Content-Type — or names it with a value decided at
 	// runtime — is not a response at all (issue #517).
 	if r.pattern.ContentTypeFromHeaderWrite {
+		// No writer provenance configured means RequireResponseDestination
+		// above could not run, and a header write is a shape that genuinely
+		// occurs on an OUTBOUND request — the same confusion issues #513 and
+		// #519 are about, pointed a third way. Unverifiable, so not claimed: a
+		// framework whose ResponseContext declares no writer types documents no
+		// streamed body until it does, rather than documenting one that might
+		// be a client call (golden rule #7).
+		if r.destResolver == nil || !r.destResolver.Enabled() {
+			return nil
+		}
 		declared, ok := r.contentTypeHeaderWrite(node.GetEdge())
 		if !ok {
 			return nil

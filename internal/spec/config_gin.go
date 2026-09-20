@@ -48,7 +48,7 @@ func DefaultGinConfig() *APISpecConfig {
 		RecvTypeRegex:  ginContextRecv,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(frameworkContentTypeWrites(`^\*?(github\.com/gin-gonic/gin\.)?Context$`, `^Header$`)))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{

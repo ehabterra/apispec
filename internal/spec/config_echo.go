@@ -51,7 +51,7 @@ func DefaultEchoConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(stdlibContentTypeWrites()))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{
