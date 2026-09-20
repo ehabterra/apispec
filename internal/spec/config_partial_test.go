@@ -17,6 +17,7 @@ package spec
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -179,4 +180,79 @@ func TestAdoptFrameworkPatternsIsInert(t *testing.T) {
 	if len(empty.Framework.RoutePatterns) == 0 {
 		t.Error("an empty in-code config did not adopt the detected patterns")
 	}
+}
+
+// TestHasFrameworkOpinionCoversEveryField is the drift guard.
+//
+// The rule is "a code-built config that says anything about its framework is
+// taken at its word". The first version asked that of an enumerated list of
+// pattern slices, which already missed HandlerInterfaceMethods, the
+// RequestContext accessors and most of ResponseContext — so a config setting
+// only one of those had its whole framework block replaced and the setting
+// silently discarded.
+//
+// Rather than a longer list, this walks the struct: every field, including any
+// added later, must on its own count as an opinion.
+func TestHasFrameworkOpinionCoversEveryField(t *testing.T) {
+	typ := reflect.TypeOf(FrameworkConfig{})
+	if typ.NumField() == 0 {
+		t.Fatal("FrameworkConfig has no fields; the guard proves nothing")
+	}
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		t.Run(field.Name, func(t *testing.T) {
+			cfg := &APISpecConfig{}
+			set := reflect.ValueOf(&cfg.Framework).Elem().Field(i)
+			if !set.CanSet() {
+				t.Skipf("%s is unexported", field.Name)
+			}
+			set.Set(nonZeroValue(t, field.Type))
+
+			if !cfg.hasFrameworkOpinion() {
+				t.Errorf("a config setting only %s is not read as an opinion, so AdoptFrameworkPatterns "+
+					"would replace the whole framework block and discard it", field.Name)
+			}
+			// And the consequence, end to end.
+			cfg.AdoptFrameworkPatterns(DefaultChiConfig())
+			if !reflect.DeepEqual(reflect.ValueOf(cfg.Framework).Field(i).Interface(), set.Interface()) {
+				t.Errorf("%s was overwritten by the detected framework's value", field.Name)
+			}
+		})
+	}
+}
+
+// nonZeroValue builds a value of t that is distinguishable from the zero value,
+// for the field walk above.
+func nonZeroValue(t *testing.T, typ reflect.Type) reflect.Value {
+	t.Helper()
+	switch typ.Kind() {
+	case reflect.Slice:
+		return reflect.MakeSlice(typ, 1, 1)
+	case reflect.Map:
+		m := reflect.MakeMap(typ)
+		m.SetMapIndex(reflect.New(typ.Key()).Elem(), reflect.New(typ.Elem()).Elem())
+		return m
+	case reflect.String:
+		return reflect.ValueOf("x").Convert(typ)
+	case reflect.Bool:
+		return reflect.ValueOf(true).Convert(typ)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflect.ValueOf(int64(1)).Convert(typ)
+	case reflect.Ptr:
+		return reflect.New(typ.Elem())
+	case reflect.Struct:
+		// Set the struct's own first settable field, so the value differs from
+		// the zero struct without this helper needing to know its shape.
+		v := reflect.New(typ).Elem()
+		for i := 0; i < typ.NumField(); i++ {
+			if v.Field(i).CanSet() {
+				v.Field(i).Set(nonZeroValue(t, typ.Field(i).Type))
+				return v
+			}
+		}
+		t.Fatalf("no settable field in %s", typ)
+	}
+	t.Fatalf("nonZeroValue: unhandled kind %s for %s", typ.Kind(), typ)
+	return reflect.Value{}
 }

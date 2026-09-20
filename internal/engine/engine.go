@@ -335,9 +335,11 @@ type RouteDiscovery struct {
 	// which is the one cause the old message could not name and actively argued
 	// against (issue #524).
 	RoutePatterns int
-	// UserConfig is true when the run was given a config file or an in-code
-	// config, i.e. when replacement was possible at all.
-	UserConfig bool
+	// ConfigSource says where the configuration that ran came from: "file",
+	// "code", or "" for the composed defaults. The remedy for having no route
+	// patterns differs by source — a file can state them, a struct cannot be
+	// edited from here — so the diagnostic has to know which it was.
+	ConfigSource string
 }
 
 // NothingMatched reports the condition worth telling the user about: code was
@@ -987,7 +989,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		Paths:         len(openAPISpec.Paths),
 		Frameworks:    frameworks,
 		RoutePatterns: len(apispecConfig.Framework.RoutePatterns),
-		UserConfig:    e.config.APISpecConfig != nil || e.config.ConfigFile != "",
+		ConfigSource:  e.configSource(),
 	}
 	e.reportNoRoutes()
 
@@ -1523,17 +1525,45 @@ func (e *Engine) reportNoRoutes() {
 	// that the detected framework's patterns were "in effect" at the exact
 	// moment they had been replaced (issue #524).
 	if d.RoutePatterns == 0 {
-		if d.UserConfig {
-			log.Printf("[engine] 0 paths documented: the supplied config carries no route patterns, and a config REPLACES the detected %s ones rather than adding to them — remove the `framework:` key to keep them, or start from --output-config",
+		// The remedy differs by where the configuration came from, and naming
+		// the wrong one is what the old message did: it told every reader to
+		// remove a `framework:` key, which a code-built config does not have
+		// and which — now that a file is MERGED over the defaults — is not what
+		// costs a file its patterns either. A file gets here only by saying so.
+		switch d.ConfigSource {
+		case configSourceFile:
+			log.Printf("[engine] 0 paths documented: the config sets `framework.routePatterns` to an empty list, so the detected %s patterns were replaced by none — drop that key to inherit them again",
 				frameworks)
-			return
+		case configSourceCode:
+			log.Printf("[engine] 0 paths documented: the APISpecConfig passed in declares framework settings but no routePatterns, so the detected %s ones were not applied — add them, or leave the framework block empty to inherit",
+				frameworks)
+		default:
+			log.Printf("[engine] 0 paths documented: no route patterns were configured at all (detected: %s)", frameworks)
 		}
-		log.Printf("[engine] 0 paths documented: no route patterns were configured at all (detected: %s)", frameworks)
 		return
 	}
 	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %d %s route pattern(s) in effect",
 		d.CallEdges, d.Packages, d.RoutePatterns, frameworks)
 	log.Printf("[engine] if this project serves HTTP, then its router is unsupported, is wired in a style no pattern matched, or was excluded by --include-*/--exclude-* filters — docs/DEBUGGING.md walks through telling those apart")
+}
+
+// Where the configuration that ran came from, for RouteDiscovery.ConfigSource.
+const (
+	configSourceFile = "file"
+	configSourceCode = "code"
+)
+
+// configSource reports where this run's configuration came from, in the order
+// GenerateSpec selects it.
+func (e *Engine) configSource() string {
+	switch {
+	case e.config.APISpecConfig != nil:
+		return configSourceCode
+	case e.config.ConfigFile != "":
+		return configSourceFile
+	default:
+		return ""
+	}
 }
 
 // maxSkippedPackagesReported bounds the per-package detail. One broken package

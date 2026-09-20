@@ -55,34 +55,49 @@ func TestReportNoRoutesNamesTheRealCause(t *testing.T) {
 		absent    []string
 	}{
 		{
-			name: "a config replaced the patterns",
+			name: "a file emptied the route patterns",
 			discovery: RouteDiscovery{
 				CallEdges: 35, Packages: 1, Paths: 0,
-				Frameworks: []string{"gin"}, RoutePatterns: 0, UserConfig: true,
+				Frameworks: []string{"gin"}, RoutePatterns: 0, ConfigSource: configSourceFile,
 			},
-			want: []string{"supplied config carries no route patterns", "REPLACES", "gin", "--output-config"},
-			// The generic advice must not follow: the cause is known.
-			absent: []string{"router is unsupported"},
+			// Since a file is MERGED over the defaults, the only way it reaches
+			// zero is by saying so — the remedy is that key, not the block.
+			want: []string{"empty list", "routePatterns", "gin", "drop that key"},
+			absent: []string{
+				"router is unsupported",
+				// The old advice, which a merged config makes wrong.
+				"remove the `framework:` key",
+			},
+		},
+		{
+			name: "a code-built config carries no route patterns",
+			discovery: RouteDiscovery{
+				CallEdges: 35, Packages: 1, Paths: 0,
+				Frameworks: []string{"gin"}, RoutePatterns: 0, ConfigSource: configSourceCode,
+			},
+			want: []string{"APISpecConfig passed in", "gin"},
+			// A struct has no YAML key to drop and no file to start from.
+			absent: []string{"router is unsupported", "--output-config", "drop that key"},
 		},
 		{
 			name: "no patterns and no config to blame",
 			discovery: RouteDiscovery{
 				CallEdges: 35, Packages: 1, Paths: 0,
-				Frameworks: []string{"gin"}, RoutePatterns: 0, UserConfig: false,
+				Frameworks: []string{"gin"}, RoutePatterns: 0,
 			},
 			want:   []string{"no route patterns were configured at all", "gin"},
-			absent: []string{"supplied config", "router is unsupported"},
+			absent: []string{"APISpecConfig passed in", "router is unsupported"},
 		},
 		{
 			name: "patterns were in effect and matched nothing",
 			discovery: RouteDiscovery{
 				CallEdges: 35, Packages: 1, Paths: 0,
-				Frameworks: []string{"gin"}, RoutePatterns: 7, UserConfig: false,
+				Frameworks: []string{"gin"}, RoutePatterns: 7,
 			},
 			// Here the old advice is the right advice, and the count says the
 			// patterns really were there.
 			want:   []string{"no route registrations matched", "7 gin route pattern(s) in effect", "router is unsupported"},
-			absent: []string{"supplied config"},
+			absent: []string{"APISpecConfig passed in", "drop that key"},
 		},
 		{
 			name: "every registration builds its path at runtime",
@@ -92,7 +107,7 @@ func TestReportNoRoutesNamesTheRealCause(t *testing.T) {
 			},
 			unres:  []intspec.UnresolvedPathRoute{{}},
 			want:   []string{"builds its path at runtime"},
-			absent: []string{"router is unsupported", "supplied config"},
+			absent: []string{"router is unsupported", "APISpecConfig passed in", "drop that key"},
 		},
 	}
 

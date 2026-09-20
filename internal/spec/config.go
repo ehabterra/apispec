@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -1533,17 +1534,21 @@ func (c *APISpecConfig) AdoptFrameworkPatterns(composed *APISpecConfig) {
 }
 
 // hasFrameworkOpinion reports whether this config's framework block says
-// anything about how to find or read routes.
+// anything at all.
 //
 // The library API is full of code-built configs —
 // `NewGenerator(DefaultChiConfig())`, or that with its patterns narrowed — and
-// replacing a caller's deliberately scoped patterns with the detected defaults
-// would be the same silent loss #524 is about, pointed the other way.
+// replacing a caller's deliberately scoped configuration with the detected
+// defaults would be the same silent loss #524 is about, pointed the other way.
+//
+// Asked of the WHOLE struct rather than of a list of fields worth caring about.
+// The first version enumerated the pattern slices and missed
+// HandlerInterfaceMethods, the RequestContext accessors and most of
+// ResponseContext — so a config setting only one of those had its entire
+// framework block replaced and the setting silently discarded. Any field added
+// later would have joined them; this cannot drift, and
+// TestHasFrameworkOpinionCoversEveryField fails if a field is ever added that
+// reflection cannot see.
 func (c *APISpecConfig) hasFrameworkOpinion() bool {
-	f := c.Framework
-	return len(f.RoutePatterns) > 0 || len(f.MountPatterns) > 0 ||
-		len(f.RequestBodyPatterns) > 0 || len(f.ResponsePatterns) > 0 ||
-		len(f.ParamPatterns) > 0 || len(f.SecurityPatterns) > 0 ||
-		len(f.EntrypointPatterns) > 0 || len(f.RequestContext.TypeRegexes) > 0 ||
-		len(f.ResponseContext.WriterTypeRegexes) > 0
+	return !reflect.ValueOf(c.Framework).IsZero()
 }
