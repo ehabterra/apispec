@@ -30,6 +30,37 @@ type bodySourceResolver struct {
 	contextProvider ContextProvider
 	typeREs         []*regexp.Regexp
 	accessorREs     []*regexp.Regexp
+	readers         []BodyReader
+}
+
+// matchBodyReader reports whether a call is a configured body reader, and where
+// its source argument sits. An empty PkgRegex matches any package.
+//
+// A negative SourceArgIndex declines the reader rather than being returned: the
+// value comes from a user's config file, and every caller indexes with it.
+func (r *bodySourceResolver) matchBodyReader(calleeFunc, calleePkg string) (int, bool) {
+	if calleeFunc == "" {
+		return 0, false
+	}
+	for _, reader := range r.readers {
+		if reader.SourceArgIndex < 0 {
+			continue
+		}
+		if reader.CallRegex != "" {
+			re, err := cachedRegex(reader.CallRegex)
+			if err != nil || !re.MatchString(calleeFunc) {
+				continue
+			}
+		}
+		if reader.PkgRegex != "" {
+			re, err := cachedRegex(reader.PkgRegex)
+			if err != nil || !re.MatchString(calleePkg) {
+				continue
+			}
+		}
+		return reader.SourceArgIndex, true
+	}
+	return 0, false
 }
 
 // newBodySourceResolver compiles the configured regexes once. Returns a
@@ -51,6 +82,7 @@ func newBodySourceResolver(cfg *APISpecConfig, contextProvider ContextProvider) 
 			r.accessorREs = append(r.accessorREs, re)
 		}
 	}
+	r.readers = cfg.Framework.RequestContext.BodyReaders
 	return r
 }
 
@@ -80,6 +112,21 @@ func (r *bodySourceResolver) IsRequestSource(arg *metadata.CallArgument, edge *m
 type chainSegment struct {
 	name   string
 	isCall bool
+	// node is the expression this segment ends at — `c.Req` for the `Req` of
+	// `c.Req.Body` — so the chain can be asked what type it has PART WAY along.
+	// See chainMatches.
+	node *metadata.CallArgument
+}
+
+// chainType returns the type of the expression a segment ends at.
+func (s chainSegment) chainType() string {
+	if s.node == nil {
+		return ""
+	}
+	if t := s.node.GetResolvedType(); t != "" {
+		return t
+	}
+	return s.node.GetType()
 }
 
 func (r *bodySourceResolver) check(arg *metadata.CallArgument, edge *metadata.CallGraphEdge, visited map[string]bool) bool {
@@ -109,8 +156,8 @@ func (r *bodySourceResolver) check(arg *metadata.CallArgument, edge *metadata.Ca
 		}
 		// Root may itself be a variable whose origin yields a body source —
 		// e.g. body := r.Body; json.NewDecoder(body).Decode(...).
-		if root != nil && root.GetKind() == metadata.KindIdent {
-			return r.checkIdent(root, edge, visited)
+		if root != nil && root.GetKind() == metadata.KindIdent && r.checkIdent(root, edge, visited) {
+			return true
 		}
 		return false
 
@@ -121,21 +168,59 @@ func (r *bodySourceResolver) check(arg *metadata.CallArgument, edge *metadata.Ca
 }
 
 // chainMatches reports whether the (root, segs) chain points at a request
-// body. The root's type (or its traced origin's type) must match one of the
-// configured TypeRegexes and the dotted accessor must match one of the
-// configured BodyAccessors.
+// body: some prefix of the chain must have a type matching one of the
+// configured TypeRegexes, and the accessors that FOLLOW that prefix must match
+// one of the configured BodyAccessors.
+//
+// The request is not always the root. A house context holds it in a field —
+// `c.Req.Body`, which is gitea's shape — so every prefix is offered its turn as
+// the request rather than the root alone. Reading only the root's type answered
+// "this decoder reads nothing from the request" for every project that owns a
+// context type, which stayed invisible because the two callers both had a
+// reason not to notice: at extraction time the derived wrapper pattern
+// documents the body instead, and the derivation itself did not consult this
+// check at all — so it could not tell a context's own `c.Req.Body` from an
+// outbound `http.Response` decode, and read both as request bodies (#513).
+//
+// Walking past the root is allowed only when the root is something the handler
+// was GIVEN — a parameter or a receiver — and not a local it built. Both of
+// these reach an `*http.Request` one accessor in, and only the first is the
+// request being served:
+//
+//	c.Req.Body           // c is the receiver: the context holds our request
+//	resp.Request.Body    // resp came from http.Get: the request we SENT
+//
+// A local's own type is still read at i == 0, which is how
+// `req := r; req.Body` keeps working — and is why an outbound request assigned
+// to a local is accepted there, as it always has been. Closing that needs
+// provenance run to the handler's own parameter, which is what #513 describes
+// in full and this does not attempt.
 func (r *bodySourceResolver) chainMatches(root *metadata.CallArgument, segs []chainSegment, edge *metadata.CallGraphEdge) bool {
 	if root == nil || root.GetKind() != metadata.KindIdent || len(segs) == 0 {
 		return false
 	}
-	rootType := r.identType(root, edge)
-	if rootType == "" {
-		return false
+	// i is how many leading accessors belong to the request's own path: 0
+	// offers the root, 1 the root plus one accessor, and so on. The last
+	// segment is never offered, since something has to remain to match as the
+	// body accessor.
+	rootIsGiven := len(assignmentsAt(r.contextProvider, edge, root.GetName())) == 0
+	for i := range segs {
+		typ := ""
+		if i == 0 {
+			// The root alone, where a traced origin can supply the type a bare
+			// ident does not carry.
+			typ = r.identType(root, edge)
+		} else if rootIsGiven {
+			typ = segs[i-1].chainType()
+		}
+		if typ == "" || !matchAny(r.typeREs, typ) {
+			continue
+		}
+		if matchAny(r.accessorREs, accessorString(segs[i:])) {
+			return true
+		}
 	}
-	if !matchAny(r.typeREs, rootType) {
-		return false
-	}
-	return matchAny(r.accessorREs, accessorString(segs))
+	return false
 }
 
 // checkIdent traces an ident through assignments and parameter boundaries to
@@ -156,12 +241,31 @@ func (r *bodySourceResolver) checkIdent(arg *metadata.CallArgument, edge *metada
 	// edge's map first, then the enclosing handler function's scope — a source
 	// assigned in the handler body lives on the Function, not on the Decode call
 	// edge. Latest-wins, consistent with TraceVariableOrigin.
-	if rhs := latestAssignment(r.contextProvider, edge, name); rhs != nil {
+	assigns := assignmentsAt(r.contextProvider, edge, name)
+	if len(assigns) > 0 {
+		last := assigns[len(assigns)-1]
+		rhs := last.Value
 		if rhs.Meta == nil {
 			rhs.Meta = arg.Meta
 		}
-		if r.check(rhs, edge, visited) {
+		if r.check(&rhs, edge, visited) {
 			return true
+		}
+		// The bytes may have been READ from the request rather than named by
+		// it: `data, _ := io.ReadAll(r.Body)` and then `json.Unmarshal(data,
+		// &v)`. What a configured reader returns is whatever it was reading,
+		// so the question passes to that call's source argument.
+		//
+		// Read off the assignment's recorded callee, the way the response side
+		// unwraps a serializer (BodyTransforms, issue #195), rather than by
+		// walking into every call the value came from: naming the readers keeps
+		// this a regex check on a field already recorded, where the general walk
+		// ran a full origin trace per argument and cost 10% of a run on gitea.
+		if idx, ok := r.matchBodyReader(last.CalleeFunc, last.CalleePkg); ok &&
+			rhs.GetKind() == metadata.KindCall && idx < len(rhs.Args) {
+			if r.check(rhs.Args[idx], edge, visited) {
+				return true
+			}
 		}
 	}
 
@@ -244,7 +348,7 @@ func peelAccessorChain(arg *metadata.CallArgument) (*metadata.CallArgument, []ch
 			if cur.Sel != nil {
 				name = cur.Sel.GetName()
 			}
-			segs = append(segs, chainSegment{name: name})
+			segs = append(segs, chainSegment{name: name, node: cur})
 			cur = cur.X
 		case metadata.KindCall:
 			// A method call is a selector wrapped in a call.
@@ -255,7 +359,7 @@ func peelAccessorChain(arg *metadata.CallArgument) (*metadata.CallArgument, []ch
 			if cur.Fun.Sel != nil {
 				name = cur.Fun.Sel.GetName()
 			}
-			segs = append(segs, chainSegment{name: name, isCall: true})
+			segs = append(segs, chainSegment{name: name, isCall: true, node: cur})
 			cur = cur.Fun.X
 		case metadata.KindIdent:
 			// Reverse to root→leaf order.

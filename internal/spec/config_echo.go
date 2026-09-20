@@ -27,6 +27,7 @@ var echoRequestContext = RequestContextConfig{
 		`^Request\(\)\.Body$`,
 		`^Body$`,
 	},
+	BodyReaders: stdlibBodyReaders(),
 }
 
 // DefaultEchoConfig returns a default configuration for the Echo framework.
