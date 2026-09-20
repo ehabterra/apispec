@@ -95,10 +95,10 @@ apispec ./cmd/api -o openapi.yaml # or point at a subdirectory
 
 ### Fail the build when the spec comes out incomplete
 
-By default every shortfall is a warning on stderr, and the run exits `0`. In CI
-those lines scroll past, and their effect is invisible in the spec diff: an
-operation whose `security` block was dropped reads exactly like an operation
-that genuinely has none. `--strict` turns them into exit code **3** — distinct
+By default a shortfall is a warning on stderr at most, and the run exits `0`.
+In CI those lines scroll past, and their effect is invisible in the spec diff:
+an operation whose `security` block was dropped reads exactly like an operation
+that genuinely has none. `--strict` makes the run exit **3** instead — distinct
 from `1`, so a script can tell "apispec could not run" from "apispec ran and
 the result is below the bar".
 
@@ -118,6 +118,12 @@ apispec -o openapi.yaml --strict=security,paths       # only these (attach with 
 The spec is written either way, and is byte-identical to a non-strict run —
 `--strict` decides an exit code, never a document — so a failing job can still
 publish the artifact and diff it.
+
+One case has no warning to promote: `security` also fires when the config
+declares no `securityMappings` at all. The stderr line stays quiet there
+because auth detection is effectively off and it would be noise on every run,
+but that is the *worst* case of this finding — every guarded endpoint is
+public in the document — not an exempt one.
 
 ### What comes out
 

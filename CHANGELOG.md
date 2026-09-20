@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`--strict`: a shortfall can now fail the build.** Every condition it gates
-  on was already detected and already printed — what was missing is a
-  consequence. In a 16-second CI log a `[security] … not mapped to a security
-  scheme` line scrolls past, and its effect is invisible in the spec diff to
-  anyone not already looking for it: an operation whose `security` block was
-  dropped reads exactly like an operation that genuinely has none. The same
+  on was already detected, and all but one case already printed — what was
+  missing is a consequence. In a 16-second CI log a `[security] … not mapped to
+  a security scheme` line scrolls past, and its effect is invisible in the spec
+  diff to anyone not already looking for it: an operation whose `security` block
+  was dropped reads exactly like an operation that genuinely has none. The same
   goes for a route that lost its path, a response that lost its schema, and a
   package that never loaded.
 

@@ -384,7 +384,7 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	// No backquotes in this usage string: PrintDefaults reads a backquoted word
 	// as the flag's value name.
 	fs.Var(&config.Strict, "strict",
-		"Exit "+strconv.Itoa(strictExitCode)+" when the spec came out incomplete, instead of only warning about it. "+
+		"Exit "+strconv.Itoa(strictExitCode)+" when the spec came out incomplete, instead of exiting 0. "+
 			"Bare --strict gates on everything; --strict=<categories> (comma-separated, attached with =) gates on "+
 			strings.Join(engine.StrictCategoryNames(), ", ")+" only")
 
@@ -727,9 +727,13 @@ func strictExit(config *CLIConfig, genEngine *engine.Engine) int {
 	if len(findings) == 0 {
 		return 0
 	}
-	// On stderr, alongside the warnings these promote, and phrased so the line
-	// stands on its own: in a folded CI log this may be the only thing read.
-	log.Printf("[strict] %d quality gate(s) failed:", len(findings))
+	// On stderr, alongside the warnings these mostly promote, and phrased so the
+	// line stands on its own: in a folded CI log this may be the only thing read.
+	//
+	// Findings, not gates: one category can produce more than one — `schemas`
+	// reports a response that lost its schema and a reference that lost its
+	// component separately, because they are different things to go and look at.
+	log.Printf("[strict] %d strict finding(s), the spec came out incomplete:", len(findings))
 	for _, f := range findings {
 		log.Printf("[strict]   %s", f)
 	}

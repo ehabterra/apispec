@@ -55,7 +55,7 @@ make build
 | `--cpu-profile` | Enable CPU profiling | `false` |
 | `--mem-profile` | Enable memory profiling | `false` |
 | `--skip-cgo` | Skip CGO packages during analysis | `true` |
-| `--strict[=categories]` | Exit `3` when the spec came out incomplete, instead of only warning. Categories: `security`, `paths`, `schemas`, `truncation`, `packages` — see [docs/TOOLS.md](../../docs/TOOLS.md) | off |
+| `--strict[=categories]` | Fail the run (exit `3`) on a quality shortfall instead of exiting `0`. Categories: `security`, `paths`, `schemas`, `truncation`, `packages` — see [docs/TOOLS.md](../../docs/TOOLS.md) | off |
 
 ## Examples
 

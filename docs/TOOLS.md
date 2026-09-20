@@ -87,15 +87,16 @@ overrides `--dir` (`apispec ./api -o spec.yaml`).
 | `--mutex-profile-path`      |           | Mutex profile filename                                 | `mutex.prof`                    |
 | `--trace-profile-path`      |           | Trace filename                                         | `trace.out`                     |
 | `--metrics-path`            |           | Custom metrics filename                                | `metrics.json`                  |
-| `--strict[=categories]`     |           | Exit `3` on a quality shortfall instead of only warning | off                            |
+| `--strict[=categories]`     |           | Exit `3` on a quality shortfall instead of exiting `0`  | off                             |
 | `--verbose`                 | `-vb`     | Verbose output (derived patterns, entrypoints, skips)  | `false`                         |
 | `--version`                 | `-V`      | Print version and exit                                 | `false`                         |
 
 ### `--strict`
 
-Promotes the warnings a run already prints to a non-zero exit, for CI. Bare
-`--strict` gates on everything; a value (attached with `=`, as with any Go bool
-flag) narrows it: `--strict=security,paths`.
+Fails a run whose spec came out incomplete, for CI — mostly by promoting
+warnings the run already prints. Bare `--strict` gates on everything; a value
+(attached with `=`, as with any Go bool flag) narrows it:
+`--strict=security,paths`.
 
 | Category | Fails when | What it costs the document |
 |---|---|---|
@@ -104,6 +105,11 @@ flag) narrows it: `--strict=security,paths`.
 | `schemas`    | a response came out with an empty schema, or a `$ref` had no component | the operation is there, its **shape is not** |
 | `truncation` | `--max-nodes` or `--max-nodes-per-route` cut the walk short | the operation reads as finished with **fewer params/responses** than the code has |
 | `packages`   | in-module packages failed to load or parse | whatever they registered is absent, by an **unknown amount** |
+
+`security` is the one category that can fire with no warning above it: the
+stderr line stays quiet when the config declares no `securityMappings` at all,
+since auth detection is then effectively off and it would be noise on every
+run. The gate does not exempt that case — it is the worst one.
 
 Exit `3` rather than `1`, so a script can distinguish "apispec could not run"
 from "apispec ran and the result is below the bar". `--strict=false` turns the

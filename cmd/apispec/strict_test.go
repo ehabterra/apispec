@@ -158,7 +158,10 @@ func main() { fmt.Println(greet("world")) }
 		t.Fatalf("exit code = %d, want %d\nlog: %s", code, strictExitCode, buf.String())
 	}
 	got := buf.String()
-	for _, want := range []string{"[strict]", "quality gate(s) failed", "[paths]", "0 paths documented"} {
+	// "finding(s)", not "gate(s)": one category can produce several — `schemas`
+	// reports a lost response schema and a lost component separately — so a
+	// count of gates would be wrong whenever it mattered.
+	for _, want := range []string{"[strict]", "strict finding(s)", "[paths]", "0 paths documented"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("report does not mention %q\ngot: %s", want, got)
 		}
