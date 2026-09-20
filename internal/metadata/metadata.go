@@ -1013,6 +1013,38 @@ func processLocalAnonymousStructs(file *ast.File, info *types.Info, pkgName stri
 		}
 		vars = append(vars, anonVar{st: st, key: key})
 	}
+	// The same treatment for a composite literal written INLINE:
+	//
+	//	respondJSON(w, 200, struct{ Values []string }{…})
+	//
+	// It has no *types.Var, so info.Defs does not see it and the loop above
+	// never did. Assigning the identical value to a variable first registered a
+	// type and documented the body; passing it inline documented a 200 with no
+	// content at all — the variable-vs-inline split golden rule #11 warns about
+	// for routers, showing up for values (issue #515).
+	//
+	// Keyed on the LITERAL's position, which handleCompositeLit derives the same
+	// way, so the argument's synthetic type name and this registration agree.
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || lit.Type == nil {
+			return true
+		}
+		// Only an anonymous struct. A named type resolves by its own name, and
+		// a map or slice literal is described by its type expression.
+		if _, ok := lit.Type.(*ast.StructType); !ok {
+			return true
+		}
+		st, ok := info.TypeOf(lit).(*types.Struct)
+		if !ok {
+			return true
+		}
+		if key := AnonStructKey(lit.Pos(), fset, pkgName); key != "" {
+			vars = append(vars, anonVar{st: st, key: key})
+		}
+		return true
+	})
+
 	slices.SortFunc(vars, func(a, b anonVar) int { return strings.Compare(a.key, b.key) })
 	for _, v := range vars {
 		if _, exists := f.Types[v.key]; exists {

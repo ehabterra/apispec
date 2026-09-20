@@ -430,6 +430,21 @@ func handleCompositeLit(e *ast.CompositeLit, info *types.Info, pkgName string, f
 	arg.X = typeExpr
 	arg.Args = elts
 	arg.SetPosition(meta.positionString(e.Pos(), fset))
+	// An INLINE anonymous struct carries the synthetic key its registration
+	// used, exactly as handleIdent does for a variable of one. Without it the
+	// literal reached the mapper as a bare composite with no type: its fields
+	// live on the `struct_type` type expression, which nothing resolves, so the
+	// response documented a status with no content (issue #515).
+	//
+	// Only an anonymous struct. A named type is found by its own name, and a
+	// map or slice literal IS described by its type expression — which is why
+	// `map[string]any{…}` resolved through the same helper all along and this
+	// shape did not.
+	if st, ok := e.Type.(*ast.StructType); ok && st != nil && info != nil {
+		if _, isStruct := info.TypeOf(e).(*types.Struct); isStruct {
+			arg.SetType(AnonStructKey(e.Pos(), fset, pkgName))
+		}
+	}
 	return arg
 }
 

@@ -168,6 +168,19 @@ func (c *ContextProviderImpl) callArgToString(arg *metadata.CallArgument, sep *s
 		}
 		return "*"
 	case metadata.KindCompositeLit:
+		// An INLINE anonymous struct is named by the synthetic key metadata
+		// registered for it, exactly as a variable of one is. Its type
+		// expression is a `struct_type` node whose fields nothing here reads, so
+		// rendering X returned "" and the response documented a status with no
+		// content — while the identical value assigned to a variable first
+		// resolved perfectly (issue #515).
+		//
+		// Checked before X, and only for this shape: every other literal IS
+		// described by its type expression, which is why `map[string]any{…}` and
+		// `[]T{…}` through the same helper worked all along.
+		if t := arg.GetType(); t != "" && metadata.IsAnonStructTypeName(t) {
+			return t
+		}
 		if arg.X != nil {
 			// A composite literal's type expression can be a generic
 			// instantiation (Page[User]{...} / Pair[K,V]{...}), possibly
