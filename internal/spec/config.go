@@ -391,17 +391,25 @@ type SchemaConfig struct {
 	// null-checked every one (issue #516).
 	RequiredFromJSONTags bool `yaml:"requiredFromJSONTags,omitempty" json:"requiredFromJSONTags,omitempty"`
 
-	// NullableFromPointers admits `null` for a `*T` field with no
-	// `omitempty` — which encoding/json always writes, as `null` when the
-	// pointer is nil. Without it the document claims a shape the API does not
+	// NullableWhenNil admits `null` for a field whose zero value encoding/json
+	// writes as null — a nil pointer, slice, map or interface — when it has no
+	// `omitempty`. Without it the document claims a shape the API does not
 	// guarantee, and a client validating against it rejects a response the
 	// server legitimately sends (issue #368).
+	//
+	// Not pointers alone: a nil `[]T` is written as `null` exactly as a nil
+	// `*T` is, and `Items []Item` is on every list response there is. A string
+	// and a fixed-size array cannot be nil and are never widened.
+	//
+	// Opt-in partly because of a convention it cannot see: many Go services
+	// deliberately return `[]T{}` rather than nil, so `null` never appears on
+	// them and widening every array would be noise.
 	//
 	// The other half of RequiredFromJSONTags, and they compose: the same field
 	// is always PRESENT and sometimes NULL. Turning on `required` without this
 	// is the one combination that is worse than neither, so a project enabling
 	// that should enable this too.
-	NullableFromPointers bool `yaml:"nullableFromPointers,omitempty" json:"nullableFromPointers,omitempty"`
+	NullableWhenNil bool `yaml:"nullableWhenNil,omitempty" json:"nullableWhenNil,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names

@@ -54,7 +54,7 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 	noDanglingRefs(t, out)
 	item := itemSchema(t, out)
 
-	want := []string{"id", "name", "owner", "ptr", "tags", "validated", "when"}
+	want := []string{"extra", "id", "labels", "name", "owner", "pair", "ptr", "tags", "validated", "when"}
 	got := append([]string(nil), item.Required...)
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -66,6 +66,7 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 		{"optional", "omitempty"},
 		{"zeroable", "omitzero (Go 1.24)"},
 		{"ptrOpt", "a pointer WITH omitempty is absent when nil"},
+		{"skipped", "a slice WITH omitempty is absent when nil"},
 		{"trace", "promoted through an embedded POINTER: gone entirely when Meta is nil"},
 	} {
 		if slices.Contains(item.Required, tc.field) {
@@ -93,7 +94,7 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 	// reorder the `required` list of every project already using
 	// validate:"required" for no gain.
 	t.Run("follows declaration order", func(t *testing.T) {
-		if strings.Join(item.Required, ",") != "id,name,ptr,validated,when,owner,tags" {
+		if strings.Join(item.Required, ",") != "id,name,ptr,validated,when,owner,tags,labels,extra,pair" {
 			t.Errorf("required = %v, want declaration order", item.Required)
 		}
 	})

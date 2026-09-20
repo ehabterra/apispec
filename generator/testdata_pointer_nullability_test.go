@@ -25,7 +25,7 @@ import (
 func nullableConfig(on bool) *intspec.APISpecConfig {
 	cfg := intspec.DefaultChiConfig()
 	cfg.Schema.RequiredFromJSONTags = true
-	cfg.Schema.NullableFromPointers = on
+	cfg.Schema.NullableWhenNil = on
 	return cfg
 }
 
@@ -77,17 +77,49 @@ func TestTestdata_PointerNullability(t *testing.T) {
 		}
 	})
 
-	t.Run("a pointer to a slice", func(t *testing.T) {
-		// The union wraps the array; the ITEMS are not nullable.
+	// The shape a pointers-only rule missed, and the one every list response
+	// has: a nil slice is written as `null` exactly as a nil pointer is.
+	t.Run("a plain slice", func(t *testing.T) {
 		inner, ok := admitsNull(item.Properties["tags"])
 		if !ok {
-			t.Fatalf("tags = %+v, want a union admitting null", item.Properties["tags"])
+			t.Fatalf("tags = %+v, want a union admitting null — a nil slice encodes as null",
+				item.Properties["tags"])
 		}
 		if inner.Type != "array" {
 			t.Errorf("the non-null branch = %q, want array", inner.Type)
 		}
+		// The union wraps the FIELD; the items are not nullable.
 		if _, itemsNull := admitsNull(inner.Items); itemsNull {
 			t.Error("the array's items admit null; only the field does")
+		}
+	})
+
+	t.Run("a plain map", func(t *testing.T) {
+		if _, ok := admitsNull(item.Properties["labels"]); !ok {
+			t.Errorf("labels = %+v, want a union — a nil map encodes as null",
+				item.Properties["labels"])
+		}
+	})
+
+	t.Run("an interface", func(t *testing.T) {
+		if _, ok := admitsNull(item.Properties["extra"]); !ok {
+			t.Errorf("extra = %+v, want a union — an interface holding nothing is null",
+				item.Properties["extra"])
+		}
+	})
+
+	// The distinction that makes prefix-matching on "[" wrong: a fixed-size
+	// array CANNOT be nil, and is written as an array of zero values.
+	t.Run("a fixed-size array", func(t *testing.T) {
+		if _, ok := admitsNull(item.Properties["pair"]); ok {
+			t.Errorf("pair = %+v; [2]string cannot be nil", item.Properties["pair"])
+		}
+	})
+
+	t.Run("a slice WITH omitempty", func(t *testing.T) {
+		if _, ok := admitsNull(item.Properties["skipped"]); ok {
+			t.Errorf("skipped = %+v; with omitempty the field is absent, never null",
+				item.Properties["skipped"])
 		}
 	})
 
@@ -128,7 +160,7 @@ func TestTestdata_PointerNullabilityIsOptIn(t *testing.T) {
 	out := loadTestdata(t, "required_from_tags", nullableConfig(false))
 	item := itemSchema(t, out)
 
-	for _, field := range []string{"ptr", "owner", "tags"} {
+	for _, field := range []string{"ptr", "owner", "tags", "labels", "extra"} {
 		if _, ok := admitsNull(item.Properties[field]); ok {
 			t.Errorf("%q admits null with the option off", field)
 		}
