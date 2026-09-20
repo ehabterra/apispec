@@ -126,6 +126,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An inline struct literal is a response body.**
+  `respondJSON(w, 200, struct{ Values []string }{…})` documented a 200 with no
+  content at all, while the identical value assigned to a variable first
+  resolved perfectly. It was the single miss among 575 statically-typed
+  responses in a downstream consumer's review.
+
+  The variable-vs-inline split golden rule #11 warns about for routers, showing
+  up for values. A variable of an anonymous struct type has a synthetic type
+  registered for it and an ident that names it; the literal had neither, so it
+  reached the mapper as a bare composite whose fields live on a `struct_type`
+  node nothing reads. A map literal through the same helper always worked,
+  because a map IS described by its type expression — which is also why the fix
+  reads the literal's own type first and leaves every other literal on the path
+  it already took.
+
+  Fixed at the metadata layer, where the fact was missing (golden rule #9):
+  an inline anonymous struct now registers the same synthetic type a variable of
+  one does, keyed on the literal's position, and the argument carries that name.
+  A literal encoded directly also gains its **200** — the implicit-status rule
+  needs a body to apply to, so the missing body had taken the status with it.
+  Zero drift on 138 fixtures. (#515)
+
 - **The unmapped-middleware warning is about auth again.** Every middleware in a
   `Use`/group/per-route slot was announced as *"auth middleware not mapped to a
   security scheme"* — and on a normal service most of it is logging, recovery,
