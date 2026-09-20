@@ -99,3 +99,83 @@ func TestTestdata_StreamedBody(t *testing.T) {
 		}
 	})
 }
+
+// TestTestdata_StreamedBodyPerFramework is the other half of #517, and the
+// reason golden rule #5 is a rule: the feature shipped working on net/http,
+// chi and mux, and was silently dead on every other router.
+//
+// The media type is read off the handler's own `Content-Type`, but a
+// declaration only counts when it is made ON THE RESPONSE — otherwise a
+// `Header().Set` on an OUTBOUND request would document a body on whatever
+// operation reaches it. That check is `ResponseContext.WriterTypeRegexes`, and
+// an empty list disables it, so the pattern refused to claim anything at all
+// rather than claim something it could not place (golden rule #7). gin, echo
+// and fiber declared none, so all three documented a CSV export as an endpoint
+// that can only return 500.
+//
+// Each framework reaches its writer differently, which is exactly why this is
+// a fixture per framework and not one parameterised assertion: gin exposes
+// net/http's writer as `c.Writer`, echo as `c.Response()`, and fiber uses no
+// net/http at all — a stream there is handed `c.Response().BodyWriter()`.
+func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
+	frameworks := []struct {
+		name    string
+		fixture string
+		cfg     *intspec.APISpecConfig
+		writer  string
+	}{
+		{"gin", "streamed_body_gin", intspec.DefaultGinConfig(), "c.Writer, declared with the c.Header shorthand or through net/http's header map"},
+		{"echo", "streamed_body_echo", intspec.DefaultEchoConfig(), "c.Response(), which is an http.ResponseWriter — no shorthand needed"},
+		{"fiber", "streamed_body_fiber", intspec.DefaultFiberConfig(), "c.Response().BodyWriter(), over fasthttp rather than net/http"},
+	}
+
+	// Same two shapes on every router, so a framework that resolves one and not
+	// the other is visible rather than averaged away.
+	streams := []struct{ path, mediaType string }{
+		{"/export.csv", "text/csv"},
+		{"/file.pdf", "application/pdf"},
+	}
+
+	for _, fw := range frameworks {
+		t.Run(fw.name, func(t *testing.T) {
+			out := loadTestdata(t, fw.fixture, fw.cfg)
+			noDanglingRefs(t, out)
+
+			for _, s := range streams {
+				op := opFor(out.Paths[s.path], "GET")
+				if op == nil {
+					t.Fatalf("GET %s missing; have %v", s.path, mapPathKeys(out.Paths))
+				}
+				resp, ok := op.Responses["200"]
+				if !ok {
+					t.Fatalf("GET %s documents no success on %s — it streams to %s; have %v",
+						s.path, fw.name, fw.writer, statusKeys(op))
+				}
+				if _, ok := resp.Content[s.mediaType]; !ok {
+					got := make([]string, 0, len(resp.Content))
+					for k := range resp.Content {
+						got = append(got, k)
+					}
+					t.Errorf("GET %s 200 content = %v, want %q — the type the handler declares, not a per-writer guess",
+						s.path, got, s.mediaType)
+				}
+			}
+
+			// The negative the writer types exist for: a csv.Writer over a FILE
+			// is not this operation's body, on any router. Asserted on the media
+			// type rather than on the status, because what the frameworks emit
+			// for a body-less status-only reply differs and is not this test's
+			// subject.
+			op := opFor(out.Paths["/internal"], "GET")
+			if op == nil {
+				t.Fatalf("GET /internal missing on %s", fw.name)
+			}
+			for status, resp := range op.Responses {
+				if _, ok := resp.Content["text/csv"]; ok {
+					t.Errorf("GET /internal %s documents text/csv on %s; its csv.Writer writes to a file, not to the response",
+						status, fw.name)
+				}
+			}
+		})
+	}
+}

@@ -52,14 +52,8 @@ var netHTTPResponseContext = ResponseContextConfig{
 	// listed: a locally-built recorder is writer-typed but is not the handler's
 	// response writer, so encoding to it must not count as the response
 	// (provenance, not type — CodeRabbit review on PR #181).
-	WriterTypeRegexes: []string{
-		`^net/http\.ResponseWriter$`,
-	},
-	WriterCompatibleTypeRegexes: []string{
-		`^io\.Writer$`,
-		`^io\.WriteCloser$`,
-		`^io\.ReadWriter$`,
-	},
+	WriterTypeRegexes:           frameworkWriterTypes(),
+	WriterCompatibleTypeRegexes: writerCompatibleTypes(),
 	// Serializers whose result, when written to the response writer, carries the
 	// response body's type on their payload argument (issue #195). Serializer-
 	// level, not framework-level, so every net/http-family framework shares it.
@@ -329,6 +323,43 @@ func frameworkCredentialReads(ctxRecvTypeRegex string) CredentialReadConfig {
 func stdlibContentTypeWrites() []ContentTypeWrite {
 	return []ContentTypeWrite{
 		{CallRegex: `^Set$`, RecvTypeRegex: `^\*?(net/http\.)?Header$`, NameArgIndex: 0, ValueArgIndex: 1},
+	}
+}
+
+// frameworkWriterTypes is the write-side provenance seed: the types a value has
+// to trace back to for a write to be THE RESPONSE rather than a buffer, a log,
+// or an outbound request.
+//
+// Every framework gets `net/http.ResponseWriter`, because every one of them
+// exposes it — gin's `c.Writer`, echo's `c.Response()`, and a handler that
+// takes `http.ResponseWriter` directly under any router. A framework whose own
+// writer is a distinct type passes it here, and that list is what a project
+// with a house writer extends.
+//
+// Naming these is not cosmetic: an empty list disables the resolver entirely,
+// and a framework with no writer types documents NO streamed body, because the
+// content-type pattern refuses to claim one it cannot place on the response
+// (extractor.go, issue #517). gin, echo and fiber had none, so the streamed
+// half of #517 worked on net/http, chi and mux alone.
+//
+// Independently-constructible concretes stay OUT, here as in net/http's own
+// list: `httptest.NewRecorder()` is writer-typed and is not the handler's
+// response, so provenance is to the handler's own writer, never to a type.
+func frameworkWriterTypes(extra ...string) []string {
+	out := make([]string, 0, len(extra)+1)
+	out = append(out, `^net/http\.ResponseWriter$`)
+	return append(out, extra...)
+}
+
+// writerCompatibleTypes are the interfaces a response writer satisfies. A
+// destination that stays one of these is KEPT: `func writeCSV(w io.Writer, …)`
+// could be writing the response, and the resolver drops only what it can prove
+// is not (golden rule #7).
+func writerCompatibleTypes() []string {
+	return []string{
+		`^io\.Writer$`,
+		`^io\.WriteCloser$`,
+		`^io\.ReadWriter$`,
 	}
 }
 

@@ -88,13 +88,11 @@ right as far as they go, they just say less than your code knows.
   [`overrides`](CONFIGURATION.md#overrides) or a per-pattern
   `defaultContentType`. Which calls count as a declaration is configurable per
   framework (`responseContext.contentTypeWrites`), so a house context can be
-  added. Frameworks whose `responseContext` declares no writer types — gin,
-  echo and fiber today — document no streamed body at all, because the
-  declaration cannot be shown to be about the response rather than an outbound
-  request.
-- **No `--strict` mode.** Unresolved paths, truncated expansion and unmapped
-  middleware are reported on stderr and through the API
-  (`Generator.UnresolvedPaths()`), but they never change the exit code.
+  added. A declaration is only read when it can be shown to be about the
+  response rather than an outbound request, which takes
+  `responseContext.writerTypeRegexes`; every supported framework declares
+  those, but a **custom config that replaces the response context without them
+  documents no streamed body at all**.
 
 ## What APISpec cannot see
 

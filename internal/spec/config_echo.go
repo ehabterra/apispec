@@ -75,6 +75,10 @@ func DefaultEchoConfig() *APISpecConfig {
 				// still gets one.
 				// echo declares its media type through net/http: c.Response().Header().Set(k, v) — the stdlib entry covers it, so there is no shorthand to add.
 				ContentTypeWrites: stdlibContentTypeWrites(),
+				// echo's writer is `c.Response()`, an *echo.Response, which
+				// implements http.ResponseWriter and is what a stream is handed.
+				WriterTypeRegexes:           frameworkWriterTypes(`^\*?(github\.com/labstack/echo(/v\d+)?\.)?Response$`),
+				WriterCompatibleTypeRegexes: writerCompatibleTypes(),
 			},
 			CredentialReads: frameworkCredentialReads(`^github\.com/labstack/echo(/v\d+)?\.Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{

@@ -112,7 +112,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `c.Header`, fiber's `c.Set`, with echo reaching it through net/http — and a
   project with a house context declares its own. The body's schema says bytes
   rather than naming a Go type that was never encoded, and a declaration whose
-  value is decided at runtime documents nothing rather than guessing. (#517)
+  value is decided at runtime documents nothing rather than guessing.
+
+  A declaration only counts when it is made ON THE RESPONSE, or a
+  `Header().Set` on an *outbound* request would document a body on whatever
+  operation reaches it. That check needs `responseContext.writerTypeRegexes`,
+  and an empty list disables it — so gin, echo and fiber, which declared none,
+  shipped this feature dead: a CSV export there still documented an endpoint
+  that can only return 500. All three now declare their own writer (gin's
+  `c.Writer`, echo's `c.Response()`, fiber's `c.Response().BodyWriter()` over
+  fasthttp rather than net/http), with a fixture per framework. Zero drift on
+  the other 138. (#517)
 
 ### Fixed
 

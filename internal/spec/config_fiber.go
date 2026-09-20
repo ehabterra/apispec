@@ -97,6 +97,16 @@ func DefaultFiberConfig() *APISpecConfig {
 				// fiber: c.Set("Content-Type", v).
 				ContentTypeWrites: frameworkContentTypeWrites(
 					`^\*?(github\.com/gofiber/fiber(/v\d+)?\.)?Ctx$`, `^Set$`),
+				// fiber does not use net/http at all: a stream is handed
+				// `c.Response().BodyWriter()` (an io.Writer over fasthttp's
+				// response) or the Ctx itself, which has Write/WriteString. So
+				// the Ctx IS a writer here, unlike gin's and echo's contexts
+				// which merely expose one.
+				WriterTypeRegexes: frameworkWriterTypes(
+					`^\*?(github\.com/gofiber/fiber(/v\d+)?\.)?Ctx$`,
+					`^\*?(github\.com/valyala/fasthttp\.)?Response$`,
+				),
+				WriterCompatibleTypeRegexes: writerCompatibleTypes(),
 			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
