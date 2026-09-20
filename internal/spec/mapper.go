@@ -243,7 +243,7 @@ func shouldPromoteToComponent(key string, s *Schema) bool {
 	if !canAddRefSchemaForType(key) {
 		return false
 	}
-	return !isPrimitiveShapedSchema(s)
+	return !isInlineShapedSchema(s)
 }
 
 // GeneratorConfig holds generation configuration
@@ -1490,7 +1490,7 @@ func generateSchemas(usedTypes map[string]*Schema, cfg *APISpecConfig, component
 		// sites. They have no metadata type entry, so without this they'd be
 		// mistaken for unresolved and get a bogus object placeholder.
 		if s, _, ok := resolveExternalType(typeName, cfg, meta, usedTypes, map[string]bool{}); ok {
-			if s != nil && !isPrimitiveShapedSchema(s) {
+			if s != nil && !isInlineShapedSchema(s) {
 				// Non-primitive resolution (rare): emit it as a real component.
 				components.Schemas[schemaComponentNameReplacer.Replace(typeName)] = s
 			}
@@ -3434,7 +3434,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 	// marked used — otherwise a second occurrence hits the usedTypes guard and
 	// emits a $ref to a component generateSchemas never produces.
 	if s := lookupConfigSchema(cfg, goType); s != nil {
-		if !isPrimitiveShapedSchema(s) {
+		if !isInlineShapedSchema(s) {
 			markUsedType(usedTypes, goType, s)
 		}
 		return s, schemas
@@ -3460,7 +3460,7 @@ func mapGoTypeToOpenAPISchema(usedTypes map[string]*Schema, goType string, meta 
 		// shaped results (uuid → {string,uuid}, …) are inlined at every use
 		// site; marking them would make a second occurrence hit the recursion
 		// guard and emit a $ref to a component that is never generated.
-		if s != nil && !isPrimitiveShapedSchema(s) {
+		if s != nil && !isInlineShapedSchema(s) {
 			markUsedType(usedTypes, goType, s)
 		}
 		return s, schemas
@@ -4075,9 +4075,36 @@ func parseAnonField(field string) (name, fieldType, tag string, ok bool) {
 	return field[:sp], strings.TrimSpace(field[sp+1:]), tag, true
 }
 
+// isInlineShapedSchema reports whether a schema should be written at its use
+// site rather than named as a component.
+//
+// Two kinds qualify. A primitive-shaped one (uuid -> {string, uuid}) is small
+// enough that a component buys nothing. An UNCONSTRAINED one — no type, no
+// members, no items — buys even less: it constrains nothing, so a component
+// holding it would have no content at all, and `json.RawMessage` produced
+// exactly that (issue #518). A description documents such a schema without
+// narrowing it, so it does not make it nameable.
+//
+// This is the predicate every caller here actually wants; isPrimitiveShapedSchema
+// is only its first half.
+func isInlineShapedSchema(s *Schema) bool {
+	return isPrimitiveShapedSchema(s) || isUnconstrainedSchema(s)
+}
+
+// isUnconstrainedSchema reports whether a schema permits any JSON value.
+func isUnconstrainedSchema(s *Schema) bool {
+	if s == nil || s.Ref != "" {
+		return false
+	}
+	return s.Type == "" && s.Items == nil && s.Not == nil &&
+		len(s.Properties) == 0 && len(s.AllOf) == 0 &&
+		len(s.OneOf) == 0 && len(s.AnyOf) == 0 &&
+		len(s.Enum) == 0 && s.AdditionalProperties == nil
+}
+
 // isPrimitiveShapedSchema reports whether a schema carries only scalar/array
-// fields (Type/Format/Enum/Min/Max) with no structural members. Used by
-// shouldPromoteToComponent to keep simple shapes inline.
+// fields (Type/Format/Enum/Min/Max) with no structural members. Prefer
+// isInlineShapedSchema unless the primitive half is specifically meant.
 func isPrimitiveShapedSchema(s *Schema) bool {
 	if s == nil || s.Ref != "" {
 		return false
