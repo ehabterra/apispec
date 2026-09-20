@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--strict`: a shortfall can now fail the build.** Every condition it gates
+  on was already detected, and all but one case already printed — what was
+  missing is a consequence. In a 16-second CI log a `[security] … not mapped to
+  a security scheme` line scrolls past, and its effect is invisible in the spec
+  diff to anyone not already looking for it: an operation whose `security` block
+  was dropped reads exactly like an operation that genuinely has none. The same
+  goes for a route that lost its path, a response that lost its schema, and a
+  package that never loaded.
+
+  Five categories, gated together (`--strict`) or separately
+  (`--strict=security,paths`, value attached with `=`): `security` (endpoints
+  documented as public), `paths` (endpoints missing entirely), `schemas` (the
+  operation without its shape), `truncation` (an operation that reads as
+  finished and is not), `packages` (a shortfall of unknown size). Separate
+  because they are not equally tolerable — a project may accept a truncated
+  route while refusing to let an endpoint lose its documented authentication.
+
+  Exit code **3**, not 1: a CI script has to be able to tell "apispec could not
+  run" from "apispec ran and the result is below the bar", since the second is
+  a spec to look at and the first is a build to fix. The spec is still written,
+  and is byte-identical to a non-strict run — the flag decides an exit code,
+  never a document — so a failing job can publish the artifact and diff it.
+
+  One deliberate difference from the warning it promotes: the `security` gate
+  fires even when no `securityMappings` are configured at all. The stderr line
+  stays quiet there because auth detection is effectively off and it would be
+  noise on every run; a gate that was asked for is not noise, and a project
+  with auth middleware and no mappings is the worst case of this finding, not
+  an exempt one. (#297)
+
 - **`schema.nullableWhenNil`: a field the encoder writes as `null` says so.**
   A field whose zero value `encoding/json` writes as null — a nil pointer,
   slice, map or interface — with no `omitempty` is always written, and written
