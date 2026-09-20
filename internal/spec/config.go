@@ -371,6 +371,27 @@ type CredentialAccessor struct {
 	RecvTypeRegex string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 }
 
+// SchemaConfig carries the schema-shaping choices a project can make.
+type SchemaConfig struct {
+	// RequiredFromJSONTags derives `required` from what encoding/json does: a
+	// field with no `omitempty`/`omitzero` is always written, so it is always
+	// on the wire.
+	//
+	// Off by default, and opt-in rather than inferred, because it states what
+	// the SERVER SENDS. That is exactly right for a response and an
+	// over-claim for a request body — a client is not bound by the server's
+	// struct tags, and the server decodes a payload that omits the field
+	// perfectly happily. A type used as both therefore declares more than the
+	// server enforces, which is the trade a project takes on knowingly when it
+	// turns this on. `validate:"required"` remains the way to say a REQUEST
+	// field is mandatory, and is merged with this rather than replaced.
+	//
+	// Measured on a 452-schema service: 2,233 of 2,900 properties are always
+	// on the wire and none of them said so, so a generated TypeScript client
+	// null-checked every one (issue #516).
+	RequiredFromJSONTags bool `yaml:"requiredFromJSONTags,omitempty" json:"requiredFromJSONTags,omitempty"`
+}
+
 // MethodMapping defines how to extract HTTP methods from function names
 type MethodMapping struct {
 	Patterns []string `yaml:"patterns,omitempty" json:"patterns,omitempty"` // Function name patterns (e.g., ["get", "list", "show"])
@@ -1123,6 +1144,9 @@ type APISpecConfig struct {
 
 	// Defaults
 	Defaults Defaults `yaml:"defaults" json:"defaults,omitempty"`
+
+	// Schema selects how a Go type's schema is shaped beyond its field set.
+	Schema SchemaConfig `yaml:"schema,omitempty" json:"schema,omitempty"`
 
 	// Naming selects how operationIds and component names are spelled
 	// (issue #298). Both default to the fully-qualified Go symbol.

@@ -2286,6 +2286,15 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			}
 		}
 
+		// `required` from what encoding/json does, when the project asked for
+		// it. Merged with the validation tag above rather than replacing it:
+		// a field can be mandatory on the way in and always present on the way
+		// out, and appending twice would emit it twice (issue #516).
+		if requiredFromTags(cfg, ef, getStringFromPool(meta, field.Tag)) &&
+			!slices.Contains(schema.Required, fieldName) {
+			schema.Required = append(schema.Required, fieldName)
+		}
+
 		// Detect and apply enum values from constants if no enum was specified in tags
 		// Only apply enum detection for custom types (not built-in types)
 		if fieldSchema != nil && len(fieldSchema.Enum) == 0 {
@@ -2418,6 +2427,11 @@ func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta 
 			schema.Enum = enumValues
 		}
 	}
+
+	// Field order follows the declaration, but a field can be added to
+	// `required` from either the validation tag or the json one, so the list
+	// must not depend on which arrived first (golden rule #1).
+	sort.Strings(schema.Required)
 
 	return schema, schemas
 }
@@ -4357,4 +4371,58 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// requiredFromTags reports whether a field is always on the wire, and therefore
+// `required`, according to what encoding/json does with it.
+//
+// The rule is the encoder's, not a guess about it: a field with no
+// `omitempty` and no `omitzero` is written on every encode, whatever its value
+// — including a nil pointer, which is written as `null`. Nullability is a
+// separate statement about the VALUE and belongs to issue #368; this is only
+// about presence.
+//
+// Two shapes are excluded because the encoder does not guarantee them:
+//
+//   - a field promoted through an embedded POINTER, which contributes nothing
+//     at all when that pointer is nil;
+//   - every field of a type that marshals itself, where the field set is not
+//     the wire shape to begin with (issue #361).
+func requiredFromTags(cfg *APISpecConfig, ef effectiveField, tag string) bool {
+	if cfg == nil || !cfg.Schema.RequiredFromJSONTags {
+		return false
+	}
+	if ef.viaPointer {
+		return false
+	}
+	return !jsonTagOmitsEmpty(tag)
+}
+
+// jsonTagOmitsEmpty reports whether a json struct tag carries an option that
+// lets the encoder leave the field out — `omitempty`, or Go 1.24's `omitzero`.
+func jsonTagOmitsEmpty(tag string) bool {
+	opts := jsonTagOptions(tag)
+	for _, opt := range opts {
+		if opt == "omitempty" || opt == "omitzero" {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonTagOptions returns the comma-separated options of a json struct tag,
+// without its name.
+func jsonTagOptions(tag string) []string {
+	// Split on a string that CONTAINS the key always yields a second part, so
+	// there is nothing further to guard here.
+	parts := strings.Split(tag, "json:")
+	if len(parts) < 2 {
+		return nil
+	}
+	value := strings.Trim(strings.Split(parts[1], " ")[0], "\"")
+	fields := strings.Split(value, ",")
+	if len(fields) < 2 {
+		return nil
+	}
+	return fields[1:]
 }

@@ -370,3 +370,94 @@ type Deep8 struct{ L7 }
 			"encoding/json promotes the leaf", got)
 	}
 }
+
+// TestEffectiveFieldsCarryPointerEmbeds pins that a field promoted through an
+// embedded POINTER is marked as such, at any depth.
+//
+// encoding/json writes nothing at all for a nil embedded pointer, so those
+// fields can never be `required` however their own tags read — which is the
+// one thing the tag alone cannot tell you (issue #516).
+func TestEffectiveFieldsCarryPointerEmbeds(t *testing.T) {
+	meta := embedMeta(t, `
+type Leaf struct {
+	Deep string `+"`json:\"deep\"`"+`
+}
+type Mid struct {
+	Leaf
+	Mids string `+"`json:\"mids\"`"+`
+}
+type Value struct {
+	Own string `+"`json:\"own\"`"+`
+}
+type Outer struct {
+	Value
+	*Mid
+	Direct string `+"`json:\"direct\"`"+`
+}
+`)
+	typ := findType(meta, "p", "Outer")
+	if typ == nil {
+		t.Fatal("Outer not found")
+	}
+
+	viaPointer := map[string]bool{}
+	for _, ef := range effectiveJSONFields(meta, typ) {
+		viaPointer[jsonFieldName(meta, ef.field)] = ef.viaPointer
+	}
+
+	for name, want := range map[string]bool{
+		"direct": false, // declared here
+		"own":    false, // through a VALUE embed
+		"mids":   true,  // through the pointer embed
+		"deep":   true,  // and one level deeper still — the flag is sticky
+	} {
+		got, ok := viaPointer[name]
+		if !ok {
+			t.Errorf("%q is missing from the effective field set", name)
+			continue
+		}
+		if got != want {
+			t.Errorf("%q viaPointer = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestEffectiveFieldsTaggedPointerEmbed pins the other half of the pointer
+// rule: a TAGGED embed does not promote, it is an ordinary field carrying the
+// embedded object — and when that embed is a pointer, the field itself is the
+// one that can go missing, not the fields inside it.
+func TestEffectiveFieldsTaggedPointerEmbed(t *testing.T) {
+	meta := embedMeta(t, `
+type Meta struct {
+	Trace string `+"`json:\"trace\"`"+`
+}
+type Outer struct {
+	*Meta  `+"`json:\"meta\"`"+`
+	Direct string `+"`json:\"direct\"`"+`
+}
+`)
+	typ := findType(meta, "p", "Outer")
+	if typ == nil {
+		t.Fatal("Outer not found")
+	}
+
+	got := map[string]bool{}
+	for _, ef := range effectiveJSONFields(meta, typ) {
+		got[jsonFieldName(meta, ef.field)] = ef.viaPointer
+	}
+
+	// The tagged embed is one field named "meta"; "trace" is inside its schema,
+	// not promoted, so it is not in this set at all.
+	if _, promoted := got["trace"]; promoted {
+		t.Error("a TAGGED embed promoted its fields; it carries the object instead")
+	}
+	for _, name := range []string{"meta", "direct"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("%q is missing from the effective field set", name)
+		}
+	}
+	// Both are declared on Outer itself, so neither arrived through a pointer.
+	if got["meta"] || got["direct"] {
+		t.Errorf("a field declared on Outer was marked as promoted through a pointer: %v", got)
+	}
+}
