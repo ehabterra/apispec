@@ -91,7 +91,7 @@ func TestTestdata_OutboundDecodeWrapper(t *testing.T) {
 			why: "bytes read from the request body are still the request body",
 		},
 		{
-			name: "read into bytes first, through the wrapper",
+			name:   "read into bytes first, through the wrapper",
 			method: "POST", path: "/settings/replace", want: "Settings",
 			why: "the same read, one call further out",
 		},
