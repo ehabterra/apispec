@@ -3078,7 +3078,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
-	if !statusResolved && respInfo.BodyType == "" {
+	// A call that streams bytes has no body TYPE and no status of its own, so
+	// it reaches the guard below looking like nothing to document. It is not:
+	// the operation returns a body, and its schema says bytes rather than
+	// naming a Go value that was never encoded (issue #517).
+	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
+		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+	}
+
+	if !statusResolved && respInfo.BodyType == "" && respInfo.Schema == nil {
 		// Nothing to document. But a pattern that READS a status argument and
 		// failed is evidence that the handler states one — pass that on so a
 		// later body does not take the implicit status (issue #369).

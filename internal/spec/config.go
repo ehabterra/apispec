@@ -625,6 +625,16 @@ type ResponsePattern struct {
 	// NewEncoder's first argument x. Mirrors RequestBodyPattern.BodyFromReceiver.
 	DestFromReceiver bool `yaml:"destFromReceiver,omitempty" json:"destFromReceiver,omitempty"`
 
+	// OpaqueBody says this call writes a body whose content is BYTES rather
+	// than a Go value serialised into them — `csv.NewWriter(w).Write(row)`,
+	// `io.Copy(w, f)`. Such a call carries no body type to resolve and no
+	// status of its own, which is the exact combination ExtractResponse treats
+	// as "nothing to document" and drops. It IS something to document: the
+	// operation returns a body, of the pattern's content type, and its schema
+	// says bytes instead of naming a Go type that was never encoded
+	// (issue #517).
+	OpaqueBody bool `yaml:"opaqueBody,omitempty" json:"opaqueBody,omitempty"`
+
 	// Package/type filtering: narrow this pattern by where the call is MADE and
 	// what it is made on. Each list is a set of alternatives, an empty list is no
 	// constraint, and they are include filters. See callScope (call_scope.go).
@@ -1445,6 +1455,7 @@ func streamWriterPatterns() []ResponsePattern {
 			CallRegex:                  callRegex,
 			RecvTypeRegex:              `^\*?(` + pkg + `\.)?` + typeName + `$`,
 			CalleePkgPatterns:          []string{`^` + pkg + `$`},
+			OpaqueBody:                 true,
 			TypeArgIndex:               -1,
 			DefaultContentType:         contentType,
 			RequireResponseDestination: true,
@@ -1462,6 +1473,7 @@ func streamWriterPatterns() []ResponsePattern {
 		return ResponsePattern{
 			CallRegex:                  callRegex,
 			RecvTypeRegex:              pkgRegex,
+			OpaqueBody:                 true,
 			TypeArgIndex:               -1,
 			DefaultContentType:         contentType,
 			RequireResponseDestination: true,
