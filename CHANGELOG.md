@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`schema.requiredFromJSONTags`: `required` derived from what encoding/json
+  does.** A field with no `omitempty` and no `omitzero` is written on every
+  encode, so it is always on the wire — and none of that reached the document.
+  On a 452-schema service, **2,233 of 2,900 properties are always sent and not
+  one said so**, so a generated TypeScript client null-checked every field and
+  got no signal on the ones that really can be absent.
+
+  Presence only: whether a value may be `null` is a separate statement and
+  belongs to #368. A `*T` with no `omitempty` is always PRESENT — written as
+  `null` — so it is required here and nullable there. A field promoted through
+  an embedded POINTER is never required, because encoding/json writes nothing
+  at all for a nil embed, which is the one thing the field's own tag cannot
+  tell you, and a type that declares `MarshalJSON` contributes none at all
+  because its declared fields are not the shape that reaches the wire.
+  `validate:"required"` is merged with it rather than replaced.
+
+  **Off by default, and opt-in rather than inferred**, because it states what
+  the SERVER SENDS. That is exactly right for a response and an over-claim for
+  a request body — a client is not bound by the server's struct tags, and the
+  server decodes a payload that omits the field perfectly happily. A type used
+  as both therefore declares more than the server enforces, which is a trade a
+  project takes on knowingly. (#516)
+
 ### Fixed
 
 - **The unmapped-middleware warning is about auth again.** Every middleware in a

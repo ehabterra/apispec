@@ -2177,6 +2177,12 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 	// Embedded types contribute their fields, resolved the way encoding/json
 	// resolves them — promotion, shadowing and all (issue #487). For a struct
 	// that embeds nothing this is exactly typ.Fields.
+	// A type that marshals ITSELF does not put its declared fields on the wire,
+	// so nothing about those fields' tags is a statement about the document —
+	// including whether they are always present (issues #516, #361). Computed
+	// once: it is a property of the struct, not of each field.
+	selfMarshaling := typeMarshalsItself(meta, typ)
+
 	for _, ef := range effectiveJSONFields(meta, typ) {
 		field := ef.field
 		fieldName := getStringFromPool(meta, field.Name)
@@ -2284,6 +2290,21 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			if validationConstraints.Required {
 				schema.Required = append(schema.Required, fieldName)
 			}
+		}
+
+		// `required` from what encoding/json does, when the project asked for
+		// it. Merged with the validation tag above rather than replacing it:
+		// a field can be mandatory on the way in and always present on the way
+		// out, and appending twice would emit it twice (issue #516).
+		//
+		// Appended in declaration order, not sorted. Both sources append inside
+		// THIS loop, which walks the effective fields in a fixed order, so the
+		// list is already reproducible (golden rule #1) — and sorting it would
+		// reorder the `required` list of every project already using
+		// validate:"required", for nothing.
+		if !selfMarshaling && requiredFromTags(cfg, ef, getStringFromPool(meta, field.Tag)) &&
+			!slices.Contains(schema.Required, fieldName) {
+			schema.Required = append(schema.Required, fieldName)
 		}
 
 		// Detect and apply enum values from constants if no enum was specified in tags
@@ -4357,4 +4378,73 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// requiredFromTags reports whether a field is always on the wire, and therefore
+// `required`, according to what encoding/json does with it.
+//
+// The rule is the encoder's, not a guess about it: a field with no
+// `omitempty` and no `omitzero` is written on every encode, whatever its value
+// — including a nil pointer, which is written as `null`. Nullability is a
+// separate statement about the VALUE and belongs to issue #368; this is only
+// about presence.
+//
+// Two shapes are excluded because the encoder does not guarantee them:
+//
+//   - a field promoted through an embedded POINTER, which contributes nothing
+//     at all when that pointer is nil;
+//   - every field of a type that marshals itself, where the field set is not
+//     the wire shape to begin with (issue #361).
+func requiredFromTags(cfg *APISpecConfig, ef effectiveField, tag string) bool {
+	if cfg == nil || !cfg.Schema.RequiredFromJSONTags {
+		return false
+	}
+	if ef.viaPointer {
+		return false
+	}
+	return !jsonTagOmitsEmpty(tag)
+}
+
+// jsonTagOmitsEmpty reports whether a json struct tag carries an option that
+// lets the encoder leave the field out — `omitempty`, or Go 1.24's `omitzero`.
+func jsonTagOmitsEmpty(tag string) bool {
+	opts := jsonTagOptions(tag)
+	for _, opt := range opts {
+		if opt == "omitempty" || opt == "omitzero" {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonTagOptions returns the comma-separated options of a json struct tag,
+// without its name.
+func jsonTagOptions(tag string) []string {
+	// reflect.StructTag, not a split on "json:" — that also matches a key
+	// ENDING in json, so `myjson:"id,omitempty"` read as an omitempty the
+	// encoder never sees, and the field was left out of `required` although it
+	// is always written.
+	value, ok := reflect.StructTag(tag).Lookup("json")
+	if !ok {
+		return nil
+	}
+	fields := strings.Split(value, ",")
+	if len(fields) < 2 {
+		return nil
+	}
+	return fields[1:]
+}
+
+// typeMarshalsItself reports whether a type declares MarshalJSON, in which case
+// its declared fields are not the shape that reaches the wire.
+func typeMarshalsItself(meta *metadata.Metadata, typ *metadata.Type) bool {
+	if meta == nil || typ == nil {
+		return false
+	}
+	for i := range typ.Methods {
+		if getStringFromPool(meta, typ.Methods[i].Name) == "MarshalJSON" {
+			return true
+		}
+	}
+	return false
 }

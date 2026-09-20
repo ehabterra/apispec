@@ -34,6 +34,11 @@ type effectiveField struct {
 	// tagged is whether the field carries an explicit json name, which decides
 	// collisions at equal depth.
 	tagged bool
+	// viaPointer is whether the field was promoted through an embedded POINTER
+	// anywhere on its path. Such a field is absent from the wire when that
+	// pointer is nil, so it can never be `required` however its own tag reads
+	// (issue #516).
+	viaPointer bool
 }
 
 // effectiveJSONFields returns the fields a struct actually serialises, with
@@ -76,6 +81,12 @@ func effectiveJSONFields(meta *metadata.Metadata, typ *metadata.Type) []effectiv
 // them; termination comes from the per-path visited set below instead
 // (CodeRabbit on #488).
 func collectJSONFields(meta *metadata.Metadata, typ *metadata.Type, depth int, visited map[*metadata.Type]bool, out *[]effectiveField) {
+	collectJSONFieldsVia(meta, typ, depth, false, visited, out)
+}
+
+// collectJSONFieldsVia is collectJSONFields carrying whether the path here
+// passed through an embedded pointer.
+func collectJSONFieldsVia(meta *metadata.Metadata, typ *metadata.Type, depth int, viaPointer bool, visited map[*metadata.Type]bool, out *[]effectiveField) {
 	if typ == nil || visited[typ] {
 		return
 	}
@@ -93,16 +104,17 @@ func collectJSONFields(meta *metadata.Metadata, typ *metadata.Type, depth int, v
 			if embedAt(typ, next) > pos {
 				return
 			}
-			collectEmbed(meta, typ, next, depth, visited, out)
+			collectEmbed(meta, typ, next, depth, viaPointer, visited, out)
 		}
 	}
 	for i, f := range typ.Fields {
 		emitEmbedsBefore(i)
 		*out = append(*out, effectiveField{
-			field:  f,
-			owner:  typ,
-			depth:  depth,
-			tagged: extractJSONName(getStringFromPool(meta, f.Tag)) != "",
+			field:      f,
+			owner:      typ,
+			depth:      depth,
+			viaPointer: viaPointer,
+			tagged:     extractJSONName(getStringFromPool(meta, f.Tag)) != "",
 		})
 	}
 	emitEmbedsBefore(len(typ.Fields))
@@ -119,7 +131,7 @@ func embedAt(typ *metadata.Type, i int) int {
 }
 
 // collectEmbed resolves one embedded field into the candidates it contributes.
-func collectEmbed(meta *metadata.Metadata, typ *metadata.Type, i, depth int, visited map[*metadata.Type]bool, out *[]effectiveField) {
+func collectEmbed(meta *metadata.Metadata, typ *metadata.Type, i, depth int, viaPointer bool, visited map[*metadata.Type]bool, out *[]effectiveField) {
 	embedIdx := typ.Embeds[i]
 	name := getStringFromPool(meta, embedIdx)
 	if name == "" {
@@ -143,9 +155,10 @@ func collectEmbed(meta *metadata.Metadata, typ *metadata.Type, i, depth int, vis
 				Type: embedIdx,
 				Tag:  typ.EmbedTags[i],
 			},
-			owner:  typ,
-			depth:  depth,
-			tagged: true,
+			owner:      typ,
+			depth:      depth,
+			tagged:     true,
+			viaPointer: viaPointer,
 		})
 		return
 	}
@@ -183,7 +196,11 @@ func collectEmbed(meta *metadata.Metadata, typ *metadata.Type, i, depth int, vis
 	// path's set and never revisits it, and the set of declared types is finite.
 	// Go forbids recursive embedding outright, so the guard is for metadata that
 	// could not describe a compiling program.
-	collectJSONFields(meta, embedded, depth+1, maps.Clone(visited), out)
+	// An embedded POINTER contributes its fields only when it is non-nil, so
+	// everything promoted from here is optional however its own tag reads
+	// (issue #516). The flag is sticky down the rest of the path.
+	collectJSONFieldsVia(meta, embedded, depth+1, viaPointer || strings.HasPrefix(name, "*"),
+		maps.Clone(visited), out)
 }
 
 // resolveFieldCollisions applies Go's shallowest-wins rule to candidates that
