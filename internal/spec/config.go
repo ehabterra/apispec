@@ -322,6 +322,16 @@ type CredentialReadConfig struct {
 	// does not. The header read is not the signal; the header it names is.
 	NameRegexes []string `yaml:"nameRegexes,omitempty" json:"nameRegexes,omitempty"`
 
+	// NamedReads are the calls that READ something out of the request by name —
+	// `r.Header.Get(x)`, `c.GetHeader(x)`, `c.QueryParam(x)`. A credential name
+	// counts only as the argument of one of these.
+	//
+	// Without that, any literal anywhere was the signal, so
+	// `log.Debug("Authorization")` or a proxy middleware SETTING an outbound
+	// `Authorization` header read as authentication. The name is evidence about
+	// what is being read; it says nothing on its own.
+	NamedReads []CredentialAccessor `yaml:"namedReads,omitempty" json:"namedReads,omitempty"`
+
 	// RefusalStatuses are the statuses whose meaning IS "this request is not
 	// authenticated/authorised" — a second, independent signal, sufficient on
 	// its own.
@@ -339,7 +349,8 @@ type CredentialReadConfig struct {
 }
 
 func (c CredentialReadConfig) empty() bool {
-	return len(c.Accessors) == 0 && len(c.NameRegexes) == 0 && len(c.RefusalStatuses) == 0
+	return len(c.Accessors) == 0 && len(c.NameRegexes) == 0 &&
+		len(c.NamedReads) == 0 && len(c.RefusalStatuses) == 0
 }
 
 // refuses reports whether code is one of the configured refusal statuses.

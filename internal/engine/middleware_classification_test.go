@@ -75,7 +75,14 @@ func TestMiddlewareClassification(t *testing.T) {
 		// rateLimit REFUSES (429) and requestLogger reads a header — so a rule
 		// keying on "can reject a request", or on "reads any header", calls
 		// both of these auth. Neither is.
-		for _, notWant := range []string{"requestLogger", "rateLimit"} {
+		for _, notWant := range []string{
+			"requestLogger", "rateLimit",
+			// A credential-looking value that is not a credential READ. All
+			// three were reported before the signal required call semantics.
+			"logsTheWord",      // logs the word "Authorization"
+			"addsUpstreamAuth", // SETS an outbound Authorization header
+			"countsForbidden",  // passes 403 to a metric, not to a writer
+		} {
 			if hasName(reported, notWant) {
 				t.Errorf("%s shows no auth signal and must not be reported as auth; reported=%v", notWant, reported)
 			}

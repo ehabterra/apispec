@@ -186,3 +186,128 @@ func TestRefusalStatusesAreAuthOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestCallNamesCredentialNeedsARead pins that a credential NAME counts only as
+// the argument of a by-name read.
+//
+// A literal on its own is not evidence about what a middleware does — the same
+// string appears in a log line, and in a proxy middleware SETTING an outbound
+// Authorization header, which is the opposite of reading one.
+func TestCallNamesCredentialNeedsARead(t *testing.T) {
+	meta := newTestMeta()
+	e := &Extractor{cfg: &APISpecConfig{}, contextProvider: NewContextProvider(meta)}
+	cred := stdlibCredentialReads()
+
+	lit := func(v string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindLiteral)
+		a.SetValue(`"` + v + `"`)
+		return a
+	}
+	edge := func(args ...*metadata.CallArgument) *metadata.CallGraphEdge {
+		return &metadata.CallGraphEdge{Args: args}
+	}
+
+	cases := []struct {
+		name            string
+		call, pkg, recv string
+		args            []*metadata.CallArgument
+		want            bool
+		why             string
+	}{
+		{
+			name: "a header read naming a credential",
+			call: "Get", pkg: "net/http", recv: "Header", args: []*metadata.CallArgument{lit("Authorization")},
+			want: true, why: "this is the shape the signal is about",
+		},
+		{
+			name: "a header read naming an ordinary header",
+			call: "Get", pkg: "net/http", recv: "Header", args: []*metadata.CallArgument{lit("X-Request-Id")},
+			want: false, why: "every service reads this one",
+		},
+		{
+			name: "the word logged, not read",
+			call: "Println", pkg: "log", recv: "", args: []*metadata.CallArgument{lit("Authorization")},
+			want: false, why: "a literal is not evidence about what the call does",
+		},
+		{
+			name: "an outbound header being SET",
+			call: "Set", pkg: "net/http", recv: "Header", args: []*metadata.CallArgument{lit("Authorization"), lit("Bearer x")},
+			want: false, why: "setting a credential is the opposite of reading one",
+		},
+		{
+			name: "a read with no credential in it",
+			call: "Get", pkg: "net/http", recv: "Header", args: nil,
+			want: false, why: "a read alone says nothing",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := e.callNamesCredential(edge(tc.args...), cred, tc.call, tc.pkg, tc.recv)
+			if got != tc.want {
+				t.Errorf("callNamesCredential = %v, want %v — %s", got, tc.want, tc.why)
+			}
+		})
+	}
+
+	t.Run("no names configured", func(t *testing.T) {
+		if e.callNamesCredential(edge(lit("Authorization")), CredentialReadConfig{}, "Get", "net/http", "Header") {
+			t.Error("matched with an empty configuration")
+		}
+	})
+}
+
+// TestCallRefusesWithAuthStatusNeedsAWriter pins that a 401/403 counts only
+// where a status is actually WRITTEN — which the framework's own response
+// patterns already declare, so this stays framework-agnostic.
+func TestCallRefusesWithAuthStatusNeedsAWriter(t *testing.T) {
+	meta := newTestMeta()
+	cfg := DefaultChiConfig()
+	e := &Extractor{cfg: cfg, contextProvider: NewContextProvider(meta)}
+	cred := stdlibCredentialReads()
+
+	status := func(name string) *metadata.CallArgument {
+		return mkSelector(meta, mkIdent(meta, "http", ""), mkIdent(meta, name, ""))
+	}
+	msg := metadata.NewCallArgument(meta)
+	msg.SetKind(metadata.KindLiteral)
+	msg.SetValue(`"forbidden"`)
+	w := mkIdent(meta, "w", "net/http.ResponseWriter")
+
+	sp := meta.StringPool
+	call := func(name, pkg, recv string, args ...*metadata.CallArgument) *metadata.CallGraphEdge {
+		return &metadata.CallGraphEdge{
+			Callee: metadata.Call{Meta: meta, Name: sp.Get(name), Pkg: sp.Get(pkg), RecvType: sp.Get(recv)},
+			Args:   args,
+		}
+	}
+
+	t.Run("http.Error with 403", func(t *testing.T) {
+		// A package-level writer: the response pattern scopes it by PACKAGE in
+		// RecvTypeRegex, and the call records no receiver. Reading the field
+		// literally matched nothing and lost every http.Error refusal.
+		if !e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusForbidden")), cred) {
+			t.Error("http.Error(w, msg, 403) is a refusal and was not recognised")
+		}
+	})
+
+	t.Run("a non-auth refusal", func(t *testing.T) {
+		if e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusTooManyRequests")), cred) {
+			t.Error("429 is a refusal but not an auth one")
+		}
+	})
+
+	t.Run("403 passed to something that writes nothing", func(t *testing.T) {
+		if e.callRefusesWithAuthStatus(call("Observe", "example.com/metrics", "", status("StatusForbidden")), cred) {
+			t.Error("a metric taking 403 was read as a refusal")
+		}
+	})
+
+	t.Run("no refusal statuses configured", func(t *testing.T) {
+		if e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusForbidden")),
+			CredentialReadConfig{}) {
+			t.Error("matched with an empty configuration")
+		}
+	})
+}

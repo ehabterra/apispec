@@ -75,8 +75,8 @@ func (e *Extractor) authSignalThrough(key string, meta *metadata.Metadata, seen 
 		return false
 	}
 	seen[key] = true
-	if got, ok := e.mwReadsCred[key]; ok {
-		return got
+	if e.mwReadsCred[key] {
+		return true
 	}
 
 	found := false
@@ -101,10 +101,19 @@ func (e *Extractor) authSignalThrough(key string, meta *metadata.Metadata, seen 
 	scan(meta.Callers[key])
 	scan(e.parentFnIndex[key])
 
-	if e.mwReadsCred == nil {
-		e.mwReadsCred = make(map[string]bool)
+	// Only a POSITIVE is memoized. A negative depends on the state this walk
+	// was in when it reached the function — the remaining depth, and which
+	// functions were already on the path — so a helper first visited at the
+	// depth bound, or through a cycle, answers "no signal" for reasons that do
+	// not hold for the next middleware to reach it by a shorter route. Caching
+	// that would make an auth middleware silent because an unrelated one was
+	// classified first. A positive is state-independent: the signal is there.
+	if found {
+		if e.mwReadsCred == nil {
+			e.mwReadsCred = make(map[string]bool)
+		}
+		e.mwReadsCred[key] = true
 	}
-	e.mwReadsCred[key] = found
 	return found
 }
 
@@ -127,20 +136,40 @@ func (e *Extractor) callSignalsAuth(edge *metadata.CallGraphEdge) bool {
 		}
 	}
 
-	// 2. A call NAMING a credential (`r.Header.Get("Authorization")`), or
-	// REFUSING with an auth status (`http.Error(w, msg, 401)`). Both are read
-	// off the arguments, because both are carried by what the call is given
-	// rather than by the call itself: a header read is not a signal and the
-	// header it names is, and an error write is not a signal and the status it
-	// carries is.
+	// 2. A call that READS something by name, whose name is a credential:
+	// `r.Header.Get("Authorization")`, `c.GetHeader("X-Api-Key")`. The call has
+	// to be a read — a literal on its own is not evidence, or
+	// `log.Debug("Authorization")` and a proxy middleware SETTING an outbound
+	// Authorization header would both read as authentication.
+	if e.callNamesCredential(edge, cred, name, pkg, recv) {
+		return true
+	}
+
+	// 3. A call that REFUSES with an auth status. Gated on the framework's own
+	// response patterns, which are already the list of calls that write a
+	// status and where they carry it — so `http.Error(w, msg, 403)` counts and
+	// `metrics.Observe(403)` does not.
+	return e.callRefusesWithAuthStatus(edge, cred)
+}
+
+// callNamesCredential reports whether this call reads something by name and the
+// name is a credential.
+func (e *Extractor) callNamesCredential(edge *metadata.CallGraphEdge, cred CredentialReadConfig, name, pkg, recv string) bool {
+	if len(cred.NameRegexes) == 0 || len(cred.NamedReads) == 0 {
+		return false
+	}
+	isRead := false
+	for _, rd := range cred.NamedReads {
+		if matchesCall(rd, name, pkg, recv) {
+			isRead = true
+			break
+		}
+	}
+	if !isRead {
+		return false
+	}
 	for _, arg := range edge.Args {
-		if arg == nil {
-			continue
-		}
-		if code, ok := statusArgValue(arg); ok && cred.refuses(code) {
-			return true
-		}
-		if arg.GetKind() != metadata.KindLiteral {
+		if arg == nil || arg.GetKind() != metadata.KindLiteral {
 			continue
 		}
 		lit := strings.Trim(arg.GetValue(), "\"`")
@@ -151,6 +180,49 @@ func (e *Extractor) callSignalsAuth(edge *metadata.CallGraphEdge) bool {
 			if compiled, err := cachedRegex(re); err == nil && compiled.MatchString(lit) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// callRefusesWithAuthStatus reports whether this call writes an auth refusal
+// status.
+//
+// Which calls write a status, and where they carry it, is what
+// FrameworkConfig.ResponsePatterns already declares — `http.Error`'s status is
+// argument 2, `WriteHeader`'s is 0, gin's `AbortWithStatus`'s is 0. Reusing
+// them keeps this framework-agnostic (golden rule #5) and means a 403 passed to
+// anything else — a metric, a log, a comparison — is not a refusal.
+func (e *Extractor) callRefusesWithAuthStatus(edge *metadata.CallGraphEdge, cred CredentialReadConfig) bool {
+	if len(cred.RefusalStatuses) == 0 {
+		return false
+	}
+	name := e.contextProvider.GetString(edge.Callee.Name)
+	pkg := e.contextProvider.GetString(edge.Callee.Pkg)
+	// A response pattern scopes a PACKAGE-level writer by putting the package
+	// in RecvTypeRegex — net/http's `Error`, `NotFound` and `Redirect` are all
+	// written `RecvTypeRegex: ^net/http$` — and a package-level call records no
+	// receiver. Reading the field literally therefore matched none of them, and
+	// `http.Error(w, msg, 403)` stopped counting as a refusal.
+	scope := e.contextProvider.GetString(edge.Callee.RecvType)
+	if scope == "" {
+		scope = pkg
+	}
+
+	for _, p := range e.cfg.Framework.ResponsePatterns {
+		if !p.StatusFromArg || p.StatusArgIndex < 0 || p.StatusArgIndex >= len(edge.Args) {
+			// A pattern with a FIXED status (net/http's NotFound) says the
+			// status without an argument; none of those is 401 or 403.
+			continue
+		}
+		if !matchesCall(CredentialAccessor{
+			CallRegex:     p.CallRegex,
+			RecvTypeRegex: p.RecvTypeRegex,
+		}, name, pkg, scope) {
+			continue
+		}
+		if code, ok := statusArgValue(edge.Args[p.StatusArgIndex]); ok && cred.refuses(code) {
+			return true
 		}
 	}
 	return false

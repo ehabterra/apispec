@@ -149,6 +149,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			CredentialReads:  stdlibCredentialReads(),
 			ResponseContext:  netHTTPResponseContext,
 			MountPatterns: []MountPattern{
 				{
@@ -257,6 +258,17 @@ func stdlibCredentialReads() CredentialReadConfig {
 			// A session cookie is a credential, and the read names it.
 			{CallRegex: `^Cookie$`, PkgRegex: `^net/http$`, RecvTypeRegex: `^\*?(net/http\.)?Request$`},
 		},
+		// Where a name has to appear to mean anything. The receiver is what
+		// makes these narrow: `Get` alone would match `cache.Get("…")`.
+		NamedReads: []CredentialAccessor{
+			// r.Header.Get(name) — metadata renders the receiver bare or
+			// qualified depending on the call, so both are accepted.
+			{CallRegex: `^Get$`, RecvTypeRegex: `^\*?(net/http\.)?Header$`},
+			// r.URL.Query().Get(name)
+			{CallRegex: `^Get$`, RecvTypeRegex: `^\*?(net/url\.)?Values$`},
+			// r.FormValue(name) / r.PostFormValue(name)
+			{CallRegex: `^(FormValue|PostFormValue)$`, RecvTypeRegex: `^\*?(net/http\.)?Request$`},
+		},
 		NameRegexes: []string{
 			`(?i)^authorization$`,
 			`(?i)^proxy-authorization$`,
@@ -289,6 +301,13 @@ func frameworkCredentialReads(ctxRecvTypeRegex string) CredentialReadConfig {
 	cred := stdlibCredentialReads()
 	cred.Accessors = append(cred.Accessors, CredentialAccessor{
 		CallRegex:     `^Cookies?$`,
+		RecvTypeRegex: ctxRecvTypeRegex,
+	})
+	// The context's own by-name reads, which are the framework's spelling of
+	// `r.Header.Get`. Scoped to the context type, so a same-named method on
+	// anything else is not one.
+	cred.NamedReads = append(cred.NamedReads, CredentialAccessor{
+		CallRegex:     `^(Get|GetHeader|GetQuery|Query|QueryParam|FormValue|PostForm|Param)$`,
 		RecvTypeRegex: ctxRecvTypeRegex,
 	})
 	return cred

@@ -20,15 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project's own middleware matched nothing, so all of it was reported.
 
   The split is now made on what the middleware's body DOES, never on its name —
-  which would be the guess golden rule #9 forbids. Two signals count, either on
-  its own: it READS a credential, or it REFUSES with 401/403. Neither alone is
-  enough, and each catches what the other misses — session auth redirects to a
+  which would be the guess golden rule #9 forbids. Two signals count, and either
+  is sufficient on its own: it READS a credential, or it REFUSES with 401/403.
+  Neither covers every authentication shape, and each catches what the other
+  misses — session auth redirects to a
   login page and never writes 401, a middleware that returns an error for a
   shared renderer decides its status elsewhere, and no name table can know a
   house credential like `X-Acme-Request-Signature`. Refusing on its own is still
   not a signal: a rate limiter refuses too, with 429.
 
-  Nothing is dropped. Middleware that shows no credential read is listed under
+  Both signals come from what the CALL does, not from a value appearing
+  somewhere in it: a credential name counts only as the argument of a by-name
+  read, and a refusal status only where the framework's own response patterns
+  say a status is written. Otherwise `log.Println("Authorization")`, a proxy
+  middleware SETTING an outbound `Authorization` header, and `observe(403)` all
+  read as authentication.
+
+  Nothing is dropped. Middleware that shows neither signal is listed under
   `--verbose` and exposed on `SecurityDiagnostics`, so a project whose auth
   middleware fetches its credential somewhere the walk does not reach can still
   find it — the strict rule costs visibility, not the answer. The warning also

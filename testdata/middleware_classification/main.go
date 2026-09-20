@@ -126,12 +126,43 @@ func rateLimit(next http.Handler) http.Handler {
 	})
 }
 
+// The three shapes that carry a credential-looking value WITHOUT reading one.
+// A signal has to come from what the call DOES; a literal on its own is not
+// evidence, or all three of these read as authentication.
+
+func observe(code int) {}
+
+// Logs the literal word, never reads the header.
+func logsTheWord(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Authorization", r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// SETS an outbound Authorization header — the opposite of reading one.
+func addsUpstreamAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer upstream")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Passes 403 to a metric, never to a writer.
+func countsForbidden(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observe(http.StatusForbidden)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func list(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
 
 func main() {
 	r := chi.NewRouter()
 	r.Use(requestLogger, rateLimit, authMiddleware, houseAuth, delegatingAuth, basicGuard,
-		sessionAuth, signatureAuth, cookielessAuth)
+		sessionAuth, signatureAuth, cookielessAuth,
+		logsTheWord, addsUpstreamAuth, countsForbidden)
 	r.Get("/items", list)
 	_ = http.ListenAndServe(":8080", r)
 }
