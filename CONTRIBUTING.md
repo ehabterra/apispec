@@ -120,11 +120,85 @@ This helps us work together effectively and ensures contributions align with the
 
 ## Testing
 
-- Run tests: `make test`
+- Run tests: `make test` — this is what CI runs and the source of truth
 - Check coverage: `make coverage`
 - Run specific tests: `go test ./internal/spec -v -run "Test.*Comprehensive"`
 - Add test cases in `testdata/` for framework-specific features
 - Refresh the coverage badge if coverage moves: `make update-badge`
+
+### Required: compare the fixtures before you submit
+
+`make test` proves the pipeline still *works*. It does not prove the output did
+not *change*: the fixture tests in `generator/` are deliberately structural —
+expected routes present, no dangling `$ref`s, no unresolved placeholders — so
+that schema evolution doesn't churn them. Everything between "it still runs" and
+"it produces the same document" is caught by `scripts/compare-spec.sh`, which
+regenerates a spec for every project under `testdata/` and diffs it key by key.
+
+**Run it for any change that can move the output** — anything in `internal/`,
+`generator/`, `spec/`, or a framework config. Doc-only and tooling-only changes
+can skip it.
+
+There is no committed baseline to compare against: fixture `openapi*.yaml` and
+`used-config.yaml` files are gitignored build artifacts. So generate the
+baseline from the code *without* your change, then compare:
+
+```bash
+# 1. baseline, from a tree without your change (pick an unused version number)
+git stash                       # or: git checkout main
+scripts/compare-spec.sh -g -v 900
+
+# 2. bring your change back and compare against it
+git stash pop                   # or: git checkout your-branch
+scripts/compare-spec.sh -v 900
+```
+
+Each pass builds `apispec` once; the two together take a few minutes over the
+full fixture set. A clean run ends with:
+
+```text
+RESULT: no drift across all paths (status sets, keys, and values match).
+```
+
+The script exits non-zero and prints the offending keys otherwise. It reports
+three kinds of drift, all of which fail:
+
+- **STATUS CHANGES** — an operation gained or lost a response status. This is
+  the one that catches a route quietly degrading to `default`.
+- **MISSING** — a key in the baseline is absent from the new spec.
+- **CHANGED** — a key exists in both with a different value (a `$ref`
+  retargeted, a type flipped, a `format` dropped).
+
+Added keys are informational and shown only with `-a`, so a change that only
+*adds* passes by default.
+
+Two things worth knowing when you read the output:
+
+- **The MISSING list includes keys that merely MOVED.** A schema that gains a
+  wrapper (`$ref` → `allOf: [$ref, …]`) reports every affected `$ref` path as
+  missing, and a renamed path reports its whole subtree. Before concluding
+  something was lost, count the thing itself — references to the component,
+  operations, responses — rather than reading the key diff.
+- **A refactor ships with zero drift.** If your change is meant to be
+  behaviour-preserving and the comparison is not clean, that is a finding, not
+  noise. A deliberate behaviour change is fine — say so in the PR, explain each
+  drifted key, and add a fixture that covers the new behaviour.
+
+By default the project set is every project under `testdata/`, plus any paths
+listed in `scripts/compare-spec.paths` (gitignored, for running the comparison
+against real services you have locally). Paths that don't exist are skipped, so
+without that file you get the fixture set.
+
+Useful flags: `-a` to also list added keys, `-k` to keep the generated spec for
+inspection, `--bin PATH` to reuse a built binary, and a path argument to limit
+the run to one project (`scripts/compare-spec.sh -v 900 testdata/gin`). If you
+change the comparator itself, `scripts/compare-spec.sh --self-test` checks its
+key semantics.
+
+Finally, make sure the run left nothing behind: `git status` should be clean.
+Generated specs and configs under `testdata/` are gitignored, but a binary built
+inside a fixture is not — `TestNoCompiledBinariesUnderTestdata` reads git state,
+so it passes locally against an unstaged binary and fails only in CI.
 
 ## Adding Framework Support
 
@@ -151,10 +225,14 @@ If you're unsure about any step, feel free to ask questions or create a draft PR
 ## Submitting Changes
 
 1. Ensure all tests pass (`make test`)
-2. Run linting (`make lint`) - if it fails, don't worry, we can fix it together
-3. Update documentation if needed
-4. Create a Pull Request with a clear description
-5. Reference any related issues
+2. **Compare the fixtures** (`scripts/compare-spec.sh`) and confirm the output
+   drift is zero, or explain every drifted key in the PR — see
+   [Required: compare the fixtures before you submit](#required-compare-the-fixtures-before-you-submit)
+3. Run linting (`make lint`) - if it fails, don't worry, we can fix it together
+4. Check `git status` is clean — no generated specs, configs or binaries left behind
+5. Update documentation if needed
+6. Create a Pull Request with a clear description
+7. Reference any related issues
 
 **Note**: PRs don't need to be perfect. If you're stuck or unsure about something, feel free to open a draft PR and ask for help. Collaboration and feedback help us all improve!
 
