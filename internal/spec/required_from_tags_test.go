@@ -38,6 +38,12 @@ func TestJSONTagOmitsEmpty(t *testing.T) {
 		{"a validate tag alongside", `json:"id" validate:"required"`, false},
 		// Not an option list at all.
 		{"a bare non-json tag", `xml:"id"`, false},
+		// A key ENDING in json is not the json key. encoding/json ignores it
+		// and writes the field, so reading it as omitempty left an
+		// always-present field out of `required`.
+		{"a key ending in json", `myjson:"id,omitempty"`, false},
+		{"that key beside a real one", `myjson:"id,omitempty" json:"id"`, false},
+		{"a real one beside that key", `myjson:"id" json:"id,omitempty"`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

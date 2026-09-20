@@ -2177,6 +2177,12 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 	// Embedded types contribute their fields, resolved the way encoding/json
 	// resolves them — promotion, shadowing and all (issue #487). For a struct
 	// that embeds nothing this is exactly typ.Fields.
+	// A type that marshals ITSELF does not put its declared fields on the wire,
+	// so nothing about those fields' tags is a statement about the document —
+	// including whether they are always present (issues #516, #361). Computed
+	// once: it is a property of the struct, not of each field.
+	selfMarshaling := typeMarshalsItself(meta, typ)
+
 	for _, ef := range effectiveJSONFields(meta, typ) {
 		field := ef.field
 		fieldName := getStringFromPool(meta, field.Name)
@@ -2290,7 +2296,13 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		// it. Merged with the validation tag above rather than replacing it:
 		// a field can be mandatory on the way in and always present on the way
 		// out, and appending twice would emit it twice (issue #516).
-		if requiredFromTags(cfg, ef, getStringFromPool(meta, field.Tag)) &&
+		//
+		// Appended in declaration order, not sorted. Both sources append inside
+		// THIS loop, which walks the effective fields in a fixed order, so the
+		// list is already reproducible (golden rule #1) — and sorting it would
+		// reorder the `required` list of every project already using
+		// validate:"required", for nothing.
+		if !selfMarshaling && requiredFromTags(cfg, ef, getStringFromPool(meta, field.Tag)) &&
 			!slices.Contains(schema.Required, fieldName) {
 			schema.Required = append(schema.Required, fieldName)
 		}
@@ -2427,11 +2439,6 @@ func generateAliasSchema(usedTypes map[string]*Schema, typ *metadata.Type, meta 
 			schema.Enum = enumValues
 		}
 	}
-
-	// Field order follows the declaration, but a field can be added to
-	// `required` from either the validation tag or the json one, so the list
-	// must not depend on which arrived first (golden rule #1).
-	sort.Strings(schema.Required)
 
 	return schema, schemas
 }
@@ -4413,16 +4420,31 @@ func jsonTagOmitsEmpty(tag string) bool {
 // jsonTagOptions returns the comma-separated options of a json struct tag,
 // without its name.
 func jsonTagOptions(tag string) []string {
-	// Split on a string that CONTAINS the key always yields a second part, so
-	// there is nothing further to guard here.
-	parts := strings.Split(tag, "json:")
-	if len(parts) < 2 {
+	// reflect.StructTag, not a split on "json:" — that also matches a key
+	// ENDING in json, so `myjson:"id,omitempty"` read as an omitempty the
+	// encoder never sees, and the field was left out of `required` although it
+	// is always written.
+	value, ok := reflect.StructTag(tag).Lookup("json")
+	if !ok {
 		return nil
 	}
-	value := strings.Trim(strings.Split(parts[1], " ")[0], "\"")
 	fields := strings.Split(value, ",")
 	if len(fields) < 2 {
 		return nil
 	}
 	return fields[1:]
+}
+
+// typeMarshalsItself reports whether a type declares MarshalJSON, in which case
+// its declared fields are not the shape that reaches the wire.
+func typeMarshalsItself(meta *metadata.Metadata, typ *metadata.Type) bool {
+	if meta == nil || typ == nil {
+		return false
+	}
+	for i := range typ.Methods {
+		if getStringFromPool(meta, typ.Methods[i].Name) == "MarshalJSON" {
+			return true
+		}
+	}
+	return false
 }

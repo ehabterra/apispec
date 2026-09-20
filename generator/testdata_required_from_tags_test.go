@@ -88,12 +88,50 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 		}
 	})
 
-	t.Run("sorted", func(t *testing.T) {
-		if !sort.StringsAreSorted(item.Required) {
-			t.Errorf("required = %v, which is not sorted — the list is fed from two tag sources, "+
-				"so its order must not depend on which arrived first", item.Required)
+	// Declaration order, and reproducible because both tag sources append
+	// inside one loop over a fixed field order. NOT sorted: sorting would
+	// reorder the `required` list of every project already using
+	// validate:"required" for no gain.
+	t.Run("follows declaration order", func(t *testing.T) {
+		if strings.Join(item.Required, ",") != "id,name,ptr,validated,when" {
+			t.Errorf("required = %v, want declaration order", item.Required)
 		}
 	})
+}
+
+// TestTestdata_RequiredFromTagsSkipsSelfMarshalers pins that a type declaring
+// MarshalJSON contributes no tag-derived `required`.
+//
+// Its declared fields are not what reaches the wire, so nothing about their
+// tags is a statement about the document — saying they are always present is a
+// claim about a shape that is never sent (issue #361).
+func TestTestdata_RequiredFromTagsSkipsSelfMarshalers(t *testing.T) {
+	out := loadTestdata(t, "required_from_tags", requiredFromTagsConfig(true))
+
+	var money, invoice *intspec.Schema
+	for name, s := range out.Components.Schemas {
+		switch {
+		case strings.HasSuffix(name, "_Money"):
+			money = s
+		case strings.HasSuffix(name, "_Invoice"):
+			invoice = s
+		}
+	}
+	if money == nil || invoice == nil {
+		t.Fatalf("Money/Invoice components missing; have %v", schemaNames(out))
+	}
+
+	if len(money.Required) != 0 {
+		t.Errorf("Money declares MarshalJSON, so its fields are not the wire shape; required = %v",
+			money.Required)
+	}
+	// And an ordinary struct beside it is unaffected.
+	if !slices.Contains(invoice.Required, "ref") {
+		t.Errorf("Invoice.ref should be required; required = %v", invoice.Required)
+	}
+	if strings.Join(invoice.Required, ",") != "total,ref" {
+		t.Errorf("Invoice required = %v, want declaration order", invoice.Required)
+	}
 }
 
 // TestTestdata_RequiredFromTagsIsOptIn pins that the option is off by default,

@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `null` — so it is required here and nullable there. A field promoted through
   an embedded POINTER is never required, because encoding/json writes nothing
   at all for a nil embed, which is the one thing the field's own tag cannot
-  tell you. `validate:"required"` is merged with it rather than replaced.
+  tell you, and a type that declares `MarshalJSON` contributes none at all
+  because its declared fields are not the shape that reaches the wire.
+  `validate:"required"` is merged with it rather than replaced.
 
   **Off by default, and opt-in rather than inferred**, because it states what
   the SERVER SENDS. That is exactly right for a response and an over-claim for

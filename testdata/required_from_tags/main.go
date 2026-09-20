@@ -49,6 +49,24 @@ type Item struct {
 	When time.Time `json:"when"`
 }
 
+// Money marshals ITSELF, so its declared fields are not what reaches the wire —
+// nothing about their tags is a statement about the document.
+type Money struct {
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+func (m Money) MarshalJSON() ([]byte, error) { return []byte(`"0.00 USD"`), nil }
+
+type Invoice struct {
+	Total Money  `json:"total"`
+	Ref   string `json:"ref"`
+}
+
+func getInvoice(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode(Invoice{})
+}
+
 func getItem(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(Item{})
 }
@@ -65,6 +83,7 @@ func createItem(w http.ResponseWriter, r *http.Request) {
 func main() {
 	r := chi.NewRouter()
 	r.Get("/items", getItem)
+	r.Get("/invoices", getInvoice)
 	r.Post("/items", createItem)
 	_ = http.ListenAndServe(":8080", r)
 }
