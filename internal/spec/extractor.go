@@ -1545,7 +1545,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		siteID := cand.node.GetEdge().Callee.ID()
 		caller := cand.node.GetEdge().Caller.BaseID()
 		for _, resp := range resps {
-			if resp == nil || (resp.BodyType == "" && resp.StatusCode < 100 && !resp.StatusUnresolved) {
+			// A stream write carries its body in Schema rather than as a Go
+			// BodyType, and takes its status from ImplicitStatus further down —
+			// so on both counts it looked like nothing resolved and was dropped
+			// here, after ExtractResponse had already returned it (issue #517).
+			if resp == nil || (resp.BodyType == "" && resp.Schema == nil &&
+				resp.StatusCode < 100 && !resp.StatusUnresolved) {
 				continue // nothing resolved
 			}
 			status := resp.StatusCode
@@ -2882,6 +2887,28 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	if r.pattern.DefaultContentType != "" {
 		contentType = r.pattern.DefaultContentType
 	}
+	// A pattern whose media type comes from a header write reads it off the
+	// call, and is ONLY that call: `w.Header().Set("X-Request-Id", …)` matches
+	// the same coarse CallRegex and declares nothing about the body, so a call
+	// that does not name Content-Type — or names it with a value decided at
+	// runtime — is not a response at all (issue #517).
+	if r.pattern.ContentTypeFromHeaderWrite {
+		// No writer provenance configured means RequireResponseDestination
+		// above could not run, and a header write is a shape that genuinely
+		// occurs on an OUTBOUND request — the same confusion issues #513 and
+		// #519 are about, pointed a third way. Unverifiable, so not claimed: a
+		// framework whose ResponseContext declares no writer types documents no
+		// streamed body until it does, rather than documenting one that might
+		// be a client call (golden rule #7).
+		if r.destResolver == nil || !r.destResolver.Enabled() {
+			return nil
+		}
+		declared, ok := r.contentTypeHeaderWrite(node.GetEdge())
+		if !ok {
+			return nil
+		}
+		contentType = declared
+	}
 
 	respInfo := &ResponseInfo{
 		StatusCode:  leastStatusCode - 1,
@@ -2936,7 +2963,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// are excluded even when it fails to resolve — that is a status which could
 	// not be determined, and saying 200 there would be a guess.
 	if !statusResolved && !r.pattern.StatusFromArg {
-		respInfo.ImplicitStatus = r.cfg.Framework.ResponseContext.ImplicitStatus
+		// A pattern may carry its own, for a body whose status the framework's
+		// renderers do not speak for (issue #517).
+		if r.pattern.ImplicitStatus > 0 {
+			respInfo.ImplicitStatus = r.pattern.ImplicitStatus
+		} else {
+			respInfo.ImplicitStatus = r.cfg.Framework.ResponseContext.ImplicitStatus
+		}
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
@@ -3078,7 +3111,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
-	if !statusResolved && respInfo.BodyType == "" {
+	// A call that streams bytes has no body TYPE and no status of its own, so
+	// it reaches the guard below looking like nothing to document. It is not:
+	// the operation returns a body, and its schema says bytes rather than
+	// naming a Go value that was never encoded (issue #517).
+	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
+		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+	}
+
+	if !statusResolved && respInfo.BodyType == "" && respInfo.Schema == nil {
 		// Nothing to document. But a pattern that READS a status argument and
 		// failed is evidence that the handler states one — pass that on so a
 		// later body does not take the implicit status (issue #369).

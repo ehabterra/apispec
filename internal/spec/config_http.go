@@ -79,7 +79,8 @@ var netHTTPResponseContext = ResponseContextConfig{
 	},
 	// net/http: "If WriteHeader is not called explicitly, the first call to
 	// Write will trigger an implicit WriteHeader(http.StatusOK)".
-	ImplicitStatus: http.StatusOK,
+	ContentTypeWrites: stdlibContentTypeWrites(),
+	ImplicitStatus:    http.StatusOK,
 }
 
 // DefaultHTTPConfig returns a default configuration for net/http.
@@ -103,6 +104,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 		DestFromAnyArg:             true,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(netHTTPResponseContext.ContentTypeWrites))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{
@@ -311,4 +313,41 @@ func frameworkCredentialReads(ctxRecvTypeRegex string) CredentialReadConfig {
 		RecvTypeRegex: ctxRecvTypeRegex,
 	})
 	return cred
+}
+
+// stdlibContentTypeWrites is how a handler declares its media type through
+// net/http's header map — `w.Header().Set("Content-Type", …)`.
+//
+// Every framework gets this one, because every framework's response writer is
+// reachable as an http.Header somewhere: echo's `c.Response().Header().Set`
+// and gin's `c.Writer.Header().Set` are both this call. Frameworks that ALSO
+// offer a shorthand add it beside this rather than instead of it — see
+// frameworkContentTypeWrites.
+//
+// The receiver is matched in both spellings metadata uses, since a method call
+// records the bare type name with the path in Pkg.
+func stdlibContentTypeWrites() []ContentTypeWrite {
+	return []ContentTypeWrite{
+		{CallRegex: `^Set$`, RecvTypeRegex: `^\*?(net/http\.)?Header$`, NameArgIndex: 0, ValueArgIndex: 1},
+	}
+}
+
+// frameworkContentTypeWrites adds a framework's own shorthand for the same
+// declaration — gin's `c.Header(k, v)`, fiber's `c.Set(k, v)` — scoped to its
+// context type so a same-named method on anything else is not one.
+//
+// Kept as data rather than code because this is precisely the part that
+// differs per router, and a project with a house context needs to be able to
+// say so in its own config rather than wait for a release.
+func frameworkContentTypeWrites(ctxRecvTypeRegex, callRegex string) []ContentTypeWrite {
+	out := stdlibContentTypeWrites()
+	if callRegex == "" || ctxRecvTypeRegex == "" {
+		return out
+	}
+	return append(out, ContentTypeWrite{
+		CallRegex:     callRegex,
+		RecvTypeRegex: ctxRecvTypeRegex,
+		NameArgIndex:  0,
+		ValueArgIndex: 1,
+	})
 }

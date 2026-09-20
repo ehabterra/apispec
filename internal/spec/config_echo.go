@@ -51,6 +51,7 @@ func DefaultEchoConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(stdlibContentTypeWrites()))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{
@@ -66,7 +67,15 @@ func DefaultEchoConfig() *APISpecConfig {
 					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
 				},
 			},
-			RequestContext:  echoRequestContext,
+			RequestContext: echoRequestContext,
+			ResponseContext: ResponseContextConfig{
+				// NO ImplicitStatus: this framework's renderers always carry a
+				// status, and a test pins that. The content-type pattern
+				// carries its own DefaultStatus instead, so a streamed body
+				// still gets one.
+				// echo declares its media type through net/http: c.Response().Header().Set(k, v) — the stdlib entry covers it, so there is no shorthand to add.
+				ContentTypeWrites: stdlibContentTypeWrites(),
+			},
 			CredentialReads: frameworkCredentialReads(`^github\.com/labstack/echo(/v\d+)?\.Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{
 				{

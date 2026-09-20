@@ -40,6 +40,7 @@ func DefaultChiConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern(netHTTPResponseContext.ContentTypeWrites))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{

@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/ehabterra/apispec/pkg/patterns"
@@ -42,6 +43,8 @@ const (
 	// `xml.NewEncoder(w).Encode(…)` say what they write, and documenting them
 	// as JSON is a statement the consumer will act on and be wrong about
 	// (issue #354).
+	contentTypeCSV      = "text/csv"
+	contentTypeOctet    = "application/octet-stream"
 	contentTypeXML      = "application/xml"
 	contentTypeYAML     = "application/yaml"
 	contentTypeText     = "text/plain; charset=utf-8"
@@ -208,6 +211,23 @@ type ResponseContextConfig struct {
 	// handler reaches for bytes.Buffer the same way under every router.
 	BufferSinks []BufferSink `yaml:"bufferSinks,omitempty" json:"bufferSinks,omitempty"`
 
+	// ContentTypeWrites name the calls by which a handler DECLARES the media
+	// type of its response — `w.Header().Set("Content-Type", …)`,
+	// gin's `c.Header(k, v)`, fiber's `c.Set(k, v)`.
+	//
+	// This is how a streamed body is found at all. Response detection
+	// recognises a VALUE being encoded, so a handler that streams — a CSV
+	// writer, io.Copy from a file, any library writing to w — has nothing for
+	// it to see, and the operation documents no success at all (issue #517).
+	//
+	// Enumerating the writers instead was the first attempt and does not
+	// scale: nine patterns still missed excelize, PDF libraries, archive/zip
+	// and any house streamer, and each one deduced the media type where the
+	// header states it. One call every such handler makes beats a list that
+	// grows forever, and it carries the EXACT type — `application/pdf` rather
+	// than a per-writer `application/octet-stream` guess (issue #354).
+	ContentTypeWrites []ContentTypeWrite `yaml:"contentTypeWrites,omitempty" json:"contentTypeWrites,omitempty"`
+
 	// ImplicitStatus is the status the framework sends when a handler writes a
 	// body without stating one — net/http's first Write sends 200. It fills
 	// exactly that gap: a body write whose pattern carries no status source at
@@ -257,6 +277,21 @@ type BufferSink struct {
 	// BufferArgIndex is where the buffer sits when it is an argument
 	// (io.Copy(w, buf) -> 1). Ignored when BufferFromReceiver is set.
 	BufferArgIndex int `yaml:"bufferArgIndex,omitempty" json:"bufferArgIndex,omitempty"`
+}
+
+// ContentTypeWrite describes one call that sets a response header, so the
+// Content-Type it names can be read off it.
+type ContentTypeWrite struct {
+	// CallRegex matches the callee name, e.g. "^Set$".
+	CallRegex string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	// RecvTypeRegex matches what the call is made ON, e.g. net/http.Header.
+	RecvTypeRegex string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
+	// NameArgIndex is the argument holding the header NAME, and ValueArgIndex
+	// the one holding its value. A call is a content-type declaration only
+	// when the name argument is literally Content-Type — a header write is not
+	// the signal, and the header it names is.
+	NameArgIndex  int `yaml:"nameArgIndex,omitempty" json:"nameArgIndex,omitempty"`
+	ValueArgIndex int `yaml:"valueArgIndex,omitempty" json:"valueArgIndex,omitempty"`
 }
 
 // RequestContextConfig describes the types and accessors that identify an
@@ -622,6 +657,29 @@ type ResponsePattern struct {
 	// receiver — for json.NewEncoder(x).Encode(v), the destination is
 	// NewEncoder's first argument x. Mirrors RequestBodyPattern.BodyFromReceiver.
 	DestFromReceiver bool `yaml:"destFromReceiver,omitempty" json:"destFromReceiver,omitempty"`
+
+	// ContentTypeFromHeaderWrite marks the pattern whose matching and media
+	// type both come from ResponseContext.ContentTypeWrites, because neither
+	// can be expressed as a regex over the callee: the call is recognised by
+	// its header-NAME argument, and its media type read from the value beside
+	// it.
+	ContentTypeFromHeaderWrite bool `yaml:"contentTypeFromHeaderWrite,omitempty" json:"contentTypeFromHeaderWrite,omitempty"`
+
+	// ImplicitStatus is the status a body from this pattern takes when no
+	// explicit status write claims it during pairing. It overrides the
+	// framework-wide ResponseContext.ImplicitStatus, which is 0 for routers
+	// whose renderers always carry a status.
+	ImplicitStatus int `yaml:"implicitStatus,omitempty" json:"implicitStatus,omitempty"`
+
+	// OpaqueBody says this call writes a body whose content is BYTES rather
+	// than a Go value serialised into them — `csv.NewWriter(w).Write(row)`,
+	// `io.Copy(w, f)`. Such a call carries no body type to resolve and no
+	// status of its own, which is the exact combination ExtractResponse treats
+	// as "nothing to document" and drops. It IS something to document: the
+	// operation returns a body, of the pattern's content type, and its schema
+	// says bytes instead of naming a Go type that was never encoded
+	// (issue #517).
+	OpaqueBody bool `yaml:"opaqueBody,omitempty" json:"opaqueBody,omitempty"`
 
 	// Package/type filtering: narrow this pattern by where the call is MADE and
 	// what it is made on. Each list is a set of alternatives, an empty list is no
@@ -1413,6 +1471,78 @@ func nonJSONEncodePatterns() []ResponsePattern {
 		// them is in the stdlib, so the path cannot be pinned the way xml's can.
 		encodePattern(`.*yaml.*\.\*?Encoder$`, contentTypeYAML),
 	}
+}
+
+// contentTypeResponsePattern is the response pattern for a handler DECLARING
+// its media type — `w.Header().Set("Content-Type", "text/csv")`.
+//
+// This is how a STREAMED body is documented. Response detection recognises a
+// value being encoded, so a handler that streams has nothing for it to see and
+// the operation documented no success at all (issue #517). The first attempt
+// enumerated the writers — csv, gzip, bufio, io.Copy, fmt.Fprint, ServeContent
+// — which does not scale past the stdlib and deduced the media type where the
+// header states it.
+//
+// Carries no body TYPE: what reaches the wire is bytes, and the schema says so
+// rather than naming a Go value that was never encoded. Its status comes from
+// ImplicitStatus, since declaring a media type states no status.
+//
+// The calls themselves are config (ResponseContext.ContentTypeWrites), so
+// gin's `c.Header(k, v)` and fiber's `c.Set(k, v)` are entries rather than
+// special cases; this pattern is the response side of reading them.
+func contentTypeResponsePattern(writes []ContentTypeWrite) ResponsePattern {
+	return ResponsePattern{
+		// DERIVED from the configured writes, never a fixed list. MatchNode
+		// applies this before ExtractResponse can look at the header NAME
+		// argument, so a hardcoded `^(Set|Header|Type)$` silently discarded any
+		// project that configured its own setter — `SetContentType` on a house
+		// context would never have been evaluated, which defeats the point of
+		// the calls being configuration at all.
+		CallRegex:                  anyCallRegex(writes),
+		ContentTypeFromHeaderWrite: true,
+		TypeArgIndex:               -1,
+		OpaqueBody:                 true,
+		// The declaration is about the RESPONSE only when it is made on the
+		// response writer. Without that, a `Header().Set("Content-Type", …)`
+		// on an OUTBOUND request — the shape issues #513 and #519 are about,
+		// pointed a third way — becomes an opaque body on the operation that
+		// reaches it.
+		RequireResponseDestination: true,
+		DestFromReceiver:           true,
+		// See the note on DefaultStatus vs ImplicitStatus in the PR: this
+		// resolves the status so the streamed body appears at all.
+		DefaultStatus: http.StatusOK,
+	}
+}
+
+// matchNothingRegex matches no input at all — a character class that requires
+// one character which is neither whitespace nor non-whitespace. `$^` does NOT
+// do this: it matches the empty string, so an unconfigured pattern would have
+// claimed every call whose name renders empty.
+const matchNothingRegex = `[^\s\S]`
+
+// anyCallRegex ORs the configured call patterns into one, so the coarse filter
+// admits exactly the calls the configuration names and nothing else. Returns a
+// regex matching nothing when there are none, which keeps the pattern inert
+// rather than matching everything.
+func anyCallRegex(writes []ContentTypeWrite) string {
+	parts := make([]string, 0, len(writes))
+	seen := map[string]struct{}{}
+	for _, w := range writes {
+		if w.CallRegex == "" {
+			continue
+		}
+		if _, dup := seen[w.CallRegex]; dup {
+			continue
+		}
+		seen[w.CallRegex] = struct{}{}
+		parts = append(parts, "(?:"+w.CallRegex+")")
+	}
+	if len(parts) == 0 {
+		return matchNothingRegex
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }
 
 // rendererMediaTypes maps a renderer method NAME to the media type that
