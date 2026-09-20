@@ -233,9 +233,15 @@ func receiverIdent(meta *metadata.Metadata, call *metadata.CallGraphEdge) *metad
 // compared case-insensitively because Go canonicalises header keys and a
 // handler may write any spelling.
 //
-// A value that is not a constant yields nothing rather than a guess: the media
-// type is then decided at runtime, and an operation documented with the wrong
-// content type is worse than one documented with none (golden rule #7).
+// Read through ConstantValue, not as a bare literal: real handlers name their
+// media type with a CONSTANT — `w.Header().Set("Content-Type", contentTypeCSV)`
+// — or with another package's (`echo.MIMETextPlain`, `mimeCSV`). Accepting only
+// an inline string meant the shape this feature exists for was missed on any
+// project that keeps its media types in one place, which is most of them.
+//
+// A value that is not a constant still yields nothing rather than a guess: the
+// media type is then decided at runtime, and an operation documented with the
+// wrong content type is worse than one documented with none (golden rule #7).
 func (r *ResponsePatternMatcherImpl) contentTypeHeaderWrite(edge *metadata.CallGraphEdge) (string, bool) {
 	if edge == nil {
 		return "", false
@@ -255,20 +261,13 @@ func (r *ResponsePatternMatcherImpl) contentTypeHeaderWrite(edge *metadata.CallG
 			w.ValueArgIndex < 0 || w.ValueArgIndex >= len(edge.Args) {
 			continue
 		}
-		if !strings.EqualFold(literalText(edge.Args[w.NameArgIndex]), "Content-Type") {
+		name, ok := r.contextProvider.ConstantValue(edge.Args[w.NameArgIndex])
+		if !ok || !strings.EqualFold(name, "Content-Type") {
 			continue
 		}
-		if value := literalText(edge.Args[w.ValueArgIndex]); value != "" {
+		if value, ok := r.contextProvider.ConstantValue(edge.Args[w.ValueArgIndex]); ok && value != "" {
 			return value, true
 		}
 	}
 	return "", false
-}
-
-// literalText returns a string literal's contents, or "" for anything else.
-func literalText(arg *metadata.CallArgument) string {
-	if arg == nil || arg.GetKind() != metadata.KindLiteral {
-		return ""
-	}
-	return strings.Trim(arg.GetValue(), "\"`")
 }

@@ -54,11 +54,40 @@ func internalOnly(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// mimeCSV is how a real project names its media types — in one place, not
+// inlined at each handler. Reading only a bare literal missed every such
+// project, which is most of them.
+const mimeCSV = "text/csv"
+
+// The media type named by a CONSTANT.
+func exportConst(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", mimeCSV)
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"a"})
+	cw.Flush()
+}
+
+// The declaration made inside a shared helper, beside the other headers a
+// download needs.
+func setCSVHeaders(w http.ResponseWriter, name string) {
+	w.Header().Set("Content-Disposition", "attachment; filename="+name)
+	w.Header().Set("Content-Type", mimeCSV)
+}
+
+func exportHelper(w http.ResponseWriter, r *http.Request) {
+	setCSVHeaders(w, "audit.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"a"})
+	cw.Flush()
+}
+
 func main() {
 	r := chi.NewRouter()
 	r.Get("/export.csv", csvExport)
 	r.Get("/file.pdf", download)
 	r.Get("/plain", plain)
 	r.Get("/internal", internalOnly)
+	r.Get("/const.csv", exportConst)
+	r.Get("/helper.csv", exportHelper)
 	_ = http.ListenAndServe(":8080", r)
 }
