@@ -282,6 +282,15 @@ type Extractor struct {
 	securityUnresolved    []MiddlewareRef
 	securityUnresolvedSet map[string]struct{}
 
+	// securityUnclassified collects unmapped middleware that shows no auth
+	// signal at all — logging, recovery, rate limiting. Kept apart from
+	// securityUnresolved so the warning can be about auth while these are still
+	// reported, at verbose level, rather than dropped (issue #520).
+	securityUnclassified []MiddlewareRef
+
+	// mwReadsCred memoizes readsCredential per function BaseID.
+	mwReadsCred map[string]bool
+
 	// pathParamMismatches collects handlers that read a map-key path variable
 	// (e.g. mux.Vars(r)["userId"]) whose key is not declared as a `{placeholder}`
 	// in the route path — a likely typo, since the read will always be empty.
@@ -741,20 +750,41 @@ func (e *Extractor) recordUnresolved(refs []MiddlewareRef) {
 	if e.securityUnresolvedSet == nil {
 		e.securityUnresolvedSet = make(map[string]struct{})
 	}
+	meta := e.tree.GetMetadata()
 	for _, r := range refs {
 		key := r.String()
 		if _, ok := e.securityUnresolvedSet[key]; ok {
 			continue
 		}
 		e.securityUnresolvedSet[key] = struct{}{}
-		e.securityUnresolved = append(e.securityUnresolved, r)
+		// Split by what the middleware's body does, not by what it is called.
+		// Two signals, either sufficient: it reads a credential, or it refuses
+		// with an auth status — see signalsAuth for why neither alone is enough.
+		// Everything in a Use/group/per-route slot arrives here, and on a
+		// normal service most of it is logging, recovery, CORS, rate limiting
+		// and timeouts — announced as "auth middleware not mapped" alongside
+		// the one that really was (issue #520).
+		if e.signalsAuth(r, meta) {
+			e.securityUnresolved = append(e.securityUnresolved, r)
+			continue
+		}
+		e.securityUnclassified = append(e.securityUnclassified, r)
 	}
 }
 
-// UnresolvedSecurity returns auth middleware detected during extraction that
-// matched no SecurityMapping (deduped). Empty when nothing was unresolved.
+// UnresolvedSecurity returns the middleware that matched no SecurityMapping AND
+// looks like authentication (deduped) — the ones whose routes are therefore documented
+// as public when they should not be. Empty when nothing was unresolved.
 func (e *Extractor) UnresolvedSecurity() []MiddlewareRef {
 	return e.securityUnresolved
+}
+
+// UnclassifiedMiddleware returns the middleware that matched no SecurityMapping
+// and shows no auth signal. Reported at verbose level: a project whose auth
+// middleware shows its signal somewhere this walk does not reach is still
+// listed, so the strict rule above costs visibility rather than the answer.
+func (e *Extractor) UnclassifiedMiddleware() []MiddlewareRef {
+	return e.securityUnclassified
 }
 
 // dedupMiddlewareRefs removes duplicate refs, preserving order.

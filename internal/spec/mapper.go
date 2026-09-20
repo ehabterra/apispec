@@ -331,9 +331,18 @@ func DefaultAPISpecConfig() *APISpecConfig {
 
 // SecurityDiagnostics carries non-fatal findings from extraction.
 type SecurityDiagnostics struct {
-	// UnresolvedMiddleware lists detected auth middleware that matched no
-	// SecurityMapping (deduped). The UI uses this to offer interactive mapping.
+	// UnresolvedMiddleware lists middleware that looks like authentication —
+	// it reads a credential, or refuses with an auth status — and matched no
+	// SecurityMapping (deduped). Its operations are therefore documented as
+	// public. The UI uses this to offer interactive mapping.
 	UnresolvedMiddleware []MiddlewareRef
+
+	// UnclassifiedMiddleware lists middleware that matched no SecurityMapping
+	// and shows no auth signal at all: logging, recovery, rate limiting. Kept
+	// apart so the warning above can be about auth, and exposed rather than
+	// dropped so a project whose auth middleware fetches its credential
+	// somewhere the walk does not reach can still find it (issue #520).
+	UnclassifiedMiddleware []MiddlewareRef
 
 	// PathParamMismatches lists handlers that read a map-key path variable
 	// (mux.Vars(r)["userId"]) whose key matches no route placeholder — a likely
@@ -416,8 +425,12 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		for i, r := range unresolved {
 			names[i] = r.String()
 		}
-		log.Printf("[security] %d auth middleware not mapped to a security scheme "+
-			"(add securityMappings to resolve): %s", len(unresolved), strings.Join(names, ", "))
+		// Says the CONSEQUENCE, not just the condition: the operations these
+		// guard are documented as public, which is the reason to act on it.
+		log.Printf("[security] %d middleware look like authentication (they read a credential, "+
+			"or refuse with 401/403) but map to no security scheme, so the operations they "+
+			"guard are documented as PUBLIC (add securityMappings to resolve): %s",
+			len(unresolved), strings.Join(names, ", "))
 	}
 
 	// Warn about handlers that read a path variable by a key with no matching
@@ -505,10 +518,11 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	unresolvedRefs := repairDanglingRefs(spec, usedTypes)
 
 	diag := &SecurityDiagnostics{
-		UnresolvedMiddleware: extractor.UnresolvedSecurity(),
-		PathParamMismatches:  extractor.PathParamMismatches(),
-		UnresolvedRefs:       unresolvedRefs,
-		UnresolvedPaths:      unresolvedPaths,
+		UnresolvedMiddleware:   extractor.UnresolvedSecurity(),
+		UnclassifiedMiddleware: extractor.UnclassifiedMiddleware(),
+		PathParamMismatches:    extractor.PathParamMismatches(),
+		UnresolvedRefs:         unresolvedRefs,
+		UnresolvedPaths:        unresolvedPaths,
 	}
 	// Joined here because this is the one place both halves exist: the tree
 	// knows which registrations a limit cut short, and `routes` is what those

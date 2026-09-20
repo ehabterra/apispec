@@ -84,7 +84,8 @@ func DefaultFiberConfig() *APISpecConfig {
 					RecvTypeRegex:     `^github\.com/gofiber/fiber(/v\d)?\.\*?(App|Router|Group)$`,
 				},
 			},
-			RequestContext: fiberRequestContext,
+			RequestContext:  fiberRequestContext,
+			CredentialReads: frameworkCredentialReads(`^github\.com/gofiber/fiber(/v\d+)?\.\*?Ctx$`),
 			// c.JSON(v) and c.SendString(v) carry no status: fiber sends the
 			// context's status, which is 200 unless c.Status(...) set one — and
 			// that call pairs with the body through the ^Status$ pattern above

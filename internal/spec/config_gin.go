@@ -66,7 +66,8 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex:     "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
-			RequestContext: ginRequestContext,
+			RequestContext:  ginRequestContext,
+			CredentialReads: frameworkCredentialReads(`^github\.com/gin-gonic/gin\.\*?Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^(?i)(BindJSON|ShouldBindJSON|BindXML|BindYAML|BindForm|ShouldBind)$`,

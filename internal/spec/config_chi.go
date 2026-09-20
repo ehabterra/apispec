@@ -86,6 +86,7 @@ func DefaultChiConfig() *APISpecConfig {
 				},
 			},
 			RequestContext:  netHTTPRequestContext,
+			CredentialReads: stdlibCredentialReads(),
 			ResponseContext: netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				{

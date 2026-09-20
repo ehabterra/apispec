@@ -93,6 +93,7 @@ func DefaultMuxConfig() *APISpecConfig {
 				},
 			},
 			RequestContext:  netHTTPRequestContext,
+			CredentialReads: stdlibCredentialReads(),
 			ResponseContext: netHTTPResponseContext,
 			RequestBodyPatterns: []RequestBodyPattern{
 				jsonDecodeRequestPattern(".*json(iter)?\\.\\*?Decoder"),

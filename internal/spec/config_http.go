@@ -149,6 +149,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			CredentialReads:  stdlibCredentialReads(),
 			ResponseContext:  netHTTPResponseContext,
 			MountPatterns: []MountPattern{
 				{
@@ -228,4 +229,86 @@ func DefaultHTTPConfig() *APISpecConfig {
 		},
 		Defaults: stdDefaults(http.StatusOK),
 	}
+}
+
+// stdlibCredentialReads is the credential surface every Go HTTP service shares,
+// whatever router is in front: the names a credential travels under, and the
+// stdlib calls that fetch one whatever they are passed.
+//
+// Used ONLY to decide whether an unmapped middleware is worth reporting as a
+// missing security scheme (issue #520) — never to decide what a scheme IS, and
+// never to drop a parameter. The cost of a wrong answer is a warning shown or
+// withheld, and a middleware this does not recognise is still reported at
+// verbose level rather than dropped, so the rule can be strict without trading
+// a false positive for a silent false negative.
+//
+// The same table is what issue #359 needs to attach a middleware's other
+// effects to the routes it guards, which is why it is config rather than code.
+func stdlibCredentialReads() CredentialReadConfig {
+	return CredentialReadConfig{
+		Accessors: []CredentialAccessor{
+			// The whole credential, with no name given.
+			//
+			// The receiver is matched in BOTH spellings metadata uses for it:
+			// a method call on *http.Request records RecvType as the bare
+			// `*Request` with the path in Pkg, while a pattern elsewhere in
+			// this file sees the qualified form. Pinning one of them made
+			// `r.BasicAuth()` invisible to the classifier.
+			{CallRegex: `^BasicAuth$`, PkgRegex: `^net/http$`, RecvTypeRegex: `^\*?(net/http\.)?Request$`},
+			// A session cookie is a credential, and the read names it.
+			{CallRegex: `^Cookie$`, PkgRegex: `^net/http$`, RecvTypeRegex: `^\*?(net/http\.)?Request$`},
+		},
+		// Where a name has to appear to mean anything. The receiver is what
+		// makes these narrow: `Get` alone would match `cache.Get("…")`.
+		NamedReads: []CredentialAccessor{
+			// r.Header.Get(name) — metadata renders the receiver bare or
+			// qualified depending on the call, so both are accepted.
+			{CallRegex: `^Get$`, RecvTypeRegex: `^\*?(net/http\.)?Header$`},
+			// r.URL.Query().Get(name)
+			{CallRegex: `^Get$`, RecvTypeRegex: `^\*?(net/url\.)?Values$`},
+			// r.FormValue(name) / r.PostFormValue(name)
+			{CallRegex: `^(FormValue|PostFormValue)$`, RecvTypeRegex: `^\*?(net/http\.)?Request$`},
+		},
+		NameRegexes: []string{
+			`(?i)^authorization$`,
+			`(?i)^proxy-authorization$`,
+			// The conventional API-key spellings, matched as WHOLE names so
+			// `X-Request-Id` and `X-Api-Version` are not credentials.
+			`(?i)^x-(api|auth|access|session)[-_]?(key|token|secret)$`,
+			`(?i)^(api|auth|access)[-_]?(key|token)$`,
+			`(?i)^x-(amz-security-token|goog-api-key)$`,
+		},
+		// 401 is definitionally "not authenticated". 403 is authorisation,
+		// which is the same family — it does mean a middleware that forbids on
+		// something other than a credential (a tenancy or IP guard) is reported
+		// too, and that is the accepted cost: a false positive is one line,
+		// while a miss is a route documented as public.
+		RefusalStatuses: []int{
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+		},
+	}
+}
+
+// frameworkCredentialReads is stdlibCredentialReads plus a framework context's
+// own cookie accessor — gin's and echo's `Cookie`, fiber's `Cookies` — which is
+// the one credential read that carries no recognisable name of its own.
+//
+// Header and query accessors need no entry: they are ordinary calls, and
+// callReadsCredential judges any call by the literal it is given, so
+// `c.GetHeader("Authorization")` is recognised for every framework without one.
+func frameworkCredentialReads(ctxRecvTypeRegex string) CredentialReadConfig {
+	cred := stdlibCredentialReads()
+	cred.Accessors = append(cred.Accessors, CredentialAccessor{
+		CallRegex:     `^Cookies?$`,
+		RecvTypeRegex: ctxRecvTypeRegex,
+	})
+	// The context's own by-name reads, which are the framework's spelling of
+	// `r.Header.Get`. Scoped to the context type, so a same-named method on
+	// anything else is not one.
+	cred.NamedReads = append(cred.NamedReads, CredentialAccessor{
+		CallRegex:     `^(Get|GetHeader|GetQuery|Query|QueryParam|FormValue|PostForm|Param)$`,
+		RecvTypeRegex: ctxRecvTypeRegex,
+	})
+	return cred
 }

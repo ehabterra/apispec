@@ -78,6 +78,7 @@ func HTTPSecondaryConfig() *APISpecConfig {
 			},
 			SecurityPatterns: httpSecurityPatterns(),
 			RequestContext:   netHTTPRequestContext,
+			CredentialReads:  stdlibCredentialReads(),
 			// A handler reached through the stdlib surface writes to an
 			// http.ResponseWriter, so a body it writes without stating a status
 			// is sent as 200 (issue #369). Only the implicit status is layered;
