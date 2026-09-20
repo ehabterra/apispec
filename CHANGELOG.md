@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A serializer contributes a response only when its bytes reach the writer.**
+  `json.Marshal(v)` takes a value and returns bytes, so nothing about the call
+  says where those bytes go — and a response pattern naming one is therefore
+  ungateable by `requireResponseDestination`, which has no writer argument to
+  vet and no writer receiver to resolve. The shipped default never has to ask:
+  it anchors on the write sink and traces back through
+  `responseContext.bodyTransforms`, so a marshal no sink reaches is never found.
+  A pattern the USER writes got none of that, and documented the body of every
+  outbound request in the handler's call graph: on one real service, a mail
+  provider's payload struct, an ERP credential struct and `context.Context`,
+  56 spurious blocks in all. Such a match is now answered forwards instead —
+  the result has to reach the response writer, in the function the call is
+  written in. A project carrying the pattern gets the same document as one
+  without it, so it no longer has to track each release's defaults to get a
+  correct spec. (#519, follow-up to #294)
+
 - **An operation declares only the path parameters its own template binds.**
   Parameters are attributed to a HANDLER, and a handler can be mounted at more
   than one template — `/codes/{codeId}/thing` and

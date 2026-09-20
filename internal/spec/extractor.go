@@ -2831,6 +2831,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
+	// A serializer is handed no destination to vet, so the check above cannot
+	// reach it however it is configured. Its claim is still about where bytes
+	// go, so it is answered forwards: the result has to reach the writer.
+	// Without this, a user-written `^Marshal$` pattern documents the body of
+	// every outbound request in the handler's call graph (issue #519).
+	if r.isSerializerCall(node.GetEdge()) && !r.resultReachesWriter(node.GetEdge()) {
+		return nil
+	}
+
 	// Get least status code from response map
 	leastStatusCode := 0
 	for _, resp := range route.Response {
