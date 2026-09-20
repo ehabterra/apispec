@@ -12,6 +12,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -64,6 +65,48 @@ func basicGuard(next http.Handler) http.Handler {
 	})
 }
 
+// Session auth: reads a cookie and REDIRECTS to a login page. Writes no 401
+// ever, so the status signal alone would miss it.
+func sessionAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := r.Cookie("session"); err != nil {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Auth on a HOUSE credential name no table can predict, refusing with 403. The
+// credential signal alone would miss it; the status is what catches it.
+func signatureAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Acme-Request-Signature") == "" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Auth that hands the status decision to a shared renderer: nothing in its own
+// call graph writes 401. The credential read is what catches it.
+var errNoToken = errors.New("no token")
+
+func renderErr(w http.ResponseWriter, err error) {
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+func cookielessAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Auth-Token") == "" {
+			renderErr(w, errNoToken)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Not auth: logs only.
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +130,8 @@ func list(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
 
 func main() {
 	r := chi.NewRouter()
-	r.Use(requestLogger, rateLimit, authMiddleware, houseAuth, delegatingAuth, basicGuard)
+	r.Use(requestLogger, rateLimit, authMiddleware, houseAuth, delegatingAuth, basicGuard,
+		sessionAuth, signatureAuth, cookielessAuth)
 	r.Get("/items", list)
 	_ = http.ListenAndServe(":8080", r)
 }

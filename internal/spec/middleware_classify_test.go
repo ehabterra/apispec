@@ -14,7 +14,11 @@
 
 package spec
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
 
 // TestMatchesCall pins the accessor matcher, including the case that decides
 // whether the whole classifier is safe: an accessor constraining NOTHING must
@@ -118,6 +122,67 @@ func TestStdlibCredentialNamesAreWholeNames(t *testing.T) {
 	} {
 		if match(ordinary) {
 			t.Errorf("%q is an ordinary header and was read as a credential", ordinary)
+		}
+	}
+}
+
+// TestStatusArgValue pins reading a status out of an argument in the spellings
+// a handler writes one. A status that does not resolve is not a refusal, so a
+// miss here costs a silent unreported auth middleware.
+func TestStatusArgValue(t *testing.T) {
+	meta := newTestMeta()
+
+	t.Run("a bare number", func(t *testing.T) {
+		arg := metadata.NewCallArgument(meta)
+		arg.SetKind(metadata.KindLiteral)
+		arg.SetValue("401")
+		if code, ok := statusArgValue(arg); !ok || code != 401 {
+			t.Errorf("statusArgValue = (%d, %v), want (401, true)", code, ok)
+		}
+	})
+
+	t.Run("net/http's constant", func(t *testing.T) {
+		// `http.StatusForbidden` — matched on the trailing identifier, so an
+		// aliased import resolves the same way.
+		arg := mkSelector(meta, mkIdent(meta, "http", ""), mkIdent(meta, "StatusForbidden", ""))
+		if code, ok := statusArgValue(arg); !ok || code != 403 {
+			t.Errorf("statusArgValue = (%d, %v), want (403, true)", code, ok)
+		}
+	})
+
+	t.Run("a dot-imported constant", func(t *testing.T) {
+		if code, ok := statusArgValue(mkIdent(meta, "StatusUnauthorized", "")); !ok || code != 401 {
+			t.Errorf("statusArgValue = (%d, %v), want (401, true)", code, ok)
+		}
+	})
+
+	t.Run("not a status", func(t *testing.T) {
+		lit := metadata.NewCallArgument(meta)
+		lit.SetKind(metadata.KindLiteral)
+		lit.SetValue(`"unauthorized"`)
+		if _, ok := statusArgValue(lit); ok {
+			t.Error("a message string was read as a status")
+		}
+		if _, ok := statusArgValue(mkIdent(meta, "someLocal", "")); ok {
+			t.Error("an unrelated identifier was read as a status")
+		}
+	})
+}
+
+// TestRefusalStatusesAreAuthOnly guards the status table against the failure
+// that would undo the fix: a refusing middleware is not an authenticating one.
+// A rate limiter (429), a size limiter (413) and a timeout (504) all refuse.
+func TestRefusalStatusesAreAuthOnly(t *testing.T) {
+	cred := stdlibCredentialReads()
+
+	for _, auth := range []int{401, 403} {
+		if !cred.refuses(auth) {
+			t.Errorf("%d means the request was not authenticated/authorised and is not counted", auth)
+		}
+	}
+	for _, refusal := range []int{400, 404, 409, 413, 415, 422, 429, 500, 503, 504} {
+		if cred.refuses(refusal) {
+			t.Errorf("%d is a refusal but not an auth one; counting it reports every guard as auth", refusal)
 		}
 	}
 }

@@ -19,18 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are documented as public**. Recognised libraries were already skipped; a
   project's own middleware matched nothing, so all of it was reported.
 
-  The split is now made on what the middleware's body DOES — whether it, or
-  anything it calls, takes a credential out of the request — never on its name,
-  which would be the guess golden rule #9 forbids. Refusing a request is
-  deliberately not sufficient on its own: a rate limiter refuses too.
+  The split is now made on what the middleware's body DOES, never on its name —
+  which would be the guess golden rule #9 forbids. Two signals count, either on
+  its own: it READS a credential, or it REFUSES with 401/403. Neither alone is
+  enough, and each catches what the other misses — session auth redirects to a
+  login page and never writes 401, a middleware that returns an error for a
+  shared renderer decides its status elsewhere, and no name table can know a
+  house credential like `X-Acme-Request-Signature`. Refusing on its own is still
+  not a signal: a rate limiter refuses too, with 429.
 
   Nothing is dropped. Middleware that shows no credential read is listed under
   `--verbose` and exposed on `SecurityDiagnostics`, so a project whose auth
   middleware fetches its credential somewhere the walk does not reach can still
   find it — the strict rule costs visibility, not the answer. The warning also
   states the consequence rather than only the condition. New
-  `framework.credentialReads` is the table it decides by, config-driven for a
-  house credential, and is the same surface issue #359 needs. (#520)
+  `framework.credentialReads` is the table it decides by — the credential names,
+  the calls that ARE a read whatever they are passed, and the refusal statuses —
+  config-driven for a house credential, and the same surface issue #359 needs.
+  (#520)
 
 
 - **A `--config` file is MERGED over the detected framework's configuration,

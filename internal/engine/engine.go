@@ -944,7 +944,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		e.thinOperations = secDiag.ThinOperations
 		e.reportUnresolvedRefs()
 		e.reportUnresolvedPaths()
-		// Middleware that maps to no scheme AND shows no credential read. Not
+		// Middleware that maps to no scheme AND shows no auth signal. Not
 		// a warning — on a normal service this is the logging, recovery, CORS
 		// and rate-limiting middleware, and announcing it as unmapped AUTH is
 		// what buried the one line that mattered (issue #520). Listed here so a
@@ -956,7 +956,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 				names[i] = r.String()
 			}
 			NewVerboseLogger(e.config.Verbose).Printf(
-				"Middleware with no security mapping and no credential read (not reported as auth): %s\n",
+				"Middleware with no security mapping and no auth signal (not reported as auth): %s\n",
 				strings.Join(names, ", "))
 		}
 	}
@@ -1365,7 +1365,7 @@ func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 }
 
 // GetUnclassifiedMiddleware returns middleware from the most recent generation
-// that matched no SecurityMapping and shows no credential read — logging,
+// that matched no SecurityMapping and shows no auth signal — logging,
 // recovery, rate limiting. Kept apart from GetUnresolvedSecurity so the warning
 // can be about auth, and exposed rather than dropped (issue #520).
 func (e *Engine) GetUnclassifiedMiddleware() []intspec.MiddlewareRef {

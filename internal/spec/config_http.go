@@ -266,6 +266,15 @@ func stdlibCredentialReads() CredentialReadConfig {
 			`(?i)^(api|auth|access)[-_]?(key|token)$`,
 			`(?i)^x-(amz-security-token|goog-api-key)$`,
 		},
+		// 401 is definitionally "not authenticated". 403 is authorisation,
+		// which is the same family — it does mean a middleware that forbids on
+		// something other than a credential (a tenancy or IP guard) is reported
+		// too, and that is the accepted cost: a false positive is one line,
+		// while a miss is a route documented as public.
+		RefusalStatuses: []int{
+			http.StatusUnauthorized,
+			http.StatusForbidden,
+		},
 	}
 }
 

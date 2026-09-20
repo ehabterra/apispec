@@ -71,10 +71,13 @@ func TestMiddlewareClassification(t *testing.T) {
 		}
 	})
 
-	t.Run("refuses requests but reads no credential", func(t *testing.T) {
+	t.Run("refuses requests but shows no auth signal", func(t *testing.T) {
+		// rateLimit REFUSES (429) and requestLogger reads a header — so a rule
+		// keying on "can reject a request", or on "reads any header", calls
+		// both of these auth. Neither is.
 		for _, notWant := range []string{"requestLogger", "rateLimit"} {
 			if hasName(reported, notWant) {
-				t.Errorf("%s reads no credential and must not be reported as auth; reported=%v", notWant, reported)
+				t.Errorf("%s shows no auth signal and must not be reported as auth; reported=%v", notWant, reported)
 			}
 			// Demoted, not dropped: a project whose auth middleware fetches its
 			// credential somewhere this walk does not reach must still be able

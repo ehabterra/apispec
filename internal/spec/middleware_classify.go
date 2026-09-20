@@ -15,13 +15,14 @@
 package spec
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// readsCredential reports whether a middleware — or anything it calls — takes a
-// credential out of the request.
+// signalsAuth reports whether a middleware — or anything it calls — shows a
+// sign of doing authentication.
 //
 // This is what separates the warning that matters from the noise around it. A
 // middleware that maps to no security scheme is reported so the user can map
@@ -41,26 +42,35 @@ import (
 // classify is still reported, at verbose level, which is why the rule can be
 // this strict without trading a false positive for a false negative.
 //
+// Two independent signals, either sufficient: the middleware READS a credential,
+// or it REFUSES with a status that means "not authenticated/authorised". They
+// catch different things, and each alone leaves real auth middleware silent:
+//
+//	reads Authorization, writes 401     both
+//	reads a cookie, REDIRECTS to /login credential only — session auth writes no 401
+//	reads a header, returns an error    credential only — the status is decided elsewhere
+//	reads X-Acme-Request-Signature, 403 status only — no name table can know that one
+//
 // Memoized per function, and walks the same two edge sets as
 // middlewareMatchesThrough: the calls in the body, and the calls inside func
 // literals it defines — which is where a wrapper's real work lives, since a
 // middleware IS a function returning a handler.
-func (e *Extractor) readsCredential(ref MiddlewareRef, meta *metadata.Metadata) bool {
+func (e *Extractor) signalsAuth(ref MiddlewareRef, meta *metadata.Metadata) bool {
 	key := middlewareBaseID(ref)
 	if key == "" || meta == nil {
 		return false
 	}
 	e.ensureParentFnIndex(meta)
-	return e.credentialReadThrough(key, meta, make(map[string]bool, 8), 0)
+	return e.authSignalThrough(key, meta, make(map[string]bool, 8), 0)
 }
 
-// credentialWalkDepth bounds the walk. An auth middleware reads its credential
+// credentialWalkDepth bounds the walk. An auth middleware shows its signal
 // close to the surface — the header read is in the middleware, or in the one
 // helper it delegates to — and the bound keeps a deep call graph from being
 // searched exhaustively for every unmapped middleware on every route.
 const credentialWalkDepth = 4
 
-func (e *Extractor) credentialReadThrough(key string, meta *metadata.Metadata, seen map[string]bool, depth int) bool {
+func (e *Extractor) authSignalThrough(key string, meta *metadata.Metadata, seen map[string]bool, depth int) bool {
 	if depth > credentialWalkDepth || seen[key] {
 		return false
 	}
@@ -75,7 +85,7 @@ func (e *Extractor) credentialReadThrough(key string, meta *metadata.Metadata, s
 			if found || edge == nil {
 				continue
 			}
-			if e.callReadsCredential(edge) {
+			if e.callSignalsAuth(edge) {
 				found = true
 				continue
 			}
@@ -84,7 +94,7 @@ func (e *Extractor) credentialReadThrough(key string, meta *metadata.Metadata, s
 				continue
 			}
 			if calleeKey := middlewareBaseID(callee); calleeKey != "" {
-				found = e.credentialReadThrough(calleeKey, meta, seen, depth+1)
+				found = e.authSignalThrough(calleeKey, meta, seen, depth+1)
 			}
 		}
 	}
@@ -98,9 +108,9 @@ func (e *Extractor) credentialReadThrough(key string, meta *metadata.Metadata, s
 	return found
 }
 
-// callReadsCredential reports whether one call takes a credential out of the
-// request, by either of the two shapes a credential read has.
-func (e *Extractor) callReadsCredential(edge *metadata.CallGraphEdge) bool {
+// callSignalsAuth reports whether one call shows an auth signal: it reads a
+// credential, or it refuses the request with an auth status.
+func (e *Extractor) callSignalsAuth(edge *metadata.CallGraphEdge) bool {
 	cred := e.cfg.Framework.CredentialReads
 	if cred.empty() {
 		return false
@@ -117,15 +127,20 @@ func (e *Extractor) callReadsCredential(edge *metadata.CallGraphEdge) bool {
 		}
 	}
 
-	// 2. A call NAMING a credential: `r.Header.Get("Authorization")`,
-	// `c.GetHeader("X-Api-Key")`. The name is the evidence, so it is matched on
-	// the literal the call is given rather than on the call itself — a header
-	// read is not an auth signal, and the header it reads is.
-	if len(cred.NameRegexes) == 0 {
-		return false
-	}
+	// 2. A call NAMING a credential (`r.Header.Get("Authorization")`), or
+	// REFUSING with an auth status (`http.Error(w, msg, 401)`). Both are read
+	// off the arguments, because both are carried by what the call is given
+	// rather than by the call itself: a header read is not a signal and the
+	// header it names is, and an error write is not a signal and the status it
+	// carries is.
 	for _, arg := range edge.Args {
-		if arg == nil || arg.GetKind() != metadata.KindLiteral {
+		if arg == nil {
+			continue
+		}
+		if code, ok := statusArgValue(arg); ok && cred.refuses(code) {
+			return true
+		}
+		if arg.GetKind() != metadata.KindLiteral {
 			continue
 		}
 		lit := strings.Trim(arg.GetValue(), "\"`")
@@ -139,6 +154,35 @@ func (e *Extractor) callReadsCredential(edge *metadata.CallGraphEdge) bool {
 		}
 	}
 	return false
+}
+
+// statusArgValue reads an HTTP status out of an argument, in the two spellings
+// a handler writes one: the bare number, and net/http's constant.
+//
+// The constant is resolved by NAME rather than by following it to its
+// declaration — HTTPStatusByName is the same table the schema mapper uses, and
+// it is what makes `http.StatusUnauthorized` and a plain 401 the same fact
+// here. A selector is matched on its trailing identifier, so an aliased import
+// (`nethttp.StatusForbidden`) resolves too.
+func statusArgValue(arg *metadata.CallArgument) (int, bool) {
+	switch arg.GetKind() {
+	case metadata.KindLiteral:
+		code, err := strconv.Atoi(strings.Trim(arg.GetValue(), "\"`"))
+		if err != nil {
+			return 0, false
+		}
+		return code, true
+	case metadata.KindIdent:
+		code, ok := HTTPStatusByName[arg.GetName()]
+		return code, ok
+	case metadata.KindSelector:
+		if arg.Sel == nil {
+			return 0, false
+		}
+		code, ok := HTTPStatusByName[arg.Sel.GetName()]
+		return code, ok
+	}
+	return 0, false
 }
 
 // matchesCall reports whether a callee matches a CredentialAccessor. An empty

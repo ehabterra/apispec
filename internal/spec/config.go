@@ -321,10 +321,35 @@ type CredentialReadConfig struct {
 	// `r.Header.Get("Authorization")` counts and `r.Header.Get("X-Request-Id")`
 	// does not. The header read is not the signal; the header it names is.
 	NameRegexes []string `yaml:"nameRegexes,omitempty" json:"nameRegexes,omitempty"`
+
+	// RefusalStatuses are the statuses whose meaning IS "this request is not
+	// authenticated/authorised" — a second, independent signal, sufficient on
+	// its own.
+	//
+	// The two catch different things, which is why both are kept. A name table
+	// is a guess about spelling and cannot know a house credential
+	// (`X-Acme-Request-Signature`); a status is semantic and needs no table.
+	// But a status is often written somewhere else entirely — session auth
+	// REDIRECTS to a login page and never writes 401, and a middleware that
+	// returns an error for echo's HTTPErrorHandler or a house `renderErr` to
+	// render decides the status outside its own call graph. Either signal alone
+	// leaves real auth middleware unreported, and an unreported one means its
+	// routes are documented as public.
+	RefusalStatuses []int `yaml:"refusalStatuses,omitempty" json:"refusalStatuses,omitempty"`
 }
 
 func (c CredentialReadConfig) empty() bool {
-	return len(c.Accessors) == 0 && len(c.NameRegexes) == 0
+	return len(c.Accessors) == 0 && len(c.NameRegexes) == 0 && len(c.RefusalStatuses) == 0
+}
+
+// refuses reports whether code is one of the configured refusal statuses.
+func (c CredentialReadConfig) refuses(code int) bool {
+	for _, want := range c.RefusalStatuses {
+		if want == code {
+			return true
+		}
+	}
+	return false
 }
 
 // CredentialAccessor matches a call that reads a credential. An empty field

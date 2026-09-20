@@ -331,13 +331,14 @@ func DefaultAPISpecConfig() *APISpecConfig {
 
 // SecurityDiagnostics carries non-fatal findings from extraction.
 type SecurityDiagnostics struct {
-	// UnresolvedMiddleware lists middleware that reads a credential and matched
-	// no SecurityMapping (deduped) — the ones whose operations are therefore
-	// documented as public. The UI uses this to offer interactive mapping.
+	// UnresolvedMiddleware lists middleware that looks like authentication —
+	// it reads a credential, or refuses with an auth status — and matched no
+	// SecurityMapping (deduped). Its operations are therefore documented as
+	// public. The UI uses this to offer interactive mapping.
 	UnresolvedMiddleware []MiddlewareRef
 
 	// UnclassifiedMiddleware lists middleware that matched no SecurityMapping
-	// and shows no credential read: logging, recovery, rate limiting. Kept
+	// and shows no auth signal at all: logging, recovery, rate limiting. Kept
 	// apart so the warning above can be about auth, and exposed rather than
 	// dropped so a project whose auth middleware fetches its credential
 	// somewhere the walk does not reach can still find it (issue #520).
@@ -426,9 +427,10 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		}
 		// Says the CONSEQUENCE, not just the condition: the operations these
 		// guard are documented as public, which is the reason to act on it.
-		log.Printf("[security] %d middleware read a credential but map to no security scheme, "+
-			"so the operations they guard are documented as PUBLIC "+
-			"(add securityMappings to resolve): %s", len(unresolved), strings.Join(names, ", "))
+		log.Printf("[security] %d middleware look like authentication (they read a credential, "+
+			"or refuse with 401/403) but map to no security scheme, so the operations they "+
+			"guard are documented as PUBLIC (add securityMappings to resolve): %s",
+			len(unresolved), strings.Join(names, ", "))
 	}
 
 	// Warn about handlers that read a path variable by a key with no matching

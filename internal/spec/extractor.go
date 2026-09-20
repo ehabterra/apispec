@@ -282,8 +282,8 @@ type Extractor struct {
 	securityUnresolved    []MiddlewareRef
 	securityUnresolvedSet map[string]struct{}
 
-	// securityUnclassified collects unmapped middleware that shows no sign of
-	// reading a credential — logging, recovery, rate limiting. Kept apart from
+	// securityUnclassified collects unmapped middleware that shows no auth
+	// signal at all — logging, recovery, rate limiting. Kept apart from
 	// securityUnresolved so the warning can be about auth while these are still
 	// reported, at verbose level, rather than dropped (issue #520).
 	securityUnclassified []MiddlewareRef
@@ -758,11 +758,13 @@ func (e *Extractor) recordUnresolved(refs []MiddlewareRef) {
 		}
 		e.securityUnresolvedSet[key] = struct{}{}
 		// Split by what the middleware's body does, not by what it is called.
+		// Two signals, either sufficient: it reads a credential, or it refuses
+		// with an auth status — see signalsAuth for why neither alone is enough.
 		// Everything in a Use/group/per-route slot arrives here, and on a
 		// normal service most of it is logging, recovery, CORS, rate limiting
 		// and timeouts — announced as "auth middleware not mapped" alongside
 		// the one that really was (issue #520).
-		if e.readsCredential(r, meta) {
+		if e.signalsAuth(r, meta) {
 			e.securityUnresolved = append(e.securityUnresolved, r)
 			continue
 		}
@@ -771,15 +773,15 @@ func (e *Extractor) recordUnresolved(refs []MiddlewareRef) {
 }
 
 // UnresolvedSecurity returns the middleware that matched no SecurityMapping AND
-// reads a credential (deduped) — the ones whose routes are therefore documented
+// looks like authentication (deduped) — the ones whose routes are therefore documented
 // as public when they should not be. Empty when nothing was unresolved.
 func (e *Extractor) UnresolvedSecurity() []MiddlewareRef {
 	return e.securityUnresolved
 }
 
 // UnclassifiedMiddleware returns the middleware that matched no SecurityMapping
-// and shows no credential read. Reported at verbose level: a project whose auth
-// middleware fetches its credential somewhere this walk does not reach is still
+// and shows no auth signal. Reported at verbose level: a project whose auth
+// middleware shows its signal somewhere this walk does not reach is still
 // listed, so the strict rule above costs visibility rather than the answer.
 func (e *Extractor) UnclassifiedMiddleware() []MiddlewareRef {
 	return e.securityUnclassified
