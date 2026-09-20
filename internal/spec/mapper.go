@@ -393,7 +393,16 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 	// Warn about handlers that read a path variable by a key with no matching
 	// path placeholder (e.g. mux.Vars(r)["userId"] on a /users/{id} route) — a
 	// likely typo, since the read is always empty.
-	for _, m := range extractor.PathParamMismatches() {
+	//
+	// Not when a SIBLING route of the same handler declares the key: a handler
+	// mounted at two templates reads the union of their names, and on each route
+	// the other's names are absent by design. Reporting those said "likely typo"
+	// about correct code, on every such handler (issue #514).
+	siblings := handlerPlaceholderUnion(routes)
+	for _, m := range unboundPathParams(routes, extractor.PathParamMismatches()) {
+		if siblings[m.Handler][m.Key] {
+			continue
+		}
 		log.Printf("[path-params] %s %s: handler %s reads path variable %q, "+
 			"but the path declares no such parameter (did you mean a different key or path segment?)",
 			m.Method, m.Path, m.Handler, m.Key)
@@ -649,6 +658,7 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 		if formBody != nil {
 			operation.RequestBody = formBody
 		}
+		params = dropForeignPathParams(params, openAPIPath)
 
 		// Add parameters (deduplicated and ensure all path params)
 		if len(params) > 0 {
@@ -682,6 +692,132 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 	}
 
 	return paths
+}
+
+// unboundPathParams returns the recorded mismatches plus every `in: path`
+// parameter a route carries that its own template does not declare — the same
+// parameters dropForeignPathParams drops, so that a drop is never silent.
+//
+// The recorded ones come from the map-key recovery, which only gorilla/mux
+// needs (a name read as `vars["id"]` is a map index, not an argument). Reading
+// the resolved parameters instead covers every other framework, where the name
+// reached the route as a parameter already: before this, a misspelled
+// `chi.URLParam(r, "teamID")` was emitted as a real path parameter — invalid,
+// and reported by nothing.
+//
+// Deduped so mux, which both records and resolves the name, is reported once.
+func unboundPathParams(routes []*RouteInfo, recorded []PathParamMismatch) []PathParamMismatch {
+	out := append([]PathParamMismatch(nil), recorded...)
+	seen := make(map[string]struct{}, len(recorded))
+	key := func(m PathParamMismatch) string {
+		return m.Method + " " + m.Path + " " + m.Handler + " " + m.Key
+	}
+	for _, m := range recorded {
+		seen[key(m)] = struct{}{}
+	}
+	for _, route := range routes {
+		if route == nil || route.Function == "" {
+			continue
+		}
+		openAPIPath, catchAll := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
+		declared := make(map[string]bool)
+		for _, name := range pathPlaceholders(openAPIPath) {
+			declared[name] = true
+		}
+		// A catch-all is read by the token the router spells it with —
+		// `ctx.PathParam("*")` — while the template has to name it, since
+		// OpenAPI has no wildcard. The read is of the parameter the route does
+		// declare, so it is neither a typo nor unbound; it was 74 of gitea's
+		// 112 reports before this.
+		if len(catchAll) > 0 {
+			declared[catchAllToken] = true
+		}
+		for _, p := range route.Params {
+			if p.In != "path" || p.Name == "" || declared[p.Name] {
+				continue
+			}
+			m := PathParamMismatch{
+				Method:  route.Method,
+				Path:    openAPIPath,
+				Handler: route.Function,
+				Key:     p.Name,
+			}
+			if _, ok := seen[key(m)]; ok {
+				continue
+			}
+			seen[key(m)] = struct{}{}
+			out = append(out, m)
+		}
+	}
+	// Sorted: the routes slice feeds the output, so the order diagnostics are
+	// printed in must not depend on how it was assembled (golden rule #1).
+	sort.Slice(out, func(i, j int) bool { return key(out[i]) < key(out[j]) })
+	return out
+}
+
+// handlerPlaceholderUnion maps each handler to every placeholder name declared
+// by ANY route it serves, so a name can be told apart from a typo: a handler
+// mounted at two templates legitimately reads the union of their names.
+func handlerPlaceholderUnion(routes []*RouteInfo) map[string]map[string]bool {
+	union := make(map[string]map[string]bool)
+	for _, route := range routes {
+		if route == nil || route.Function == "" {
+			continue
+		}
+		openAPIPath, catchAll := convertPathToOpenAPI(joinPaths(route.MountPath, route.Path))
+		names := pathPlaceholders(openAPIPath)
+		if len(catchAll) > 0 {
+			// The token the read uses, which the template renames — see
+			// catchAllToken. A handler serving a catch-all route reads `*`
+			// wherever else it is mounted too.
+			names = append(names, catchAllToken)
+		}
+		for _, name := range names {
+			if union[route.Function] == nil {
+				union[route.Function] = make(map[string]bool)
+			}
+			union[route.Function][name] = true
+		}
+	}
+	return union
+}
+
+// dropForeignPathParams removes `in: path` parameters that the operation's own
+// path template does not declare.
+//
+// Parameters are attributed to a HANDLER, and one handler can be mounted at
+// more than one template — `/codes/{codeId}/thing` and
+// `/groups/{id}/codes/{codeId}/thing` in the same router. The handler reads both
+// names, so both were emitted on both operations, and the shorter one declared
+// an `id` its own path has nowhere to bind. OpenAPI requires every `in: path`
+// parameter to appear in the template, so that operation is not merely
+// imprecise, it is INVALID — `redocly lint` reports it as
+// `path-parameters-defined`, and a generated client gets a required argument it
+// cannot place (issue #514).
+//
+// Dropping is the whole of the fix: a name that belongs to a sibling route is
+// documented there, on the operation whose path actually has it.
+//
+// Query, header and cookie parameters are untouched — they are not bound to the
+// template and a handler may legitimately read them on either route.
+func dropForeignPathParams(params []Parameter, openAPIPath string) []Parameter {
+	if len(params) == 0 {
+		return params
+	}
+	declared := make(map[string]bool)
+	for _, name := range pathPlaceholders(openAPIPath) {
+		declared[name] = true
+	}
+	out := params[:0:0]
+	for _, p := range params {
+		// A $ref carries no location here; appendDynamicParamRefs owns those,
+		// and they are keyed off this route's own placeholders already.
+		if p.In == "path" && p.Name != "" && !declared[p.Name] {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // ensureAllPathParams ensures all path parameters in the path are present in
@@ -1253,6 +1389,12 @@ func isPathParamName(s string) bool {
 	}
 	return true
 }
+
+// catchAllToken is how a router spells the catch-all segment in a registration
+// and in the read that fetches it (`chi.URLParam(r, "*")`,
+// `ctx.PathParam("*")`). The template names it instead, because OpenAPI has no
+// wildcard — see freeCatchAllName.
+const catchAllToken = "*"
 
 // freeCatchAllName picks a name for an unnamed catch-all that no placeholder on
 // this path already uses, so `/files/{wildcard}` cannot collide with a real

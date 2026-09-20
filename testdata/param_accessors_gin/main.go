@@ -27,6 +27,10 @@ func getItem(c *gin.Context) {
 
 func main() {
 	r := gin.Default()
-	r.GET("/items/:id", getItem)
+	// Both names the handler reads are declared: `Params.ByName("altid")` reads
+	// a route parameter, so the route has to have one for the read to mean
+	// anything — and an operation may only declare path parameters its own
+	// template binds (issue #514).
+	r.GET("/items/:id/:altid", getItem)
 	_ = r.Run(":8080")
 }

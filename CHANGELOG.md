@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An operation declares only the path parameters its own template binds.**
+  Parameters are attributed to a HANDLER, and a handler can be mounted at more
+  than one template — `/codes/{codeId}/thing` and
+  `/groups/{id}/codes/{codeId}/thing` in the same router. It reads the union of
+  their names, so both were emitted on both operations, and the shorter one
+  declared an `id` its path has nowhere to bind. That is not merely imprecise:
+  OpenAPI requires every `in: path` parameter to appear in the template, so the
+  operation is invalid — `redocly lint` reports `path-parameters-defined`, and a
+  generated client gets a required argument it cannot place. Query, header and
+  cookie parameters are untouched, being unbound to the template by nature.
+  (#514)
+
+- **A path variable no route declares is reported for every framework, not
+  just gorilla/mux.** The diagnostic was driven by the map-key recovery, which
+  only mux needs; everywhere else the name reached the route as a resolved
+  parameter and nothing checked it, so a misspelled `chi.URLParam(r, "teamID")`
+  was emitted as a real path parameter in silence. It is now dropped and
+  reported. Conversely the warning no longer fires for a handler mounted at
+  several templates, where each route legitimately lacks its sibling's names —
+  it said "likely typo" about correct code on every such handler. (#514)
+
 - **`json.RawMessage` documents any JSON value, not a string.** It is bytes
   copied into the document verbatim — object, array, number, string or null —
   and the marshaler fallback called it a string, which is the one answer that is
@@ -25,8 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   published an empty definition and a `$ref` pointing at it. Schemas are now
   judged inline-or-named by whether they constrain anything, of which
   "primitive-shaped" was only the first half. (#518)
-
-### Fixed
 
 - **A third-party client's reply is no longer documented as the handler's
   request body.** A decoder wrapper is recognised by shape — a method forwarding
@@ -99,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matches no routes and documents nothing — filed as #524. Both the README and
   the reference now state that, and point at `--output-config` as the way to
   build a config.
+
 
 ## [0.5.9] - 2026-09-18
 
