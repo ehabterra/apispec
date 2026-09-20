@@ -2907,6 +2907,14 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		if !ok {
 			return nil
 		}
+		// A media type a serializer already describes is not a stream. If the
+		// body resolved, that pattern documents it properly; if it did not,
+		// unresolved is the honest answer — calling a JSON document a binary
+		// blob stops a generated client parsing it, which is worse than
+		// saying nothing (golden rule #7).
+		if r.serializerCovers(declared) {
+			return nil
+		}
 		contentType = declared
 	}
 

@@ -84,16 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than naming a Go type that was never encoded, and a declaration whose
   value is decided at runtime documents nothing rather than guessing. (#517)
 
-### Known limitation
-
-- A handler that declares a content type and THEN states a different status —
-  `w.Header().Set(…)` followed by `w.WriteHeader(201)` — documents a spurious
-  `200` beside the real response. Five operations across four fixtures show it.
-  The fix is to defer the status to pairing (`implicitStatus`) rather than
-  resolve it on the pattern, which needs an opaque fragment to survive fragment
-  assembly first; it does not today, and forcing the status is what makes the
-  streamed body appear at all. (#517)
-
 ### Fixed
 
 - **The unmapped-middleware warning is about auth again.** Every middleware in a
