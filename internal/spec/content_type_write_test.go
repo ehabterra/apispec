@@ -156,3 +156,46 @@ func TestAnyCallRegexComesFromConfig(t *testing.T) {
 		}
 	})
 }
+
+// TestSerializerCoversRefusesStructuredTypes pins the line between a STREAM and
+// a format a serializer already describes.
+//
+// An opaque `{type: string, format: binary}` is the truth for bytes and a lie
+// for JSON: it stops a generated client parsing a document it could read. So
+// where a serializer covers the media type, an unresolved body stays
+// unresolved rather than being called bytes.
+func TestSerializerCoversRefusesStructuredTypes(t *testing.T) {
+	meta := newTestMeta()
+	cfg := DefaultChiConfig()
+	m := NewResponsePatternMatcher(contentTypeResponsePattern(stdlibContentTypeWrites()),
+		cfg, NewContextProvider(meta))
+
+	for _, covered := range []string{
+		"application/json",
+		// The charset is not a different format — comparing the whole string
+		// would have let this one through.
+		"application/json; charset=utf-8",
+		"APPLICATION/JSON",
+		"application/xml",
+	} {
+		t.Run("covered: "+covered, func(t *testing.T) {
+			if !m.serializerCovers(covered) {
+				t.Errorf("%q is described by a serializer; an opaque body there misstates it", covered)
+			}
+		})
+	}
+
+	for _, stream := range []string{
+		"text/csv",
+		"application/pdf",
+		"application/octet-stream",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"", // nothing declared
+	} {
+		t.Run("stream: "+stream, func(t *testing.T) {
+			if m.serializerCovers(stream) {
+				t.Errorf("%q is a stream; refusing it would lose the body this feature exists for", stream)
+			}
+		})
+	}
+}

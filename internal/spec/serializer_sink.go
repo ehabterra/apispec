@@ -271,3 +271,41 @@ func (r *ResponsePatternMatcherImpl) contentTypeHeaderWrite(edge *metadata.CallG
 	}
 	return "", false
 }
+
+// serializerCovers reports whether a declared media type is one the configured
+// serializers already describe — application/json, application/xml, and
+// whatever else a response pattern names.
+//
+// For those, an unresolved body is unresolved, NOT bytes. Synthesising an
+// opaque `{type: string, format: binary}` there actively misdescribes a JSON
+// document as a binary blob, which is worse than saying nothing: a generated
+// client stops parsing it. The opaque body exists for STREAMS — text/csv,
+// application/pdf, application/octet-stream — where bytes is the truth.
+//
+// Compared on the media type alone, so `application/json; charset=utf-8`
+// matches `application/json`: the charset is not a different format.
+func (r *ResponsePatternMatcherImpl) serializerCovers(mediaType string) bool {
+	base := func(ct string) string {
+		if i := strings.IndexByte(ct, ';'); i >= 0 {
+			ct = ct[:i]
+		}
+		return strings.ToLower(strings.TrimSpace(ct))
+	}
+	want := base(mediaType)
+	if want == "" {
+		return false
+	}
+	if want == base(r.cfg.Defaults.ResponseContentType) {
+		return true
+	}
+	for _, p := range r.cfg.Framework.ResponsePatterns {
+		// A pattern that declares a media type AND reads a body type is a
+		// serializer: it describes what it writes. One that carries no body
+		// type (this pattern itself, a status-only write) describes nothing,
+		// so it does not cover anything.
+		if p.TypeFromArg && p.DefaultContentType != "" && base(p.DefaultContentType) == want {
+			return true
+		}
+	}
+	return false
+}
