@@ -2953,7 +2953,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// are excluded even when it fails to resolve — that is a status which could
 	// not be determined, and saying 200 there would be a guess.
 	if !statusResolved && !r.pattern.StatusFromArg {
-		respInfo.ImplicitStatus = r.cfg.Framework.ResponseContext.ImplicitStatus
+		// A pattern may carry its own, for a body whose status the framework's
+		// renderers do not speak for (issue #517).
+		if r.pattern.ImplicitStatus > 0 {
+			respInfo.ImplicitStatus = r.pattern.ImplicitStatus
+		} else {
+			respInfo.ImplicitStatus = r.cfg.Framework.ResponseContext.ImplicitStatus
+		}
 	}
 
 	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {

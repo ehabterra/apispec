@@ -664,6 +664,12 @@ type ResponsePattern struct {
 	// it.
 	ContentTypeFromHeaderWrite bool `yaml:"contentTypeFromHeaderWrite,omitempty" json:"contentTypeFromHeaderWrite,omitempty"`
 
+	// ImplicitStatus is the status a body from this pattern takes when no
+	// explicit status write claims it during pairing. It overrides the
+	// framework-wide ResponseContext.ImplicitStatus, which is 0 for routers
+	// whose renderers always carry a status.
+	ImplicitStatus int `yaml:"implicitStatus,omitempty" json:"implicitStatus,omitempty"`
+
 	// OpaqueBody says this call writes a body whose content is BYTES rather
 	// than a Go value serialised into them — `csv.NewWriter(w).Write(row)`,
 	// `io.Copy(w, f)`. Such a call carries no body type to resolve and no
@@ -1497,11 +1503,16 @@ func contentTypeResponsePattern() ResponsePattern {
 		ContentTypeFromHeaderWrite: true,
 		TypeArgIndex:               -1,
 		OpaqueBody:                 true,
-		// Declaring a media type states no status, and the framework-wide
-		// ImplicitStatus is deliberately 0 for routers whose renderers always
-		// carry one (gin, echo). A streamed body there still answers 200, so
-		// the status belongs to this pattern rather than to the framework.
-		DefaultStatus: http.StatusOK,
+		// NOT DefaultStatus: that resolves the status immediately, so pairing
+		// never lets the handler's own `WriteHeader(201)` two lines below
+		// claim this body — and a 201 response acquired a phantom 200 beside
+		// it. ImplicitStatus is the existing mechanism for exactly this: a
+		// status taken ONLY if no explicit write claims the body first.
+		//
+		// Carried per-pattern because the framework-wide one is deliberately 0
+		// for routers whose renderers always state a status (gin, echo), while
+		// a streamed body there still answers 200.
+		ImplicitStatus: http.StatusOK,
 		// The declaration is only about the response when it is made on the
 		// response writer.
 		RequireResponseDestination: true,
