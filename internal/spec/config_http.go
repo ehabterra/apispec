@@ -22,6 +22,22 @@ import "net/http"
 var netHTTPRequestContext = RequestContextConfig{
 	TypeRegexes:   []string{`^\*?net/http\.Request$`},
 	BodyAccessors: []string{`^Body$`},
+	BodyReaders:   stdlibBodyReaders(),
+}
+
+// stdlibBodyReaders are the standard-library calls that turn a reader into
+// bytes. Every framework's request context gets the same list: reaching for
+// io.ReadAll before unmarshalling is a Go habit, not a router's (golden rule
+// #5), and the handler writes it identically whichever router is in front.
+//
+// Kept as a function so no framework can mutate another's copy.
+func stdlibBodyReaders() []BodyReader {
+	return []BodyReader{
+		{CallRegex: `^ReadAll$`, PkgRegex: `^io$`, SourceArgIndex: 0},
+		// Pre-1.16 spelling, still widespread in projects that have not
+		// migrated; io/ioutil.ReadAll simply forwards to io.ReadAll.
+		{CallRegex: `^ReadAll$`, PkgRegex: `^io/ioutil$`, SourceArgIndex: 0},
+	}
 }
 
 // netHTTPResponseContext is the ResponseContext preset for the net/http family

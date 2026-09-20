@@ -27,6 +27,7 @@ var ginRequestContext = RequestContextConfig{
 		`^Request\.Body$`,
 		`^Body$`,
 	},
+	BodyReaders: stdlibBodyReaders(),
 }
 
 // DefaultGinConfig returns a default configuration for the Gin framework.

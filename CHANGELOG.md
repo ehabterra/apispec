@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A third-party client's reply is no longer documented as the handler's
+  request body.** A decoder wrapper is recognised by shape — a method forwarding
+  its own parameter into a decode — and an outbound HTTP client has that shape
+  too:
+
+  ```go
+  func (c *Ctx) Bind(dst any) error     { return json.NewDecoder(c.Req.Body).Decode(dst) }
+  func (c *client) fetch(out any) error { return json.NewDecoder(resp.Body).Decode(out) }
+  ```
+
+  Only where the bytes come from tells them apart, which is what a request
+  pattern's `requireRequestSource` asks at extraction time — and derivation
+  never asked it, so the second produced a pattern as readily as the first.
+  Every handler calling it then documented the provider's type, *replacing* the
+  handler's own body rather than appearing beside it, with nothing on stderr.
+  Derivation now resolves the inner decode's source: a method that reads the
+  request derives as before, a method that reads what it is HANDED carries the
+  check to its call sites (so the same helper given `r.Body` documents a body
+  and given a file does not), and a method that reads anything else derives
+  nothing. (#513)
+
+- **A request body read into bytes before being unmarshalled is found.**
+  `data, _ := io.ReadAll(r.Body)` followed by `json.Unmarshal(data, &v)` is an
+  ordinary way to write a handler, and the source check could not see past the
+  read — so it answered "not the request" exactly as it does for an outbound
+  response, and the operation documented no body at all. A new
+  `requestContext.bodyReaders` names the calls that turn a reader into bytes
+  (`io.ReadAll`, `io/ioutil.ReadAll`), the mirror of
+  `responseContext.bodyTransforms` on the way out; a decode of those bytes asks
+  about the reader they came from. Serializer-level, so every framework shares
+  them. Found through #513, and wrong on its own well before it: on gitea it
+  recovers `POST /restore_repo`, which reads its body this way.
+
+- **A variable assigned in a method body is visible to the resolvers that read
+  it.** The canonical call-site assignment lookup reached a method's scope only
+  through `ParentFunction`, i.e. only for a closure declared inside one, because
+  methods live in `Type.Methods` rather than in the file's function table. For a
+  call written directly in a method body, every local assigned in that body was
+  invisible, and each resolver reading the lookup fell back to its "cannot tell"
+  answer. (#513)
+
+- **The request the chain names is found past the root.** A project's own
+  context holds the request in a field, so `c.Req.Body` has a root typed
+  `*Ctx`; reading the root's type alone answered "reads nothing from the
+  request" for every project that owns a context type. Every prefix of the chain
+  is now offered its turn as the request, driven by the configured
+  `requestContext` alone, so a house context wrapping any framework's is covered
+  by construction. (#513)
+
 ## [0.5.9] - 2026-09-18
 
 Routes that were silently missing. Three separate defects each dropped

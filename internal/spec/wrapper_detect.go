@@ -547,13 +547,19 @@ func itoa(i int) string { return strconv.Itoa(i) }
 func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, cfg *APISpecConfig) []DetectedWrapper {
 	byMethod := map[string]*DetectedWrapper{}
 
+	// Built from the project's real config and kept across rounds: seedsFrom
+	// carries patterns only, so a resolver rebuilt per round would be disabled
+	// from the second round on — and a decoder two wrappers deep would derive
+	// unverified, which is the whole of #513 one level further down.
+	body := newBodySourceResolver(cfg, cp)
+
 	// Wrappers stack: a project that wraps encoding/json in its own package (gitea
 	// does) reaches the framework pattern two levels down, so each round feeds
 	// what it derived back in as patterns to match against.
 	seeds := *cfg
 	for round := 0; round < wrapperDetectRounds; round++ {
 		before := len(byMethod)
-		detectValueRound(meta, cp, params, &seeds, byMethod)
+		detectValueRound(meta, cp, params, body, &seeds, byMethod)
 		if len(byMethod) == before {
 			break
 		}
@@ -594,7 +600,7 @@ func seedsFrom(byMethod map[string]*DetectedWrapper) APISpecConfig {
 
 // detectValueRound matches every edge against one set of patterns and folds what
 // it finds into byMethod.
-func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, cfg *APISpecConfig, byMethod map[string]*DetectedWrapper) {
+func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, byMethod map[string]*DetectedWrapper) {
 
 	respMatchers := make([]*ResponsePatternMatcherImpl, 0, len(cfg.Framework.ResponsePatterns))
 	for _, p := range cfg.Framework.ResponsePatterns {
@@ -628,7 +634,7 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		}
 		for j, m := range reqMatchers {
 			if m.MatchNode(node) {
-				deriveRequestWrapper(byMethod, key, w, cp, params, cfg.Framework.RequestBodyPatterns[j], edge, recvRegex)
+				deriveRequestWrapper(byMethod, key, w, cp, params, body, meta, cfg.Framework.RequestBodyPatterns[j], edge, recvRegex)
 			}
 		}
 		for j, m := range paramMatchers {
@@ -754,7 +760,7 @@ func normaliseResponseRoles(entry *DetectedWrapper) {
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —
 // `func (c *Ctx) Bind(dst any) error { json.NewDecoder(c.r.Body).Decode(dst) }`.
-func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner RequestBodyPattern, edge *metadata.CallGraphEdge, recvRegex string) {
+func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, body *bodySourceResolver, meta *metadata.Metadata, inner RequestBodyPattern, edge *metadata.CallGraphEdge, recvRegex string) {
 	if !inner.TypeFromArg {
 		return
 	}
@@ -762,15 +768,86 @@ func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *w
 	if !ok {
 		return
 	}
+	gate, ok := requestSourceGateFor(w, params, body, meta, inner, edge)
+	if !ok {
+		return
+	}
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	entry.Request = &RequestBodyPattern{
-		CallRegex:     "^" + regexp.QuoteMeta(w.name) + "$",
-		RecvTypeRegex: recvRegex,
-		TypeFromArg:   true,
-		TypeArgIndex:  i,
-		Deref:         inner.Deref,
+		CallRegex:            "^" + regexp.QuoteMeta(w.name) + "$",
+		RecvTypeRegex:        recvRegex,
+		TypeFromArg:          true,
+		TypeArgIndex:         i,
+		Deref:                inner.Deref,
+		RequireRequestSource: gate.require,
+		BodySourceArgIndex:   gate.argIndex,
 	}
 	entry.Complete = true
+}
+
+// requestSourceGate is what a derived decoder pattern must still check at the
+// call site: nothing, or that the argument at argIndex is the request's body.
+type requestSourceGate struct {
+	require  bool
+	argIndex int
+}
+
+// requestSourceGateFor decides whether a method that decodes JSON is decoding
+// the HTTP REQUEST, and reports what the derived pattern has to verify where
+// handlers call it. The bool is false when no pattern should be derived at all.
+//
+// A decoder wrapper is recognised by shape — a method forwarding its own
+// parameter into a decode — and that shape is equally the shape of a client
+// reading a provider's reply:
+//
+//	func (c *Ctx) Bind(dst any) error    { return json.NewDecoder(c.Req.Body).Decode(dst) }
+//	func (c *client) fetch(out any) error { return json.NewDecoder(resp.Body).Decode(out) }
+//
+// Only where the bytes come FROM tells them apart, which is exactly what the
+// inner pattern's RequireRequestSource already asks at extraction time. It was
+// not asked here, so the second derived a pattern as readily as the first and a
+// handler that called it documented the provider's type as its request body —
+// displacing the handler's own, since both are concrete and the outbound call
+// comes later (#513).
+//
+// Three answers:
+//
+//   - the method reads the request itself — derive, with nothing left to check;
+//   - the method reads what it is HANDED (`func (h *H) decode(src io.Reader, v any)`) —
+//     derive, and carry the obligation to the call site, where the argument is
+//     a real value rather than a parameter. This is why the check cannot simply
+//     be moved here wholesale: a wrapper's source is often knowable only from
+//     its caller;
+//   - anything else — derive nothing. Honest over wrong (golden rule #7): a
+//     decode whose source is neither the request nor the caller's is not a
+//     request body, and guessing costs a false type rather than a vague one.
+func requestSourceGateFor(w *wrapperMethod, params *paramIndex, body *bodySourceResolver, meta *metadata.Metadata, inner RequestBodyPattern, edge *metadata.CallGraphEdge) (requestSourceGate, bool) {
+	// A pattern that asks for no verification derives as it always did; so does
+	// every project whose config declares no RequestContext to verify against.
+	if !inner.RequireRequestSource || !body.Enabled() {
+		return requestSourceGate{}, true
+	}
+	src := innerBodySource(inner, edge, meta)
+	if src == nil {
+		return requestSourceGate{}, false
+	}
+	if body.IsRequestSource(src, edge) {
+		return requestSourceGate{}, true
+	}
+	if i, ok := params.indexOf(w, src); ok {
+		return requestSourceGate{require: true, argIndex: i}, true
+	}
+	return requestSourceGate{}, false
+}
+
+// innerBodySource returns the value the inner decode reads from, the way
+// RequestPatternMatcherImpl.bodySource does at extraction time — from the
+// decoder's receiver (`json.NewDecoder(src)`) or from a declared argument.
+func innerBodySource(inner RequestBodyPattern, edge *metadata.CallGraphEdge, meta *metadata.Metadata) *metadata.CallArgument {
+	if inner.BodyFromReceiver {
+		return resolveReceiverSource(edge, meta)
+	}
+	return argAt(edge, inner.BodySourceArgIndex)
 }
 
 // deriveParamWrapper derives a parameter pattern from a reader wrapper —

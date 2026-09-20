@@ -25,6 +25,7 @@ var fiberRequestContext = RequestContextConfig{
 	BodyAccessors: []string{
 		`^Body\(\)$`,
 	},
+	BodyReaders: stdlibBodyReaders(),
 }
 
 // DefaultFiberConfig returns a default configuration for the Fiber framework.
