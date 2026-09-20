@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`schema.nullableFromPointers`: a field the encoder writes as `null` says
+  so.** A `*T` with no `omitempty` is always written, and written as `null`
+  when the pointer is nil — so documenting it as `type: string` claimed a shape
+  the API does not guarantee, and a client validating against the document
+  rejected a response the server legitimately sent. With `omitempty` the field
+  is absent instead of null, so it is left alone.
+
+  Encoded as `anyOf: [{…}, {type: "null"}]` rather than
+  `type: [string, "null"]`, because that is the only form a `$ref` can take —
+  a `$ref` may carry no sibling keywords — and one shape for both saves a
+  generated client from handling two. The union wraps the field, so a
+  `*[]string` admits null as an array while its items do not.
+
+  The other half of `requiredFromJSONTags`, and they compose: the same field is
+  always PRESENT and sometimes NULL, which are different statements. Enabling
+  `required` WITHOUT this is the one combination worse than neither, since the
+  document then insists a field is always there and never null while the server
+  sends null — so a project turning on either should turn on both. (#368)
+
 - **`schema.requiredFromJSONTags`: `required` derived from what encoding/json
   does.** A field with no `omitempty` and no `omitzero` is written on every
   encode, so it is always on the wire — and none of that reached the document.

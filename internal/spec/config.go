@@ -390,6 +390,18 @@ type SchemaConfig struct {
 	// on the wire and none of them said so, so a generated TypeScript client
 	// null-checked every one (issue #516).
 	RequiredFromJSONTags bool `yaml:"requiredFromJSONTags,omitempty" json:"requiredFromJSONTags,omitempty"`
+
+	// NullableFromPointers admits `null` for a `*T` field with no
+	// `omitempty` — which encoding/json always writes, as `null` when the
+	// pointer is nil. Without it the document claims a shape the API does not
+	// guarantee, and a client validating against it rejects a response the
+	// server legitimately sends (issue #368).
+	//
+	// The other half of RequiredFromJSONTags, and they compose: the same field
+	// is always PRESENT and sometimes NULL. Turning on `required` without this
+	// is the one combination that is worse than neither, so a project enabling
+	// that should enable this too.
+	NullableFromPointers bool `yaml:"nullableFromPointers,omitempty" json:"nullableFromPointers,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names

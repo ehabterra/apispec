@@ -2335,6 +2335,10 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		if doc := docComment(cfg, meta, field.Comments); doc != "" {
 			prop = withDescription(prop, doc)
 		}
+		if !selfMarshaling {
+			prop = nullableIfPointer(cfg, prop, getStringFromPool(meta, field.Type),
+				getStringFromPool(meta, field.Tag))
+		}
 		schema.Properties[fieldName] = prop
 	}
 
@@ -4447,4 +4451,49 @@ func typeMarshalsItself(meta *metadata.Metadata, typ *metadata.Type) bool {
 		}
 	}
 	return false
+}
+
+// nullableIfPointer widens a field's schema to admit null when encoding/json
+// will write one.
+//
+// A `*T` with no `omitempty` is ALWAYS written, and written as `null` when the
+// pointer is nil — so a schema saying `type: string` claims a shape the API
+// does not guarantee, and a client validating against it rejects a response the
+// server legitimately sends (issue #368). With `omitempty` the field is absent
+// instead of null, so it is left alone.
+//
+// This is the other half of what a tag says, and it composes with the first:
+// the same `*T` without `omitempty` is `required` (issue #516) AND nullable
+// here — always present, sometimes null. Neither implies the other.
+//
+// Encoded as `anyOf` rather than `type: [T, "null"]` because Schema.Type is a
+// single string, and because anyOf is the only form that works for a `$ref`,
+// which may carry no sibling keywords. One shape for both keeps a generated
+// client from having to handle two.
+func nullableIfPointer(cfg *APISpecConfig, prop *Schema, fieldType, tag string) *Schema {
+	if cfg == nil || !cfg.Schema.NullableFromPointers || prop == nil {
+		return prop
+	}
+	if !strings.HasPrefix(strings.TrimSpace(fieldType), "*") {
+		return prop
+	}
+	if jsonTagOmitsEmpty(tag) {
+		return prop
+	}
+	// Already a union, or already admits null: leave it alone rather than
+	// nesting one inside another.
+	for _, alt := range prop.AnyOf {
+		if alt != nil && alt.Type == "null" {
+			return prop
+		}
+	}
+	inner := *prop
+	// The description belongs to the FIELD, not to the non-null branch, or it
+	// disappears from where a reader looks for it.
+	desc := inner.Description
+	inner.Description = ""
+	return &Schema{
+		Description: desc,
+		AnyOf:       []*Schema{&inner, {Type: "null"}},
+	}
 }
