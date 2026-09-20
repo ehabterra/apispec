@@ -51,6 +51,15 @@ var wellKnownExternalSchemas = map[string]*Schema{
 	"github.com/shopspring/decimal.Decimal": {Type: "string", Format: "decimal"},
 	"decimal.Decimal":                       {Type: "string", Format: "decimal"},
 
+	// json.RawMessage is bytes copied verbatim into the document, so it is any
+	// JSON value — object, array, number, string or null. The structural rule
+	// below would call it a string, which is the one answer that is almost
+	// never right: a validator would reject every real payload, and a
+	// TypeScript client types the field as `string` and casts. Exact rather
+	// than a guess, so it carries no low-confidence note (issue #518).
+	"encoding/json.RawMessage": {Description: rawJSONNote},
+	"json.RawMessage":          {Description: rawJSONNote},
+
 	// NOTE: database/sql.Null* deliberately omitted. They have no custom JSON
 	// marshaler, so encoding/json emits the struct ({"String":"…","Valid":…}).
 	// Without a registry entry they resolve to that struct component, which is
@@ -138,6 +147,11 @@ func configHasExternalType(cfg *APISpecConfig, goType string) bool {
 const lowConfidenceExternalNote = "External type with a custom JSON marshaler; " +
 	"assumed string — add a typeMapping entry to set a precise schema."
 
+// rawJSONNote documents a schema that is deliberately unconstrained. Unlike
+// lowConfidenceExternalNote it records a FACT rather than a guess: the value is
+// whatever JSON the producer put there.
+const rawJSONNote = "Arbitrary JSON, copied verbatim (encoding/json.RawMessage)."
+
 // resolveExternalType decides the schema for an external named type using the
 // registry and the metadata facts (user config is handled by the caller before
 // this point). Returns handled=false when goType is not a recognised external
@@ -213,7 +227,7 @@ func resolveExternalType(goType string, cfg *APISpecConfig, meta *metadata.Metad
 // a hazard now that external types keep their name instead of being flattened.
 func isInlineExternalType(goType string, cfg *APISpecConfig, meta *metadata.Metadata) bool {
 	s, _, ok := resolveExternalType(goType, cfg, meta, map[string]*Schema{}, map[string]bool{})
-	return ok && isPrimitiveShapedSchema(s)
+	return ok && isInlineShapedSchema(s)
 }
 
 // cloneSchema returns a shallow copy so callers that decorate a registry schema

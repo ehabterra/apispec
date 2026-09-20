@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`json.RawMessage` documents any JSON value, not a string.** It is bytes
+  copied into the document verbatim — object, array, number, string or null —
+  and the marshaler fallback called it a string, which is the one answer that is
+  almost never right: a client validating against the spec rejects every real
+  payload, and a generated TypeScript client types the field as `string` and
+  casts. It is a standard-library type with a fully known contract, so it joins
+  the built-in registry next to `time.Time` and `uuid.UUID` rather than needing
+  a `typeMapping` in every project, and it carries no "assumed string" note
+  because nothing was assumed. The pointer and slice forms follow. A marshaler
+  whose JSON form *is* knowable still resolves precisely. (#518)
+
+- **An unconstrained schema is inlined instead of named.** A schema that
+  constrains nothing has no content to share, so promoting it to a component
+  published an empty definition and a `$ref` pointing at it. Schemas are now
+  judged inline-or-named by whether they constrain anything, of which
+  "primitive-shaped" was only the first half. (#518)
+
+### Fixed
+
 - **A third-party client's reply is no longer documented as the handler's
   request body.** A decoder wrapper is recognised by shape — a method forwarding
   its own parameter into a decode — and an outbound HTTP client has that shape
