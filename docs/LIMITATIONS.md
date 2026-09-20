@@ -32,30 +32,66 @@ routes, and diff the spec in CI. See [Guardrails worth having](#guardrails-worth
 These are gaps in the *contract*, not in the type inference — the schemas are
 right as far as they go, they just say less than your code knows.
 
-- **Field optionality comes only from `validate:` tags.** A struct field is
-  marked `required` when a `go-playground/validator` tag says so. A field
-  without such a tag is documented as optional even when it is always present,
-  and nothing is emitted as `nullable`. A spec consumed by a strict client
-  generator will therefore make almost everything optional.
-- **The status list is syntactic, and per handler.** Every status code written
-  anywhere in a handler's reachable call graph becomes a response, so an
-  operation can list statuses it will not really return — a shared helper that
-  can write `400`, `404` and `500` contributes all three to every route that
-  reaches it.
+- **Field optionality is off by default.** A struct field is marked `required`
+  when a `go-playground/validator` tag says so. `encoding/json` knows more than
+  that — a field with no `omitempty` is always written, and a nil pointer, slice
+  or map is written as `null` — and two opt-in settings say so:
+  [`schema.requiredFromJSONTags`](CONFIGURATION.md#schema) and
+  [`schema.nullableWhenNil`](CONFIGURATION.md#schema). Both are off unless you
+  ask, because they describe what the SERVER SENDS: exactly right for a
+  response, and an over-claim for a request body, since a client is not bound by
+  your struct tags. Leave them off and a strict client generator will make
+  almost everything optional.
+- **The error-status list is a superset, and this is the ceiling.** Every status
+  written anywhere in a handler's reachable call graph becomes a response, so an
+  operation lists the statuses that EXIST behind it, not the ones a client must
+  handle for that call. A shared error mapper is the usual cause:
+
+  ```go
+  func writeError(w http.ResponseWriter, err error) {
+      switch {
+      case errors.Is(err, ErrNotFound): respond(w, 404, …)
+      case errors.Is(err, ErrInUse):    respond(w, 409, …)   // a list call can never reach this
+      case errors.Is(err, ErrInvalid):  respond(w, 422, …)
+      default:                          respond(w, 500, …)
+      }
+  }
+  ```
+
+  Every handler calling `writeError` reaches every arm, so every arm is
+  documented. Measured on one service, **225 of 277 GET operations carried a
+  `409 Conflict`** they cannot return, and the set `400 404 409 422 500`
+  appeared on 318 operations.
+
+  This is **sound but not precise**: each status documented really can be
+  written by reachable code, and nothing tracks which sentinel errors a given
+  service call can actually return. Narrowing it needs error-value flow analysis
+  — which `error` values reach which `errors.Is` arm, interprocedurally, through
+  wrapping — a different class of analysis from call-graph inference, so treat
+  it as the expected ceiling rather than a defect awaiting a fix. The practical
+  consequence: a generated client's response union is wider than reality, never
+  narrower. Curate it with [`overrides`](CONFIGURATION.md#overrides) if you
+  publish the document as a contract.
 - **Responses written by middleware are not attributed to the route.** An auth
   middleware's `401`, a rate limiter's `429` or a recovery handler's `500` are
   written outside the handler, so they do not appear on the operations they
   protect. Add them with [`overrides`](CONFIGURATION.md#overrides) or a
   document-level convention.
-- **Media types are read from the call, not from the header.** The renderer or
-  encoder decides: `c.XML(...)`, an `xml`/`yaml` `Encoder`, `http.Error` and the
-  framework's `String`/`HTML`/`ProtoBuf` helpers each document their own media
-  type. A body written with a bare `w.Write(...)` after
-  `w.Header().Set("Content-Type", "application/pdf")` keeps the default
-  (`application/json`) — the header write is not read. For file downloads and
-  other binary endpoints, set the media type with
+- **A media type must be a constant.** The renderer or encoder decides it
+  where there is one — `c.XML(...)`, an `xml`/`yaml` `Encoder`, `http.Error`,
+  the framework's `String`/`HTML`/`ProtoBuf` helpers — and a handler that
+  STREAMS instead declares it:
+  `w.Header().Set("Content-Type", "application/pdf")` is read, including when
+  the value is a constant, and documents the download. A value assembled at
+  runtime (`mime.TypeByExtension(ext)`) is not, and the operation keeps the
+  default rather than guessing; set it with
   [`overrides`](CONFIGURATION.md#overrides) or a per-pattern
-  `defaultContentType`.
+  `defaultContentType`. Which calls count as a declaration is configurable per
+  framework (`responseContext.contentTypeWrites`), so a house context can be
+  added. Frameworks whose `responseContext` declares no writer types — gin,
+  echo and fiber today — document no streamed body at all, because the
+  declaration cannot be shown to be about the response rather than an outbound
+  request.
 - **No `--strict` mode.** Unresolved paths, truncated expansion and unmapped
   middleware are reported on stderr and through the API
   (`Generator.UnresolvedPaths()`), but they never change the exit code.
