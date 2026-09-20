@@ -1545,7 +1545,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		siteID := cand.node.GetEdge().Callee.ID()
 		caller := cand.node.GetEdge().Caller.BaseID()
 		for _, resp := range resps {
-			if resp == nil || (resp.BodyType == "" && resp.StatusCode < 100 && !resp.StatusUnresolved) {
+			// A stream write carries its body in Schema rather than as a Go
+			// BodyType, and takes its status from ImplicitStatus further down —
+			// so on both counts it looked like nothing resolved and was dropped
+			// here, after ExtractResponse had already returned it (issue #517).
+			if resp == nil || (resp.BodyType == "" && resp.Schema == nil &&
+				resp.StatusCode < 100 && !resp.StatusUnresolved) {
 				continue // nothing resolved
 			}
 			status := resp.StatusCode
