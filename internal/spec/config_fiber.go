@@ -66,7 +66,7 @@ func DefaultFiberConfig() *APISpecConfig {
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, streamWriterPatterns()...)
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
 
 	return &APISpecConfig{
@@ -92,7 +92,12 @@ func DefaultFiberConfig() *APISpecConfig {
 			// that call pairs with the body through the ^Status$ pattern above
 			// (issue #369). Declared here rather than inherited from the stdlib
 			// layer so an explicit fiber config behaves the same.
-			ResponseContext: ResponseContextConfig{ImplicitStatus: http.StatusOK},
+			ResponseContext: ResponseContextConfig{
+				ImplicitStatus: http.StatusOK,
+				// fiber: c.Set("Content-Type", v).
+				ContentTypeWrites: frameworkContentTypeWrites(
+					`^\*?(github\.com/gofiber/fiber(/v\d+)?\.)?Ctx$`, `^Set$`),
+			},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^BodyParser$`,

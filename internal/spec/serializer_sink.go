@@ -16,6 +16,7 @@ package spec
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
 )
@@ -223,4 +224,51 @@ func receiverIdent(meta *metadata.Metadata, call *metadata.CallGraphEdge) *metad
 	arg.SetKind(metadata.KindIdent)
 	arg.SetName(call.CalleeVarName)
 	return arg
+}
+
+// contentTypeHeaderWrite reports whether this call declares the response media
+// type, and returns the type it names.
+//
+// A header write is not the signal; the header it NAMES is. `Content-Type` is
+// compared case-insensitively because Go canonicalises header keys and a
+// handler may write any spelling.
+//
+// A value that is not a constant yields nothing rather than a guess: the media
+// type is then decided at runtime, and an operation documented with the wrong
+// content type is worse than one documented with none (golden rule #7).
+func (r *ResponsePatternMatcherImpl) contentTypeHeaderWrite(edge *metadata.CallGraphEdge) (string, bool) {
+	if edge == nil {
+		return "", false
+	}
+	name := r.contextProvider.GetString(edge.Callee.Name)
+	pkg := r.contextProvider.GetString(edge.Callee.Pkg)
+	recv := r.contextProvider.GetString(edge.Callee.RecvType)
+
+	for _, w := range r.cfg.Framework.ResponseContext.ContentTypeWrites {
+		if !matchesCall(CredentialAccessor{
+			CallRegex:     w.CallRegex,
+			RecvTypeRegex: w.RecvTypeRegex,
+		}, name, pkg, recv) {
+			continue
+		}
+		if w.NameArgIndex < 0 || w.NameArgIndex >= len(edge.Args) ||
+			w.ValueArgIndex < 0 || w.ValueArgIndex >= len(edge.Args) {
+			continue
+		}
+		if !strings.EqualFold(literalText(edge.Args[w.NameArgIndex]), "Content-Type") {
+			continue
+		}
+		if value := literalText(edge.Args[w.ValueArgIndex]); value != "" {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+// literalText returns a string literal's contents, or "" for anything else.
+func literalText(arg *metadata.CallArgument) string {
+	if arg == nil || arg.GetKind() != metadata.KindLiteral {
+		return ""
+	}
+	return strings.Trim(arg.GetValue(), "\"`")
 }

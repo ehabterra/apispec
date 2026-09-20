@@ -2887,6 +2887,18 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	if r.pattern.DefaultContentType != "" {
 		contentType = r.pattern.DefaultContentType
 	}
+	// A pattern whose media type comes from a header write reads it off the
+	// call, and is ONLY that call: `w.Header().Set("X-Request-Id", …)` matches
+	// the same coarse CallRegex and declares nothing about the body, so a call
+	// that does not name Content-Type — or names it with a value decided at
+	// runtime — is not a response at all (issue #517).
+	if r.pattern.ContentTypeFromHeaderWrite {
+		declared, ok := r.contentTypeHeaderWrite(node.GetEdge())
+		if !ok {
+			return nil
+		}
+		contentType = declared
+	}
 
 	respInfo := &ResponseInfo{
 		StatusCode:  leastStatusCode - 1,

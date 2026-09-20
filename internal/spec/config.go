@@ -210,6 +210,23 @@ type ResponseContextConfig struct {
 	// handler reaches for bytes.Buffer the same way under every router.
 	BufferSinks []BufferSink `yaml:"bufferSinks,omitempty" json:"bufferSinks,omitempty"`
 
+	// ContentTypeWrites name the calls by which a handler DECLARES the media
+	// type of its response — `w.Header().Set("Content-Type", …)`,
+	// gin's `c.Header(k, v)`, fiber's `c.Set(k, v)`.
+	//
+	// This is how a streamed body is found at all. Response detection
+	// recognises a VALUE being encoded, so a handler that streams — a CSV
+	// writer, io.Copy from a file, any library writing to w — has nothing for
+	// it to see, and the operation documents no success at all (issue #517).
+	//
+	// Enumerating the writers instead was the first attempt and does not
+	// scale: nine patterns still missed excelize, PDF libraries, archive/zip
+	// and any house streamer, and each one deduced the media type where the
+	// header states it. One call every such handler makes beats a list that
+	// grows forever, and it carries the EXACT type — `application/pdf` rather
+	// than a per-writer `application/octet-stream` guess (issue #354).
+	ContentTypeWrites []ContentTypeWrite `yaml:"contentTypeWrites,omitempty" json:"contentTypeWrites,omitempty"`
+
 	// ImplicitStatus is the status the framework sends when a handler writes a
 	// body without stating one — net/http's first Write sends 200. It fills
 	// exactly that gap: a body write whose pattern carries no status source at
@@ -259,6 +276,21 @@ type BufferSink struct {
 	// BufferArgIndex is where the buffer sits when it is an argument
 	// (io.Copy(w, buf) -> 1). Ignored when BufferFromReceiver is set.
 	BufferArgIndex int `yaml:"bufferArgIndex,omitempty" json:"bufferArgIndex,omitempty"`
+}
+
+// ContentTypeWrite describes one call that sets a response header, so the
+// Content-Type it names can be read off it.
+type ContentTypeWrite struct {
+	// CallRegex matches the callee name, e.g. "^Set$".
+	CallRegex string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	// RecvTypeRegex matches what the call is made ON, e.g. net/http.Header.
+	RecvTypeRegex string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
+	// NameArgIndex is the argument holding the header NAME, and ValueArgIndex
+	// the one holding its value. A call is a content-type declaration only
+	// when the name argument is literally Content-Type — a header write is not
+	// the signal, and the header it names is.
+	NameArgIndex  int `yaml:"nameArgIndex,omitempty" json:"nameArgIndex,omitempty"`
+	ValueArgIndex int `yaml:"valueArgIndex,omitempty" json:"valueArgIndex,omitempty"`
 }
 
 // RequestContextConfig describes the types and accessors that identify an
@@ -624,6 +656,13 @@ type ResponsePattern struct {
 	// receiver — for json.NewEncoder(x).Encode(v), the destination is
 	// NewEncoder's first argument x. Mirrors RequestBodyPattern.BodyFromReceiver.
 	DestFromReceiver bool `yaml:"destFromReceiver,omitempty" json:"destFromReceiver,omitempty"`
+
+	// ContentTypeFromHeaderWrite marks the pattern whose matching and media
+	// type both come from ResponseContext.ContentTypeWrites, because neither
+	// can be expressed as a regex over the callee: the call is recognised by
+	// its header-NAME argument, and its media type read from the value beside
+	// it.
+	ContentTypeFromHeaderWrite bool `yaml:"contentTypeFromHeaderWrite,omitempty" json:"contentTypeFromHeaderWrite,omitempty"`
 
 	// OpaqueBody says this call writes a body whose content is BYTES rather
 	// than a Go value serialised into them — `csv.NewWriter(w).Write(row)`,
@@ -1427,69 +1466,46 @@ func nonJSONEncodePatterns() []ResponsePattern {
 	}
 }
 
-// streamWriterPatterns are the calls that put a body on the wire WITHOUT
-// serialising a value into it — a writer built on the response writer, or the
-// writer handed to a copy.
+// contentTypeResponsePattern is the response pattern for a handler DECLARING
+// its media type — `w.Header().Set("Content-Type", "text/csv")`.
 //
-// These were invisible: response detection recognises a value being encoded, so
-// a handler that streams has nothing for it to see and the operation documented
-// no success at all — only whatever error branch happened to use a recognised
-// helper. On the reporting service, 21 downloads and one CSV export came out
-// that way, the export claiming it can only fail (issue #517).
+// This is how a STREAMED body is documented. Response detection recognises a
+// value being encoded, so a handler that streams has nothing for it to see and
+// the operation documented no success at all (issue #517). The first attempt
+// enumerated the writers — csv, gzip, bufio, io.Copy, fmt.Fprint, ServeContent
+// — which does not scale past the stdlib and deduced the media type where the
+// header states it.
 //
-// They carry no body TYPE (TypeArgIndex -1): what reaches the wire is bytes,
-// and the schema says so rather than naming a Go type that was never encoded.
-// The status comes from ImplicitStatus, since none of these writes one.
+// Carries no body TYPE: what reaches the wire is bytes, and the schema says so
+// rather than naming a Go value that was never encoded. Its status comes from
+// ImplicitStatus, since declaring a media type states no status.
 //
-// Serializer-level, like nonJSONEncodePatterns, so every framework shares them:
-// a handler reaches for csv.NewWriter or io.Copy the same way under any router.
-func streamWriterPatterns() []ResponsePattern {
-	// A writer CONSTRUCTED on the response writer: the receiver traces back to
-	// the constructor's argument, which is what DestFromReceiver resolves.
-	// The receiver is matched in BOTH spellings metadata uses: a method call on
-	// *csv.Writer records RecvType as the bare `*Writer` with the path in Pkg,
-	// while a pattern elsewhere sees the qualified form. CalleePkgPatterns is
-	// what keeps a bare `^\*?Writer$` from claiming every type called Writer.
-	viaReceiver := func(pkg, typeName, callRegex, contentType string) ResponsePattern {
-		return ResponsePattern{
-			CallRegex:                  callRegex,
-			RecvTypeRegex:              `^\*?(` + pkg + `\.)?` + typeName + `$`,
-			CalleePkgPatterns:          []string{`^` + pkg + `$`},
-			OpaqueBody:                 true,
-			TypeArgIndex:               -1,
-			DefaultContentType:         contentType,
-			RequireResponseDestination: true,
-			DestFromReceiver:           true,
-			// A writer built over a file or a buffer is not the response, and
-			// an unresolved destination is not guessed into one.
-			DropUnresolvedDestination: true,
-		}
-	}
-	// A call HANDED the writer. There is no single argument position that holds
-	// it across these (io.Copy takes it first, fmt.Fprintf first, but
-	// http.ServeContent third), so the anchor is that the writer is in there
-	// somewhere — the same reasoning DestFromAnyArg exists for (issue #302).
-	viaArg := func(pkgRegex, callRegex, contentType string) ResponsePattern {
-		return ResponsePattern{
-			CallRegex:                  callRegex,
-			RecvTypeRegex:              pkgRegex,
-			OpaqueBody:                 true,
-			TypeArgIndex:               -1,
-			DefaultContentType:         contentType,
-			RequireResponseDestination: true,
-			DestFromAnyArg:             true,
-		}
-	}
-	return []ResponsePattern{
-		viaReceiver(`encoding/csv`, `Writer`, `^Write(All)?$`, contentTypeCSV),
-		// A compressed or buffered writer wrapping the response writer streams
-		// whatever it is given; the bytes are the body either way.
-		viaReceiver(`compress/gzip`, `Writer`, `^Write$`, ""),
-		viaReceiver(`bufio`, `Writer`, `^Write(String)?$`, ""),
-		viaArg(`^io$`, `^Copy(N|Buffer)?$`, contentTypeOctet),
-		viaArg(`^fmt$`, `^Fprint(f|ln)?$`, contentTypeText),
-		viaArg(`^io$`, `^WriteString$`, contentTypeText),
-		viaArg(`^net/http$`, `^Serve(Content|File)$`, contentTypeOctet),
+// The calls themselves are config (ResponseContext.ContentTypeWrites), so
+// gin's `c.Header(k, v)` and fiber's `c.Set(k, v)` are entries rather than
+// special cases; this pattern is the response side of reading them.
+func contentTypeResponsePattern() ResponsePattern {
+	return ResponsePattern{
+		// Matching is done against ContentTypeWrites at extraction time, where
+		// the header NAME argument can be checked — a pattern cannot express
+		// "argument 0 must be Content-Type".
+		// Matching is refined against ContentTypeWrites at extraction time,
+		// where the header NAME argument can be checked — a pattern cannot
+		// express "argument 0 must be Content-Type". The CallRegex is the
+		// coarse filter that keeps every other call out, and every configured
+		// spelling is a Set-or-Header style setter.
+		CallRegex:                  `^(Set|Header|Type)$`,
+		ContentTypeFromHeaderWrite: true,
+		TypeArgIndex:               -1,
+		OpaqueBody:                 true,
+		// Declaring a media type states no status, and the framework-wide
+		// ImplicitStatus is deliberately 0 for routers whose renderers always
+		// carry one (gin, echo). A streamed body there still answers 200, so
+		// the status belongs to this pattern rather than to the framework.
+		DefaultStatus: http.StatusOK,
+		// The declaration is only about the response when it is made on the
+		// response writer.
+		RequireResponseDestination: true,
+		DestFromReceiver:           true,
 	}
 }
 

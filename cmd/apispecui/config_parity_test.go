@@ -48,10 +48,11 @@ func TestConfigEditorCoversEveryField(t *testing.T) {
 	// exempt lists fields the editor deliberately does not offer, with the reason.
 	exempt := map[string]string{
 		// Nested objects — see the doc comment.
-		"methodExtraction": "nested MethodExtractionConfig; defaults live in Go",
-		"bodyTransforms":   "nested BodyTransform list; edited in YAML mode",
-		"bufferSinks":      "nested BufferSink list; edited in YAML mode, like bodyTransforms",
-		"bodyReaders":      "nested BodyReader list; edited in YAML mode, like bodyTransforms",
+		"methodExtraction":  "nested MethodExtractionConfig; defaults live in Go",
+		"bodyTransforms":    "nested BodyTransform list; edited in YAML mode",
+		"bufferSinks":       "nested BufferSink list; edited in YAML mode, like bodyTransforms",
+		"bodyReaders":       "nested BodyReader list; edited in YAML mode, like bodyTransforms",
+		"contentTypeWrites": "nested ContentTypeWrite list; edited in YAML mode, like bodyTransforms",
 	}
 
 	// Every config struct whose fields the structured editor is expected to reach.

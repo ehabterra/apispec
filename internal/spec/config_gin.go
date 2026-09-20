@@ -48,7 +48,7 @@ func DefaultGinConfig() *APISpecConfig {
 		RecvTypeRegex:  ginContextRecv,
 	})...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
-	responsePatterns = append(responsePatterns, streamWriterPatterns()...)
+	responsePatterns = append(responsePatterns, contentTypeResponsePattern())
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))
 
 	return &APISpecConfig{
@@ -67,7 +67,15 @@ func DefaultGinConfig() *APISpecConfig {
 					RecvTypeRegex:     "^github\\.com/gin-gonic/gin\\.\\*(Engine|RouterGroup)$",
 				},
 			},
-			RequestContext:  ginRequestContext,
+			RequestContext: ginRequestContext,
+			ResponseContext: ResponseContextConfig{
+				// NO ImplicitStatus: this framework's renderers always carry a
+				// status, and a test pins that. The content-type pattern
+				// carries its own DefaultStatus instead, so a streamed body
+				// still gets one.
+				// gin: c.Header("Content-Type", v).
+				ContentTypeWrites: frameworkContentTypeWrites(`^\*?(github\.com/gin-gonic/gin\.)?Context$`, `^Header$`),
+			},
 			CredentialReads: frameworkCredentialReads(`^github\.com/gin-gonic/gin\.\*?Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
