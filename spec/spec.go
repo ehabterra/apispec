@@ -77,5 +77,20 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 // framework's calls when layered under it.
 func SecondaryView(cfg *APISpecConfig) *APISpecConfig { return intspec.SecondaryView(cfg) }
 
-// LoadAPISpecConfig loads a YAML configuration file.
+// LoadAPISpecConfig loads a YAML configuration file. The file stands alone:
+// everything it does not mention is the zero value.
 func LoadAPISpecConfig(path string) (*APISpecConfig, error) { return intspec.LoadAPISpecConfig(path) }
+
+// LoadAPISpecConfigOnto loads a YAML configuration file OVER an existing
+// configuration, key by key and at every level of nesting: what the file states
+// wins, and what it does not mention keeps the value base already had. This is
+// how the CLI layers a project's config over the detected framework's defaults,
+// so a file that sets only a title keeps the route patterns (issue #524).
+//
+// A part is emptied by saying so — `routePatterns: []` — since an omitted key
+// and one written empty are otherwise the same zero value.
+//
+// base is modified in place and returned.
+func LoadAPISpecConfigOnto(path string, base *APISpecConfig) (*APISpecConfig, error) {
+	return intspec.LoadAPISpecConfigOnto(path, base)
+}

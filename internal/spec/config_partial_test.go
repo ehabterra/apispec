@@ -31,92 +31,110 @@ func writeConfig(t *testing.T, body string) string {
 	return path
 }
 
-// TestAdoptFrameworkPatterns pins which configs keep the detected framework's
-// route patterns and which replace them (issue #524).
+// TestLoadAPISpecConfigOntoMerges pins that a config file is layered over the
+// detected framework's defaults key by key, at every level of nesting
+// (issue #524).
 //
-// The replacement is deliberate for a config that names its own patterns —
-// gin's `Handle(method, path, h)` and mux's `Handle(path, h)` misparse each
-// other's calls, so "what you write is what matches" is what keeps a
-// mixed-framework project honest (#211/#212). It was never meant to extend to a
-// config that says nothing about `framework` at all, where it left the run
-// documenting zero paths and exiting 0.
-func TestAdoptFrameworkPatterns(t *testing.T) {
-	composed := DefaultChiConfig()
-	if len(composed.Framework.RoutePatterns) == 0 {
-		t.Fatal("the composed config has no route patterns; the test proves nothing")
+// A supplied file used to REPLACE the composed configuration, so one setting
+// only `info:` carried no route patterns and the run documented zero paths
+// while exiting 0. Replacing wholesale was wrong in a subtler way too: a file
+// that did name `routePatterns` silently lost the response, parameter and
+// security patterns it never mentioned.
+//
+// Emptying a part is still possible and is now said out loud, which is the
+// distinction a struct cannot carry on its own.
+func TestLoadAPISpecConfigOntoMerges(t *testing.T) {
+	base := DefaultChiConfig()
+	if len(base.Framework.RoutePatterns) == 0 || len(base.Framework.ResponsePatterns) == 0 {
+		t.Fatal("the composed config lacks the patterns this test reasons about")
 	}
+	wantRoutes := len(base.Framework.RoutePatterns)
+	wantResponses := len(base.Framework.ResponsePatterns)
 
 	cases := []struct {
-		name  string
-		body  string
-		adopt bool
-		why   string
+		name          string
+		body          string
+		routes        int
+		responses     int
+		wantTitle     string
+		wantCtxRegexe string
+		why           string
 	}{
 		{
-			name:  "a config that never mentions framework",
-			body:  "info:\n  title: Users API\n  version: 2.0.0\n",
-			adopt: true,
-			why:   "setting a title expresses no opinion about routing",
+			name:   "a config that never mentions framework",
+			body:   "info:\n  title: Users API\n",
+			routes: wantRoutes, responses: wantResponses, wantTitle: "Users API",
+			why: "setting a title expresses no opinion about routing",
 		},
 		{
-			name:  "a naming-only config",
-			body:  "naming:\n  schemaNames: short\n",
-			adopt: true,
-			why:   "the first thing the README suggests configuring",
+			name:   "an empty framework block",
+			body:   "framework: {}\n",
+			routes: wantRoutes, responses: wantResponses,
+			why: "naming the key covers no part of it, so every part is inherited",
 		},
 		{
-			name:  "an empty document",
-			body:  "{}\n",
-			adopt: true,
-			why:   "nothing said, nothing lost",
+			name:   "a framework block that sets one unrelated part",
+			body:   "framework:\n  requestContext:\n    typeRegexes: ['^myfw\\.Ctx$']\n",
+			routes: wantRoutes, responses: wantResponses, wantCtxRegexe: `^myfw\.Ctx$`,
+			why: "describing a request context must not cost the route patterns",
 		},
 		{
-			name:  "a config that declares its own patterns",
-			body:  "framework:\n  routePatterns:\n    - callRegex: ^Handle$\n",
-			adopt: false,
-			why:   "what you write is what matches (#211)",
+			name:   "a framework block that replaces one list",
+			body:   "framework:\n  routePatterns:\n    - callRegex: ^Handle$\n",
+			routes: 1, responses: wantResponses,
+			why: "the list stated is the list used; the ones not stated are inherited",
 		},
 		{
-			name: "a framework block that declares something else",
-			body: "framework:\n  requestContext:\n    typeRegexes: ['^myfw\\.Ctx$']\n",
-			// The block is all-or-nothing on purpose: naming it opts out.
-			adopt: false,
-			why:   "the framework block is declared, so it replaces wholesale",
-		},
-		{
-			name:  "an explicitly empty framework block",
-			body:  "framework: {}\n",
-			adopt: false,
-			why:   "writing the key is an opinion; this is how a user says 'no patterns'",
+			name:   "a part emptied on purpose",
+			body:   "framework:\n  routePatterns: []\n",
+			routes: 0, responses: wantResponses,
+			why: "an explicit empty list is how a config says 'none', which omission cannot",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := LoadAPISpecConfig(writeConfig(t, tc.body))
+			cfg, err := LoadAPISpecConfigOnto(writeConfig(t, tc.body), DefaultChiConfig())
 			if err != nil {
 				t.Fatalf("load: %v", err)
 			}
-			before := len(cfg.Framework.RoutePatterns)
-			cfg.AdoptFrameworkPatterns(DefaultChiConfig())
-			after := len(cfg.Framework.RoutePatterns)
-
-			// Adoption is visible as the config ending up with the composed
-			// pattern set; leaving it alone is the count not moving. Counting
-			// "has any patterns" would call a config that brought its OWN
-			// single pattern adopted.
-			got := after == len(composed.Framework.RoutePatterns) && after != before
-			if got != tc.adopt {
-				t.Errorf("adopted the detected route patterns = %v, want %v (had %d, now %d) — %s",
-					got, tc.adopt, before, after, tc.why)
+			if got := len(cfg.Framework.RoutePatterns); got != tc.routes {
+				t.Errorf("routePatterns = %d, want %d — %s", got, tc.routes, tc.why)
 			}
-			if !tc.adopt && after != before {
-				t.Errorf("route pattern count moved from %d to %d without adopting", before, after)
+			if got := len(cfg.Framework.ResponsePatterns); got != tc.responses {
+				t.Errorf("responsePatterns = %d, want %d — a part the file never mentioned", got, tc.responses)
 			}
-			if tc.adopt && cfg.Defaults.ResponseContentType == "" {
-				t.Error("the framework's default response content type was not adopted with its patterns")
+			if tc.wantTitle != "" && cfg.Info.Title != tc.wantTitle {
+				t.Errorf("info.title = %q, want %q", cfg.Info.Title, tc.wantTitle)
+			}
+			if tc.wantCtxRegexe != "" {
+				got := cfg.Framework.RequestContext.TypeRegexes
+				if len(got) != 1 || got[0] != tc.wantCtxRegexe {
+					t.Errorf("requestContext.typeRegexes = %v, want [%q]", got, tc.wantCtxRegexe)
+				}
+			}
+			// Whatever the file said, the framework's own defaults survive
+			// where it said nothing.
+			if cfg.Defaults.ResponseContentType == "" {
+				t.Error("the framework's default response content type was lost")
 			}
 		})
+	}
+}
+
+// TestLoadAPISpecConfigStandsAlone pins that the plain loader is unchanged: it
+// parses a file on its own terms, which is what every caller outside the engine
+// expects of it.
+func TestLoadAPISpecConfigStandsAlone(t *testing.T) {
+	cfg, err := LoadAPISpecConfig(writeConfig(t, "info:\n  title: Users API\n"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.Framework.RoutePatterns) != 0 {
+		t.Errorf("route patterns appeared from nowhere: %d", len(cfg.Framework.RoutePatterns))
+	}
+	if cfg.Info.Title != "Users API" {
+		t.Errorf("info.title = %q", cfg.Info.Title)
 	}
 }
 
@@ -160,23 +178,5 @@ func TestAdoptFrameworkPatternsIsInert(t *testing.T) {
 	empty.AdoptFrameworkPatterns(DefaultChiConfig())
 	if len(empty.Framework.RoutePatterns) == 0 {
 		t.Error("an empty in-code config did not adopt the detected patterns")
-	}
-}
-
-// TestDeclaresFramework pins the accessor the engine reads.
-func TestDeclaresFramework(t *testing.T) {
-	var nilCfg *APISpecConfig
-	if nilCfg.DeclaresFramework() {
-		t.Error("a nil config declares a framework")
-	}
-	if (&APISpecConfig{}).DeclaresFramework() {
-		t.Error("a config built in code declares a framework; there is no file to have declared it")
-	}
-	cfg, err := LoadAPISpecConfig(writeConfig(t, "framework:\n  routePatterns: []\n"))
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if !cfg.DeclaresFramework() {
-		t.Error("a file with a framework key does not report it")
 	}
 }

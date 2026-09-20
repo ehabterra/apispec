@@ -9,15 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A partial `--config` no longer erases the detected framework's route
-  patterns.** A supplied config REPLACED the composed framework configuration
-  rather than layering over it, so a file setting only `info:` or `naming:` —
-  the first thing anyone writes, and what the README suggests for readable
-  operation ids — carried no route patterns and documented **zero paths while
-  exiting 0**. A config that declares its own `framework:` block still replaces
-  it wholesale, which is what keeps a mixed-framework project honest (#211,
-  #212); omitting the key now keeps what was detected, because a file that never
-  mentions `framework` has expressed no opinion about routing. (#524)
+- **A `--config` file is MERGED over the detected framework's configuration,
+  key by key.** It used to replace it wholesale, so a file setting only `info:`
+  or `naming:` — the first thing anyone writes, and what the README suggests for
+  readable operation ids — carried no route patterns and documented **zero paths
+  while exiting 0**. Replacing was wrong in a subtler way too: a config that did
+  name `routePatterns` silently lost the response, parameter and security
+  patterns it never mentioned, and a `framework:` block describing only a
+  request context lost everything else in it. A config now states what it wants
+  to change and inherits the rest, at every level of nesting; map keys such as
+  `securitySchemes` add to the detected ones rather than displacing them.
+
+  Emptying a part is said out loud, because an omitted key and one written
+  empty are otherwise the same value:
+
+  ```yaml
+  framework:
+    routePatterns: []   # this project registers no routes my way
+  ```
+
+  `LoadAPISpecConfig` is unchanged for library callers — a file still parses on
+  its own terms — and `LoadAPISpecConfigOnto` is the layering the CLI does.
+  (#524)
 
 - **The empty-spec diagnostic names the real cause.** It reported "with gin
   patterns in effect" from the *detected* framework — a fact independent of

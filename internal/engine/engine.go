@@ -813,8 +813,11 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		// Use the directly provided config
 		apispecConfig = e.config.APISpecConfig
 	} else if e.config.ConfigFile != "" {
-		// Load config from file
-		apispecConfig, err = spec.LoadAPISpecConfig(e.config.ConfigFile)
+		// Layered OVER the composed framework configuration, key by key: a
+		// config states what it wants to change and inherits the rest, so
+		// setting a title cannot cost the route patterns (issue #524). A part
+		// is emptied by saying so — `routePatterns: []`.
+		apispecConfig, err = spec.LoadAPISpecConfigOnto(e.config.ConfigFile, composedConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
@@ -822,11 +825,9 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		apispecConfig = composedConfig
 	}
 
-	// A supplied config REPLACES the framework patterns rather than layering
-	// over them, which is right for one that names its own (issues #211/#212)
-	// and wrong for one that never mentions `framework` — a file setting only
-	// `info:` documented ZERO paths and exited 0, which is the first thing a
-	// user hits after reading the README's advice to set `naming` (issue #524).
+	// A config handed to the library in code has no document to layer, so it
+	// takes the detected framework only when it carries no routing opinion of
+	// its own (issue #524).
 	apispecConfig.AdoptFrameworkPatterns(composedConfig)
 
 	// Merge built-in auth/security library presets based on the project's
