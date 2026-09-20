@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -1506,4 +1507,48 @@ func (c *APISpecConfig) knownHosts() []string {
 		return nil
 	}
 	return hosts
+}
+
+// AdoptFrameworkPatterns fills in the detected framework's configuration when
+// this one expresses no opinion about routing.
+//
+// This exists for a config built in CODE. A config read from a file is layered
+// over the composed defaults key by key as it is parsed (see
+// LoadAPISpecConfigOnto), which is a real merge and needs nothing here. A
+// struct handed to the library has no document behind it, so there is no way to
+// tell a field the caller left alone from one they set to nothing — all that
+// can be asked is whether it carries any routing opinion at all.
+//
+// base is left untouched where this config states something of its own.
+func (c *APISpecConfig) AdoptFrameworkPatterns(composed *APISpecConfig) {
+	if c == nil || composed == nil || c.hasFrameworkOpinion() {
+		return
+	}
+	c.Framework = composed.Framework
+	if c.Defaults.ResponseContentType == "" {
+		c.Defaults.ResponseContentType = composed.Defaults.ResponseContentType
+	}
+	if c.Defaults.RequestContentType == "" {
+		c.Defaults.RequestContentType = composed.Defaults.RequestContentType
+	}
+}
+
+// hasFrameworkOpinion reports whether this config's framework block says
+// anything at all.
+//
+// The library API is full of code-built configs —
+// `NewGenerator(DefaultChiConfig())`, or that with its patterns narrowed — and
+// replacing a caller's deliberately scoped configuration with the detected
+// defaults would be the same silent loss #524 is about, pointed the other way.
+//
+// Asked of the WHOLE struct rather than of a list of fields worth caring about.
+// The first version enumerated the pattern slices and missed
+// HandlerInterfaceMethods, the RequestContext accessors and most of
+// ResponseContext — so a config setting only one of those had its entire
+// framework block replaced and the setting silently discarded. Any field added
+// later would have joined them; this cannot drift, and
+// TestHasFrameworkOpinionCoversEveryField fails if a field is ever added that
+// reflection cannot see.
+func (c *APISpecConfig) hasFrameworkOpinion() bool {
+	return !reflect.ValueOf(c.Framework).IsZero()
 }

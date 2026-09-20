@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `--config` file is MERGED over the detected framework's configuration,
+  key by key.** It used to replace it wholesale, so a file setting only `info:`
+  or `naming:` — the first thing anyone writes, and what the README suggests for
+  readable operation ids — carried no route patterns and documented **zero paths
+  while exiting 0**. Replacing was wrong in a subtler way too: a config that did
+  name `routePatterns` silently lost the response, parameter and security
+  patterns it never mentioned, and a `framework:` block describing only a
+  request context lost everything else in it. A config now states what it wants
+  to change and inherits the rest, at every level of nesting; map keys such as
+  `securitySchemes` add to the detected ones rather than displacing them.
+
+  Emptying a part is said out loud, because an omitted key and one written
+  empty are otherwise the same value:
+
+  ```yaml
+  framework:
+    routePatterns: []   # this project registers no routes my way
+  ```
+
+  `LoadAPISpecConfig` is unchanged for library callers — a file still parses on
+  its own terms — and `LoadAPISpecConfigOnto` is the layering the CLI does.
+  (#524)
+
+- **The empty-spec diagnostic names the real cause.** It reported "with gin
+  patterns in effect" from the *detected* framework — a fact independent of
+  whether those patterns survived into the config that ran — so it asserted they
+  were in effect at the exact moment a config had replaced them, and the
+  follow-up line sent the reader looking for an unsupported router they did not
+  have. It now reports the patterns actually in effect, and when there are none
+  it says so instead of offering advice that cannot apply. (#524)
+
 - **A serializer contributes a response only when its bytes reach the writer.**
   `json.Marshal(v)` takes a value and returns bytes, so nothing about the call
   says where those bytes go — and a response pattern naming one is therefore

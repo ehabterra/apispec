@@ -253,16 +253,46 @@ type GeneratorConfig struct {
 	APIVersion     string `yaml:"apiVersion"`
 }
 
-// LoadAPISpecConfig loads a APISpecConfig from a YAML file
+// LoadAPISpecConfig loads an APISpecConfig from a YAML file.
+//
+// The file stands alone: everything it does not mention is the zero value. Use
+// LoadAPISpecConfigOnto to layer it over the detected framework's defaults,
+// which is what a run of the CLI does.
 func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
+	return LoadAPISpecConfigOnto(path, &APISpecConfig{})
+}
+
+// LoadAPISpecConfigOnto loads a YAML file OVER an existing configuration,
+// key by key and at every level of nesting: what the file states wins, and
+// what it does not mention keeps the value base already had.
+//
+// This is what makes a partial config partial. Previously a supplied file
+// REPLACED the composed framework configuration, so one setting only `info:`
+// carried no route patterns and the run documented zero paths while exiting 0
+// (issue #524) — and even a file that did name `routePatterns` silently lost
+// the response, parameter and security patterns it never mentioned.
+//
+// Saying a part is empty is still possible, and is now said explicitly:
+//
+//	framework:
+//	  routePatterns: []      # this project registers no routes my way
+//
+// which is the distinction a struct cannot carry on its own — an omitted key
+// and one written empty are the same zero value, so the difference has to be
+// read from the document. Mapping keys merge the same way, so
+// `securitySchemes` adds to the detected ones rather than replacing them.
+//
+// base is modified in place and returned.
+func LoadAPISpecConfigOnto(path string, base *APISpecConfig) (*APISpecConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-
-	var config APISpecConfig
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
+	if base == nil {
+		base = &APISpecConfig{}
+	}
+	config := base
+	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
 
@@ -291,7 +321,7 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 			len(bare), strings.Join(bare, ", "))
 	}
 
-	return &config, nil
+	return config, nil
 }
 
 // DefaultAPISpecConfig returns a default configuration

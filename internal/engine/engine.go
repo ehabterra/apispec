@@ -326,8 +326,20 @@ type RouteDiscovery struct {
 	Packages int
 	// Paths is how many paths the generated document ended up with.
 	Paths int
-	// Frameworks names the pattern sets in effect, primary first.
+	// Frameworks names the framework(s) DETECTED, primary first. Detection is
+	// independent of whether those patterns survived into the config that ran —
+	// see RoutePatterns.
 	Frameworks []string
+	// RoutePatterns is how many route patterns the config that ran actually
+	// carried. Zero with a framework detected means the patterns were replaced,
+	// which is the one cause the old message could not name and actively argued
+	// against (issue #524).
+	RoutePatterns int
+	// ConfigSource says where the configuration that ran came from: "file",
+	// "code", or "" for the composed defaults. The remedy for having no route
+	// patterns differs by source — a file can state them, a struct cannot be
+	// edited from here — so the diagnostic has to know which it was.
+	ConfigSource string
 }
 
 // NothingMatched reports the condition worth telling the user about: code was
@@ -794,21 +806,31 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			frameworks, framework, frameworks[1:])
 	}
 
+	// Composed the one way everything composes them — from the frameworks
+	// detected above, so the import scan happens once per run.
+	composedConfig, _ := ComposeFrameworkConfigFrom(frameworks, "")
+
 	var apispecConfig *spec.APISpecConfig
 	if e.config.APISpecConfig != nil {
 		// Use the directly provided config
 		apispecConfig = e.config.APISpecConfig
 	} else if e.config.ConfigFile != "" {
-		// Load config from file
-		apispecConfig, err = spec.LoadAPISpecConfig(e.config.ConfigFile)
+		// Layered OVER the composed framework configuration, key by key: a
+		// config states what it wants to change and inherits the rest, so
+		// setting a title cannot cost the route patterns (issue #524). A part
+		// is emptied by saying so — `routePatterns: []`.
+		apispecConfig, err = spec.LoadAPISpecConfigOnto(e.config.ConfigFile, composedConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %w", err)
 		}
 	} else {
-		// Composed the one way everything composes them — from the frameworks
-		// detected above, so the import scan happens once per run.
-		apispecConfig, _ = ComposeFrameworkConfigFrom(frameworks, "")
+		apispecConfig = composedConfig
 	}
+
+	// A config handed to the library in code has no document to layer, so it
+	// takes the detected framework only when it carries no routing opinion of
+	// its own (issue #524).
+	apispecConfig.AdoptFrameworkPatterns(composedConfig)
 
 	// Merge built-in auth/security library presets based on the project's
 	// imports (framework preset -> library presets -> user config; user wins).
@@ -962,10 +984,12 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	e.reportPhase(fmt.Sprintf("spec mapped (%d paths)", len(openAPISpec.Paths)), time.Since(tSpec))
 
 	e.routeDiscovery = RouteDiscovery{
-		CallEdges:  len(meta.CallGraph),
-		Packages:   len(meta.Packages),
-		Paths:      len(openAPISpec.Paths),
-		Frameworks: frameworks,
+		CallEdges:     len(meta.CallGraph),
+		Packages:      len(meta.Packages),
+		Paths:         len(openAPISpec.Paths),
+		Frameworks:    frameworks,
+		RoutePatterns: len(apispecConfig.Framework.RoutePatterns),
+		ConfigSource:  e.configSource(),
 	}
 	e.reportNoRoutes()
 
@@ -1495,9 +1519,51 @@ func (e *Engine) reportNoRoutes() {
 	if frameworks == "" {
 		frameworks = "no framework"
 	}
-	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %s patterns in effect",
-		d.CallEdges, d.Packages, frameworks)
+	// Nothing could have matched, because nothing was there to match with. Said
+	// first and on its own: the generic advice below sends the reader looking
+	// for an unsupported router they do not have, and the old message asserted
+	// that the detected framework's patterns were "in effect" at the exact
+	// moment they had been replaced (issue #524).
+	if d.RoutePatterns == 0 {
+		// The remedy differs by where the configuration came from, and naming
+		// the wrong one is what the old message did: it told every reader to
+		// remove a `framework:` key, which a code-built config does not have
+		// and which — now that a file is MERGED over the defaults — is not what
+		// costs a file its patterns either. A file gets here only by saying so.
+		switch d.ConfigSource {
+		case configSourceFile:
+			log.Printf("[engine] 0 paths documented: the config sets `framework.routePatterns` to an empty list, so the detected %s patterns were replaced by none — drop that key to inherit them again",
+				frameworks)
+		case configSourceCode:
+			log.Printf("[engine] 0 paths documented: the APISpecConfig passed in declares framework settings but no routePatterns, so the detected %s ones were not applied — add them, or leave the framework block empty to inherit",
+				frameworks)
+		default:
+			log.Printf("[engine] 0 paths documented: no route patterns were configured at all (detected: %s)", frameworks)
+		}
+		return
+	}
+	log.Printf("[engine] no route registrations matched: 0 paths from %d call edges across %d package(s), with %d %s route pattern(s) in effect",
+		d.CallEdges, d.Packages, d.RoutePatterns, frameworks)
 	log.Printf("[engine] if this project serves HTTP, then its router is unsupported, is wired in a style no pattern matched, or was excluded by --include-*/--exclude-* filters — docs/DEBUGGING.md walks through telling those apart")
+}
+
+// Where the configuration that ran came from, for RouteDiscovery.ConfigSource.
+const (
+	configSourceFile = "file"
+	configSourceCode = "code"
+)
+
+// configSource reports where this run's configuration came from, in the order
+// GenerateSpec selects it.
+func (e *Engine) configSource() string {
+	switch {
+	case e.config.APISpecConfig != nil:
+		return configSourceCode
+	case e.config.ConfigFile != "":
+		return configSourceFile
+	default:
+		return ""
+	}
 }
 
 // maxSkippedPackagesReported bounds the per-package detail. One broken package
