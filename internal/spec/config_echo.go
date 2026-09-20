@@ -66,7 +66,8 @@ func DefaultEchoConfig() *APISpecConfig {
 					RecvTypeRegex:   "^github\\.com/labstack/echo(/v\\d)?\\.\\*(Echo|Group)$",
 				},
 			},
-			RequestContext: echoRequestContext,
+			RequestContext:  echoRequestContext,
+			CredentialReads: frameworkCredentialReads(`^github\.com/labstack/echo(/v\d+)?\.Context$`),
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^(?i)(Bind)$`,

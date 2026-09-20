@@ -281,6 +281,10 @@ type Engine struct {
 	// so the user can map it to a scheme.
 	unresolvedSecurity []intspec.MiddlewareRef
 
+	// unclassifiedMiddleware is the non-auth remainder — see
+	// GetUnclassifiedMiddleware.
+	unclassifiedMiddleware []intspec.MiddlewareRef
+
 	// unresolvedRefs lists $refs the generated document could not satisfy and
 	// that were repaired with a placeholder, from the most recent generation.
 	unresolvedRefs []intspec.UnresolvedRef
@@ -932,6 +936,7 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	}
 	if secDiag != nil {
 		e.unresolvedSecurity = secDiag.UnresolvedMiddleware
+		e.unclassifiedMiddleware = secDiag.UnclassifiedMiddleware
 		e.pathParamMismatches = secDiag.PathParamMismatches
 		e.unresolvedRefs = secDiag.UnresolvedRefs
 		e.unresolvedPaths = secDiag.UnresolvedPaths
@@ -939,6 +944,21 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 		e.thinOperations = secDiag.ThinOperations
 		e.reportUnresolvedRefs()
 		e.reportUnresolvedPaths()
+		// Middleware that maps to no scheme AND shows no credential read. Not
+		// a warning — on a normal service this is the logging, recovery, CORS
+		// and rate-limiting middleware, and announcing it as unmapped AUTH is
+		// what buried the one line that mattered (issue #520). Listed here so a
+		// project whose auth middleware fetches its credential somewhere the
+		// walk does not reach can still find it.
+		if n := len(secDiag.UnclassifiedMiddleware); n > 0 {
+			names := make([]string, n)
+			for i, r := range secDiag.UnclassifiedMiddleware {
+				names[i] = r.String()
+			}
+			NewVerboseLogger(e.config.Verbose).Printf(
+				"Middleware with no security mapping and no credential read (not reported as auth): %s\n",
+				strings.Join(names, ", "))
+		}
 	}
 	// Read after mapping: with the lazy tree the entrypoint gate runs during
 	// expansion, which mapping is what triggers.
@@ -1342,6 +1362,14 @@ func (e *Engine) GetMetadata() *metadata.Metadata {
 // generation that matched no SecurityMapping (deduped). Empty when none.
 func (e *Engine) GetUnresolvedSecurity() []intspec.MiddlewareRef {
 	return e.unresolvedSecurity
+}
+
+// GetUnclassifiedMiddleware returns middleware from the most recent generation
+// that matched no SecurityMapping and shows no credential read — logging,
+// recovery, rate limiting. Kept apart from GetUnresolvedSecurity so the warning
+// can be about auth, and exposed rather than dropped (issue #520).
+func (e *Engine) GetUnclassifiedMiddleware() []intspec.MiddlewareRef {
+	return e.unclassifiedMiddleware
 }
 
 // GetDetectedWrappers returns the router wrappers derived during the most recent

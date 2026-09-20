@@ -104,6 +104,13 @@ type FrameworkConfig struct {
 	// generic decoders (json.Decode, json.Unmarshal, render.DecodeJSON, ...)
 	// so they are only treated as request-body extraction when the bytes
 	// actually originate from an HTTP request.
+	// CredentialReads describe how a middleware takes a credential out of a
+	// request, which is what tells an auth middleware apart from the logging,
+	// recovery, CORS and rate-limiting ones that share its slot. Used to decide
+	// whether an unmapped middleware is reported as a missing security scheme
+	// (issue #520) — never to decide what a scheme IS.
+	CredentialReads CredentialReadConfig `yaml:"credentialReads,omitempty" json:"credentialReads,omitempty"`
+
 	RequestContext RequestContextConfig `yaml:"requestContext,omitempty" json:"requestContext,omitempty"`
 
 	// ResponseContext is the write-side mirror of RequestContext: it identifies
@@ -299,6 +306,33 @@ type BodyReader struct {
 	PkgRegex string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
 	// SourceArgIndex is the reader argument (io.ReadAll(src) -> 0).
 	SourceArgIndex int `yaml:"sourceArgIndex,omitempty" json:"sourceArgIndex,omitempty"`
+}
+
+// CredentialReadConfig names the two shapes a credential read takes. Both are
+// data, extended by a project whose middleware reads a credential some other
+// way; the same table is what issue #359 needs to attach a middleware's other
+// effects (its 401, its rate-limit headers) to the routes it guards.
+type CredentialReadConfig struct {
+	// Accessors are calls that ARE a credential read whatever they are passed:
+	// `r.BasicAuth()`, `c.Cookie(name)`, a library's token extractor.
+	Accessors []CredentialAccessor `yaml:"accessors,omitempty" json:"accessors,omitempty"`
+
+	// NameRegexes are matched against the string LITERALS a call is given, so
+	// `r.Header.Get("Authorization")` counts and `r.Header.Get("X-Request-Id")`
+	// does not. The header read is not the signal; the header it names is.
+	NameRegexes []string `yaml:"nameRegexes,omitempty" json:"nameRegexes,omitempty"`
+}
+
+func (c CredentialReadConfig) empty() bool {
+	return len(c.Accessors) == 0 && len(c.NameRegexes) == 0
+}
+
+// CredentialAccessor matches a call that reads a credential. An empty field
+// matches anything, and a wholly empty accessor matches nothing.
+type CredentialAccessor struct {
+	CallRegex     string `yaml:"callRegex,omitempty" json:"callRegex,omitempty"`
+	PkgRegex      string `yaml:"pkgRegex,omitempty" json:"pkgRegex,omitempty"`
+	RecvTypeRegex string `yaml:"recvTypeRegex,omitempty" json:"recvTypeRegex,omitempty"`
 }
 
 // MethodMapping defines how to extract HTTP methods from function names

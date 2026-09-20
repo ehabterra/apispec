@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The unmapped-middleware warning is about auth again.** Every middleware in a
+  `Use`/group/per-route slot was announced as *"auth middleware not mapped to a
+  security scheme"* — and on a normal service most of it is logging, recovery,
+  CORS, compression, rate limiting and timeouts. A real project reported 6 such
+  warnings where 2 were real, and 16 on defaults; a warning that is mostly false
+  trains people past the true one, and the true one is the most important thing
+  apispec prints, because an auth middleware nobody mapped means **its routes
+  are documented as public**. Recognised libraries were already skipped; a
+  project's own middleware matched nothing, so all of it was reported.
+
+  The split is now made on what the middleware's body DOES — whether it, or
+  anything it calls, takes a credential out of the request — never on its name,
+  which would be the guess golden rule #9 forbids. Refusing a request is
+  deliberately not sufficient on its own: a rate limiter refuses too.
+
+  Nothing is dropped. Middleware that shows no credential read is listed under
+  `--verbose` and exposed on `SecurityDiagnostics`, so a project whose auth
+  middleware fetches its credential somewhere the walk does not reach can still
+  find it — the strict rule costs visibility, not the answer. The warning also
+  states the consequence rather than only the condition. New
+  `framework.credentialReads` is the table it decides by, config-driven for a
+  house credential, and is the same surface issue #359 needs. (#520)
+
+
 - **A `--config` file is MERGED over the detected framework's configuration,
   key by key.** It used to replace it wholesale, so a file setting only `info:`
   or `naming:` — the first thing anyone writes, and what the README suggests for
