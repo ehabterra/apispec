@@ -2336,7 +2336,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 			prop = withDescription(prop, doc)
 		}
 		if !selfMarshaling {
-			prop = nullableIfPointer(cfg, prop, getStringFromPool(meta, field.Type),
+			prop = nullableWhenNil(cfg, prop, getStringFromPool(meta, field.Type),
 				getStringFromPool(meta, field.Tag))
 		}
 		schema.Properties[fieldName] = prop
@@ -4453,35 +4453,43 @@ func typeMarshalsItself(meta *metadata.Metadata, typ *metadata.Type) bool {
 	return false
 }
 
-// nullableIfPointer widens a field's schema to admit null when encoding/json
+// nullableWhenNil widens a field's schema to admit null when encoding/json
 // will write one.
 //
-// A `*T` with no `omitempty` is ALWAYS written, and written as `null` when the
-// pointer is nil — so a schema saying `type: string` claims a shape the API
-// does not guarantee, and a client validating against it rejects a response the
-// server legitimately sends (issue #368). With `omitempty` the field is absent
-// instead of null, so it is left alone.
+// The question is what the ENCODER does, and the answer is not "pointers":
 //
-// This is the other half of what a tag says, and it composes with the first:
-// the same `*T` without `omitempty` is `required` (issue #516) AND nullable
-// here — always present, sometimes null. Neither implies the other.
+//	{"slice":null,"map":null,"ptrSlice":null,"str":"","arr":["",""],"iface":null}
+//
+// A nil slice, map or interface is written as `null` exactly as a nil pointer
+// is. Only a string and a fixed-size array cannot be nil. Issue #368 scoped
+// itself to pointers on the grounds that `*T` carries the INTENT to be absent
+// where a nil `[]T` is usually an accident of construction — true of reading
+// the Go, and irrelevant to a document that describes the wire, where the two
+// are the same value. Scoping it that way fixed the rare shape (`*[]string` is
+// a double indirection almost nobody writes, since a slice is already nilable)
+// and missed `Items []Item`, which is on every list response there is.
+//
+// With `omitempty` the field is absent instead of null, so it is left alone.
+//
+// This composes with RequiredFromJSONTags: the same field is always PRESENT
+// and sometimes NULL, and neither implies the other.
 //
 // Encoded as `anyOf` rather than `type: [T, "null"]` because Schema.Type is a
-// single string, and because anyOf is the only form that works for a `$ref`,
-// which may carry no sibling keywords. One shape for both keeps a generated
-// client from having to handle two.
-func nullableIfPointer(cfg *APISpecConfig, prop *Schema, fieldType, tag string) *Schema {
-	if cfg == nil || !cfg.Schema.NullableFromPointers || prop == nil {
+// single string, and because a `$ref` may carry no sibling keywords — so the
+// union is the only form available there, and using one shape for both saves a
+// generated client from handling two.
+func nullableWhenNil(cfg *APISpecConfig, prop *Schema, fieldType, tag string) *Schema {
+	if cfg == nil || !cfg.Schema.NullableWhenNil || prop == nil {
 		return prop
 	}
-	if !strings.HasPrefix(strings.TrimSpace(fieldType), "*") {
+	if !encodesAsNullWhenUnset(fieldType) {
 		return prop
 	}
 	if jsonTagOmitsEmpty(tag) {
 		return prop
 	}
-	// Already a union, or already admits null: leave it alone rather than
-	// nesting one inside another.
+	// Already a union admitting null: leave it rather than nesting one inside
+	// another.
 	for _, alt := range prop.AnyOf {
 		if alt != nil && alt.Type == "null" {
 			return prop
@@ -4496,4 +4504,29 @@ func nullableIfPointer(cfg *APISpecConfig, prop *Schema, fieldType, tag string) 
 		Description: desc,
 		AnyOf:       []*Schema{&inner, {Type: "null"}},
 	}
+}
+
+// encodesAsNullWhenUnset reports whether the zero value of a type is written as
+// JSON null.
+//
+// Parsed rather than prefix-matched, because the one distinction that matters
+// is invisible to a prefix: `[]T` is nilable and `[2]T` is not, and both start
+// with '['.
+func encodesAsNullWhenUnset(fieldType string) bool {
+	ref := typemodel.Parse(strings.TrimSpace(fieldType))
+	if ref == nil {
+		return false
+	}
+	switch ref.Kind {
+	case typemodel.KindPointer, typemodel.KindSlice, typemodel.KindMap:
+		return true
+	case typemodel.KindNamed:
+		// An interface holds nil until something is put in it. A named type
+		// whose underlying type is nilable is NOT included: resolving that
+		// needs the declaration, and an alias for a slice is rare next to the
+		// cost of being wrong about a struct (golden rule #7).
+		name := ref.Name
+		return name == "any" || name == "interface{}" || name == "interface {}"
+	}
+	return false
 }

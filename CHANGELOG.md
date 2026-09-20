@@ -9,24 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`schema.nullableFromPointers`: a field the encoder writes as `null` says
-  so.** A `*T` with no `omitempty` is always written, and written as `null`
-  when the pointer is nil — so documenting it as `type: string` claimed a shape
-  the API does not guarantee, and a client validating against the document
-  rejected a response the server legitimately sent. With `omitempty` the field
-  is absent instead of null, so it is left alone.
+- **`schema.nullableWhenNil`: a field the encoder writes as `null` says so.**
+  A field whose zero value `encoding/json` writes as null — a nil pointer,
+  slice, map or interface — with no `omitempty` is always written, and written
+  as `null`. Documenting it as `type: array` claimed a shape the API does not
+  guarantee, so a client validating against the document rejected a response
+  the server legitimately sent.
+
+  Not pointers alone, which is where this started: a nil `[]T` encodes as
+  `null` exactly as a nil `*T` does, and `Items []Item` is on every list
+  response there is, while `*[]string` is a double indirection almost nobody
+  writes. A string and a fixed-size array cannot be nil and are never widened —
+  `[]T` and `[2]T` differ on exactly this and both start with `[`, so the type
+  is parsed rather than prefix-matched.
 
   Encoded as `anyOf: [{…}, {type: "null"}]` rather than
   `type: [string, "null"]`, because that is the only form a `$ref` can take —
   a `$ref` may carry no sibling keywords — and one shape for both saves a
-  generated client from handling two. The union wraps the field, so a
-  `*[]string` admits null as an array while its items do not.
+  generated client from handling two. The union wraps the field, so a nil
+  `[]string` admits null as an array while its items do not.
 
   The other half of `requiredFromJSONTags`, and they compose: the same field is
-  always PRESENT and sometimes NULL, which are different statements. Enabling
-  `required` WITHOUT this is the one combination worse than neither, since the
-  document then insists a field is always there and never null while the server
-  sends null — so a project turning on either should turn on both. (#368)
+  always PRESENT and sometimes NULL. Enabling `required` WITHOUT this is the
+  one combination worse than neither, since the document then insists a field
+  is always there and never null while the server sends null.
+
+  Opt-in partly because of a convention it cannot see: many Go services
+  deliberately return `[]T{}` rather than nil, so `null` never appears on them
+  and widening every array would be noise. (#368)
 
 - **`schema.requiredFromJSONTags`: `required` derived from what encoding/json
   does.** A field with no `omitempty` and no `omitzero` is written on every
