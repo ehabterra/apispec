@@ -50,8 +50,21 @@ type Item struct {
 	// A pointer to a NAMED type: a $ref may carry no sibling keywords, so the
 	// union is the only encoding available for it.
 	Owner *Base `json:"owner"`
-	// A pointer to a slice: the union wraps the array, not its items.
-	Tags *[]string `json:"tags"`
+	// A plain slice — nil until something is appended, and written as `null`
+	// then. This is the shape every list response has, and the one a
+	// pointers-only rule misses; `*[]string` is a double indirection almost
+	// nobody writes, because a slice is already nilable.
+	Tags []string `json:"tags"`
+	// A nil map is null too.
+	Labels map[string]string `json:"labels"`
+	// So is an interface holding nothing.
+	Extra any `json:"extra"`
+	// A fixed-size array CANNOT be nil: it is written as an array of zero
+	// values, so it is never widened. The case that makes prefix-matching on
+	// "[" wrong.
+	Pair [2]string `json:"pair"`
+	// Nilable, but told to disappear instead of going null.
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // Money marshals ITSELF, so its declared fields are not what reaches the wire —
