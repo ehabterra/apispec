@@ -61,6 +61,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as both therefore declares more than the server enforces, which is a trade a
   project takes on knowingly. (#516)
 
+### Added
+
+- **A streamed response body is documented, with the media type the handler
+  declares.** Response detection recognises a VALUE being encoded, so a handler
+  that streams — a CSV writer, `io.Copy` from a file, any library writing to the
+  response writer — had nothing for it to see, and the operation documented no
+  success at all. On the reporting service that was 21 downloads and a CSV
+  export, the export claiming an endpoint that can only fail.
+
+  The signal is the handler's own `Content-Type`, not which writer it used.
+  Enumerating writers does not scale — nine patterns still missed excelize,
+  archive/zip and any house streamer — and could only guess the media type,
+  where the header states it: a PDF download now documents `application/pdf`
+  rather than a per-writer `application/octet-stream`. That closes the
+  remaining half of #354 by construction.
+
+  The spellings are config and per framework
+  (`responseContext.contentTypeWrites`): net/http's `w.Header().Set`, gin's
+  `c.Header`, fiber's `c.Set`, with echo reaching it through net/http — and a
+  project with a house context declares its own. The body's schema says bytes
+  rather than naming a Go type that was never encoded, and a declaration whose
+  value is decided at runtime documents nothing rather than guessing. (#517)
+
+### Known limitation
+
+- A handler that declares a content type and THEN states a different status —
+  `w.Header().Set(…)` followed by `w.WriteHeader(201)` — documents a spurious
+  `200` beside the real response. Five operations across four fixtures show it.
+  The fix is to defer the status to pairing (`implicitStatus`) rather than
+  resolve it on the pattern, which needs an opaque fragment to survive fragment
+  assembly first; it does not today, and forcing the status is what makes the
+  streamed body appear at all. (#517)
+
 ### Fixed
 
 - **The unmapped-middleware warning is about auth again.** Every middleware in a

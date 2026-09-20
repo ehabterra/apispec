@@ -1503,16 +1503,21 @@ func contentTypeResponsePattern() ResponsePattern {
 		ContentTypeFromHeaderWrite: true,
 		TypeArgIndex:               -1,
 		OpaqueBody:                 true,
-		// NOT DefaultStatus: that resolves the status immediately, so pairing
-		// never lets the handler's own `WriteHeader(201)` two lines below
-		// claim this body — and a 201 response acquired a phantom 200 beside
-		// it. ImplicitStatus is the existing mechanism for exactly this: a
-		// status taken ONLY if no explicit write claims the body first.
+		// DefaultStatus rather than ImplicitStatus, KNOWINGLY and temporarily.
 		//
-		// Carried per-pattern because the framework-wide one is deliberately 0
-		// for routers whose renderers always state a status (gin, echo), while
-		// a streamed body there still answers 200.
-		ImplicitStatus: http.StatusOK,
+		// ImplicitStatus is the semantically right field — a status taken only
+		// if no explicit write claims the body first — and with it a handler
+		// that writes `WriteHeader(201)` below the header keeps its 201 alone.
+		// But an opaque fragment carrying only an implicit status does not
+		// survive to become a fragment at all, so the streamed body it exists
+		// for is never documented, which is the whole of issue #517.
+		//
+		// So the status is resolved here instead. The cost is stated in the PR
+		// and reproducible: a handler that declares a content type and THEN
+		// states a different status documents a spurious 200 beside the real
+		// one. Four fixtures show it. Moving to ImplicitStatus is the fix, and
+		// needs the fragment-assembly gap closed first.
+		DefaultStatus: http.StatusOK,
 		// The declaration is only about the response when it is made on the
 		// response writer.
 		RequireResponseDestination: true,
