@@ -54,7 +54,7 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 	noDanglingRefs(t, out)
 	item := itemSchema(t, out)
 
-	want := []string{"id", "name", "ptr", "validated", "when"}
+	want := []string{"id", "name", "owner", "ptr", "tags", "validated", "when"}
 	got := append([]string(nil), item.Required...)
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -93,7 +93,7 @@ func TestTestdata_RequiredFromTags(t *testing.T) {
 	// reorder the `required` list of every project already using
 	// validate:"required" for no gain.
 	t.Run("follows declaration order", func(t *testing.T) {
-		if strings.Join(item.Required, ",") != "id,name,ptr,validated,when" {
+		if strings.Join(item.Required, ",") != "id,name,ptr,validated,when,owner,tags" {
 			t.Errorf("required = %v, want declaration order", item.Required)
 		}
 	})

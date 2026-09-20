@@ -47,6 +47,11 @@ type Item struct {
 	Validated string `json:"validated" validate:"required"`
 	// An external type is still a field like any other.
 	When time.Time `json:"when"`
+	// A pointer to a NAMED type: a $ref may carry no sibling keywords, so the
+	// union is the only encoding available for it.
+	Owner *Base `json:"owner"`
+	// A pointer to a slice: the union wraps the array, not its items.
+	Tags *[]string `json:"tags"`
 }
 
 // Money marshals ITSELF, so its declared fields are not what reaches the wire —
