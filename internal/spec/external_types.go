@@ -57,8 +57,16 @@ var wellKnownExternalSchemas = map[string]*Schema{
 	// never right: a validator would reject every real payload, and a
 	// TypeScript client types the field as `string` and casts. Exact rather
 	// than a guess, so it carries no low-confidence note (issue #518).
-	"encoding/json.RawMessage": {Description: rawJSONNote},
-	"json.RawMessage":          {Description: rawJSONNote},
+	// echo's default HTTPErrorHandler serializes the *HTTPError a handler
+	// returns — `{"message": …}`, Code and Internal being `json:"-"`. Message
+	// is whatever the handler passed (a string, or any value), so it is left
+	// unconstrained (issue #556). Every published major version, since the
+	// type path carries it.
+	"github.com/labstack/echo.HTTPError":    echoHTTPErrorSchema(),
+	"github.com/labstack/echo/v4.HTTPError": echoHTTPErrorSchema(),
+	"github.com/labstack/echo/v5.HTTPError": echoHTTPErrorSchema(),
+	"encoding/json.RawMessage":              {Description: rawJSONNote},
+	"json.RawMessage":                       {Description: rawJSONNote},
 
 	// NOTE: database/sql.Null* deliberately omitted. They have no custom JSON
 	// marshaler, so encoding/json emits the struct ({"String":"…","Valid":…}).
@@ -146,6 +154,15 @@ func configHasExternalType(cfg *APISpecConfig, goType string) bool {
 // unresolvedExternalPlaceholder) and users know they can refine it.
 const lowConfidenceExternalNote = "External type with a custom JSON marshaler; " +
 	"assumed string — add a typeMapping entry to set a precise schema."
+
+// echoHTTPErrorSchema is the body echo's default error handler writes.
+func echoHTTPErrorSchema() *Schema {
+	return &Schema{
+		Type:        "object",
+		Description: "The error echo's default HTTPErrorHandler renders.",
+		Properties:  map[string]*Schema{"message": {}},
+	}
+}
 
 // rawJSONNote documents a schema that is deliberately unconstrained. Unlike
 // lowConfidenceExternalNote it records a FACT rather than a guess: the value is
