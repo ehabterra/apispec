@@ -17,7 +17,10 @@ package metadata
 import (
 	"go/ast"
 	"go/types"
+	"strings"
 	"testing"
+
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 func metadataFor(t *testing.T, src string) *Metadata {
@@ -105,6 +108,137 @@ func main() {
 	for _, v := range []string{"g", "err"} {
 		if linked[v] != "newGroup" {
 			t.Errorf("%s linked to %q, want its producing newGroup() call; have %v", v, linked[v], linked)
+		}
+	}
+}
+
+// fieldProducers returns, for every relation whose key names a struct field,
+// the callee of the edge that produces it.
+func fieldProducers(meta *Metadata) map[string]string {
+	out := map[string]string{}
+	for key, rel := range meta.BuildAssignmentRelationships() {
+		out[key.Name] = meta.StringPool.GetString(rel.Edge.Callee.Name)
+	}
+	return out
+}
+
+// A router stored in a struct field keeps its producer when the value stored
+// IS a parameter the invoking call binds: the functional-options closure and
+// the plain setter. #550 dropped every callee-body assignment without a call on
+// its right-hand side, and with them these two, so a router mounted from the
+// field lost its prefix on every route it registered — found and documented at
+// the root, which no count of routes notices.
+func TestFieldStoreOfBoundParameterKeepsProducer(t *testing.T) {
+	got := fieldProducers(metadataFor(t, `package p
+
+type Router interface{ Get() }
+type mux struct{}
+
+func (*mux) Get() {}
+
+type App struct{ opt, set Router }
+
+func NewApp(options ...func(*App)) *App {
+	app := &App{}
+	for _, option := range options {
+		option(app)
+	}
+	return app
+}
+
+func WithOpt(r Router) func(*App) { return func(app *App) { app.opt = r } }
+
+func (a *App) SetSet(r Router) { a.set = r }
+
+func API() Router { return &mux{} }
+
+func main() {
+	app := NewApp(WithOpt(API()))
+	app.SetSet(API())
+}
+`))
+	for field, want := range map[string]string{"p.App.opt": "WithOpt", "p.App.set": "SetSet"} {
+		if got[field] != want {
+			t.Errorf("%s produced by %q, want the %s call that bound its argument; have %v", field, got[field], want, got)
+		}
+	}
+}
+
+// The parameter rule links only the parameter ITSELF, bound by the call that
+// is the edge. Each negative here is a shape #550 exists to keep unlinked.
+func TestFieldStoreOfParameterStaysHonest(t *testing.T) {
+	cases := map[string]string{
+		// A value DERIVED from a parameter is not the argument.
+		"derived": `package p
+
+type Req struct{ Path string }
+type Store struct{ path string }
+
+func (s *Store) Keep(r *Req) { s.path = r.Path }
+
+func main() { (&Store{}).Keep(&Req{}) }
+`,
+		// A closure parameter shadowing the outer one: the stored r is the
+		// closure's *Req, not the Router the registration was given.
+		"shadowed": `package p
+
+type Router interface{ Handle(func(*Req)) }
+type Req struct{}
+type Store struct{ last *Req }
+
+var s Store
+
+func Register(r Router) {
+	r.Handle(func(r *Req) { s.last = r })
+}
+
+func main() { Register(nil) }
+`,
+		// A name the edge does not bind is not an argument of that call.
+		"unbound": `package p
+
+type Store struct{ n int }
+
+var global = 3
+
+func (s *Store) Reset(x int) { n := global; s.n = n }
+
+func main() { (&Store{}).Reset(1) }
+`,
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			for field, producer := range fieldProducers(metadataFor(t, src)) {
+				if strings.Contains(field, "Store.") {
+					t.Errorf("%s linked to %q, but the stored value is not an argument that call bound", field, producer)
+				}
+			}
+		})
+	}
+}
+
+// A signature records a parameter's type as declared (`Router`); an
+// identifier's is package-qualified. The comparison has to see those as the
+// same type, or the rule never fires on a real project — which is how the
+// first version of this fix passed a single-package test and still left every
+// cross-package mount without its prefix.
+func TestSameDeclaredType(t *testing.T) {
+	ref := typemodel.Parse
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"Router", "github.com/go-chi/chi/v5.Router", true},
+		{"*App", "*example.com/app.App", true},
+		{"Router", "Router", true},
+		{"example.com/a.Router", "example.com/b.Router", false},
+		{"*Req", "Router", false},
+		{"Router", "*github.com/go-chi/chi/v5.Router", false},
+		{"[]Router", "[]github.com/go-chi/chi/v5.Router", true},
+		{"map[string]Router", "map[int]Router", false},
+	} {
+		if got := sameDeclaredType(ref(tc.a), ref(tc.b)); got != tc.want {
+			t.Errorf("sameDeclaredType(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
 		}
 	}
 }

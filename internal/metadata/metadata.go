@@ -25,6 +25,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const MainFunc = "main"
@@ -534,6 +536,9 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 			if assignmentEdge == nil && assignment.Func == edge.Caller.Name {
 				assignmentEdge = edge
 			}
+			if assignmentEdge == nil && m.storesBoundParameter(edge, &assignment) {
+				assignmentEdge = edge
+			}
 			if assignmentEdge == nil {
 				continue
 			}
@@ -547,6 +552,99 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 	}
 
 	return relationships
+}
+
+// storesBoundParameter reports whether an assignment in the body of the
+// function edge invokes stores exactly one of that function's parameters, and
+// edge binds that parameter to an argument. The stored value then IS the
+// argument, so edge is its producer, and following it reaches the call that
+// built the value:
+//
+//	app := NewApp(WithOpt(OptAPI()))            // WithOpt returns func(a) { a.opt = r }
+//	app.SetSet(SetAPI())                        // func (a *App) SetSet(r Router) { a.set = r }
+//	root.Mount("/opt", a.opt)                   // a.opt is OptAPI()'s router
+//
+// This is the one callee-body shape the rule above must keep: without it a
+// router stored in a struct field — the functional-options and setter styles —
+// has no producer, and every route it registers loses its mount prefix. A value
+// merely DERIVED from a parameter (`r.URL.Path`) is not the argument and stays
+// unlinked (issue #550). A handler closure's `r` is bound by the framework, not
+// by the registration that edge is, and can share an outer parameter's name
+// only by shadowing it, which the declared type tells apart.
+func (m *Metadata) storesBoundParameter(edge *CallGraphEdge, a *Assignment) bool {
+	v := &a.Value
+	if v.GetKind() != KindIdent {
+		return false
+	}
+	name := v.GetName()
+	if _, bound := edge.ParamArgMap[name]; !bound {
+		return false
+	}
+	for _, p := range m.calleeParams(edge) {
+		if p != nil && p.GetName() == name {
+			return sameDeclaredType(m.TypeRefOf(p.Type), m.TypeRefOf(v.Type))
+		}
+	}
+	return false
+}
+
+// sameDeclaredType reports whether two references name the same type. A
+// signature records a parameter's type as written in its declaration
+// (`Router`), while an identifier's type is package-qualified
+// (`github.com/go-chi/chi/v5.Router`), so a package is compared only when both
+// sides state one; shape and name must always agree.
+func sameDeclaredType(a, b *typemodel.TypeRef) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.Kind != b.Kind || a.Name != b.Name || len(a.Args) != len(b.Args) {
+		return false
+	}
+	if a.Pkg != "" && b.Pkg != "" && a.Pkg != b.Pkg {
+		return false
+	}
+	for i := range a.Args {
+		if !sameDeclaredType(a.Args[i], b.Args[i]) {
+			return false
+		}
+	}
+	if (a.Key != nil || b.Key != nil) && !sameDeclaredType(a.Key, b.Key) {
+		return false
+	}
+	if a.Elem != nil || b.Elem != nil {
+		return sameDeclaredType(a.Elem, b.Elem)
+	}
+	return true
+}
+
+// calleeParams returns the declared parameters of the function or method edge
+// invokes, or nil when its declaration is not in the analyzed packages.
+func (m *Metadata) calleeParams(edge *CallGraphEdge) []*CallArgument {
+	pkg := m.StringPool.GetString(edge.Callee.Pkg)
+	name := m.StringPool.GetString(edge.Callee.Name)
+	if edge.Callee.RecvType <= 0 || m.StringPool.GetString(edge.Callee.RecvType) == "" {
+		if fn := m.FunctionInPackage(pkg, name); fn != nil {
+			return fn.Signature.Args
+		}
+		return nil
+	}
+	recv := m.TypeRefOf(edge.Callee.RecvType)
+	for recv != nil && recv.Kind == typemodel.KindPointer {
+		recv = recv.Elem
+	}
+	if recv == nil {
+		return nil
+	}
+	t := m.TypeInPackage(pkg, recv.Name)
+	if t == nil {
+		return nil
+	}
+	for i := range t.Methods {
+		if m.StringPool.GetString(t.Methods[i].Name) == name {
+			return t.Methods[i].Signature.Args
+		}
+	}
+	return nil
 }
 
 // GetAssignmentRelationships returns the cached assignment relationships
