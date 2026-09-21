@@ -1507,6 +1507,13 @@ func contentTypeResponsePattern(writes []ContentTypeWrite) ResponsePattern {
 		// on an OUTBOUND request — the shape issues #513 and #519 are about,
 		// pointed a third way — becomes an opaque body on the operation that
 		// reaches it.
+		//
+		// These two fields alone do NOT enforce it: they place a destination
+		// through the encoder-factory shape, which no header write has, so the
+		// gate admitted every one (issue #543). What enforces it is
+		// responseDestResolver.HeaderWriteDetached, applied where
+		// ContentTypeFromHeaderWrite is handled in ExtractResponse; these stay
+		// so the pattern declares the same intent as every other gated one.
 		RequireResponseDestination: true,
 		DestFromReceiver:           true,
 		// See the note on DefaultStatus vs ImplicitStatus in the PR: this

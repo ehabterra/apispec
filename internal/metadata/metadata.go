@@ -1830,7 +1830,9 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		var chainRoot string
 		var chainDepth int
 
+		var receiver *CallArgument
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			receiver = methodReceiver(sel, info, pkgName, fset, metadata)
 			if ident, ok := sel.X.(*ast.Ident); ok && ident.Obj != nil {
 				// Simple method call on a variable (e.g., "app.Method()")
 				calleeVarName = ident.Name
@@ -1859,6 +1861,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		cgEdge.CalleeVarName = calleeVarName
 		cgEdge.CalleeRecvVarName = assignVarName
 		cgEdge.ChainParent = chainParent
+		cgEdge.Receiver = receiver
 		cgEdge.ChainRoot = chainRoot
 		cgEdge.ChainDepth = chainDepth
 
@@ -1869,6 +1872,32 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		metadata.CallGraph = append(metadata.CallGraph, *cgEdge)
 	}
+}
+
+// methodReceiver renders the expression a method call is made on, for the
+// shapes ChainParent does not already cover. A chained receiver (`a.B().C()`)
+// is left to ChainParent, which also keeps this from rendering a chain once per
+// link; a package qualifier (`http.NewRequest`) is not a receiver at all.
+func methodReceiver(sel *ast.SelectorExpr, info *types.Info, pkgName string, fset *token.FileSet, metadata *Metadata) *CallArgument {
+	if _, chained := ast.Unparen(sel.X).(*ast.CallExpr); chained {
+		return nil
+	}
+	if id, ok := sel.X.(*ast.Ident); ok {
+		var obj types.Object
+		if info != nil {
+			obj = info.ObjectOf(id)
+		}
+		if _, isPkg := obj.(*types.PkgName); isPkg {
+			return nil
+		}
+		// Unresolved by the type checker AND by the file's own scope: nothing
+		// says this is a value rather than a package name, so it is not recorded
+		// as one. Losing it only makes a receiver unknown, never wrong.
+		if obj == nil && id.Obj == nil {
+			return nil
+		}
+	}
+	return ExprToCallArgument(sel.X, info, pkgName, fset, metadata)
 }
 
 // astFileFromFn locates the *ast.File declaring fnName in pkgName. recvType

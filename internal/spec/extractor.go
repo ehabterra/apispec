@@ -2907,6 +2907,12 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		if !ok {
 			return nil
 		}
+		// A header set on an outbound request, or on a map nothing sends, is
+		// not this operation's response — and the generic gate above cannot
+		// place a header write at all (issue #543).
+		if r.destResolver.HeaderWriteDetached(node) {
+			return nil
+		}
 		// A media type a serializer already describes is not a stream. If the
 		// body resolved, that pattern documents it properly; if it did not,
 		// unresolved is the honest answer — calling a JSON document a binary

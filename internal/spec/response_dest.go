@@ -37,6 +37,11 @@ type responseDestResolver struct {
 	// bufferSinks are the calls that flush a buffer's bytes to a writer, which
 	// is the one forward question this otherwise-backward resolver asks (#471).
 	bufferSinks []bufferSinkMatcher
+	// requestTypeREs are the types that carry an HTTP REQUEST, and
+	// headerRecvREs the types a Content-Type write is made on — both read by
+	// HeaderWriteDetached to place a header map (issue #543).
+	requestTypeREs []*regexp.Regexp
+	headerRecvREs  []*regexp.Regexp
 }
 
 // newResponseDestResolver compiles the configured regexes once. Enabled()
@@ -56,6 +61,19 @@ func newResponseDestResolver(cfg *APISpecConfig, contextProvider ContextProvider
 	for _, p := range cfg.Framework.ResponseContext.WriterCompatibleTypeRegexes {
 		if re, err := cachedRegex(p); err == nil {
 			r.compatibleREs = append(r.compatibleREs, re)
+		}
+	}
+	for _, p := range cfg.Framework.RequestContext.TypeRegexes {
+		if re, err := cachedRegex(p); err == nil {
+			r.requestTypeREs = append(r.requestTypeREs, re)
+		}
+	}
+	for _, w := range cfg.Framework.ResponseContext.ContentTypeWrites {
+		if w.RecvTypeRegex == "" {
+			continue
+		}
+		if re, err := cachedRegex(w.RecvTypeRegex); err == nil {
+			r.headerRecvREs = append(r.headerRecvREs, re)
 		}
 	}
 	return r
