@@ -200,11 +200,14 @@ func DefaultHTTPConfig() *APISpecConfig {
 				},
 				{
 					// r.URL.Query().Get("q") — query parameter. Query()
-					// returns net/url.Values, whose Get reads a query key.
-					CallRegex:     "^Get$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					RecvType:      "net/url.Values",
+					// returns net/url.Values, whose Get reads a query key —
+					// of the REQUEST only when the Values came from it: any
+					// URL a handler parses has a Query() too (issue #552).
+					CallRegex:            "^Get$",
+					ParamIn:              "query",
+					ParamArgIndex:        0,
+					RecvType:             "net/url.Values",
+					RequireRequestOrigin: true,
 				},
 				{
 					CallRegex:     "^Cookie$",

@@ -772,6 +772,13 @@ type ParamPattern struct {
 	// (golden rule #7 — only a proven response origin drops it).
 	ExcludeRecvOriginRegex string `yaml:"excludeRecvOriginRegex,omitempty" json:"excludeRecvOriginRegex,omitempty"`
 
+	// RequireRequestOrigin keeps the read only when its receiver can come from
+	// the request: a value of a RequestContext type, directly or through the
+	// calls, fields, variables and parameters it was reached by. It drops a read
+	// whose receiver was provably built elsewhere — `url.Parse(cfg).Query()`, a
+	// url.Values literal — and keeps one it cannot place (issue #552).
+	RequireRequestOrigin bool `yaml:"requireRequestOrigin,omitempty" json:"requireRequestOrigin,omitempty"`
+
 	// Package/type filtering: narrow this pattern by where the call is MADE and
 	// what it is made on. Each list is a set of alternatives, an empty list is no
 	// constraint, and they are include filters. See callScope (call_scope.go).

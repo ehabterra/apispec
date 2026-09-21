@@ -4065,6 +4065,12 @@ func (p *ParamPatternMatcherImpl) ExtractParam(node TrackerNodeInterface, route 
 		return nil
 	}
 
+	// Per route, not in MatchNode: whether the receiver is the request can
+	// depend on the binding of a parameter along THIS path (issue #552).
+	if p.pattern.RequireRequestOrigin && p.readsOutsideRequest(node) {
+		return nil
+	}
+
 	param := &Parameter{
 		In: p.pattern.ParamIn,
 	}
