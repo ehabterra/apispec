@@ -33,6 +33,10 @@ type ContextProviderImpl struct {
 	// pairing (via the extractor) and path-variable reachability ask for it, so
 	// one index per run rather than one per asker.
 	blocks *blockIndex
+
+	// assignFuncs indexes assignment-producing calls for mount resolution,
+	// built on first use — see assignmentFunction.
+	assignFuncs map[assignFuncKey]*metadata.CallArgument
 }
 
 // NewContextProvider creates a new context provider
