@@ -1707,32 +1707,77 @@ func (b *BasePatternMatcher) traceRouterOrigin(routerArg *metadata.CallArgument,
 }
 
 func (b *BasePatternMatcher) findAssignmentFunction(arg *metadata.CallArgument) *metadata.CallArgument {
-	// Use contextProvider to access metadata
 	ctxImpl, ok := b.contextProvider.(*ContextProviderImpl)
 	if !ok || ctxImpl.meta == nil {
 		return nil
 	}
-	meta := ctxImpl.meta
+	// Only an argument with a typed operand can match any assignment, so the
+	// rest need no lookup at all.
+	if arg == nil || arg.X == nil || arg.X.Type == -1 {
+		return nil
+	}
+	return ctxImpl.assignmentFunction(assignFuncKey{
+		name: arg.GetName(),
+		pkg:  arg.GetPkg(),
+		typ:  arg.X.GetType(),
+	})
+}
 
-	for _, edge := range meta.CallGraph {
-		for _, varAssignments := range edge.AssignmentMap {
-			for _, assign := range varAssignments {
-				varName := b.contextProvider.GetString(assign.VariableName)
-				varType := b.contextProvider.GetString(assign.ConcreteType)
-				varPkg := b.contextProvider.GetString(assign.Pkg)
+// assignFuncKey identifies an assigned variable by name, package and concrete
+// type — what findAssignmentFunction matches a router argument on.
+type assignFuncKey struct{ name, pkg, typ string }
 
-				if varName == arg.GetName() && varPkg == arg.GetPkg() && arg.X != nil && arg.X.Type != -1 && varType == arg.X.GetType() {
-					// Get the function name directly (it's already a string)
-					for _, targetArg := range edge.Args {
-						if targetArg.GetKind() == metadata.KindCall && targetArg.Fun != nil {
-							return targetArg.Fun
-						}
-					}
+// assignmentFunction returns the call that produced the variable key names:
+// the first call argument of the first edge, in call-graph order, whose
+// assignment map records that variable.
+//
+// It used to be answered by scanning every edge and every assignment on each
+// mount extraction. On a real project (82K call edges) that scan was the
+// largest single cost of the run — 29% of CPU — because mounts are extracted
+// once per tracker node, not once per registration. The index is built once
+// per metadata and keeps the first edge in call-graph order, so the answer is
+// the one the scan gave. An edge whose arguments hold no call answers nothing,
+// and the scan carried on to later edges; the index does the same by not
+// recording it.
+func (c *ContextProviderImpl) assignmentFunction(key assignFuncKey) *metadata.CallArgument {
+	if c.assignFuncs == nil {
+		c.assignFuncs = buildAssignFuncIndex(c.meta)
+	}
+	return c.assignFuncs[key]
+}
+
+func buildAssignFuncIndex(meta *metadata.Metadata) map[assignFuncKey]*metadata.CallArgument {
+	index := map[assignFuncKey]*metadata.CallArgument{}
+	if meta == nil || meta.StringPool == nil {
+		return index
+	}
+	get := meta.StringPool.GetString
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		var fun *metadata.CallArgument
+		for _, a := range edge.Args {
+			if a.GetKind() == metadata.KindCall && a.Fun != nil {
+				fun = a.Fun
+				break
+			}
+		}
+		if fun == nil {
+			continue
+		}
+		for _, assigns := range edge.AssignmentMap {
+			for _, assign := range assigns {
+				key := assignFuncKey{
+					name: get(assign.VariableName),
+					pkg:  get(assign.Pkg),
+					typ:  get(assign.ConcreteType),
+				}
+				if _, seen := index[key]; !seen {
+					index[key] = fun
 				}
 			}
 		}
 	}
-	return nil
+	return index
 }
 
 // resolveTypeOrigin traces the origin of a type through assignments and type parameters

@@ -1355,3 +1355,50 @@ func TestTraceGenericOrigin(t *testing.T) {
 		})
 	}
 }
+
+// The index findAssignmentFunction reads must answer exactly as the scan it
+// replaced: the first matching edge in call-graph order wins, and an edge whose
+// arguments hold no call is passed over for a later one rather than ending the
+// search.
+func TestFindAssignmentFunctionKeepsScanOrder(t *testing.T) {
+	sp := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: sp}
+	fun := func(name string) *metadata.CallArgument {
+		return &metadata.CallArgument{Kind: sp.Get(metadata.KindIdent), Name: sp.Get(name), Meta: meta}
+	}
+	assign := map[string][]metadata.Assignment{"r": {{
+		VariableName: sp.Get("r"), Pkg: sp.Get("main"), ConcreteType: sp.Get("*chi.Mux"),
+	}}}
+	edge := func(args ...*metadata.CallArgument) metadata.CallGraphEdge {
+		return metadata.CallGraphEdge{AssignmentMap: assign, Args: args}
+	}
+	callArg := func(f *metadata.CallArgument) *metadata.CallArgument {
+		return &metadata.CallArgument{Kind: sp.Get(metadata.KindCall), Fun: f, Meta: meta}
+	}
+	noCall := &metadata.CallArgument{Kind: sp.Get(metadata.KindIdent), Name: sp.Get("x"), Meta: meta}
+	meta.CallGraph = []metadata.CallGraphEdge{
+		edge(noCall),                // matches, but offers no call: skipped
+		edge(callArg(fun("first"))), // the answer
+		edge(callArg(fun("second"))),
+	}
+
+	m := NewBasePatternMatcher(DefaultChiConfig(), NewContextProvider(meta))
+	arg := &metadata.CallArgument{
+		Name: sp.Get("r"), Pkg: sp.Get("main"), Meta: meta,
+		X: &metadata.CallArgument{Type: sp.Get("*chi.Mux"), Meta: meta},
+	}
+	if got := m.findAssignmentFunction(arg); got == nil || got.GetName() != "first" {
+		t.Errorf("got %v, want the first edge that offers a call", got)
+	}
+
+	// A different type matches nothing, and an operand with no type is never
+	// looked up.
+	arg.X.Type = sp.Get("*gin.Engine")
+	if got := m.findAssignmentFunction(arg); got != nil {
+		t.Errorf("type mismatch matched %q", got.GetName())
+	}
+	arg.X.Type = -1
+	if got := m.findAssignmentFunction(arg); got != nil {
+		t.Errorf("untyped operand matched %q", got.GetName())
+	}
+}
