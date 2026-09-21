@@ -277,14 +277,16 @@ func stdlibCredentialReads() CredentialReadConfig {
 			`(?i)^(api|auth|access)[-_]?(key|token)$`,
 			`(?i)^x-(amz-security-token|goog-api-key)$`,
 		},
-		// 401 is definitionally "not authenticated". 403 is authorisation,
-		// which is the same family — it does mean a middleware that forbids on
-		// something other than a credential (a tenancy or IP guard) is reported
-		// too, and that is the accepted cost: a false positive is one line,
-		// while a miss is a route documented as public.
+		// 401 only. 401 is definitionally "not authenticated"; 403 is "not
+		// allowed" — authorisation, which an OpenAPI security scheme does not
+		// describe. Counting 403 reported every role gate stacked after the
+		// real auth middleware (RequireAuth then RequireRole) as unmapped
+		// authentication, and claimed its routes were documented as public
+		// when they carried the scheme RequireAuth supplied. A 403-only
+		// middleware on a house credential name is the cost: it drops to the
+		// unclassified list instead of the warning.
 		RefusalStatuses: []int{
 			http.StatusUnauthorized,
-			http.StatusForbidden,
 		},
 	}
 }

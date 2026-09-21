@@ -175,12 +175,13 @@ func TestStatusArgValue(t *testing.T) {
 func TestRefusalStatusesAreAuthOnly(t *testing.T) {
 	cred := stdlibCredentialReads()
 
-	for _, auth := range []int{401, 403} {
-		if !cred.refuses(auth) {
-			t.Errorf("%d means the request was not authenticated/authorised and is not counted", auth)
-		}
+	if !cred.refuses(401) {
+		t.Error("401 means the request was not authenticated and is not counted")
 	}
-	for _, refusal := range []int{400, 404, 409, 413, 415, 422, 429, 500, 503, 504} {
+	// 403 is authorisation: a role gate behind the real auth middleware
+	// refuses with it and reads no credential. Counting it reported those
+	// gates as unmapped authentication.
+	for _, refusal := range []int{400, 403, 404, 409, 413, 415, 422, 429, 500, 503, 504} {
 		if cred.refuses(refusal) {
 			t.Errorf("%d is a refusal but not an auth one; counting it reports every guard as auth", refusal)
 		}
@@ -283,12 +284,18 @@ func TestCallRefusesWithAuthStatusNeedsAWriter(t *testing.T) {
 		}
 	}
 
-	t.Run("http.Error with 403", func(t *testing.T) {
+	t.Run("http.Error with 401", func(t *testing.T) {
 		// A package-level writer: the response pattern scopes it by PACKAGE in
 		// RecvTypeRegex, and the call records no receiver. Reading the field
 		// literally matched nothing and lost every http.Error refusal.
-		if !e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusForbidden")), cred) {
-			t.Error("http.Error(w, msg, 403) is a refusal and was not recognised")
+		if !e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusUnauthorized")), cred) {
+			t.Error("http.Error(w, msg, 401) is a refusal and was not recognised")
+		}
+	})
+
+	t.Run("http.Error with 403 is authorisation", func(t *testing.T) {
+		if e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusForbidden")), cred) {
+			t.Error("403 is an authorisation refusal and must not signal authentication")
 		}
 	})
 
@@ -305,7 +312,7 @@ func TestCallRefusesWithAuthStatusNeedsAWriter(t *testing.T) {
 	})
 
 	t.Run("no refusal statuses configured", func(t *testing.T) {
-		if e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusForbidden")),
+		if e.callRefusesWithAuthStatus(call("Error", "net/http", "", w, msg, status("StatusUnauthorized")),
 			CredentialReadConfig{}) {
 			t.Error("matched with an empty configuration")
 		}

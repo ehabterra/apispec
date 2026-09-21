@@ -428,7 +428,7 @@ func MapMetadataToOpenAPIWithDiagnostics(tree TrackerTreeInterface, cfg *APISpec
 		// Says the CONSEQUENCE, not just the condition: the operations these
 		// guard are documented as public, which is the reason to act on it.
 		log.Printf("[security] %d middleware look like authentication (they read a credential, "+
-			"or refuse with 401/403) but map to no security scheme, so the operations they "+
+			"or refuse with 401) but map to no security scheme, so the operations they "+
 			"guard are documented as PUBLIC (add securityMappings to resolve): %s",
 			len(unresolved), strings.Join(names, ", "))
 	}

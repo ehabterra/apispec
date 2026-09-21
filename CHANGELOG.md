@@ -160,9 +160,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   The split is now made on what the middleware's body DOES, never on its name —
   which would be the guess golden rule #9 forbids. Two signals count, and either
-  is sufficient on its own: it READS a credential, or it REFUSES with 401/403.
-  Neither covers every authentication shape, and each catches what the other
-  misses — session auth redirects to a
+  is sufficient on its own: it READS a credential, or it REFUSES with 401.
+  403 does not count: it means "not allowed", which is authorisation, and a
+  security scheme documents authentication — counting it reported every role
+  gate stacked after the real auth middleware (`RequireAuth` then
+  `RequireRole`) as unmapped, and said routes carrying the scheme
+  `RequireAuth` supplied were documented as public. A 403-only middleware on a
+  house credential name drops to the verbose unclassified list; configure
+  `refusalStatuses` to count it. Neither signal covers every authentication
+  shape, and each catches what the other misses — session auth redirects to a
   login page and never writes 401, a middleware that returns an error for a
   shared renderer decides its status elsewhere, and no name table can know a
   house credential like `X-Acme-Request-Signature`. Refusing on its own is still
