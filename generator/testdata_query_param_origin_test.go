@@ -38,12 +38,12 @@ func TestTestdata_QueryParamOrigin(t *testing.T) {
 			got[p.Name] = true
 		}
 	}
-	for _, name := range []string{"page", "sort", "limit", "filter", "cursor"} {
+	for _, name := range []string{"page", "sort", "limit", "filter", "cursor", "mq"} {
 		if !got[name] {
 			t.Errorf("query parameter %q missing — it is read off the request's own query; have %v", name, got)
 		}
 	}
-	for _, name := range []string{"clientname", "region", "token", "skipverify"} {
+	for _, name := range []string{"clientname", "region", "token", "skipverify", "outq", "sig"} {
 		if got[name] {
 			t.Errorf("query parameter %q documented — it is read off url.Values the client never sends", name)
 		}

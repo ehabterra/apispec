@@ -12,6 +12,7 @@
 //	limit    a helper handed r.URL.Query()
 //	filter   url.ParseQuery(r.URL.RawQuery) — parsed, but from the request
 //	cursor   a helper handed r.URL itself
+//	mq       a method on a literal, handed the request
 //
 // Not documented (the Values were built elsewhere):
 //
@@ -20,6 +21,9 @@
 //	token        off a url.Values literal built for an outbound request
 //	skipverify   a helper handed a URL a method built from a connection
 //	             string it was handed — the shape of gitea's Redis client
+//	outq         off an OUTBOUND request's URL, built in the handler
+//	sig          off an outbound request a helper is handed — a
+//	             *http.Request, but not this operation's
 package main
 
 import (
@@ -71,6 +75,14 @@ func (manager) client(connection string) string {
 // cursorOf is handed the request's URL.
 func cursorOf(u *url.URL) string { return u.Query().Get("cursor") }
 
+// reader is a value whose method is handed the request.
+type reader struct{}
+
+func (reader) values(r *http.Request) url.Values { return r.URL.Query() }
+
+// sign reads a key off whatever request it is handed.
+func sign(req *http.Request) string { return req.URL.Query().Get("sig") }
+
 // limitOf is handed the request's query.
 func limitOf(q url.Values) string { return q.Get("limit") }
 
@@ -78,6 +90,11 @@ func list(w http.ResponseWriter, r *http.Request) {
 	_, _, _ = connect(), endpoint(), outbound()
 	_ = manager{}.client(connString)
 	cursor := cursorOf(r.URL)
+	mq := reader{}.values(r).Get("mq")
+
+	out, _ := http.NewRequest(http.MethodGet, "https://api.example.test/v1?outq=1&sig=2", nil)
+	_ = out.URL.Query().Get("outq")
+	_ = sign(out)
 
 	page := r.URL.Query().Get("page")
 	q := r.URL.Query()
@@ -86,7 +103,7 @@ func list(w http.ResponseWriter, r *http.Request) {
 	vals, _ := url.ParseQuery(r.URL.RawQuery)
 	filter := vals.Get("filter")
 
-	_ = json.NewEncoder(w).Encode([]string{page, sort, limit, filter, cursor})
+	_ = json.NewEncoder(w).Encode([]string{page, sort, limit, filter, cursor, mq})
 }
 
 func main() {

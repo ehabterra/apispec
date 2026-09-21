@@ -86,10 +86,19 @@ type requestOriginWalker struct {
 
 // callOrigin places what a call is made on: the root of its chain, then that
 // root's recorded receiver.
+//
+// Each link of the chain is a call in its own right, and its arguments are
+// asked on the way up: `reader{}.values(r).Get("q")` roots at a literal, but
+// the link it passes through was handed the request (review of #553).
 func (w requestOriginWalker) callOrigin(call *metadata.CallGraphEdge, node TrackerNodeInterface, hops int) requestOrigin {
 	for call != nil && call.ChainParent != nil && hops < maxRequestOriginHops {
 		call = call.ChainParent
 		hops++
+		for _, a := range call.Args {
+			if w.valueOrigin(a, node, hops+1) == requestOriginRequest {
+				return requestOriginRequest
+			}
+		}
 	}
 	if call == nil || call.Receiver == nil || hops >= maxRequestOriginHops {
 		return requestOriginUnknown
@@ -105,7 +114,13 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 	if arg == nil || node == nil || node.GetEdge() == nil || hops >= maxRequestOriginHops {
 		return requestOriginUnknown
 	}
-	if w.isRequestType(arg) {
+	// A variable's TYPE is the last thing asked, not the first: a
+	// *http.Request is not necessarily THE request. `req, _ :=
+	// http.NewRequest(…)` and a helper handed one are outbound requests, and
+	// reading their query is not reading this operation's (review of #553).
+	// Everything else that carries a request type — a field (`c.Request`), a
+	// method result (`c.Request()`) — is the context's own request.
+	if arg.GetKind() != metadata.KindIdent && w.isRequestType(arg) {
 		return requestOriginRequest
 	}
 	edge := node.GetEdge()
@@ -126,9 +141,13 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 		if origin, ok := w.paramOriginFromCallers(arg.GetName(), edge, hops); ok {
 			return origin
 		}
-		// Neither assigned here nor a bound parameter: a PACKAGE-level
-		// variable is set at start-up, never per request — a connection
-		// string, a base URL from configuration.
+		// Unassigned and bound by no caller: the handler's own request
+		// parameter, which the framework hands in, is recognised by its type.
+		if w.isRequestType(arg) {
+			return requestOriginRequest
+		}
+		// A PACKAGE-level variable is set at start-up, never per request — a
+		// connection string, a base URL from configuration.
 		if w.isPackageVar(arg.GetPkg(), arg.GetName()) {
 			return requestOriginElsewhere
 		}
@@ -149,7 +168,17 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 		// A METHOD's result belongs to its receiver; handleSelector records a
 		// receiver type only for a method, which is what tells `u.Query()` from
 		// the package-qualified `url.Parse(…)`.
+		//
+		// Its arguments are asked first: a method handed the request can build
+		// its result from it whatever it is called on — `reader{}.values(r)` —
+		// so any argument tracing to the request makes the result the request's
+		// (review of #553). Only then does the receiver decide.
 		if fun != nil && fun.GetKind() == metadata.KindSelector && fun.ReceiverType != nil {
+			for _, a := range arg.Args {
+				if w.valueOrigin(a, node, hops+1) == requestOriginRequest {
+					return requestOriginRequest
+				}
+			}
 			return w.valueOrigin(fun.X, node, hops+1)
 		}
 		// A plain function builds a NEW value. It is the request's only when

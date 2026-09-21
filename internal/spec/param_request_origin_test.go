@@ -232,3 +232,63 @@ func TestParamOriginFromCallers(t *testing.T) {
 		t.Error("a call-site frame has no tree around it")
 	}
 }
+
+// A *http.Request is not necessarily THE request: a variable's assignment and a
+// parameter's callers are asked before its type. And a method handed the
+// request — as an argument, or anywhere up the chain — builds from it whatever
+// it is called on (review of #553).
+func TestRequestOriginResolvesBeforeType(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	p := roMatcher(meta)
+
+	// req, _ := http.NewRequest(…) — typed as a request, built as an outbound one.
+	newReq := metadata.NewCallArgument(meta)
+	newReq.SetKind(metadata.KindCall)
+	newReq.Fun = roIdent(meta, "NewRequest", "", "net/http")
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindLiteral)
+	lit.SetValue(`"https://x?sig=1"`)
+	newReq.Args = []*metadata.CallArgument{lit}
+	urlOf := func(owner *metadata.CallArgument) *metadata.CallArgument {
+		s := metadata.NewCallArgument(meta)
+		s.SetKind(metadata.KindSelector)
+		s.X, s.Sel = owner, roIdent(meta, "URL", "", "")
+		return s
+	}
+	outbound := &metadata.CallGraphEdge{
+		ChainParent: &metadata.CallGraphEdge{
+			Receiver:      urlOf(roIdent(meta, "req", "*net/http.Request", "app")),
+			AssignmentMap: map[string][]metadata.Assignment{"req": {{Value: *newReq}}},
+		},
+	}
+	// The assignment lives on the root link, which is the frame here.
+	root := outbound.ChainParent
+	if !p.readsOutsideRequest(&fakeNode{edge: root}) {
+		t.Error("req.URL off an http.NewRequest was taken for the request because of its type")
+	}
+
+	// reader{}.values(r).Get: the chain roots at a literal, but its link was
+	// handed the request.
+	rdr := metadata.NewCallArgument(meta)
+	rdr.SetKind(metadata.KindCompositeLit)
+	values := &metadata.CallGraphEdge{Receiver: rdr, Args: []*metadata.CallArgument{roIdent(meta, "r", "*net/http.Request", "app")}}
+	if p.readsOutsideRequest(&fakeNode{edge: &metadata.CallGraphEdge{ChainParent: values}}) {
+		t.Error("a chain link handed the request was dropped")
+	}
+
+	// v := reader{}.values(r); v.Get — the same through a variable.
+	method := metadata.NewCallArgument(meta)
+	method.SetKind(metadata.KindCall)
+	method.Fun = metadata.NewCallArgument(meta)
+	method.Fun.SetKind(metadata.KindSelector)
+	method.Fun.X, method.Fun.Sel = rdr, roIdent(meta, "values", "", "")
+	method.Fun.ReceiverType = roIdent(meta, "reader", "reader", "app")
+	method.Args = []*metadata.CallArgument{roIdent(meta, "r", "*net/http.Request", "app")}
+	viaVar := &metadata.CallGraphEdge{
+		Receiver:      roIdent(meta, "v", "net/url.Values", "app"),
+		AssignmentMap: map[string][]metadata.Assignment{"v": {{Value: *method}}},
+	}
+	if p.readsOutsideRequest(&fakeNode{edge: viaVar}) {
+		t.Error("a method result handed the request was dropped")
+	}
+}
