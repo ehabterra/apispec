@@ -106,10 +106,14 @@ right as far as they go, they just say less than your code knows.
   mapped.
 - **A path that exists only as a runtime value.** Routes registered from a
   **table** (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`)
-  or by a house router chained through a returned object
-  (`Combo("/x").Get(h).Post(h)`) cannot be located, so they are **reported and
+  cannot be located, so they are **reported and
   left out** rather than documented at the placeholder standing in for the
-  expression. Each one names the registration site on stderr, and
+  expression. A house router that carries the path on a returned object
+  (`Combo("/x").Get(h).Post(h)`) *is* located — chained, assigned to a variable
+  first, or both — except when one variable is **reused** for several builders:
+  from the second registration on, every write to the name is a candidate for
+  the value and they disagree, so those are reported rather than documented at
+  one of them. Each one names the registration site on stderr, and
   `Generator.UnresolvedPaths()` returns the list, so the gap is countable
   instead of silent. A path that is only *partly* unresolved keeps its
   operation, with the placeholder flagged: an unresolved prefix

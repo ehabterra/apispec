@@ -73,6 +73,16 @@ func TestTestdata_ReceiverFieldPath(t *testing.T) {
 		t.Error("/items has no POST — the chained verb links to Get, not to the constructor")
 	}
 
+	// The builder ASSIGNED to a variable before it is registered from. This
+	// fixture has carried the shape since it was written and `/things` was
+	// absent from its output the whole time — no path, no placeholder, no
+	// report — because the receiver arrives through an assignment rather than
+	// through the chain, which the walk above cannot follow (issue #506).
+	if !hasPath(out, "/things") {
+		t.Errorf("/things missing — a builder assigned to a variable first lost its path; have %v",
+			mapPathKeys(out.Paths))
+	}
+
 	// The handlers are only ever PASSED to the builder, never called, and they
 	// arrive at the registration as the wrapper's parameter — so their bodies
 	// were invisible to the walk and both verbs documented the framework's
