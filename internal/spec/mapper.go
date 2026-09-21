@@ -2688,22 +2688,44 @@ func handlerMethodDecl(route *RouteInfo, name string) *metadata.Method {
 // findFunctionByName cannot reach — it indexes only receiver-less declarations.
 // Returns "" for an anonymous (func-literal) or undocumented handler.
 func handlerComments(route *RouteInfo, handlerMethods ...string) string {
+	if d := resolveHandlerDecl(route, handlerMethods...); d != nil {
+		return getStringFromPool(route.Metadata, d.comments)
+	}
+	return ""
+}
+
+// handlerDeclInfo is what a route's handler declaration records that the spec
+// reads: its doc comment, and every return statement's values.
+type handlerDeclInfo struct {
+	comments int
+	returns  [][]metadata.CallArgument
+}
+
+// resolveHandlerDecl finds the declaration that serves the route, for every
+// handler shape handlerComments documents. One resolver for every reader, so the
+// summary and the returned-sentinel responses (issue #556) cannot disagree about
+// which function a route runs. Nil for an anonymous (func-literal) handler, which
+// has no declaration.
+func resolveHandlerDecl(route *RouteInfo, handlerMethods ...string) *handlerDeclInfo {
+	if route == nil || route.Metadata == nil || route.Function == "" {
+		return nil
+	}
 	name := handlerDeclName(route)
 	// What remains is either "Method" / "Func" or "<recv>.Method", where <recv>
 	// is a type name or a field path.
 	if strings.IndexByte(name, '.') >= 0 {
 		if m := handlerMethodDecl(route, name); m != nil {
-			return getStringFromPool(route.Metadata, m.Comments)
+			return &handlerDeclInfo{comments: m.Comments, returns: m.Returns}
 		}
-		return handlerValueComments(route, name, handlerMethods...)
+		return handlerValueDecl(route, name, handlerMethods...)
 	}
 	if fn := findFunctionByName(route.Metadata, route.Package, name); fn != nil {
-		return getStringFromPool(route.Metadata, fn.Comments)
+		return &handlerDeclInfo{comments: fn.Comments, returns: fn.Returns}
 	}
-	return handlerValueComments(route, name, handlerMethods...)
+	return handlerValueDecl(route, name, handlerMethods...)
 }
 
-// handlerValueComments resolves the doc comment of a handler passed as a *value*
+// handlerValueDecl resolves the declaration of a handler passed as a *value*
 // (issue #204): the registration names no method, so the framework's handler
 // interface supplies it. `name` is the rendered handler argument with the package
 // prefix already stripped — either a type name ("H", from `mux.Handle("/x", h)`)
@@ -2712,16 +2734,16 @@ func handlerComments(route *RouteInfo, handlerMethods ...string) string {
 //
 // This mirrors LazyTree.handlerValueKeys so the summary and the expanded body
 // agree on which method serves the route: whenever one resolves, so does the
-// other. A value whose type declares no configured handler method yields "",
+// other. A value whose type declares no configured handler method yields nil,
 // never a same-named method picked from elsewhere.
-func handlerValueComments(route *RouteInfo, name string, handlerMethods ...string) string {
+func handlerValueDecl(route *RouteInfo, name string, handlerMethods ...string) *handlerDeclInfo {
 	if len(handlerMethods) == 0 || name == "" {
-		return ""
+		return nil
 	}
 	recv := receiverTypeName(route.Metadata, route.Package, name)
 	for _, hm := range handlerMethods {
 		if m := findMethodByName(route.Metadata, route.Package, recv, hm); m != nil {
-			return getStringFromPool(route.Metadata, m.Comments)
+			return &handlerDeclInfo{comments: m.Comments, returns: m.Returns}
 		}
 	}
 	// The value may be interface-typed (a field declared `http.Handler`), whose
@@ -2738,18 +2760,18 @@ func handlerValueComments(route *RouteInfo, name string, handlerMethods ...strin
 	}
 	impls := implementersOfExternal(route.Metadata, key)
 	if len(impls) != 1 {
-		return ""
+		return nil
 	}
 	i := strings.LastIndexByte(impls[0], '.')
 	if i < 0 {
-		return ""
+		return nil
 	}
 	for _, hm := range handlerMethods {
 		if m := findMethodByName(route.Metadata, impls[0][:i], impls[0][i+1:], hm); m != nil {
-			return getStringFromPool(route.Metadata, m.Comments)
+			return &handlerDeclInfo{comments: m.Comments, returns: m.Returns}
 		}
 	}
-	return ""
+	return nil
 }
 
 // valueTypeKey returns the fully-qualified type key ("net/http.Handler") of the

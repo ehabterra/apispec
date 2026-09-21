@@ -124,6 +124,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fasthttp rather than net/http), with a fixture per framework. Zero drift on
   the other 138. (#517)
 
+- **A returned error sentinel documents its status.** `return echo.ErrForbidden`
+  and `return fiber.ErrNotFound` are answered by the framework's error handler
+  with the status the value carries, but a sentinel is a package variable, not a
+  call — and every response pattern matches calls — so the status was missing
+  while the equivalent `echo.NewHTTPError(403, …)` was documented. A new
+  `framework.errorSentinels` block describes them by the package (and type) that
+  declares them and a name regex whose first group is a status name
+  (`^Err(\w+)$`: `ErrForbidden` → 403); a name naming no status is skipped
+  rather than guessed. echo documents the `*HTTPError` it renders, fiber the
+  message as `text/plain`. Only the handler's own returns are read, and a status
+  the route already documents keeps its description. The other frameworks have
+  no such sentinels, so their output is unchanged. (#556)
+
 ### Changed
 
 - **apispecui is organised by task.** Configure had grown to 27 collapsible

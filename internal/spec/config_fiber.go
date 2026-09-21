@@ -99,6 +99,16 @@ func DefaultFiberConfig() *APISpecConfig {
 			},
 			RequestContext:  fiberRequestContext,
 			CredentialReads: frameworkCredentialReads(`^github\.com/gofiber/fiber(/v\d+)?\.\*?Ctx$`),
+			// `return fiber.ErrNotFound`: the default ErrorHandler writes the
+			// status the *fiber.Error carries and sends its message — the status
+			// text — as plain text (issue #556).
+			ErrorSentinels: []ErrorSentinel{{
+				PkgRegex:    `^github\.com/gofiber/fiber(/v\d+)?$`,
+				TypeRegex:   `^\*github\.com/gofiber/fiber(/v\d+)?\.Error$`,
+				NameRegex:   `^Err(\w+)$`,
+				BodyType:    "string",
+				ContentType: contentTypeText,
+			}},
 			// c.JSON(v) and c.SendString(v) carry no status: fiber sends the
 			// context's status, which is 200 unless c.Status(...) set one — and
 			// that call pairs with the body through the ^Status$ pattern above

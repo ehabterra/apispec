@@ -180,6 +180,9 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	// Copied rather than aliased so an append by a later caller cannot reach
 	// the source config's backing array.
 	out.ExternalTypes = append(out.ExternalTypes, cfg.ExternalTypes...)
+	// Error sentinels are scoped by the package that declares them, so like
+	// ExternalTypes they can only ever claim their own framework's values.
+	out.Framework.ErrorSentinels = append(out.Framework.ErrorSentinels, cfg.Framework.ErrorSentinels...)
 	for _, p := range cfg.Framework.RoutePatterns {
 		if p.RecvType != "" || p.RecvTypeRegex != "" {
 			out.Framework.RoutePatterns = append(out.Framework.RoutePatterns, p)
@@ -219,7 +222,7 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 // context accumulates unique type regexes and body accessors. ExternalTypes
 // merge the same way, keyed by type name (issue #212) — every other framework
 // preset carries only its own types, so the union is what "both frameworks are
-// present" means. Info, Defaults, overrides and mappings stay the primary's
+// present" means. Error sentinels are package-scoped and union likewise. Info, Defaults, overrides and mappings stay the primary's
 // alone. The primary is mutated and
 // returned; a nil primary returns nil (mirroring SecondaryView's guard, since
 // both are exported through the public spec package).
@@ -254,6 +257,10 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 	seenExt := map[string]bool{}
 	for _, e := range primary.ExternalTypes {
 		seenExt[e.Name] = true
+	}
+	seenSentinel := map[string]bool{}
+	for _, e := range primary.Framework.ErrorSentinels {
+		seenSentinel[sentinelKey(e)] = true
 	}
 
 	for _, sec := range secondaries {
@@ -304,6 +311,12 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 				primary.ExternalTypes = append(primary.ExternalTypes, e)
 			}
 		}
+		for _, e := range sec.Framework.ErrorSentinels {
+			if k := sentinelKey(e); !seenSentinel[k] {
+				seenSentinel[k] = true
+				primary.Framework.ErrorSentinels = append(primary.Framework.ErrorSentinels, e)
+			}
+		}
 		primary.Framework.RequestContext.TypeRegexes = appendUniqueStrings(
 			primary.Framework.RequestContext.TypeRegexes, sec.Framework.RequestContext.TypeRegexes...)
 		primary.Framework.RequestContext.BodyAccessors = appendUniqueStrings(
@@ -326,6 +339,11 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 // primary's wins.
 func routePatternKey(p RoutePattern) string {
 	return strings.Join([]string{p.CallRegex, p.FunctionNameRegex, p.RecvType, p.RecvTypeRegex}, "\x00")
+}
+
+// sentinelKey identifies an error sentinel by the values it claims.
+func sentinelKey(e ErrorSentinel) string {
+	return patternKey(e.PkgRegex, e.TypeRegex, e.NameRegex)
 }
 
 func patternKey(parts ...string) string {

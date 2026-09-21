@@ -100,6 +100,16 @@ func DefaultEchoConfig() *APISpecConfig {
 				WriterCompatibleTypeRegexes: writerCompatibleTypes(),
 			},
 			CredentialReads: frameworkCredentialReads(`^github\.com/labstack/echo(/v\d+)?\.Context$`),
+			// `return echo.ErrForbidden`: the HTTPErrorHandler writes the
+			// status the sentinel carries and serializes the *HTTPError
+			// (`{"message": …}`), exactly as for NewHTTPError (issue #556).
+			ErrorSentinels: []ErrorSentinel{{
+				PkgRegex:      `^github\.com/labstack/echo(/v\d+)?$`,
+				TypeRegex:     `^\*github\.com/labstack/echo(/v\d+)?\.HTTPError$`,
+				NameRegex:     `^Err(\w+)$`,
+				BodyFromValue: true,
+				Deref:         true,
+			}},
 			RequestBodyPatterns: []RequestBodyPattern{
 				{
 					CallRegex:     `^(?i)(Bind)$`,
