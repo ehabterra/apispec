@@ -33,10 +33,14 @@ func TestTestdata_ReturnedError(t *testing.T) {
 			"404": "application/json",
 			// Returned by middleware in front of the handler.
 			"401": "application/json",
+			// A returned sentinel: `return echo.ErrForbidden`.
+			"403": "application/json",
 		}},
 		{"fiber", "returned_error_fiber", intspec.DefaultFiberConfig(), map[string]string{
 			"404": "text/plain; charset=utf-8",
 			"409": "",
+			// A returned sentinel: `return fiber.ErrForbidden`.
+			"403": "text/plain; charset=utf-8",
 		}},
 	} {
 		t.Run(fw.name, func(t *testing.T) {
@@ -61,14 +65,6 @@ func TestTestdata_ReturnedError(t *testing.T) {
 				if _, ok := resp.Content[media]; !ok {
 					t.Errorf("%s content = %v, want %s — what the framework's error handler writes", status, resp.Content, media)
 				}
-			}
-
-			// NOT DOCUMENTED, and asserted so the day it changes: a returned
-			// SENTINEL (`echo.ErrForbidden`, `fiber.ErrForbidden`) is a package
-			// variable rather than a call, so no response pattern sees it —
-			// the remaining half of #556.
-			if _, ok := op.Responses["403"]; ok {
-				t.Errorf("403 documented — returned sentinels now resolve: assert them and drop this block (#556)")
 			}
 		})
 	}

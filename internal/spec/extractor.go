@@ -1117,6 +1117,7 @@ func (e *Extractor) handleRouteNode(node TrackerNodeInterface, routeInfo *RouteI
 	chain := make([]string, 0, 32)
 	e.extractRouteChildren(node, routeInfo, mountTags, routes, visitedEdges, &chain, &respCandidates)
 	e.pairAndFillResponses(routeInfo, respCandidates)
+	e.addReturnedSentinels(routeInfo)
 
 	// Add map-key path params (mux.Vars) for placeholders the handler reads via
 	// the accessor — including through helper wrappers the subtree walk misses.

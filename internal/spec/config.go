@@ -121,6 +121,45 @@ type FrameworkConfig struct {
 	// is only treated as a response when x traces to the response writer. Used to
 	// gate ResponsePattern.RequireResponseDestination. See issue #170.
 	ResponseContext ResponseContextConfig `yaml:"responseContext,omitempty" json:"responseContext,omitempty"`
+
+	// ErrorSentinels describe the error VALUES a handler returns that the
+	// framework's error handler turns into a response — echo's
+	// `return echo.ErrForbidden`, fiber's `return fiber.ErrNotFound` (issue
+	// #556). A returned sentinel is a package variable, not a call, so no
+	// ResponsePattern can see it.
+	ErrorSentinels []ErrorSentinel `yaml:"errorSentinels,omitempty" json:"errorSentinels,omitempty"`
+}
+
+// ErrorSentinel matches a package-level error variable that a handler returns,
+// and says what the framework's error handler writes for it.
+//
+// Only the handler's OWN return statements are read. A helper that returns a
+// sentinel may have its error swallowed or replaced before the handler returns,
+// and counting it would document a status the endpoint might never send
+// (golden rule #7).
+type ErrorSentinel struct {
+	// PkgRegex matches the package that declares the variable.
+	PkgRegex string `yaml:"pkgRegex" json:"pkgRegex,omitempty"`
+	// TypeRegex matches the variable's static type, so only values the error
+	// handler renders with their own status count. echo also exports plain
+	// `errors.New` sentinels (ErrCookieNotFound), which carry no status.
+	TypeRegex string `yaml:"typeRegex,omitempty" json:"typeRegex,omitempty"`
+	// NameRegex matches the variable's name and must capture the status's
+	// name in its first group: `^Err(\w+)$` reads ErrForbidden as
+	// StatusForbidden, resolved through the same status-by-name table
+	// `http.StatusForbidden` is. A name with no such status is skipped rather
+	// than guessed.
+	NameRegex string `yaml:"nameRegex" json:"nameRegex,omitempty"`
+	// BodyFromValue documents the variable's own type as the body (echo
+	// serializes the *HTTPError itself); Deref strips its pointer.
+	BodyFromValue bool `yaml:"bodyFromValue,omitempty" json:"bodyFromValue,omitempty"`
+	Deref         bool `yaml:"deref,omitempty" json:"deref,omitempty"`
+	// BodyType is a fixed Go type for the body when it is not the value's
+	// (fiber sends the status text: "string").
+	BodyType string `yaml:"bodyType,omitempty" json:"bodyType,omitempty"`
+	// ContentType is the media type the error handler writes; empty means the
+	// configured default response content type.
+	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
 }
 
 // EntrypointPattern declares that a function stored into a named struct field is

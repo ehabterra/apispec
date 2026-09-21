@@ -65,6 +65,7 @@ func TestConfigEditorCoversEveryField(t *testing.T) {
 		spec.MountPattern{},
 		spec.SecurityPattern{},
 		spec.EntrypointPattern{},
+		spec.ErrorSentinel{},
 		spec.RequestContextConfig{},
 		spec.ResponseContextConfig{},
 	}

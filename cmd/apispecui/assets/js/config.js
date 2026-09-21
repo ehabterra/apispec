@@ -577,6 +577,10 @@ export function ConfigMode() {
             <${PatternList} items=${fc.responsePatterns} fields=${PATTERN_FIELDS.responsePatterns} onChange=${(a) => setFC("responsePatterns", a)} />
           <//>
 
+          <${Section} title="Returned error sentinels" help="Package-level error values a handler RETURNS, which the framework's error handler turns into a response: return echo.ErrForbidden documents a 403. They are variables, not calls, so no response pattern can see them. The status comes from the value's name — the name regex's first group is a status name (^Err(\\w+)$ captures Forbidden → 403); a name naming no status is skipped. Scoped by the declaring package (and optionally its type), so an app's own ErrForbidden is never claimed. Only the handler's own return statements are read, and a status the route already documents keeps its description." hint=${`${(fc.errorSentinels || []).length}`}>
+            <${PatternList} items=${fc.errorSentinels} fields=${PATTERN_FIELDS.errorSentinels} onChange=${(a) => setFC("errorSentinels", a)} />
+          <//>
+
           <${Section} title="Parameters" help="How path/query/header/cookie/form parameter reads are recognised. The 'Parameter location' sets where it appears in the spec. Examples (Gin): c.Param('id') → location path · c.Query('q') → location query · c.GetHeader('X-Token') → location header. The parameter name is read from the named-argument index." hint=${`${(fc.paramPatterns || []).length}`}>
             <${PatternList} items=${fc.paramPatterns} fields=${PATTERN_FIELDS.paramPatterns} onChange=${(a) => setFC("paramPatterns", a)} />
           <//>
@@ -715,6 +719,15 @@ const PATTERN_FIELDS = {
     ["middlewareFromRecv", "Middleware from receiver", "bool", "The middleware value is the call's receiver rather than an argument (rare)."],
     ["handlerArgIndex", "Handler arg index", "int", "Index of the guarded/wrapped handler argument, for scope route/wrapper."],
     ...SCOPE_FILTERS,
+  ],
+  errorSentinels: [
+    ["pkgRegex", "Package regex", "text", "Regex matching the package that DECLARES the sentinel, e.g. ^github\\.com/labstack/echo(/v\\d+)?$. Required: an unscoped entry claims nothing."],
+    ["typeRegex", "Type regex", "text", "Optional regex the value's type must match, e.g. ^\\*github\\.com/labstack/echo(/v\\d+)?\\.HTTPError$ — keeps a plain errors.New sentinel in the same package from being read as a response."],
+    ["nameRegex", "Name regex", "text", "Regex over the sentinel's name whose FIRST group is a status name: ^Err(\\w+)$ turns ErrNotFound into 404. A capture already starting with Status (ErrStatusRequestEntityTooLarge) is used as it is."],
+    ["bodyFromValue", "Body from value", "bool", "Document the body as the sentinel's own type — echo renders a returned *HTTPError."],
+    ["deref", "Dereference pointer", "bool", "With Body from value: strip the leading * from the value's type."],
+    ["bodyType", "Body type", "text", "A fixed body type instead, e.g. string for fiber, which writes the error message as text."],
+    ["contentType", "Content-type", "text", "Media type of that body. Empty uses the default response content type."],
   ],
   entrypointPatterns: [
     ["fieldRegex", "Field regex", "text", "Regex matching the struct FIELD the entrypoint function is assigned to. e.g. ^(Action|Run|RunE|Exec)$ — cobra's Run/RunE, urfave/cli's Action, ffcli's Exec."],

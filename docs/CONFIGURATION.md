@@ -560,6 +560,46 @@ struct definitions with doc comments in `internal/spec/config.go`. The quickest
 way to author a custom pattern is to dump the effective config with
 `--output-config` and edit the relevant block.
 
+### Returned error sentinels
+
+A handler that returns a framework's error *value*, as in
+`return echo.ErrForbidden`, gets its response from the framework's error handler.
+A sentinel is a package variable, not a call, so no response pattern can match
+it. `errorSentinels` describes these values instead:
+
+```yaml
+framework:
+  errorSentinels:
+    - pkgRegex: ^github\.com/labstack/echo(/v\d+)?$        # required: the declaring package
+      typeRegex: ^\*github\.com/labstack/echo(/v\d+)?\.HTTPError$
+      nameRegex: ^Err(\w+)$     # first group is a status name: ErrNotFound → 404
+      bodyFromValue: true       # body is the sentinel's own type...
+      deref: true               # ...without the pointer
+    - pkgRegex: ^github\.com/gofiber/fiber(/v\d+)?$
+      typeRegex: ^\*github\.com/gofiber/fiber(/v\d+)?\.Error$
+      nameRegex: ^Err(\w+)$
+      bodyType: string          # or a fixed body type
+      contentType: text/plain; charset=utf-8
+```
+
+Rules:
+
+- **Status from the name.** The captured name is looked up as a `net/http`
+  status name. A capture that already starts with `Status` is used as it is, so
+  `ErrStatusRequestEntityTooLarge` resolves to 413.
+- **No guessing.** A name that names no status, such as `ErrValidatorNotRegistered`,
+  is skipped.
+- **Scoped matching.** The package regex is required, so your application's own
+  `ErrForbidden` is never claimed. The type regex keeps a plain `errors.New`
+  sentinel in the same package out.
+- **Handler returns only.** apispec reads only the handler's own `return`
+  statements.
+- **Existing statuses win.** If the route already documents a status, the
+  sentinel doesn't replace it.
+
+echo and fiber ship with these entries. Other supported frameworks have no
+returned-sentinel convention.
+
 ---
 
 ## Schema descriptions from Go doc comments
