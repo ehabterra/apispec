@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -76,7 +77,67 @@ func TestLazyTreeCallArgumentIsItsOwnProducer(t *testing.T) {
 	if len(kids) != 1 || kids[0] != &meta.CallGraph[2] {
 		t.Fatalf("the callee's registration did not become a child of the group call: %v", kids)
 	}
-	if !tree.claimed[&meta.CallGraph[2]] {
-		t.Error("the registration was left unclaimed, so it is also walked without the group prefix")
+	// Removed from RegisterRouter's body at THIS call site, so it is not also
+	// walked there without the group prefix — and at this call site only
+	// (issue #546): a binding is a fact about one call.
+	site := strings.TrimPrefix(meta.CallGraph[1].Callee.ID(), "*")
+	if !tree.boundAt[site][&meta.CallGraph[2]] {
+		t.Error("the registration was left in RegisterRouter's body at the binding call site, so it is also walked without the group prefix")
+	}
+	if tree.claimed[&meta.CallGraph[2]] {
+		t.Error("the registration was claimed for EVERY call site of RegisterRouter, including ones whose own binding fails")
+	}
+}
+
+// A second call site of the same helper whose binding FAILS keeps the helper's
+// calls on its parameter in the helper's body. A global claim took them out
+// for every caller, so the failed site had them on no path at all — how
+// `h := w.Header(); declare(h)` lost a declaration another handler's
+// `declare(w.Header())` had bound (issue #546).
+func TestLazyTreeBindingIsPerCallSite(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	pkg := pool.Get("example")
+	call := func(name, position string) metadata.Call {
+		return metadata.Call{
+			Meta: meta, Name: pool.Get(name), Pkg: pkg, Position: pool.Get(position),
+			RecvType: -1, Scope: -1, SignatureStr: -1,
+		}
+	}
+	producerArg := metadata.CallArgument{
+		Meta: meta, Kind: pool.Get(metadata.KindCall), Position: pool.Get("2"),
+		Name: -1, Value: -1, Raw: -1, Pkg: -1, Type: -1,
+		Fun: &metadata.CallArgument{
+			Meta: meta, Kind: pool.Get(metadata.KindIdent), Name: pool.Get("Header"),
+			Pkg: pkg, Value: -1, Raw: -1, Type: -1, Position: -1,
+		},
+	}
+	// An ident with no producer anywhere: this call site's binding fails.
+	unbound := metadata.CallArgument{
+		Meta: meta, Kind: pool.Get(metadata.KindIdent), Name: pool.Get("local"),
+		Pkg: pkg, Value: -1, Raw: -1, Type: -1, Position: -1,
+	}
+	meta.CallGraph = []metadata.CallGraphEdge{
+		{Caller: call("a", "1"), Callee: call("Header", "2")},
+		{Caller: call("a", "1"), Callee: call("declare", "3"), ParamArgMap: map[string]metadata.CallArgument{"h": producerArg}},
+		{Caller: call("b", "4"), Callee: call("declare", "5"), ParamArgMap: map[string]metadata.CallArgument{"h": unbound}},
+		{Caller: call("declare", "6"), Callee: call("Set", "7"), CalleeVarName: "h"},
+	}
+	meta.BuildCallGraphMaps()
+
+	tree := &LazyTree{meta: meta}
+	tree.buildRelations()
+	set := &meta.CallGraph[3]
+
+	bound := strings.TrimPrefix(meta.CallGraph[1].Callee.ID(), "*")
+	failed := strings.TrimPrefix(meta.CallGraph[2].Callee.ID(), "*")
+	if !tree.boundAt[bound][set] {
+		t.Error("the call site that bound h did not take h.Set out of declare's body there")
+	}
+	if tree.boundAt[failed][set] {
+		t.Error("the call site whose binding failed lost h.Set too — it would be on no path")
+	}
+	if tree.claimed[set] {
+		t.Error("h.Set was claimed globally")
 	}
 }
