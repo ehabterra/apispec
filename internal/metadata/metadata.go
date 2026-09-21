@@ -1888,6 +1888,13 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 		cgEdge.CalleeRecvVarName = assignVarName
 		cgEdge.ChainParent = chainParent
 		cgEdge.Receiver = receiver
+		if info != nil {
+			if rt := info.TypeOf(call); rt != nil {
+				if _, tuple := rt.(*types.Tuple); !tuple {
+					cgEdge.ResultType = typeStringOf(metadata, rt)
+				}
+			}
+		}
 		cgEdge.ChainRoot = chainRoot
 		cgEdge.ChainDepth = chainDepth
 

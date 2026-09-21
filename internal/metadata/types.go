@@ -1779,6 +1779,14 @@ type CallGraphEdge struct {
 	// the spec layer, like ChainParent.
 	Receiver *CallArgument `yaml:"-"`
 
+	// ResultType is the static type of the call's result, when it has exactly
+	// one: `echo.NewHTTPError(…)` is `*github.com/labstack/echo/v4.HTTPError`.
+	// A dependency's declarations are not loaded, so this — read off the
+	// type checker at the call — is the only record of what an external
+	// constructor returns (issue #556). Empty for a tuple or no result. Not
+	// serialized, and not pooled, so the metadata goldens are unaffected.
+	ResultType string `yaml:"-"`
+
 	// Chain tracking for chained method calls like app.Group().Use()
 	ChainParent *CallGraphEdge `yaml:"-"`                     // Reference to parent call in chain
 	ChainRoot   string         `yaml:"chain_root,omitempty"`  // Root variable name (e.g., "app")

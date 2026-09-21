@@ -675,6 +675,13 @@ type ResponsePattern struct {
 	// serializer's document (issue #544).
 	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
 
+	// TypeFromResult takes the body type from the call's own RESULT rather
+	// than from an argument: the value a framework's error handler renders
+	// when the handler returns it — echo's `echo.NewHTTPError(code, msg)` is
+	// serialized as the *echo.HTTPError it constructs (issue #556). Deref
+	// strips the pointer as it does for an argument.
+	TypeFromResult bool `yaml:"typeFromResult,omitempty" json:"typeFromResult,omitempty"`
+
 	// ContentTypeFromArg reads the media type from the call's argument at
 	// ContentTypeArgIndex — gin's `c.Data(code, contentType, data)`, echo's
 	// `c.Blob(code, contentType, b)`. The call states what it writes, so that

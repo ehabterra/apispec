@@ -47,6 +47,18 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 		},
+		// An error the handler RETURNS: fiber's default ErrorHandler writes
+		// the status it carries and sends its message as plain text
+		// (issue #556).
+		ResponsePattern{
+			CallRegex:          `^NewError$`,
+			CalleePkgPatterns:  []string{`^github\.com/gofiber/fiber(/v\d+)?$`},
+			StatusArgIndex:     0,
+			StatusFromArg:      true,
+			TypeArgIndex:       1,
+			TypeFromArg:        true,
+			DefaultContentType: contentTypeText,
+		},
 		ResponsePattern{
 			CallRegex:      `^SendString$`,
 			StatusArgIndex: -1,
