@@ -350,6 +350,10 @@ export async function generate(opts = {}) {
         setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing · ${took}`, "warn");
       } else if (skipped.length) {
         setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
+      } else if ((res.strictGated || []).length) {
+        // A passed gate must read differently from no gate, or a user who
+        // turned strict on cannot tell it ran at all.
+        setStatus(`generated ${res.pathCount || 0} paths · strict check passed (${res.strictGated.join(", ")}) · ${took}`, "ok");
       } else {
         setStatus(`generated ${res.pathCount || 0} paths in ${took}`, "ok");
       }
