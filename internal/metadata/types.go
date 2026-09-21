@@ -1767,6 +1767,18 @@ type CallGraphEdge struct {
 	CalleeVarName     string `yaml:"callee_var_name,omitempty"`
 	CalleeRecvVarName string `yaml:"callee_recv_var_name,omitempty"`
 
+	// Receiver is the expression a METHOD call is made on when that is not
+	// itself a call: `w` in `w.Header()`, `req.Header` in `req.Header.Set(…)`,
+	// `h` in `h.Set(…)`. A chained call's receiver is its ChainParent instead,
+	// and a package-qualified function call (`http.NewRequest`) has none.
+	//
+	// CalleeVarName records only the bare-identifier case, by name, so a call
+	// made on a FIELD (`req.Header.Set`) kept no trace of what it was made on —
+	// and a header written onto an outbound request could not be told from the
+	// response's own (issue #543). Not serialized: it is an in-memory fact for
+	// the spec layer, like ChainParent.
+	Receiver *CallArgument `yaml:"-"`
+
 	// Chain tracking for chained method calls like app.Group().Use()
 	ChainParent *CallGraphEdge `yaml:"-"`                     // Reference to parent call in chain
 	ChainRoot   string         `yaml:"chain_root,omitempty"`  // Root variable name (e.g., "app")
