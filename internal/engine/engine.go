@@ -111,18 +111,22 @@ const (
 
 // EngineConfig holds configuration for the OpenAPI generation engine
 type EngineConfig struct {
-	InputDir           string
-	OutputFile         string
-	Title              string
-	APIVersion         string
-	Description        string
-	TermsOfService     string
-	ContactName        string
-	ContactURL         string
-	ContactEmail       string
-	LicenseName        string
-	LicenseURL         string
-	OpenAPIVersion     string
+	InputDir       string
+	OutputFile     string
+	Title          string
+	APIVersion     string
+	Description    string
+	TermsOfService string
+	ContactName    string
+	ContactURL     string
+	ContactEmail   string
+	LicenseName    string
+	LicenseURL     string
+	OpenAPIVersion string
+	// OperationIDNaming and SchemaNaming override the config's naming styles
+	// when set (see spec.Naming): an explicit flag wins over the file.
+	OperationIDNaming  string
+	SchemaNaming       string
 	ConfigFile         string
 	APISpecConfig      *spec.APISpecConfig // Direct config object (takes precedence over ConfigFile)
 	OutputConfig       string
@@ -859,6 +863,15 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	applyDetectedWrappers(apispecConfig, e.detectedWrappers)
 	if e.config.Verbose && len(e.detectedWrappers) > 0 {
 		NewVerboseLogger(e.config.Verbose).Printf("Router wrappers: %s\n", wrapperSummary(e.detectedWrappers))
+	}
+
+	// Naming chosen on the command line wins over the config: it is the more
+	// specific, more recent statement of what this run should produce.
+	if e.config.OperationIDNaming != "" {
+		apispecConfig.Naming.OperationID = e.config.OperationIDNaming
+	}
+	if e.config.SchemaNaming != "" {
+		apispecConfig.Naming.SchemaNames = e.config.SchemaNaming
 	}
 
 	// Set info from configuration (only if not already set in APISpecConfig)

@@ -28,6 +28,7 @@ import (
 
 	"github.com/ehabterra/apispec/internal/engine"
 	"github.com/ehabterra/apispec/internal/profiler"
+	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/spec"
 	"gopkg.in/yaml.v3"
 )
@@ -187,6 +188,8 @@ type CLIConfig struct {
 	LicenseName                  string
 	LicenseURL                   string
 	OpenAPIVersion               string
+	OperationIDNaming            string
+	SchemaNaming                 string
 	ConfigFile                   string
 	OutputConfig                 string
 	WriteMetadata                bool
@@ -296,6 +299,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 
 	fs.StringVar(&config.OpenAPIVersion, "openapi-version", engine.DefaultOpenAPIVersion, "OpenAPI specification version")
 	fs.StringVar(&config.OpenAPIVersion, "O", engine.DefaultOpenAPIVersion, "Shorthand for --openapi-version")
+	fs.StringVar(&config.OperationIDNaming, "operation-id", "", "operationId style: full (the Go symbol, default), receiver-method (e.g. userHandler.list), or method-path (e.g. getUsersById); overrides naming.operationId in the config")
+	fs.StringVar(&config.SchemaNaming, "schema-names", "", "component name style: full (package-qualified, default) or short (the type name, qualified only where names collide); overrides naming.schemaNames in the config")
 
 	fs.StringVar(&config.ConfigFile, "config", "", "Configuration file path")
 	fs.StringVar(&config.ConfigFile, "c", "", "Shorthand for --config")
@@ -395,6 +400,16 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	// A misspelt style would otherwise fall back to "full" with only a log
+	// line, and the document would look as if the flag had been ignored.
+	if err := validateNaming("--operation-id", config.OperationIDNaming,
+		intspec.NamingFull, intspec.NamingReceiverMethod, intspec.NamingMethodPath); err != nil {
+		return nil, err
+	}
+	if err := validateNaming("--schema-names", config.SchemaNaming,
+		intspec.NamingFull, intspec.NamingShort); err != nil {
+		return nil, err
+	}
 
 	// Handle positional arguments (override --dir flag)
 	if len(fs.Args()) > 0 {
@@ -434,6 +449,8 @@ func runGeneration(config *CLIConfig) (*spec.OpenAPISpec, *engine.Engine, error)
 		LicenseName:                  config.LicenseName,
 		LicenseURL:                   config.LicenseURL,
 		OpenAPIVersion:               config.OpenAPIVersion,
+		OperationIDNaming:            config.OperationIDNaming,
+		SchemaNaming:                 config.SchemaNaming,
 		ConfigFile:                   config.ConfigFile,
 		OutputConfig:                 config.OutputConfig,
 		WriteMetadata:                config.WriteMetadata,
@@ -738,4 +755,17 @@ func strictExit(config *CLIConfig, genEngine *engine.Engine) int {
 		log.Printf("[strict]   %s", f)
 	}
 	return strictExitCode
+}
+
+// validateNaming rejects a naming style the spec layer does not know.
+func validateNaming(flagName, value string, allowed ...string) error {
+	if value == "" {
+		return nil
+	}
+	for _, a := range allowed {
+		if value == a {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s: unknown style %q (want one of: %s)", flagName, value, strings.Join(allowed, ", "))
 }

@@ -159,9 +159,17 @@ func shortSchemaNames(components *Components, usedTypes map[string]*Schema) map[
 		return nil
 	}
 	var entries []shortEntry
+	// One entry per COMPONENT, not per Go type name: the same type can reach
+	// usedTypes under two spellings — the dotted `pkg.T` and the internal
+	// `pkg-->T` — which sanitize to one component key. Counted twice, it
+	// formed a collision group of one type with itself, and the group was
+	// qualified in full: with short names on, a real service kept six
+	// schemas fully qualified that collided with nothing. Sorted, so the
+	// spelling kept is the same on every run (golden rule #1).
+	seen := map[string]bool{}
 	for _, goType := range slices.Sorted(maps.Keys(usedTypes)) {
 		key := schemaComponentNameReplacer.Replace(goType)
-		if _, ok := components.Schemas[key]; !ok {
+		if _, ok := components.Schemas[key]; !ok || seen[key] {
 			continue
 		}
 		ref := typemodel.Parse(goType)
@@ -182,6 +190,7 @@ func shortSchemaNames(components *Components, usedTypes map[string]*Schema) map[
 		if bare == "" {
 			continue
 		}
+		seen[key] = true
 		entries = append(entries, shortEntry{key: key, pkg: core.Pkg, bare: bare})
 	}
 	if len(entries) == 0 {

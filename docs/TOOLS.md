@@ -47,6 +47,8 @@ overrides `--dir` (`apispec ./api -o spec.yaml`).
 | `--license-name`            | `-L`      | License name                                           | `""`                            |
 | `--license-url`             | `-lu`     | License URL                                            | `""`                            |
 | `--openapi-version`         | `-O`      | OpenAPI spec version                                   | `3.1.1`                         |
+| `--operation-id`            |           | operationId style: `full`, `receiver-method`, `method-path` | `full` (or the config's)   |
+| `--schema-names`            |           | Component name style: `full`, `short`               | `full` (or the config's)        |
 | `--config`                  | `-c`      | Path to custom config YAML                             | `""`                            |
 | `--output-config`           | `-oc`     | Write the effective config to a YAML file              | `""`                            |
 | `--write-metadata`          | `-w`      | Write `metadata.yaml` to disk                          | `false`                         |

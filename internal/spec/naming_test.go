@@ -339,3 +339,29 @@ func TestRepairOperationIDsAvoidsKeptIDs(t *testing.T) {
 		t.Errorf("/A: operationId %q, want it untouched", got)
 	}
 }
+
+// One type reaching usedTypes under two spellings — dotted `pkg.T` and the
+// internal `pkg-->T` — is ONE component, and must not form a collision group
+// with itself. It did, and the "group" was qualified in full: a real service
+// kept six schemas fully qualified under short naming that collided with
+// nothing.
+func TestShortSchemaNamesOneEntryPerComponent(t *testing.T) {
+	usedTypes := map[string]*Schema{
+		"github.com/acme/svc/internal/httpapi.userDTO":               {},
+		"github.com/acme/svc/internal/httpapi" + TypeSep + "userDTO": {},
+	}
+	components := &Components{Schemas: map[string]*Schema{}}
+	for name := range usedTypes {
+		components.Schemas[schemaComponentNameReplacer.Replace(name)] = &Schema{}
+	}
+	if len(components.Schemas) != 1 {
+		t.Fatalf("setup: the two spellings should be one component, got %v", components.Schemas)
+	}
+
+	renames := shortSchemaNames(components, usedTypes)
+
+	key := schemaComponentNameReplacer.Replace("github.com/acme/svc/internal/httpapi.userDTO")
+	if got := renames[key]; got != "userDTO" {
+		t.Errorf("rename[%q] = %q, want %q — a type collided with its own second spelling", key, got, "userDTO")
+	}
+}

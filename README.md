@@ -177,29 +177,25 @@ from the next section; by default they are fully-qualified Go symbols.)
 By default an `operationId` is the fully-qualified Go symbol
 (`github.com/acme/api/internal/httpapi.GetUser`) and a schema is that symbol with
 separators swapped. Those never collide, which is why they are the default — but
-they leak your module layout and make generated clients unwieldy. Start from the
-effective config and add a `naming` block:
+they leak your module layout and make generated clients unwieldy. Choose shorter
+styles on the command line:
 
 ```bash
-apispec --output-config apispec.yaml -o openapi.yaml   # dump what actually ran
+apispec --operation-id method-path --schema-names short -o openapi.yaml
 ```
 
+or keep them in a config file, which is layered over the detected framework's
+patterns — a file holding only this block is enough:
+
 ```yaml
-# then append to apispec.yaml:
 naming:
   operationId: method-path   # full (default) | receiver-method | method-path
   schemaNames: short         # full (default) | short
 ```
 
-```bash
-apispec --config apispec.yaml -o openapi.yaml
-```
-
-> [!NOTE]
-> `--config` **replaces** the built-in framework patterns rather than merging
-> with them — a config file that contains only a `naming` block will match no
-> routes at all. Always build your config from `--output-config`, which writes
-> the complete effective configuration for your project.
+A flag overrides the file. Short schema names are qualified only where two types
+share a name, and then every member of that group is qualified, so no name wins
+for a reason you cannot see.
 
 ## Framework support
 
