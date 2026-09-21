@@ -80,6 +80,24 @@ func NewValue() Value { v := Value{r: ValueAPI()}; return v }
 
 func (v Value) Mount(root *chi.Mux) { root.Mount("/value", v.r) }
 
+// Conv receives its routers through a type conversion, which is not the call
+// that built them: in a literal, and in an explicit store.
+type Conv struct{ lit, set chi.Router }
+
+func NewConv() *Conv {
+	c := &Conv{lit: chi.Router(ConvLitAPI())}
+	c.set = chi.Router(ConvSetAPI())
+	return c
+}
+
+func (c *Conv) Mount(root *chi.Mux) {
+	root.Mount("/convlit", c.lit)
+	root.Mount("/convset", c.set)
+}
+
+func ConvLitAPI() *chi.Mux { r := chi.NewRouter(); r.Get("/api/convlit", listItems); return r }
+func ConvSetAPI() *chi.Mux { r := chi.NewRouter(); r.Get("/api/convset", listItems); return r }
+
 // Local is built in main itself, whose assignments are recorded on a
 // different path from a callee's.
 type Local struct{ r chi.Router }
@@ -94,6 +112,7 @@ func main() {
 	root := app.Routes()
 	NewDirect().Mount(root)
 	NewValue().Mount(root)
+	NewConv().Mount(root)
 	local := &Local{r: LocalAPI()}
 	root.Mount("/local", local.r)
 	_ = http.ListenAndServe(":8080", root)

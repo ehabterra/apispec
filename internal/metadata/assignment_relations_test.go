@@ -414,3 +414,62 @@ func main() { (&Server{}).Build() }
 		t.Error("Server.Build's literal store p.App.r not recorded in its assignment map")
 	}
 }
+
+// A type conversion is not the call that produced a value: the store belongs
+// to the call it converts, in a literal element and in an explicit store alike.
+// Both had no producer — the conversion is not a call the graph records, and
+// it consumed the pending assignment before the call inside it was reached.
+func TestConversionWrappedStoreKeepsProducer(t *testing.T) {
+	got := fieldProducers(metadataFor(t, `package p
+
+type Router interface{ Get() }
+type mux struct{}
+
+func (*mux) Get() {}
+
+type App struct{ lit, set Router }
+
+func NewMux() *mux { return &mux{} }
+
+func NewApp() *App {
+	app := &App{lit: Router(NewMux())}
+	app.set = Router((NewMux()))
+	return app
+}
+
+func main() { NewApp() }
+`))
+	for field, want := range map[string]string{"p.App.lit": "NewMux", "p.App.set": "NewMux"} {
+		if got[field] != want {
+			t.Errorf("%s produced by %q, want the converted %s call; have %v", field, got[field], want, got)
+		}
+	}
+}
+
+// Looking through a conversion must not reopen the #550 leak: a conversion of
+// a non-call leaves the assignment pending, and the next call the walk meets —
+// not a right-hand side — still must not claim it.
+func TestConversionDoesNotLeakPendingAssignment(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type ID int
+type Ctx struct{}
+
+func (c *Ctx) Do() {}
+
+func handler(n int) {
+	id := ID(n)
+	c := &Ctx{}
+	c.Do()
+	_ = id
+}
+
+func main() { handler(1) }
+`)
+	for i := range meta.CallGraph {
+		e := &meta.CallGraph[i]
+		if meta.StringPool.GetString(e.Callee.Name) == "Do" && e.CalleeRecvVarName != "" {
+			t.Errorf("c.Do() recorded as the producer of %q", e.CalleeRecvVarName)
+		}
+	}
+}

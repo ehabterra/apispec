@@ -1740,7 +1740,7 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			// call elements are named here before the calls themselves are.
 			if lit, pointer := fieldLiteralAt(n, seenLiterals); lit != nil {
 				for _, store := range literalFieldStores(lit, pointer, info, pkgName, fset, metadata) {
-					if call, ok := ast.Unparen(store.valueExpr).(*ast.CallExpr); ok {
+					if call, ok := store.valueExpr.(*ast.CallExpr); ok {
 						if metadata.literalFieldCalls == nil {
 							metadata.literalFieldCalls = map[*ast.CallExpr]string{}
 						}
@@ -1750,12 +1750,19 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			}
 
 			if call, ok := n.(*ast.CallExpr); ok {
+				// A conversion is met before the call it converts, and is not the
+				// producer: it leaves a pending assignment for that call
+				// (`x = Router(NewRouter())`).
+				if unwrapConversions(call, info) != ast.Expr(call) {
+					processCallExpression(call, file, pkgs, pkgName, nil, fileToInfo, funcMap, fset, metadata, info, calleeMap, argMap)
+					return true
+				}
 				// The pending assignment belongs to this call only if the call IS
 				// one of its right-hand sides. `c := &Ctx{…}` has no call there, so
 				// without the check it was handed to the next call the walk met —
 				// `c.JSON(…)` on the following line — which then recorded itself
 				// as the producer of `c` (issue #550).
-				if assignStmt != nil && !assignsCall(assignStmt, call) {
+				if assignStmt != nil && !assignsCall(assignStmt, call, info) {
 					assignStmt = nil
 				}
 				processCallExpression(call, file, pkgs, pkgName, assignStmt, fileToInfo, funcMap, fset, metadata, info, calleeMap, argMap)
@@ -2111,7 +2118,9 @@ func literalFieldStores(lit *ast.CompositeLit, pointer bool, info *types.Info, p
 		if !ok {
 			continue
 		}
-		if _, isCall := ast.Unparen(kv.Value).(*ast.CallExpr); !isCall {
+		// A conversion is not the call that produced the value: the store
+		// belongs to the call it converts (`lit: Router(NewRouter())`).
+		if _, isCall := unwrapConversions(kv.Value, info).(*ast.CallExpr); !isCall {
 			continue
 		}
 		field, ok := info.Uses[key].(*types.Var)
@@ -2136,21 +2145,40 @@ func literalFieldStores(lit *ast.CompositeLit, pointer bool, info *types.Info, p
 				Lhs:          *lhs,
 			},
 			name:      name,
-			valueExpr: kv.Value,
+			valueExpr: unwrapConversions(kv.Value, info),
 		})
 	}
 	return stores
 }
 
 // assignsCall reports whether call is one of assign's right-hand sides, looking
-// through parentheses.
-func assignsCall(assign *ast.AssignStmt, call *ast.CallExpr) bool {
+// through parentheses and type conversions: `x = Router(NewRouter())` stores
+// NewRouter()'s result, and the conversion is not a call the graph records, so
+// without looking through it the store had no producer at all.
+func assignsCall(assign *ast.AssignStmt, call *ast.CallExpr, info *types.Info) bool {
 	for _, rhs := range assign.Rhs {
-		if ast.Unparen(rhs) == call {
+		if unwrapConversions(rhs, info) == call {
 			return true
 		}
 	}
 	return false
+}
+
+// unwrapConversions strips parentheses and type conversions (`T(x)`, which
+// go/types records as a type, not a function) off expr, returning the value
+// being converted.
+func unwrapConversions(expr ast.Expr, info *types.Info) ast.Expr {
+	for {
+		expr = ast.Unparen(expr)
+		call, ok := expr.(*ast.CallExpr)
+		if !ok || info == nil || len(call.Args) != 1 {
+			return expr
+		}
+		if tv, ok := info.Types[call.Fun]; !ok || !tv.IsType() {
+			return expr
+		}
+		expr = call.Args[0]
+	}
 }
 
 // methodReceiver renders the expression a method call is made on, for the

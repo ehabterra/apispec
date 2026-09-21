@@ -41,12 +41,14 @@ func TestTestdata_MountFieldProducer(t *testing.T) {
 	noDanglingRefs(t, out)
 
 	want := map[string]bool{
-		"/opt/api/items":     true, // functional option
-		"/set/api/users":     true, // setter method
-		"/lit/api/orders":    true, // pointer literal assigned to a variable
-		"/direct/api/direct": true, // pointer literal returned directly
-		"/value/api/value":   true, // value literal, value receiver
-		"/local/api/local":   true, // literal built in main itself
+		"/opt/api/items":       true, // functional option
+		"/set/api/users":       true, // setter method
+		"/lit/api/orders":      true, // pointer literal assigned to a variable
+		"/direct/api/direct":   true, // pointer literal returned directly
+		"/value/api/value":     true, // value literal, value receiver
+		"/local/api/local":     true, // literal built in main itself
+		"/convlit/api/convlit": true, // literal element through a type conversion
+		"/convset/api/convset": true, // explicit store through a type conversion
 	}
 	for path := range want {
 		if _, ok := out.Paths[path]; !ok {

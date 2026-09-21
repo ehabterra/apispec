@@ -172,7 +172,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call element as the field store it is, rendered exactly as the explicit
   `app.auth = AuthAPIs()` would be, so the mount resolves the same way. Pointer
   and value literals, a literal returned directly, and one built in `main` are
-  covered. Eleven projects byte-identical; no measurable cost on a 988-path
+  covered. A value passed through a type conversion — `Router(NewRouter())`,
+  in a literal or an explicit store — now keeps the call it converts as its
+  producer too; the conversion used to consume the store before the call inside
+  it was reached. Eleven projects byte-identical; no measurable cost on a 988-path
   service. (#565)
 
 - **A router mounted from a struct field keeps its prefix again.** The #550 fix
