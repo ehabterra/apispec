@@ -124,6 +124,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fasthttp rather than net/http), with a fixture per framework. Zero drift on
   the other 138. (#517)
 
+### Changed
+
+- **apispecui is organised by task.** Configure had grown to 27 collapsible
+  sections behind a single divider. They now sit in five groups: Document;
+  Types, naming & overrides; Security; Analysis & scope; Detection (advanced).
+  A **Jump to** list in the left panel scrolls to each group. Insight's
+  Overview reads from "what needs you" down to "how it was read", with a
+  sticky jump bar over its five sections. It also gains a **Quality gate**
+  card: the strict check every run already computes, per category, gated or
+  not, so a gate's effect is visible before it is turned on. Alerts that
+  config can fix (an unresolved type, unmapped auth middleware) now open the
+  Configure group that fixes them instead of the top of the editor.
+
 ### Fixed
 
 - **Naming is reachable from the CLI and the UI.** #298 made operationId and

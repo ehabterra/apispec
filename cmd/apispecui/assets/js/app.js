@@ -14,6 +14,7 @@ import {
   fmtDur,
   useSuggestedConfig,
   dismissSuggestedConfig,
+  openConfigGroup,
 } from "/assets/js/actions.js";
 import { BrowseDialog } from "/assets/js/browse.js";
 import { SpecMode } from "/assets/js/spec.js";
@@ -132,7 +133,7 @@ function UnresolvedBanner({ s }) {
     >
       <span>⚠ ${n} middleware detected on routes but not mapped to a security scheme — protected routes won't show as secured.</span>
       <span style="flex:1"></span>
-      <button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>
+      <button class="btn sm" onClick=${() => openConfigGroup("security")}>Map them →</button>
     </div>
   `;
 }

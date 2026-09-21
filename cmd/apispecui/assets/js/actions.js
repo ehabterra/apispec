@@ -525,3 +525,10 @@ async function doSave(path, overwrite) {
     setStatus("save failed: " + e.message, "err");
   }
 }
+
+// openConfigGroup switches to Configure and scrolls to one of its groups, so a
+// "fix it" button elsewhere lands on the setting that fixes it rather than at
+// the top of a long editor.
+export function openConfigGroup(id) {
+  setState({ mode: "configure", configFocus: id || "" });
+}
