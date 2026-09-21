@@ -47,10 +47,17 @@ func internalOnly(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// The framework's own raw-bytes renderer, which states the media type in an
+// argument (issue #544).
+func rawPDF(c echo.Context) error {
+	return c.Blob(http.StatusOK, "application/pdf", []byte("%PDF"))
+}
+
 func main() {
 	e := echo.New()
 	e.GET("/export.csv", csvExport)
 	e.GET("/file.pdf", download)
 	e.GET("/internal", internalOnly)
+	e.GET("/raw.pdf", rawPDF)
 	e.Logger.Fatal(e.Start(":8080"))
 }

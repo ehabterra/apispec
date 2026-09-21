@@ -88,21 +88,50 @@ func TestTestdata_OutboundContentType(t *testing.T) {
 		}
 	}
 
-	// NOT DOCUMENTED, and asserted so the day it changes (#544): a header
-	// declared by a helper that takes http.Header, handed the RESPONSE's
-	// header, is never claimed — on main before #543 too. When it is fixed,
-	// /pdf-param gains `200 application/pdf` and this block says so;
-	// /forwarded above is its negative twin and must stay undocumented.
-	if got, ok := statuses("/pdf-param"); ok {
-		for _, media := range got {
-			for _, mt := range media {
-				if mt == "application/pdf" {
-					t.Errorf("/pdf-param documents application/pdf — #544 is fixed: assert it as present and drop this block")
-				}
+	// Raw bytes take the media type the handler DECLARES (issue #544). A byte
+	// slice names none, so `w.Write(b)` after a Content-Type declaration used to
+	// win the slot as the "typed" fragment and document a PDF as a base64 string
+	// under the JSON default. Reached in the handler, and through a helper
+	// handed w.Header(). /invoices is a helper handed a VARIABLE holding the
+	// header, through a helper nothing else calls.
+	for _, tc := range []struct{ path, media string }{
+		{"/pdf-direct", "application/pdf"},
+		{"/pdf-param", "application/pdf"},
+		{"/invoices", "application/zip"},
+	} {
+		got, ok := statuses(tc.path)
+		if !ok {
+			t.Errorf("%s missing; have %v", tc.path, mapPathKeys(out.Paths))
+			continue
+		}
+		if media := got["200"]; len(media) != 1 || media[0] != tc.media {
+			t.Errorf("%s 200 = %v, want only %s — the declared media type must describe the raw bytes", tc.path, media, tc.media)
+			continue
+		}
+		schema := out.Paths[tc.path].Get.Responses["200"].Content[tc.media].Schema
+		if schema == nil || schema.Type != "string" || schema.Format != "binary" {
+			t.Errorf("%s 200 schema = %+v, want {type: string, format: binary} — bytes, not a base64 string", tc.path, schema)
+		}
+	}
+
+	// NOT DOCUMENTED, and asserted so the day it changes (#546). The /invoices
+	// shape through a helper that ANOTHER call site also calls with
+	// `declarePDF(w.Header())`: that call site's binding claims the helper's
+	// `h.Set` away from the helper's own body for every caller, and a handler's
+	// `h := w.Header()` records no producer for this call site's binding to use
+	// — so the declaration is on no path. /reports is the same shape in a
+	// method, beside /invoices' same-named one.
+	for _, path := range []string{"/pdf-var", "/reports"} {
+		got, ok := statuses(path)
+		if !ok {
+			t.Errorf("%s missing; have %v", path, mapPathKeys(out.Paths))
+			continue
+		}
+		for _, mt := range got["200"] {
+			if mt == "application/pdf" {
+				t.Errorf("%s documents application/pdf — #546 is fixed: move it to the list above and drop this block", path)
 			}
 		}
-	} else {
-		t.Errorf("/pdf-param missing; have %v", mapPathKeys(out.Paths))
 	}
 
 	// Control.

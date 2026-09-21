@@ -52,10 +52,33 @@ func internalOnly(c *gin.Context) {
 	c.Status(204)
 }
 
+// The framework's own raw-bytes renderer, which states the media type in an
+// argument — read as the BODY by the renderer catch-all before issue #544.
+func rawPDF(c *gin.Context) {
+	c.Data(200, "application/pdf", []byte("%PDF"))
+}
+
+// Invoice is the JSON representation of /invoice.
+type Invoice struct {
+	ID string `json:"id"`
+}
+
+// One status, two representations picked by Accept: the PDF bytes must not be
+// displaced by the typed JSON body beside them (review of #547).
+func invoice(c *gin.Context) {
+	if c.GetHeader("Accept") == "application/pdf" {
+		c.Data(200, "application/pdf", []byte("%PDF"))
+		return
+	}
+	c.JSON(200, Invoice{})
+}
+
 func main() {
 	r := gin.Default()
 	r.GET("/export.csv", csvExport)
 	r.GET("/file.pdf", download)
 	r.GET("/internal", internalOnly)
+	r.GET("/raw.pdf", rawPDF)
+	r.GET("/invoice", invoice)
 	_ = r.Run(":8080")
 }

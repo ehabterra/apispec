@@ -36,6 +36,12 @@ func DefaultGinConfig() *APISpecConfig {
 	const ginContextRecv = "^github\\.com/gin-gonic/gin\\.\\*Context$"
 
 	responsePatterns := netHTTPResponsePatterns()
+	// gin's raw-bytes renderers state their own media type; ahead of the
+	// catch-all, which would read `Data`'s media-type argument as its body.
+	responsePatterns = append(responsePatterns, rawBodyRendererPatterns(ginContextRecv,
+		rawBodyCall{call: `^Data$`, mediaTypeArg: 1, contentArg: 2},
+		rawBodyCall{call: `^DataFromReader$`, mediaTypeArg: 2, reader: true},
+	)...)
 	// Scoped to gin's Context: this reads the status from arg 0, which is a
 	// gin convention — unscoped it would misread a status-less call like
 	// fiber's c.JSON(obj), which is why SecondaryView dropped it and a

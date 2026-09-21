@@ -494,6 +494,29 @@ anchored, so a default run never reports this.
 > all — it is `responseContext.bodyTransforms`, which traces the marshalled bytes
 > to the write on the response writer.
 
+### Raw bytes and their media type
+
+A byte slice names no media type, so a call that writes one verbatim needs to be
+told where the media type comes from. Two pattern fields say so:
+
+| field | use when |
+|---|---|
+| `rawBody` | the call writes its argument's bytes as-is (`w.Write(b)`). On a status where the handler also declares a `Content-Type` header, the declaration describes the bytes — `200 application/pdf`, binary — instead of the JSON default rendering them as a base64 string. Bytes traced back through `bodyTransforms` (`json.Marshal`) are not raw: they document the marshalled type. |
+| `contentTypeFromArg` + `contentTypeArgIndex` | the call states its media type in an argument, as gin's `c.Data(code, contentType, data)` and echo's `c.Blob(code, contentType, b)` do. The argument's constant value is the response's media type, and raw bytes under one no serializer describes are documented as binary. |
+
+```yaml
+# A house renderer: Send(status int, mediaType string, body []byte)
+- callRegex: ^Send$
+  recvTypeRegex: ^example\.com/app/web\.\*Context$
+  statusFromArg: true
+  statusArgIndex: 0
+  contentTypeFromArg: true
+  contentTypeArgIndex: 1
+  typeFromArg: true
+  typeArgIndex: 2
+  rawBody: true
+```
+
 ### Scoping a pattern to where the call is made
 
 Every pattern above also accepts four filters, shared by all six pattern types:
