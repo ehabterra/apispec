@@ -173,7 +173,7 @@ func TestEditorKeysReachGenerate(t *testing.T) {
 		if !strings.Contains(sent, key+": c."+key) {
 			t.Errorf("config.js edits %q but fullGenerateRequest never sends it", key)
 		}
-		if !strings.Contains(sent, key+": o."+key) {
+		if !regexp.MustCompile(`\b` + key + `: [^\n]*\bo\.` + key + `\b`).MatchString(sent) {
 			t.Errorf("config.js edits %q but applyConfigSections never loads it", key)
 		}
 		if !accepted[key] {

@@ -48,10 +48,16 @@ function applyConfigSections(o) {
     include: o.include || {},
     exclude: o.exclude || {},
     overrides: o.overrides || [],
-    naming: o.naming || {},
+    // Option-style settings take what the incoming config STATES and keep the
+    // rest: a project's apispec.yaml usually has no naming or schema block,
+    // and replacing wholesale wiped a choice made just before "Use it" — the
+    // run then came out fully qualified with nothing on screen saying why.
+    // Same rule as the CLI, where --schema-names short plus a config with no
+    // naming block gives short names.
+    naming: { ...(c.naming || {}), ...(o.naming || {}) },
     hosts: o.hosts || [],
-    excludeTypeComments: o.excludeTypeComments || false,
-    schema: o.schema || {},
+    excludeTypeComments: o.excludeTypeComments || c.excludeTypeComments || false,
+    schema: { ...(c.schema || {}), ...(o.schema || {}) },
   });
   // A new config context invalidates middleware detected for the previous one.
   setState({ unresolvedSecurity: [] });
