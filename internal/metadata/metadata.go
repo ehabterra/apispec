@@ -463,36 +463,46 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 // BuildAssignmentRelationships builds assignment relationships for all call graph edges
 func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentLink {
 	relationships := make(map[AssignmentKey]*AssignmentLink)
+	scopes := m.callerScopes()
 
 	for i := range m.CallGraph {
 		edge := &m.CallGraph[i]
 
-		callerName := m.StringPool.GetString(edge.Caller.Name)
-		callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
-
-		// Get root assignments. Sorted: relationships[akey] is last-write-wins,
-		// so two files contributing the same key would resolve by map order.
-		for _, file := range m.SortedFiles(callerPkg) {
-			if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
-				for recvVarName, assigns := range fn.AssignmentMap {
-					assignment := assigns[len(assigns)-1]
-
-					if edge.CalleeRecvVarName != recvVarName {
-						continue
-					}
-
-					akey := AssignmentKey{
-						Name:      recvVarName,
-						Pkg:       callerPkg,
-						Type:      m.StringPool.GetString(assignment.ConcreteType),
-						Container: callerName,
-					}
-
-					relationships[akey] = &AssignmentLink{
-						AssignmentKey: akey,
-						Assignment:    &assignment,
-						Edge:          edge,
-					}
+		// Caller-scope assignments: `v := call()` written in the function that
+		// makes the call links v to that call.
+		//
+		// This used to be recorded for `main` alone. Every other function
+		// contributed its assignments only through edge.AssignmentMap below,
+		// which holds a CALLEE's body — so a function nothing calls directly
+		// contributed none. That is every handler: it is registered as a VALUE
+		// (`mux.HandleFunc("/x", h)`), never called, and inside it
+		// `h := w.Header(); declare(h)` had no producer for the helper's
+		// parameter to bind to — the helper's writes on it hung under nothing
+		// and were pruned (issue #544). The same gap cut a decoder, an encoder
+		// or a router built in a handler off from the helper it was handed to.
+		if varName := edge.CalleeRecvVarName; varName != "" {
+			callerName := m.StringPool.GetString(edge.Caller.Name)
+			callerPkg := m.StringPool.GetString(edge.Caller.Pkg)
+			recv := strings.TrimPrefix(m.StringPool.GetString(edge.Caller.RecvType), "*")
+			if assigns := scopes[callerScopeKey(callerPkg, recv, callerName)][varName]; len(assigns) > 0 {
+				assignment := assigns[len(assigns)-1]
+				// The container carries the receiver type: ten handler types
+				// each with a `list` method assigning `q` are ten relations, not
+				// one that whichever edge came last overwrote.
+				container := callerName
+				if recv != "" {
+					container = recv + "." + callerName
+				}
+				akey := AssignmentKey{
+					Name:      varName,
+					Pkg:       callerPkg,
+					Type:      m.StringPool.GetString(assignment.ConcreteType),
+					Container: container,
+				}
+				relationships[akey] = &AssignmentLink{
+					AssignmentKey: akey,
+					Assignment:    &assignment,
+					Edge:          edge,
 				}
 			}
 		}
@@ -529,6 +539,62 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 	}
 
 	return relationships
+}
+
+// callerScopeKey identifies a declared function or method by package, bare
+// receiver type ("" for a function) and name.
+func callerScopeKey(pkg, recv, name string) string {
+	return pkg + "\x00" + recv + "\x00" + name
+}
+
+// callerScopes indexes the assignment scope of every declared function and
+// method once, so BuildAssignmentRelationships finds a caller's in constant
+// time rather than scanning its package's files and types per call edge.
+// Built in sorted order: a scope declared twice would otherwise resolve by map
+// order (golden rule #1).
+func (m *Metadata) callerScopes() map[string]map[string][]Assignment {
+	out := map[string]map[string][]Assignment{}
+	for _, pkg := range m.SortedPackageNames() {
+		for _, fileName := range m.SortedFileNames(pkg) {
+			file := m.Packages[pkg].Files[fileName]
+			if file == nil {
+				continue
+			}
+			fnNames := make([]string, 0, len(file.Functions))
+			for name := range file.Functions {
+				fnNames = append(fnNames, name)
+			}
+			sort.Strings(fnNames)
+			for _, name := range fnNames {
+				if fn := file.Functions[name]; fn != nil && len(fn.AssignmentMap) > 0 {
+					k := callerScopeKey(pkg, "", name)
+					if _, seen := out[k]; !seen {
+						out[k] = fn.AssignmentMap
+					}
+				}
+			}
+			for typeName, t := range m.SortedTypes(pkg, fileName) {
+				if t == nil {
+					continue
+				}
+				for i := range t.Methods {
+					meth := &t.Methods[i]
+					if len(meth.AssignmentMap) == 0 {
+						continue
+					}
+					recv := strings.TrimPrefix(m.StringPool.GetString(meth.Receiver), "*")
+					if recv == "" {
+						recv = typeName
+					}
+					k := callerScopeKey(pkg, recv, m.StringPool.GetString(meth.Name))
+					if _, seen := out[k]; !seen {
+						out[k] = meth.AssignmentMap
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // GetAssignmentRelationships returns the cached assignment relationships
@@ -1616,6 +1682,14 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			}
 
 			if call, ok := n.(*ast.CallExpr); ok {
+				// The pending assignment belongs to this call only if the call IS
+				// one of its right-hand sides. `c := &Ctx{…}` has no call there, so
+				// without the check it was handed to the next call the walk met —
+				// `c.JSON(…)` on the following line — which then recorded itself
+				// as the producer of `c`.
+				if assignStmt != nil && !assignsCall(assignStmt, call) {
+					assignStmt = nil
+				}
 				processCallExpression(call, file, pkgs, pkgName, assignStmt, fileToInfo, funcMap, fset, metadata, info, calleeMap, argMap)
 				assignStmt = nil
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
@@ -1872,6 +1946,17 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		metadata.CallGraph = append(metadata.CallGraph, *cgEdge)
 	}
+}
+
+// assignsCall reports whether call is one of assign's right-hand sides, looking
+// through parentheses.
+func assignsCall(assign *ast.AssignStmt, call *ast.CallExpr) bool {
+	for _, rhs := range assign.Rhs {
+		if ast.Unparen(rhs) == call {
+			return true
+		}
+	}
+	return false
 }
 
 // methodReceiver renders the expression a method call is made on, for the

@@ -714,6 +714,13 @@ func (t *LazyTree) traceOrigin(varName, callerName, callerPkg string) (string, s
 	return originVar, originPkg, originFunc
 }
 
+// recvEdgeKey identifies a variable by name and the FULL identity of the
+// function it lives in — package, receiver type and name — rather than the bare
+// function name recvKey carries.
+func recvEdgeKey(varName string, caller *metadata.Call) string {
+	return varName + "\x00" + caller.BaseID()
+}
+
 // recvKey identifies a variable by its declaring scope, so two same-named
 // variables in different functions never share a producer.
 type recvKey struct{ name, pkg, fn string }
@@ -731,14 +738,23 @@ type recvKey struct{ name, pkg, fn string }
 // are documented without its prefix (issue #407). Nothing here is
 // framework-specific — a value produced in an argument list belongs to the
 // call that produced it whatever the value is.
-func (t *LazyTree) argProducerKey(arg metadata.CallArgument, edge *metadata.CallGraphEdge, producerByVar map[recvKey]string) (string, bool) {
+//
+// An ident is looked up first by the EXACT function the call is written in —
+// its full identity, receiver type included — when the variable was assigned
+// right there, which is the common case and the one the bare-name index gets
+// wrong: `q := r.URL.Query(); parse(q)` in `list` methods of two handler types
+// is two producers, and a bare (name, pkg, "list") key holds only one of them.
+func (t *LazyTree) argProducerKey(arg metadata.CallArgument, edge *metadata.CallGraphEdge, producerByVar map[recvKey]string, producerByCaller map[string]string) (string, bool) {
 	switch arg.GetKind() {
 	case metadata.KindIdent:
-		originVar, originPkg, originFunc := t.traceOrigin(
-			arg.GetName(),
-			getString(t.meta, edge.Caller.Name),
-			getString(t.meta, edge.Caller.Pkg),
-		)
+		callerName := getString(t.meta, edge.Caller.Name)
+		callerPkg := getString(t.meta, edge.Caller.Pkg)
+		originVar, originPkg, originFunc := t.traceOrigin(arg.GetName(), callerName, callerPkg)
+		if originFunc == callerName && originPkg == callerPkg {
+			if key, ok := producerByCaller[recvEdgeKey(originVar, &edge.Caller)]; ok {
+				return key, true
+			}
+		}
 		key, ok := producerByVar[recvKey{name: originVar, pkg: originPkg, fn: originFunc}]
 		return key, ok
 	case metadata.KindCall:
@@ -791,9 +807,6 @@ func (t *LazyTree) buildRelations() {
 	// edges under one arbitrary producer and claiming them away from the
 	// other nine.
 	edgesByRecvVar := map[string][]*metadata.CallGraphEdge{}
-	recvEdgeKey := func(varName string, caller *metadata.Call) string {
-		return varName + "\x00" + caller.BaseID()
-	}
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
 		if edge.ChainParent != nil {
@@ -811,6 +824,7 @@ func (t *LazyTree) buildRelations() {
 	// source map's iteration order (see sortedAssignmentRelationships).
 	rels := sortedAssignmentRelationships(meta)
 	producerByVar := map[recvKey]string{}
+	producerByCaller := map[string]string{}
 	for _, rel := range rels {
 		producerKey := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")
 		// Bare-name key: consumed by TraceVariableOrigin-driven lookups
@@ -827,6 +841,11 @@ func (t *LazyTree) buildRelations() {
 		if getString(meta, rel.Assignment.Func) != getString(meta, rel.Edge.Caller.Name) {
 			continue
 		}
+		// Exact-caller key, beside the bare one: a variable assigned in the
+		// producing call's own function, identified by that function's full
+		// identity, so the same variable name in same-named methods of two
+		// types binds to its own producer (see argProducerKey).
+		producerByCaller[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)] = producerKey
 		edges := edgesByRecvVar[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)]
 		if len(edges) == 0 {
 			continue
@@ -911,7 +930,7 @@ func (t *LazyTree) buildRelations() {
 			if len(paramEdges) == 0 {
 				continue
 			}
-			producerKey, ok := t.argProducerKey(arg, edge, producerByVar)
+			producerKey, ok := t.argProducerKey(arg, edge, producerByVar, producerByCaller)
 			if !ok {
 				continue
 			}
