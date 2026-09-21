@@ -385,7 +385,7 @@ function coverageTile(rep) {
   ];
   return {
     id: "coverage",
-    label: "Documentation coverage",
+    label: "Coverage",
     question: "Are the common facets documented?",
     value: total ? pct(have, total) + "%" : "—",
     unit: "covered",
@@ -726,8 +726,9 @@ export function Overview({ rep, onTag, onRoute }) {
     <div class="overview">
       <${Brief} rep=${rep} todo=${todo} onExport=${() => setExportOpen(true)} />
 
+      <div class=${"ov-main" + (todo.length ? " has-todo" : "")}>
       ${todo.length
-        ? html`<section class="ov-block">
+        ? html`<section class="ov-block ov-todo">
             <div class="ov-h">
               <h3>Needs attention</h3>
               <span class="ov-sub">Most urgent first. Open a row to see what it affects.</span>
@@ -736,7 +737,7 @@ export function Overview({ rep, onTag, onRoute }) {
           </section>`
         : ""}
 
-      <section class="ov-block">
+      <section class="ov-block ov-glance">
         <div class="ov-h">
           <h3>At a glance</h3>
           <span class="ov-sub">Select a card for its detail. ← → step between them.</span>
@@ -744,6 +745,7 @@ export function Overview({ rep, onTag, onRoute }) {
         ${row("How complete is the spec", quality)}
         ${row("What the API is", about)}
       </section>
+      </div>
     </div>
 
     <${Drawer} tiles=${tiles} openId=${openId} setOpenId=${setOpenId} />

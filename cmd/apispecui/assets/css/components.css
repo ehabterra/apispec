@@ -1651,11 +1651,32 @@ h3 + .info {
   }
 }
 
+/* The overview fills whatever width it gets. Its parts respond to the width
+   of their own box (container queries), not the window: the rail, the
+   two-column split and the drawer all change the space a part really has. */
 .overview {
+  container: overview / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
-  max-width: 1280px;
+}
+.ov-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+.ov-todo {
+  container: todo / inline-size;
+}
+.ov-glance {
+  container: glance / inline-size;
+}
+/* A wide screen puts what to do beside how it looks, instead of below it. */
+@container overview (min-width: 1500px) {
+  .ov-main.has-todo {
+    grid-template-columns: minmax(460px, 5fr) minmax(0, 7fr);
+  }
 }
 .tone-dot {
   display: inline-block;
@@ -1885,12 +1906,16 @@ h3 + .info {
   grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   gap: var(--sp-3);
 }
-@media (max-width: 1100px) {
+@container glance (max-width: 860px) {
   .tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* An odd tile out spans the row rather than leaving a hole beside it. */
+  .tiles > .tile:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }
-@media (max-width: 560px) {
+@container glance (max-width: 460px) {
   .tiles {
     grid-template-columns: 1fr;
   }
@@ -2028,7 +2053,7 @@ h3 + .info {
   z-index: 41;
   display: flex;
   flex-direction: column;
-  width: min(560px, 100vw);
+  width: min(clamp(520px, 34vw, 760px), 100vw);
   background: var(--panel);
   border-left: 1px solid var(--border-strong);
   box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
@@ -2173,10 +2198,12 @@ h3 + .info {
   gap: 2px;
 }
 
-@media (max-width: 720px) {
+@container overview (max-width: 640px) {
   .brief {
     flex-wrap: wrap;
   }
+}
+@container todo (max-width: 620px) {
   .todo-head {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -2190,8 +2217,32 @@ h3 + .info {
   .todo-body {
     padding-left: var(--sp-3);
   }
+}
+@media (max-width: 560px) {
   .issue-row {
     grid-template-columns: 1fr;
+  }
+}
+/* The top bar: below this the version stamp and the status text are the
+   first to give way, so the project and Generate always stay reachable. */
+@media (max-width: 900px) {
+  .topbar .brand .version-badge {
+    display: none;
+  }
+  .topbar > .badge {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 560px) {
+  .topbar {
+    gap: var(--sp-2);
+    padding: 0 var(--sp-2);
+  }
+  .topbar > .badge {
+    display: none;
   }
 }
 

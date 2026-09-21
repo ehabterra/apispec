@@ -150,7 +150,7 @@ Two things worth knowing before a first run on a large project:
 
 - **Brief**: the health score and one line saying whether anything needs attention.
 - **Needs attention**: one ranked list of what to do. Issues are grouped by cause and counted by distinct operation. The list also includes unmapped auth middleware and failing gated strict categories. Each row expands to the routes it affects, a route opens in the Endpoint view, and a cause that config can fix links to its Configure group, for example *Map a type →*.
-- **At a glance**: seven tiles with one anatomy (label, value, bar, caption). *How complete is the spec*: Resolution, Response bodies, Documentation coverage, Quality gate (the `--strict` check, counted whether or not a category is gated). *What the API is*: Security, API shape, How it was read. Every tile opens the same side drawer with its detail; ←/→ step between tiles and Esc closes it.
+- **At a glance**: seven tiles with one anatomy (label, value, bar, caption). *How complete is the spec*: Resolution, Response bodies, Coverage, Quality gate (the `--strict` check, counted whether or not a category is gated). *What the API is*: Security, API shape, How it was read. Every tile opens the same side drawer with its detail; ←/→ step between tiles and Esc closes it. On a wide screen Needs attention and the tiles sit side by side; the layout follows the space it has, down to one column.
 
 The most useful drawer is **Response bodies**, which splits each status code by how its body resolved. An empty body at `200` means the write was never followed. An unresolved type means the write was found and the type needs a type mapping.
 

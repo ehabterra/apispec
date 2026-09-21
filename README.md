@@ -289,7 +289,7 @@ to an `apispec.yaml` the CLI reads.
   fix has a button to the right Configure group.
 - **At a glance**: how does each facet look? Seven tiles, all read the same
   way (label, value, bar, caption), in two rows. *How complete is the spec*
-  holds Resolution, Response bodies, Documentation coverage and the Quality
+  holds Resolution, Response bodies, Coverage and the Quality
   gate, which is the `--strict` check counted on every run. *What the API is*
   holds Security, API shape and How it was read. Select a tile to open its
   detail in a side drawer; ← and → step through the tiles without closing it.
