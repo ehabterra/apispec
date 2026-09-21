@@ -1612,16 +1612,21 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			route.Response[slot] = resp
 		case declaredOverRawBytes(existing, resp) != nil:
 			route.Response[slot] = declaredOverRawBytes(existing, resp)
-		case existing.BodyType == "" && resp.BodyType != "":
-			route.Response[slot] = resp
-		case existing.BodyType != "" && resp.BodyType == "":
-			// keep the informative one
 		case otherMediaType(existing, resp):
 			// The same status in a DIFFERENT representation: a
 			// content-negotiating handler sends one or the other, and both are
 			// true of the endpoint. They compose into the response's `content`
 			// rather than displacing each other (issue #470).
+			//
+			// Ahead of the body-type preference below, because a stated binary
+			// body has no Go type: "keep the informative one" would drop
+			// `c.Data(200, "application/pdf", b)` for any typed body on the same
+			// status, however different its media type (review of #547).
 			route.Response[slot] = addAlternateMediaType(existing, resp)
+		case existing.BodyType == "" && resp.BodyType != "":
+			route.Response[slot] = resp
+		case existing.BodyType != "" && resp.BodyType == "":
+			// keep the informative one
 		case statusStated && wasStated && alternativeBodies(existing, resp):
 			// One status, two genuinely different bodies: the endpoint really
 			// can send either, so the response alternates between them rather
@@ -4275,7 +4280,10 @@ func (o *OverrideApplierImpl) HasOverride(functionName string) bool {
 //
 // Both must actually be resolved: a fragment with no body is not a
 // representation, and letting one in would advertise a media type the handler
-// never writes.
+// never writes. A body of BYTES under a media type the handler states is one —
+// it has no Go type, but it is exactly what goes on the wire, so
+// `c.Data(200, "application/pdf", b)` beside `c.JSON(200, invoice)` is the
+// negotiated endpoint's two representations, not a JSON body and noise.
 func otherMediaType(cur, next *ResponseInfo) bool {
 	if cur == nil || next == nil {
 		return false
@@ -4283,7 +4291,18 @@ func otherMediaType(cur, next *ResponseInfo) bool {
 	if cur.ContentType == "" || next.ContentType == "" || cur.ContentType == next.ContentType {
 		return false
 	}
-	return cur.BodyType != "" && next.BodyType != ""
+	return isRepresentation(cur) && isRepresentation(next)
+}
+
+// isRepresentation reports whether a fragment describes a body that is
+// written: a resolved Go type, or bytes under a stated media type.
+func isRepresentation(r *ResponseInfo) bool {
+	return r.BodyType != "" || (r.MediaTypeDeclared && isBinarySchema(r.Schema))
+}
+
+// isBinarySchema reports whether a schema says "bytes".
+func isBinarySchema(s *Schema) bool {
+	return s != nil && s.Type == "string" && s.Format == "binary"
 }
 
 // addAlternateMediaType records next's representation on cur.

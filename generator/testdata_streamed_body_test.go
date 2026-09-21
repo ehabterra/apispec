@@ -188,3 +188,28 @@ func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
 		})
 	}
 }
+
+// A negotiated endpoint sends bytes OR a typed body on one status. The stated
+// binary body has no Go type, and the slot merge used to keep "the informative
+// one" — the JSON — and drop the PDF (review of #547).
+func TestTestdata_StreamedBodyNegotiated(t *testing.T) {
+	out := loadTestdata(t, "streamed_body_gin", intspec.DefaultGinConfig())
+	op := opFor(out.Paths["/invoice"], "GET")
+	if op == nil {
+		t.Fatalf("GET /invoice missing; have %v", mapPathKeys(out.Paths))
+	}
+	resp, ok := op.Responses["200"]
+	if !ok {
+		t.Fatalf("GET /invoice has no 200; have %v", statusKeys(op))
+	}
+	if _, ok := resp.Content["application/json"]; !ok {
+		t.Error("GET /invoice 200 lost its JSON representation")
+	}
+	pdf, ok := resp.Content["application/pdf"]
+	if !ok {
+		t.Fatal("GET /invoice 200 lost its application/pdf representation to the typed JSON body")
+	}
+	if pdf.Schema == nil || pdf.Schema.Format != "binary" {
+		t.Errorf("application/pdf schema = %+v, want binary", pdf.Schema)
+	}
+}
