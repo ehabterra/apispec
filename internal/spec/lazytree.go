@@ -90,7 +90,7 @@ type LazyTree struct {
 	// parent, so they appear only under the producer (a group's routes under
 	// the Group call, not under main) — mirrored here by excluding them from
 	// the plain caller expansion.
-	claimed        map[*metadata.CallGraphEdge]bool
+	claimed map[*metadata.CallGraphEdge]bool
 	// boundAt is the per-CALL-SITE counterpart of claimed, for a helper's calls
 	// on its parameter: keyed by the helper call's instance key, it lists the
 	// edges that call site's argument binding moved under the argument's
