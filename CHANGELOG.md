@@ -164,6 +164,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A router mounted from a struct field keeps its prefix again.** The #550 fix
+  stopped linking a variable assigned inside a callee to the call that invokes
+  it, and with it the one case that link is right for: the value stored IS a
+  parameter that call bound. A service wiring its modules with functional
+  options (`WithAuthRouter(authAPIs())`, whose closure stores the router in a
+  field that `Routes()` later mounts) or a setter method had every route
+  documented at the root: 80 operations on one service lost their `/auth`,
+  `/cart`, `/payment` and `/order` prefixes, with no warning, since the routes
+  were still found. The link is back for exactly that shape — a bare parameter,
+  bound by the edge, of the declared type — so a value derived from a parameter
+  (`r.URL.Path`) and a shadowing closure parameter stay unlinked. Ten other
+  projects are byte-identical; the affected one matches its pre-#550 path set.
+
 - **Naming is reachable from the CLI and the UI.** #298 made operationId and
   component naming a config choice with `full` as the default, but there was no
   flag for it. `--operation-id` (`full` | `receiver-method` | `method-path`) and
