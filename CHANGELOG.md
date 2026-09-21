@@ -147,6 +147,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the package-selection switches, and the
   `--max-response-instances-per-key` limit.
 
+- **A repeated body under an alternate media type no longer nests.** When a
+  handler writes one status under two media types (HTML with JSON
+  fallbacks), a body that arrived again for an alternate type already holding
+  an `anyOf` was wrapped — `anyOf: [anyOf: [string, Err], Err]` — once per
+  repeat, because the stored composition was compared as a whole and never
+  looked like it contained the body. On gitea one handler repeated an error
+  body 2,585 times: its 200 nested 5,176 levels deep and Swagger UI refused
+  the whole document ("nesting exceeded maxDepth (100)"). Repeats are now
+  compared member by member and new bodies are appended flat.
+
 - **An inline struct literal is a response body.**
   `respondJSON(w, 200, struct{ Values []string }{…})` documented a 200 with no
   content at all, while the identical value assigned to a variable first
