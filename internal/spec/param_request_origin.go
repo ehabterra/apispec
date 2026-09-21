@@ -117,6 +117,15 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 		if resolved, at := resolveArgThroughParams(arg, node); resolved != nil && resolved != arg && at != nil {
 			return w.valueOrigin(resolved, at, hops+1)
 		}
+		// A parameter the tree path does not bind. Since #546 a helper's calls
+		// on a bound parameter hang under the argument's PRODUCER rather than
+		// under the helper's call site, so the parent frame names the
+		// producer's parameters, not this one. The call graph still says what
+		// every caller passes for it — the frame-blind rung paramValueFromCallSites
+		// reads for a path.
+		if origin, ok := w.paramOriginFromCallers(arg.GetName(), edge, hops); ok {
+			return origin
+		}
 		// Neither assigned here nor a bound parameter: a PACKAGE-level
 		// variable is set at start-up, never per request — a connection
 		// string, a base URL from configuration.
@@ -167,6 +176,51 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 	}
 	return requestOriginUnknown
 }
+
+// paramOriginFromCallers places a parameter of the function edge is written in
+// by what its callers pass for it: the request if any caller hands it the
+// request's data, elsewhere if every caller hands it something built
+// elsewhere, and no answer otherwise — including when some caller does not
+// bind the name at all, which means it is not a parameter.
+func (w requestOriginWalker) paramOriginFromCallers(name string, edge *metadata.CallGraphEdge, hops int) (requestOrigin, bool) {
+	impl, ok := w.cp.(*ContextProviderImpl)
+	if !ok || impl.meta == nil || edge == nil || name == "" || hops >= maxRequestOriginHops {
+		return requestOriginUnknown, false
+	}
+	callers := impl.meta.Callees[edge.Caller.BaseID()]
+	if len(callers) == 0 {
+		return requestOriginUnknown, false
+	}
+	elsewhere := true
+	for _, call := range callers {
+		bound, ok := call.ParamArgMap[name]
+		if !ok {
+			return requestOriginUnknown, false
+		}
+		switch w.valueOrigin(&bound, callSiteFrame{edge: call}, hops+1) {
+		case requestOriginRequest:
+			return requestOriginRequest, true
+		case requestOriginUnknown:
+			elsewhere = false
+		}
+	}
+	if elsewhere {
+		return requestOriginElsewhere, true
+	}
+	return requestOriginUnknown, false
+}
+
+// callSiteFrame evaluates a value at a call site with no tree path above it:
+// assignments resolve in the caller's scope, and a parameter of the caller is
+// followed through the call graph again rather than through a parent node.
+type callSiteFrame struct{ edge *metadata.CallGraphEdge }
+
+func (f callSiteFrame) GetKey() string                      { return "" }
+func (f callSiteFrame) GetParent() TrackerNodeInterface     { return nil }
+func (f callSiteFrame) GetChildren() []TrackerNodeInterface { return nil }
+func (f callSiteFrame) GetEdge() *metadata.CallGraphEdge    { return f.edge }
+func (f callSiteFrame) GetArgument() *metadata.CallArgument { return nil }
+func (f callSiteFrame) GetTypeParamMap() map[string]string  { return nil }
 
 // isPackageVar reports whether pkg declares a package-level variable or
 // constant named name.

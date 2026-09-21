@@ -172,3 +172,63 @@ func TestReadsOutsideRequestDeclines(t *testing.T) {
 		t.Error("an unknown package declares nothing")
 	}
 }
+
+// A parameter the tree path does not bind is placed by what every caller
+// passes for it (issue #552): any caller handing it the request makes it the
+// request's; every caller handing it something built elsewhere makes it
+// elsewhere; anything else is no answer.
+func TestParamOriginFromCallers(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	pool := meta.StringPool
+	call := func(name, pos string) metadata.Call {
+		return metadata.Call{Meta: meta, Name: pool.Get(name), Pkg: pool.Get("app"), Position: pool.Get(pos), RecvType: -1, Scope: -1, SignatureStr: -1}
+	}
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindCompositeLit)
+	req := roIdent(meta, "r", "*net/http.Request", "app")
+
+	build := func(args ...metadata.CallArgument) (*metadata.CallGraphEdge, requestOriginWalker) {
+		meta.CallGraph = nil
+		for i, a := range args {
+			meta.CallGraph = append(meta.CallGraph, metadata.CallGraphEdge{
+				Caller: call("caller", string(rune('1'+i))), Callee: call("helper", "9"),
+				ParamArgMap: map[string]metadata.CallArgument{"u": a},
+			})
+		}
+		meta.CallGraph = append(meta.CallGraph, metadata.CallGraphEdge{Caller: call("helper", "9"), Callee: call("Get", "8")})
+		meta.BuildCallGraphMaps()
+		return &meta.CallGraph[len(meta.CallGraph)-1], requestOriginWalker{cp: NewContextProvider(meta), requestTypes: compileAll(DefaultHTTPConfig().Framework.RequestContext.TypeRegexes)}
+	}
+
+	if edge, w := build(*lit, *lit); true {
+		if got, ok := w.paramOriginFromCallers("u", edge, 0); !ok || got != requestOriginElsewhere {
+			t.Errorf("every caller passes a literal: got (%v, %v), want elsewhere", got, ok)
+		}
+	}
+	if edge, w := build(*lit, *req); true {
+		if got, ok := w.paramOriginFromCallers("u", edge, 0); !ok || got != requestOriginRequest {
+			t.Errorf("one caller passes the request: got (%v, %v), want request", got, ok)
+		}
+	}
+	if edge, w := build(*lit, *roIdent(meta, "x", "", "app")); true {
+		if _, ok := w.paramOriginFromCallers("u", edge, 0); ok {
+			t.Error("a caller passing something unplaceable must give no answer")
+		}
+	}
+	if edge, w := build(*lit); true {
+		if _, ok := w.paramOriginFromCallers("other", edge, 0); ok {
+			t.Error("a name no caller binds is not a parameter")
+		}
+		if _, ok := w.paramOriginFromCallers("u", edge, maxRequestOriginHops); ok {
+			t.Error("the hop bound must end the walk")
+		}
+	}
+	w := requestOriginWalker{cp: NewContextProvider(meta)}
+	if _, ok := w.paramOriginFromCallers("u", &metadata.CallGraphEdge{Caller: call("nobody", "1")}, 0); ok {
+		t.Error("a function nothing calls has no callers to agree")
+	}
+	f := callSiteFrame{edge: &metadata.CallGraphEdge{}}
+	if f.GetKey() != "" || f.GetParent() != nil || f.GetChildren() != nil || f.GetArgument() != nil || f.GetTypeParamMap() != nil {
+		t.Error("a call-site frame has no tree around it")
+	}
+}
