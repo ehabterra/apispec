@@ -508,9 +508,21 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 				Container: m.StringPool.GetString(assignment.Func),
 			}
 
-			var assignmentEdge = edge
-
-			// Get nested edges to link to the assignment
+			// The producer is the call whose result the variable holds: a call
+			// in the callee's body, or — for an assignment in the CALLER's own
+			// scope, which is how `main`'s `g := r.Group(…)` is recorded on the
+			// producing edge — this edge itself.
+			//
+			// Anything else has no producer and is left out. A variable
+			// assigned inside the callee with no call behind it (`x := &T{…}`,
+			// `folder := frm.Folder`, `counts[k] += 1`) used to fall back to
+			// `edge` too, which is the invocation of the function it is written
+			// in. For a handler closure that function is the route
+			// REGISTRATION (`UploadToService(router)`), so any argument reading
+			// the variable expanded every route it registers beneath itself —
+			// other handlers' redirects, rate limiters and query parameters
+			// documented as this one's (issue #550).
+			var assignmentEdge *CallGraphEdge
 			if callers, exists := m.Callers[edge.Callee.BaseID()]; exists {
 				for _, nestedEdge := range callers {
 					if nestedEdge.CalleeRecvVarName == recvVarName {
@@ -518,6 +530,12 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 						break
 					}
 				}
+			}
+			if assignmentEdge == nil && assignment.Func == edge.Caller.Name {
+				assignmentEdge = edge
+			}
+			if assignmentEdge == nil {
+				continue
 			}
 
 			relationships[akey] = &AssignmentLink{
@@ -1616,6 +1634,14 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 			}
 
 			if call, ok := n.(*ast.CallExpr); ok {
+				// The pending assignment belongs to this call only if the call IS
+				// one of its right-hand sides. `c := &Ctx{…}` has no call there, so
+				// without the check it was handed to the next call the walk met —
+				// `c.JSON(…)` on the following line — which then recorded itself
+				// as the producer of `c` (issue #550).
+				if assignStmt != nil && !assignsCall(assignStmt, call) {
+					assignStmt = nil
+				}
 				processCallExpression(call, file, pkgs, pkgName, assignStmt, fileToInfo, funcMap, fset, metadata, info, calleeMap, argMap)
 				assignStmt = nil
 			} else if assign, ok := n.(*ast.AssignStmt); ok {
@@ -1872,6 +1898,17 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		metadata.CallGraph = append(metadata.CallGraph, *cgEdge)
 	}
+}
+
+// assignsCall reports whether call is one of assign's right-hand sides, looking
+// through parentheses.
+func assignsCall(assign *ast.AssignStmt, call *ast.CallExpr) bool {
+	for _, rhs := range assign.Rhs {
+		if ast.Unparen(rhs) == call {
+			return true
+		}
+	}
+	return false
 }
 
 // methodReceiver renders the expression a method call is made on, for the
