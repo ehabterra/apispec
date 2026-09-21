@@ -15,13 +15,10 @@
 //	/csv-wrapped  set through a wrapper built around w
 //	/pdf-param   a helper handed w.Header() sets it, then raw bytes are written
 //	/pdf-direct  declared in the handler, then raw bytes are written
-//	/invoices    h := w.Header(); a helper handed h sets it
-//
-// Not yet documented (#546) — a helper handed a VARIABLE, when another call
-// site hands the same helper w.Header() directly:
-//
-//	/pdf-var     in a function
-//	/reports     in a method, beside /invoices' same-named one
+//	/pdf-var     h := w.Header(); a helper handed h sets it, while another
+//	             call site hands the same helper w.Header() directly (#546)
+//	/reports     the same, in a method
+//	/invoices    the same, through a helper nothing else calls
 //	/csv-captured the response's header returned by a closure capturing w
 //
 // Not documented as a body (the header is somebody else's):
@@ -167,9 +164,9 @@ func exportPDFDirect(w http.ResponseWriter, r *http.Request) {
 }
 
 // exportPDFVar hands the response's header to the helper through a VARIABLE.
-// Handlers are registered as values and never called, so an assignment in one
-// records no producer, and the helper's write on its parameter has nothing to
-// bind to — while /pdf-param's direct call has already claimed it (#546).
+// A handler's `h := w.Header()` records no producer, so this call site's
+// binding fails — and /pdf-param's call site, whose binding succeeds, must not
+// take the helper's write away from this one (#546).
 func exportPDFVar(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	declarePDF(h)
@@ -177,8 +174,7 @@ func exportPDFVar(w http.ResponseWriter, r *http.Request) {
 }
 
 // reportHandler and invoiceHandler each have an `export` method assigning the
-// same variable name. /invoices' helper has no other caller, so its write is
-// still its own and it resolves; /reports' helper is declarePDF (#546).
+// same variable name, through helpers with and without another caller.
 type reportHandler struct{}
 type invoiceHandler struct{}
 

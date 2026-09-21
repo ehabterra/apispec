@@ -91,6 +91,18 @@ type LazyTree struct {
 	// the Group call, not under main) — mirrored here by excluding them from
 	// the plain caller expansion.
 	claimed        map[*metadata.CallGraphEdge]bool
+	// boundAt is the per-CALL-SITE counterpart of claimed, for a helper's calls
+	// on its parameter: keyed by the helper call's instance key, it lists the
+	// edges that call site's argument binding moved under the argument's
+	// producer.
+	//
+	// A binding is a fact about ONE call site — `declare(w.Header())` binds
+	// declare's `h` there and nowhere else — so what it removes from the
+	// helper's body is removed along that call site only. Marking the edges
+	// claimed instead took them out of the helper for every caller, and a call
+	// site whose own binding failed (`h := w.Header(); declare(h)`) was left
+	// with the helper's writes on no path at all (issue #546).
+	boundAt        map[string]map[*metadata.CallGraphEdge]bool
 	relationsBuilt bool
 	budgetWarned   bool
 
@@ -766,6 +778,7 @@ func (t *LazyTree) buildRelations() {
 	t.chainChildren = map[string][]*metadata.CallGraphEdge{}
 	t.receiverChildren = map[string][]*metadata.CallGraphEdge{}
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
+	t.boundAt = map[string]map[*metadata.CallGraphEdge]bool{}
 	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
 	var entrypointKeys []string
@@ -916,8 +929,14 @@ func (t *LazyTree) buildRelations() {
 				continue
 			}
 			t.receiverChildren[producerKey] = append(t.receiverChildren[producerKey], paramEdges...)
+			site := strings.TrimPrefix(edge.Callee.ID(), "*")
+			bound := t.boundAt[site]
+			if bound == nil {
+				bound = map[*metadata.CallGraphEdge]bool{}
+				t.boundAt[site] = bound
+			}
 			for _, pe := range paramEdges {
-				t.claimed[pe] = true
+				bound[pe] = true
 			}
 		}
 	}
@@ -1777,9 +1796,16 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	appendCallee := func(edge *metadata.CallGraphEdge, chainParented bool) {
 		appendCalleeOpts(edge, chainParented, true)
 	}
+	// A helper's calls on a parameter that THIS call site bound to a producer
+	// hang under that producer instead (see boundAt); every other call site of
+	// the helper keeps them.
+	boundHere := t.boundAt[t.keyString(n.key)]
 	expandKey := func(key string) {
 		edges := t.edgesFor(key)
 		for _, edge := range edges {
+			if boundHere[edge] {
+				continue
+			}
 			appendCallee(edge, false)
 		}
 		// No direct calls: follow into func literals defined in the function
