@@ -368,8 +368,9 @@ type CredentialReadConfig struct {
 	NamedReads []CredentialAccessor `yaml:"namedReads,omitempty" json:"namedReads,omitempty"`
 
 	// RefusalStatuses are the statuses whose meaning IS "this request is not
-	// authenticated/authorised" — a second, independent signal, sufficient on
-	// its own.
+	// authenticated" — a second, independent signal, sufficient on its own.
+	// 403 is deliberately absent by default: it means "not allowed", which is
+	// authorisation, and a security scheme documents authentication.
 	//
 	// The two catch different things, which is why both are kept. A name table
 	// is a guess about spelling and cannot know a house credential

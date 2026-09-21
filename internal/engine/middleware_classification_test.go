@@ -63,6 +63,7 @@ func TestMiddlewareClassification(t *testing.T) {
 			"houseAuth",      // reads a header naming an api key
 			"delegatingAuth", // reads it one call down, through a helper
 			"basicGuard",     // r.BasicAuth() — the credential with no name
+			"signatureAuth",  // a house credential name, caught by its 401
 		} {
 			if !hasName(reported, want) {
 				t.Errorf("%s guards routes that are now documented as PUBLIC and was not reported; reported=%v",
@@ -82,6 +83,11 @@ func TestMiddlewareClassification(t *testing.T) {
 			"logsTheWord",      // logs the word "Authorization"
 			"addsUpstreamAuth", // SETS an outbound Authorization header
 			"countsForbidden",  // passes 403 to a metric, not to a writer
+			// Authorisation, not authentication: reads a role from the context
+			// and refuses with 403. The shape of RequireAuth-then-RequireRole,
+			// where the routes already carry the scheme RequireAuth supplies —
+			// reporting it claimed they were documented as public.
+			"roleGate",
 		} {
 			if hasName(reported, notWant) {
 				t.Errorf("%s shows no auth signal and must not be reported as auth; reported=%v", notWant, reported)

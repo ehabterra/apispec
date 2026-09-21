@@ -77,11 +77,26 @@ func sessionAuth(next http.Handler) http.Handler {
 	})
 }
 
-// Auth on a HOUSE credential name no table can predict, refusing with 403. The
+// Auth on a HOUSE credential name no table can predict, refusing with 401. The
 // credential signal alone would miss it; the status is what catches it.
 func signatureAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Acme-Request-Signature") == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Not authentication: an authorisation gate stacked after the real auth
+// middleware. It reads a role the auth middleware already put in the context
+// and refuses with 403 — "not allowed", which no security scheme describes.
+type roleKey struct{}
+
+func roleGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if role, _ := r.Context().Value(roleKey{}).(string); role != "admin" {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -162,7 +177,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(requestLogger, rateLimit, authMiddleware, houseAuth, delegatingAuth, basicGuard,
 		sessionAuth, signatureAuth, cookielessAuth,
-		logsTheWord, addsUpstreamAuth, countsForbidden)
+		logsTheWord, addsUpstreamAuth, countsForbidden, roleGate)
 	r.Get("/items", list)
 	_ = http.ListenAndServe(":8080", r)
 }
