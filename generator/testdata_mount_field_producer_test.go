@@ -21,30 +21,34 @@ import (
 )
 
 // TestTestdata_MountFieldProducer locks in the mount prefix of a router mounted
-// from a struct field:
+// from a struct field, for every way the field gets its value:
 //
-//	app := NewApp(WithOpt(OptAPI()))   // the option's closure stores r in a.opt
-//	app.SetSet(SetAPI())               // the setter stores r in a.set
+//	app := NewApp(WithOpt(OptAPI()))   // an option's closure stores r in a.opt
+//	app.SetSet(SetAPI())               // a setter stores r in a.set
+//	app := &App{lit: LitAPI()}         // a struct literal sets a.lit (#565)
 //	root.Mount("/opt", a.opt)
 //
-// The fix for #550 stopped linking a variable assigned in a callee's body to
-// the call that invokes it, and with it the one case that link is right for:
-// the value stored IS a parameter that call bound. The routes stayed found and
-// were documented at the root — every one of them, silently, in a real service
-// that wires its modules with functional options. That is why the whole path
-// set is asserted here: a count of routes cannot notice a prefix going missing.
+// The routes are found whether or not the field is traced to the call that
+// built its router; only the prefix goes missing, and a count of routes cannot
+// notice that. So the whole path set is asserted: a route documented at the
+// root instead of under its mount fails here.
+//
+// History: the fix for #550 dropped the option and setter shapes (a callee-body
+// store of a bound parameter lost its producer); the struct-literal shapes were
+// never traced until #565.
 func TestTestdata_MountFieldProducer(t *testing.T) {
 	out := loadTestdata(t, "mount_field_producer", spec.DefaultChiConfig())
 	noDanglingRefs(t, out)
 
 	want := map[string]bool{
-		"/opt/api/items": true, // functional option
-		"/set/api/users": true, // setter method
-		// NOT PREFIXED, and asserted so the day it changes: a router placed in
-		// a struct LITERAL (`&App{lit: LitAPI()}`) was never traced to its
-		// field, before #550 or since (#565). Assert /lit/api/orders and drop this
-		// line when it is.
-		"/api/orders": true,
+		"/opt/api/items":       true, // functional option
+		"/set/api/users":       true, // setter method
+		"/lit/api/orders":      true, // pointer literal assigned to a variable
+		"/direct/api/direct":   true, // pointer literal returned directly
+		"/value/api/value":     true, // value literal, value receiver
+		"/local/api/local":     true, // literal built in main itself
+		"/convlit/api/convlit": true, // literal element through a type conversion
+		"/convset/api/convset": true, // explicit store through a type conversion
 	}
 	for path := range want {
 		if _, ok := out.Paths[path]; !ok {
