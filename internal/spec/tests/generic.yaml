@@ -1196,7 +1196,6 @@ call_graph:
         position: 98
         resolved_type: -1
         generic_type_name: -1
-    callee_recv_var_name: generic.Container[T].Value
   - caller:
       name: 77
       pkg: 1
