@@ -127,3 +127,41 @@ func f() {
 		t.Errorf("fmt.Println without type info recorded receiver %+v", r)
 	}
 }
+
+// A call records the static type of its single result, which is the only
+// record of what an external constructor returns: a dependency's declarations
+// are not loaded (issue #556). A tuple records nothing.
+func TestCallEdgeRecordsResultType(t *testing.T) {
+	file, info, fset := sweepTypeCheck(t, `package p
+
+type HTTPError struct{ Code int }
+
+func (e *HTTPError) Error() string { return "" }
+
+func NewHTTPError(code int) *HTTPError { return &HTTPError{Code: code} }
+
+func pair() (int, error) { return 0, nil }
+
+func handle() error {
+	_, _ = pair()
+	return NewHTTPError(404)
+}
+`)
+	meta := GenerateMetadata(
+		map[string]map[string]*ast.File{"p": {"sweep.go": file}},
+		map[*ast.File]*types.Info{file: info},
+		map[string]string{"sweep.go": "p"},
+		fset,
+	)
+	got := map[string]string{}
+	for i := range meta.CallGraph {
+		e := &meta.CallGraph[i]
+		got[meta.StringPool.GetString(e.Callee.Name)] = e.ResultType
+	}
+	if got["NewHTTPError"] != "*p.HTTPError" {
+		t.Errorf("NewHTTPError result type = %q, want *p.HTTPError", got["NewHTTPError"])
+	}
+	if got["pair"] != "" {
+		t.Errorf("a tuple-returning call recorded %q", got["pair"])
+	}
+}

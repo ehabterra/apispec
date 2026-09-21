@@ -3132,6 +3132,19 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.Schema = schema
 	}
 
+	// The body is the value the call RETURNS, which the framework's error
+	// handler serializes when the handler returns it (issue #556). Read off
+	// the call's recorded result type — the constructor is a dependency's,
+	// whose declaration is not loaded.
+	if r.pattern.TypeFromResult && edge.ResultType != "" {
+		bodyType := edge.ResultType
+		if ref := typemodel.Parse(bodyType); r.pattern.Deref && ref != nil && ref.Kind == typemodel.KindPointer && ref.Elem != nil {
+			bodyType = ref.Elem.String()
+		}
+		respInfo.BodyType = preprocessingBodyType(bodyType)
+		respInfo.Schema = mapGoTypeForRoute(route.UsedTypes, bodyType, route.Metadata, r.cfg)
+	}
+
 	// Conditional status codes (issue #39): if the status arg is a local
 	// variable with multiple branched assignments mapping to *distinct*
 	// status codes, emit one response per status, sharing the body/schema.

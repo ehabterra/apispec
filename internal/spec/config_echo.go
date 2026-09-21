@@ -47,6 +47,20 @@ func DefaultEchoConfig() *APISpecConfig {
 		RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
 	})...)
 	responsePatterns = append(responsePatterns,
+		// An error the handler RETURNS: echo's HTTPErrorHandler writes the
+		// status it carries and serializes the *HTTPError itself
+		// (`{"message": …}`). Echo handlers — and the middleware in front of
+		// them — answer refusals this way rather than through the context
+		// (issue #556).
+		ResponsePattern{
+			CallRegex:         `^NewHTTPError$`,
+			CalleePkgPatterns: []string{`^github\.com/labstack/echo(/v\d+)?$`},
+			StatusArgIndex:    0,
+			StatusFromArg:     true,
+			TypeArgIndex:      -1,
+			TypeFromResult:    true,
+			Deref:             true,
+		},
 		ResponsePattern{
 			CallRegex:      `^(?i)(NoContent)$`,
 			StatusArgIndex: 0,
