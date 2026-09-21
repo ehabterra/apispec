@@ -42,7 +42,7 @@ func TestTestdata_MountFieldProducer(t *testing.T) {
 		"/set/api/users": true, // setter method
 		// NOT PREFIXED, and asserted so the day it changes: a router placed in
 		// a struct LITERAL (`&App{lit: LitAPI()}`) was never traced to its
-		// field, before #550 or since. Assert /lit/api/orders and drop this
+		// field, before #550 or since (#565). Assert /lit/api/orders and drop this
 		// line when it is.
 		"/api/orders": true,
 	}
