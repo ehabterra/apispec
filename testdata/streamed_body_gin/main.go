@@ -52,10 +52,17 @@ func internalOnly(c *gin.Context) {
 	c.Status(204)
 }
 
+// The framework's own raw-bytes renderer, which states the media type in an
+// argument — read as the BODY by the renderer catch-all before issue #544.
+func rawPDF(c *gin.Context) {
+	c.Data(200, "application/pdf", []byte("%PDF"))
+}
+
 func main() {
 	r := gin.Default()
 	r.GET("/export.csv", csvExport)
 	r.GET("/file.pdf", download)
 	r.GET("/internal", internalOnly)
+	r.GET("/raw.pdf", rawPDF)
 	_ = r.Run(":8080")
 }

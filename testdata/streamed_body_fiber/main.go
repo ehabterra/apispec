@@ -45,10 +45,19 @@ func internalOnly(c *fiber.Ctx) error {
 	return c.SendStatus(204)
 }
 
+// Raw bytes under a media type declared with c.Set. c.Send is not a response
+// pattern, so the declaration is the only statement of the body — it must still
+// document the media type the handler set (issue #544).
+func rawPDF(c *fiber.Ctx) error {
+	c.Set("Content-Type", "application/pdf")
+	return c.Send([]byte("%PDF"))
+}
+
 func main() {
 	app := fiber.New()
 	app.Get("/export.csv", csvExport)
 	app.Get("/file.pdf", download)
 	app.Get("/internal", internalOnly)
+	app.Get("/raw.pdf", rawPDF)
 	_ = app.Listen(":8080")
 }

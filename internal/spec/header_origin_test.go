@@ -263,3 +263,24 @@ func TestFunctionResultOrigin(t *testing.T) {
 		t.Errorf("a method returning the writer = %v, want response", got)
 	}
 }
+
+// On one status, a declared media type claims raw bytes: the byte slice names no
+// media type of its own (issue #544). Any other pair is not this rule's.
+func TestDeclaredOverRawBytes(t *testing.T) {
+	declared := &ResponseInfo{ContentType: "application/pdf", MediaTypeDeclared: true}
+	raw := &ResponseInfo{ContentType: "application/json", BodyType: "[]byte", RawBytes: true}
+	typed := &ResponseInfo{ContentType: "application/json", BodyType: "Item"}
+
+	if got := declaredOverRawBytes(declared, raw); got != declared {
+		t.Errorf("declared then raw kept %+v", got)
+	}
+	if got := declaredOverRawBytes(raw, declared); got != declared {
+		t.Errorf("raw then declared kept %+v", got)
+	}
+	if got := declaredOverRawBytes(declared, typed); got != nil {
+		t.Errorf("a serialized body is not raw bytes, got %+v", got)
+	}
+	if got := declaredOverRawBytes(raw, typed); got != nil {
+		t.Errorf("no declaration, got %+v", got)
+	}
+}

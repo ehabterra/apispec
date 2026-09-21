@@ -134,6 +134,10 @@ func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
 	streams := []struct{ path, mediaType string }{
 		{"/export.csv", "text/csv"},
 		{"/file.pdf", "application/pdf"},
+		// Raw bytes in the framework's own idiom: gin's c.Data and echo's
+		// c.Blob state the media type as an argument; on fiber the c.Set
+		// declaration beside c.Send is the only statement of it (issue #544).
+		{"/raw.pdf", "application/pdf"},
 	}
 
 	for _, fw := range frameworks {
@@ -150,6 +154,11 @@ func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
 				if !ok {
 					t.Fatalf("GET %s documents no success on %s — it streams to %s; have %v",
 						s.path, fw.name, fw.writer, statusKeys(op))
+				}
+				if media, ok := resp.Content[s.mediaType]; ok && s.path == "/raw.pdf" {
+					if media.Schema == nil || media.Schema.Format != "binary" {
+						t.Errorf("GET %s on %s: schema %+v, want binary — raw bytes, not a base64 string", s.path, fw.name, media.Schema)
+					}
 				}
 				if _, ok := resp.Content[s.mediaType]; !ok {
 					got := make([]string, 0, len(resp.Content))

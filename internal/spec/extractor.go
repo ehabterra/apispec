@@ -252,6 +252,14 @@ type ResponseInfo struct {
 	// 200 with the error type, measured on gitea.
 	StatusInFrame bool
 
+	// MediaTypeDeclared marks a response whose media type the handler STATED
+	// with a Content-Type header write, and RawBytes one written verbatim by a
+	// RawBody pattern whose bytes no serializer produced. A raw write names no
+	// media type of its own, so on one status the declaration is the one that
+	// says what the bytes are (issue #544).
+	MediaTypeDeclared bool
+	RawBytes          bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1602,6 +1610,8 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		switch {
 		case existing == nil:
 			route.Response[slot] = resp
+		case declaredOverRawBytes(existing, resp) != nil:
+			route.Response[slot] = declaredOverRawBytes(existing, resp)
 		case existing.BodyType == "" && resp.BodyType != "":
 			route.Response[slot] = resp
 		case existing.BodyType != "" && resp.BodyType == "":
@@ -1883,6 +1893,27 @@ func requestIsConcrete(r *RequestInfo) bool {
 	// status discards it for whichever single body arrived last.
 	return s.Ref != "" || len(s.Properties) > 0 || len(s.AllOf) > 0 ||
 		len(s.AnyOf) > 0 || len(s.OneOf) > 0 || s.Items != nil
+}
+
+// declaredOverRawBytes returns the response a status keeps when one fragment
+// DECLARES the media type and the other writes raw bytes: the declaration, in
+// place of the byte slice. nil when the pair is not that shape.
+//
+// A raw write carries a Go type — `[]byte` — and nothing else, so it used to be
+// the "informative" fragment and win the slot outright, with the JSON default
+// for a media type. `w.Header().Set("Content-Type", "application/pdf")`
+// followed by `w.Write(pdf)` was documented as `application/json` with
+// `format: byte` — a base64 string a generated client decodes as JSON, for a
+// body that is a PDF (issue #544). The bytes add nothing the declaration does
+// not already say: that a body exists, and that it is bytes.
+func declaredOverRawBytes(a, b *ResponseInfo) *ResponseInfo {
+	switch {
+	case a.MediaTypeDeclared && b.RawBytes:
+		return a
+	case b.MediaTypeDeclared && a.RawBytes:
+		return b
+	}
+	return nil
 }
 
 // preferResponseInfo deterministically picks between two responses competing
@@ -2924,9 +2955,23 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		contentType = declared
 	}
 
+	// A call that states its own media type (`c.Data(200, "application/pdf",
+	// b)`) says what it writes. A runtime value states nothing readable, and
+	// the default stands.
+	statedMediaType := false
+	if r.pattern.ContentTypeFromArg {
+		if args := node.GetEdge().Args; r.pattern.ContentTypeArgIndex >= 0 && r.pattern.ContentTypeArgIndex < len(args) {
+			if v, ok := r.contextProvider.ConstantValue(args[r.pattern.ContentTypeArgIndex]); ok && v != "" {
+				contentType = v
+				statedMediaType = true
+			}
+		}
+	}
+
 	respInfo := &ResponseInfo{
-		StatusCode:  leastStatusCode - 1,
-		ContentType: contentType,
+		StatusCode:        leastStatusCode - 1,
+		ContentType:       contentType,
+		MediaTypeDeclared: r.pattern.ContentTypeFromHeaderWrite || statedMediaType,
 	}
 
 	edge := node.GetEdge()
@@ -3015,6 +3060,8 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// (a raw w.Write([]byte("ok"))), so raw writes are kept as-is.
 		if payload := r.unwrapWriteSink(arg, edge); payload != nil {
 			arg = payload
+		} else if r.pattern.RawBody {
+			respInfo.RawBytes = true
 		}
 
 		// Parameter tracing: if the body arg is a parameter of the
@@ -3131,6 +3178,16 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// naming a Go value that was never encoded (issue #517).
 	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
 		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+	}
+	// Raw bytes under a media type the call itself states, and no serializer
+	// describes, are bytes: not the byte slice's base64 JSON rendering. Under a
+	// serializer's media type they stay as typed — calling a JSON document
+	// binary would stop a client parsing it (see serializerCovers).
+	if respInfo.RawBytes && statedMediaType && !r.serializerCovers(respInfo.ContentType) {
+		respInfo.BodyType = ""
+		respInfo.OneOfTypes = nil
+		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+		respInfo.RawBytes = false
 	}
 
 	if !statusResolved && respInfo.BodyType == "" && respInfo.Schema == nil {

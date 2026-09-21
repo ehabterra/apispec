@@ -33,6 +33,11 @@ var echoRequestContext = RequestContextConfig{
 // DefaultEchoConfig returns a default configuration for the Echo framework.
 func DefaultEchoConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
+	// echo's raw-bytes renderers state their own media type (issue #544).
+	responsePatterns = append(responsePatterns, rawBodyRendererPatterns("github\\.com/labstack/echo/v\\d\\.Context",
+		rawBodyCall{call: `^Blob$`, mediaTypeArg: 1, contentArg: 2},
+		rawBodyCall{call: `^Stream$`, mediaTypeArg: 1, reader: true},
+	)...)
 	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
 		StatusArgIndex: 0,
 		TypeArgIndex:   1,

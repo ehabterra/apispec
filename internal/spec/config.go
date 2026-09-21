@@ -665,6 +665,24 @@ type ResponsePattern struct {
 	// it.
 	ContentTypeFromHeaderWrite bool `yaml:"contentTypeFromHeaderWrite,omitempty" json:"contentTypeFromHeaderWrite,omitempty"`
 
+	// RawBody marks a call that writes its argument's BYTES verbatim —
+	// `w.Write(b)`, gin's `c.Data`, echo's `c.Blob`. The Go type of what it
+	// writes is a byte slice, which states no media type, so a body it writes
+	// untransformed takes the media type the handler declares for that status
+	// (a `Content-Type` header write, or ContentTypeArgIndex) rather than
+	// Defaults.ResponseContentType. Bytes traced back through a
+	// ResponseContext.BodyTransforms serializer are not raw: they are that
+	// serializer's document (issue #544).
+	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
+
+	// ContentTypeFromArg reads the media type from the call's argument at
+	// ContentTypeArgIndex — gin's `c.Data(code, contentType, data)`, echo's
+	// `c.Blob(code, contentType, b)`. The call states what it writes, so that
+	// replaces Defaults.ResponseContentType, and raw bytes written under a media
+	// type no serializer describes are documented as binary.
+	ContentTypeFromArg  bool `yaml:"contentTypeFromArg,omitempty" json:"contentTypeFromArg,omitempty"`
+	ContentTypeArgIndex int  `yaml:"contentTypeArgIndex,omitempty" json:"contentTypeArgIndex,omitempty"`
+
 	// ImplicitStatus is the status a body from this pattern takes when no
 	// explicit status write claims it during pairing. It overrides the
 	// framework-wide ResponseContext.ImplicitStatus, which is 0 for routers
@@ -1375,6 +1393,7 @@ func netHTTPResponsePatterns() []ResponsePattern {
 			TypeFromArg:   true,
 			Deref:         true,
 			RecvTypeRegex: `^net/http\.ResponseWriter$`,
+			RawBody:       true,
 		},
 		{
 			CallRegex:          `^Error$`,
@@ -1575,6 +1594,47 @@ var rendererMediaTypes = []struct {
 	{"String", contentTypeText},
 	{"HTML", contentTypeHTML},
 	{"ProtoBuf", contentTypeProtobuf},
+}
+
+// rawBodyRendererPatterns are a framework's calls that write BYTES under a
+// media type they are handed as an argument, and must precede its renderer
+// catch-all: the catch-all reads the body from argument 1, which on these calls
+// is the media type, so `c.Data(200, "application/pdf", b)` was documented as a
+// JSON string (issue #544).
+//
+// One constructor for every framework (golden rule #5): what differs is the call
+// name, the receiver, and where the media type and the content sit.
+func rawBodyRendererPatterns(recvTypeRegex string, calls ...rawBodyCall) []ResponsePattern {
+	out := make([]ResponsePattern, 0, len(calls))
+	for _, c := range calls {
+		p := ResponsePattern{
+			CallRegex:           c.call,
+			RecvTypeRegex:       recvTypeRegex,
+			StatusArgIndex:      0,
+			StatusFromArg:       true,
+			ContentTypeFromArg:  true,
+			ContentTypeArgIndex: c.mediaTypeArg,
+			TypeArgIndex:        -1,
+		}
+		if c.reader {
+			// A reader streams whatever it holds: there is no value to type.
+			p.OpaqueBody = true
+		} else {
+			p.TypeArgIndex = c.contentArg
+			p.TypeFromArg = true
+			p.RawBody = true
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// rawBodyCall locates one raw-bytes renderer's arguments.
+type rawBodyCall struct {
+	call         string
+	mediaTypeArg int
+	contentArg   int
+	reader       bool // the content is an io.Reader streamed as-is
 }
 
 // rendererCatchAllCalls are the renderer names that keep the shared pattern
