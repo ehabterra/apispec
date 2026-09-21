@@ -2,8 +2,9 @@
 // view. Uses diverse SVG visualizations (gauge, donuts, layered call
 // graph) and ⓘ info tooltips on every metric.
 import { html, useState, useEffect } from "/assets/js/preact.js";
-import { useStore, setState } from "/assets/js/store.js";
+import { useStore } from "/assets/js/store.js";
 import { getJSON } from "/assets/js/api.js";
+import { openConfigGroup } from "/assets/js/actions.js";
 import { Donut, Gauge, Info, TraceDiagram } from "/assets/js/components/charts.js";
 
 /* ---- shared bits ---------------------------------------------------- */
@@ -100,6 +101,8 @@ const INFO = {
     "Interface method calls resolved to concrete implementations, read from the analyzer's implementation index (no extra traversal). Interfaces with several implementations may be kept general (erased to any) when the concrete type is ambiguous — those are the ones that cost schema precision.",
   verbdispatch:
     "Handlers that serve several HTTP methods from one function via a switch r.Method (or if r.Method ==). apispec splits each into its own operation.",
+  gate:
+    "The CLI's --strict check, run on every generation: each category counts a kind of shortfall that makes the spec quietly incomplete. A category ticked under Configure ▸ Strict mode is GATED — a finding there fails the run (exit code 3 in CI). Unticked categories are still counted, so you see what a gate would catch before turning it on.",
 };
 
 /* ---- root ----------------------------------------------------------- */
@@ -171,6 +174,15 @@ const ALERT_META = {
   "wrapper-specialised": { sev: "info", label: "Wrapper-specialised responses", det: "envelope types with an inlined data payload" },
 };
 
+// ALERT_FIX names the Configure group that holds the fix for an alert kind,
+// and the button's wording. Kinds whose fix is in code (a write the analysis
+// could not follow) have none: sending the user to a setting would suggest a
+// config change can repair it.
+const ALERT_FIX = {
+  "unresolved-type": { group: "types", label: "Map a type →" },
+  "unmapped-auth": { group: "security", label: "Map them →" },
+};
+
 const TAXO_META = {
   "default-status": { label: "Status defaulted", color: "var(--warn)" },
   "missing-body": { label: "Body not resolved", color: "var(--warn)" },
@@ -200,10 +212,10 @@ function Alerts({ rep }) {
   const alerts = [];
   for (const kind in byKind) {
     const m = ALERT_META[kind];
-    if (m) alerts.push({ sev: m.sev, count: byKind[kind], label: m.label, det: m.det });
+    if (m) alerts.push({ sev: m.sev, count: byKind[kind], label: m.label, det: m.det, fix: ALERT_FIX[kind] });
   }
   if (unresolvedSec > 0)
-    alerts.push({ sev: "warn", count: unresolvedSec, label: "Unmapped auth middleware", det: "middleware guards routes but isn't mapped to a security scheme", action: "configure" });
+    alerts.push({ sev: "warn", count: unresolvedSec, label: "Unmapped auth middleware", det: "middleware guards routes but isn't mapped to a security scheme", fix: ALERT_FIX["unmapped-auth"] });
   alerts.sort((a, b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev] || b.count - a.count);
 
   return html`
@@ -217,7 +229,7 @@ function Alerts({ rep }) {
               <span class="a-sev">${sevLabel}</span>
               <span class="a-count">${a.count}</span>
               <span class="a-msg"><b>${a.label}</b> <span class="a-det">— ${a.det}.</span></span>
-              ${a.action === "configure" ? html`<button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>` : ""}
+              ${a.fix ? html`<button class="btn sm" onClick=${() => openConfigGroup(a.fix.group)}>${a.fix.label}</button>` : ""}
             </div>`;
           })}
         </div>`}
@@ -453,20 +465,88 @@ function TreeInsights({ rep }) {
   `;
 }
 
+// OVERVIEW_SECTIONS is the Overview's reading order, and the jump bar's: what
+// needs you first, then why the spec looks the way it does, then what it
+// contains, and last how it was produced — the part you only need when a
+// number above looks wrong.
+const OVERVIEW_SECTIONS = [
+  ["summary", "Summary"],
+  ["resolution", "Resolution"],
+  ["shape", "API shape"],
+  ["security", "Security"],
+  ["internals", "How it was read"],
+];
+
+const jumpToSection = (id) => {
+  const el = document.getElementById("ov-" + id);
+  if (el) el.scrollIntoView({ block: "start" });
+};
+
+// QualityGate shows the strict check the last run computed. It is counted on
+// every run whether or not a category is gated, so the card answers both "did
+// this run pass?" and "what would a gate catch if I turned it on?".
+function QualityGate() {
+  const s = useStore();
+  const cats = s.strictCategories || [];
+  const findings = s.strictFindings || [];
+  if (!cats.length && !findings.length) return "";
+  const gated = new Set(s.strict || []);
+  const byCat = {};
+  for (const f of findings) byCat[f.category] = f;
+  const names = cats.length ? cats : findings.map((f) => f.category);
+
+  const verdict = !gated.size
+    ? html`<span class="badge"><span class="dot"></span>not gating</span>`
+    : s.strictFailed
+      ? html`<span class="badge err"><span class="dot"></span>failing</span>`
+      : html`<span class="badge ok"><span class="dot"></span>passing</span>`;
+
+  return html`
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      <div class="row" style="gap:6px">
+        <h3 style="margin:0">Quality gate</h3><${Info} text=${INFO.gate} />
+        <span class="spacer"></span>${verdict}
+      </div>
+      <div class="gate-grid">
+        ${names.map((cat) => {
+          const f = byCat[cat];
+          const isGated = gated.has(cat);
+          const col = !f ? "var(--accent-2)" : isGated ? "var(--danger)" : "var(--warn)";
+          return html`<div class="gate-row">
+            <span class="gate-count" style=${"color:" + col}>${f ? f.count : "✓"}</span>
+            <span class="mono gate-cat">${cat}${isGated ? html`<span class="chip-count">gated</span>` : ""}</span>
+            <span class="muted gate-det">${f ? f.detail : "nothing found"}</span>
+          </div>`;
+        })}
+      </div>
+      <div class="row" style="margin-top:var(--sp-2)">
+        <span class="muted" style="font-size:var(--fs-xs)">
+          ${gated.size ? `Gated: ${[...gated].join(", ")}.` : "No category is gated, so these findings never fail a run."}
+        </span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" onClick=${() => openConfigGroup("analysis")}>Strict mode settings →</button>
+      </div>
+    </div>
+  `;
+}
+
 function Overview({ rep, onTag }) {
   const [exportOpen, setExportOpen] = useState(false);
   const warns = rep.issues.filter((i) => i.severity === "warn");
   const infos = rep.issues.filter((i) => i.severity !== "warn");
   const maxType = Math.max(1, ...rep.topTypes.map((t) => t.count));
+  const anchor = (id) => html`<div class="ov-anchor" id=${"ov-" + id}></div>`;
 
   return html`
-    <div class="row" style="margin-bottom:var(--sp-3)">
+    <div class="ov-nav" role="navigation" aria-label="Overview sections">
+      ${OVERVIEW_SECTIONS.map(([id, label]) => html`<button class="chip" onClick=${() => jumpToSection(id)}>${label}</button>`)}
       <span class="spacer"></span>
       ${warns.length
-        ? html`<button class="btn export" onClick=${() => setExportOpen(true)}>⤴ Export to AI</button>`
-        : html`<button class="btn export" disabled title="No issues to fix — nothing to export">⤴ Export to AI</button>`}
+        ? html`<button class="btn export sm" onClick=${() => setExportOpen(true)}>⤴ Export to AI</button>`
+        : html`<button class="btn export sm" disabled title="No issues to fix — nothing to export">⤴ Export to AI</button>`}
     </div>
 
+    ${anchor("summary")}
     <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:var(--sp-3)">
       <div class="card" style="display:flex;align-items:center;gap:var(--sp-3)">
         <${Gauge} value=${rep.health.score} label="resolved" />
@@ -479,12 +559,35 @@ function Overview({ rep, onTag }) {
       <div class="stat"><div class="num">${rep.operations}</div><div class="lbl">operations <${Info} text=${INFO.operations} /></div></div>
       <div class="stat"><div class="num">${rep.components}</div><div class="lbl">components <${Info} text=${INFO.components} /></div></div>
     </div>
-
-    <${AnalysisCard} rep=${rep} />
     <${Alerts} rep=${rep} />
-    <${ResolutionQuality} rep=${rep} />
-    <${TreeInsights} rep=${rep} />
+    <${QualityGate} />
 
+    ${anchor("resolution")}
+    <${ResolutionQuality} rep=${rep} />
+    <${ResponseBodies} rep=${rep} />
+    <div class="card" style="margin-bottom:var(--sp-3)">
+      <div class="row">
+        <h3>Needs attention</h3><span class="spacer"></span>
+        ${warns.length ? html`<span class="badge err"><span class="dot"></span>${warns.length} to fix</span>` : html`<span class="badge ok"><span class="dot"></span>all clear</span>`}
+        ${infos.length ? html`<span class="badge"><span class="dot"></span>${infos.length} info</span>` : ""}
+      </div>
+      ${warns.length === 0 && infos.length === 0
+        ? html`<p class="muted">No issues detected — every reference resolves.</p>`
+        : html`<div class="stack" style="margin-top:var(--sp-2)">
+            ${[...warns, ...infos].slice(0, 40).map(
+              (i) => html`<div class="row" style="gap:var(--sp-2);align-items:flex-start">
+                <span class=${"badge " + (i.severity === "warn" ? "err" : "")} style="flex:0 0 auto">${KIND_LABEL[i.kind] || i.kind}</span>
+                <span class="mono" style="flex:0 0 auto;font-size:var(--fs-sm)">${i.method} ${i.path}</span>
+                <span class="muted" style="font-size:var(--fs-sm)">${i.detail}${i.ref ? ` (${shortName(i.ref)})` : ""}</span>
+              </div>`,
+            )}
+            ${warns.length + infos.length > 40
+              ? html`<p class="muted" style="font-size:var(--fs-xs);margin:0">…and ${warns.length + infos.length - 40} more — open the Endpoint view to see each route, or Export to AI for the full list.</p>`
+              : ""}
+          </div>`}
+    </div>
+
+    ${anchor("shape")}
     ${SectionHead("API shape", "Requests & responses")}
     <div class="grid-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:var(--sp-3)">
       ${rep.byMethod.length ? html`<div class="card">${Title("Methods", INFO.methods)}<${Bars} data=${rep.byMethod} /></div>` : ""}
@@ -504,51 +607,31 @@ function Overview({ rep, onTag }) {
           </div>`
         : ""}
     </div>
-
-    <${ResponseBodies} rep=${rep} />
-
-    <${SecurityCard} rep=${rep} />
-
-    <div class="card" style="margin-bottom:var(--sp-3)">
-      <div class="row">
-        <h3>Needs attention</h3><span class="spacer"></span>
-        ${warns.length ? html`<span class="badge err"><span class="dot"></span>${warns.length} to fix</span>` : html`<span class="badge ok"><span class="dot"></span>all clear</span>`}
-        ${infos.length ? html`<span class="badge"><span class="dot"></span>${infos.length} info</span>` : ""}
-      </div>
-      ${warns.length === 0 && infos.length === 0
-        ? html`<p class="muted">No issues detected — every reference resolves.</p>`
-        : html`<div class="stack" style="margin-top:var(--sp-2)">
-            ${[...warns, ...infos].slice(0, 40).map(
-              (i) => html`<div class="row" style="gap:var(--sp-2);align-items:flex-start">
-                <span class=${"badge " + (i.severity === "warn" ? "err" : "")} style="flex:0 0 auto">${KIND_LABEL[i.kind] || i.kind}</span>
-                <span class="mono" style="flex:0 0 auto;font-size:var(--fs-sm)">${i.method} ${i.path}</span>
-                <span class="muted" style="font-size:var(--fs-sm)">${i.detail}${i.ref ? ` (${shortName(i.ref)})` : ""}</span>
+    <div class="card" style="margin-bottom:var(--sp-3)">${Title("Most-referenced types", INFO.toptypes)}
+      ${rep.topTypes.length
+        ? html`<div class="ranklist">
+            ${rep.topTypes.map(
+              (t, i) => html`<div class=${"rank-row" + (i < 3 ? " top" : "")}>
+                <span class="rank-n">${i + 1}</span>
+                <div class="rank-body">
+                  <div class="rank-top">
+                    <span class="rank-name" title=${t.name.replace(/_/g, ".")}>${shortName(t.name)}</span>
+                    <span class="rank-count">${t.count}×</span>
+                  </div>
+                  <div class="rank-bar"><span style=${`width:${(t.count / maxType) * 100}%`}></span></div>
+                </div>
               </div>`,
             )}
-          </div>`}
+          </div>`
+        : html`<span class="muted">none</span>`}
     </div>
 
-    <div class="grid-cards" style="grid-template-columns:1fr;margin-bottom: var(--sp-3);">
-      <div class="card">${Title("Most-referenced types", INFO.toptypes)}
-        ${rep.topTypes.length
-          ? html`<div class="ranklist">
-              ${rep.topTypes.map(
-                (t, i) => html`<div class=${"rank-row" + (i < 3 ? " top" : "")}>
-                  <span class="rank-n">${i + 1}</span>
-                  <div class="rank-body">
-                    <div class="rank-top">
-                      <span class="rank-name" title=${t.name.replace(/_/g, ".")}>${shortName(t.name)}</span>
-                      <span class="rank-count">${t.count}×</span>
-                    </div>
-                    <div class="rank-bar"><span style=${`width:${(t.count / maxType) * 100}%`}></span></div>
-                  </div>
-                </div>`,
-              )}
-            </div>`
-          : html`<span class="muted">none</span>`}
-      </div>
-    </div>
+    ${anchor("security")}
+    <${SecurityCard} rep=${rep} />
 
+    ${anchor("internals")}
+    <${AnalysisCard} rep=${rep} />
+    <${TreeInsights} rep=${rep} />
     <${CallGraphCard} cg=${rep.callGraph} />
     <${ExportModal} open=${exportOpen} onClose=${() => setExportOpen(false)} scope="all" />
   `;
@@ -603,7 +686,7 @@ function SecurityCard({ rep }) {
             <span class="badge err"><span class="dot"></span>${unresolved} unresolved</span>
             <span class="muted" style="font-size:var(--fs-sm)">middleware detected on routes but not mapped to a scheme</span>
             <span class="spacer"></span>
-            <button class="btn sm" onClick=${() => setState({ mode: "configure" })}>Map them →</button>
+            <button class="btn sm" onClick=${() => openConfigGroup("security")}>Map them →</button>
           </div>`
         : ""}
     </div>

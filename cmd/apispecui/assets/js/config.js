@@ -203,6 +203,34 @@ function PropsEditor(sc, onPatch) {
   </div>`;
 }
 
+// CONFIG_GROUPS orders the editor by the question a section answers, so a
+// first-time user meets what the document says before how detection works.
+// The ids are the anchors the left-panel jump list scrolls to.
+const CONFIG_GROUPS = [
+  { id: "document", title: "Document", note: "what the spec says about itself — title, servers, tags, defaults" },
+  { id: "types", title: "Types, naming & overrides", note: "how Go types and symbols render, and per-handler corrections" },
+  { id: "security", title: "Security", note: "auth schemes, and which middleware applies them" },
+  { id: "analysis", title: "Analysis & scope", note: "what is loaded, how far the walk goes, and when a run fails" },
+  { id: "detection", title: "Detection (advanced)", note: "how routes, bodies and params are recognised — framework presets fill these" },
+];
+
+// GroupHead titles one CONFIG_GROUPS group. It hides while the filter is
+// active: the matches are then a flat list, and a heading over sections that
+// were all filtered away would read as an empty group.
+function GroupHead({ id }) {
+  const { query } = useContext(ConfigUI);
+  const g = CONFIG_GROUPS.find((x) => x.id === id);
+  if (!g || (query || "").trim()) return "";
+  return html`<div class="section-group" id=${"cfg-" + id}>
+    <span>${g.title}</span><span class="sg-note">— ${g.note}</span>
+  </div>`;
+}
+
+const jumpTo = (id) => {
+  const el = document.getElementById("cfg-" + id);
+  if (el) el.scrollIntoView({ block: "start" });
+};
+
 function Section({ title, hint, help, desc, children, openDefault = false }) {
   const { query, bulk } = useContext(ConfigUI);
   const [open, setOpen] = useState(openDefault);
@@ -276,6 +304,15 @@ export function ConfigMode() {
   const fc = s.frameworkConfig || {};
   const setFC = (key, value) => setState({ frameworkConfig: { ...fc, [key]: value } });
 
+  // Another view asked to land on a group (openConfigGroup). Scroll once the
+  // editor has rendered, then clear it so returning here later starts at the top.
+  useEffect(() => {
+    if (!s.configFocus) return;
+    const id = s.configFocus;
+    requestAnimationFrame(() => jumpTo(id));
+    setState({ configFocus: "" });
+  }, [s.configFocus]);
+
   return html`
     <${ConfigUI.Provider} value=${{ query, bulk }}>
     <div class="mode-split">
@@ -284,7 +321,7 @@ export function ConfigMode() {
           <strong>Configure</strong>
           <div class="muted" style="font-size:var(--fs-sm)">
             Everything here feeds Generate directly. Detection patterns
-            control how routes &amp; types are discovered.
+            control how routes and types are discovered.
           </div>
         </div>
         <div class="stack pad">
@@ -292,6 +329,10 @@ export function ConfigMode() {
           <button class="btn ghost" onClick=${openSaveConfig}>↧ Save config as…</button>
           <a class="btn ghost" href="/api/config.yaml" target="_blank">↧ Download config.yaml</a>
         </div>
+        <nav class="cfg-nav pad" aria-label="Configuration groups">
+          <div class="muted" style="font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Jump to</div>
+          ${CONFIG_GROUPS.map((g) => html`<button class="cfg-nav-item" disabled=${!!query.trim()} title=${g.note} onClick=${() => jumpTo(g.id)}>${g.title}</button>`)}
+        </nav>
         <div class="spacer"></div>
         <div class="pad" style="border-top:1px solid var(--border)">
           <div class="muted" style="font-size:var(--fs-sm);margin-bottom:6px">
@@ -313,31 +354,12 @@ export function ConfigMode() {
           <button class="btn ghost sm" title="Collapse all sections" onClick=${() => expandAll(false)}>⊟ Collapse all</button>
         </div>
         <div style="width:100%">
+          <${GroupHead} id="document" />
+
           <${Section} title="API information" help="Document metadata shown at the top of the spec and docs UI — the API title, version and description. Example: title 'User Service API', version '1.0.0'. The description supports Markdown (headings, lists, links)." openDefault=${true}>
             ${txt("Title", c.info?.title, (e) => setInfo({ title: e.target.value }))}
             ${txt("Version", c.info?.version, (e) => setInfo({ version: e.target.value }))}
             ${area("Description", c.info?.description, (e) => setInfo({ description: e.target.value }))}
-          <//>
-
-          <${Section} title="Schema descriptions" help="Go doc comments on your types and struct fields become the 'description' of the matching schema and property. Turn this off if internal comments should stay out of a published spec.">
-            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
-              <input type="checkbox" checked=${!c.excludeTypeComments}
-                onChange=${(e) => setKey("excludeTypeComments", !e.target.checked)} />
-              <span>Document schemas from Go doc comments</span>
-            </label>
-          <//>
-
-          <${Section} title="Schema shape" help="Opt-in rules that make schemas say what encoding/json actually does. 'Required from JSON tags' marks a field required when it has no omitempty/omitzero, because it is then always on the wire — right for responses, an over-claim for request bodies (validate:'required' still marks request fields). 'Nullable when nil' admits null for a pointer, slice, map or interface field without omitempty, since a nil one is written as null. Turn both on together: required without nullable is the one combination worse than neither.">
-            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
-              <input type="checkbox" checked=${!!c.schema?.requiredFromJSONTags}
-                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), requiredFromJSONTags: e.target.checked } })} />
-              <span>Required from JSON tags</span>
-            </label>
-            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
-              <input type="checkbox" checked=${!!c.schema?.nullableWhenNil}
-                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), nullableWhenNil: e.target.checked } })} />
-              <span>Nullable when nil</span>
-            </label>
           <//>
 
           <${Section} title="External docs" help="An optional link to documentation hosted elsewhere (e.g. your developer portal or a guide). Renders as a 'Find out more' link in Swagger/Redoc. Example: URL https://docs.example.com, description 'Full developer guide'.">
@@ -360,18 +382,6 @@ export function ConfigMode() {
               `,
             )}
             <button class="btn secondary sm" onClick=${() => addTo("servers", { url: "", description: "" })}>+ Add server</button>
-          <//>
-
-          <${Section} title="Virtual hosts" help="Host names your routes are registered under, for routers whose registration pattern can carry one — a Go 1.22 ServeMux pattern is '[METHOD ][HOST]/[PATH]', so mux.HandleFunc('GET api.example.com/items', h) serves /items on that host. Listing a host here documents the route at /items instead of /api.example.com/items. Hosts are listed rather than detected because a pattern that lost its leading slash is indistinguishable from one carrying a host. Hosts already named in Servers count too." hint=${`${(c.hosts || []).length}`}>
-            ${(c.hosts || []).map(
-              (h, i) => html`
-                <div class="row">
-                  ${txt("", h, (e) => setKey("hosts", (c.hosts || []).map((v, j) => (j === i ? e.target.value : v))), "api.example.com")}
-                  <span class="spacer"></span>${RowDelete(() => setKey("hosts", (c.hosts || []).filter((_, j) => j !== i)))}
-                </div>
-              `,
-            )}
-            <button class="btn secondary sm" onClick=${() => addTo("hosts", "")}>+ Add host</button>
           <//>
 
           <${Section} title="Tags" help="Named groups that organise operations into sections in the docs UI. Routes are usually tagged automatically from their mount/group prefix; add tags here to give them an order and a description. Example: name 'Users', description 'Account and profile endpoints'." hint=${`${(c.tags || []).length}`}>
@@ -397,6 +407,8 @@ export function ConfigMode() {
             ${txt("Default response status", c.defaults?.responseStatus, (e) => setDefaults({ responseStatus: parseInt(e.target.value, 10) || 0 }), "200")}
           <//>
 
+          <${GroupHead} id="types" />
+
           <${Section} title="Naming" help="How operationIds and component names are spelled. The default, 'full', is the fully-qualified Go symbol: collision-free and reproducible, but it puts your module path, package layout and unexported handler names into a document you may serve publicly, and it makes very long identifiers in a generated client. Short names are qualified only where they would collide, and then every member of the colliding group is qualified — so no name wins for invisible reasons.">
             ${sel(
               "operationId",
@@ -419,37 +431,25 @@ export function ConfigMode() {
             )}
           <//>
 
-          <${Section} title="Analysis limits" help="How far the analysis is allowed to walk the call tree. Raise these when a project is large enough that the default budget stops expansion part-way through its routes; leave them blank to use the defaults shown.">
-            <${TrackerLimits} />
+          <${Section} title="Schema descriptions" help="Go doc comments on your types and struct fields become the 'description' of the matching schema and property. Turn this off if internal comments should stay out of a published spec.">
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!c.excludeTypeComments}
+                onChange=${(e) => setKey("excludeTypeComments", !e.target.checked)} />
+              <span>Document schemas from Go doc comments</span>
+            </label>
           <//>
 
-          <${Section} title="Strict mode" openDefault=${s.strictFailed} help="The CLI's --strict. Every run reports its quality shortfalls below; tick a category to hold runs to it, and a run with a finding there is reported as a failed strict check. The spec itself is the same either way — strict decides a verdict, never the document." hint=${(s.strict || []).length ? `${(s.strict || []).length} gated` : ""}>
-            <${StrictMode} />
-          <//>
-
-          <${Section} title="Package selection" help="Which packages the analysis loads. These are the CLI's --skip-cgo, --analyze-framework-dependencies, --auto-include-framework-packages, --auto-exclude-tests and --auto-exclude-mocks; all are on by default. Turn one off only to investigate a missing route — e.g. a handler living in a package named like a mock.">
-            <${AnalysisOptions} />
-          <//>
-
-          <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
-
-            <div class="grid-cards" style="grid-template-columns:1fr 1fr">
-              ${["include", "exclude"].map(
-                (which) => html`
-                  <div>
-                    <strong style="font-size:var(--fs-sm);text-transform:capitalize">${which}</strong>
-                    ${["packages", "files", "functions", "types"].map((f) =>
-                      area(
-                        f,
-                        lines(c[which]?.[f]),
-                        (e) => setFilter(which, f, toLines(e.target.value)),
-                        "one per line",
-                      ),
-                    )}
-                  </div>
-                `,
-              )}
-            </div>
+          <${Section} title="Schema shape" help="Opt-in rules that make schemas say what encoding/json actually does. 'Required from JSON tags' marks a field required when it has no omitempty/omitzero, because it is then always on the wire — right for responses, an over-claim for request bodies (validate:'required' still marks request fields). 'Nullable when nil' admits null for a pointer, slice, map or interface field without omitempty, since a nil one is written as null. Turn both on together: required without nullable is the one combination worse than neither.">
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!!c.schema?.requiredFromJSONTags}
+                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), requiredFromJSONTags: e.target.checked } })} />
+              <span>Required from JSON tags</span>
+            </label>
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!!c.schema?.nullableWhenNil}
+                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), nullableWhenNil: e.target.checked } })} />
+              <span>Nullable when nil</span>
+            </label>
           <//>
 
           <${Section} title="Type mappings" help="Map a Go type to an explicit OpenAPI schema for every occurrence. Use when apispec CAN see the type but you want a specific representation. The editor exposes the full OpenAPI vocabulary — type/format, enum, pattern, min/max & length, array items, additionalProperties, $ref, example, deprecated. Examples: time.Time → string/date-time · uuid.UUID → string/uuid · domain.UserStatus → string with enum [active, inactive, pending] · Money → $ref #/components/schemas/Money." hint=${`${(c.typeMapping || []).length}`}>
@@ -505,6 +505,8 @@ export function ConfigMode() {
             <button class="btn secondary sm" onClick=${() => addTo("overrides", { functionName: "" })}>+ Add override</button>
           <//>
 
+          <${GroupHead} id="security" />
+
           <${Section} title="Security schemes" help="Define auth schemes that operations reference; the active scheme becomes the Authorize button in the docs UI. Examples: a JWT 'bearerAuth' (type http, scheme bearer, bearerFormat JWT), an 'apiKeyAuth' (type apiKey, in header, name X-API-Key), or oauth2. Reference them from the top-level Security requirement." hint=${`${Object.keys(c.securitySchemes || {}).length}`}>
             <${SecuritySchemes} c=${c} />
           <//>
@@ -514,38 +516,95 @@ export function ConfigMode() {
             <${SecurityMappings} c=${c} />
           <//>
 
-          <div class="section-group">Detection — how routes &amp; types are discovered</div>
+          <${GroupHead} id="analysis" />
+
+          <${Section} title="Package selection" help="Which packages the analysis loads. These are the CLI's --skip-cgo, --analyze-framework-dependencies, --auto-include-framework-packages, --auto-exclude-tests and --auto-exclude-mocks; all are on by default. Turn one off only to investigate a missing route — e.g. a handler living in a package named like a mock.">
+            <${AnalysisOptions} />
+          <//>
+
+          <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
+
+            <div class="grid-cards" style="grid-template-columns:1fr 1fr">
+              ${["include", "exclude"].map(
+                (which) => html`
+                  <div>
+                    <strong style="font-size:var(--fs-sm);text-transform:capitalize">${which}</strong>
+                    ${["packages", "files", "functions", "types"].map((f) =>
+                      area(
+                        f,
+                        lines(c[which]?.[f]),
+                        (e) => setFilter(which, f, toLines(e.target.value)),
+                        "one per line",
+                      ),
+                    )}
+                  </div>
+                `,
+              )}
+            </div>
+          <//>
+
+          <${Section} title="Virtual hosts" help="Host names your routes are registered under, for routers whose registration pattern can carry one — a Go 1.22 ServeMux pattern is '[METHOD ][HOST]/[PATH]', so mux.HandleFunc('GET api.example.com/items', h) serves /items on that host. Listing a host here documents the route at /items instead of /api.example.com/items. Hosts are listed rather than detected because a pattern that lost its leading slash is indistinguishable from one carrying a host. Hosts already named in Servers count too." hint=${`${(c.hosts || []).length}`}>
+            ${(c.hosts || []).map(
+              (h, i) => html`
+                <div class="row">
+                  ${txt("", h, (e) => setKey("hosts", (c.hosts || []).map((v, j) => (j === i ? e.target.value : v))), "api.example.com")}
+                  <span class="spacer"></span>${RowDelete(() => setKey("hosts", (c.hosts || []).filter((_, j) => j !== i)))}
+                </div>
+              `,
+            )}
+            <button class="btn secondary sm" onClick=${() => addTo("hosts", "")}>+ Add host</button>
+          <//>
+
+          <${Section} title="Analysis limits" help="How far the analysis is allowed to walk the call tree. Raise these when a project is large enough that the default budget stops expansion part-way through its routes; leave them blank to use the defaults shown.">
+            <${TrackerLimits} />
+          <//>
+
+          <${Section} title="Strict mode" openDefault=${s.strictFailed} help="The CLI's --strict. Every run reports its quality shortfalls below; tick a category to hold runs to it, and a run with a finding there is reported as a failed strict check. The spec itself is the same either way — strict decides a verdict, never the document." hint=${(s.strict || []).length ? `${(s.strict || []).length} gated` : ""}>
+            <${StrictMode} />
+          <//>
+
+          <${GroupHead} id="detection" />
 
           <${Section} title="Routes" help="How route registrations are recognised, and where the method, path and handler are read from. Each pattern matches a call by the called name (Call regex) and its receiver type (Receiver type regex). Example (Gin): r.GET('/users/{id}', h) — Call regex ^(?i)(GET|POST|PUT|DELETE|PATCH)$, receiver ^.*gin\\.\\*(Engine|RouterGroup)$, method from the call name, path from arg 0, handler from arg 1." hint=${`${(fc.routePatterns || []).length}`}>
             <${PatternList} items=${fc.routePatterns} fields=${PATTERN_FIELDS.routePatterns} onChange=${(a) => setFC("routePatterns", a)} />
           <//>
+
           <${Section} title="Request body" help="How request-body decoding is recognised and which argument's type becomes the body schema. Example (Gin): c.ShouldBindJSON(&req) — Call regex ^(?i)(ShouldBind|BindJSON|ShouldBindJSON)$, 'Type from arg' on, 'Dereference pointer' on (strips the * from *req). For generic decoders (json.Unmarshal, render.DecodeJSON) also turn on 'Require request source' and configure Request context below." hint=${`${(fc.requestBodyPatterns || []).length}`}>
             <${PatternList} items=${fc.requestBodyPatterns} fields=${PATTERN_FIELDS.requestBodyPatterns} onChange=${(a) => setFC("requestBodyPatterns", a)} />
           <//>
+
           <${Section} title="Responses" help="How response writes are recognised, and where the status code and body type are read from. Example (Gin): c.JSON(200, user) — Call regex ^(?i)(JSON|XML|YAML|ProtoBuf)$, 'Status from arg' index 0, 'Type from arg' index 1. Use 'Default status' for writers without an explicit code (e.g. 200), and 'Default content-type' to override per pattern." hint=${`${(fc.responsePatterns || []).length}`}>
             <${PatternList} items=${fc.responsePatterns} fields=${PATTERN_FIELDS.responsePatterns} onChange=${(a) => setFC("responsePatterns", a)} />
           <//>
+
           <${Section} title="Parameters" help="How path/query/header/cookie/form parameter reads are recognised. The 'Parameter location' sets where it appears in the spec. Examples (Gin): c.Param('id') → location path · c.Query('q') → location query · c.GetHeader('X-Token') → location header. The parameter name is read from the named-argument index." hint=${`${(fc.paramPatterns || []).length}`}>
             <${PatternList} items=${fc.paramPatterns} fields=${PATTERN_FIELDS.paramPatterns} onChange=${(a) => setFC("paramPatterns", a)} />
           <//>
+
           <${Section} title="Mounts / groups" help="How sub-router mounts/groups are recognised so nested routes inherit the right path prefix. Examples: Chi r.Mount('/api', sub) or r.Route('/v1', fn) · Gin r.Group('/v1'). Set 'Path from arg' (the prefix) and 'Router from arg' (the sub-router being mounted) and mark 'Is mount'." hint=${`${(fc.mountPatterns || []).length}`}>
             <${PatternList} items=${fc.mountPatterns} fields=${PATTERN_FIELDS.mountPatterns} onChange=${(a) => setFC("mountPatterns", a)} />
           <//>
+
           <${Section} title="Auth middleware patterns" help="How the APPLICATION of auth middleware is recognised, which is what marks the routes it guards as protected: the call that applies it (e.g. ^Use$, ^With$, ^Group$), which argument carries the middleware, and how far it reaches — 'router' (routes registered on the same router afterwards), 'subtree' (a group/mount closure), 'route' (this registration only) or 'wrapper' (the handler argument is wrapped by an auth function). The middleware VALUE is then mapped to a scheme under Security mappings above; edit these patterns only for a router API the framework presets don't cover." hint=${`${(fc.securityPatterns || []).length}`}>
             <${PatternList} items=${fc.securityPatterns} fields=${PATTERN_FIELDS.securityPatterns} onChange=${(a) => setFC("securityPatterns", a)} />
           <//>
+
           <${Section} title="Entrypoints" help="Where the program starts, for services whose routes are registered from a CLI command rather than from main — a urfave/cli Action, a cobra Run/RunE, an ffcli Exec. Those functions are values assigned to a struct field, so nothing calls them and the walk from main never reaches the routes. Each pattern names the field (Field regex, e.g. ^(Action|Run|RunE)$) on the command type (Receiver type). Presets for the known CLI libraries are applied automatically from the project's imports; add a pattern only for a custom command runner." hint=${`${(fc.entrypointPatterns || []).length}`}>
             <${PatternList} items=${fc.entrypointPatterns} fields=${PATTERN_FIELDS.entrypointPatterns} onChange=${(a) => setFC("entrypointPatterns", a)} />
           <//>
+
           <${Section} title="Handler interface methods" help="Method names that make a type an HTTP handler, so a route registered with a handler VALUE (mux.Handle('/x', h)) is followed into the method that serves it. One per line, e.g. ServeHTTP." hint=${`${(fc.handlerInterfaceMethods || []).length}`}>
             ${area("Method names (one per line)", lines(fc.handlerInterfaceMethods), (e) => setFC("handlerInterfaceMethods", toLines(e.target.value)), "ServeHTTP")}
           <//>
+
           <${Section} title="Request context" help="Disambiguates generic decoders. json.Decode / json.Unmarshal / render.DecodeJSON decode request bodies AND unrelated data (config files, internal payloads). A decoder counts as a request body only when its source traces back to a body accessor on a request-context value. Type regexes = the request types to watch (e.g. ^\\*?net/http\\.Request$, ^.*gin\\.\\*Context$). Body accessors = methods that yield the body (e.g. ^Body$, ^GetRawData$). Leave empty to fall back to receiver-only matching.">
             <${RequestContextEditor} rc=${fc.requestContext} onChange=${(v) => setFC("requestContext", v)} />
           <//>
+
           <${Section} title="Credential reads" help="How a middleware takes a credential out of a request — used only to decide whether middleware that maps to no security scheme is worth warning about, never to decide what a scheme is. Name regexes are matched against the string a call is given, so Header.Get('Authorization') counts and Header.Get('X-Request-Id') does not. Accessors are calls that ARE a credential read whatever they are passed (r.BasicAuth(), a context's Cookie). Defaults cover the conventional header names and the stdlib calls; add an entry only for a house credential." hint=${`${((fc.credentialReads || {}).nameRegexes || []).length}`}>
             ${area("Credential name regexes (one per line)", lines((fc.credentialReads || {}).nameRegexes), (e) => setFC("credentialReads", { ...(fc.credentialReads || {}), nameRegexes: toLines(e.target.value) }), "(?i)^authorization$")}
           <//>
+
           <${Section} title="Response context" help="The mirror of Request context, for 'Require response destination' above: which types ARE the response writer, so an encode counts as the response only when it writes there. Writer types = the handler's writer (e.g. ^net/http\\.ResponseWriter$) — list only the writer the handler is HANDED, not writer-shaped types a handler can build itself (an httptest recorder is not the response). Writer-compatible types keep helpers whose destination stays an interface that could be the writer (e.g. ^io\\.Writer$).">
             <${ResponseContextEditor} rc=${fc.responseContext} onChange=${(v) => setFC("responseContext", v)} />
           <//>

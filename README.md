@@ -60,11 +60,11 @@ than after an afternoon:
 | Document routes assembled at **runtime** (route tables, config files, plugins) | ❌ Statically unknowable. APISpec reports these rather than guessing — [`UnresolvedPaths()`](docs/LIMITATIONS.md#what-apispec-cannot-see) names each one. |
 
 > [!IMPORTANT]
-> **APISpec exits `0` even when it could not resolve everything.** There is no
-> `--strict` mode yet: unresolved paths, truncated expansion and unmapped auth
-> middleware are reported on stderr and through the Go API, but they never fail
-> the command. If the spec matters, add the checks yourself — count the routes,
-> grep stderr, and diff the committed spec in CI.
+> **By default APISpec exits `0` even when it could not resolve everything.**
+> Unresolved paths, truncated expansion and unmapped auth middleware are
+> reported on stderr and through the Go API, but they fail the command only
+> under [`--strict`](#fail-the-build-when-the-spec-comes-out-incomplete). If the
+> spec matters, turn it on in CI and diff the committed spec.
 > [Guardrails worth having →](docs/LIMITATIONS.md#guardrails-worth-having)
 
 ## Quick start
@@ -240,7 +240,7 @@ what to include if you file an issue.
 | Binary | What it's for |
 |---|---|
 | **`apispec`** | The generator. Auto-detects the framework, writes YAML or JSON. |
-| **`apispecui`** | Local web UI: configure interactively, preview through Swagger UI / Redoc / Scalar, browse the call graph, and read the **Insight** report that explains *why* a response has no body. |
+| **`apispecui`** | Local web UI: configure interactively, preview through Swagger UI / Redoc / Scalar, browse the call graph, and read the **Insight** report that explains *why* a response has no body. [Tour below ↓](#the-web-ui) |
 | **`apidiag`** | The call-graph explorer on its own, for when you only want the diagram. |
 
 ```bash
@@ -249,6 +249,55 @@ apidiag   --dir ./my-go-project     # http://localhost:8080
 ```
 
 📖 Every flag, and the `apispecui` HTTP API: **[docs/TOOLS.md](docs/TOOLS.md)**
+
+### The web UI
+
+`apispecui` has one view per job, on the left rail:
+
+| View | What it is for |
+|---|---|
+| **⚡ Start / Spec** | Pick the project, press **Generate**, and read the result in Swagger UI, Redoc or Scalar. The status line says how the run went: path count, skipped packages, a truncated walk, and the strict verdict. |
+| **⚙ Configure** | Every config key and run option, in five groups. The **Jump to** list and the filter box get you to one setting fast. See below. |
+| **◷ Insight** | Explains how the spec came out. **Overview** covers the whole API; **Endpoint** covers one route, with its call trace and a complexity grade. |
+| **⌕ Call graph** | Opens the interactive call-graph and tracker-tree explorer (`/diagram`). |
+
+**Configure** is ordered by the question each group answers:
+
+1. **Document**: title, external docs, servers, tags, default media types.
+2. **Types, naming & overrides**: operationId/schema naming, doc-comment
+   descriptions, schema shape, type mappings, external types, per-handler
+   overrides.
+3. **Security**: schemes, plus which middleware applies them. It opens by
+   itself when a run finds middleware it could not map.
+4. **Analysis & scope**: package selection, include/exclude filters,
+   virtual hosts, expansion limits, strict mode.
+5. **Detection (advanced)**: the framework pattern lists. The detected
+   framework's presets fill these, so most projects never open this group.
+
+Changes feed the next **Generate** directly. **Save config as…** writes them
+to an `apispec.yaml` the CLI reads.
+
+**Insight ▸ Overview** reads top to bottom from "what needs you" to "how it was
+read". The jump bar at the top scrolls to each section:
+
+- **Summary**: resolution health, route/operation/component counts, the
+  **alerts** ranked by severity, and the **quality gate**. The gate is the
+  `--strict` check, counted on every run whether or not a category is gated,
+  so you see what a gate would catch before you turn it on. Alerts that
+  config can fix have a button that opens the right Configure group.
+- **Resolution**: operations by state (full, partial, broken) and the root
+  cause behind each gap. Also documentation coverage, response bodies per
+  status, and the per-route **Needs attention** list.
+- **API shape**: methods, status codes, content types, tags (click one to
+  filter the Endpoint view), and the most-referenced types.
+- **Security**: protected, public and unauthenticated operations, schemes
+  and their usage, and unmapped middleware.
+- **How it was read**: the frameworks detected, which one led, the CLI
+  entry-point gate, interface resolution, verb dispatch, and the call graph's
+  size and hot spots.
+
+**Export to AI** packages the issues, the trace and the handler source as
+Markdown for an assistant. Identifiers can be redacted.
 
 ## Configuration
 

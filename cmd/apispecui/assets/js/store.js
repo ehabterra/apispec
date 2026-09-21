@@ -50,6 +50,7 @@ const state = {
   strictCategories: [], // the engine's category names, from /api/detect
   strictFindings: [], // [{category,count,detail}] from the last run
   strictFailed: false, // a finding fell in a gated category
+  configFocus: "", // a Configure group id to scroll to once Configure opens
   frameworkConfig: null, // full pattern config when loaded/edited via YAML
   detected: null, // raw /api/detect response (used by legacy advanced editor)
   apispecVersion: "",

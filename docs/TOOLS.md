@@ -141,10 +141,20 @@ Flags: `--host` (default `localhost`), `--port` (default `8088`), `--dir`/`-d` (
 
 Two things worth knowing before a first run on a large project:
 
-- **Analysis engine** edits the expansion limits (see [PERFORMANCE.md](PERFORMANCE.md)), with the engine's defaults shown as placeholders. A project whose call tree is bigger than the default budget needs them raised.
+- **Configure ▸ Analysis & scope ▸ Analysis limits** edits the expansion limits (see [PERFORMANCE.md](PERFORMANCE.md)), with the engine's defaults shown as placeholders. A project whose call tree is bigger than the default budget needs them raised.
 - When expansion does stop early, the result says so — *"Expansion stopped at the 50000-node limit, so routes beyond that point are missing"* — so a truncated run doesn't read as a complete one with a short route list.
 
-**Insight** (the ◷ tab) reports how the spec was produced, not just what is in it: which frameworks were detected and which one's patterns lead, what the CLI entry-point gate decided, and — per status code — how many responses describe their fields, are a free-form object, were found with an unresolved type, or document no body at all. That last split is the useful one: an empty body at `200` means the write was never followed, while an unresolved type means it was found and needs a type mapping.
+**Configure** (the ⚙ tab) groups every setting by the question it answers: *Document*, *Types, naming & overrides*, *Security*, *Analysis & scope*, and *Detection (advanced)*. A **Jump to** list in the left panel scrolls to each group, and the filter box searches every setting's title and help. The UI covers every config key and every run option the CLI has, including strict mode, package selection and naming. A parity test fails the build when a new config field has no editor.
+
+**Insight** (the ◷ tab) reports how the spec was produced, not just what is in it. Its **Overview** has five sections, and a jump bar that stays at the top as you scroll:
+
+- **Summary**: health, counts, severity-ranked alerts, and the **quality gate**. The gate is the `--strict` check, computed on every run. Gated categories fail the run; ungated ones are still counted.
+- **Resolution**: operations by state, the root cause of each gap, and coverage. It also splits each status code by how its response body resolved.
+- **API shape**: methods, statuses, content types, tags and the top types.
+- **Security**: operations by effective security, schemes, and unmapped middleware.
+- **How it was read**: frameworks detected and which one led, the CLI entry-point gate, interface resolution, verb dispatch, and call-graph size.
+
+An alert that config can fix has a button that opens the matching Configure group, for example *Map a type →* for an unresolved type. The most useful split is **response bodies by status**. An empty body at `200` means the write was never followed. An unresolved type means the write was found and the type needs a type mapping.
 
 **Framework selection matches the CLI.** The UI composes the same multi-framework config the CLI does — the detected primary, every other detected framework merged in receiver-scoped, and the `net/http` surface underneath — so a mixed project documents the same routes either way. The selector chooses which framework *leads*; the rest still merge under it, and the form lists them ("Also detected: gin").
 

@@ -309,6 +309,43 @@
   border-top: 1px solid var(--border);
   background: var(--panel-2);
 }
+.section-group:first-child {
+  margin-top: 0;
+}
+.section-group .sg-note {
+  margin-left: 6px;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0.8;
+}
+/* Offset for the sticky config toolbar when a group is jumped to. */
+.section-group[id] {
+  scroll-margin-top: 56px;
+}
+.cfg-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+}
+.cfg-nav-item {
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--r-1);
+  padding: 5px 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.cfg-nav-item:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+.cfg-nav-item:disabled {
+  color: var(--faint);
+  cursor: default;
+}
 
 /* ---- Field rows ----------------------------------------------------- */
 .field {
@@ -1577,4 +1614,54 @@ h3 + .info {
 }
 .disp-row:first-child {
   border-top: 0;
+}
+
+/* ---- insight overview: section jump bar + quality gate ------------- */
+.ov-nav {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+  margin-bottom: var(--sp-2);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+/* Anchors sit just above their section; the margin keeps the sticky jump bar
+   from covering the section's first line. */
+.ov-anchor {
+  scroll-margin-top: 64px;
+}
+.gate-grid {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px var(--sp-3);
+  align-items: baseline;
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.gate-row {
+  display: contents;
+}
+.gate-count {
+  font-weight: 700;
+  text-align: right;
+  min-width: 2ch;
+}
+.gate-cat {
+  white-space: nowrap;
+}
+.gate-det {
+  font-size: var(--fs-xs);
+}
+@media (max-width: 640px) {
+  .gate-grid {
+    grid-template-columns: auto 1fr;
+  }
+  .gate-det {
+    grid-column: 2;
+  }
 }
