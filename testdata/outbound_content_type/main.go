@@ -14,6 +14,7 @@
 //	/csv-helper   a helper handed w sets it
 //	/csv-wrapped  set through a wrapper built around w
 //	/pdf-param   a helper handed w.Header() sets it
+//	/csv-captured the response's header returned by a closure capturing w
 //
 // Not documented as a body (the header is somebody else's):
 //
@@ -21,6 +22,8 @@
 //	/detached     a literal http.Header{} nothing sends; only a 204
 //	/recorded     a recorder's header; only a 204
 //	/forwarded    a helper handed the outbound request's header; only a 303
+//	/proxied      the INCOMING request's header, rewritten before forwarding;
+//	              only a 202
 package main
 
 import (
@@ -131,6 +134,23 @@ func exportPDFParam(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("id"))
 }
 
+// proxied rewrites the incoming request's media type before forwarding it —
+// what a reverse proxy does. The header is the REQUEST's, not the response's.
+func proxied(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// exportCSVCaptured reaches the response's header through a closure that
+// captures w — a function call with no argument that nevertheless returns the
+// response's own header.
+func exportCSVCaptured(w http.ResponseWriter, r *http.Request) {
+	hdr := func() http.Header { return w.Header() }
+	h := hdr()
+	h.Set("Content-Type", "text/csv")
+	_ = csv.NewWriter(w).Write([]string{"id"})
+}
+
 // listItems is the control: an ordinary JSON response.
 func listItems(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode([]Item{})
@@ -147,6 +167,8 @@ func main() {
 	mux.HandleFunc("GET /csv-helper", exportCSVHelper)
 	mux.HandleFunc("GET /csv-wrapped", exportCSVWrapped)
 	mux.HandleFunc("GET /pdf-param", exportPDFParam)
+	mux.HandleFunc("GET /proxied", proxied)
+	mux.HandleFunc("GET /csv-captured", exportCSVCaptured)
 	mux.HandleFunc("GET /items", listItems)
 	_ = http.ListenAndServe(":8080", mux)
 }

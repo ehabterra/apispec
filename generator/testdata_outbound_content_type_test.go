@@ -57,6 +57,7 @@ func TestTestdata_OutboundContentType(t *testing.T) {
 		{"/detached", "204", "the Content-Type is on a literal http.Header{} nothing sends"},
 		{"/recorded", "204", "the Content-Type is on a recorder, which is not the response"},
 		{"/forwarded", "303", "a helper was handed the OUTBOUND request's header"},
+		{"/proxied", "202", "the Content-Type is the INCOMING request's, rewritten before forwarding"},
 	} {
 		got, ok := statuses(tc.path)
 		if !ok {
@@ -72,9 +73,11 @@ func TestTestdata_OutboundContentType(t *testing.T) {
 	}
 
 	// The header is the response's, reached every way the provenance walk
-	// follows: directly, through a variable, a helper handed w, and a wrapper
-	// built around w.
-	for _, path := range []string{"/csv", "/csv-var", "/csv-helper", "/csv-wrapped"} {
+	// follows: directly, through a variable, a helper handed w, a wrapper built
+	// around w, and a closure that captures w — a call with no argument that
+	// still returns the response's own header, so a function result that IS a
+	// header map is never assumed detached (review of #545).
+	for _, path := range []string{"/csv", "/csv-var", "/csv-helper", "/csv-wrapped", "/csv-captured"} {
 		got, ok := statuses(path)
 		if !ok {
 			t.Errorf("%s missing; have %v", path, mapPathKeys(out.Paths))
