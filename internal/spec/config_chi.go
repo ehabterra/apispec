@@ -131,10 +131,12 @@ func DefaultChiConfig() *APISpecConfig {
 					RecvType: "net/http.*Request",
 				},
 				{
-					CallRegex:     "^Get$",
-					ParamIn:       "query",
-					ParamArgIndex: 0,
-					RecvType:      "net/url.Values",
+					// Of the REQUEST only when the Values came from it (issue #552).
+					CallRegex:            "^Get$",
+					ParamIn:              "query",
+					ParamArgIndex:        0,
+					RecvType:             "net/url.Values",
+					RequireRequestOrigin: true,
 				},
 				{
 					CallRegex:     "^PathValue$",
