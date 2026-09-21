@@ -151,6 +151,17 @@ func (b *BasePatternMatcher) receiverFieldValue(arg *metadata.CallArgument, node
 // registration's: the variable lives in the caller, so `vb := r.Combo("/b")`
 // written below `va.Get(h)` is a write that call never sees, while the
 // registration itself sits in another function entirely.
+//
+// KNOWN LIMIT, measured rather than assumed (review of #542): when NO write
+// reaches the call, assignmentsReaching keeps them all — "the facts are
+// missing" is its conservative answer — so a receiver whose only assignment is
+// written BELOW the invocation resolves from it. Reaching that needs the
+// receiver to be nil at the call (`var v *Combo; v.Get(h); v = r.Combo("/x")`),
+// which panics before it serves anything. It is a property of the shared
+// lookup, not of this rung — variableValue answers identically for a path held
+// in a variable — so narrowing it here alone would make the two rungs disagree
+// about the same evidence. It belongs with #436, where the rest of that scope's
+// name-keying limits already live.
 func (b *BasePatternMatcher) fieldFromReceiverVar(invNode TrackerNodeInterface, inv *metadata.CallGraphEdge, field, typePkg, typeName string) (string, bool) {
 	if inv == nil || inv.CalleeVarName == "" {
 		return "", false
@@ -264,6 +275,12 @@ func (b *BasePatternMatcher) fieldInReturns(returns []metadata.CallArgument, par
 // that has nothing to do with the receiver. The literal states which type it
 // builds; checking it is what keeps the index meaningful.
 //
+// A QUALIFIED type expression (`&web.Combo{…}`) is a selector, and its name
+// lives in .Sel exactly as a cross-package callee's does (golden rule #10).
+// Reading the ident name alone would return "" for it and skip the check on the
+// very shape that needs it most: a builder declared in another package is the
+// ordinary case on a real project and the single-package one in a fixture.
+//
 // Unverifiable is not disqualifying: a literal whose type expression records no
 // name (a generic instantiation, an inline struct) is left to the field-index
 // match, which is the behaviour this check was added around.
@@ -271,15 +288,22 @@ func literalConstructs(lit *metadata.CallArgument, typePkg, typeName string) boo
 	if lit == nil || lit.X == nil {
 		return true
 	}
-	name := lit.X.GetName()
-	if name == "" || lit.X.GetKind() != metadata.KindIdent {
+	switch lit.X.GetKind() {
+	case metadata.KindIdent, metadata.KindSelector:
+	default:
+		return true
+	}
+	name := calleeNameOf(lit.X)
+	if name == "" {
 		return true
 	}
 	if name != typeName {
 		return false
 	}
 	// Same name in another package is the #457 collision; an unrecorded package
-	// cannot be shown to collide, so the name alone decides.
+	// cannot be shown to collide, so the name alone decides. handleSelector
+	// records the qualifier's resolved import path as the selector's Pkg, so a
+	// qualified literal is compared on the same footing as a bare one.
 	if pkg := lit.X.GetPkg(); pkg != "" && typePkg != "" {
 		return pkg == typePkg
 	}

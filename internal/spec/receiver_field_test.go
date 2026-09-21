@@ -213,6 +213,43 @@ func TestLiteralConstructsChecksTypeIdentity(t *testing.T) {
 			t.Errorf("%s: literalConstructs = %v, want %v", tc.name, got, tc.want)
 		}
 	}
+
+	// A QUALIFIED type expression (`&web.Combo{…}`) is a SELECTOR, and its name
+	// lives in .Sel — reading the ident name gets "" and skips the check on the
+	// shape that needs it most, since a builder in another package is the
+	// ordinary case on a real project (review of #542, golden rule #10).
+	for _, tc := range []struct {
+		name     string
+		litPkg   string
+		litName  string
+		typePkg  string
+		typeName string
+		want     bool
+	}{
+		{"qualified, same type", "example.com/web", "Combo", "example.com/web", "Combo", true},
+		{"qualified, another type", "example.com/web", "Route", "example.com/web", "Combo", false},
+		{"qualified, another package", "example.com/other", "Combo", "example.com/web", "Combo", false},
+	} {
+		lit := comboLit(meta, tc.litPkg, tc.litName)
+		inner := unwrapComposite(&lit)
+		// Rebuild the type expression the way handleSelector records one: the
+		// name on .Sel, the resolved import path on the selector's own Pkg.
+		qualified := metadata.NewCallArgument(meta)
+		qualified.Kind = meta.StringPool.Get(metadata.KindSelector)
+		qualifier := metadata.NewCallArgument(meta)
+		qualifier.Kind = meta.StringPool.Get(metadata.KindIdent)
+		qualifier.Name = meta.StringPool.Get("web")
+		sel := metadata.NewCallArgument(meta)
+		sel.Kind = meta.StringPool.Get(metadata.KindIdent)
+		sel.Name = meta.StringPool.Get(tc.litName)
+		qualified.X, qualified.Sel = qualifier, sel
+		qualified.Pkg = meta.StringPool.Get(tc.litPkg)
+		inner.X = qualified
+
+		if got := literalConstructs(inner, tc.typePkg, tc.typeName); got != tc.want {
+			t.Errorf("%s: literalConstructs = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 	// A literal with no type expression at all is left to the field-index match.
 	bare := metadata.NewCallArgument(meta)
 	bare.Kind = meta.StringPool.Get(metadata.KindCompositeLit)
