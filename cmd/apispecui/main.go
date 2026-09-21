@@ -143,6 +143,14 @@ type DetectResponse struct {
 	Defaults            spec.Defaults                  `json:"defaults"`
 	TypeMapping         []spec.TypeMapping             `json:"typeMapping"`
 	ExternalTypes       []spec.ExternalType            `json:"externalTypes"`
+	Naming              spec.Naming                    `json:"naming"`
+	Hosts               []string                       `json:"hosts"`
+	ExcludeTypeComments bool                           `json:"excludeTypeComments"`
+	Schema              spec.SchemaConfig              `json:"schema"`
+
+	// StrictCategories lists the quality gates a run can be held to, so the
+	// UI offers exactly the engine's set rather than a copy that drifts.
+	StrictCategories []string `json:"strictCategories"`
 
 	// TrackerDefaults reports the engine's expansion limits so the UI can show
 	// what a blank field means, rather than hardcoding numbers that would drift
@@ -192,6 +200,25 @@ type GenerateRequest struct {
 	Overrides        []spec.Override                `json:"overrides"`
 	Include          spec.IncludeExclude            `json:"include"`
 	Exclude          spec.IncludeExclude            `json:"exclude"`
+	Naming           spec.Naming                    `json:"naming"`
+	Hosts            []string                       `json:"hosts"`
+	// ExcludeTypeComments is the editor's "Include type comments" switch,
+	// inverted: false (the zero value) keeps comments, as the CLI does.
+	ExcludeTypeComments bool `json:"excludeTypeComments"`
+	// Schema carries the schema-shaping options (requiredFromJSONTags,
+	// nullableWhenNil) the config file accepts under `schema:`.
+	Schema spec.SchemaConfig `json:"schema"`
+
+	// Strict is the CLI's --strict, as the UI can express it: the categories a
+	// run is held to. Empty means no gate. A run in the UI has no exit code, so
+	// a failed gate is reported on the result (StrictFailed) rather than
+	// refusing the document — the same "a gate decides a verdict, never a
+	// document" rule the CLI follows.
+	Strict []string `json:"strict"`
+
+	// Analysis carries the CLI's package-selection switches. Every field is
+	// optional and an unset one keeps the value the UI has always used.
+	Analysis AnalysisOptions `json:"analysis"`
 
 	// FrameworkConfig replaces the named framework's default extraction
 	// patterns when set. Used by the per-pattern editors in the UI (Routes /
@@ -225,6 +252,22 @@ type TrackerLimits struct {
 	MaxInstancesPerKey         int `json:"maxInstancesPerKey,omitempty"`
 	MaxResponseInstancesPerKey int `json:"maxResponseInstancesPerKey,omitempty"`
 }
+
+// AnalysisOptions mirrors the CLI's package-selection switches (--skip-cgo,
+// --analyze-framework-dependencies, --auto-include-framework-packages,
+// --auto-exclude-tests, --auto-exclude-mocks). Pointers, because the UI has
+// always run with every one of them on: an omitted field must keep that, and
+// only an explicit false may turn one off.
+type AnalysisOptions struct {
+	SkipCGOPackages              *bool `json:"skipCGOPackages,omitempty"`
+	AnalyzeFrameworkDependencies *bool `json:"analyzeFrameworkDependencies,omitempty"`
+	AutoIncludeFrameworkPackages *bool `json:"autoIncludeFrameworkPackages,omitempty"`
+	AutoExcludeTests             *bool `json:"autoExcludeTests,omitempty"`
+	AutoExcludeMocks             *bool `json:"autoExcludeMocks,omitempty"`
+}
+
+// on reports a switch's value, with an unset switch on.
+func on(b *bool) bool { return b == nil || *b }
 
 // defaultTrackerLimits is what the engine uses when the request says nothing. The
 // UI shows these so a user can see what they are changing.
@@ -303,6 +346,39 @@ type GenerateResponse struct {
 	// "generated 0 paths" reads the same as a project that serves no HTTP
 	// (issue #379).
 	NothingMatched bool `json:"nothingMatched,omitempty"`
+
+	// StrictFindings is every quality shortfall of the run, in every category,
+	// whether or not a gate was asked for: they are read from state the engine
+	// already recorded, so reporting them costs nothing. StrictFailed is set
+	// when a finding falls in a category the request gated on.
+	StrictFindings []StrictFindingJSON `json:"strictFindings,omitempty"`
+	StrictGated    []string            `json:"strictGated,omitempty"`
+	StrictFailed   bool                `json:"strictFailed,omitempty"`
+}
+
+// StrictFindingJSON is engine.StrictFinding with wire names.
+type StrictFindingJSON struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+	Detail   string `json:"detail"`
+}
+
+// strictReport computes the findings for the response: all of them, plus
+// whether any falls in a gated category.
+func strictReport(gen *engine.Engine, gated []engine.StrictCategory) ([]StrictFindingJSON, bool) {
+	want := make(map[engine.StrictCategory]bool, len(gated))
+	for _, c := range gated {
+		want[c] = true
+	}
+	var out []StrictFindingJSON
+	failed := false
+	for _, f := range gen.StrictFindings(engine.StrictCategories()) {
+		out = append(out, StrictFindingJSON{Category: string(f.Category), Count: f.Count, Detail: f.Detail})
+		if want[f.Category] {
+			failed = true
+		}
+	}
+	return out, failed
 }
 
 // UIServer holds shared state across requests.
@@ -722,6 +798,11 @@ func (s *UIServer) buildDetectResponse(dir string) DetectResponse {
 		Defaults:            base.Defaults,
 		TypeMapping:         base.TypeMapping,
 		ExternalTypes:       base.ExternalTypes,
+		Naming:              base.Naming,
+		Hosts:               base.Hosts,
+		ExcludeTypeComments: base.ExcludeTypeComments,
+		Schema:              base.Schema,
+		StrictCategories:    engine.StrictCategoryNames(),
 		Overrides:           base.Overrides,
 		Include:             base.Include,
 		Exclude:             base.Exclude,
@@ -880,6 +961,16 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Refused up front, as the CLI refuses a misspelt --strict: a gate that
+	// silently ignored an unknown category would pass runs it should fail.
+	var strictGated []engine.StrictCategory
+	if len(req.Strict) > 0 {
+		strictGated, err = engine.ParseStrictCategories(strings.Join(req.Strict, ","))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "strict: "+err.Error())
+			return
+		}
+	}
 
 	// Serialize generates. A second request that arrives while one is in
 	// flight (or while a stopped run is still winding down) gets a clear 409
@@ -943,11 +1034,11 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		MaxRecursionDepth:            limits.MaxRecursionDepth,
 		MaxInstancesPerKey:           limits.MaxInstancesPerKey,
 		MaxResponseInstancesPerKey:   limits.MaxResponseInstancesPerKey,
-		SkipCGOPackages:              true,
-		AnalyzeFrameworkDependencies: true,
-		AutoIncludeFrameworkPackages: true,
-		AutoExcludeTests:             true,
-		AutoExcludeMocks:             true,
+		SkipCGOPackages:              on(req.Analysis.SkipCGOPackages),
+		AnalyzeFrameworkDependencies: on(req.Analysis.AnalyzeFrameworkDependencies),
+		AutoIncludeFrameworkPackages: on(req.Analysis.AutoIncludeFrameworkPackages),
+		AutoExcludeTests:             on(req.Analysis.AutoExcludeTests),
+		AutoExcludeMocks:             on(req.Analysis.AutoExcludeMocks),
 		Verbose:                      s.cfg.Verbose,
 		OnPhase: func(phase string, elapsed time.Duration) {
 			// Pushed by the engine at each major phase boundary. The UI
@@ -1128,6 +1219,10 @@ func (s *UIServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 		if expansion.Truncated {
 			resp.NodeLimit = expansion.Limit
+		}
+		resp.StrictFindings, resp.StrictFailed = strictReport(gen, strictGated)
+		for _, c := range strictGated {
+			resp.StrictGated = append(resp.StrictGated, string(c))
 		}
 		// Retain for /api/status so a page refresh can restore this result.
 		s.mu.Lock()
@@ -1601,6 +1696,17 @@ func buildAPISpecConfig(req *GenerateRequest, dir string) (*spec.APISpecConfig, 
 	}
 	cfg.Include = req.Include
 	cfg.Exclude = req.Exclude
+	// The editor offered Naming, Virtual hosts and "Include type comments"
+	// long before the server accepted them: the choices were dropped here, so
+	// a UI run always produced "full" names, host-prefixed paths and type
+	// comments whatever was picked. Schema options were not offered at all.
+	// Zero values keep the engine defaults.
+	cfg.Naming = req.Naming
+	if len(req.Hosts) > 0 {
+		cfg.Hosts = req.Hosts
+	}
+	cfg.ExcludeTypeComments = req.ExcludeTypeComments
+	cfg.Schema = req.Schema
 
 	if req.FrameworkConfig != nil {
 		fc := req.FrameworkConfig

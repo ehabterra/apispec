@@ -38,7 +38,18 @@ const state = {
     include: {},
     exclude: {},
     overrides: [],
+    naming: {},
+    hosts: [],
+    excludeTypeComments: false,
+    schema: {}, // {requiredFromJSONTags, nullableWhenNil}
   },
+  // Run options that are CLI flags rather than config-file fields, so they
+  // persist per browser (like limits) instead of in a saved apispec.yaml.
+  strict: [], // strict categories the run is gated on; empty = no gate
+  analysis: {}, // package-selection switches; an unset switch stays on
+  strictCategories: [], // the engine's category names, from /api/detect
+  strictFindings: [], // [{category,count,detail}] from the last run
+  strictFailed: false, // a finding fell in a gated category
   frameworkConfig: null, // full pattern config when loaded/edited via YAML
   detected: null, // raw /api/detect response (used by legacy advanced editor)
   apispecVersion: "",
@@ -61,7 +72,7 @@ const state = {
 
 // View prefs persisted across refreshes so a reload lands the user back where
 // they were (which tab, which spec viewer, panel layout).
-const PERSIST_KEYS = ["mode", "specView", "panelCollapsed", "limits"];
+const PERSIST_KEYS = ["mode", "specView", "panelCollapsed", "limits", "strict", "analysis"];
 const PERSIST_LS_KEY = "apispecui.view";
 
 function loadPersistedView() {

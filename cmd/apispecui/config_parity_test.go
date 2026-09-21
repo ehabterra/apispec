@@ -17,6 +17,7 @@ package main
 import (
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -129,4 +130,54 @@ func jsonFieldName(f reflect.StructField) string {
 		tag = tag[:idx]
 	}
 	return tag
+}
+
+// TestEditorKeysReachGenerate guards the round-trip for the TOP-LEVEL config
+// keys the editor writes (setConfig / setKey / addTo in config.js). A key
+// the editor sets but the client never sends — or the server never accepts —
+// is a dead control: it looks like a choice and changes nothing. Naming,
+// Virtual hosts and "Include type comments" were all in that state.
+func TestEditorKeysReachGenerate(t *testing.T) {
+	editor, err := os.ReadFile("assets/js/config.js")
+	if err != nil {
+		t.Fatalf("read config editor: %v", err)
+	}
+	actions, err := os.ReadFile("assets/js/actions.js")
+	if err != nil {
+		t.Fatalf("read actions: %v", err)
+	}
+	sent := string(actions)
+
+	keys := map[string]bool{}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`setConfig\(\{\s*([a-zA-Z]+):`),
+		regexp.MustCompile(`(?:setKey|addTo|updAt|delAt)\("([a-zA-Z]+)"`),
+	} {
+		for _, m := range re.FindAllStringSubmatch(string(editor), -1) {
+			keys[m[1]] = true
+		}
+	}
+	if len(keys) < 5 {
+		t.Fatalf("found only %d editor keys — the extraction regexps no longer match config.js", len(keys))
+	}
+
+	accepted := map[string]bool{}
+	typ := reflect.TypeOf(GenerateRequest{})
+	for i := 0; i < typ.NumField(); i++ {
+		if name := jsonFieldName(typ.Field(i)); name != "" {
+			accepted[name] = true
+		}
+	}
+
+	for key := range keys {
+		if !strings.Contains(sent, key+": c."+key) {
+			t.Errorf("config.js edits %q but fullGenerateRequest never sends it", key)
+		}
+		if !regexp.MustCompile(`\b` + key + `: [^\n]*\bo\.` + key + `\b`).MatchString(sent) {
+			t.Errorf("config.js edits %q but applyConfigSections never loads it", key)
+		}
+		if !accepted[key] {
+			t.Errorf("config.js edits %q but GenerateRequest has no field for it", key)
+		}
+	}
 }

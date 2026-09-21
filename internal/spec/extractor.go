@@ -16,6 +16,7 @@ package spec
 
 import (
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -4340,11 +4341,11 @@ func addAlternateMediaType(cur, next *ResponseInfo) *ResponseInfo {
 	// arrive as two merges.
 	for ct, s := range next.Alternates {
 		if ct != merged.ContentType {
-			addAlternateSchema(merged.Alternates, ct, s, next.BodyType)
+			addAlternateSchema(merged.Alternates, ct, s)
 		}
 	}
 	if next.ContentType != merged.ContentType {
-		addAlternateSchema(merged.Alternates, next.ContentType, next.Schema, next.BodyType)
+		addAlternateSchema(merged.Alternates, next.ContentType, next.Schema)
 	}
 	// Every alternate's type is recorded, because component collection reads
 	// OneOfTypes (or BodyType), never the alternate schemas — so a `$ref` that
@@ -4364,7 +4365,7 @@ func addAlternateMediaType(cur, next *ResponseInfo) *ResponseInfo {
 // alone (CodeRabbit on #470). anyOf, for the same reason
 // mergeResponseAlternatives uses it — these are what the status MAY carry, not
 // a claim that they are mutually exclusive.
-func addAlternateSchema(into map[string]*Schema, ct string, add *Schema, bodyType string) {
+func addAlternateSchema(into map[string]*Schema, ct string, add *Schema) {
 	if add == nil {
 		return
 	}
@@ -4373,31 +4374,36 @@ func addAlternateSchema(into map[string]*Schema, ct string, add *Schema, bodyTyp
 		into[ct] = add
 		return
 	}
-	if sameRenderedBody(existing, add) {
-		return // the same representation twice
+	if isEmptySchema(add) {
+		return // an anyOf member that constrains nothing says less than the rest
 	}
-	// Reuse the composition rule rather than restating it: the empty-schema
-	// case and accumulation into an existing anyOf both matter here too. The
-	// body types are carried because mergeResponseAlternatives keys "already
-	// represented" on them — without them every addition looks like a repeat of
-	// the unnamed body already there.
-	composed := mergeResponseAlternatives(
-		&ResponseInfo{Schema: existing, BodyType: alternateTypeKey(existing)},
-		&ResponseInfo{Schema: add, BodyType: bodyType},
-	)
-	into[ct] = composed.Schema
+	if isEmptySchema(existing) {
+		into[ct] = add
+		return
+	}
+	// Compare against the MEMBERS of a composition already stored, not the
+	// composition as a whole. Handing the stored anyOf to
+	// mergeResponseAlternatives lost its member types, so a body already in it
+	// never looked represented and was wrapped once per repeat — a gitea
+	// handler writing HTML with JSON fallbacks nested one error body 2,585
+	// levels deep, and Swagger UI refused the document (maxDepth 100).
+	members := []*Schema{existing}
+	if isPureAnyOf(existing) {
+		members = existing.AnyOf
+	}
+	for _, m := range members {
+		if sameRenderedBody(m, add) {
+			return // the same representation again
+		}
+	}
+	into[ct] = &Schema{AnyOf: append(append([]*Schema{}, members...), add)}
 }
 
-// alternateTypeKey names the body a stored alternate schema describes, well
-// enough for the repeat check in mergeResponseAlternatives. The schema's own
-// $ref is that name where there is one; a composed schema is already plural and
-// answers with nothing, which lets the addition through to be compared member
-// by member.
-func alternateTypeKey(s *Schema) string {
-	if s == nil {
-		return ""
-	}
-	return s.Ref
+// isPureAnyOf reports whether a schema is nothing but an anyOf, so its members
+// can be extended in place of wrapping it. A composition carrying anything
+// else — a description, a nullable wrapper's siblings — is kept whole.
+func isPureAnyOf(s *Schema) bool {
+	return s != nil && len(s.AnyOf) > 0 && reflect.DeepEqual(*s, Schema{AnyOf: s.AnyOf})
 }
 
 // alternateBodyTypes lists the Go types two merging fragments describe, so none

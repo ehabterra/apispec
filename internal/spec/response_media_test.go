@@ -205,35 +205,23 @@ func TestAlternateCompositionEdges(t *testing.T) {
 	into := map[string]*Schema{}
 
 	// Nothing to add.
-	addAlternateSchema(into, "application/xml", nil, "pkg.Item")
+	addAlternateSchema(into, "application/xml", nil)
 	if len(into) != 0 {
 		t.Errorf("a nil schema was recorded: %+v", into)
 	}
 
 	// A slot holding nothing takes the addition outright.
 	into["application/xml"] = nil
-	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"}, "pkg.Item")
+	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"})
 	if into["application/xml"].Ref != "#/item" {
 		t.Errorf("an empty slot did not take the schema: %+v", into["application/xml"])
 	}
 
 	// The same representation twice stays one, rather than composing a schema
 	// with itself.
-	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"}, "pkg.Item")
+	addAlternateSchema(into, "application/xml", &Schema{Ref: "#/item"})
 	if got := into["application/xml"]; got.Ref != "#/item" || len(got.AnyOf) != 0 {
 		t.Errorf("a repeat was composed instead of ignored: %+v", got)
-	}
-
-	// alternateTypeKey names a single body and declines a composed one, which
-	// is what lets a third member reach the comparison.
-	if got := alternateTypeKey(&Schema{Ref: "#/item"}); got != "#/item" {
-		t.Errorf("alternateTypeKey = %q, want the ref", got)
-	}
-	if got := alternateTypeKey(&Schema{AnyOf: []*Schema{{Ref: "#/a"}, {Ref: "#/b"}}}); got != "" {
-		t.Errorf("a composed schema named %q; it is already plural", got)
-	}
-	if got := alternateTypeKey(nil); got != "" {
-		t.Errorf("a nil schema named %q", got)
 	}
 
 	// alternateBodyTypes gathers from both sides and tolerates a nil one.
@@ -244,5 +232,40 @@ func TestAlternateCompositionEdges(t *testing.T) {
 	slices.Sort(types)
 	if !slices.Equal(types, []string{"pkg.A", "pkg.B"}) {
 		t.Errorf("alternateBodyTypes = %v, want both of the left side's types", types)
+	}
+}
+
+// The same body arriving again under an alternate media type that already holds
+// a composition is a repeat, not a new member. It was wrapped instead —
+// `anyOf: [anyOf: [string, Err], Err]` — once per repeat, because the stored
+// composition was passed on with no body types, so nothing looked represented.
+// A gitea handler writing HTML with JSON fallbacks repeated one error body 2,585
+// times: its 200 nested 5,176 levels deep and Swagger UI refused the document
+// ("nesting exceeded maxDepth (100)").
+func TestAddAlternateSchemaRepeatDoesNotNest(t *testing.T) {
+	str := &Schema{Type: "string"}
+	errRef := &Schema{Ref: "#/components/schemas/APIError"}
+	into := map[string]*Schema{}
+
+	addAlternateSchema(into, "application/json", str)
+	for i := 0; i < 5; i++ {
+		addAlternateSchema(into, "application/json", errRef)
+	}
+
+	got := into["application/json"]
+	if got == nil || len(got.AnyOf) != 2 {
+		t.Fatalf("want anyOf [string, APIError], got %+v", got)
+	}
+	for i, m := range got.AnyOf {
+		if len(m.AnyOf) > 0 {
+			t.Errorf("member %d is itself an anyOf — the composition nested", i)
+		}
+	}
+
+	// A genuinely new body still joins the existing members, flat.
+	other := &Schema{Ref: "#/components/schemas/Other"}
+	addAlternateSchema(into, "application/json", other)
+	if got := into["application/json"]; len(got.AnyOf) != 3 {
+		t.Errorf("want 3 flat members after a new body, got %d", len(got.AnyOf))
 	}
 }

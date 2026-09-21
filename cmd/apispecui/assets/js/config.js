@@ -327,6 +327,19 @@ export function ConfigMode() {
             </label>
           <//>
 
+          <${Section} title="Schema shape" help="Opt-in rules that make schemas say what encoding/json actually does. 'Required from JSON tags' marks a field required when it has no omitempty/omitzero, because it is then always on the wire — right for responses, an over-claim for request bodies (validate:'required' still marks request fields). 'Nullable when nil' admits null for a pointer, slice, map or interface field without omitempty, since a nil one is written as null. Turn both on together: required without nullable is the one combination worse than neither.">
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!!c.schema?.requiredFromJSONTags}
+                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), requiredFromJSONTags: e.target.checked } })} />
+              <span>Required from JSON tags</span>
+            </label>
+            <label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+              <input type="checkbox" checked=${!!c.schema?.nullableWhenNil}
+                onChange=${(e) => setConfig({ schema: { ...(c.schema || {}), nullableWhenNil: e.target.checked } })} />
+              <span>Nullable when nil</span>
+            </label>
+          <//>
+
           <${Section} title="External docs" help="An optional link to documentation hosted elsewhere (e.g. your developer portal or a guide). Renders as a 'Find out more' link in Swagger/Redoc. Example: URL https://docs.example.com, description 'Full developer guide'.">
 
             ${txt("URL", c.externalDocs?.url, (e) => setExtDocs({ url: e.target.value }), "https://…")}
@@ -408,6 +421,14 @@ export function ConfigMode() {
 
           <${Section} title="Analysis limits" help="How far the analysis is allowed to walk the call tree. Raise these when a project is large enough that the default budget stops expansion part-way through its routes; leave them blank to use the defaults shown.">
             <${TrackerLimits} />
+          <//>
+
+          <${Section} title="Strict mode" openDefault=${s.strictFailed} help="The CLI's --strict. Every run reports its quality shortfalls below; tick a category to hold runs to it, and a run with a finding there is reported as a failed strict check. The spec itself is the same either way — strict decides a verdict, never the document." hint=${(s.strict || []).length ? `${(s.strict || []).length} gated` : ""}>
+            <${StrictMode} />
+          <//>
+
+          <${Section} title="Package selection" help="Which packages the analysis loads. These are the CLI's --skip-cgo, --analyze-framework-dependencies, --auto-include-framework-packages, --auto-exclude-tests and --auto-exclude-mocks; all are on by default. Turn one off only to investigate a missing route — e.g. a handler living in a package named like a mock.">
+            <${AnalysisOptions} />
           <//>
 
           <${Section} title="Include / exclude filters" help="Scope the analysis: include limits it to the listed packages/files/functions/types, exclude removes them (exclude wins). One entry per line, glob-style. Tests and mocks are auto-excluded already. Examples — exclude files: **/*_test.go ; exclude packages: github.com/me/api/internal/mocks ; include packages: github.com/me/api/handlers (narrow a huge repo to just the HTTP layer to speed up generation).">
@@ -959,7 +980,65 @@ function TrackerLimits() {
     ${row("maxChildrenPerNode", "Max children per node", "How many callees one node may expand. A router that registers hundreds of routes in a single function needs this above the default.")}
     ${row("maxRecursionDepth", "Max recursion depth", "How deep a call chain may be followed through repeated frames. Deeply nested group closures need more.")}
     ${row("maxInstancesPerKey", "Max instances per key", "How many copies of one callee are expanded within a scope (roughly per handler, but per GROUP closure in practice). A response helper shared by a group exhausts this budget after that many routes, and every later route in the group silently loses its response body — raise it for a project whose groups hold many routes.")}
+    ${row("maxResponseInstancesPerKey", "Max response instances per key", "The same budget as Max instances per key, applied to response helpers only. Raise it when later routes in a group lose their response bodies while requests still resolve.")}
     ${row("maxArgsPerFunction", "Max args per function", "How many arguments of one call are expanded.")}
     ${row("maxNestedArgsDepth", "Max nested arg depth", "How deep a composite argument (a struct literal holding a call holding a literal) is expanded.")}
+  `;
+}
+
+// StrictMode is the UI form of --strict: pick the categories a run is held to,
+// and see the last run's findings in every category. The category list comes
+// from the server so it cannot drift from the engine's.
+function StrictMode() {
+  const s = useStore();
+  const gated = new Set(s.strict || []);
+  const cats = s.strictCategories || [];
+  const findings = s.strictFindings || [];
+  const toggle = (cat, checked) => {
+    const next = new Set(gated);
+    if (checked) next.add(cat);
+    else next.delete(cat);
+    setState({ strict: cats.filter((c) => next.has(c)) });
+  };
+  return html`
+    <div class="row" style="flex-wrap:wrap;gap:12px;margin-bottom:8px">
+      ${cats.map(
+        (cat) => html`<label class="row" style="cursor:pointer;gap:6px">
+          <input type="checkbox" checked=${gated.has(cat)} onChange=${(e) => toggle(cat, e.target.checked)} />
+          <span>${cat}</span>
+        </label>`,
+      )}
+    </div>
+    ${findings.length === 0
+      ? html`<p class="muted" style="font-size:var(--fs-sm);margin:0">${s.hasSpec ? "The last run had no strict findings." : "Generate to see findings."}</p>`
+      : findings.map(
+          (f) => html`<div style="font-size:var(--fs-sm);margin-bottom:4px;color:${gated.has(f.category) ? "var(--err,#e55)" : "var(--warn)"}">
+            <code>${f.category}</code> ${f.detail}
+          </div>`,
+        )}
+  `;
+}
+
+// AnalysisOptions edits the package-selection switches. An unset switch is on,
+// matching the server, so only an explicit untick is ever sent as false.
+function AnalysisOptions() {
+  const s = useStore();
+  const a = s.analysis || {};
+  const set = (key, checked) => {
+    const next = { ...a };
+    if (checked) delete next[key];
+    else next[key] = false;
+    setState({ analysis: next });
+  };
+  const box = (key, label) => html`<label class="row" style="cursor:pointer;gap:6px;margin:0 0 6px">
+    <input type="checkbox" checked=${a[key] !== false} onChange=${(e) => set(key, e.target.checked)} />
+    <span>${label}</span>
+  </label>`;
+  return html`
+    ${box("skipCGOPackages", "Skip cgo packages")}
+    ${box("analyzeFrameworkDependencies", "Analyze framework dependencies")}
+    ${box("autoIncludeFrameworkPackages", "Auto-include framework packages")}
+    ${box("autoExcludeTests", "Auto-exclude tests")}
+    ${box("autoExcludeMocks", "Auto-exclude mocks")}
   `;
 }

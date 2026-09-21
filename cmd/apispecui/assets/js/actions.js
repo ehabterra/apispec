@@ -48,6 +48,16 @@ function applyConfigSections(o) {
     include: o.include || {},
     exclude: o.exclude || {},
     overrides: o.overrides || [],
+    // Option-style settings take what the incoming config STATES and keep the
+    // rest: a project's apispec.yaml usually has no naming or schema block,
+    // and replacing wholesale wiped a choice made just before "Use it" — the
+    // run then came out fully qualified with nothing on screen saying why.
+    // Same rule as the CLI, where --schema-names short plus a config with no
+    // naming block gives short names.
+    naming: { ...(c.naming || {}), ...(o.naming || {}) },
+    hosts: o.hosts || [],
+    excludeTypeComments: o.excludeTypeComments || c.excludeTypeComments || false,
+    schema: { ...(c.schema || {}), ...(o.schema || {}) },
   });
   // A new config context invalidates middleware detected for the previous one.
   setState({ unresolvedSecurity: [] });
@@ -62,6 +72,7 @@ export function applyDetect(d) {
     framework: d.detectedFramework || getState().framework,
     supportedFrameworks: d.supportedFrameworks || getState().supportedFrameworks,
     trackerDefaults: d.trackerDefaults || getState().trackerDefaults,
+    strictCategories: d.strictCategories || getState().strictCategories,
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,
     detected: d,
@@ -107,6 +118,8 @@ function applyStatusResult(st) {
       unresolvedSecurity: r.unresolvedSecurity || [],
       truncated: !!r.truncated,
       nodeLimit: r.nodeLimit || 0,
+      strictFindings: r.strictFindings || [],
+      strictFailed: !!r.strictFailed,
       lastGenTick: Date.now(),
     });
   } else if (st && st.hasSpec) {
@@ -249,6 +262,12 @@ function fullGenerateRequest() {
     include: c.include,
     exclude: c.exclude,
     overrides: c.overrides,
+    naming: c.naming,
+    hosts: c.hosts,
+    excludeTypeComments: c.excludeTypeComments,
+    schema: c.schema,
+    strict: s.strict || [],
+    analysis: s.analysis || {},
     frameworkConfig: s.frameworkConfig || undefined,
     limits: s.limits || {},
   };
@@ -314,17 +333,35 @@ export async function generate(opts = {}) {
         truncated: !!res.truncated,
         nothingMatched: !!res.nothingMatched,
         nodeLimit: res.nodeLimit || 0,
+        strictFindings: res.strictFindings || [],
+        strictFailed: !!res.strictFailed,
         genBlocked: false,
       });
-      if (res.nothingMatched) {
+      // The strict verdict rides along with whichever status leads, so a gated
+      // run never reads like an ungated one — including when a truncation or
+      // skipped-package warning takes the headline.
+      const gated = res.strictGated || [];
+      const strictNote = gated.length ? ` · strict check passed (${gated.join(", ")})` : "";
+      if (res.strictFailed) {
+        // Name each gated category with its own count: the counts are in
+        // different units (middleware, registrations, packages), so one sum
+        // would read as a number of something that does not exist.
+        const failing = (res.strictFindings || [])
+          .filter((f) => gated.includes(f.category))
+          .map((f) => `${f.category} (${f.count})`)
+          .join(", ");
+        setStatus(`generated ${res.pathCount || 0} paths · strict check failed: ${failing} · ${took}`, "err");
+      } else if (res.nothingMatched) {
         setStatus(
-          `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters · ${took}`,
+          `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters${strictNote} · ${took}`,
           "warn",
         );
       } else if (res.truncated) {
-        setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing · ${took}`, "warn");
+        setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing${strictNote} · ${took}`, "warn");
       } else if (skipped.length) {
-        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
+        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped${strictNote} · ${took}`, "warn");
+      } else if (gated.length) {
+        setStatus(`generated ${res.pathCount || 0} paths${strictNote} · ${took}`, "ok");
       } else {
         setStatus(`generated ${res.pathCount || 0} paths in ${took}`, "ok");
       }
