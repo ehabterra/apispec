@@ -337,23 +337,31 @@ export async function generate(opts = {}) {
         strictFailed: !!res.strictFailed,
         genBlocked: false,
       });
+      // The strict verdict rides along with whichever status leads, so a gated
+      // run never reads like an ungated one — including when a truncation or
+      // skipped-package warning takes the headline.
+      const gated = res.strictGated || [];
+      const strictNote = gated.length ? ` · strict check passed (${gated.join(", ")})` : "";
       if (res.strictFailed) {
-        const gated = new Set(res.strictGated || []);
-        const n = (res.strictFindings || []).filter((f) => gated.has(f.category)).length;
-        setStatus(`generated ${res.pathCount || 0} paths · strict check failed: ${n} finding(s) in gated categories · ${took}`, "err");
+        // Name each gated category with its own count: the counts are in
+        // different units (middleware, registrations, packages), so one sum
+        // would read as a number of something that does not exist.
+        const failing = (res.strictFindings || [])
+          .filter((f) => gated.includes(f.category))
+          .map((f) => `${f.category} (${f.count})`)
+          .join(", ");
+        setStatus(`generated ${res.pathCount || 0} paths · strict check failed: ${failing} · ${took}`, "err");
       } else if (res.nothingMatched) {
         setStatus(
-          `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters · ${took}`,
+          `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters${strictNote} · ${took}`,
           "warn",
         );
       } else if (res.truncated) {
-        setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing · ${took}`, "warn");
+        setStatus(`generated ${res.pathCount || 0} paths · expansion hit the ${res.nodeLimit}-node limit, so routes are missing${strictNote} · ${took}`, "warn");
       } else if (skipped.length) {
-        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped · ${took}`, "warn");
-      } else if ((res.strictGated || []).length) {
-        // A passed gate must read differently from no gate, or a user who
-        // turned strict on cannot tell it ran at all.
-        setStatus(`generated ${res.pathCount || 0} paths · strict check passed (${res.strictGated.join(", ")}) · ${took}`, "ok");
+        setStatus(`generated ${res.pathCount || 0} paths · ${skipped.length} package(s) skipped${strictNote} · ${took}`, "warn");
+      } else if (gated.length) {
+        setStatus(`generated ${res.pathCount || 0} paths${strictNote} · ${took}`, "ok");
       } else {
         setStatus(`generated ${res.pathCount || 0} paths in ${took}`, "ok");
       }
