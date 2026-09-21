@@ -150,6 +150,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config can fix (an unresolved type, unmapped auth middleware) now open the
   Configure group that fixes them instead of the top of the editor.
 
+- **Insight's Overview is three layers instead of thirteen cards.** A one-line
+  brief says whether the spec is in good shape. **Needs attention** is the one
+  ranked list of what to do. It merges the old alerts, the per-route list,
+  unmapped auth middleware and failing gated strict categories, counts each
+  cause by distinct operation, and expands to the routes it affects; a route
+  opens straight in the Endpoint view. **At a glance** is seven tiles with
+  one anatomy (label, value, bar, caption) in two rows: how complete the spec
+  is, and what the API is. Every tile opens the same side drawer for its
+  detail, and ←/→ step between them, so detail is always in one place. The
+  Resolution tile and the brief now show the same score, where they had
+  shown two different percentages for one question.
+
 ### Fixed
 
 - **Naming is reachable from the CLI and the UI.** #298 made operationId and

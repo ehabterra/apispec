@@ -1616,25 +1616,10 @@ h3 + .info {
   border-top: 0;
 }
 
-/* ---- insight overview: section jump bar + quality gate ------------- */
-.ov-nav {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) 0;
-  margin-bottom: var(--sp-2);
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-}
-/* Anchors sit just above their section; the margin keeps the sticky jump bar
-   from covering the section's first line. */
-.ov-anchor {
-  scroll-margin-top: 64px;
-}
+/* ---- insight overview ------------------------------------------------
+   Brief → Needs attention → At a glance tiles → one detail drawer. Every tile
+   shares one anatomy (label · value · bar · caption) so the grid scans as a
+   row of answers; the drawer is the only place detail lives. */
 .gate-grid {
   display: grid;
   grid-template-columns: auto auto 1fr;
@@ -1665,3 +1650,548 @@ h3 + .info {
     grid-column: 2;
   }
 }
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 1280px;
+}
+.tone-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* brief */
+.brief {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+}
+.brief-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.brief-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+.brief-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.brief-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+.brief-facts span + span::before {
+  content: "·";
+  margin: 0 8px;
+}
+.brief > .btn {
+  align-self: flex-start;
+}
+
+/* block headings */
+.ov-h {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.ov-h h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.ov-sub {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+
+/* needs attention */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.todo {
+  background: var(--panel-2);
+  border-left: 3px solid var(--warn);
+}
+.todo.crit {
+  border-left-color: var(--danger);
+}
+.todo + .todo {
+  border-top: 1px solid var(--border);
+}
+.todo-head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-2);
+}
+.todo-sev {
+  justify-self: start;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--warn);
+}
+.todo.crit .todo-sev {
+  color: var(--danger);
+}
+.todo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.todo-text:disabled {
+  cursor: default;
+}
+.todo-title {
+  font-weight: 600;
+}
+.todo-why {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.todo-count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.todo-count small {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--faint);
+}
+.todo-actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+.todo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--sp-3) var(--sp-3) calc(56px + var(--sp-3) + var(--sp-2));
+}
+.todo-name {
+  font-size: var(--fs-sm);
+  padding: 3px 0;
+}
+/* route links (to-do rows, drawer lists) */
+.route-link {
+  display: grid;
+  grid-template-columns: 52px minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: 0;
+  border-radius: var(--r-1);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.route-link:hover {
+  background: var(--panel-3);
+}
+.rl-method {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.rl-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl-detail {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl-go {
+  color: var(--faint);
+}
+.route-link:hover .rl-go {
+  color: var(--accent);
+}
+.issue-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2);
+}
+.issue-row .badge {
+  justify-self: start;
+}
+
+/* tiles */
+.tile-row + .tile-row {
+  margin-top: var(--sp-3);
+}
+.tile-row-h {
+  margin-bottom: 6px;
+  font-size: var(--fs-xs);
+  color: var(--faint);
+}
+/* One row per question, as many columns as it has tiles, so each row fills
+   the width evenly; below that it falls back to two columns, then one. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+@media (max-width: 1100px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .tiles {
+    grid-template-columns: 1fr;
+  }
+}
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-4);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.tile:hover,
+.tile:focus-visible {
+  border-color: var(--accent);
+  background: var(--panel-3);
+  outline: none;
+}
+.tile.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.tile-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tile-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.tile-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-unit {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Two lines, always reserved, so every tile in a row is the same height. */
+.tile-caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: calc(2 * 1.4 * var(--fs-xs));
+  line-height: 1.4;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+}
+.tile-more {
+  margin-left: auto;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--faint);
+}
+.tile:hover .tile-more,
+.tile.active .tile-more {
+  color: var(--accent);
+}
+
+/* the one bar */
+.segbar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  width: 100%;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.segbar.tall {
+  height: 10px;
+}
+.segbar > span {
+  min-width: 3px;
+}
+.segbar-empty {
+  flex: 1;
+  background: var(--panel-3);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--sp-4);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.legend-it {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-it .sw {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.legend-it b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* drawer */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.35);
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100vw);
+  background: var(--panel);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+  outline: none;
+  animation: drawer-in 0.16s ease-out;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer {
+    animation: none;
+  }
+}
+.drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--sp-4) var(--sp-5) var(--sp-3);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-kicker {
+  font-size: var(--fs-xs);
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.drawer-title h3 {
+  margin: 0;
+  font-size: var(--fs-xl);
+}
+.drawer-x {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--r-1);
+}
+.drawer-x:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.drawer-q {
+  margin: 2px 0 var(--sp-3);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.drawer-face {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px var(--sp-3);
+}
+.drawer-face .tile-caption {
+  min-height: 0;
+}
+.drawer-body {
+  flex: 1 0 auto;
+  padding: var(--sp-2) var(--sp-5) var(--sp-4);
+}
+.drawer-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.dsec {
+  padding: var(--sp-4) 0;
+}
+.dsec + .dsec {
+  border-top: 1px solid var(--border);
+}
+.dsec-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--sp-2);
+}
+.dsec-h h4 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+.dsec-note {
+  margin: 0 0 var(--sp-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.dlist {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+.dlist li + li {
+  margin-top: 6px;
+}
+.dlist b {
+  color: var(--text);
+  font-weight: 600;
+}
+.status-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.status-n {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.split-viz {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+/* Drawer bars have room for their labels; the dashboard's 64px column cut
+   every cause name short. */
+.drawer .bars .bar-row {
+  grid-template-columns: minmax(120px, 38%) 1fr 40px;
+}
+.route-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 720px) {
+  .brief {
+    flex-wrap: wrap;
+  }
+  .todo-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .todo-sev {
+    grid-column: 1 / -1;
+  }
+  .todo-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .todo-body {
+    padding-left: var(--sp-3);
+  }
+  .issue-row {
+    grid-template-columns: 1fr;
+  }
+}
+

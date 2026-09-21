@@ -52,10 +52,13 @@ function InfoTip({ text, tip }) {
   return html`<span class="info-tip" style=${style}>${text}</span>`;
 }
 
-// Gauge — a radial progress dial (0..100).
+// Gauge — a radial progress dial (0..100). Stroke and type scale with size
+// (the proportions of the 132px default), so a small dial keeps its figure
+// inside the ring.
 export function Gauge({ value, size = 132, label, color }) {
   const v = Math.max(0, Math.min(100, value || 0));
-  const stroke = 12;
+  const k = size / 132;
+  const stroke = Math.max(6, Math.round(12 * k));
   const r = (size - stroke) / 2;
   const c = size / 2;
   const circ = 2 * Math.PI * r;
@@ -65,8 +68,8 @@ export function Gauge({ value, size = 132, label, color }) {
     <circle cx=${c} cy=${c} r=${r} fill="none" stroke="var(--panel-3)" stroke-width=${stroke} />
     <circle cx=${c} cy=${c} r=${r} fill="none" stroke=${col} stroke-width=${stroke} stroke-linecap="round"
       stroke-dasharray=${`${len} ${circ - len}`} transform=${`rotate(-90 ${c} ${c})`} />
-    <text x=${c} y=${c - 1} text-anchor="middle" font-size="26" font-weight="700" fill="var(--text)">${v}%</text>
-    ${label ? html`<text x=${c} y=${c + 18} text-anchor="middle" font-size="10" fill="var(--muted)">${label}</text>` : ""}
+    <text x=${c} y=${c - Math.round(1 * k)} text-anchor="middle" font-size=${Math.round(26 * k)} font-weight="700" fill="var(--text)">${v}%</text>
+    ${label ? html`<text x=${c} y=${c + Math.round(18 * k)} text-anchor="middle" font-size=${Math.max(9, Math.round(10 * k))} fill="var(--muted)">${label}</text>` : ""}
   </svg>`;
 }
 
