@@ -211,8 +211,9 @@ for a reason you cannot see.
 Beyond the matrix, and with no configuration: **your own router and context
 types** (`func (r *Router) Get(...)`, `ctx.JSON/Bind/Query`), **mixed
 multi-framework binaries**, **CLI-dispatched servers** (cobra, urfave/cli),
-`switch r.Method` dispatch, generics, embedded and inline structs, enums from
-constants, and `go-playground/validator` constraints.
+`switch r.Method` dispatch, framework error sentinels a handler returns
+(`return echo.ErrForbidden` documents a 403), generics, embedded and inline
+structs, enums from constants, and `go-playground/validator` constraints.
 
 📖 The full list, with worked examples: **[docs/CAPABILITIES.md](docs/CAPABILITIES.md)**
 · What it cannot see: **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)**
