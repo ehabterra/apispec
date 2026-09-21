@@ -42,6 +42,34 @@ func DefaultGinConfig() *APISpecConfig {
 		rawBodyCall{call: `^Data$`, mediaTypeArg: 1, contentArg: 2},
 		rawBodyCall{call: `^DataFromReader$`, mediaTypeArg: 2, reader: true},
 	)...)
+	// gin's abort family writes a status — and, for the JSON form, a body — the
+	// same way its renderers do, under names no renderer pattern matches. Every
+	// gin codebase that aborts from middleware or an error helper answers
+	// through these, so without them its error responses went undocumented: on
+	// one real project 120 of 140 operations showed only their 200 (issue #551).
+	//
+	//	AbortWithStatusJSON(code, obj)      status + JSON body
+	//	AbortWithStatusPureJSON(code, obj)  the same, unescaped (gin >= 1.11)
+	//	AbortWithStatus(code)               status only
+	//	AbortWithError(code, err)           status only: the error is ATTACHED to
+	//	                                    the context for middleware, not written
+	responsePatterns = append(responsePatterns,
+		ResponsePattern{
+			CallRegex:      `^AbortWithStatus(Pure)?JSON$`,
+			StatusArgIndex: 0,
+			StatusFromArg:  true,
+			TypeArgIndex:   1,
+			TypeFromArg:    true,
+			RecvTypeRegex:  ginContextRecv,
+		},
+		ResponsePattern{
+			CallRegex:      `^AbortWith(Status|Error)$`,
+			StatusArgIndex: 0,
+			StatusFromArg:  true,
+			TypeArgIndex:   -1,
+			RecvTypeRegex:  ginContextRecv,
+		},
+	)
 	// Scoped to gin's Context: this reads the status from arg 0, which is a
 	// gin convention — unscoped it would misread a status-less call like
 	// fiber's c.JSON(obj), which is why SecondaryView dropped it and a
