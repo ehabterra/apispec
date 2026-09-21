@@ -126,6 +126,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Naming is reachable from the CLI and the UI.** #298 made operationId and
+  component naming a config choice with `full` as the default, but there was no
+  flag for it. `--operation-id` (`full` | `receiver-method` | `method-path`) and
+  `--schema-names` (`full` | `short`) now set it; a flag overrides the config,
+  and a misspelt style is rejected. Short schema names also no longer leave a
+  type fully qualified when it reached the analysis under two spellings
+  (`pkg.T` and the internal `pkg-->T`) and collided with itself: six schemas on
+  a real service, now zero of 445.
+
+- **apispecui's config editor no longer has dead controls.** The Naming,
+  Virtual hosts and "Document schemas from Go doc comments" controls were
+  written by the editor and never sent to the server, so a UI run always used
+  the defaults whatever was picked — and a loaded `apispec.yaml` lost those
+  settings outside raw-YAML mode. They are now sent, loaded and saved, guarded
+  by a test that fails when the editor writes a key the request does not
+  carry. The UI also gains what only the CLI had: the `schema:` options
+  (`requiredFromJSONTags`, `nullableWhenNil`), strict mode (every run reports
+  its strict findings; ticked categories mark the run as failing the check),
+  the package-selection switches, and the
+  `--max-response-instances-per-key` limit.
+
 - **An inline struct literal is a response body.**
   `respondJSON(w, 200, struct{ Values []string }{…})` documented a 200 with no
   content at all, while the identical value assigned to a variable first

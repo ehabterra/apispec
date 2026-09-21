@@ -48,6 +48,10 @@ function applyConfigSections(o) {
     include: o.include || {},
     exclude: o.exclude || {},
     overrides: o.overrides || [],
+    naming: o.naming || {},
+    hosts: o.hosts || [],
+    excludeTypeComments: o.excludeTypeComments || false,
+    schema: o.schema || {},
   });
   // A new config context invalidates middleware detected for the previous one.
   setState({ unresolvedSecurity: [] });
@@ -62,6 +66,7 @@ export function applyDetect(d) {
     framework: d.detectedFramework || getState().framework,
     supportedFrameworks: d.supportedFrameworks || getState().supportedFrameworks,
     trackerDefaults: d.trackerDefaults || getState().trackerDefaults,
+    strictCategories: d.strictCategories || getState().strictCategories,
     openapiVersion: d.openapiVersion || getState().openapiVersion,
     frameworkConfig: d.frameworkConfig || null,
     detected: d,
@@ -107,6 +112,8 @@ function applyStatusResult(st) {
       unresolvedSecurity: r.unresolvedSecurity || [],
       truncated: !!r.truncated,
       nodeLimit: r.nodeLimit || 0,
+      strictFindings: r.strictFindings || [],
+      strictFailed: !!r.strictFailed,
       lastGenTick: Date.now(),
     });
   } else if (st && st.hasSpec) {
@@ -249,6 +256,12 @@ function fullGenerateRequest() {
     include: c.include,
     exclude: c.exclude,
     overrides: c.overrides,
+    naming: c.naming,
+    hosts: c.hosts,
+    excludeTypeComments: c.excludeTypeComments,
+    schema: c.schema,
+    strict: s.strict || [],
+    analysis: s.analysis || {},
     frameworkConfig: s.frameworkConfig || undefined,
     limits: s.limits || {},
   };
@@ -314,9 +327,15 @@ export async function generate(opts = {}) {
         truncated: !!res.truncated,
         nothingMatched: !!res.nothingMatched,
         nodeLimit: res.nodeLimit || 0,
+        strictFindings: res.strictFindings || [],
+        strictFailed: !!res.strictFailed,
         genBlocked: false,
       });
-      if (res.nothingMatched) {
+      if (res.strictFailed) {
+        const gated = new Set(res.strictGated || []);
+        const n = (res.strictFindings || []).filter((f) => gated.has(f.category)).length;
+        setStatus(`generated ${res.pathCount || 0} paths · strict check failed: ${n} finding(s) in gated categories · ${took}`, "err");
+      } else if (res.nothingMatched) {
         setStatus(
           `generated 0 paths · no route registration matched — the router may be unsupported, wired in a style no pattern covers, or excluded by the package filters · ${took}`,
           "warn",

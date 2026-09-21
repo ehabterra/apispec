@@ -64,7 +64,11 @@ func TestAnalysisInfo(t *testing.T) {
 // patterns, handler methods and response context before it was fixed.
 func TestBuildAPISpecConfigKeepsEverySection(t *testing.T) {
 	req := &GenerateRequest{
-		Framework: "chi",
+		Framework:           "chi",
+		Naming:              spec.Naming{OperationID: "receiver-method", SchemaNames: "short"},
+		Hosts:               []string{"api.example.com"},
+		ExcludeTypeComments: true,
+		Schema:              spec.SchemaConfig{RequiredFromJSONTags: true, NullableWhenNil: true},
 		FrameworkConfig: &spec.FrameworkConfig{
 			RoutePatterns:           []spec.RoutePattern{{CallRegex: "^Get$"}},
 			RequestBodyPatterns:     []spec.RequestBodyPattern{{CallRegex: "^Decode$"}},
@@ -104,6 +108,22 @@ func TestBuildAPISpecConfigKeepsEverySection(t *testing.T) {
 		if c.got != 1 {
 			t.Errorf("%s: %d entries survived, want the 1 that was submitted", c.section, c.got)
 		}
+	}
+
+	// Top-level choices the editor offers reach the engine too. All three were
+	// dropped here once, so the UI always produced full names, host-prefixed
+	// paths and type comments whatever was picked.
+	if cfg.Naming.OperationID != "receiver-method" || cfg.Naming.SchemaNames != "short" {
+		t.Errorf("naming = %+v, want receiver-method / short", cfg.Naming)
+	}
+	if len(cfg.Hosts) != 1 || cfg.Hosts[0] != "api.example.com" {
+		t.Errorf("hosts = %v, want [api.example.com]", cfg.Hosts)
+	}
+	if !cfg.ExcludeTypeComments {
+		t.Error("excludeTypeComments was dropped")
+	}
+	if !cfg.Schema.RequiredFromJSONTags || !cfg.Schema.NullableWhenNil {
+		t.Errorf("schema = %+v, want both options on", cfg.Schema)
 	}
 
 	// The submitted values reach the engine as written, not merely in the right
