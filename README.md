@@ -278,24 +278,21 @@ apidiag   --dir ./my-go-project     # http://localhost:8080
 Changes feed the next **Generate** directly. **Save config as…** writes them
 to an `apispec.yaml` the CLI reads.
 
-**Insight ▸ Overview** reads top to bottom from "what needs you" to "how it was
-read". The jump bar at the top scrolls to each section:
+**Insight ▸ Overview** has three layers, each answering one question:
 
-- **Summary**: resolution health, route/operation/component counts, the
-  **alerts** ranked by severity, and the **quality gate**. The gate is the
-  `--strict` check, counted on every run whether or not a category is gated,
-  so you see what a gate would catch before you turn it on. Alerts that
-  config can fix have a button that opens the right Configure group.
-- **Resolution**: operations by state (full, partial, broken) and the root
-  cause behind each gap. Also documentation coverage, response bodies per
-  status, and the per-route **Needs attention** list.
-- **API shape**: methods, status codes, content types, tags (click one to
-  filter the Endpoint view), and the most-referenced types.
-- **Security**: protected, public and unauthenticated operations, schemes
-  and their usage, and unmapped middleware.
-- **How it was read**: the frameworks detected, which one led, the CLI
-  entry-point gate, interface resolution, verb dispatch, and the call graph's
-  size and hot spots.
+- **Brief**: is the spec in good shape? One line, the health score, and the
+  basic facts: framework, routes, operations and schemas.
+- **Needs attention**: what should I do? One ranked list covering broken
+  references, unresolved types, defaulted statuses, unmapped auth middleware
+  and failing gated strict checks. Each row expands to the routes it
+  affects, and a route opens in the Endpoint view. A row that config can
+  fix has a button to the right Configure group.
+- **At a glance**: how does each facet look? Seven tiles, all read the same
+  way (label, value, bar, caption), in two rows. *How complete is the spec*
+  holds Resolution, Response bodies, Coverage and the Quality
+  gate, which is the `--strict` check counted on every run. *What the API is*
+  holds Security, API shape and How it was read. Select a tile to open its
+  detail in a side drawer; ← and → step through the tiles without closing it.
 
 **Export to AI** packages the issues, the trace and the handler source as
 Markdown for an assistant. Identifiers can be redacted.

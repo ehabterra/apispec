@@ -126,7 +126,9 @@ function Rail({ s }) {
 // the picker is buried in a collapsed config section and easy to miss.
 function UnresolvedBanner({ s }) {
   const n = (s.unresolvedSecurity || []).length;
-  if (s.generating || n === 0 || s.mode === "configure") return "";
+  // Configure shows the picker itself and Insight lists it as a to-do, so the
+  // banner would only repeat them there.
+  if (s.generating || n === 0 || s.mode === "configure" || s.mode === "insight") return "";
   return html`
     <div
       style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--warn-bg,#3a2c00);border-bottom:1px solid var(--warn,#b80);font-size:var(--fs-sm)"
