@@ -16,6 +16,7 @@ package metadata
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"iter"
@@ -258,6 +259,13 @@ type Metadata struct {
 	Args             map[string][]*CallGraphEdge `yaml:"-"`
 
 	roots []*CallGraphEdge `yaml:"-"`
+
+	// literalFieldCalls names the struct field a call's result is stored in
+	// when the call is a keyed element of a struct literal (`&App{lit: API()}`),
+	// the literal counterpart of an assignment's left-hand side. Filled while
+	// the call graph is built and read by processCallExpression; see
+	// literalFieldStores.
+	literalFieldCalls map[*ast.CallExpr]string
 
 	callDepth map[string]int `yaml:"_"`
 

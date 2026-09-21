@@ -164,6 +164,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A router placed in a struct literal keeps its mount prefix.**
+  `&App{auth: AuthAPIs()}` followed by `root.Mount("/auth", a.auth)` documented
+  every route of that router at the root: a keyed literal element is not an
+  assignment statement, so the field was never linked to the call that built
+  its router — on every version. Metadata now records a struct literal's keyed
+  call element as the field store it is, rendered exactly as the explicit
+  `app.auth = AuthAPIs()` would be, so the mount resolves the same way. Pointer
+  and value literals, a literal returned directly, and one built in `main` are
+  covered. Eleven projects byte-identical; no measurable cost on a 988-path
+  service. (#565)
+
 - **A router mounted from a struct field keeps its prefix again.** The #550 fix
   stopped linking a variable assigned inside a callee to the call that invokes
   it, and with it the one case that link is right for: the value stored IS a

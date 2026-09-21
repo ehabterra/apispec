@@ -306,8 +306,10 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 
 				// Use funcMap to get callee function declaration
 				var assignmentsInFunc = make(map[string][]Assignment)
+				seenLiterals := map[*ast.CompositeLit]bool{}
 
 				ast.Inspect(fn, func(nd ast.Node) bool {
+					addLiteralFieldStores(nd, seenLiterals, assignmentsInFunc, info, pkgName, fset, metadata)
 					switch expr := nd.(type) {
 					case *ast.AssignStmt:
 						assignments := processAssignment(expr, file, info, pkgName, fset, fileToInfo, funcMap, metadata)
@@ -1337,8 +1339,10 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 
 		// Use funcMap to get callee function declaration
 		var assignmentsInFunc = make(map[string][]Assignment)
+		seenLiterals := map[*ast.CompositeLit]bool{}
 
 		ast.Inspect(fn, func(nd ast.Node) bool {
+			addLiteralFieldStores(nd, seenLiterals, assignmentsInFunc, info, pkgName, fset, metadata)
 			switch expr := nd.(type) {
 			case *ast.AssignStmt:
 				assignments := processAssignment(expr, file, info, pkgName, fset, fileToInfo, funcMap, metadata)
@@ -1725,10 +1729,24 @@ func buildCallGraph(files map[string]*ast.File, pkgs map[string]map[string]*ast.
 		info := fileToInfo[file]
 
 		var assignStmt *ast.AssignStmt
+		seenLiterals := map[*ast.CompositeLit]bool{}
 
 		ast.Inspect(file, func(n ast.Node) bool {
 			if n == nil {
 				return true
+			}
+
+			// A struct literal is visited before its elements, so its keyed
+			// call elements are named here before the calls themselves are.
+			if lit, pointer := fieldLiteralAt(n, seenLiterals); lit != nil {
+				for _, store := range literalFieldStores(lit, pointer, info, pkgName, fset, metadata) {
+					if call, ok := ast.Unparen(store.valueExpr).(*ast.CallExpr); ok {
+						if metadata.literalFieldCalls == nil {
+							metadata.literalFieldCalls = map[*ast.CallExpr]string{}
+						}
+						metadata.literalFieldCalls[call] = store.name
+					}
+				}
 			}
 
 			if call, ok := n.(*ast.CallExpr); ok {
@@ -1912,10 +1930,13 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			}
 
 			if fn, ok := funcMap[funcName]; ok {
+				seenLiterals := map[*ast.CompositeLit]bool{}
 				ast.Inspect(fn, func(nd ast.Node) bool {
 					if nd == nil {
 						return true
 					}
+
+					addLiteralFieldStores(nd, seenLiterals, assignmentsInFunc, fnInfo, calleePkg, fset, metadata)
 
 					switch expr := nd.(type) {
 					case *ast.AssignStmt:
@@ -1946,6 +1967,9 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 				}
 			}
+		}
+		if assignVarName == "" {
+			assignVarName = metadata.literalFieldCalls[call]
 		}
 
 		// Create the call graph edge
@@ -2003,6 +2027,119 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 
 		metadata.CallGraph = append(metadata.CallGraph, *cgEdge)
 	}
+}
+
+// literalFieldStore is one keyed element of a struct literal, recorded as the
+// store into that field it amounts to.
+type literalFieldStore struct {
+	Assignment
+	name      string   // the field key, as CallArgToString names `x.field`
+	valueExpr ast.Expr // the element's value
+}
+
+// fieldLiteralAt returns the struct literal n is, and whether its value is a
+// pointer (`&T{…}`), once per literal: the walk meets `&T{…}` as the unary
+// expression and then again as its operand, and the operand must not be
+// recorded a second time as a value.
+func fieldLiteralAt(n ast.Node, seen map[*ast.CompositeLit]bool) (*ast.CompositeLit, bool) {
+	pointer := false
+	lit, _ := n.(*ast.CompositeLit)
+	if u, ok := n.(*ast.UnaryExpr); ok && u.Op == token.AND {
+		lit, _ = ast.Unparen(u.X).(*ast.CompositeLit)
+		pointer = true
+	}
+	if lit == nil || seen[lit] {
+		return nil, false
+	}
+	seen[lit] = true
+	return lit, pointer
+}
+
+// addLiteralFieldStores adds the field stores of the struct literal nd is, if
+// any, to a function's assignment map — beside the explicit `x.f = …` stores
+// the same walk records.
+func addLiteralFieldStores(nd ast.Node, seen map[*ast.CompositeLit]bool, into map[string][]Assignment, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) {
+	lit, pointer := fieldLiteralAt(nd, seen)
+	if lit == nil {
+		return
+	}
+	for _, store := range literalFieldStores(lit, pointer, info, pkgName, fset, meta) {
+		into[store.name] = append(into[store.name], store.Assignment)
+	}
+}
+
+// literalFieldStores records each keyed element of a struct literal whose value
+// is a call as the store into that field it is (issue #565):
+//
+//	app := &App{lit: LitAPI()}   // the same fact as  app.lit = LitAPI()
+//
+// Without it the field has no producer, so a router placed there and mounted
+// later (`root.Mount("/lit", a.lit)`) loses its prefix on every route.
+//
+// The store is built exactly as the explicit assignment's would be: the
+// left-hand side goes through ExprToCallArgument as a selector on a synthetic
+// variable of the literal's type, with a private types.Info that knows only
+// that variable and the element's key — the field go/types already resolved.
+// Every rendering downstream (the key, the field type, the container type a
+// reader of `a.lit` looks the producer up by) is then the one `app.lit = …`
+// produces, not a second copy of it.
+//
+// Only calls are recorded: a call is the one value a store needs a producer
+// for, and recording every literal field would add an entry per struct literal
+// in every function body the call graph reaches.
+func literalFieldStores(lit *ast.CompositeLit, pointer bool, info *types.Info, pkgName string, fset *token.FileSet, meta *Metadata) []literalFieldStore {
+	if info == nil || lit == nil {
+		return nil
+	}
+	typ := info.TypeOf(lit)
+	if typ == nil {
+		return nil
+	}
+	if _, isStruct := typ.Underlying().(*types.Struct); !isStruct {
+		return nil
+	}
+	if pointer {
+		typ = types.NewPointer(typ)
+	}
+	var stores []literalFieldStore
+	for _, el := range lit.Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		if _, isCall := ast.Unparen(kv.Value).(*ast.CallExpr); !isCall {
+			continue
+		}
+		field, ok := info.Uses[key].(*types.Var)
+		if !ok || !field.IsField() {
+			continue
+		}
+		holder := &ast.Ident{Name: "_", NamePos: lit.Pos()}
+		lhsInfo := &types.Info{Uses: map[*ast.Ident]types.Object{
+			holder: types.NewVar(lit.Pos(), field.Pkg(), holder.Name, typ),
+			key:    field,
+		}}
+		lhs := ExprToCallArgument(&ast.SelectorExpr{X: holder, Sel: key}, lhsInfo, pkgName, fset, meta)
+		name := CallArgToString(lhs)
+		stores = append(stores, literalFieldStore{
+			Assignment: Assignment{
+				VariableName: meta.StringPool.Get(name),
+				Pkg:          meta.StringPool.Get(pkgName),
+				ConcreteType: lhs.Type,
+				Position:     meta.positionIndex(kv.Pos(), fset),
+				Scope:        meta.StringPool.Get("selector"),
+				Value:        *ExprToCallArgument(kv.Value, info, pkgName, fset, meta),
+				Lhs:          *lhs,
+			},
+			name:      name,
+			valueExpr: kv.Value,
+		})
+	}
+	return stores
 }
 
 // assignsCall reports whether call is one of assign's right-hand sides, looking

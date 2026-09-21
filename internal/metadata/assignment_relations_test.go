@@ -242,3 +242,175 @@ func TestSameDeclaredType(t *testing.T) {
 		}
 	}
 }
+
+// A struct literal's keyed call element is the same fact as an explicit store
+// into that field, and has to be recorded under the same key: the tracker
+// looks a mounted field up by the name, field type and receiver type an
+// explicit `x.f = …` renders, so a literal store rendered any other way would
+// miss that lookup silently (issue #565).
+func TestLiteralFieldStoreMatchesExplicitStore(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type Router interface{ Get() }
+type App struct{ lit, set Router }
+type Val struct{ lit, set Router }
+
+func API() Router { return nil }
+
+func NewApp() *App {
+	app := &App{lit: API()}
+	app.set = API()
+	return app
+}
+
+func NewVal() Val {
+	v := Val{lit: API()}
+	v.set = API()
+	return v
+}
+
+func main() { NewApp(); NewVal() }
+`)
+	stores := map[string]*Assignment{}
+	for i := range meta.CallGraph {
+		for k, a := range meta.CallGraph[i].AssignmentMap {
+			stores[k] = &a[len(a)-1]
+		}
+	}
+	for _, pair := range [][2]string{{"p.App.lit", "p.App.set"}, {"Val.lit", "Val.set"}} {
+		lit, set := stores[pair[0]], stores[pair[1]]
+		if lit == nil || set == nil {
+			t.Errorf("%s / %s not recorded; have %v", pair[0], pair[1], mapKeys(stores))
+			continue
+		}
+		if got, want := lit.Lhs.X.GetType(), set.Lhs.X.GetType(); got != want {
+			t.Errorf("%s: literal store's receiver type %q, explicit store's %q — the lookup keys on it", pair[0], got, want)
+		}
+		if got, want := meta.StringPool.GetString(lit.ConcreteType), meta.StringPool.GetString(set.ConcreteType); got != want {
+			t.Errorf("%s: literal store's field type %q, explicit store's %q", pair[0], got, want)
+		}
+		if lit.Value.GetKind() != KindCall {
+			t.Errorf("%s: literal store's value kind %q, want the call", pair[0], lit.Value.GetKind())
+		}
+	}
+}
+
+func mapKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// Each literal shape links its field to the call that built the value: a
+// pointer literal assigned or returned, a value literal, and one built in main,
+// whose own assignments are recorded on a different path from a callee's.
+func TestLiteralFieldStoreKeepsProducer(t *testing.T) {
+	got := fieldProducers(metadataFor(t, `package p
+
+type Router interface{ Get() }
+type A struct{ r Router }
+type B struct{ r Router }
+type C struct{ r Router }
+type D struct{ r Router }
+
+func MakeA() Router { return nil }
+func MakeB() Router { return nil }
+func MakeC() Router { return nil }
+func MakeD() Router { return nil }
+
+func NewA() *A { a := &A{r: MakeA()}; return a }
+func NewB() *B { return &B{r: MakeB()} }
+func NewC() C  { return C{r: MakeC()} }
+
+func main() {
+	NewA()
+	NewB()
+	NewC()
+	d := &D{r: MakeD()}
+	_ = d
+}
+`))
+	// A value (non-pointer) receiver renders without its package — `C.r`, not
+	// `p.C.r` — exactly as an explicit store on a value does; parity is what
+	// matters, and TestLiteralFieldStoreMatchesExplicitStore holds it.
+	for field, want := range map[string]string{"p.A.r": "MakeA", "p.B.r": "MakeB", "C.r": "MakeC", "p.D.r": "MakeD"} {
+		if got[field] != want {
+			t.Errorf("%s produced by %q, want %s; have %v", field, got[field], want, got)
+		}
+	}
+}
+
+// Only a keyed call element of a STRUCT literal is a field store worth a
+// producer. The others are left out, and `&T{…}` — which the walk meets twice,
+// as the unary expression and as its operand — is recorded once.
+func TestLiteralFieldStoreScope(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type Router interface{ Get() }
+type T struct {
+	r    Router
+	name string
+}
+type Pair struct{ a, b Router }
+
+func API() Router { return nil }
+
+func Build() {
+	_ = &T{r: API(), name: "x"}           // name is a literal, not a call
+	_ = Pair{API(), API()}                // positional: no field key
+	_ = map[string]Router{"k": API()}     // a map, not a struct
+	_ = []Router{API()}                   // a slice
+}
+
+func main() { Build() }
+`)
+	fn := meta.FunctionInPackage("p", "Build")
+	if fn == nil {
+		t.Fatal("Build not recorded")
+	}
+	var keys []string
+	for k, as := range fn.AssignmentMap {
+		if strings.Contains(k, ".") {
+			keys = append(keys, k)
+			if len(as) != 1 {
+				t.Errorf("%s recorded %d times, want once", k, len(as))
+			}
+		}
+	}
+	if len(keys) != 1 || keys[0] != "p.T.r" {
+		t.Errorf("field stores = %v, want only p.T.r", keys)
+	}
+}
+
+// A method records its literal field stores in its own assignment map, beside
+// the explicit ones, as a function does: consumers resolving a variable inside
+// a method body read that map.
+func TestLiteralFieldStoreInMethod(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type Router interface{ Get() }
+type App struct{ r Router }
+type Server struct{}
+
+func API() Router { return nil }
+
+func (s *Server) Build() *App { return &App{r: API()} }
+
+func main() { (&Server{}).Build() }
+`)
+	var found bool
+	for _, file := range meta.Packages["p"].Files {
+		for _, typ := range file.Types {
+			for _, m := range typ.Methods {
+				if meta.StringPool.GetString(m.Name) == "Build" && len(m.AssignmentMap["p.App.r"]) == 1 {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("Server.Build's literal store p.App.r not recorded in its assignment map")
+	}
+}

@@ -65,8 +65,36 @@ func listItems(w http.ResponseWriter, _ *http.Request)  { w.WriteHeader(http.Sta
 func listUsers(w http.ResponseWriter, _ *http.Request)  { w.WriteHeader(http.StatusOK) }
 func listOrders(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 
+// Direct returns its literal without a variable in between.
+type Direct struct{ r chi.Router }
+
+func NewDirect() *Direct { return &Direct{r: DirectAPI()} }
+
+func (d *Direct) Mount(root *chi.Mux) { root.Mount("/direct", d.r) }
+
+// Value is built as a value literal, not a pointer, and read on a value
+// receiver.
+type Value struct{ r chi.Router }
+
+func NewValue() Value { v := Value{r: ValueAPI()}; return v }
+
+func (v Value) Mount(root *chi.Mux) { root.Mount("/value", v.r) }
+
+// Local is built in main itself, whose assignments are recorded on a
+// different path from a callee's.
+type Local struct{ r chi.Router }
+
+func DirectAPI() chi.Router { r := chi.NewRouter(); r.Get("/api/direct", listItems); return r }
+func ValueAPI() chi.Router  { r := chi.NewRouter(); r.Get("/api/value", listItems); return r }
+func LocalAPI() chi.Router  { r := chi.NewRouter(); r.Get("/api/local", listItems); return r }
+
 func main() {
 	app := NewApp(WithOpt(OptAPI()))
 	app.SetSet(SetAPI())
-	_ = http.ListenAndServe(":8080", app.Routes())
+	root := app.Routes()
+	NewDirect().Mount(root)
+	NewValue().Mount(root)
+	local := &Local{r: LocalAPI()}
+	root.Mount("/local", local.r)
+	_ = http.ListenAndServe(":8080", root)
 }
