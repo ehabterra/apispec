@@ -89,9 +89,15 @@ export function InsightMode() {
 
 /* ---- endpoint ------------------------------------------------------- */
 
+// matchesFilter is the route list's filter: method, path and tags, as typed.
+const matchesFilter = (e, filter) =>
+  !filter || (e.method + " " + e.path + " " + (e.tags || []).join(" ")).toLowerCase().includes(filter.toLowerCase());
+
 function EndpointView({ rep, initialFilter, initialSel }) {
-  const first = rep.endpoints[0] ? rep.endpoints[0].method + " " + rep.endpoints[0].path : "";
-  const [sel, setSel] = useState(initialSel || first);
+  // Open on the route handed over, else the first route the hand-over's filter
+  // (a tag) keeps — never one the filtered list does not show.
+  const first = rep.endpoints.find((e) => matchesFilter(e, initialFilter));
+  const [sel, setSel] = useState(initialSel || (first ? first.method + " " + first.path : ""));
   const [ep, setEp] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState(initialFilter || "");
@@ -117,11 +123,7 @@ function EndpointView({ rep, initialFilter, initialSel }) {
       .finally(() => setLoading(false));
   }, [sel, traceSrc]);
 
-  const list = rep.endpoints.filter((e) => {
-    if (!filter) return true;
-    const hay = (e.method + " " + e.path + " " + (e.tags || []).join(" ")).toLowerCase();
-    return hay.includes(filter.toLowerCase());
-  });
+  const list = rep.endpoints.filter((e) => matchesFilter(e, filter));
 
   return html`
     <div class="split-2">

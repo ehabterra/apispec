@@ -98,13 +98,28 @@ export function ExportModal({ open, onClose, scope, method, path, trace }) {
     return u;
   };
 
+  // Only the latest request may fill the box. Toggling "redact" while the
+  // previous export is in flight would otherwise let the UNREDACTED response
+  // land last under a ticked box, and Copy/Download would hand it out. The
+  // stale text is also cleared up front, so nothing is copyable until the
+  // export that matches the checkbox has arrived.
   useEffect(() => {
     if (!open) return;
+    const ctl = new AbortController();
+    setMd("");
     setLoading(true);
-    fetch(url())
+    fetch(url(), { signal: ctl.signal })
       .then((r) => r.text())
-      .then(setMd)
-      .finally(() => setLoading(false));
+      .then((text) => {
+        if (!ctl.signal.aborted) setMd(text);
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setMd("Export failed: " + e.message);
+      })
+      .finally(() => {
+        if (!ctl.signal.aborted) setLoading(false);
+      });
+    return () => ctl.abort();
   }, [open, redact, trace]);
 
   if (!open) return null;
@@ -144,8 +159,8 @@ export function ExportModal({ open, onClose, scope, method, path, trace }) {
         <div class="modal-foot">
           <span class="spacer"></span>
           <button class="btn ghost" onClick=${onClose}>Close</button>
-          <button class="btn secondary" onClick=${download}>⤓ Download .md</button>
-          <button class="btn" onClick=${copy}>${copied ? "✓ Copied" : "Copy"}</button>
+          <button class="btn secondary" disabled=${loading || !md} onClick=${download}>⤓ Download .md</button>
+          <button class="btn" disabled=${loading || !md} onClick=${copy}>${copied ? "✓ Copied" : "Copy"}</button>
         </div>
       </div>
     </div>

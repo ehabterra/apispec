@@ -313,7 +313,9 @@ function resolutionTile(rep, ctx) {
 
 function bodiesTile(rep) {
   const rows = rep.statusBodies;
-  const bodyExpected = (st) => st[0] === "2" && st !== "204";
+  // 204 No Content and 205 Reset Content must not carry a body (RFC 9110), so
+  // an empty one is by design, not a write the analysis missed.
+  const bodyExpected = (st) => st[0] === "2" && st !== "204" && st !== "205";
   const sum = (f, pred) => rows.filter((r) => (pred ? pred(r.status) : true)).reduce((a, r) => a + f(r), 0);
   const withSchema = sum((r) => r.withSchema);
   const freeForm = sum((r) => r.freeForm || 0);
@@ -365,7 +367,7 @@ function bodiesTile(rep) {
           <li><b>No body where one is expected</b> — the route was found, but the value it writes was not. Open the route and read its trace.</li>
           <li><b>Type unresolved</b> — the write was found, but its Go type did not become a schema. A type mapping or an external type fixes it, not more tracing.</li>
           <li><b>Free-form object</b> — a <span class="mono">map[string]any</span>. That IS the type, so nothing is missing, but clients learn nothing about its fields.</li>
-          <li><b>No body by design</b> — 204, 3xx and most errors without a payload; not a gap.</li>
+          <li><b>No body by design</b> — 204, 205, 3xx and most errors without a payload; not a gap.</li>
         </ul>
       <//>
     `,
