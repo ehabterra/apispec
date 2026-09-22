@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-09-22
+
+Errors get documented, and what is documented is what the handler does. A
+handler's error responses were mostly invisible whenever the framework, not a
+context call, writes them: gin's abort family (**21 → 106 of 140 operations**
+on one service now document their errors), and the errors echo and fiber
+handlers return, constructed or sentinel. At the same time a run of fixes stops
+apispec attributing to an operation what belongs to something else — a
+third-party client's reply read as the request body, a configuration URI's
+query read as parameters, an outbound request's Content-Type read as the
+response's, one handler's statuses borrowed by its neighbour. `--strict` turns
+the shortfalls a run already reports into a failing exit code for CI, a
+`--config` file now layers over the detected framework instead of replacing
+it, naming can be made short from the CLI, and apispecui is reorganised by
+task. Two changes cut the work on a large service sharply: mount resolution no
+longer scans the call graph per node (**25.5s → 0.02s**), and the #550 fix
+drops tree expansion roughly 45×.
+
 ### Added
 
 - **`--strict`: a shortfall can now fail the build.** Every condition it gates
@@ -91,8 +109,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as both therefore declares more than the server enforces, which is a trade a
   project takes on knowingly. (#516)
 
-### Added
-
 - **A streamed response body is documented, with the media type the handler
   declares.** Response detection recognises a VALUE being encoded, so a handler
   that streams — a CSV writer, `io.Copy` from a file, any library writing to the
@@ -175,21 +191,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covered. A value passed through a type conversion — `Router(NewRouter())`,
   in a literal or an explicit store — now keeps the call it converts as its
   producer too; the conversion used to consume the store before the call inside
-  it was reached. Eleven projects byte-identical; no measurable cost on a 988-path
+  it was reached. The option and setter styles (`WithAuthRouter(api())` storing
+  the router in a field, or a setter doing so) are pinned by the same fixture:
+  the #550 fix below briefly broke them during this cycle, before this release. Eleven projects byte-identical; no measurable cost on a 988-path
   service. (#565)
-
-- **A router mounted from a struct field keeps its prefix again.** The #550 fix
-  stopped linking a variable assigned inside a callee to the call that invokes
-  it, and with it the one case that link is right for: the value stored IS a
-  parameter that call bound. A service wiring its modules with functional
-  options (`WithAuthRouter(authAPIs())`, whose closure stores the router in a
-  field that `Routes()` later mounts) or a setter method had every route
-  documented at the root: 80 operations on one service lost their `/auth`,
-  `/cart`, `/payment` and `/order` prefixes, with no warning, since the routes
-  were still found. The link is back for exactly that shape — a bare parameter,
-  bound by the edge, of the declared type — so a value derived from a parameter
-  (`r.URL.Path`) and a shadowing closure parameter stay unlinked. Ten other
-  projects are byte-identical; the affected one matches its pre-#550 path set.
 
 - **Naming is reachable from the CLI and the UI.** #298 made operationId and
   component naming a config choice with `full` as the default, but there was no
@@ -422,6 +427,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `requestContext` alone, so a house context wrapping any framework's is covered
   by construction. (#513)
 
+- **gin's abort family documents the status it writes.**
+  `AbortWithStatusJSON`, `AbortWithStatus` and `AbortWithError` write a status —
+  and for the JSON form a body — exactly as gin's renderers do, under names no
+  renderer pattern matched. Every gin codebase that aborts from middleware or
+  an error helper answers its errors through them, so on one service **119 of
+  140 operations documented nothing but 200/default**; now 106 of 140 document
+  their errors, 261 statuses in all. The status is traced through parameters,
+  so a house `abort(c, code, msg)` helper documents each caller's own status;
+  `AbortWithError` documents the status alone, since gin attaches the error to
+  the context rather than rendering it. (#551)
+
+- **An error an echo or fiber handler returns documents its status.**
+  `return echo.NewHTTPError(404, "not found")` and `return fiber.NewError(409,
+  msg)` are answered by the framework's error handler, and nothing is called on
+  the context, so no response pattern saw them. The constructor is now a
+  response whose body is the value it builds: echo's `*HTTPError` as echo
+  renders it (`{"message": …}`), fiber's message as `text/plain`. The fiber todo
+  recipe gains 11 statuses, each an error its services really return. (#556)
+
+- **One handler no longer borrows another's responses and parameters.** A
+  variable assigned inside a function with no call behind it (`name :=
+  r.URL.Path`, `counts[k] += 1`) was linked to the call INVOKING that function —
+  for a handler closure, the route registration — so reading it expanded every
+  route the registration registers. On one service a passcode endpoint had
+  been documenting a static route's 307 and a rate limiter's 401/429; three
+  routes behind a capability guard carried a 401 and header borrowed from the
+  auth middleware while their 14 siblings did not; a theme endpoint that writes
+  no response documented 200, 400 and 404. A separate leak handed a pending
+  assignment to the next call the walk met (`c := &Ctx{}` then `c.Do()` recorded
+  `c.Do` as `c`'s producer). Both are gone, and tree work on a 988-path service
+  drops roughly 45×. (#550)
+
+- **A query key is a parameter only when it is read off the request.** The
+  query pattern matched `Get` on ANY `url.Values`, so a configuration URI's
+  `u.Query().Get("clientname")`, or an outbound request's own query, was
+  documented as a parameter of the operation. A read now counts only when its
+  receiver traces to the handler's request — through assignments, fields,
+  method arguments, and what every caller of a helper passes it. (#552)
+
+- **A Content-Type set on an outbound request is not the response's.** The
+  streamed-body detection (#517) read any `Header().Set("Content-Type", …)` as
+  the handler declaring its response, so a handler building an outbound
+  request, or a reverse proxy rewriting what it forwards (`r.Header.Set(…)`),
+  documented a response body it never sends. A header write now counts only
+  where the header map is the response's. (#543)
+
+- **Raw bytes take the media type the handler states.**
+  `w.Header().Set("Content-Type", "application/pdf"); w.Write(pdf)` documented
+  `200 application/json` with a base64 `{type: string, format: byte}` — what a
+  generated client decodes as JSON, for a PDF. The declaration now says what
+  the bytes are: `application/pdf`, `format: binary`. gin's `c.Data(code,
+  contentType, data)` and echo's `c.Blob`, which state the media type in the
+  call, were worse — the type argument was read as the body — and now document
+  it too. A negotiated endpoint answering one status with bytes OR a typed body
+  documents both representations. If you diff specs in CI, expect every export
+  and download endpoint to move from `application/json` to its real media type.
+  (#544)
+
+- **A shared helper's writes are claimed per call site, not globally.** When a
+  helper is called as `declare(w.Header())`, the tracker re-homes its calls
+  under the argument's producer — and used to remove them from the helper for
+  EVERY caller, so a second call site whose binding failed lost the helper's
+  work outright. On one service 17 sign-in, OAuth and 2FA operations gain the
+  redirect cookie they read through a shared helper. (#546)
+
+- **A builder assigned to a variable keeps its path.** `r.Combo("/items").Get(h)`
+  resolved; `vc := r.Combo("/items"); vc.Get(h)` did not, because a call on a
+  variable has no chain parent. The receiver variable the invocation already
+  records is now the binding, including for a builder declared in another
+  package. (#506)
+
+- **A method is found anywhere in its package, not only in the first file.**
+  Tracing `cmd := builder.New().WithArgs(…)` into a method read only the file
+  being processed and cached the miss package-wide, so a method declared in any
+  file but the first was never found — the variable resolved to itself and the
+  producer's bodies and parameters were silently absent. One service gains 300
+  real proxy-header parameters across 60 operations, another two paths. (#380)
+
 ### Documentation
 
 - **The README is now a getting-started document, not the manual.** It opens
@@ -445,6 +528,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the reference now state that, and point at `--output-config` as the way to
   build a config.
 
+### Performance
+
+- **Mount resolution no longer scans the call graph per tracker node.**
+  `findAssignmentFunction` walked every call-graph edge and every assignment on
+  it for each mount extraction, and mounts are extracted once per node: 25.5s
+  of CPU, 29% of a run on an 82K-edge service. An index built once per run now
+  answers it (**25.5s → 0.02s**, spec mapping 1m07 → 55s), keeping the scan's
+  first-match order, so the output is byte-identical. (#495)
 
 ## [0.5.9] - 2026-09-18
 
@@ -1442,7 +1533,8 @@ Baseline release. Static-analysis OpenAPI 3.1 generation for gin, echo, chi,
 fiber, gorilla/mux, and net/http, with framework-agnostic auth detection, a
 structured type model, and the `apispecui`/`apidiag` companion tools.
 
-[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.9...HEAD
+[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.10...HEAD
+[0.5.10]: https://github.com/ehabterra/apispec/compare/v0.5.9...v0.5.10
 [0.5.9]: https://github.com/ehabterra/apispec/compare/v0.5.8...v0.5.9
 [0.5.8]: https://github.com/ehabterra/apispec/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/ehabterra/apispec/compare/v0.5.6...v0.5.7
