@@ -42,7 +42,7 @@ import (
 //     and a built-in both apply, and the built-in still answers for the calls
 //     the user's entry does not claim. Route, mount and security matchers
 //     choose the most specific pattern instead, so their added entries are
-//     also flagged (markFromConfig) to outrank every built-in.
+//     also stamped (markFromConfig) to outrank every built-in.
 //   - an entry identical to a built-in is dropped rather than moved, so the
 //     built-ins keep their relative order. A current --output-config export
 //     therefore reproduces the defaults exactly instead of reshuffling them.
@@ -109,19 +109,32 @@ func layerLists(out, before, own reflect.Value, prefix string, replace, known ma
 	}
 }
 
-// markFromConfig flags the entries a file added to the lists whose matchers
+// markFromConfig stamps the entries a file added to the lists whose matchers
 // choose by specificity rather than by position — route, mount and security —
-// so the user's entry wins an overlap there too (see RoutePattern.fromConfig).
-// The added entries are the first added[path] of each layered list.
+// so the user's entry wins an overlap there too (see RoutePattern.configLayer).
+// The added entries are the first added[path] of each layered list, and they
+// go one layer above the highest already present, so a config loaded over the
+// result of an earlier load outranks that load's entries as well.
 func markFromConfig(f *FrameworkConfig, added map[string]int) {
+	top := 0
+	for _, p := range f.RoutePatterns {
+		top = max(top, p.configLayer)
+	}
+	for _, p := range f.MountPatterns {
+		top = max(top, p.configLayer)
+	}
+	for _, p := range f.SecurityPatterns {
+		top = max(top, p.configLayer)
+	}
+	layer := top + 1
 	for i := 0; i < added["routePatterns"]; i++ {
-		f.RoutePatterns[i].fromConfig = true
+		f.RoutePatterns[i].configLayer = layer
 	}
 	for i := 0; i < added["mountPatterns"]; i++ {
-		f.MountPatterns[i].fromConfig = true
+		f.MountPatterns[i].configLayer = layer
 	}
 	for i := 0; i < added["securityPatterns"]; i++ {
-		f.SecurityPatterns[i].fromConfig = true
+		f.SecurityPatterns[i].configLayer = layer
 	}
 }
 

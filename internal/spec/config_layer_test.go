@@ -235,13 +235,13 @@ func TestLayerFlagsSpecificityChosenLists(t *testing.T) {
 		t.Helper()
 		for i := 0; i < n; i++ {
 			if flag(i) != (i == 0) {
-				t.Errorf("%s[%d].fromConfig = %v, want only the added entry flagged", name, i, flag(i))
+				t.Errorf("%s[%d].configLayer != 0 = %v, want only the added entry flagged", name, i, flag(i))
 			}
 		}
 	}
-	flagged("routePatterns", len(fw.RoutePatterns), func(i int) bool { return fw.RoutePatterns[i].fromConfig })
-	flagged("mountPatterns", len(fw.MountPatterns), func(i int) bool { return fw.MountPatterns[i].fromConfig })
-	flagged("securityPatterns", len(fw.SecurityPatterns), func(i int) bool { return fw.SecurityPatterns[i].fromConfig })
+	flagged("routePatterns", len(fw.RoutePatterns), func(i int) bool { return fw.RoutePatterns[i].configLayer != 0 })
+	flagged("mountPatterns", len(fw.MountPatterns), func(i int) bool { return fw.MountPatterns[i].configLayer != 0 })
+	flagged("securityPatterns", len(fw.SecurityPatterns), func(i int) bool { return fw.SecurityPatterns[i].configLayer != 0 })
 
 	// The flagged entry is the LEAST specific of its list, and still ranks first.
 	userRoute := NewRoutePatternMatcher(fw.RoutePatterns[0], cfg, nil)
@@ -287,5 +287,44 @@ func TestLayerHelpersEdgeShapes(t *testing.T) {
 	}
 	if got := callRegexOf(reflect.ValueOf("^Get$")); got != "" {
 		t.Errorf("callRegexOf(string) = %q, want none", got)
+	}
+}
+
+// TestLayerLaterFileOutranksEarlier pins precedence across chained loads, which
+// the exported LoadAPISpecConfigOnto allows: a file loaded over the result of an
+// earlier load outranks that load's entries, however specific they are, and the
+// earlier file's entries still outrank the built-ins (review of #571).
+func TestLayerLaterFileOutranksEarlier(t *testing.T) {
+	first, err := LoadAPISpecConfigOnto(writeConfig(t, `
+framework:
+  routePatterns:
+    - callRegex: ^Get$
+      functionNameRegex: ^main$
+      recvTypeRegex: ^example\.com/app\.Router$
+`), DefaultChiConfig())
+	if err != nil {
+		t.Fatalf("first load: %v", err)
+	}
+	cfg, err := LoadAPISpecConfigOnto(writeConfig(t, `
+framework:
+  routePatterns:
+    - callRegex: ^Get$
+`), first)
+	if err != nil {
+		t.Fatalf("second load: %v", err)
+	}
+
+	routes := cfg.Framework.RoutePatterns
+	priority := func(i int) int { return NewRoutePatternMatcher(routes[i], cfg, nil).GetPriority() }
+	if routes[0].FunctionNameRegex != "" || routes[1].FunctionNameRegex != "^main$" {
+		t.Fatalf("order = %q, %q; want the second file's entry ahead of the first's", routes[0].CallRegex, routes[1].FunctionNameRegex)
+	}
+	if priority(0) <= priority(1) {
+		t.Errorf("the second file's unscoped pattern (%d) does not outrank the first file's scoped one (%d)", priority(0), priority(1))
+	}
+	for i := 2; i < len(routes); i++ {
+		if priority(i) >= priority(1) {
+			t.Errorf("built-in route pattern %d (%d) outranks the first file's (%d)", i, priority(i), priority(1))
+		}
 	}
 }

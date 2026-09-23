@@ -572,12 +572,15 @@ type RoutePattern struct {
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 
-	// fromConfig marks an entry a config FILE added over the built-in list
-	// (issue #571). Route matchers pick the most specific pattern rather than
-	// the first, so without it a user's pattern would lose every overlap to a
-	// more specific built-in and have its extraction overwritten. Set by
-	// layerFrameworkLists; never read from or written to a file.
-	fromConfig bool
+	// configLayer marks an entry a config FILE added over the built-in list
+	// (issue #571): 0 for a built-in, and one more than the highest layer
+	// already present for each file loaded on top, so a later file outranks an
+	// earlier one as well as the built-ins. Route matchers pick the most
+	// specific pattern rather than the first, so without it a user's pattern
+	// would lose every overlap to a more specific built-in and have its
+	// extraction overwritten. Set by layerFrameworkLists; never read from or
+	// written to a file.
+	configLayer int
 }
 
 // HandlerArgIndexFor resolves which argument of a registration call holds the
@@ -883,8 +886,8 @@ type MountPattern struct {
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 
-	// fromConfig: see RoutePattern.fromConfig.
-	fromConfig bool
+	// configLayer: see RoutePattern.configLayer.
+	configLayer int
 }
 
 // Security scope values for SecurityPattern.Scope. They describe how far the
@@ -953,8 +956,8 @@ type SecurityPattern struct {
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
 
-	// fromConfig: see RoutePattern.fromConfig.
-	fromConfig bool
+	// configLayer: see RoutePattern.configLayer.
+	configLayer int
 }
 
 // SecurityMapping resolves a middleware *identity* (the function, constructor,
