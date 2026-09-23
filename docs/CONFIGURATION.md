@@ -373,7 +373,8 @@ schema:
   marked, since a nil embedded pointer contributes no fields at all.
 - **`nullableWhenNil`** widens a field to `anyOf: [<schema>, {type: "null"}]`
   when its zero value is written as `null`: a pointer, slice, map or interface
-  with no `omitempty`. Strings and fixed-size arrays are never widened. Use it
+  with neither `omitempty` nor `omitzero`. Strings and fixed-size arrays are
+  never widened. Use it
   together with `requiredFromJSONTags`. The same field is then always *present*
   and sometimes *null*, and `required` without `nullable` claims more than the
   server guarantees.

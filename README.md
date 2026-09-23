@@ -230,7 +230,7 @@ APISpec logs a per-stage summary on every run, so start there. The common cases:
 | Route present, **body/params empty** | the handler was located but the binding style wasn't recognised | insight report ([step 4](docs/DEBUGGING.md)) |
 | Path contains `{someVar}` / `{someFunc}` | part of the path is built at runtime | statically unknowable — the rest of the path is real |
 | Routes from `for … range routeTable` missing | runtime values | named on stderr; register statically or accept the gap |
-| Everything empty right after adding `--config` | your config empties a list (`routePatterns: []`) or names it in `replaceDefaults` | drop that key to inherit the detected patterns |
+| Everything empty right after adding `--config` | your config explicitly empties a list (`routePatterns: []`) | drop that key to inherit the detected patterns |
 
 📖 **[docs/DEBUGGING.md](docs/DEBUGGING.md)** walks through the effective config,
 the metadata dump, the call-graph diagram and the per-route insight report — and
