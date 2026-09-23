@@ -1,0 +1,9 @@
+# Adds one response pattern and says nothing else (issue #571).
+framework:
+  responsePatterns:
+    - callRegex: ^Respond$
+      calleePkgPatterns: ["^github\\.com/ehabterra/apispec/testdata/config_list_merge$"]
+      statusArgIndex: 1
+      typeArgIndex: 2
+      statusFromArg: true
+      typeFromArg: true

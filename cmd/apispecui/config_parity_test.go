@@ -102,6 +102,14 @@ func TestConfigEditorCoversEveryFrameworkSection(t *testing.T) {
 	}
 	editor := string(source)
 
+	// Sections with no meaning in the editor, each with the reason.
+	exempt := map[string]string{
+		// Says which lists of a config FILE replace the built-ins instead of
+		// being layered over them (issue #571). The editor always holds the
+		// whole config, built-ins included, so there is nothing to layer.
+		"replaceDefaults": "file-layering directive",
+	}
+
 	for _, typ := range []reflect.Type{
 		reflect.TypeOf(spec.FrameworkConfig{}),
 		reflect.TypeOf(spec.APISpecConfig{}),
@@ -110,6 +118,9 @@ func TestConfigEditorCoversEveryFrameworkSection(t *testing.T) {
 			for i := 0; i < typ.NumField(); i++ {
 				name := jsonFieldName(typ.Field(i))
 				if name == "" {
+					continue
+				}
+				if _, ok := exempt[name]; ok {
 					continue
 				}
 				if !strings.Contains(editor, name) {

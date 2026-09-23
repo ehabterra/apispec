@@ -128,6 +128,13 @@ type FrameworkConfig struct {
 	// #556). A returned sentinel is a package variable, not a call, so no
 	// ResponsePattern can see it.
 	ErrorSentinels []ErrorSentinel `yaml:"errorSentinels,omitempty" json:"errorSentinels,omitempty"`
+
+	// ReplaceDefaults names the lists in this block that REPLACE the detected
+	// framework's built-in list instead of being added to it — `responsePatterns`,
+	// or a nested one as `responseContext.writerTypeRegexes`. Read from a config
+	// file only: a list a file names is otherwise layered over the built-ins, so
+	// adding one pattern cannot cost the rest (issue #571).
+	ReplaceDefaults []string `yaml:"replaceDefaults,omitempty" json:"replaceDefaults,omitempty"`
 }
 
 // ErrorSentinel matches a package-level error variable that a handler returns,

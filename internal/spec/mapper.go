@@ -282,6 +282,11 @@ func LoadAPISpecConfig(path string) (*APISpecConfig, error) {
 // read from the document. Mapping keys merge the same way, so
 // `securitySchemes` adds to the detected ones rather than replacing them.
 //
+// Lists under `framework:` and the top-level `externalTypes` are layered too:
+// the entries a file writes are added ahead of the built-ins rather than
+// replacing them (issue #571), unless framework.replaceDefaults names the list.
+// See layerFrameworkLists.
+//
 // base is modified in place and returned.
 func LoadAPISpecConfigOnto(path string, base *APISpecConfig) (*APISpecConfig, error) {
 	data, err := os.ReadFile(path)
@@ -291,10 +296,23 @@ func LoadAPISpecConfigOnto(path string, base *APISpecConfig) (*APISpecConfig, er
 	if base == nil {
 		base = &APISpecConfig{}
 	}
+	// What the file states on its own, to tell the lists it names from the
+	// ones decoding merely left alone. The snapshot of base is a value copy:
+	// decoding a sequence allocates a new slice, so the old headers stay intact.
+	var own APISpecConfig
+	if err := yaml.Unmarshal(data, &own); err != nil {
+		return nil, err
+	}
+	beforeFramework, beforeExternal := base.Framework, base.ExternalTypes
+
 	config := base
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
+	if err := layerFrameworkLists(config, beforeFramework, own.Framework); err != nil {
+		return nil, err
+	}
+	layerExternalTypes(config, beforeExternal, own.ExternalTypes)
 
 	if err := config.ValidateSecurity(); err != nil {
 		return nil, err
