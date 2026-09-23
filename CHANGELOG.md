@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A list in `--config` adds to the built-in list instead of replacing it.**
+  #524 layered a config over the detected framework key by key, but a YAML list
+  still decoded as a replacement. A config adding one response pattern for a
+  house helper lost every built-in response pattern, and operations that were
+  documented correctly fell to a bare `default:` object. A config frozen by
+  `--output-config` kept replacing each later release's lists with its own, so
+  on a ~720-operation service none of 0.5.10's media-type, destination-gate,
+  header/cookie/form-param or `Handle`/`HandleFunc` patterns took effect. Both
+  exited 0 with no warning. Every list under `framework:`, including the nested
+  `requestContext`/`responseContext` ones, and `externalTypes` now puts the
+  file's entries ahead of the built-ins: yours is tried first, the built-ins
+  still handle every call yours does not claim, and a copy of a built-in changes
+  nothing. `framework.replaceDefaults: [responsePatterns]` replaces a list on
+  purpose, and a misspelt name fails the run. An entry that overrides a built-in
+  for the same call is logged, which is how a stale exported pattern shows up.
+  (#571)
+
+### Documentation
+
+- **`schema` is documented, and the merge section matches the tool.**
+  CONFIGURATION.md gains the `schema:` section that LIMITATIONS.md linked to.
+  "How config is loaded and merged" said a config replaced the detected
+  defaults, which had not been true since #524. It now describes the layering
+  and advises writing only what differs rather than starting from a full
+  `--output-config` dump. (#572)
+
 ## [0.5.10] - 2026-09-22
 
 Errors get documented, and what is documented is what the handler does. A

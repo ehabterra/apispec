@@ -13,34 +13,59 @@ example](#minimal-example-gin) below, or from the effective config that
 
 - **No `--config`** — APISpec detects the framework and loads its built-in
   default config (`internal/spec/config_<framework>.go`).
-- **`--config path.yaml`** — your file is used **instead of** the detected
-  framework defaults, not merged on top of them. What you write is what matches:
-  a config with no `framework:` block has no route patterns, and the run
-  documents nothing. This is deliberate for the pattern system — gin's
-  `Handle(method, path, h)` and mux's `Handle(path, h)` would misparse each
-  other's calls — but it does mean **a custom config must carry the framework
-  patterns too**.
-- **So always start from `--output-config`.** `apispec --output-config
-  apispec.yaml` (or `-oc`) writes the complete effective configuration that
-  actually ran — detected framework patterns, auto-applied presets and derived
-  wrappers included. Edit *that* file rather than writing one from scratch.
+- **`--config path.yaml`** — your file is layered **over** the detected
+  framework defaults. Write only what you want to change; everything else is
+  inherited from the defaults:
+  - **Keys merge one by one, at every level.** A file that sets only `info:` still
+    documents every route. Setting `framework.requestContext` does not affect the
+    response patterns.
+  - **Lists are added to, not replaced.** The entries a file writes under
+    `framework:` (`responsePatterns`, `paramPatterns`,
+    `responseContext.writerTypeRegexes`, …) and under `externalTypes` go
+    **ahead of** the built-in ones. Your pattern is tried first wherever it and a
+    built-in both match, and the built-ins still handle every call your pattern
+    does not claim. An entry identical to a built-in changes nothing.
+    `externalTypes` entries are matched by `name`, so restating `gin.H` replaces
+    the preset's entry.
+  - **To replace a list, say so.** Name it in `framework.replaceDefaults`, and
+    the entries you write become the whole list:
+
+    ```yaml
+    framework:
+      replaceDefaults: [responsePatterns]   # nested lists as responseContext.writerTypeRegexes
+      responsePatterns:
+        - callRegex: ^Respond$
+          # …
+    ```
+
+    A misspelt name fails the run and lists the valid ones. An empty list
+    (`routePatterns: []`) still means *none*.
 - **Presets still apply on top of your config.** Import-gated security/auth
   mappings, CLI entrypoint fields and derived router-wrapper patterns are added
   to whatever you supply; your own entries take precedence.
 - **CLI flags win.** Values such as `--title`, `--api-version`, and
   `--description` override the corresponding config-file values.
 
+`apispec --output-config used-config.yaml` (or `-oc`) writes the complete
+effective configuration that ran: detected framework patterns, auto-applied
+presets and derived wrappers. Use it to **see** what ran and to copy the block
+you want to change. Don't use the whole dump as your config: every built-in
+pattern in it would be frozen at that release. An entry that exactly matches a
+built-in is harmless. But when a later release improves a built-in pattern,
+your frozen copy keeps winning over the new one. APISpec logs each entry that
+overrides a built-in for the same call, so a stale copy shows up on stderr.
+
 ```bash
-apispec --output-config apispec.yaml --output openapi.yaml   # 1. dump what ran
-$EDITOR apispec.yaml                                         # 2. edit it
-apispec --config apispec.yaml --output openapi.yaml          # 3. use it
+apispec --output-config used-config.yaml --output openapi.yaml   # 1. see what ran
+$EDITOR apispec.yaml                                             # 2. write only what differs
+apispec --config apispec.yaml --output openapi.yaml              # 3. use it
 ```
 
 ## Minimal example (Gin)
 
-A hand-written config has to carry its own `framework` block — this is what the
-smallest useful one looks like. In practice you will want the richer set that
-`--output-config` dumps; this is here to show the shape.
+A config does not need a `framework` block. The detected defaults apply unless
+you change them. This example writes one out anyway to show the shape of each
+key. In practice, write only the keys you want to change.
 
 ```yaml
 info:
@@ -104,6 +129,7 @@ framework:
 | `securitySchemes` | map | OpenAPI `securitySchemes` definitions. |
 | `securityMappings` | list | Map detected auth middleware to a scheme. |
 | `excludeTypeComments` | bool | Keep Go doc comments out of schema `description`s. |
+| `schema` | object | Opt-in `required` / `nullable` derived from `encoding/json` behaviour. |
 | `framework` | object | Framework detection/extraction patterns (advanced). |
 
 ---
@@ -328,6 +354,36 @@ apispec --dir . --output-config used-config.yaml   # what apispec composed
 # add a `naming:` block to used-config.yaml
 apispec --dir . -c used-config.yaml -o openapi.yaml
 ```
+
+## `schema`
+
+Two opt-in settings describe what `encoding/json` does with a struct field.
+Both are off by default:
+
+```yaml
+schema:
+  requiredFromJSONTags: true
+  nullableWhenNil: true
+```
+
+- **`requiredFromJSONTags`** marks a field `required` when its `json` tag has
+  neither `omitempty` nor `omitzero`, because the encoder writes that field on
+  every encode. `validate:"required"` still marks a field required either way;
+  the two are merged. A field promoted through an embedded **pointer** is not
+  marked, since a nil embedded pointer contributes no fields at all.
+- **`nullableWhenNil`** widens a field to `anyOf: [<schema>, {type: "null"}]`
+  when its zero value is written as `null`: a pointer, slice, map or interface
+  with no `omitempty`. Strings and fixed-size arrays are never widened. Use it
+  together with `requiredFromJSONTags`. The same field is then always *present*
+  and sometimes *null*, and `required` without `nullable` claims more than the
+  server guarantees.
+
+A type that declares `MarshalJSON` is skipped by both: its declared fields are
+not what reaches the wire.
+
+Both describe what the **server sends**. That is exactly right for a response.
+For a request body it claims too much, because a client is not bound by your
+struct tags. A type used as both gets the response's view.
 
 ## Security: `security`, `securitySchemes`, `securityMappings`
 
@@ -558,7 +614,9 @@ Because these patterns are numerous and framework-specific, the authoritative
 reference is the in-repo default configs (`internal/spec/config_*.go`) and the
 struct definitions with doc comments in `internal/spec/config.go`. The quickest
 way to author a custom pattern is to dump the effective config with
-`--output-config` and edit the relevant block.
+`--output-config`, copy the closest built-in pattern into your own file, and edit
+it there. Your entry is added ahead of the built-ins (see [How config is loaded
+and merged](#how-config-is-loaded-and-merged)).
 
 ### Returned error sentinels
 

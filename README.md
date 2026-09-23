@@ -230,7 +230,7 @@ APISpec logs a per-stage summary on every run, so start there. The common cases:
 | Route present, **body/params empty** | the handler was located but the binding style wasn't recognised | insight report ([step 4](docs/DEBUGGING.md)) |
 | Path contains `{someVar}` / `{someFunc}` | part of the path is built at runtime | statically unknowable — the rest of the path is real |
 | Routes from `for … range routeTable` missing | runtime values | named on stderr; register statically or accept the gap |
-| Everything empty right after adding `--config` | your config replaced the framework patterns | rebuild it from `--output-config` |
+| Everything empty right after adding `--config` | your config empties a list (`routePatterns: []`) or names it in `replaceDefaults` | drop that key to inherit the detected patterns |
 
 📖 **[docs/DEBUGGING.md](docs/DEBUGGING.md)** walks through the effective config,
 the metadata dump, the call-graph diagram and the per-route insight report — and
@@ -312,8 +312,9 @@ patterns. Reach for a config file when you want to:
 | Fix a summary, description or response by hand | [`overrides`](docs/CONFIGURATION.md#overrides) |
 | Teach it a bespoke router, wrapper or decoder | [`framework`](docs/CONFIGURATION.md#framework-advanced) |
 
-Always start from `apispec --output-config apispec.yaml`, which writes the
-complete configuration that actually ran, then edit it.
+A config is layered over the detected defaults, so write only what you want to
+change. `apispec --output-config used-config.yaml` shows the complete
+configuration that ran, which is where to copy a block from.
 
 📖 Field-by-field reference: **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**
 
