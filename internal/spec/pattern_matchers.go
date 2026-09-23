@@ -836,6 +836,12 @@ func (r *RoutePatternMatcherImpl) GetPattern() interface{} {
 }
 
 // GetPriority returns the priority of this pattern
+// configPatternPriority lifts a pattern a config file added over the built-ins
+// above every built-in, whatever their specificity (issue #571). It exceeds the
+// most a specificity score can add up to (10+5+3), so among the user's own
+// patterns, and among the built-ins, specificity still decides.
+const configPatternPriority = 100
+
 func (r *RoutePatternMatcherImpl) GetPriority() int {
 	// More specific patterns have higher priority
 	priority := 0
@@ -847,6 +853,9 @@ func (r *RoutePatternMatcherImpl) GetPriority() int {
 	}
 	if r.pattern.RecvTypeRegex != "" || r.pattern.RecvType != "" {
 		priority += 3
+	}
+	if r.pattern.fromConfig {
+		priority += configPatternPriority
 	}
 	return priority
 }
@@ -1247,6 +1256,9 @@ func (m *MountPatternMatcherImpl) GetPriority() int {
 	if m.pattern.RecvTypeRegex != "" || m.pattern.RecvType != "" {
 		priority += 3
 	}
+	if m.pattern.fromConfig {
+		priority += configPatternPriority
+	}
 	return priority
 }
 
@@ -1349,6 +1361,9 @@ func (s *SecurityPatternMatcherImpl) GetPriority() int {
 	}
 	if s.pattern.RecvTypeRegex != "" || s.pattern.RecvType != "" {
 		priority += 3
+	}
+	if s.pattern.fromConfig {
+		priority += configPatternPriority
 	}
 	return priority
 }

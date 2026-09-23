@@ -204,3 +204,88 @@ externalTypes:
 		t.Errorf("adding one external type lost the preset's gin.H: %+v", cfg.ExternalTypes)
 	}
 }
+
+// TestLayerFlagsSpecificityChosenLists pins that the entries a file adds to the
+// route, mount and security lists outrank every built-in. Those matchers pick
+// the most specific pattern rather than the first, so position alone would let
+// a scoped built-in beat an unscoped user pattern on the same call. Copies of
+// built-ins stay unflagged, since they change nothing.
+func TestLayerFlagsSpecificityChosenLists(t *testing.T) {
+	base := DefaultChiConfig()
+	builtinRoute, builtinMount := base.Framework.RoutePatterns[0], base.Framework.MountPatterns[0]
+	data, err := yaml.Marshal(&APISpecConfig{Framework: FrameworkConfig{
+		RoutePatterns:    []RoutePattern{{CallRegex: "^Get$"}, builtinRoute},
+		MountPatterns:    []MountPattern{{CallRegex: "^Mount$"}, builtinMount},
+		SecurityPatterns: []SecurityPattern{{CallRegex: "^Use$", Scope: "router"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "apispec.yaml")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadAPISpecConfigOnto(path, DefaultChiConfig())
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	fw := cfg.Framework
+
+	flagged := func(name string, n int, flag func(int) bool) {
+		t.Helper()
+		for i := 0; i < n; i++ {
+			if flag(i) != (i == 0) {
+				t.Errorf("%s[%d].fromConfig = %v, want only the added entry flagged", name, i, flag(i))
+			}
+		}
+	}
+	flagged("routePatterns", len(fw.RoutePatterns), func(i int) bool { return fw.RoutePatterns[i].fromConfig })
+	flagged("mountPatterns", len(fw.MountPatterns), func(i int) bool { return fw.MountPatterns[i].fromConfig })
+	flagged("securityPatterns", len(fw.SecurityPatterns), func(i int) bool { return fw.SecurityPatterns[i].fromConfig })
+
+	// The flagged entry is the LEAST specific of its list, and still ranks first.
+	userRoute := NewRoutePatternMatcher(fw.RoutePatterns[0], cfg, nil)
+	userMount := NewMountPatternMatcher(fw.MountPatterns[0], cfg, nil)
+	userSec := NewSecurityPatternMatcher(fw.SecurityPatterns[0], cfg, nil)
+	for i := 1; i < len(fw.RoutePatterns); i++ {
+		if p := NewRoutePatternMatcher(fw.RoutePatterns[i], cfg, nil).GetPriority(); p >= userRoute.GetPriority() {
+			t.Errorf("built-in route pattern %d priority %d >= the config's %d", i, p, userRoute.GetPriority())
+		}
+	}
+	for i := 1; i < len(fw.MountPatterns); i++ {
+		if p := NewMountPatternMatcher(fw.MountPatterns[i], cfg, nil).GetPriority(); p >= userMount.GetPriority() {
+			t.Errorf("built-in mount pattern %d priority %d >= the config's %d", i, p, userMount.GetPriority())
+		}
+	}
+	for i := 1; i < len(fw.SecurityPatterns); i++ {
+		if p := NewSecurityPatternMatcher(fw.SecurityPatterns[i], cfg, nil).GetPriority(); p >= userSec.GetPriority() {
+			t.Errorf("built-in security pattern %d priority %d >= the config's %d", i, p, userSec.GetPriority())
+		}
+	}
+}
+
+// TestLayerHelpersEdgeShapes covers the element and field shapes the shipped
+// config happens not to contain today, so a field added later is still named
+// the way yaml.v3 reads it and a list without callRegex never reports.
+func TestLayerHelpersEdgeShapes(t *testing.T) {
+	type probe struct {
+		Tagged   string `yaml:"tagged,omitempty"`
+		Untagged string
+		Skipped  string `yaml:"-"`
+		hidden   string //nolint:unused // exercises the unexported-field branch
+	}
+	typ := reflect.TypeOf(probe{})
+	want := []string{"tagged", "untagged", "", ""}
+	for i, w := range want {
+		if got := yamlName(typ.Field(i)); got != w {
+			t.Errorf("yamlName(%s) = %q, want %q", typ.Field(i).Name, got, w)
+		}
+	}
+
+	if got := callRegexOf(reflect.ValueOf(ErrorSentinel{})); got != "" {
+		t.Errorf("callRegexOf(ErrorSentinel) = %q, want none", got)
+	}
+	if got := callRegexOf(reflect.ValueOf("^Get$")); got != "" {
+		t.Errorf("callRegexOf(string) = %q, want none", got)
+	}
+}

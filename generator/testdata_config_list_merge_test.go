@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -66,6 +67,50 @@ func TestTestdata_ConfigListMerge(t *testing.T) {
 		}
 		if _, ok := resp.Content[tc.media]; !ok {
 			t.Errorf("GET %s 200: no %s content (%s)", tc.path, tc.media, tc.why)
+		}
+	}
+}
+
+// TestTestdata_ConfigRoutePatternOutranksBuiltin pins that a route pattern a
+// config adds wins an overlap with a MORE SPECIFIC built-in. Route matchers pick
+// by specificity, not by position, so being first in the list was not enough:
+// chi's receiver-scoped ^Get$ scored higher than this unscoped one, ran after
+// it, and overwrote its extraction (review of #571).
+//
+// methodFromCall: false is what makes the winner visible. Under the user's
+// pattern no verb is read from the call, so every route takes the POST default;
+// under chi's it is GET.
+func TestTestdata_ConfigRoutePatternOutranksBuiltin(t *testing.T) {
+	dir := filepath.Join("..", "testdata", "config_list_merge")
+	path := filepath.Join(t.TempDir(), "apispec.yaml")
+	body := `framework:
+  routePatterns:
+    - callRegex: ^Get$
+      pathFromArg: true
+      handlerFromArg: true
+      pathArgIndex: 0
+      handlerArgIndex: 1
+      methodFromCall: false
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := spec.LoadAPISpecConfigOnto(path, spec.DefaultChiConfig())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	out, err := NewGenerator(cfg).GenerateFromDirectory(dir)
+	if err != nil {
+		t.Fatalf("GenerateFromDirectory: %v", err)
+	}
+	for _, p := range []string{"/items", "/items/{id}", "/export"} {
+		item, ok := out.Paths[p]
+		if !ok {
+			t.Errorf("path %q missing; have %v", p, mapPathKeys(out.Paths))
+			continue
+		}
+		if item.Get != nil || item.Post == nil {
+			t.Errorf("%s: documented by the built-in chi pattern (GET), not by the config's (POST default)", p)
 		}
 	}
 }

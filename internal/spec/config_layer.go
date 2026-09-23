@@ -38,10 +38,11 @@ import (
 // For each list the file names with at least one entry:
 //
 //   - its entries come FIRST. Response, request and param matchers take the
-//     first pattern that matches and route, mount and security matchers keep
-//     the earlier of two equal priorities, so an entry the user wrote wins
-//     wherever it and a built-in both apply, and the built-in still answers
-//     for the calls the user's entry does not claim.
+//     first pattern that matches, so an entry the user wrote wins wherever it
+//     and a built-in both apply, and the built-in still answers for the calls
+//     the user's entry does not claim. Route, mount and security matchers
+//     choose the most specific pattern instead, so their added entries are
+//     also flagged (markFromConfig) to outrank every built-in.
 //   - an entry identical to a built-in is dropped rather than moved, so the
 //     built-ins keep their relative order. A current --output-config export
 //     therefore reproduces the defaults exactly instead of reshuffling them.
@@ -54,7 +55,9 @@ func layerFrameworkLists(cfg *APISpecConfig, before, own FrameworkConfig) error 
 		replace[name] = true
 	}
 	known := map[string]bool{}
-	layerLists(reflect.ValueOf(&cfg.Framework).Elem(), reflect.ValueOf(before), reflect.ValueOf(own), "", replace, known)
+	added := map[string]int{}
+	layerLists(reflect.ValueOf(&cfg.Framework).Elem(), reflect.ValueOf(before), reflect.ValueOf(own), "", replace, known, added)
+	markFromConfig(&cfg.Framework, added)
 
 	var unknown []string
 	for name := range replace {
@@ -82,7 +85,7 @@ func layerFrameworkLists(cfg *APISpecConfig, before, own FrameworkConfig) error 
 // nested structs (requestContext, responseContext, credentialReads) and stops
 // at a list's elements: a pattern's own lists (calleePkgPatterns, …) belong to
 // that pattern and are never merged with another pattern's.
-func layerLists(out, before, own reflect.Value, prefix string, replace, known map[string]bool) {
+func layerLists(out, before, own reflect.Value, prefix string, replace, known map[string]bool, added map[string]int) {
 	typ := out.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
@@ -93,14 +96,32 @@ func layerLists(out, before, own reflect.Value, prefix string, replace, known ma
 		path := prefix + name
 		switch field.Type.Kind() {
 		case reflect.Struct:
-			layerLists(out.Field(i), before.Field(i), own.Field(i), path+".", replace, known)
+			layerLists(out.Field(i), before.Field(i), own.Field(i), path+".", replace, known, added)
 		case reflect.Slice:
 			known[path] = true
 			if own.Field(i).Len() == 0 || replace[path] {
 				continue
 			}
-			out.Field(i).Set(layerList(own.Field(i), before.Field(i), path))
+			merged := layerList(own.Field(i), before.Field(i), path)
+			added[path] = merged.Len() - before.Field(i).Len()
+			out.Field(i).Set(merged)
 		}
+	}
+}
+
+// markFromConfig flags the entries a file added to the lists whose matchers
+// choose by specificity rather than by position — route, mount and security —
+// so the user's entry wins an overlap there too (see RoutePattern.fromConfig).
+// The added entries are the first added[path] of each layered list.
+func markFromConfig(f *FrameworkConfig, added map[string]int) {
+	for i := 0; i < added["routePatterns"]; i++ {
+		f.RoutePatterns[i].fromConfig = true
+	}
+	for i := 0; i < added["mountPatterns"]; i++ {
+		f.MountPatterns[i].fromConfig = true
+	}
+	for i := 0; i < added["securityPatterns"]; i++ {
+		f.SecurityPatterns[i].fromConfig = true
 	}
 }
 

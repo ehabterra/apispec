@@ -571,6 +571,13 @@ type RoutePattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// fromConfig marks an entry a config FILE added over the built-in list
+	// (issue #571). Route matchers pick the most specific pattern rather than
+	// the first, so without it a user's pattern would lose every overlap to a
+	// more specific built-in and have its extraction overwritten. Set by
+	// layerFrameworkLists; never read from or written to a file.
+	fromConfig bool
 }
 
 // HandlerArgIndexFor resolves which argument of a registration call holds the
@@ -875,6 +882,9 @@ type MountPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// fromConfig: see RoutePattern.fromConfig.
+	fromConfig bool
 }
 
 // Security scope values for SecurityPattern.Scope. They describe how far the
@@ -942,6 +952,9 @@ type SecurityPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// fromConfig: see RoutePattern.fromConfig.
+	fromConfig bool
 }
 
 // SecurityMapping resolves a middleware *identity* (the function, constructor,
