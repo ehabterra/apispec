@@ -128,6 +128,13 @@ type FrameworkConfig struct {
 	// #556). A returned sentinel is a package variable, not a call, so no
 	// ResponsePattern can see it.
 	ErrorSentinels []ErrorSentinel `yaml:"errorSentinels,omitempty" json:"errorSentinels,omitempty"`
+
+	// ReplaceDefaults names the lists in this block that REPLACE the detected
+	// framework's built-in list instead of being added to it — `responsePatterns`,
+	// or a nested one as `responseContext.writerTypeRegexes`. Read from a config
+	// file only: a list a file names is otherwise layered over the built-ins, so
+	// adding one pattern cannot cost the rest (issue #571).
+	ReplaceDefaults []string `yaml:"replaceDefaults,omitempty" json:"replaceDefaults,omitempty"`
 }
 
 // ErrorSentinel matches a package-level error variable that a handler returns,
@@ -564,6 +571,16 @@ type RoutePattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// configLayer marks an entry a config FILE added over the built-in list
+	// (issue #571): 0 for a built-in, and one more than the highest layer
+	// already present for each file loaded on top, so a later file outranks an
+	// earlier one as well as the built-ins. Route matchers pick the most
+	// specific pattern rather than the first, so without it a user's pattern
+	// would lose every overlap to a more specific built-in and have its
+	// extraction overwritten. Set by layerFrameworkLists; never read from or
+	// written to a file.
+	configLayer int
 }
 
 // HandlerArgIndexFor resolves which argument of a registration call holds the
@@ -868,6 +885,9 @@ type MountPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// configLayer: see RoutePattern.configLayer.
+	configLayer int
 }
 
 // Security scope values for SecurityPattern.Scope. They describe how far the
@@ -935,6 +955,9 @@ type SecurityPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+
+	// configLayer: see RoutePattern.configLayer.
+	configLayer int
 }
 
 // SecurityMapping resolves a middleware *identity* (the function, constructor,

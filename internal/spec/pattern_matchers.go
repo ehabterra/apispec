@@ -836,6 +836,13 @@ func (r *RoutePatternMatcherImpl) GetPattern() interface{} {
 }
 
 // GetPriority returns the priority of this pattern
+// configPatternPriority lifts a pattern a config file added above every pattern
+// of the layers beneath it, whatever their specificity (issue #571): the
+// built-ins are layer 0, and each file loaded on top is one layer higher. It
+// exceeds the most a specificity score can add up to (10+5+3), so within one
+// layer specificity still decides.
+const configPatternPriority = 100
+
 func (r *RoutePatternMatcherImpl) GetPriority() int {
 	// More specific patterns have higher priority
 	priority := 0
@@ -848,6 +855,7 @@ func (r *RoutePatternMatcherImpl) GetPriority() int {
 	if r.pattern.RecvTypeRegex != "" || r.pattern.RecvType != "" {
 		priority += 3
 	}
+	priority += r.pattern.configLayer * configPatternPriority
 	return priority
 }
 
@@ -1247,6 +1255,7 @@ func (m *MountPatternMatcherImpl) GetPriority() int {
 	if m.pattern.RecvTypeRegex != "" || m.pattern.RecvType != "" {
 		priority += 3
 	}
+	priority += m.pattern.configLayer * configPatternPriority
 	return priority
 }
 
@@ -1350,6 +1359,7 @@ func (s *SecurityPatternMatcherImpl) GetPriority() int {
 	if s.pattern.RecvTypeRegex != "" || s.pattern.RecvType != "" {
 		priority += 3
 	}
+	priority += s.pattern.configLayer * configPatternPriority
 	return priority
 }
 

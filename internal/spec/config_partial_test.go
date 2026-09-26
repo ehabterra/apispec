@@ -80,10 +80,16 @@ func TestLoadAPISpecConfigOntoMerges(t *testing.T) {
 			why: "describing a request context must not cost the route patterns",
 		},
 		{
-			name:   "a framework block that replaces one list",
+			name:   "a framework block that adds to one list",
 			body:   "framework:\n  routePatterns:\n    - callRegex: ^Handle$\n",
+			routes: wantRoutes + 1, responses: wantResponses,
+			why: "a list's entries are added to the built-ins, not swapped for them (issue #571)",
+		},
+		{
+			name:   "a list replaced on purpose",
+			body:   "framework:\n  replaceDefaults: [routePatterns]\n  routePatterns:\n    - callRegex: ^Handle$\n",
 			routes: 1, responses: wantResponses,
-			why: "the list stated is the list used; the ones not stated are inherited",
+			why: "replaceDefaults is how a config says 'only these'",
 		},
 		{
 			name:   "a part emptied on purpose",
@@ -109,9 +115,11 @@ func TestLoadAPISpecConfigOntoMerges(t *testing.T) {
 				t.Errorf("info.title = %q, want %q", cfg.Info.Title, tc.wantTitle)
 			}
 			if tc.wantCtxRegexe != "" {
+				// Ahead of the built-in request type, not instead of it (#571).
 				got := cfg.Framework.RequestContext.TypeRegexes
-				if len(got) != 1 || got[0] != tc.wantCtxRegexe {
-					t.Errorf("requestContext.typeRegexes = %v, want [%q]", got, tc.wantCtxRegexe)
+				builtins := DefaultChiConfig().Framework.RequestContext.TypeRegexes
+				if len(got) != len(builtins)+1 || got[0] != tc.wantCtxRegexe {
+					t.Errorf("requestContext.typeRegexes = %v, want %q ahead of %v", got, tc.wantCtxRegexe, builtins)
 				}
 			}
 			// Whatever the file said, the framework's own defaults survive
