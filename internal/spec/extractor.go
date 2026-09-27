@@ -261,6 +261,15 @@ type ResponseInfo struct {
 	MediaTypeDeclared bool
 	RawBytes          bool
 
+	// DeclarationOnly marks a Content-Type declaration for a media type a
+	// serializer can produce (application/xml, application/yaml, text/plain).
+	// Whether it describes the body depends on what else the operation writes,
+	// which one call cannot see, so pairing decides (issue #570): beside raw
+	// bytes it is the body's media type, and the declaration keeps the slot;
+	// beside any other body that body describes itself; alone it documents
+	// nothing, since an unresolved serializer body is unresolved, not bytes.
+	DeclarationOnly bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1613,7 +1622,16 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		case existing == nil:
 			route.Response[slot] = resp
 		case declaredOverRawBytes(existing, resp) != nil:
-			route.Response[slot] = declaredOverRawBytes(existing, resp)
+			kept := declaredOverRawBytes(existing, resp)
+			// Beside raw bytes a tentative declaration IS the body's media
+			// type, so it stands from here on.
+			kept.DeclarationOnly = false
+			route.Response[slot] = kept
+		case resp.DeclarationOnly:
+			// A body is already here and is not raw bytes: it describes itself,
+			// and the declaration adds nothing (issue #570).
+		case existing.DeclarationOnly:
+			route.Response[slot] = resp
 		case otherMediaType(existing, resp):
 			// The same status in a DIFFERENT representation: a
 			// content-negotiating handler sends one or the other, and both are
@@ -1761,6 +1779,15 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			unknown++
 			f.resp.StatusCode = -unknown
 			store(f.resp, false)
+		}
+	}
+
+	// A tentative declaration nothing paired with documents nothing: the body
+	// it announced is a serializer's that did not resolve, and unresolved is
+	// the honest answer (see ResponseInfo.DeclarationOnly).
+	for slot, resp := range route.Response {
+		if resp != nil && resp.DeclarationOnly {
+			delete(route.Response, slot)
 		}
 	}
 }
@@ -2925,6 +2952,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	if r.pattern.DefaultContentType != "" {
 		contentType = r.pattern.DefaultContentType
 	}
+	tentative := false
 	// A pattern whose media type comes from a header write reads it off the
 	// call, and is ONLY that call: `w.Header().Set("X-Request-Id", …)` matches
 	// the same coarse CallRegex and declares nothing about the body, so a call
@@ -2951,13 +2979,25 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		if r.destResolver.HeaderWriteDetached(node) {
 			return nil
 		}
-		// A media type a serializer already describes is not a stream. If the
-		// body resolved, that pattern documents it properly; if it did not,
-		// unresolved is the honest answer — calling a JSON document a binary
-		// blob stops a generated client parsing it, which is worse than
-		// saying nothing (golden rule #7).
+		// A media type a serializer already describes is not necessarily a
+		// stream. If a serializer wrote the body, that pattern documents it
+		// properly; if its body did not resolve, unresolved is the honest
+		// answer — calling a document a binary blob stops a generated client
+		// parsing it, which is worse than saying nothing (golden rule #7).
+		//
+		// But nothing here knows whether a serializer ran. A handler serving
+		// its embedded openapi.yaml declares application/yaml and writes the
+		// bytes itself, and dropping the declaration left those bytes under
+		// the JSON default (issue #570). So the declaration is kept as
+		// tentative and pairing decides (see ResponseInfo.DeclarationOnly).
+		//
+		// The default media type is the exception: raw bytes already fall back
+		// to it, so the declaration has nothing to add there.
 		if r.serializerCovers(declared) {
-			return nil
+			if sameMediaType(declared, r.cfg.Defaults.ResponseContentType) {
+				return nil
+			}
+			tentative = true
 		}
 		contentType = declared
 	}
@@ -2979,6 +3019,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		StatusCode:        leastStatusCode - 1,
 		ContentType:       contentType,
 		MediaTypeDeclared: r.pattern.ContentTypeFromHeaderWrite || statedMediaType,
+		DeclarationOnly:   tentative,
 	}
 
 	edge := node.GetEdge()
@@ -3199,11 +3240,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
 		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
 	}
-	// Raw bytes under a media type the call itself states, and no serializer
-	// describes, are bytes: not the byte slice's base64 JSON rendering. Under a
-	// serializer's media type they stay as typed — calling a JSON document
-	// binary would stop a client parsing it (see serializerCovers).
-	if respInfo.RawBytes && statedMediaType && !r.serializerCovers(respInfo.ContentType) {
+	// Raw bytes under a media type the call itself states are bytes: not the
+	// byte slice's base64 JSON rendering. That holds under a serializer's media
+	// type too — `c.Data(200, "application/yaml", doc)` names YAML and writes
+	// the bytes itself, so no serializer ran whose document could describe them
+	// (issue #570). Only the default media type keeps them typed: calling a
+	// JSON document binary would stop a client parsing it.
+	if respInfo.RawBytes && statedMediaType && !sameMediaType(respInfo.ContentType, r.cfg.Defaults.ResponseContentType) {
 		respInfo.BodyType = ""
 		respInfo.OneOfTypes = nil
 		respInfo.Schema = &Schema{Type: "string", Format: "binary"}

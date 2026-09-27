@@ -558,8 +558,8 @@ told where the media type comes from. Two pattern fields say so:
 
 | field | use when |
 |---|---|
-| `rawBody` | the call writes its argument's bytes as-is (`w.Write(b)`). On a status where the handler also declares a `Content-Type` header, the declaration describes the bytes — `200 application/pdf`, binary — instead of the JSON default rendering them as a base64 string. Bytes traced back through `bodyTransforms` (`json.Marshal`) are not raw: they document the marshalled type. |
-| `contentTypeFromArg` + `contentTypeArgIndex` | the call states its media type in an argument, as gin's `c.Data(code, contentType, data)` and echo's `c.Blob(code, contentType, b)` do. The argument's constant value is the response's media type, and raw bytes under one no serializer describes are documented as binary. |
+| `rawBody` | the call writes its argument's bytes as-is (`w.Write(b)`). On a status where the handler also declares a `Content-Type` header, the declaration describes the bytes — `200 application/pdf`, binary — instead of the JSON default rendering them as a base64 string. That holds for a media type a serializer could produce too (`application/yaml` for an embedded `openapi.yaml`): a declaration of one is kept only beside raw bytes, so a real serializer's typed body still documents itself. Bytes traced back through `bodyTransforms` (`json.Marshal`) are not raw: they document the marshalled type. |
+| `contentTypeFromArg` + `contentTypeArgIndex` | the call states its media type in an argument, as gin's `c.Data(code, contentType, data)` and echo's `c.Blob(code, contentType, b)` do. The argument's constant value is the response's media type, and the raw bytes are documented as binary under it, including `application/yaml`, `application/xml` and `text/plain`, since the call writes the bytes itself. Only under the default `application/json` do they stay typed. |
 
 ```yaml
 # A house renderer: Send(status int, mediaType string, body []byte)

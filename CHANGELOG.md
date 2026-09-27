@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Raw bytes under a declared YAML, XML or text media type keep it.** A
+  handler that sets `Content-Type: application/yaml` (or `application/xml`,
+  `text/plain`) and writes the bytes itself was documented as
+  `application/json` with a base64 string. The declaration was dropped on the
+  grounds that a serializer would describe the body, even when none ran. The
+  common case is a service serving its embedded `openapi.yaml`. The
+  declaration is now kept tentatively, and pairing decides: beside raw bytes it
+  is their media type, beside a serializer's body that body documents itself,
+  and alone it documents nothing, as before. gin's `c.Data` and echo's `c.Blob`
+  under those types are bytes too. `application/json` is unchanged. A
+  declaration beside gin's `c.Writer.Write`, echo's `c.Response().Write` or
+  fiber's `c.Send` still documents nothing, since those writes are not
+  raw-body patterns yet (#576). (#570)
+
 - **A list in `--config` adds to the built-in list instead of replacing it.**
   #524 layered a config over the detected framework key by key, but a YAML list
   still decoded as a replacement. A config adding one response pattern for a
