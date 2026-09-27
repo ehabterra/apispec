@@ -285,17 +285,10 @@ func (r *ResponsePatternMatcherImpl) contentTypeHeaderWrite(edge *metadata.CallG
 // Compared on the media type alone, so `application/json; charset=utf-8`
 // matches `application/json`: the charset is not a different format.
 func (r *ResponsePatternMatcherImpl) serializerCovers(mediaType string) bool {
-	base := func(ct string) string {
-		if i := strings.IndexByte(ct, ';'); i >= 0 {
-			ct = ct[:i]
-		}
-		return strings.ToLower(strings.TrimSpace(ct))
-	}
-	want := base(mediaType)
-	if want == "" {
+	if baseMediaType(mediaType) == "" {
 		return false
 	}
-	if want == base(r.cfg.Defaults.ResponseContentType) {
+	if sameMediaType(mediaType, r.cfg.Defaults.ResponseContentType) {
 		return true
 	}
 	for _, p := range r.cfg.Framework.ResponsePatterns {
@@ -303,9 +296,23 @@ func (r *ResponsePatternMatcherImpl) serializerCovers(mediaType string) bool {
 		// serializer: it describes what it writes. One that carries no body
 		// type (this pattern itself, a status-only write) describes nothing,
 		// so it does not cover anything.
-		if p.TypeFromArg && p.DefaultContentType != "" && base(p.DefaultContentType) == want {
+		if p.TypeFromArg && p.DefaultContentType != "" && sameMediaType(p.DefaultContentType, mediaType) {
 			return true
 		}
 	}
 	return false
+}
+
+// baseMediaType is a Content-Type without its parameters, lower-cased:
+// `application/json; charset=utf-8` is `application/json`.
+func baseMediaType(ct string) string {
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(ct))
+}
+
+// sameMediaType compares two Content-Types on the media type alone.
+func sameMediaType(a, b string) bool {
+	return baseMediaType(a) != "" && baseMediaType(a) == baseMediaType(b)
 }

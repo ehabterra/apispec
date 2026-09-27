@@ -53,11 +53,20 @@ func rawPDF(c *fiber.Ctx) error {
 	return c.Send([]byte("%PDF"))
 }
 
+// The same declaration under a media type a serializer covers documents
+// nothing yet: c.Send is not a raw-body pattern, so there is no raw write for
+// the declaration to pair with (#576).
+func rawHeaderYAML(c *fiber.Ctx) error {
+	c.Set("Content-Type", "application/yaml")
+	return c.Send([]byte("a: 1"))
+}
+
 func main() {
 	app := fiber.New()
 	app.Get("/export.csv", csvExport)
 	app.Get("/file.pdf", download)
 	app.Get("/internal", internalOnly)
 	app.Get("/raw.pdf", rawPDF)
+	app.Get("/raw-header.yaml", rawHeaderYAML)
 	_ = app.Listen(":8080")
 }
