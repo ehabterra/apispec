@@ -481,8 +481,11 @@ framework:
       # net/http.Header is the header map of the request AND the response, so a
       # read only documents a parameter by provenance: w.Header().Get(k) and
       # c.Response().Header().Get(k) read headers the server SENDS. An origin
-      # that cannot be resolved keeps the parameter.
-      excludeRecvOriginRegex: ^\*?net/http\.\*?ResponseWriter$
+      # that cannot be resolved keeps the parameter. The client's *http.Response
+      # is listed too: a value of one of these types stops the provenance walk
+      # below wherever it is met, even when the outbound request was built with
+      # r.Context().
+      excludeRecvOriginRegex: ^\*?(net/http\.\*?(ResponseWriter|Response)|github\.com/labstack/echo(/v\d+)?\.\*?Response|github\.com/gin-gonic/gin\.\*?ResponseWriter)$
       # It is also the header map of every outbound request and of every
       # response an http.Client returns: the read must trace to the request.
       requireRequestOrigin: true
