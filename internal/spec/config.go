@@ -910,10 +910,11 @@ const (
 	SecurityScopeWrapper = "wrapper"
 )
 
-// responseWriterOriginRegex matches the types a `net/http.Header` read can come
+// responseOriginRegex matches the types a `net/http.Header` read can come
 // FROM that make it a response header rather than a request parameter — the
 // server's own outgoing headers (`w.Header().Get(k)`,
-// `c.Response().Header().Get(k)`).
+// `c.Response().Header().Get(k)`), and the headers of a response an
+// http.Client returned (`resp.Header.Get(k)`, issue #569).
 //
 // Every framework's writer belongs in one regex because the header pattern
 // itself is shared: net/http's `Get` on `net/http.Header` is merged into every
@@ -922,7 +923,11 @@ const (
 // only would leave exactly the case seen in the wild — an echo handler reading
 // `c.Response().Header()` — undetected. Both receiver spellings are accepted:
 // `pkg.*T` as a callee receiver renders it, `*pkg.T` as go/types renders it.
-const responseWriterOriginRegex = `^\*?(net/http\.\*?ResponseWriter` +
+//
+// A pattern that also sets RequireRequestOrigin asks this of every value on the
+// way back to the request, not only of the receiver's own origin, so a header
+// map handed to a helper is placed too (see requestOriginWalker.foreignType).
+const responseOriginRegex = `^\*?(net/http\.\*?(ResponseWriter|Response)` +
 	`|github\.com/labstack/echo(/v\d+)?\.\*?Response` +
 	`|github\.com/gin-gonic/gin\.\*?ResponseWriter)$`
 

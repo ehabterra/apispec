@@ -65,6 +65,11 @@ func (p *ParamPatternMatcherImpl) readsOutsideRequest(node TrackerNodeInterface)
 		return false // no request types configured: nothing to prove against
 	}
 	w := requestOriginWalker{cp: p.contextProvider, requestTypes: requestTypes}
+	if p.pattern.ExcludeRecvOriginRegex != "" {
+		if re, err := cachedRegex(p.pattern.ExcludeRecvOriginRegex); err == nil {
+			w.foreignType = re
+		}
+	}
 	return w.callOrigin(node.GetEdge(), node, 0) == requestOriginElsewhere
 }
 
@@ -82,6 +87,15 @@ func compileAll(patterns []string) []*regexp.Regexp {
 type requestOriginWalker struct {
 	cp           ContextProvider
 	requestTypes []*regexp.Regexp
+	// foreignType is the pattern's ExcludeRecvOriginRegex: a value of such a
+	// type is the other side of an exchange wherever the walk meets it — a
+	// *http.Response a client call returned, the server's own writer — however
+	// it was built (issue #569). It has to be asked here, not only of the
+	// receiver's immediate origin: `resp.Header` reaches a helper as a
+	// parameter, and a request built with `http.NewRequestWithContext(r.Context(),
+	// …)` is handed the request's context, so its response otherwise traces to
+	// the request.
+	foreignType *regexp.Regexp
 }
 
 // callOrigin places what a call is made on: the root of its chain, then that
@@ -113,6 +127,9 @@ func (w requestOriginWalker) valueOrigin(arg *metadata.CallArgument, node Tracke
 	}
 	if arg == nil || node == nil || node.GetEdge() == nil || hops >= maxRequestOriginHops {
 		return requestOriginUnknown
+	}
+	if w.foreignType != nil && w.foreignType.MatchString(arg.GetType()) {
+		return requestOriginElsewhere
 	}
 	// A variable's TYPE is the last thing asked, not the first: a
 	// *http.Request is not necessarily THE request. `req, _ :=

@@ -164,7 +164,7 @@ func TestReceiverOriginTypes(t *testing.T) {
 // spellings the walk actually produces — a callee receiver renders as `pkg.*T`
 // while go/types renders `*pkg.T`, and both reach this regex.
 func TestResponseWriterOriginRegex(t *testing.T) {
-	re := regexp.MustCompile(responseWriterOriginRegex)
+	re := regexp.MustCompile(responseOriginRegex)
 
 	for _, origin := range []string{
 		"net/http.ResponseWriter",
@@ -205,7 +205,7 @@ func TestParamMatchNodeExcludesResponseOrigin(t *testing.T) {
 		CallRegex:              "^Get$",
 		ParamIn:                "header",
 		RecvType:               "net/http.Header",
-		ExcludeRecvOriginRegex: responseWriterOriginRegex,
+		ExcludeRecvOriginRegex: responseOriginRegex,
 	}
 	matcher := NewParamPatternMatcher(pattern, &APISpecConfig{}, NewContextProvider(m))
 
