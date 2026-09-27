@@ -2,9 +2,9 @@
 // gin handler through c.Request, and an outbound response's through the
 // http.Client call that returned it. Only the first are parameters.
 //
-// Documented:     X-Request-Id (c.Request.Header.Get), X-Trace (a helper
-//                 handed c.Request.Header)
-// Not documented: X-Rate-Remaining, Retry-After (off an http.Get response)
+// Documented: X-Request-Id (c.Request.Header.Get) and X-Trace (a helper
+// handed c.Request.Header). Not documented: X-Rate-Remaining and Retry-After,
+// read off an http.Get response.
 package main
 
 import (
