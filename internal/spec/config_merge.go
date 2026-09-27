@@ -96,8 +96,10 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvType:      "net/http.Header",
 					// Response headers are not request parameters, whichever
-					// framework's writer they came from (see the primary config).
-					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+					// framework's writer they came from, and neither are an
+					// outbound exchange's (see the primary config, issue #569).
+					ExcludeRecvOriginRegex: responseOriginRegex,
+					RequireRequestOrigin:   true,
 				},
 				{
 					// The repeatable twin of Get (issue #365).
@@ -106,7 +108,8 @@ func HTTPSecondaryConfig() *APISpecConfig {
 					ParamArgIndex:          0,
 					Multi:                  true,
 					RecvType:               "net/http.Header",
-					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+					ExcludeRecvOriginRegex: responseOriginRegex,
+					RequireRequestOrigin:   true,
 				},
 				{
 					// Of the REQUEST only when the Values came from it (issue #552).

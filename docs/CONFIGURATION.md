@@ -483,6 +483,9 @@ framework:
       # c.Response().Header().Get(k) read headers the server SENDS. An origin
       # that cannot be resolved keeps the parameter.
       excludeRecvOriginRegex: ^\*?net/http\.\*?ResponseWriter$
+      # It is also the header map of every outbound request and of every
+      # response an http.Client returns: the read must trace to the request.
+      requireRequestOrigin: true
   requestContext:          # disambiguate generic decoders (json.Decode, etc.)
     typeRegexes:
       - ^net/http\.\*Request$
