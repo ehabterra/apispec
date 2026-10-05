@@ -185,7 +185,11 @@ func DefaultHTTPConfig() *APISpecConfig {
 					RecvType:      "net/http.Header",
 					// ...but only the REQUEST's headers: the same type carries the
 					// response's, and `w.Header().Get(k)` reads what the server sends.
-					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+					// It is also the header map of every outbound exchange, so a
+					// read must trace to the request: `resp.Header.Get(k)` on an
+					// http.Client response is not a parameter (issue #569).
+					ExcludeRecvOriginRegex: responseOriginRegex,
+					RequireRequestOrigin:   true,
 				},
 				{
 					// r.Header.Values("X-Foo") — the repeatable twin of Get, and
@@ -196,7 +200,8 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ParamArgIndex:          0,
 					Multi:                  true,
 					RecvType:               "net/http.Header",
-					ExcludeRecvOriginRegex: responseWriterOriginRegex,
+					ExcludeRecvOriginRegex: responseOriginRegex,
+					RequireRequestOrigin:   true,
 				},
 				{
 					// r.URL.Query().Get("q") — query parameter. Query()

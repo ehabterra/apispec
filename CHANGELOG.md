@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fiber's `c.Send` still documents nothing, since those writes are not
   raw-body patterns yet (#576). (#570)
 
+- **A header read off an outbound exchange is not a request parameter.**
+  `net/http.Header` is also the header map of every response an `http.Client`
+  returns and every request a handler builds. `resp.Header.Get("Retry-After")`,
+  inline or through a helper taking `http.Header`, was documented as a request
+  header of each operation whose handler reached that client: 5 operations on
+  one ~720-operation service. Header reads now apply #552's provenance rule:
+  a header is documented only when its map can trace to the request, and a
+  read whose origin cannot be placed is still kept. A `*http.Response` stops
+  that walk wherever it meets one, so the response to a request built with
+  `http.NewRequestWithContext(r.Context(), …)` is placed too, although that
+  request was handed the request's context. Reading a header back off such an
+  outbound request is still documented (#574). (#569)
+
 - **A list in `--config` adds to the built-in list instead of replacing it.**
   #524 layered a config over the detected framework key by key, but a YAML list
   still decoded as a replacement. A config adding one response pattern for a
