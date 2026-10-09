@@ -50,6 +50,17 @@ const (
 	contentTypeText     = "text/plain; charset=utf-8"
 	contentTypeHTML     = "text/html; charset=utf-8"
 	contentTypeProtobuf = "application/x-protobuf"
+	contentTypeJSON     = "application/json"
+	contentTypeJSONP    = "application/javascript; charset=utf-8"
+	// fiber's JSONP names the older text/javascript (MIMETextJavaScriptCharsetUTF8).
+	contentTypeJSONPText = "text/javascript; charset=utf-8"
+	contentTypeTOML      = "application/toml"
+
+	// contentTypeAny is a media type range, not a media type: what a file
+	// sender writes depends on the file, which is a runtime value (issue #578).
+	// Naming one — even application/octet-stream — would be a statement about
+	// every file the endpoint serves.
+	contentTypeAny = "*/*"
 
 	// Sentinel ParamPattern.ParamIn values. These are not OpenAPI parameter
 	// locations: the mapper consumes them (resolveFormParams) and turns them
@@ -762,6 +773,13 @@ type ResponsePattern struct {
 	// says bytes instead of naming a Go type that was never encoded
 	// (issue #517).
 	OpaqueBody bool `yaml:"opaqueBody,omitempty" json:"opaqueBody,omitempty"`
+
+	// TextBody says this call writes TEXT that no argument types: a rendered
+	// template (`c.Render(200, "page", data)`), or the status message fiber's
+	// `c.SendStatus(404)` sends as the body. The schema is a string. Reading it
+	// off an argument instead would type the page as the data that fills it
+	// (issue #578).
+	TextBody bool `yaml:"textBody,omitempty" json:"textBody,omitempty"`
 
 	// Package/type filtering: narrow this pattern by where the call is MADE and
 	// what it is made on. Each list is a set of alternatives, an empty list is no
@@ -1662,11 +1680,11 @@ func anyCallRegex(writes []ContentTypeWrite) string {
 //   - JSON — left to Defaults.ResponseContentType, so a project serving
 //     `application/hal+json` keeps saying so.
 //   - Data — takes its content type as an argument, so the name says nothing.
-//   - File — depends on the file being served.
-//   - Redirect — writes no body at all; documenting one is a separate defect.
 //
 // Those keep the catch-all and today's default rather than a guess (golden
-// rule #7).
+// rule #7). File senders and redirects do not share the catch-all's
+// `(status, body)` shape at all and have their own constructors
+// (fileSenderPatterns, statusOnlyPatterns).
 var rendererMediaTypes = []struct {
 	call      string
 	mediaType string
@@ -1698,6 +1716,12 @@ func rawBodyRendererPatterns(recvTypeRegex string, calls ...rawBodyCall) []Respo
 			ContentTypeArgIndex: c.mediaTypeArg,
 			TypeArgIndex:        -1,
 		}
+		if c.mediaType != "" {
+			// The name states the media type (`XMLBlob`): no argument to read.
+			p.ContentTypeFromArg = false
+			p.ContentTypeArgIndex = 0
+			p.DefaultContentType = c.mediaType
+		}
 		if c.reader {
 			// A reader streams whatever it holds: there is no value to type.
 			p.OpaqueBody = true
@@ -1716,13 +1740,114 @@ type rawBodyCall struct {
 	call         string
 	mediaTypeArg int
 	contentArg   int
-	reader       bool // the content is an io.Reader streamed as-is
+	reader       bool   // the content is an io.Reader streamed as-is
+	mediaType    string // fixed by the call's name (`XMLBlob`); mediaTypeArg is then unused
 }
 
 // rendererCatchAllCalls are the renderer names that keep the shared pattern
 // because their media type is not derivable from the call (see
 // rendererMediaTypes).
-const rendererCatchAllCalls = `^(?i)(JSON|Data|File|Redirect)$`
+//
+// File and Redirect used to be here, and the catch-all's `(status, body)`
+// shape fits neither: `c.File(path)` has no status to match, so it documented
+// nothing, and `c.Redirect(302, url)` documented its URL as a JSON body
+// (issue #578).
+const rendererCatchAllCalls = `^(?i)(JSON|Data)$`
+
+// typedRendererCall is one renderer variant that serializes a value under a
+// media type its name fixes: `JSONPretty`, `IndentedJSON`, `XMLPretty`,
+// `JSONP`, `TOML`. The names are a closed list per framework, and each variant
+// sits its value in a different argument (echo's `JSONP(code, callback, i)`
+// against gin's `JSONP(code, obj)`), so the variant states where (issue #578).
+type typedRendererCall struct {
+	call      string
+	mediaType string // empty keeps Defaults.ResponseContentType, as JSON does
+	typeArg   int
+	text      bool // writes text no argument types (Render); typeArg is unused
+}
+
+// typedRendererPatterns builds one pattern per variant from the framework's
+// renderer pattern: base supplies the receiver scope and status position, the
+// variant its value's argument and media type.
+func typedRendererPatterns(base ResponsePattern, calls ...typedRendererCall) []ResponsePattern {
+	out := make([]ResponsePattern, 0, len(calls))
+	for _, c := range calls {
+		p := base
+		p.CallRegex = c.call
+		p.TypeArgIndex = c.typeArg
+		p.TypeFromArg = true
+		if c.text {
+			p.TypeArgIndex = -1
+			p.TypeFromArg = false
+			p.TextBody = true
+		}
+		p.DefaultContentType = c.mediaType
+		out = append(out, p)
+	}
+	return out
+}
+
+// statusOnlyCall is a call that sends a status and no body: a redirect
+// (`c.Redirect(302, url)`, whose URL goes in the Location header, not the
+// body) or a bare status setter (gin's `c.Status(204)`). defaultStatus covers a
+// status argument the call may omit — fiber's `c.Redirect(url)` sends 302 — and
+// applies only when it IS omitted: a status that is passed but does not resolve
+// stays unresolved rather than becoming 302 (review of #584).
+type statusOnlyCall struct {
+	call          string
+	statusArg     int
+	defaultStatus int
+}
+
+// statusOnlyPatterns builds the status-only patterns for one receiver.
+func statusOnlyPatterns(recvTypeRegex string, calls ...statusOnlyCall) []ResponsePattern {
+	out := make([]ResponsePattern, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, ResponsePattern{
+			CallRegex:      c.call,
+			RecvTypeRegex:  recvTypeRegex,
+			StatusArgIndex: c.statusArg,
+			StatusFromArg:  true,
+			TypeArgIndex:   -1,
+			DefaultStatus:  c.defaultStatus,
+		})
+	}
+	return out
+}
+
+// fileSenderPatterns are the calls that serve a file: `c.File(path)`,
+// `c.Attachment(path, name)`, `http.ServeFile(w, r, path)`. None takes a
+// status. The body is the file's bytes, under a media type that depends on the
+// file — a runtime value — so it is documented as a media type range
+// (contentTypeAny) rather than a guess (issue #578).
+//
+// Whether a status the handler set first survives is the framework's call, and
+// they differ (review of #584). Under net/http, echo and fiber it does: the
+// first WriteHeader commits (echo's Response, net/http), and fiber's SendFile
+// restores a status the handler set. gin's writer lets the file server's own
+// WriteHeader(200) replace one set earlier, so a gin file is always 200.
+// writtenStatusWins says which: the 200 is then implicit, claimable by a
+// status write that dominates the call, rather than the call's own.
+func fileSenderPatterns(recvTypeRegex string, writtenStatusWins bool, calls ...string) []ResponsePattern {
+	out := make([]ResponsePattern, 0, len(calls))
+	for _, c := range calls {
+		p := ResponsePattern{
+			CallRegex:          c,
+			RecvTypeRegex:      recvTypeRegex,
+			StatusArgIndex:     -1,
+			TypeArgIndex:       -1,
+			OpaqueBody:         true,
+			DefaultContentType: contentTypeAny,
+		}
+		if writtenStatusWins {
+			p.ImplicitStatus = http.StatusOK
+		} else {
+			p.DefaultStatus = http.StatusOK
+		}
+		out = append(out, p)
+	}
+	return out
+}
 
 // rendererResponsePatterns expands one renderer catch-all into a pattern per
 // renderer, each carrying what that renderer actually writes.

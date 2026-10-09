@@ -32,20 +32,44 @@ var echoRequestContext = RequestContextConfig{
 
 // DefaultEchoConfig returns a default configuration for the Echo framework.
 func DefaultEchoConfig() *APISpecConfig {
-	responsePatterns := netHTTPResponsePatterns()
-	// echo's raw-bytes renderers state their own media type (issue #544).
-	responsePatterns = append(responsePatterns, rawBodyRendererPatterns("github\\.com/labstack/echo/v\\d\\.Context",
-		rawBodyCall{call: `^Blob$`, mediaTypeArg: 1, contentArg: 2},
-		rawBodyCall{call: `^Stream$`, mediaTypeArg: 1, reader: true},
-	)...)
-	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
+	const echoContextRecv = "github\\.com/labstack/echo/v\\d\\.Context"
+	echoRenderer := ResponsePattern{
 		StatusArgIndex: 0,
 		TypeArgIndex:   1,
 		TypeFromArg:    true,
 		StatusFromArg:  true,
 		Deref:          true,
-		RecvTypeRegex:  "github\\.com/labstack/echo/v\\d\\.Context",
-	})...)
+		RecvTypeRegex:  echoContextRecv,
+	}
+
+	responsePatterns := netHTTPResponsePatterns()
+	// echo's raw-bytes renderers state their own media type (issue #544), as
+	// argument or, for the *Blob variants, by name (issue #578). JSONBlob is
+	// under the default media type, so its bytes stay typed, as a raw write
+	// declared application/json does.
+	responsePatterns = append(responsePatterns, rawBodyRendererPatterns(echoContextRecv,
+		rawBodyCall{call: `^Blob$`, mediaTypeArg: 1, contentArg: 2},
+		rawBodyCall{call: `^Stream$`, mediaTypeArg: 1, reader: true},
+		rawBodyCall{call: `^JSONBlob$`, contentArg: 1, mediaType: contentTypeJSON},
+		rawBodyCall{call: `^JSONPBlob$`, contentArg: 2, mediaType: contentTypeJSONP},
+		rawBodyCall{call: `^XMLBlob$`, contentArg: 1, mediaType: contentTypeXML},
+		rawBodyCall{call: `^HTMLBlob$`, contentArg: 1, mediaType: contentTypeHTML},
+	)...)
+	// The typed variants (issue #578). Render's body is the rendered template:
+	// text, whatever data fills it.
+	responsePatterns = append(responsePatterns, typedRendererPatterns(echoRenderer,
+		typedRendererCall{call: `^JSONPretty$`, typeArg: 1},
+		typedRendererCall{call: `^JSONP$`, typeArg: 2, mediaType: contentTypeJSONP},
+		typedRendererCall{call: `^XMLPretty$`, typeArg: 1, mediaType: contentTypeXML},
+		typedRendererCall{call: `^Render$`, text: true, mediaType: contentTypeHTML},
+	)...)
+	responsePatterns = append(responsePatterns, rendererResponsePatterns(echoRenderer)...)
+	responsePatterns = append(responsePatterns, statusOnlyPatterns(echoContextRecv,
+		statusOnlyCall{call: `^Redirect$`, statusArg: 0},
+	)...)
+	responsePatterns = append(responsePatterns, fileSenderPatterns(echoContextRecv, true,
+		`^File$`, `^Attachment$`, `^Inline$`,
+	)...)
 	responsePatterns = append(responsePatterns,
 		// An error the handler RETURNS: echo's HTTPErrorHandler writes the
 		// status it carries and serializes the *HTTPError itself
