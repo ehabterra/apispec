@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fiber's `c.SendStatus(code)` now document their status, where both used to
   document nothing. (#578)
 
+- **Routes registered from an `init()` function are documented.** Expansion
+  started only from `main`, and nothing calls `init`, so every route it
+  registered was missing. That includes the plugin shape, an `init` in a
+  package that `main` only blank-imports. Package `init` functions are now
+  roots too, and a router group created inside one keeps its prefix
+  (`v1 := r.Group("/v1")` in `init` used to document `/health` instead of
+  `/v1/health`). Several `init` functions in one package are recorded as
+  distinct functions (`init`, `init#1`, …), so a local group in one no longer
+  hands its prefix to another's routes. Still open: routes registered from a package-level var
+  initializer (`var _ = register(...)`, #581), and a group stored in a
+  package-level var by one function and registered on from another (#582).
+  (#580)
+
 - **Raw bytes under a declared YAML, XML or text media type keep it.** A
   handler that sets `Content-Type: application/yaml` (or `application/xml`,
   `text/plain`) and writes the bytes itself was documented as

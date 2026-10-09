@@ -101,7 +101,7 @@ func getEnclosingFunctionName(file *ast.File, pos token.Pos, info *types.Info, f
 			signature := ExprToCallArgument(fn.Type, info, "", fset, meta)
 			signatureStr = CallArgToString(signature)
 
-			return fn.Name.Name, strings.Join(parts, "."), signatureStr
+			return meta.declName(fn), strings.Join(parts, "."), signatureStr
 		}
 	}
 	return "", "", ""
@@ -175,7 +175,7 @@ func findParentFunction(file *ast.File, pos token.Pos, info *types.Info, fset *t
 				signatureStr = CallArgToString(signature)
 			}
 
-			return fn.Name.Name, strings.Join(parts, "."), signatureStr
+			return meta.declName(fn), strings.Join(parts, "."), signatureStr
 		}
 	}
 	return "", "", ""

@@ -24,12 +24,79 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/typemodel"
 )
 
 const MainFunc = "main"
+
+// InitFunc is a package initializer's name. Like main it runs without a caller,
+// so the facts other functions get recorded through the edge that calls them
+// are recorded for it directly (issue #580).
+const InitFunc = "init"
+
+// initSep separates a package's later init functions from their ordinal:
+// `init#1`, `init#2`. No Go identifier contains it, so no declared function can
+// collide with one, and no identity format uses it as a separator.
+const initSep = "#"
+
+// IsPackageInit reports whether a recorded function name is one of its
+// package's init functions (see declName).
+func IsPackageInit(name string) bool {
+	return name == InitFunc || strings.HasPrefix(name, InitFunc+initSep)
+}
+
+// isEntryFunc reports whether a function runs without anything in the program
+// calling it: main, or a package init. A method may be named init and is
+// called like any other function.
+func isEntryFunc(name, recv string) bool {
+	return name == MainFunc || (IsPackageInit(name) && recv == "")
+}
+
+// buildInitNames numbers every package's init functions after the first, in
+// sorted file order and then declaration order, so the numbering is the same
+// on every run (golden rule #1).
+//
+// A package may declare any number of init functions, even in one file, and
+// they used to be recorded under one name. Their assignments then shared one
+// key, so `g := r.Group("/alpha")` in one init and `g := r.Group("/beta")` in
+// another documented both groups' routes under whichever came last; one file's
+// Functions entry kept only its last init (review of #583). The first keeps
+// the plain name, so the common one-init package is recorded as before.
+func buildInitNames(pkgs map[string]map[string]*ast.File) map[*ast.FuncDecl]string {
+	names := map[*ast.FuncDecl]string{}
+	for _, pkgName := range slices.Sorted(maps.Keys(pkgs)) {
+		files := pkgs[pkgName]
+		n := 0
+		for _, fileName := range slices.Sorted(maps.Keys(files)) {
+			for _, decl := range files[fileName].Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil || fn.Name.Name != InitFunc {
+					continue
+				}
+				if n > 0 {
+					names[fn] = InitFunc + initSep + strconv.Itoa(n)
+				}
+				n++
+			}
+		}
+	}
+	return names
+}
+
+// declName is the name a function declaration is recorded under: its own,
+// except for a package's later init functions (see buildInitNames).
+func (m *Metadata) declName(fn *ast.FuncDecl) string {
+	if m == nil {
+		return fn.Name.Name
+	}
+	if name, ok := m.initNames[fn]; ok {
+		return name
+	}
+	return fn.Name.Name
+}
 
 // CallIdentifierType represents different types of identifiers used in the call graph
 type CallIdentifierType int
@@ -259,6 +326,7 @@ func GenerateMetadataWithLogger(pkgs map[string]map[string]*ast.File, fileToInfo
 	// would otherwise decide string-pool interning order (and therefore the
 	// entire serialized metadata) per run.
 	sortedPkgNames := slices.Sorted(maps.Keys(pkgs))
+	metadata.initNames = buildInitNames(pkgs)
 	for _, pkgName := range sortedPkgNames {
 		files := pkgs[pkgName]
 		sortedFileNames := slices.Sorted(maps.Keys(files))
@@ -477,7 +545,7 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 		// Get root assignments. Sorted: relationships[akey] is last-write-wins,
 		// so two files contributing the same key would resolve by map order.
 		for _, file := range m.SortedFiles(callerPkg) {
-			if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
+			if fn, ok := file.Functions[callerName]; ok && isEntryFunc(callerName, m.StringPool.GetString(edge.Caller.RecvType)) {
 				for recvVarName, assigns := range fn.AssignmentMap {
 					assignment := assigns[len(assigns)-1]
 
@@ -1384,12 +1452,13 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			return true
 		})
 
-		f.Functions[fn.Name.Name] = &Function{
-			Name:           metadata.StringPool.Get(fn.Name.Name),
+		name := metadata.declName(fn)
+		f.Functions[name] = &Function{
+			Name:           metadata.StringPool.Get(name),
 			Pkg:            metadata.StringPool.Get(pkgName),
 			Signature:      *ExprToCallArgument(fn.Type, info, pkgName, fset, metadata),
 			Position:       metadata.funcPositionIndex(fn, fset),
-			Scope:          metadata.StringPool.Get(getScope(fn.Name.Name)),
+			Scope:          metadata.StringPool.Get(getScope(name)),
 			Comments:       metadata.StringPool.Get(comments),
 			TypeParams:     typeParams,
 			ReturnVars:     returnVars,
@@ -1400,7 +1469,7 @@ func processFunctions(file *ast.File, info *types.Info, pkgName string, fset *to
 			Blocks:         collectBlocks(fn.Body, fset),
 		}
 
-		f.Functions[fn.Name.Name].SignatureStr = metadata.StringPool.Get(CallArgToString(&f.Functions[fn.Name.Name].Signature))
+		f.Functions[name].SignatureStr = metadata.StringPool.Get(CallArgToString(&f.Functions[name].Signature))
 	}
 }
 
@@ -1970,7 +2039,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			for _, assign := range assignments {
 				varName := CallArgToString(&assign.Lhs)
 				assignVarName = varName
-				if callerFunc == MainFunc {
+				if isEntryFunc(callerFunc, callerParts) {
 					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 				}
 			}

@@ -186,9 +186,14 @@ func (sp *StringPool) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Metadata represents the complete metadata for a Go codebase
 type Metadata struct {
-	StringPool *StringPool         `yaml:"string_pool,omitempty"`
-	Packages   map[string]*Package `yaml:"packages,omitempty"`
-	CallGraph  []CallGraphEdge     `yaml:"call_graph,omitempty"`
+	StringPool *StringPool `yaml:"string_pool,omitempty"`
+
+	// initNames gives each package init function after the first its own
+	// identity (see declName). Not serialised; built before any function is
+	// recorded.
+	initNames map[*ast.FuncDecl]string
+	Packages  map[string]*Package `yaml:"packages,omitempty"`
+	CallGraph []CallGraphEdge     `yaml:"call_graph,omitempty"`
 
 	Callers         map[string][]*CallGraphEdge `yaml:"-"`
 	ParentFunctions map[string][]*CallGraphEdge `yaml:"-"`
