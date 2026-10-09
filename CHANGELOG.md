@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every renderer variant documents what it writes.** The renderer patterns
+  matched a closed list of names, so the variants outside it documented no
+  response at all:
+  - echo's `JSONPretty`, `JSONP`, `XMLPretty`, `Render`, the `JSONBlob`,
+    `JSONPBlob`, `XMLBlob` and `HTMLBlob` raw-bytes variants, and `File`,
+    `Attachment` and `Inline`;
+  - gin's `IndentedJSON`, `SecureJSON`, `AsciiJSON`, `PureJSON`, `JSONP`,
+    `TOML`, `File`, `FileAttachment` and `FileFromFS`;
+  - fiber's `XML`, `JSONP`, `Render`, `SendFile` and `Download`;
+  - net/http's `ServeFile`, `ServeFileFS` and `ServeContent`.
+
+  Each now carries its own argument shape and media type. A file sender
+  documents `200` with bytes under `*/*`, since the media type depends on the
+  file. `Redirect` on echo, gin and fiber documents its status with no body;
+  its URL used to be documented as a JSON body. gin's `c.Status(code)` and
+  fiber's `c.SendStatus(code)` now document their status, where both used to
+  document nothing. (#578)
+
 - **Raw bytes under a declared YAML, XML or text media type keep it.** A
   handler that sets `Content-Type: application/yaml` (or `application/xml`,
   `text/plain`) and writes the bytes itself was documented as

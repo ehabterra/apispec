@@ -3077,7 +3077,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// A call that states its own media type (`c.Data(200, "application/pdf",
 	// b)`) says what it writes. A runtime value states nothing readable, and
 	// the default stands.
-	statedMediaType := false
+	// A raw-bytes call whose NAME fixes the media type (`c.XMLBlob(200, b)`)
+	// states it as surely as one handed it as an argument (issue #578).
+	statedMediaType := r.pattern.RawBody && !r.pattern.ContentTypeFromArg && r.pattern.DefaultContentType != ""
 	if r.pattern.ContentTypeFromArg {
 		if args := node.GetEdge().Args; r.pattern.ContentTypeArgIndex >= 0 && r.pattern.ContentTypeArgIndex < len(args) {
 			if v, ok := r.contextProvider.ConstantValue(args[r.pattern.ContentTypeArgIndex]); ok && v != "" {

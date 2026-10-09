@@ -96,10 +96,15 @@ framework:
       typeFromArg: true
       deref: true
   responsePatterns:
-    - callRegex: ^(?i)(JSON|String|XML|YAML|ProtoBuf|Data|File|Redirect)$
+    - callRegex: ^(?i)(JSON|String|XML|YAML|ProtoBuf|Data)$
       typeArgIndex: 1
       statusFromArg: true
       typeFromArg: true
+    # A redirect sends a status and no body: its URL goes in a header.
+    - callRegex: ^Redirect$
+      statusArgIndex: 0
+      statusFromArg: true
+      typeArgIndex: -1
   paramPatterns:
     - callRegex: ^Param$
       paramIn: path

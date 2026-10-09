@@ -74,13 +74,30 @@ func DefaultGinConfig() *APISpecConfig {
 	// gin convention — unscoped it would misread a status-less call like
 	// fiber's c.JSON(obj), which is why SecondaryView dropped it and a
 	// secondary gin lost its responses (issue #211).
-	responsePatterns = append(responsePatterns, rendererResponsePatterns(ResponsePattern{
+	ginRenderer := ResponsePattern{
 		StatusArgIndex: 0,
 		TypeArgIndex:   1,
 		TypeFromArg:    true,
 		StatusFromArg:  true,
 		RecvTypeRegex:  ginContextRecv,
-	})...)
+	}
+	// The typed variants: each serializes obj like JSON does, under the media
+	// type its name fixes (issue #578).
+	responsePatterns = append(responsePatterns, typedRendererPatterns(ginRenderer,
+		typedRendererCall{call: `^(Indented|Secure|Ascii|Pure)JSON$`, typeArg: 1},
+		typedRendererCall{call: `^JSONP$`, typeArg: 1, mediaType: contentTypeJSONP},
+		typedRendererCall{call: `^TOML$`, typeArg: 1, mediaType: contentTypeTOML},
+	)...)
+	responsePatterns = append(responsePatterns, rendererResponsePatterns(ginRenderer)...)
+	// c.Status(code) sets the status a later body is sent under, like
+	// WriteHeader; c.Redirect's location goes in a header, not the body.
+	responsePatterns = append(responsePatterns, statusOnlyPatterns(ginContextRecv,
+		statusOnlyCall{call: `^Redirect$`, statusArg: 0},
+		statusOnlyCall{call: `^Status$`, statusArg: 0},
+	)...)
+	responsePatterns = append(responsePatterns, fileSenderPatterns(ginContextRecv,
+		`^File$`, `^FileAttachment$`, `^FileFromFS$`,
+	)...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
 	responsePatterns = append(responsePatterns, contentTypeResponsePattern(frameworkContentTypeWrites(`^\*?(github\.com/gin-gonic/gin\.)?Context$`, `^Header$`)))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(""))

@@ -86,7 +86,9 @@ right as far as they go, they just say less than your code knows.
   runtime (`mime.TypeByExtension(ext)`) is not, and the operation keeps the
   default rather than guessing; set it with
   [`overrides`](CONFIGURATION.md#overrides) or a per-pattern
-  `defaultContentType`. Which calls count as a declaration is configurable per
+  `defaultContentType`. A file sender (`c.File(path)`, `http.ServeFile`,
+  fiber's `SendFile`) serves whatever the file is, so its body is documented
+  as bytes under the range `*/*` rather than a named type. Which calls count as a declaration is configurable per
   framework (`responseContext.contentTypeWrites`), so a house context can be
   added. A declaration is only read when it can be shown to be about the
   response rather than an outbound request, which takes

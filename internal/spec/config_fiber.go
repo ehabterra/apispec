@@ -28,6 +28,9 @@ var fiberRequestContext = RequestContextConfig{
 	BodyReaders: stdlibBodyReaders(),
 }
 
+// fiberCtxRecv is fiber's request context, the receiver of its renderers.
+const fiberCtxRecv = `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`
+
 // DefaultFiberConfig returns a default configuration for the Fiber framework.
 func DefaultFiberConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
@@ -70,13 +73,29 @@ func DefaultFiberConfig() *APISpecConfig {
 			// it (issue #354).
 			DefaultContentType: contentTypeText,
 		},
-		ResponsePattern{
-			CallRegex:      `^SendStatus$`,
-			StatusArgIndex: 0,
-			TypeArgIndex:   -1,
-			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
-		},
 	)
+	// Fiber's renderers take no status: the value is the only argument that
+	// matters, and the config's ImplicitStatus supplies the 200 (issue #578).
+	// Render's name argument stands for the page, as on echo.
+	responsePatterns = append(responsePatterns, typedRendererPatterns(ResponsePattern{
+		StatusArgIndex: -1,
+		Deref:          true,
+		RecvTypeRegex:  fiberCtxRecv,
+	},
+		typedRendererCall{call: `^XML$`, typeArg: 0, mediaType: contentTypeXML},
+		typedRendererCall{call: `^JSONP$`, typeArg: 0, mediaType: contentTypeJSONP},
+		typedRendererCall{call: `^Render$`, typeArg: 0, mediaType: contentTypeHTML},
+	)...)
+	// SendStatus never read its argument — the pattern had no StatusFromArg —
+	// so `c.SendStatus(204)` documented nothing. Redirect's status is optional
+	// and defaults to 302 (issue #578).
+	responsePatterns = append(responsePatterns, statusOnlyPatterns(fiberCtxRecv,
+		statusOnlyCall{call: `^SendStatus$`, statusArg: 0},
+		statusOnlyCall{call: `^Redirect$`, statusArg: 1, defaultStatus: http.StatusFound},
+	)...)
+	responsePatterns = append(responsePatterns, fileSenderPatterns(fiberCtxRecv,
+		`^SendFile$`, `^Download$`,
+	)...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
 	responsePatterns = append(responsePatterns, contentTypeResponsePattern(frameworkContentTypeWrites(`^\*?(github\.com/gofiber/fiber(/v\d+)?\.)?Ctx$`, `^Set$`)))
 	responsePatterns = append(responsePatterns, jsonEncodePattern(".*json(iter)?\\.\\*?Encoder"))
