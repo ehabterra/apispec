@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package that `main` only blank-imports. Package `init` functions are now
   roots too, and a router group created inside one keeps its prefix
   (`v1 := r.Group("/v1")` in `init` used to document `/health` instead of
-  `/v1/health`). Still open: routes registered from a package-level var
+  `/v1/health`). Several `init` functions in one package are recorded as
+  distinct functions (`init`, `init#1`, …), so a local group in one no longer
+  hands its prefix to another's routes. Still open: routes registered from a package-level var
   initializer (`var _ = register(...)`, #581), and a group stored in a
   package-level var by one function and registered on from another (#582).
   (#580)

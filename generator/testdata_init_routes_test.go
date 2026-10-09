@@ -26,8 +26,8 @@ import (
 // only at main, never reached them — including the plugin shape, an init in a
 // package main only blank-imports.
 //
-// Two inits in one package share an identity in metadata; both are asserted so
-// that a fix keying on one declaration cannot quietly drop the other.
+// Two inits in one package are asserted so that a fix keying on one
+// declaration cannot quietly drop the other.
 func TestTestdata_InitRoutesNetHTTP(t *testing.T) {
 	out := loadTestdata(t, "init_routes_nethttp", spec.DefaultHTTPConfig())
 	noDanglingRefs(t, out)
@@ -74,6 +74,21 @@ func TestTestdata_InitRoutesGin(t *testing.T) {
 	}
 	if _, ok := out.Paths["/health"]; ok {
 		t.Errorf("/health documented without its /v1 group prefix")
+	}
+
+	// Three inits — two in one file, one in another — each with a local `g`
+	// holding a different group. They used to be recorded as ONE function, so
+	// their assignments shared a key and every route took the last group's
+	// prefix: /gamma/a, /gamma/b (review of #583).
+	for _, path := range []string{"/alpha/a", "/beta/b", "/gamma/c"} {
+		if opFor(out.Paths[path], "GET") == nil {
+			t.Errorf("GET %s missing; have %v", path, mapPathKeys(out.Paths))
+		}
+	}
+	for _, path := range []string{"/gamma/a", "/gamma/b"} {
+		if _, ok := out.Paths[path]; ok {
+			t.Errorf("%s documented: one init's group prefix leaked onto another's routes", path)
+		}
 	}
 
 	// Change detector for #582: a group stored in a package-level var by one
