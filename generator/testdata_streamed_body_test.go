@@ -189,6 +189,72 @@ func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
 	}
 }
 
+// TestTestdata_RawBytesSerializerMediaPerFramework pins raw bytes under a media
+// type a serializer covers on the routers that render them in their own idiom
+// (issue #570). gin's c.Data and echo's c.Blob name YAML and write the bytes
+// themselves, so no serializer ran and the body is bytes under the named type.
+//
+// /raw-header.yaml is a change-detector for #576: a declared application/yaml
+// beside the framework's raw writer (c.Writer.Write, c.Response().Write,
+// c.Send) documents nothing, because that write is not a raw-body pattern and
+// the declaration has nothing to pair with. Flip it when #576 is fixed.
+func TestTestdata_RawBytesSerializerMediaPerFramework(t *testing.T) {
+	frameworks := []struct {
+		name, fixture string
+		cfg           *intspec.APISpecConfig
+		renderer      bool // has a raw renderer that states its media type
+	}{
+		{"gin", "streamed_body_gin", intspec.DefaultGinConfig(), true},
+		{"echo", "streamed_body_echo", intspec.DefaultEchoConfig(), true},
+		{"fiber", "streamed_body_fiber", intspec.DefaultFiberConfig(), false},
+	}
+	for _, fw := range frameworks {
+		t.Run(fw.name, func(t *testing.T) {
+			out := loadTestdata(t, fw.fixture, fw.cfg)
+			if fw.renderer {
+				op := opFor(out.Paths["/raw.yaml"], "GET")
+				if op == nil {
+					t.Fatalf("GET /raw.yaml missing; have %v", mapPathKeys(out.Paths))
+				}
+				resp, ok := op.Responses["200"]
+				if !ok {
+					t.Fatalf("GET /raw.yaml: no 200; have %v", statusKeys(op))
+				}
+				media, ok := resp.Content["application/yaml"]
+				if !ok || media.Schema == nil || media.Schema.Format != "binary" {
+					t.Errorf("GET /raw.yaml 200 = %v, want application/yaml bytes (format: binary)", contentTypesOf(op, "200"))
+				}
+				// A branch-assigned status fans the body out per status; every
+				// copy is still bytes (review of #577).
+				if fw.name == "gin" {
+					op := opFor(out.Paths["/raw-branch.yaml"], "GET")
+					if op == nil {
+						t.Fatalf("GET /raw-branch.yaml missing; have %v", mapPathKeys(out.Paths))
+					}
+					for _, status := range []string{"200", "201"} {
+						resp, ok := op.Responses[status]
+						if !ok {
+							t.Errorf("GET /raw-branch.yaml: no %s; have %v", status, statusKeys(op))
+							continue
+						}
+						media, ok := resp.Content["application/yaml"]
+						if !ok || media.Schema == nil || media.Schema.Format != "binary" {
+							t.Errorf("GET /raw-branch.yaml %s = %v, want application/yaml bytes (format: binary)", status, contentTypesOf(op, status))
+						}
+					}
+				}
+			}
+			op := opFor(out.Paths["/raw-header.yaml"], "GET")
+			if op == nil {
+				t.Fatalf("GET /raw-header.yaml missing; have %v", mapPathKeys(out.Paths))
+			}
+			if _, ok := op.Responses["200"]; ok {
+				t.Errorf("GET /raw-header.yaml now documents a 200 — #576 may be fixed; assert application/yaml bytes here instead")
+			}
+		})
+	}
+}
+
 // A negotiated endpoint sends bytes OR a typed body on one status. The stated
 // binary body has no Go type, and the slot merge used to keep "the informative
 // one" — the JSON — and drop the PDF (review of #547).

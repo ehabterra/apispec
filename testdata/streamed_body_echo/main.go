@@ -53,11 +53,27 @@ func rawPDF(c echo.Context) error {
 	return c.Blob(http.StatusOK, "application/pdf", []byte("%PDF"))
 }
 
+// Under a media type a serializer covers (issue #570): c.Blob names YAML and
+// writes the bytes itself, so they are bytes. The declaration beside a raw
+// c.Response().Write documents nothing yet — the write is not a raw-body
+// pattern on echo (#576).
+func rawYAML(c echo.Context) error {
+	return c.Blob(http.StatusOK, "application/yaml", []byte("a: 1"))
+}
+
+func rawHeaderYAML(c echo.Context) error {
+	c.Response().Header().Set("Content-Type", "application/yaml")
+	_, err := c.Response().Write([]byte("a: 1"))
+	return err
+}
+
 func main() {
 	e := echo.New()
 	e.GET("/export.csv", csvExport)
 	e.GET("/file.pdf", download)
 	e.GET("/internal", internalOnly)
 	e.GET("/raw.pdf", rawPDF)
+	e.GET("/raw.yaml", rawYAML)
+	e.GET("/raw-header.yaml", rawHeaderYAML)
 	e.Logger.Fatal(e.Start(":8080"))
 }

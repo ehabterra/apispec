@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/csv"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -73,12 +74,38 @@ func invoice(c *gin.Context) {
 	c.JSON(200, Invoice{})
 }
 
+// Under a media type a serializer covers (issue #570): c.Data names YAML and
+// writes the bytes itself, so they are bytes. The declaration beside a raw
+// c.Writer.Write documents nothing yet — the write is not a raw-body pattern on
+// gin (#576).
+func rawYAML(c *gin.Context) {
+	c.Data(200, "application/yaml", []byte("a: 1"))
+}
+
+func rawHeaderYAML(c *gin.Context) {
+	c.Header("Content-Type", "application/yaml")
+	_, _ = c.Writer.Write([]byte("a: 1"))
+}
+
+// A branch-assigned status fans the response out into one copy per status
+// (review of #577).
+func rawYAMLBranch(c *gin.Context) {
+	status := http.StatusOK
+	if c.Query("new") != "" {
+		status = http.StatusCreated
+	}
+	c.Data(status, "application/yaml", []byte("a: 1"))
+}
+
 func main() {
 	r := gin.Default()
 	r.GET("/export.csv", csvExport)
 	r.GET("/file.pdf", download)
 	r.GET("/internal", internalOnly)
 	r.GET("/raw.pdf", rawPDF)
+	r.GET("/raw.yaml", rawYAML)
+	r.GET("/raw-header.yaml", rawHeaderYAML)
 	r.GET("/invoice", invoice)
+	r.GET("/raw-branch.yaml", rawYAMLBranch)
 	_ = r.Run(":8080")
 }
