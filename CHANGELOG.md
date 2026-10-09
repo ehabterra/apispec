@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-10-10
+
+More of what a handler sends gets documented, as what it is. Every renderer
+variant now documents its body: echo's `*Pretty`/`*Blob`/`JSONP`/`Render`,
+gin's `IndentedJSON` family, `JSONP` and `TOML`, fiber's `XML`/`JSONP`/`Render`,
+and file downloads on every framework, which used to document nothing.
+Redirects document their status instead of their URL as a JSON body. A
+status held in a local variable resolves, routes registered from `init()`
+are found, and a served `openapi.yaml` is documented as YAML rather than a
+base64 JSON string. A `--config` file's lists now add to the built-in ones
+instead of silently replacing them: on a ~720-operation service, a config
+exported by an earlier release had disabled every pattern 0.5.10 added.
+
 ### Fixed
 
 - **A status held in a local variable is documented.**
@@ -1641,7 +1654,8 @@ Baseline release. Static-analysis OpenAPI 3.1 generation for gin, echo, chi,
 fiber, gorilla/mux, and net/http, with framework-agnostic auth detection, a
 structured type model, and the `apispecui`/`apidiag` companion tools.
 
-[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.10...HEAD
+[Unreleased]: https://github.com/ehabterra/apispec/compare/v0.5.11...HEAD
+[0.5.11]: https://github.com/ehabterra/apispec/compare/v0.5.10...v0.5.11
 [0.5.10]: https://github.com/ehabterra/apispec/compare/v0.5.9...v0.5.10
 [0.5.9]: https://github.com/ehabterra/apispec/compare/v0.5.8...v0.5.9
 [0.5.8]: https://github.com/ehabterra/apispec/compare/v0.5.7...v0.5.8
