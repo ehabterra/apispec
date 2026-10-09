@@ -1037,7 +1037,29 @@ func NewLazyTree(meta *metadata.Metadata, limits metadata.TrackerLimits, opts ..
 		seen[callerID] = true
 		t.roots = append(t.roots, &LazyNode{tree: t, key: t.internKey(strings.TrimPrefix(callerID, "*"))})
 	}
+	// A package's init functions run before main and nothing calls them, so
+	// nothing below main reaches the routes they register — the plugin shape,
+	// where main only blank-imports the package (issue #580). After the mains,
+	// so the routes main registers keep their walk order.
+	//
+	// A package may declare several init functions; metadata records each
+	// under its own identity (`init`, `init#1`, …), so each is its own root.
+	for _, edge := range meta.CallGraphRoots() {
+		callerID := edge.Caller.ID()
+		if !isPackageInit(meta, edge.Caller) || seen[callerID] {
+			continue
+		}
+		seen[callerID] = true
+		t.roots = append(t.roots, &LazyNode{tree: t, key: t.internKey(strings.TrimPrefix(callerID, "*"))})
+	}
 	return t
+}
+
+// isPackageInit reports whether a call's caller is a package init function: an
+// init with no receiver (a method may be named init and is called like any
+// other).
+func isPackageInit(meta *metadata.Metadata, c metadata.Call) bool {
+	return metadata.IsPackageInit(getString(meta, c.Name)) && getString(meta, c.RecvType) == ""
 }
 
 // edgesFor returns (and memoizes) the expansion edge list for a function base
