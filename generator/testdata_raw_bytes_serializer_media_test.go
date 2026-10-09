@@ -108,3 +108,27 @@ func TestTestdata_RawBytesDeclaredUnderWrittenStatus(t *testing.T) {
 		}
 	}
 }
+
+// TestTestdata_RawBytesLateDeclarationIgnored pins a declaration written AFTER
+// the status: `WriteHeader(201)` commits the headers, so a later
+// `Header().Set("Content-Type", …)` never reaches the client. It used to stand
+// in as a pending 200 and take the bytes from the 201 the handler actually
+// sends (review of #577).
+func TestTestdata_RawBytesLateDeclarationIgnored(t *testing.T) {
+	out := loadTestdata(t, "raw_bytes_serializer_media", spec.DefaultChiConfig())
+
+	for _, path := range []string{"/yaml-late", "/pdf-late"} {
+		op := opFor(out.Paths[path], "POST")
+		if op == nil {
+			t.Errorf("POST %s missing; have %v", path, mapPathKeys(out.Paths))
+			continue
+		}
+		if got := statusKeys(op); len(got) != 1 || got[0] != "201" {
+			t.Errorf("POST %s statuses = %v, want only 201", path, got)
+			continue
+		}
+		if got := contentTypesOf(op, "201"); len(got) != 1 || got[0] != "application/json" {
+			t.Errorf("POST %s 201 content = %v, want the undeclared default application/json", path, got)
+		}
+	}
+}

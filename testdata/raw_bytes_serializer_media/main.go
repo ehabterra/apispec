@@ -72,6 +72,19 @@ func pdfCreated(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(doc)
 }
 
+// Headers are committed by WriteHeader: the late declaration has no effect.
+func yamlLate(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/yaml")
+	_, _ = w.Write(doc)
+}
+
+func pdfLate(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/pdf")
+	_, _ = w.Write(doc)
+}
+
 func main() {
 	r := chi.NewRouter()
 	r.Get("/yaml-charset", yamlCharset)
@@ -85,5 +98,7 @@ func main() {
 	r.Get("/json-encoded", jsonEncoded)
 	r.Post("/yaml-created", yamlCreated)
 	r.Post("/pdf-created", pdfCreated)
+	r.Post("/yaml-late", yamlLate)
+	r.Post("/pdf-late", pdfLate)
 	_ = http.ListenAndServe(":8080", r)
 }

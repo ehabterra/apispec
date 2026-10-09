@@ -1709,6 +1709,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// left the bytes under the JSON default (review of #577).
 	declared := map[string][]*fragment{}
 	moved := map[*ResponseInfo]bool{}
+	// chain -> where a status was WRITTEN on it. WriteHeader commits the
+	// response headers, so a Content-Type set after one has no effect, and
+	// reading it would hand the pending status to its default 200 (review of
+	// #577). Same file only: dominance answers permissively across files, and
+	// the fragments' file order is not execution order.
+	committedAt := map[string]codePos{}
 	adoptDeclaration := func(f *fragment, statusStated bool) {
 		if !f.resp.RawBytes || f.resp.MediaTypeDeclared {
 			return
@@ -1737,11 +1743,18 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		status, body := f.resp.StatusCode, f.resp.BodyType
 		known := status >= 100 && status < 600
 		if f.resp.HeaderDeclaration {
+			at := codePos{file: f.file, line: f.line, col: f.col}
+			if c, ok := committedAt[f.chain]; ok && c.file == at.file && e.controlFlow().dominates(c, at) {
+				continue // the headers are already on the wire
+			}
 			declared[f.chain] = append(declared[f.chain], f)
 		}
 		switch {
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
+			if !f.resp.HeaderDeclaration {
+				committedAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
+			}
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
