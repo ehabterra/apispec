@@ -31,6 +31,18 @@ import (
 
 const MainFunc = "main"
 
+// InitFunc is a package initializer's name. Like main it runs without a caller,
+// so the facts other functions get recorded through the edge that calls them
+// are recorded for it directly (issue #580).
+const InitFunc = "init"
+
+// isEntryFunc reports whether a function runs without anything in the program
+// calling it: main, or a package init. A method may be named init and is
+// called like any other function.
+func isEntryFunc(name, recv string) bool {
+	return name == MainFunc || (name == InitFunc && recv == "")
+}
+
 // CallIdentifierType represents different types of identifiers used in the call graph
 type CallIdentifierType int
 
@@ -477,7 +489,7 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 		// Get root assignments. Sorted: relationships[akey] is last-write-wins,
 		// so two files contributing the same key would resolve by map order.
 		for _, file := range m.SortedFiles(callerPkg) {
-			if fn, ok := file.Functions[callerName]; ok && callerName == MainFunc {
+			if fn, ok := file.Functions[callerName]; ok && isEntryFunc(callerName, m.StringPool.GetString(edge.Caller.RecvType)) {
 				for recvVarName, assigns := range fn.AssignmentMap {
 					assignment := assigns[len(assigns)-1]
 
@@ -1970,7 +1982,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			for _, assign := range assignments {
 				varName := CallArgToString(&assign.Lhs)
 				assignVarName = varName
-				if callerFunc == MainFunc {
+				if isEntryFunc(callerFunc, callerParts) {
 					assignmentsInFunc[varName] = append(assignmentsInFunc[varName], assign)
 				}
 			}
