@@ -407,7 +407,8 @@ func TestParamValueFromCallSites(t *testing.T) {
 // the call share an enclosing region.
 func TestAssignmentsReaching(t *testing.T) {
 	const file = "main.go"
-	// blocks: a loop body spanning lines 20-24.
+	// blocks: a loop body spanning lines 20-24; an if arm at 26-28 that falls
+	// through; an if arm at 32-34 that returns.
 	meta := newTestMeta()
 	meta.Packages = map[string]*metadata.Package{
 		"app": {Files: map[string]*metadata.File{
@@ -419,6 +420,17 @@ func TestAssignmentsReaching(t *testing.T) {
 						Kind:      metadata.BlockLoop,
 						StartLine: 20, StartCol: 2,
 						EndLine: 24, EndCol: 3,
+					}, {
+						Kind:      metadata.BlockIf,
+						StartLine: 26, StartCol: 2,
+						EndLine: 28, EndCol: 3,
+						Group: 1,
+					}, {
+						Kind:      metadata.BlockIf,
+						StartLine: 32, StartCol: 2,
+						EndLine: 34, EndCol: 3,
+						Group:      2,
+						Terminates: true,
 					}},
 				},
 			}},
@@ -469,11 +481,31 @@ func TestAssignmentsReaching(t *testing.T) {
 		}
 	})
 
-	t.Run("writes at or before the call are all kept", func(t *testing.T) {
+	t.Run("a write overwritten on every path to the call is dropped", func(t *testing.T) {
+		// `p = "/one"; p = "/two"; register(p)` — straight-line, so the second
+		// write dominates the call and the first is never its value (#579).
 		assigns := []metadata.Assignment{assignAt(10, 2, "/one"), assignAt(12, 2, "/two")}
 		got := values(b.assignmentsReaching(assigns, nodeAt(15, 2)))
+		if len(got) != 1 || got[0] != "/two" {
+			t.Errorf("reaching = %v, want [/two]", got)
+		}
+	})
+
+	t.Run("a write in an arm that falls through is an alternative", func(t *testing.T) {
+		// `p = "/one"; if … { p = "/two" }; register(p)` — genuine ambiguity.
+		assigns := []metadata.Assignment{assignAt(25, 2, "/one"), assignAt(27, 3, "/two")}
+		got := values(b.assignmentsReaching(assigns, nodeAt(36, 2)))
 		if len(got) != 2 {
 			t.Errorf("reaching = %v, want both writes kept (genuine ambiguity)", got)
+		}
+	})
+
+	t.Run("a write in an arm that returns never reaches the call", func(t *testing.T) {
+		// `p = "/one"; if … { p = "/two"; return }; register(p)`.
+		assigns := []metadata.Assignment{assignAt(31, 2, "/one"), assignAt(33, 3, "/two")}
+		got := values(b.assignmentsReaching(assigns, nodeAt(36, 2)))
+		if len(got) != 1 || got[0] != "/one" {
+			t.Errorf("reaching = %v, want [/one]", got)
 		}
 	})
 

@@ -3119,6 +3119,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			statusResolved = true
 			respInfo.StatusInFrame = true
 			respInfo.StatusCode = status
+		} else if status, ok := r.statusFromLocalVar(statusArg, node); ok {
+			// `code := http.StatusConflict; c.JSON(code, v)` — a local the call
+			// reads, with one value reaching it (issue #579). Several values
+			// fan out below (expandStatusesFromIdent).
+			statusResolved = true
+			respInfo.StatusInFrame = true
+			respInfo.StatusCode = status
 		} else if callerArg, _ := resolveArgThroughParams(statusArg, node); callerArg != statusArg {
 			// The status arg is a parameter threaded through one or more
 			// response helpers — e.g. WriteHeader(status) inside
@@ -3784,18 +3791,69 @@ func constructorFieldArg(impl *ContextProviderImpl, callerID, calleeFunc, callee
 //   - fewer than two assignments exist (single-branch flows are left
 //     untouched so existing latest-wins behaviour is preserved).
 func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) ([]int, bool) {
-	if arg == nil || arg.GetKind() != metadata.KindIdent || edge == nil {
+	assigns, impl := r.statusVarAssignments(arg, edge)
+	if impl == nil {
 		return nil, false
+	}
+	return r.statusesOfAssignments(assigns, impl)
+}
+
+// statusVarAssignments returns the assignments to a status variable that reach
+// the call reading it: the enclosing function's (a closure's parent's
+// included, see callerAssignmentMap), less the writes that cannot be its value
+// there (assignmentsReaching). nil impl means there is nothing to read.
+//
+// Only reaching writes count, so `code := 200; code = 201; c.JSON(code, v)`
+// is one status, not two alternatives (issue #579).
+func (r *ResponsePatternMatcherImpl) statusVarAssignments(arg *metadata.CallArgument, edge *metadata.CallGraphEdge) ([]metadata.Assignment, *ContextProviderImpl) {
+	if arg == nil || arg.GetKind() != metadata.KindIdent || edge == nil {
+		return nil, nil
 	}
 	impl, ok := r.contextProvider.(*ContextProviderImpl)
 	if !ok || impl.meta == nil {
-		return nil, false
+		return nil, nil
 	}
-	fn := findFunction(impl.meta, impl.GetString(edge.Caller.Pkg), impl.GetString(edge.Caller.Name))
-	if fn == nil {
-		return nil, false
+	name := arg.GetName()
+	am := callerAssignmentMap(impl, edge, name)
+	if len(am[name]) == 0 {
+		return nil, nil
 	}
-	return r.expandVarStatuses(arg.GetName(), fn, impl)
+	file, line, col := positionOfInstanceID(edge.Callee.ID())
+	return r.assignmentsReachingAt(am[name], codePos{file: file, line: line, col: col}), impl
+}
+
+// statusFromLocalVar resolves a status argument that is a local variable with
+// exactly one value reaching the call (issue #579). A literal or constant
+// argument resolved before this; a branch-assigned one with several values is
+// expandStatusesFromIdent's, and anything not constant stays unresolved
+// (golden rule #7).
+//
+// Only a CONSTANT value counts. statusCodeOfValue also reads a call, taking the
+// one argument that parses as a status — right for an error constructor, whose
+// own resolvers bind the field to it (statusFromConstructorField), and a guess
+// anywhere else: `code := util.OptionalArg(status, http.StatusSeeOther)` holds
+// the CALLER's status when one is passed, and reading it as 303 documented
+// redirects that send 302 (measured on a large real project).
+func (r *ResponsePatternMatcherImpl) statusFromLocalVar(arg *metadata.CallArgument, node TrackerNodeInterface) (int, bool) {
+	if node == nil {
+		return 0, false
+	}
+	assigns, impl := r.statusVarAssignments(arg, node.GetEdge())
+	if impl == nil || len(assigns) == 0 {
+		return 0, false
+	}
+	status := 0
+	for i := range assigns {
+		if assigns[i].Value.GetKind() == metadata.KindCall {
+			return 0, false
+		}
+		s, ok := r.statusCodeOfValue(&assigns[i].Value, impl)
+		if !ok || (status != 0 && s != status) {
+			return 0, false
+		}
+		status = s
+	}
+	return status, true
 }
 
 // expandVarStatuses fans a variable's branch assignments in function fn out to
@@ -3807,8 +3865,13 @@ func (r *ResponsePatternMatcherImpl) expandStatusesFromIdent(arg *metadata.CallA
 // variable has fewer than two assignments — single-branch flows resolve through
 // the normal latest-wins path and must not be split. Issues #39 and #155.
 func (r *ResponsePatternMatcherImpl) expandVarStatuses(name string, fn *metadata.Function, impl *ContextProviderImpl) (codes []int, residue bool) {
-	assigns, ok := fn.AssignmentMap[name]
-	if !ok || len(assigns) < 2 {
+	return r.statusesOfAssignments(fn.AssignmentMap[name], impl)
+}
+
+// statusesOfAssignments is expandVarStatuses over an assignment list already
+// gathered (and, for a call site, narrowed to the writes reaching it).
+func (r *ResponsePatternMatcherImpl) statusesOfAssignments(assigns []metadata.Assignment, impl *ContextProviderImpl) (codes []int, residue bool) {
+	if len(assigns) < 2 {
 		return nil, false
 	}
 	seen := make(map[int]struct{}, len(assigns))

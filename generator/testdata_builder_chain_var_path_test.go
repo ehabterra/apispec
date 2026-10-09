@@ -40,7 +40,7 @@ func TestTestdata_BuilderChainVarPath(t *testing.T) {
 	for _, path := range []string{
 		"/direct-concat", "/direct-bare",
 		"/var-concat", "/var-bare", "/var-chained",
-		"/reused-first",
+		"/reused-first", "/reused-second",
 		"/plain",
 	} {
 		if _, ok := out.Paths[path]; !ok {
@@ -79,28 +79,13 @@ func TestTestdata_BuilderChainVarPath(t *testing.T) {
 		}
 	}
 
-	// NOT RESOLVED, and asserted so the day it changes. One variable reused for
-	// two builders resolves at the FIRST registration and not at the second:
-	// both writes are above that call, so both are candidates for the value and
-	// they disagree, which the agreement rule answers by declining.
-	//
-	// That is #436's known limit, shared with every path held in a variable —
-	// the scope is keyed by NAME, and a superseded write cannot simply be
-	// dropped because a loop can carry one back. The route is reported rather
-	// than silently missing, which is the honest answer (golden rule #7), and
-	// this block flips when the limit is lifted.
-	if _, ok := out.Paths["/reused-second"]; ok {
-		t.Error("/reused-second is documented — a reused builder variable now takes the value in " +
-			"effect at each registration (#436): assert it as present and drop this block")
-	}
-	reports := gen.UnresolvedPaths()
-	if len(reports) != 1 {
-		t.Errorf("want the second registration on the reused variable reported, got %d: %+v",
-			len(reports), reports)
-	}
-	for _, r := range reports {
-		if r.Position == "" {
-			t.Errorf("report %+v names no registration site, so a reader cannot find it", r)
-		}
+	// One variable reused for two builders takes the value in effect at each
+	// registration. At the second, both writes are above the call, but the
+	// second dominates it and so overwrites the first on every path there: the
+	// first is never the value, and the two do not read as one ambiguous
+	// variable (#579). A write below the first call was already dropped (#436).
+	// With both resolved, nothing is left to report.
+	if reports := gen.UnresolvedPaths(); len(reports) != 0 {
+		t.Errorf("want every registration resolved, got %d unresolved: %+v", len(reports), reports)
 	}
 }

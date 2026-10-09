@@ -440,13 +440,31 @@ func pathVarAssignments(cp ContextProvider, edge *metadata.CallGraphEdge, name s
 // in. blockIndex.dominates answers exactly that (it is what response pairing
 // uses), and it answers permissively on missing facts, so an unindexed file or
 // an unrecoverable position keeps every assignment and the old behaviour.
+//
+// Of the writes above the call, two more kinds never reach it (issue #579):
+//
+//	code := http.StatusOK
+//	code = http.StatusCreated       // overwrites the 200 on every path to the call
+//	return c.JSON(code, v)
+//
+//	if bad { code = 400; return … } // an arm that returned before the call
+//
+// The first is a write a later one DOMINATING the call overwrites; the second
+// is a write exclusive with the call (blockIndex.exclusive). Both used to read
+// as alternatives, so a status reassigned on one path documented both values.
+// A write in an arm the call is not in, that falls through to it, still
+// reaches it, and stays.
 func (b *BasePatternMatcher) assignmentsReaching(assigns []metadata.Assignment, node TrackerNodeInterface) []metadata.Assignment {
 	if len(assigns) <= 1 || node == nil {
 		return assigns
 	}
 	callFile, callLine, callCol := calleePosition(node)
-	call := codePos{file: callFile, line: callLine, col: callCol}
-	if !call.valid() {
+	return b.assignmentsReachingAt(assigns, codePos{file: callFile, line: callLine, col: callCol})
+}
+
+// assignmentsReachingAt is assignmentsReaching for a call site already located.
+func (b *BasePatternMatcher) assignmentsReachingAt(assigns []metadata.Assignment, call codePos) []metadata.Assignment {
+	if len(assigns) <= 1 || !call.valid() {
 		return assigns
 	}
 	impl, ok := b.contextProvider.(*ContextProviderImpl)
@@ -478,7 +496,53 @@ func (b *BasePatternMatcher) assignmentsReaching(assigns []metadata.Assignment, 
 	if len(kept) == 0 {
 		return assigns // nothing reaches: keep the old, conservative answer
 	}
+	if live := liveAtCall(impl.meta, kept, call, flow); len(live) > 0 {
+		return live
+	}
 	return kept
+}
+
+// liveAtCall drops, from writes that may reach a call, the ones that cannot:
+// a write exclusive with the call, and a write that a later write dominating
+// the call overwrites (see assignmentsReaching). Only writes placed above the
+// call in its file are judged; a loop-carried write below it and an
+// unplaceable one stay as they are.
+//
+// Without a block index nothing is dropped: dominates answers yes on missing
+// facts, which here would throw away a branch's value — a guess (golden rule
+// #7). The index covers if/switch/select arms, loops, blocks and closures; a
+// goto that skips a write is not modelled.
+func liveAtCall(meta *metadata.Metadata, writes []metadata.Assignment, call codePos, flow *blockIndex) []metadata.Assignment {
+	if flow == nil {
+		return writes
+	}
+	above := func(p codePos) bool { return p.valid() && p.file == call.file && p.beforeOrAt(call) }
+	live := make([]metadata.Assignment, 0, len(writes))
+	for i := range writes {
+		at := assignmentPos(meta, &writes[i])
+		if !above(at) {
+			live = append(live, writes[i])
+			continue
+		}
+		if flow.exclusive(at, call) {
+			continue
+		}
+		overwritten := false
+		for j := range writes {
+			later := assignmentPos(meta, &writes[j])
+			if j == i || !above(later) || later == at || !at.beforeOrAt(later) {
+				continue
+			}
+			if flow.dominates(later, call) {
+				overwritten = true
+				break
+			}
+		}
+		if !overwritten {
+			live = append(live, writes[i])
+		}
+	}
+	return live
 }
 
 // assignmentPos renders an assignment's recorded position.
