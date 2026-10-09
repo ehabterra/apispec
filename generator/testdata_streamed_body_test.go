@@ -224,6 +224,25 @@ func TestTestdata_RawBytesSerializerMediaPerFramework(t *testing.T) {
 				if !ok || media.Schema == nil || media.Schema.Format != "binary" {
 					t.Errorf("GET /raw.yaml 200 = %v, want application/yaml bytes (format: binary)", contentTypesOf(op, "200"))
 				}
+				// A branch-assigned status fans the body out per status; every
+				// copy is still bytes (review of #577).
+				if fw.name == "gin" {
+					op := opFor(out.Paths["/raw-branch.yaml"], "GET")
+					if op == nil {
+						t.Fatalf("GET /raw-branch.yaml missing; have %v", mapPathKeys(out.Paths))
+					}
+					for _, status := range []string{"200", "201"} {
+						resp, ok := op.Responses[status]
+						if !ok {
+							t.Errorf("GET /raw-branch.yaml: no %s; have %v", status, statusKeys(op))
+							continue
+						}
+						media, ok := resp.Content["application/yaml"]
+						if !ok || media.Schema == nil || media.Schema.Format != "binary" {
+							t.Errorf("GET /raw-branch.yaml %s = %v, want application/yaml bytes (format: binary)", status, contentTypesOf(op, status))
+						}
+					}
+				}
 			}
 			op := opFor(out.Paths["/raw-header.yaml"], "GET")
 			if op == nil {

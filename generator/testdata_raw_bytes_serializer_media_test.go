@@ -74,3 +74,37 @@ func TestTestdata_RawBytesSerializerMedia(t *testing.T) {
 		}
 	}
 }
+
+// TestTestdata_RawBytesDeclaredUnderWrittenStatus pins a declaration written
+// BEFORE a status write: `Header().Set(...)`, `WriteHeader(201)`, `Write(b)`.
+// The header write carries the pattern's default 200 but sends no status, so
+// the declaration belongs to the 201 its bytes went out under. It used to stay
+// at 200 — documenting a status the handler never sends, or for a serializer's
+// media type nothing at all — and leave the 201 bytes under the JSON default
+// (review of #577).
+func TestTestdata_RawBytesDeclaredUnderWrittenStatus(t *testing.T) {
+	out := loadTestdata(t, "raw_bytes_serializer_media", spec.DefaultChiConfig())
+
+	for _, tc := range []struct{ path, media string }{
+		{"/yaml-created", "application/yaml"},
+		{"/pdf-created", "application/pdf"},
+	} {
+		op := opFor(out.Paths[tc.path], "POST")
+		if op == nil {
+			t.Errorf("POST %s missing; have %v", tc.path, mapPathKeys(out.Paths))
+			continue
+		}
+		if got := statusKeys(op); len(got) != 1 || got[0] != "201" {
+			t.Errorf("POST %s statuses = %v, want only 201", tc.path, got)
+			continue
+		}
+		got := contentTypesOf(op, "201")
+		if len(got) != 1 || got[0] != tc.media {
+			t.Errorf("POST %s 201 content = %v, want only %q", tc.path, got, tc.media)
+			continue
+		}
+		if schema := op.Responses["201"].Content[tc.media].Schema; schema == nil || schema.Format != "binary" {
+			t.Errorf("POST %s 201: schema %+v, want string/binary", tc.path, schema)
+		}
+	}
+}

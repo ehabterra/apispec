@@ -60,6 +60,18 @@ func jsonEncoded(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(Item{ID: "1"})
 }
 
+func yamlCreated(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(doc)
+}
+
+func pdfCreated(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/pdf")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(doc)
+}
+
 func main() {
 	r := chi.NewRouter()
 	r.Get("/yaml-charset", yamlCharset)
@@ -71,5 +83,7 @@ func main() {
 	r.Get("/xml-encoded", xmlEncoded)
 	r.Get("/yaml-encoded", yamlEncoded)
 	r.Get("/json-encoded", jsonEncoded)
+	r.Post("/yaml-created", yamlCreated)
+	r.Post("/pdf-created", pdfCreated)
 	_ = http.ListenAndServe(":8080", r)
 }

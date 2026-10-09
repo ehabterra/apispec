@@ -21,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under those types are bytes too. `application/json` is unchanged. A
   declaration beside gin's `c.Writer.Write`, echo's `c.Response().Write` or
   fiber's `c.Send` still documents nothing, since those writes are not
-  raw-body patterns yet (#576). (#570)
+  raw-body patterns yet (#576). A declaration written before a status
+  (`Header().Set(...)`, `WriteHeader(201)`, `Write(b)`) now documents the 201
+  it went out under instead of an unsent 200, and a branch-assigned status
+  passed to `c.Data` keeps the bytes on every status it fans out to. (#570)
 
 - **A header read off an outbound exchange is not a request parameter.**
   `net/http.Header` is also the header map of every response an `http.Client`

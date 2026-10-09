@@ -270,6 +270,13 @@ type ResponseInfo struct {
 	// nothing, since an unresolved serializer body is unresolved, not bytes.
 	DeclarationOnly bool
 
+	// HeaderDeclaration marks the Content-Type header write itself, as opposed
+	// to a body that states its own media type (`c.Data(200, "application/pdf",
+	// b)`). The write sends no status: the one it carries is the pattern's
+	// default, so on a chain whose raw bytes went out under another status the
+	// declaration belongs to THAT status (review of #577).
+	HeaderDeclaration bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1613,9 +1620,14 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// one status carries both, and alternating them advertises an error type on
 	// a success response.
 	stated := map[string]bool{}
+	// slot -> how many fragments were stored there, so a header declaration
+	// that moved to its body's status can tell whether its own default-status
+	// slot holds anything but itself (see adoptDeclaration).
+	storedAt := map[string]int{}
 	store := func(resp *ResponseInfo, statusStated bool) {
 		slot := fmt.Sprintf("%d", resp.StatusCode)
 		existing := route.Response[slot]
+		storedAt[slot]++
 		wasStated := stated[slot]
 		stated[slot] = wasStated || statusStated
 		switch {
@@ -1689,11 +1701,44 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// set — so such a body keeps its undetermined status rather than claiming 200
 	// (issue #369, golden rule #7).
 	statusUnresolved := map[string]bool{}
+	// chain -> its Content-Type header writes, in source order. The write
+	// carries the header pattern's default status, but sends none: when the raw
+	// bytes it describes go out under a status written after it
+	// (`Header().Set(...)`, `WriteHeader(201)`, `Write(b)`), that 201 is the
+	// declaration's status, and storing the declaration only at its default
+	// left the bytes under the JSON default (review of #577).
+	declared := map[string][]*fragment{}
+	moved := map[*ResponseInfo]bool{}
+	adoptDeclaration := func(f *fragment, statusStated bool) {
+		if !f.resp.RawBytes || f.resp.MediaTypeDeclared {
+			return
+		}
+		bodyAt := codePos{file: f.file, line: f.line, col: f.col}
+		decls := declared[f.chain]
+		for i := len(decls) - 1; i >= 0; i-- {
+			d := decls[i]
+			if !e.controlFlow().dominates(codePos{file: d.file, line: d.line, col: d.col}, bodyAt) {
+				continue
+			}
+			if d.resp.StatusCode == f.resp.StatusCode {
+				return // same slot: the store already paired them
+			}
+			cp := *d.resp
+			cp.StatusCode = f.resp.StatusCode
+			cp.EntrySites = f.resp.EntrySites
+			store(&cp, statusStated)
+			moved[d.resp] = true
+			return
+		}
+	}
 	var unpaired []*fragment
 	for i := range frags {
 		f := &frags[i]
 		status, body := f.resp.StatusCode, f.resp.BodyType
 		known := status >= 100 && status < 600
+		if f.resp.HeaderDeclaration {
+			declared[f.chain] = append(declared[f.chain], f)
+		}
 		switch {
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
@@ -1708,6 +1753,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			delete(claimedAt, f.chain)
 		case known:
 			store(f.resp, f.resp.StatusInFrame)
+			adoptDeclaration(f, f.resp.StatusInFrame)
 		case f.resp.StatusUnresolved:
 			// A status write whose value did not resolve: nothing to store (no
 			// status, no body), but it disqualifies this chain's later bodies
@@ -1734,6 +1780,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				f.resp.StatusCode = pendingStatus[f.chain]
 				claimedAt[f.chain] = append(claimedAt[f.chain], bodyAt)
 				store(f.resp, pendingInFrame[f.chain])
+				adoptDeclaration(f, pendingInFrame[f.chain])
 			} else {
 				unpaired = append(unpaired, f)
 			}
@@ -1774,11 +1821,23 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			if f.resp.ImplicitStatus > 0 {
 				f.resp.StatusCode = f.resp.ImplicitStatus
 				store(f.resp, false)
+				adoptDeclaration(f, false)
 				continue
 			}
 			unknown++
 			f.resp.StatusCode = -unknown
 			store(f.resp, false)
+			adoptDeclaration(f, false)
+		}
+	}
+
+	// A declaration that went with its bytes to another status leaves its
+	// default-status slot behind. Nothing but the declaration itself landed
+	// there, so the handler never sends that status.
+	for decl := range moved {
+		slot := fmt.Sprintf("%d", decl.StatusCode)
+		if route.Response[slot] == decl && storedAt[slot] == 1 {
+			delete(route.Response, slot)
 		}
 	}
 
@@ -3020,6 +3079,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		ContentType:       contentType,
 		MediaTypeDeclared: r.pattern.ContentTypeFromHeaderWrite || statedMediaType,
 		DeclarationOnly:   tentative,
+		HeaderDeclaration: r.pattern.ContentTypeFromHeaderWrite,
 	}
 
 	edge := node.GetEdge()
@@ -3188,6 +3248,30 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		respInfo.Schema = mapGoTypeForRoute(route.UsedTypes, bodyType, route.Metadata, r.cfg)
 	}
 
+	// A call that streams bytes has no body TYPE and no status of its own, so
+	// it reaches the guard below looking like nothing to document. It is not:
+	// the operation returns a body, and its schema says bytes rather than
+	// naming a Go value that was never encoded (issue #517).
+	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
+		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+	}
+	// Raw bytes under a media type the call itself states are bytes: not the
+	// byte slice's base64 JSON rendering. That holds under a serializer's media
+	// type too — `c.Data(200, "application/yaml", doc)` names YAML and writes
+	// the bytes itself, so no serializer ran whose document could describe them
+	// (issue #570). Only the default media type keeps them typed: calling a
+	// JSON document binary would stop a client parsing it.
+	//
+	// Both run before the status fan-out below, which copies the body into one
+	// response per branch-assigned status: converted after it, every copy kept
+	// the byte slice's rendering (review of #577).
+	if respInfo.RawBytes && statedMediaType && !sameMediaType(respInfo.ContentType, r.cfg.Defaults.ResponseContentType) {
+		respInfo.BodyType = ""
+		respInfo.OneOfTypes = nil
+		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+		respInfo.RawBytes = false
+	}
+
 	// Conditional status codes (issue #39): if the status arg is a local
 	// variable with multiple branched assignments mapping to *distinct*
 	// status codes, emit one response per status, sharing the body/schema.
@@ -3231,26 +3315,6 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			}
 			return out
 		}
-	}
-
-	// A call that streams bytes has no body TYPE and no status of its own, so
-	// it reaches the guard below looking like nothing to document. It is not:
-	// the operation returns a body, and its schema says bytes rather than
-	// naming a Go value that was never encoded (issue #517).
-	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
-		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
-	}
-	// Raw bytes under a media type the call itself states are bytes: not the
-	// byte slice's base64 JSON rendering. That holds under a serializer's media
-	// type too — `c.Data(200, "application/yaml", doc)` names YAML and writes
-	// the bytes itself, so no serializer ran whose document could describe them
-	// (issue #570). Only the default media type keeps them typed: calling a
-	// JSON document binary would stop a client parsing it.
-	if respInfo.RawBytes && statedMediaType && !sameMediaType(respInfo.ContentType, r.cfg.Defaults.ResponseContentType) {
-		respInfo.BodyType = ""
-		respInfo.OneOfTypes = nil
-		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
-		respInfo.RawBytes = false
 	}
 
 	if !statusResolved && respInfo.BodyType == "" && respInfo.Schema == nil {

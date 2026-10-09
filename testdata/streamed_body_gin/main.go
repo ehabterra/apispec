@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/csv"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -86,6 +87,16 @@ func rawHeaderYAML(c *gin.Context) {
 	_, _ = c.Writer.Write([]byte("a: 1"))
 }
 
+// A branch-assigned status fans the response out into one copy per status
+// (review of #577).
+func rawYAMLBranch(c *gin.Context) {
+	status := http.StatusOK
+	if c.Query("new") != "" {
+		status = http.StatusCreated
+	}
+	c.Data(status, "application/yaml", []byte("a: 1"))
+}
+
 func main() {
 	r := gin.Default()
 	r.GET("/export.csv", csvExport)
@@ -95,5 +106,6 @@ func main() {
 	r.GET("/raw.yaml", rawYAML)
 	r.GET("/raw-header.yaml", rawHeaderYAML)
 	r.GET("/invoice", invoice)
+	r.GET("/raw-branch.yaml", rawYAMLBranch)
 	_ = r.Run(":8080")
 }
