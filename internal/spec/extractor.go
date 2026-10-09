@@ -1644,6 +1644,14 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// and the declaration adds nothing (issue #570).
 		case existing.DeclarationOnly:
 			route.Response[slot] = resp
+		case bodyless(existing) && !bodyless(resp):
+			// A status write and the body it was written for: `c.Status(201)`
+			// then a file sent under it. The write said only the status; the
+			// body says what is sent. Without this a body with no Go type lost
+			// the slot to the bare status (review of #584).
+			route.Response[slot] = resp
+		case bodyless(resp) && !bodyless(existing):
+			// The same pair seen the other way round: keep the body.
 		case otherMediaType(existing, resp):
 			// The same status in a DIFFERENT representation: a
 			// content-negotiating handler sends one or the other, and both are
@@ -1742,6 +1750,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		f := &frags[i]
 		status, body := f.resp.StatusCode, f.resp.BodyType
 		known := status >= 100 && status < 600
+		// A body with no Go type — a file sender's bytes — is still a body when
+		// its status is left for pairing to decide: it claims a status written
+		// before it, or takes its implicit one. It used to match no case below
+		// and vanish (review of #584). With a known status nothing changes: such
+		// a fragment stays the status write it always was.
+		hasBody := body != "" || (!known && f.resp.Schema != nil)
 		if f.resp.HeaderDeclaration {
 			at := codePos{file: f.file, line: f.line, col: f.col}
 			if c, ok := committedAt[f.chain]; ok && c.file == at.file && e.controlFlow().dominates(c, at) {
@@ -1772,7 +1786,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// status, no body), but it disqualifies this chain's later bodies
 			// from the implicit status.
 			statusUnresolved[f.chain] = true
-		case body != "":
+		case hasBody:
 			if statusUnresolved[f.chain] {
 				f.resp.ImplicitStatus = 0
 			}
@@ -3130,7 +3144,11 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
-	if !statusResolved && r.pattern.DefaultStatus > 0 {
+	// A default stands for a status argument the call OMITS (`c.Redirect(url)`
+	// sends 302). One that is passed and does not resolve is unresolved, and
+	// the default would be a guess at it (review of #584).
+	statusArgPassed := r.pattern.StatusFromArg && r.pattern.StatusArgIndex >= 0 && len(edge.Args) > r.pattern.StatusArgIndex
+	if !statusResolved && r.pattern.DefaultStatus > 0 && !statusArgPassed {
 		respInfo.StatusCode = r.pattern.DefaultStatus
 		statusResolved = true
 		// A pattern's own default is a property of the call, not of who called
@@ -3269,6 +3287,9 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// naming a Go value that was never encoded (issue #517).
 	if r.pattern.OpaqueBody && respInfo.Schema == nil && respInfo.BodyType == "" {
 		respInfo.Schema = &Schema{Type: "string", Format: "binary"}
+	}
+	if r.pattern.TextBody && respInfo.Schema == nil && respInfo.BodyType == "" {
+		respInfo.Schema = &Schema{Type: "string"}
 	}
 	// Raw bytes under a media type the call itself states are bytes: not the
 	// byte slice's base64 JSON rendering. That holds under a serializer's media
@@ -4435,6 +4456,12 @@ func otherMediaType(cur, next *ResponseInfo) bool {
 		return false
 	}
 	return isRepresentation(cur) && isRepresentation(next)
+}
+
+// bodyless reports whether a fragment describes no body at all: neither a Go
+// type nor a schema — a status write.
+func bodyless(r *ResponseInfo) bool {
+	return r.BodyType == "" && r.Schema == nil
 }
 
 // isRepresentation reports whether a fragment describes a body that is

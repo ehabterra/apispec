@@ -43,11 +43,13 @@ type rendererRow struct {
 func TestTestdata_RendererVariants(t *testing.T) {
 	const (
 		jsonp = "application/javascript; charset=utf-8"
-		html  = "text/html; charset=utf-8"
-		text  = "text/plain; charset=utf-8"
-		xml   = "application/xml"
-		json  = "application/json"
-		anyMT = "*/*"
+		// fiber's JSONP names the older text/javascript (review of #584).
+		jsonpFiber = "text/javascript; charset=utf-8"
+		html       = "text/html; charset=utf-8"
+		text       = "text/plain; charset=utf-8"
+		xml        = "application/xml"
+		json       = "application/json"
+		anyMT      = "*/*"
 	)
 	frameworks := []struct {
 		name, fixture string
@@ -97,11 +99,15 @@ func TestTestdata_RendererVariants(t *testing.T) {
 		}},
 		{"fiber", "renderer_variants_fiber", intspec.DefaultFiberConfig(), []rendererRow{
 			{"/json", "200", json, "Item"},
-			{"/jsonp", "200", jsonp, "Item"},
+			{"/jsonp", "200", jsonpFiber, "Item"},
 			{"/xml", "200", xml, "Item"},
 			{"/string", "200", text, "string"},
 			{"/render", "200", html, "string"},
 			{"/send-file", "200", anyMT, "binary"},
+			// SendFile restores a status the handler set first.
+			{"/send-file-created", "201", anyMT, "binary"},
+			// With no body written, SendStatus sends the status message.
+			{"/not-found", "404", text, "string"},
 			{"/download", "200", anyMT, "binary"},
 			{"/redirect", "302", "", ""},
 			// Redirect's status is optional; fiber sends 302 without it.
@@ -112,6 +118,8 @@ func TestTestdata_RendererVariants(t *testing.T) {
 			{"/serve-file", "200", anyMT, "binary"},
 			{"/serve-file-fs", "200", anyMT, "binary"},
 			{"/serve-content", "200", anyMT, "binary"},
+			// The first WriteHeader wins over ServeFile's own 200.
+			{"/serve-file-created", "201", anyMT, "binary"},
 			{"/redirect", "302", "", ""},
 		}},
 	}
@@ -124,6 +132,54 @@ func TestTestdata_RendererVariants(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTestdata_RendererVariantsStatusShapes covers the review of #584 beyond
+// one-status rows: a status argument that is passed but unresolved, and a
+// status set before a file is sent, which the frameworks treat differently.
+func TestTestdata_RendererVariantsStatusShapes(t *testing.T) {
+	t.Run("fiber", func(t *testing.T) {
+		out := loadTestdata(t, "renderer_variants_fiber", intspec.DefaultFiberConfig())
+		// Fiber's 302 stands for an OMITTED status; a computed one is not it.
+		op := opFor(out.Paths["/redirect-computed"], "GET")
+		if op == nil {
+			t.Fatalf("GET /redirect-computed missing; have %v", mapPathKeys(out.Paths))
+		}
+		if _, ok := op.Responses["302"]; ok {
+			t.Errorf("GET /redirect-computed documents 302; its status is passed and unresolved, not omitted")
+		}
+	})
+	t.Run("gin", func(t *testing.T) {
+		out := loadTestdata(t, "renderer_variants_gin", intspec.DefaultGinConfig())
+		op := opFor(out.Paths["/file-created"], "GET")
+		if op == nil {
+			t.Fatalf("GET /file-created missing; have %v", mapPathKeys(out.Paths))
+		}
+		// gin's writer lets the file server's WriteHeader(200) replace the
+		// 201, so the file is a 200 — not claimed by the earlier status.
+		if got := contentTypesOf(op, "200"); len(got) != 1 || got[0] != "*/*" {
+			t.Errorf("GET /file-created 200 content = %v, want the file under */*", got)
+		}
+		// Change detector for #585: c.Status(201) is still documented as a bodyless
+		// 201, which gin never sends here — a status write a later one
+		// supersedes is not dropped. Flip when it is.
+		if _, ok := op.Responses["201"]; !ok {
+			t.Errorf("GET /file-created no longer documents the superseded 201 — assert its absence instead")
+		}
+	})
+	t.Run("echo", func(t *testing.T) {
+		out := loadTestdata(t, "renderer_variants_echo", intspec.DefaultEchoConfig())
+		op := opFor(out.Paths["/file-created"], "GET")
+		if op == nil {
+			t.Fatalf("GET /file-created missing; have %v", mapPathKeys(out.Paths))
+		}
+		// Change detector for #576's family: c.Response().WriteHeader(201) is
+		// not a status-write pattern on echo, so the file keeps its implicit
+		// 200. Echo commits the first WriteHeader, so it should be 201.
+		if got := statusKeys(op); len(got) != 1 || got[0] != "200" {
+			t.Errorf("GET /file-created statuses = %v — echo's c.Response().WriteHeader may now be read; expect 201", got)
+		}
+	})
 }
 
 func checkRendererRow(t *testing.T, out *intspec.OpenAPISpec, row rendererRow) {

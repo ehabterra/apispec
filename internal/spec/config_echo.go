@@ -55,21 +55,19 @@ func DefaultEchoConfig() *APISpecConfig {
 		rawBodyCall{call: `^XMLBlob$`, contentArg: 1, mediaType: contentTypeXML},
 		rawBodyCall{call: `^HTMLBlob$`, contentArg: 1, mediaType: contentTypeHTML},
 	)...)
-	// The typed variants (issue #578). Render's body is the rendered template,
-	// text whatever data fills it: its name argument is typed string, which is
-	// what the page is, where the data argument would claim the page IS the
-	// data — the same reading gin's HTML(code, name, obj) gets.
+	// The typed variants (issue #578). Render's body is the rendered template:
+	// text, whatever data fills it.
 	responsePatterns = append(responsePatterns, typedRendererPatterns(echoRenderer,
 		typedRendererCall{call: `^JSONPretty$`, typeArg: 1},
 		typedRendererCall{call: `^JSONP$`, typeArg: 2, mediaType: contentTypeJSONP},
 		typedRendererCall{call: `^XMLPretty$`, typeArg: 1, mediaType: contentTypeXML},
-		typedRendererCall{call: `^Render$`, typeArg: 1, mediaType: contentTypeHTML},
+		typedRendererCall{call: `^Render$`, text: true, mediaType: contentTypeHTML},
 	)...)
 	responsePatterns = append(responsePatterns, rendererResponsePatterns(echoRenderer)...)
 	responsePatterns = append(responsePatterns, statusOnlyPatterns(echoContextRecv,
 		statusOnlyCall{call: `^Redirect$`, statusArg: 0},
 	)...)
-	responsePatterns = append(responsePatterns, fileSenderPatterns(echoContextRecv,
+	responsePatterns = append(responsePatterns, fileSenderPatterns(echoContextRecv, true,
 		`^File$`, `^Attachment$`, `^Inline$`,
 	)...)
 	responsePatterns = append(responsePatterns,

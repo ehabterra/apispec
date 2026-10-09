@@ -52,7 +52,9 @@ const (
 	contentTypeProtobuf = "application/x-protobuf"
 	contentTypeJSON     = "application/json"
 	contentTypeJSONP    = "application/javascript; charset=utf-8"
-	contentTypeTOML     = "application/toml"
+	// fiber's JSONP names the older text/javascript (MIMETextJavaScriptCharsetUTF8).
+	contentTypeJSONPText = "text/javascript; charset=utf-8"
+	contentTypeTOML      = "application/toml"
 
 	// contentTypeAny is a media type range, not a media type: what a file
 	// sender writes depends on the file, which is a runtime value (issue #578).
@@ -771,6 +773,13 @@ type ResponsePattern struct {
 	// says bytes instead of naming a Go type that was never encoded
 	// (issue #517).
 	OpaqueBody bool `yaml:"opaqueBody,omitempty" json:"opaqueBody,omitempty"`
+
+	// TextBody says this call writes TEXT that no argument types: a rendered
+	// template (`c.Render(200, "page", data)`), or the status message fiber's
+	// `c.SendStatus(404)` sends as the body. The schema is a string. Reading it
+	// off an argument instead would type the page as the data that fills it
+	// (issue #578).
+	TextBody bool `yaml:"textBody,omitempty" json:"textBody,omitempty"`
 
 	// Package/type filtering: narrow this pattern by where the call is MADE and
 	// what it is made on. Each list is a set of alternatives, an empty list is no
@@ -1754,6 +1763,7 @@ type typedRendererCall struct {
 	call      string
 	mediaType string // empty keeps Defaults.ResponseContentType, as JSON does
 	typeArg   int
+	text      bool // writes text no argument types (Render); typeArg is unused
 }
 
 // typedRendererPatterns builds one pattern per variant from the framework's
@@ -1766,6 +1776,11 @@ func typedRendererPatterns(base ResponsePattern, calls ...typedRendererCall) []R
 		p.CallRegex = c.call
 		p.TypeArgIndex = c.typeArg
 		p.TypeFromArg = true
+		if c.text {
+			p.TypeArgIndex = -1
+			p.TypeFromArg = false
+			p.TextBody = true
+		}
 		p.DefaultContentType = c.mediaType
 		out = append(out, p)
 	}
@@ -1775,7 +1790,9 @@ func typedRendererPatterns(base ResponsePattern, calls ...typedRendererCall) []R
 // statusOnlyCall is a call that sends a status and no body: a redirect
 // (`c.Redirect(302, url)`, whose URL goes in the Location header, not the
 // body) or a bare status setter (gin's `c.Status(204)`). defaultStatus covers a
-// status argument the call may omit — fiber's `c.Redirect(url)` sends 302.
+// status argument the call may omit — fiber's `c.Redirect(url)` sends 302 — and
+// applies only when it IS omitted: a status that is passed but does not resolve
+// stays unresolved rather than becoming 302 (review of #584).
 type statusOnlyCall struct {
 	call          string
 	statusArg     int
@@ -1800,21 +1817,34 @@ func statusOnlyPatterns(recvTypeRegex string, calls ...statusOnlyCall) []Respons
 
 // fileSenderPatterns are the calls that serve a file: `c.File(path)`,
 // `c.Attachment(path, name)`, `http.ServeFile(w, r, path)`. None takes a
-// status; the framework sends 200. The body is the file's bytes, under a media
-// type that depends on the file — a runtime value — so it is documented as a
-// media type range (contentTypeAny) rather than a guess (issue #578).
-func fileSenderPatterns(recvTypeRegex string, calls ...string) []ResponsePattern {
+// status. The body is the file's bytes, under a media type that depends on the
+// file — a runtime value — so it is documented as a media type range
+// (contentTypeAny) rather than a guess (issue #578).
+//
+// Whether a status the handler set first survives is the framework's call, and
+// they differ (review of #584). Under net/http, echo and fiber it does: the
+// first WriteHeader commits (echo's Response, net/http), and fiber's SendFile
+// restores a status the handler set. gin's writer lets the file server's own
+// WriteHeader(200) replace one set earlier, so a gin file is always 200.
+// writtenStatusWins says which: the 200 is then implicit, claimable by a
+// status write that dominates the call, rather than the call's own.
+func fileSenderPatterns(recvTypeRegex string, writtenStatusWins bool, calls ...string) []ResponsePattern {
 	out := make([]ResponsePattern, 0, len(calls))
 	for _, c := range calls {
-		out = append(out, ResponsePattern{
+		p := ResponsePattern{
 			CallRegex:          c,
 			RecvTypeRegex:      recvTypeRegex,
 			StatusArgIndex:     -1,
 			TypeArgIndex:       -1,
-			DefaultStatus:      http.StatusOK,
 			OpaqueBody:         true,
 			DefaultContentType: contentTypeAny,
-		})
+		}
+		if writtenStatusWins {
+			p.ImplicitStatus = http.StatusOK
+		} else {
+			p.DefaultStatus = http.StatusOK
+		}
+		out = append(out, p)
 	}
 	return out
 }

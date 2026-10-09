@@ -30,6 +30,12 @@ func fileFromFS(c *gin.Context) { c.FileFromFS("a.pdf", http.Dir(".")) }
 func redirect(c *gin.Context)   { c.Redirect(http.StatusFound, "/x") }
 func status(c *gin.Context)     { c.Status(http.StatusNoContent) }
 
+// gin's writer lets the file server's WriteHeader(200) replace the 201.
+func fileCreated(c *gin.Context) {
+	c.Status(http.StatusCreated)
+	c.File("a.pdf")
+}
+
 func main() {
 	r := gin.New()
 	r.GET("/json", jsonPlain)
@@ -49,5 +55,6 @@ func main() {
 	r.GET("/file-from-fs", fileFromFS)
 	r.GET("/redirect", redirect)
 	r.GET("/status", status)
+	r.GET("/file-created", fileCreated)
 	_ = r.Run(":8080")
 }

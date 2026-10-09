@@ -18,6 +18,20 @@ func redirect(c *fiber.Ctx) error   { return c.Redirect("/x", fiber.StatusFound)
 func redirectD(c *fiber.Ctx) error  { return c.Redirect("/x") }
 func sendStatus(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }
 func render(c *fiber.Ctx) error     { return c.Render("page", Item{}) }
+func notFound(c *fiber.Ctx) error   { return c.SendStatus(fiber.StatusNotFound) }
+
+// A status passed but not statically known: not fiber's omitted-status 302.
+func redirectComputed(c *fiber.Ctx) error { return c.Redirect("/x", statusFor(c)) }
+
+func statusFor(c *fiber.Ctx) int {
+	if c.Query("permanent") != "" {
+		return fiber.StatusMovedPermanently
+	}
+	return fiber.StatusTemporaryRedirect
+}
+
+// SendFile keeps a status the handler set first.
+func sendFileCreated(c *fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendFile("a.pdf") }
 
 func main() {
 	app := fiber.New()
@@ -31,5 +45,8 @@ func main() {
 	app.Get("/redirect-default", redirectD)
 	app.Get("/send-status", sendStatus)
 	app.Get("/render", render)
+	app.Get("/not-found", notFound)
+	app.Get("/redirect-computed", redirectComputed)
+	app.Get("/send-file-created", sendFileCreated)
 	_ = app.Listen(":8080")
 }

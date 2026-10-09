@@ -29,6 +29,12 @@ func inline(c echo.Context) error     { return c.Inline("a.pdf", "a.pdf") }
 func redirect(c echo.Context) error   { return c.Redirect(http.StatusFound, "/x") }
 func noContent(c echo.Context) error  { return c.NoContent(http.StatusNoContent) }
 
+// The first WriteHeader commits echo's response: the file goes out under 201.
+func fileCreated(c echo.Context) error {
+	c.Response().WriteHeader(http.StatusCreated)
+	return c.File("a.pdf")
+}
+
 func main() {
 	e := echo.New()
 	e.GET("/json", jsonPlain)
@@ -49,5 +55,6 @@ func main() {
 	e.GET("/inline", inline)
 	e.GET("/redirect", redirect)
 	e.GET("/no-content", noContent)
+	e.GET("/file-created", fileCreated)
 	_ = e.Start(":8080")
 }

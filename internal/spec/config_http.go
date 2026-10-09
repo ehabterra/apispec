@@ -98,7 +98,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 		DestFromAnyArg:             true,
 	})...)
 	// http.ServeFile and its kin serve a file under 200 (issue #578).
-	responsePatterns = append(responsePatterns, fileSenderPatterns(`^net/http$`,
+	responsePatterns = append(responsePatterns, fileSenderPatterns(`^net/http$`, true,
 		`^ServeFile$`, `^ServeFileFS$`, `^ServeContent$`,
 	)...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)

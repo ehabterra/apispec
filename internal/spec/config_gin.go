@@ -95,7 +95,7 @@ func DefaultGinConfig() *APISpecConfig {
 		statusOnlyCall{call: `^Redirect$`, statusArg: 0},
 		statusOnlyCall{call: `^Status$`, statusArg: 0},
 	)...)
-	responsePatterns = append(responsePatterns, fileSenderPatterns(ginContextRecv,
+	responsePatterns = append(responsePatterns, fileSenderPatterns(ginContextRecv, false,
 		`^File$`, `^FileAttachment$`, `^FileFromFS$`,
 	)...)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
