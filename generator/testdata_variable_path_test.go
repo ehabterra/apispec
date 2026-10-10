@@ -69,19 +69,30 @@ func TestTestdata_VariablePath(t *testing.T) {
 		}
 	})
 
-	// CHANGE DETECTOR, not an endorsement: the inner registration sees BOTH
-	// writes (each at or before it) and they disagree, because assignments are
-	// matched by NAME and nothing recorded says which binding each writes to.
-	// That is #436's second half, blocked on a metadata fact — `Assignment` has
-	// no token, so `:=` and `=` are indistinguishable. Asserted at today's
-	// approximate behaviour so this fails, and gets updated, when that lands.
-	t.Run("a shadowed binding is not distinguished yet", func(t *testing.T) {
-		if _, ok := out.Paths["/inner/b"]; ok {
-			t.Error("/inner/b now resolves — assignments are matched per binding; " +
+	// A shadow declared in the registration's own block dominates it: the
+	// outer write is overwritten on every path there, whichever binding it
+	// belongs to, so the inner value is the value (#579).
+	t.Run("a shadow dominating the registration resolves", func(t *testing.T) {
+		if _, ok := out.Paths["/inner/b"]; !ok {
+			t.Errorf("/inner/b missing; have %v", mapPathKeys(out.Paths))
+		}
+		if _, ok := out.Paths["/{shadowed}/b"]; ok {
+			t.Error("/{shadowed}/b is documented: the dominating inner write did not resolve it")
+		}
+	})
+
+	// CHANGE DETECTOR, not an endorsement (#436): a shadow declared in an arm
+	// the registration is NOT in never reaches it, but assignments are matched
+	// by NAME and `Assignment` records no token, so `:=` and `=` look alike and
+	// the arm's write reads as a second value. The route keeps a placeholder —
+	// approximate, never wrong. Flip when bindings are recorded.
+	t.Run("a shadow in another arm is not distinguished yet", func(t *testing.T) {
+		if _, ok := out.Paths["/outer2/d"]; ok {
+			t.Error("/outer2/d now resolves — assignments are matched per binding; " +
 				"assert it properly here and close #436")
 		}
-		if _, ok := out.Paths["/{shadowed}/b"]; !ok {
-			t.Errorf("/{shadowed}/b is gone — the route must stay documented "+
+		if _, ok := out.Paths["/{arm}/d"]; !ok {
+			t.Errorf("/{arm}/d is gone — the route must stay documented "+
 				"(approximately) while its prefix is unreadable; have %v", mapPathKeys(out.Paths))
 		}
 	})

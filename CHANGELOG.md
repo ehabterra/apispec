@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A status held in a local variable is documented.**
+  `code := http.StatusConflict; c.JSON(code, v)` documented `default` on every
+  framework, where the same status written inline documented `409`. A
+  variable now resolves to the values that reach the call, judged on control
+  flow rather than on every assignment the function makes. That also corrects
+  two cases that read as alternatives: a value overwritten before the call
+  (`code := 200; code = 201` documented both, now only `201`), and an arm that
+  returns before the call (its value no longer leaks onto the success
+  response). A value computed at runtime stays undetermined, including one
+  from a call that merely mentions a status (`OptionalArg(status, 303)`). The
+  same rule lets a path variable rewritten before a registration take the value
+  it holds there, so a reused builder variable and a shadow declared in the
+  registration's own block now resolve. (#579)
+
 - **Every renderer variant documents what it writes.** The renderer patterns
   matched a closed list of names, so the variants outside it documented no
   response at all:

@@ -85,18 +85,25 @@ func main() {
 	built := buildPath()
 	mux.HandleFunc("GET "+built, fromCall)
 
-	// CHANGE DETECTOR (issue #436): these two ARE knowable, and are not read
-	// today, because assignments are matched by name alone. The inner block
-	// re-declares `shadowed`, and `later` is written after its registration —
-	// so each registration sees two disagreeing values and keeps a placeholder.
-	// Documented approximately rather than wrongly, which is why it is a
-	// precision gap and not a correctness one.
+	// Issue #436: assignments are matched by name alone. The inner block
+	// re-declares `shadowed`, and its write dominates the /b registration, so
+	// it is the value there (#579). `later` is written after its registration,
+	// which cannot reach it. `arm` below is the shape still unread: a shadow in
+	// an arm the registration is not in.
 	shadowed := "/outer"
 	mux.HandleFunc("GET "+shadowed+"/a", list)
 	{
 		shadowed := "/inner"
 		mux.HandleFunc("GET "+shadowed+"/b", list)
 	}
+
+	// The shadow is in an arm the registration is not in: it never reaches it.
+	arm := "/outer2"
+	if len(os.Args) > 1 {
+		arm := "/inner2"
+		_ = arm
+	}
+	mux.HandleFunc("GET "+arm+"/d", list)
 
 	later := "/first"
 	mux.HandleFunc("GET "+later+"/c", list)
