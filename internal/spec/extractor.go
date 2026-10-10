@@ -3842,18 +3842,29 @@ func (r *ResponsePatternMatcherImpl) statusFromLocalVar(arg *metadata.CallArgume
 	if impl == nil || len(assigns) == 0 {
 		return 0, false
 	}
-	status := 0
+	status, have := 0, false
 	for i := range assigns {
 		if assigns[i].Value.GetKind() == metadata.KindCall {
 			return 0, false
 		}
+		// A value outside the status range is not a status: `code := 0`
+		// above `if … { code = 201 }` is a sentinel, and its arm sends
+		// something other than 201 (review of #586).
 		s, ok := r.statusCodeOfValue(&assigns[i].Value, impl)
-		if !ok || (status != 0 && s != status) {
+		if !ok || !isHTTPStatus(s) || (have && s != status) {
 			return 0, false
 		}
-		status = s
+		status, have = s, true
 	}
-	return status, true
+	return status, have
+}
+
+// isHTTPStatus reports whether a value read as a status is one: MapStatusCode
+// parses any integer, so the zero value, or any count or sentinel a variable
+// holds, would otherwise be documented as a response code. Out of range, it is
+// a value that could not be read as a status, which is how callers treat it.
+func isHTTPStatus(code int) bool {
+	return code >= 100 && code < 600
 }
 
 // expandVarStatuses fans a variable's branch assignments in function fn out to
@@ -3876,7 +3887,7 @@ func (r *ResponsePatternMatcherImpl) statusesOfAssignments(assigns []metadata.As
 	}
 	seen := make(map[int]struct{}, len(assigns))
 	for i := range assigns {
-		if s, ok := r.statusCodeOfValue(&assigns[i].Value, impl); ok {
+		if s, ok := r.statusCodeOfValue(&assigns[i].Value, impl); ok && isHTTPStatus(s) {
 			if _, dup := seen[s]; !dup {
 				seen[s] = struct{}{}
 				codes = append(codes, s)

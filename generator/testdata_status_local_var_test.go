@@ -55,6 +55,11 @@ func TestTestdata_StatusLocalVar(t *testing.T) {
 			{path: "/early-return", statuses: []string{"200", "400"}, bodyRef: []string{"_Item", "_Problem"}},
 			// Computed: not knowable, so undetermined (golden rule #7).
 			{path: "/computed", statuses: []string{"default"}},
+			// 0 is a sentinel, not a status. Its arm is an unresolved residue,
+			// which the mapper folds into the 201 with the same body; the
+			// resolver-level distinction is TestStatusFromLocalVarSentinel's.
+			{path: "/zero-default", statuses: []string{"201"}},
+			{path: "/zero-only", statuses: []string{"default"}},
 			// A call that only mentions a status constant: not its value.
 			{path: "/optional-arg", statuses: []string{"default"}},
 		}},

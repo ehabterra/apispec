@@ -47,6 +47,21 @@ func branched(c echo.Context) error {
 	return c.JSON(code, Item{})
 }
 
+// 0 is not a status: the zero-value arm is not 201, and is no status at all.
+func zeroDefault(c echo.Context) error {
+	code := 0
+	if c.QueryParam("new") != "" {
+		code = http.StatusCreated
+	}
+	return c.JSON(code, Item{})
+}
+
+// A sentinel alone.
+func zeroOnly(c echo.Context) error {
+	code := 0
+	return c.JSON(code, Item{})
+}
+
 // Not knowable: stays default (golden rule #7).
 func computed(c echo.Context) error {
 	code := statusFor(c)
@@ -111,6 +126,8 @@ func main() {
 	e.GET("/reassigned", reassigned)
 	e.GET("/branched", branched)
 	e.GET("/computed", computed)
+	e.GET("/zero-default", zeroDefault)
+	e.GET("/zero-only", zeroOnly)
 	e.GET("/optional-arg", optionalArg)
 	_ = e.Start(":8080")
 }
