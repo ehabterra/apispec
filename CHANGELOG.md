@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every fixture's generated spec is now validated against the official
   OpenAPI 3.1 document schema, as both JSON and YAML, so a whole-document
   validity regression fails CI (#589).
+- **gin, echo and fiber's own response writers are read.** Only net/http's
+  `w.WriteHeader`/`w.Write` were patterns, so the bytes written through
+  gin's `c.Writer.Write`, echo's `c.Response().Write` and fiber's
+  `c.Send`/`c.Write` documented nothing. A `Content-Type` declared beside them
+  had nothing to pair with, and the status set by `c.Writer.WriteHeader` or
+  `c.Response().WriteHeader` was lost: an echo handler that commits a 201 and
+  then sends a file was documented as 200. These writers now behave like
+  net/http's (#576).
 
 ## [0.5.11] - 2026-10-10
 

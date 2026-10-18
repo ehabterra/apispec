@@ -34,6 +34,9 @@ const fiberCtxRecv = `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`
 // DefaultFiberConfig returns a default configuration for the Fiber framework.
 func DefaultFiberConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
+	// fiber's writer is the Ctx itself: `c.Send(b)` and `c.Write(b)` write
+	// bytes verbatim, and its status is `c.Status`, below (issue #576).
+	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`)...)
 	responsePatterns = append(responsePatterns,
 		ResponsePattern{
 			CallRegex:      `^JSON$`,

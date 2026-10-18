@@ -173,11 +173,13 @@ func TestTestdata_RendererVariantsStatusShapes(t *testing.T) {
 		if op == nil {
 			t.Fatalf("GET /file-created missing; have %v", mapPathKeys(out.Paths))
 		}
-		// Change detector for #576's family: c.Response().WriteHeader(201) is
-		// not a status-write pattern on echo, so the file keeps its implicit
-		// 200. Echo commits the first WriteHeader, so it should be 201.
-		if got := statusKeys(op); len(got) != 1 || got[0] != "200" {
-			t.Errorf("GET /file-created statuses = %v — echo's c.Response().WriteHeader may now be read; expect 201", got)
+		// Echo commits the first WriteHeader, so the file goes out under the
+		// 201 c.Response().WriteHeader set, not its implicit 200 (issue #576).
+		if got := statusKeys(op); len(got) != 1 || got[0] != "201" {
+			t.Errorf("GET /file-created statuses = %v, want only 201", got)
+		}
+		if got := contentTypesOf(op, "201"); len(got) != 1 || got[0] != "*/*" {
+			t.Errorf("GET /file-created 201 content = %v, want the file under */*", got)
 		}
 	})
 }

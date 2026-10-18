@@ -75,15 +75,21 @@ func invoice(c *gin.Context) {
 }
 
 // Under a media type a serializer covers (issue #570): c.Data names YAML and
-// writes the bytes itself, so they are bytes. The declaration beside a raw
-// c.Writer.Write documents nothing yet — the write is not a raw-body pattern on
-// gin (#576).
+// writes the bytes itself, so they are bytes. So are the bytes gin's own
+// writer, c.Writer, writes under a declared YAML (issue #576).
 func rawYAML(c *gin.Context) {
 	c.Data(200, "application/yaml", []byte("a: 1"))
 }
 
 func rawHeaderYAML(c *gin.Context) {
 	c.Header("Content-Type", "application/yaml")
+	_, _ = c.Writer.Write([]byte("a: 1"))
+}
+
+// The writer's own WriteHeader sets the status the bytes go out under (#576).
+func rawCreatedYAML(c *gin.Context) {
+	c.Header("Content-Type", "application/yaml")
+	c.Writer.WriteHeader(http.StatusCreated)
 	_, _ = c.Writer.Write([]byte("a: 1"))
 }
 
@@ -105,6 +111,7 @@ func main() {
 	r.GET("/raw.pdf", rawPDF)
 	r.GET("/raw.yaml", rawYAML)
 	r.GET("/raw-header.yaml", rawHeaderYAML)
+	r.GET("/raw-created.yaml", rawCreatedYAML)
 	r.GET("/invoice", invoice)
 	r.GET("/raw-branch.yaml", rawYAMLBranch)
 	_ = r.Run(":8080")

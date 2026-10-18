@@ -45,20 +45,26 @@ func internalOnly(c *fiber.Ctx) error {
 	return c.SendStatus(204)
 }
 
-// Raw bytes under a media type declared with c.Set. c.Send is not a response
-// pattern, so the declaration is the only statement of the body — it must still
-// document the media type the handler set (issue #544).
+// Raw bytes under a media type declared with c.Set, written by the Ctx itself
+// (issues #544, #576).
 func rawPDF(c *fiber.Ctx) error {
 	c.Set("Content-Type", "application/pdf")
 	return c.Send([]byte("%PDF"))
 }
 
-// The same declaration under a media type a serializer covers documents
-// nothing yet: c.Send is not a raw-body pattern, so there is no raw write for
-// the declaration to pair with (#576).
+// The same under a media type a serializer covers: c.Send writes bytes, so the
+// declaration pairs with it as bytes, not as an unresolved YAML document (#576).
 func rawHeaderYAML(c *fiber.Ctx) error {
 	c.Set("Content-Type", "application/yaml")
 	return c.Send([]byte("a: 1"))
+}
+
+// fiber's other raw write, c.Write, under the status c.Status sets (#576).
+func rawCreatedYAML(c *fiber.Ctx) error {
+	c.Set("Content-Type", "application/yaml")
+	c.Status(fiber.StatusCreated)
+	_, err := c.Write([]byte("a: 1"))
+	return err
 }
 
 func main() {
@@ -68,5 +74,6 @@ func main() {
 	app.Get("/internal", internalOnly)
 	app.Get("/raw.pdf", rawPDF)
 	app.Get("/raw-header.yaml", rawHeaderYAML)
+	app.Get("/raw-created.yaml", rawCreatedYAML)
 	_ = app.Listen(":8080")
 }
