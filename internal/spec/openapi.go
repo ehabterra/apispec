@@ -14,6 +14,8 @@
 
 package spec
 
+import "encoding/json"
+
 // OpenAPISpec represents the root OpenAPI specification
 type OpenAPISpec struct {
 	OpenAPI      string                 `yaml:"openapi" json:"openapi"`
@@ -105,7 +107,34 @@ type Parameter struct {
 	Required    bool                   `yaml:"required,omitempty" json:"required,omitempty"`
 	Schema      *Schema                `yaml:"schema,omitempty" json:"schema,omitempty"`
 	Example     interface{}            `yaml:"example,omitempty" json:"example,omitempty"`
-	Extensions  map[string]interface{} `yaml:",inline" json:",inline"`
+	Extensions  map[string]interface{} `yaml:",inline" json:"-"`
+}
+
+// MarshalJSON writes Extensions as sibling keys of the parameter's own fields.
+//
+// encoding/json has no `,inline`: the tag the YAML encoder honours was read as
+// a field named "Extensions", so every parameter carrying an `x-warning`
+// serialised as `"Extensions": {...}` — a key the Parameter Object forbids,
+// which made the JSON output (the CLI's default) invalid wherever a path
+// parameter was synthesized (issue #589).
+func (p Parameter) MarshalJSON() ([]byte, error) {
+	// A defined type has none of Parameter's methods, so this marshals the
+	// declared fields without recursing back into MarshalJSON.
+	type fields Parameter
+	base, err := json.Marshal(fields(p))
+	if err != nil || len(p.Extensions) == 0 {
+		return base, err
+	}
+	// Map keys are written sorted, so the output stays deterministic.
+	ext, err := json.Marshal(p.Extensions)
+	if err != nil {
+		return nil, err
+	}
+	if len(base) == 2 { // "{}"
+		return ext, nil
+	}
+	out := append(base[:len(base)-1:len(base)-1], ',')
+	return append(out, ext[1:]...), nil
 }
 
 // RequestBody represents an OpenAPI request body
