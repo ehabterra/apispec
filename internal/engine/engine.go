@@ -899,10 +899,11 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 			URL:  e.config.LicenseURL,
 		}
 	}
-	// `license.name` is REQUIRED, so a License Object without one makes the
-	// whole document invalid — and the defaults leave it empty, so every run
-	// without --license-name emitted `license: {name: ""}` (issue #589). Omit
-	// it rather than emit it invalid, whichever source left the name blank.
+	// `license.name` is REQUIRED, and the defaults leave it empty, so every run
+	// without --license-name emitted `license: {name: ""}` (issue #589). The
+	// official OAS JSON schema only types the field and accepts the empty
+	// string, but stricter validators (kin-openapi) reject it, and it says
+	// nothing either way — so omit it, whichever source left the name blank.
 	if l := apispecConfig.Info.License; l != nil && l.Name == "" {
 		if l.URL != "" {
 			log.Printf("[engine] license URL %q dropped: OpenAPI requires a license name — pass --license-name or set info.license.name", l.URL)
