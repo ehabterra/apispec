@@ -194,10 +194,12 @@ func TestTestdata_StreamedBodyPerFramework(t *testing.T) {
 // (issue #570). gin's c.Data and echo's c.Blob name YAML and write the bytes
 // themselves, so no serializer ran and the body is bytes under the named type.
 //
-// /raw-header.yaml is a change-detector for #576: a declared application/yaml
-// beside the framework's raw writer (c.Writer.Write, c.Response().Write,
-// c.Send) documents nothing, because that write is not a raw-body pattern and
-// the declaration has nothing to pair with. Flip it when #576 is fixed.
+// /raw-header.yaml declares application/yaml beside the framework's own raw
+// writer (c.Writer.Write, c.Response().Write, c.Send), and /raw-created.yaml
+// sets the status through that writer too (c.Writer.WriteHeader,
+// c.Response().WriteHeader; fiber's c.Status with c.Write). Those writes were
+// not raw-body patterns, so the declaration had nothing to pair with and both
+// documented nothing (issue #576).
 func TestTestdata_RawBytesSerializerMediaPerFramework(t *testing.T) {
 	frameworks := []struct {
 		name, fixture string
@@ -244,12 +246,23 @@ func TestTestdata_RawBytesSerializerMediaPerFramework(t *testing.T) {
 					}
 				}
 			}
-			op := opFor(out.Paths["/raw-header.yaml"], "GET")
-			if op == nil {
-				t.Fatalf("GET /raw-header.yaml missing; have %v", mapPathKeys(out.Paths))
-			}
-			if _, ok := op.Responses["200"]; ok {
-				t.Errorf("GET /raw-header.yaml now documents a 200 — #576 may be fixed; assert application/yaml bytes here instead")
+			for _, route := range []struct{ path, status string }{
+				{"/raw-header.yaml", "200"},
+				{"/raw-created.yaml", "201"},
+			} {
+				op := opFor(out.Paths[route.path], "GET")
+				if op == nil {
+					t.Fatalf("GET %s missing; have %v", route.path, mapPathKeys(out.Paths))
+				}
+				if got := statusKeys(op); len(got) != 1 || got[0] != route.status {
+					t.Errorf("GET %s statuses = %v, want only %s", route.path, got, route.status)
+					continue
+				}
+				media, ok := op.Responses[route.status].Content["application/yaml"]
+				if !ok || media.Schema == nil || media.Schema.Format != "binary" {
+					t.Errorf("GET %s %s = %v, want application/yaml bytes (format: binary)",
+						route.path, route.status, contentTypesOf(op, route.status))
+				}
 			}
 		})
 	}

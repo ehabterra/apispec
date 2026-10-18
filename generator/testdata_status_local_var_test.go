@@ -66,8 +66,8 @@ func TestTestdata_StatusLocalVar(t *testing.T) {
 		{"gin", "status_local_var_gin", intspec.DefaultGinConfig(), []row{
 			{path: "/short", statuses: []string{"409"}},
 			{path: "/abort", statuses: []string{"403"}},
-			// A status setter reads its variable too. The body after it is
-			// gin's c.Writer.Write, not a body pattern yet (#576).
+			// A status setter reads its variable too, and the bytes gin's
+			// c.Writer writes after it go out under that status (#576).
 			{path: "/status", statuses: []string{"202"}},
 		}},
 		{"net/http", "status_local_var_nethttp", intspec.DefaultHTTPConfig(), []row{

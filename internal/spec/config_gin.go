@@ -36,6 +36,9 @@ func DefaultGinConfig() *APISpecConfig {
 	const ginContextRecv = "^github\\.com/gin-gonic/gin\\.\\*Context$"
 
 	responsePatterns := netHTTPResponsePatterns()
+	// gin's own writer, `c.Writer` (issue #576).
+	responsePatterns = append(responsePatterns, responseWriterPatterns(
+		`^github\.com/gin-gonic/gin\.\*?ResponseWriter$`, `^WriteHeader$`, `^Write$`)...)
 	// gin's raw-bytes renderers state their own media type; ahead of the
 	// catch-all, which would read `Data`'s media-type argument as its body.
 	responsePatterns = append(responsePatterns, rawBodyRendererPatterns(ginContextRecv,

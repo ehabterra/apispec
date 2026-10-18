@@ -1479,23 +1479,8 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 // netHTTPResponsePatterns returns the standard ResponseWriter and net/http
 // helper response patterns. Identical across every framework default.
 func netHTTPResponsePatterns() []ResponsePattern {
-	return []ResponsePattern{
-		{
-			CallRegex:      `^WriteHeader$`,
-			StatusArgIndex: 0,
-			StatusFromArg:  true,
-			TypeArgIndex:   -1,
-			RecvTypeRegex:  `^net/http\.ResponseWriter$`,
-		},
-		{
-			CallRegex:     `^Write$`,
-			TypeArgIndex:  0,
-			TypeFromArg:   true,
-			Deref:         true,
-			RecvTypeRegex: `^net/http\.ResponseWriter$`,
-			RawBody:       true,
-		},
-		{
+	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`),
+		ResponsePattern{
 			CallRegex:          `^Error$`,
 			StatusArgIndex:     2,
 			StatusFromArg:      true,
@@ -1504,7 +1489,7 @@ func netHTTPResponsePatterns() []ResponsePattern {
 			RecvTypeRegex:      `^net/http$`,
 			DefaultContentType: "text/plain; charset=utf-8",
 		},
-		{
+		ResponsePattern{
 			CallRegex:      `^NotFound$`,
 			StatusArgIndex: -1, // Always 404
 			StatusFromArg:  false,
@@ -1512,14 +1497,45 @@ func netHTTPResponsePatterns() []ResponsePattern {
 			RecvTypeRegex:  `^net/http$`,
 			DefaultStatus:  http.StatusNotFound,
 		},
-		{
+		ResponsePattern{
 			CallRegex:      `^Redirect$`,
 			StatusArgIndex: 3,
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^net/http$`,
 		},
+	)
+}
+
+// responseWriterPatterns are a response writer's own two calls: the one that
+// commits a status and the one that writes bytes verbatim. net/http's
+// `w.WriteHeader`/`w.Write` were the only ones, so the frameworks' own writers —
+// gin's `c.Writer`, echo's `c.Response()`, fiber's `c.Send` — wrote nothing a
+// pattern saw: a status they set was lost, and a declared media type had no
+// raw write to pair with (issue #576).
+//
+// One constructor for every framework (golden rule #5): what differs is the
+// writer's type and the names of its calls. writeHeaderCall is empty for a
+// writer whose status is set elsewhere (fiber's `c.Status`).
+func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string) []ResponsePattern {
+	var out []ResponsePattern
+	if writeHeaderCall != "" {
+		out = append(out, ResponsePattern{
+			CallRegex:      writeHeaderCall,
+			StatusArgIndex: 0,
+			StatusFromArg:  true,
+			TypeArgIndex:   -1,
+			RecvTypeRegex:  recvTypeRegex,
+		})
 	}
+	return append(out, ResponsePattern{
+		CallRegex:     writeCall,
+		TypeArgIndex:  0,
+		TypeFromArg:   true,
+		Deref:         true,
+		RecvTypeRegex: recvTypeRegex,
+		RawBody:       true,
+	})
 }
 
 // Response detection for json.Marshal is intentionally NOT a standalone

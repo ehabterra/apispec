@@ -43,6 +43,9 @@ func DefaultEchoConfig() *APISpecConfig {
 	}
 
 	responsePatterns := netHTTPResponsePatterns()
+	// echo's own writer, `c.Response()` (issue #576).
+	responsePatterns = append(responsePatterns, responseWriterPatterns(
+		`^github\.com/labstack/echo(/v\d+)?\.\*?Response$`, `^WriteHeader$`, `^Write$`)...)
 	// echo's raw-bytes renderers state their own media type (issue #544), as
 	// argument or, for the *Blob variants, by name (issue #578). JSONBlob is
 	// under the default media type, so its bytes stay typed, as a raw write
