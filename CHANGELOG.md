@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The JSON output is a valid OpenAPI document again.** Go's JSON encoder
+  ignores the inline setting the YAML encoder honours, so every synthesized
+  path parameter wrote its `x-warning` under an `"Extensions"` key the
+  Parameter Object forbids. JSON is the CLI's default output, and it was
+  invalid in 75 of 163 fixtures while their YAML was fine. Extensions are now
+  sibling keys in both formats (#589).
+- **`info.license` is no longer emitted with an empty name.** A run without
+  `--license-name` wrote `license: {name: ""}`, which stricter validators
+  reject. The license is now omitted unless a name is known, and a
+  `--license-url` given without one is dropped with a warning (#589).
+- Every fixture's generated spec is now validated against the official
+  OpenAPI 3.1 document schema, as both JSON and YAML, so a whole-document
+  validity regression fails CI (#589).
+
 ## [0.5.11] - 2026-10-10
 
 More of what a handler sends gets documented, as what it is. Every renderer
