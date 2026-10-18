@@ -282,14 +282,14 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.StringVar(&config.TermsOfService, "terms", "", "Terms of service URL")
 	fs.StringVar(&config.TermsOfService, "T", "", "Shorthand for --terms")
 
-	fs.StringVar(&config.ContactName, "contact-name", engine.DefaultContactName, "Contact name")
-	fs.StringVar(&config.ContactName, "N", engine.DefaultContactName, "Shorthand for --contact-name")
+	fs.StringVar(&config.ContactName, "contact-name", "", "Contact name")
+	fs.StringVar(&config.ContactName, "N", "", "Shorthand for --contact-name")
 
-	fs.StringVar(&config.ContactURL, "contact-url", engine.DefaultContactURL, "Contact URL")
-	fs.StringVar(&config.ContactURL, "U", engine.DefaultContactURL, "Shorthand for --contact-url")
+	fs.StringVar(&config.ContactURL, "contact-url", "", "Contact URL")
+	fs.StringVar(&config.ContactURL, "U", "", "Shorthand for --contact-url")
 
-	fs.StringVar(&config.ContactEmail, "contact-email", engine.DefaultContactEmail, "Contact email")
-	fs.StringVar(&config.ContactEmail, "E", engine.DefaultContactEmail, "Shorthand for --contact-email")
+	fs.StringVar(&config.ContactEmail, "contact-email", "", "Contact email")
+	fs.StringVar(&config.ContactEmail, "E", "", "Shorthand for --contact-email")
 
 	fs.StringVar(&config.LicenseName, "license-name", "", "License name")
 	fs.StringVar(&config.LicenseName, "L", "", "Shorthand for --license-name")

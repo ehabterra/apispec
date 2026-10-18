@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The generated `info` block no longer carries apispec's own details.**
+  Every spec used to name the tool's author as its `contact` (name, URL and
+  email) and append an apispec copyright notice to `info.description`, so a
+  published document advertised someone else as the API's contact. `contact`
+  is now emitted only from `--contact-name`/`--contact-url`/`--contact-email`
+  or the config's `info.contact`, and `description` is exactly what you set.
+
 ### Fixed
 
 - **The JSON output is a valid OpenAPI document again.** Go's JSON encoder
