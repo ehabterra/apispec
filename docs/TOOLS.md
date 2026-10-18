@@ -41,9 +41,9 @@ overrides `--dir` (`apispec ./api -o spec.yaml`).
 | `--api-version`             | `-v`      | API version                                            | `1.0.0`                         |
 | `--description`             | `-D`      | API description                                        | `""`                            |
 | `--terms`                   | `-T`      | Terms of service URL                                   | `""`                            |
-| `--contact-name`            | `-N`      | Contact name                                           | `Ehab`                          |
-| `--contact-url`             | `-U`      | Contact URL                                            | `https://ehabterra.github.io/`  |
-| `--contact-email`           | `-E`      | Contact email                                          | `ehabterra@hotmail.com`         |
+| `--contact-name`            | `-N`      | Contact name                                           | `""`                            |
+| `--contact-url`             | `-U`      | Contact URL                                            | `""`                            |
+| `--contact-email`           | `-E`      | Contact email                                          | `""`                            |
 | `--license-name`            | `-L`      | License name                                           | `""`                            |
 | `--license-url`             | `-lu`     | License URL                                            | `""`                            |
 | `--openapi-version`         | `-O`      | OpenAPI spec version                                   | `3.1.1`                         |

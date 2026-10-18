@@ -87,9 +87,6 @@ const (
 	DefaultInputDir           = "."
 	DefaultTitle              = "Generated API"
 	DefaultAPIVersion         = "1.0.0"
-	DefaultContactName        = "Ehab"
-	DefaultContactURL         = "https://ehabterra.github.io/"
-	DefaultContactEmail       = "ehabterra@hotmail.com"
 	DefaultOpenAPIVersion     = "3.1.1"
 	DefaultMaxNodesPerTree    = 50000
 	DefaultMaxChildrenPerNode = 500
@@ -106,7 +103,6 @@ const (
 	DefaultMetadataFile     = "metadata.yaml"
 	CopyrightNotice         = "apispec - Copyright 2026 Ehab Terra"
 	LicenseNotice           = "Licensed under the Apache License 2.0. See LICENSE and NOTICE."
-	FullLicenseNotice       = "\n\nCopyright 2026 Ehab Terra. Licensed under the Apache License 2.0. See LICENSE and NOTICE."
 )
 
 // EngineConfig holds configuration for the OpenAPI generation engine
@@ -213,9 +209,9 @@ func DefaultEngineConfig() *EngineConfig {
 		APIVersion:                   DefaultAPIVersion,
 		Description:                  "",
 		TermsOfService:               "",
-		ContactName:                  DefaultContactName,
-		ContactURL:                   DefaultContactURL,
-		ContactEmail:                 DefaultContactEmail,
+		ContactName:                  "",
+		ContactURL:                   "",
+		ContactEmail:                 "",
 		LicenseName:                  "",
 		LicenseURL:                   "",
 		OpenAPIVersion:               DefaultOpenAPIVersion,
@@ -878,12 +874,10 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if apispecConfig.Info.Title == "" {
 		apispecConfig.Info.Title = e.config.Title
 	}
+	// The info block describes the user's API, not the tool: it carries no
+	// apispec copyright or author contact unless the user supplies their own.
 	if apispecConfig.Info.Description == "" {
-		desc := e.config.Description
-		if !strings.HasSuffix(desc, FullLicenseNotice) {
-			desc += FullLicenseNotice
-		}
-		apispecConfig.Info.Description = desc
+		apispecConfig.Info.Description = e.config.Description
 	}
 	if apispecConfig.Info.Version == "" {
 		apispecConfig.Info.Version = e.config.APIVersion
@@ -891,7 +885,8 @@ func (e *Engine) GenerateOpenAPI() (*spec.OpenAPISpec, error) {
 	if apispecConfig.Info.TermsOfService == "" {
 		apispecConfig.Info.TermsOfService = e.config.TermsOfService
 	}
-	if apispecConfig.Info.Contact == nil {
+	if apispecConfig.Info.Contact == nil &&
+		(e.config.ContactName != "" || e.config.ContactURL != "" || e.config.ContactEmail != "") {
 		apispecConfig.Info.Contact = &intspec.Contact{
 			Name:  e.config.ContactName,
 			URL:   e.config.ContactURL,
