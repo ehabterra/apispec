@@ -743,6 +743,22 @@ type ResponsePattern struct {
 	// serializer's document (issue #544).
 	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
 
+	// SniffContentType and UndeclaredContentType say what media type a RawBody
+	// writer's server sends when the handler declares none. Without either, the
+	// bytes were documented as the byte slice's JSON rendering — a base64
+	// string under the default media type — which nothing on the wire ever is
+	// (issue #596).
+	//
+	// SniffContentType: the server sniffs the first bytes written, as net/http
+	// does with http.DetectContentType (and so gin's and echo's writers, which
+	// write through it). A constant argument is sniffed exactly as the server
+	// will; anything else depends on bytes the analysis cannot see.
+	//
+	// UndeclaredContentType: the server sends this media type whatever the
+	// bytes are — fasthttp's `text/plain; charset=utf-8`.
+	SniffContentType      bool   `yaml:"sniffContentType,omitempty" json:"sniffContentType,omitempty"`
+	UndeclaredContentType string `yaml:"undeclaredContentType,omitempty" json:"undeclaredContentType,omitempty"`
+
 	// TypeFromResult takes the body type from the call's own RESULT rather
 	// than from an argument: the value a framework's error handler renders
 	// when the handler returns it — echo's `echo.NewHTTPError(code, msg)` is
@@ -1479,7 +1495,7 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 // netHTTPResponsePatterns returns the standard ResponseWriter and net/http
 // helper response patterns. Identical across every framework default.
 func netHTTPResponsePatterns() []ResponsePattern {
-	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`),
+	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`, sniffedMedia),
 		ResponsePattern{
 			CallRegex:          `^Error$`,
 			StatusArgIndex:     2,
@@ -1515,9 +1531,10 @@ func netHTTPResponsePatterns() []ResponsePattern {
 // raw write to pair with (issue #576).
 //
 // One constructor for every framework (golden rule #5): what differs is the
-// writer's type and the names of its calls. writeHeaderCall is empty for a
-// writer whose status is set elsewhere (fiber's `c.Status`).
-func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string) []ResponsePattern {
+// writer's type, the names of its calls, and how its server picks a media type
+// the handler did not declare. writeHeaderCall is empty for a writer whose
+// status is set elsewhere (fiber's `c.Status`).
+func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, undeclared undeclaredMedia) []ResponsePattern {
 	var out []ResponsePattern
 	if writeHeaderCall != "" {
 		out = append(out, ResponsePattern{
@@ -1529,14 +1546,31 @@ func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string) []
 		})
 	}
 	return append(out, ResponsePattern{
-		CallRegex:     writeCall,
-		TypeArgIndex:  0,
-		TypeFromArg:   true,
-		Deref:         true,
-		RecvTypeRegex: recvTypeRegex,
-		RawBody:       true,
+		CallRegex:             writeCall,
+		TypeArgIndex:          0,
+		TypeFromArg:           true,
+		Deref:                 true,
+		RecvTypeRegex:         recvTypeRegex,
+		RawBody:               true,
+		SniffContentType:      undeclared.sniff,
+		UndeclaredContentType: undeclared.contentType,
+		// A write with no status before it goes out as 200 on every one of
+		// these servers (gin's WriteHeaderNow, echo's Response.Write). gin and
+		// echo set no framework-wide ImplicitStatus, since their renderers
+		// carry one, so the writer states its own (issue #596).
+		ImplicitStatus: http.StatusOK,
 	})
 }
+
+// undeclaredMedia is how a writer's server picks the media type of bytes the
+// handler declared none for (see ResponsePattern.SniffContentType).
+type undeclaredMedia struct {
+	sniff       bool
+	contentType string
+}
+
+// sniffedMedia is net/http's rule, which every writer built on it inherits.
+var sniffedMedia = undeclaredMedia{sniff: true}
 
 // Response detection for json.Marshal is intentionally NOT a standalone
 // pattern. json.Marshal(v) returns []byte with no writer argument, so matching

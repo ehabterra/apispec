@@ -67,6 +67,12 @@ func rawCreatedYAML(c *fiber.Ctx) error {
 	return err
 }
 
+// No declaration: fasthttp does not sniff, so even JSON-looking bytes go out
+// as text/plain (issue #596).
+func undeclared(c *fiber.Ctx) error {
+	return c.Send([]byte(`{"ok":true}`))
+}
+
 func main() {
 	app := fiber.New()
 	app.Get("/export.csv", csvExport)
@@ -75,5 +81,6 @@ func main() {
 	app.Get("/raw.pdf", rawPDF)
 	app.Get("/raw-header.yaml", rawHeaderYAML)
 	app.Get("/raw-created.yaml", rawCreatedYAML)
+	app.Get("/undeclared", undeclared)
 	_ = app.Listen(":8080")
 }

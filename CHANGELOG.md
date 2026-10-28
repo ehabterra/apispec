@@ -31,6 +31,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every fixture's generated spec is now validated against the official
   OpenAPI 3.1 document schema, as both JSON and YAML, so a whole-document
   validity regression fails CI (#589).
+- **Raw bytes with no declared `Content-Type` are documented as what the
+  server sends.** They were `application/json` with `format: byte`, a base64
+  string that no server ever sends. net/http, gin and echo sniff the bytes, so
+  a constant such as `w.Write([]byte("OK"))` is now documented under exactly
+  the type the server picks (`text/plain; charset=utf-8`). fiber sends
+  `text/plain` whatever the bytes are. Bytes that can't be seen statically keep
+  `application/json` with an unknown schema, and a declared
+  `application/json` now counts instead of being ignored (#596).
+- **A `Content-Type` declaration describes only the bytes on its own call
+  chain.** It used to wait in its default 200 slot, so a shared error
+  responder's declaration could take over another branch's 200, and its
+  `WriteHeader(err.Code)` body landed under 200 whenever the code did not
+  resolve. A declaration a body displaced also passed that body its entry
+  site, so a method-split route showed another method's body (#596).
 - **gin, echo and fiber's own response writers are read.** Only net/http's
   `w.WriteHeader`/`w.Write` were patterns, so the bytes written through
   gin's `c.Writer.Write`, echo's `c.Response().Write` and fiber's

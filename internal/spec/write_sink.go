@@ -14,7 +14,12 @@
 
 package spec
 
-import "github.com/ehabterra/apispec/internal/metadata"
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
 
 // unwrapWriteSink resolves a write-sink byte argument back to the payload of the
 // serialization transform that produced it. The write sink w.Write(b) sees only
@@ -224,4 +229,51 @@ func (r *ResponsePatternMatcherImpl) matchBodyTransform(calleeFunc, calleePkg st
 		return t.ArgIndex, true
 	}
 	return 0, false
+}
+
+// undeclaredRawMediaType is the media type the server sends a raw write's bytes
+// under when the handler declares none, or "" when that depends on bytes the
+// analysis cannot see (see ResponsePattern.SniffContentType).
+func (r *ResponsePatternMatcherImpl) undeclaredRawMediaType(arg *metadata.CallArgument) string {
+	if r.pattern.UndeclaredContentType != "" {
+		return r.pattern.UndeclaredContentType
+	}
+	if !r.pattern.SniffContentType {
+		return ""
+	}
+	b, ok := constantBytes(arg)
+	if !ok {
+		return ""
+	}
+	// Exactly the server's own rule. It sniffs the first buffered write, so a
+	// later write in the same response could still turn text into
+	// application/octet-stream — but the signatures that name a specific type
+	// (HTML, PDF, an image) are all prefixes, which the first write decides.
+	return http.DetectContentType(b)
+}
+
+// constantBytes returns the bytes of a raw write's argument when they are a
+// compile-time constant: `[]byte("OK")`, a raw string, or a named constant.
+func constantBytes(arg *metadata.CallArgument) ([]byte, bool) {
+	if arg == nil || arg.GetKind() != metadata.KindTypeConversion || len(arg.Args) != 1 {
+		return nil, false
+	}
+	inner := arg.Args[0]
+	lit := ""
+	switch inner.GetKind() {
+	case metadata.KindLiteral, metadata.KindIdent, metadata.KindSelector:
+		// A literal is its own source text; a named constant, here or in
+		// another package, carries its declaration's literal; a variable
+		// carries none.
+		lit = inner.GetValue()
+	}
+	if lit == "" {
+		return nil, false
+	}
+	// The recorded value is the Go source literal, escapes and quotes included.
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		return nil, false
+	}
+	return []byte(s), true
 }

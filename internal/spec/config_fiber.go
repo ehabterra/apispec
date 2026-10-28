@@ -36,7 +36,10 @@ func DefaultFiberConfig() *APISpecConfig {
 	responsePatterns := netHTTPResponsePatterns()
 	// fiber's writer is the Ctx itself: `c.Send(b)` and `c.Write(b)` write
 	// bytes verbatim, and its status is `c.Status`, below (issue #576).
-	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`)...)
+	// fasthttp does not sniff: undeclared bytes go out as text/plain unless
+	// the app sets DisableDefaultContentType (issue #596).
+	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`,
+		undeclaredMedia{contentType: contentTypeText})...)
 	responsePatterns = append(responsePatterns,
 		ResponsePattern{
 			CallRegex:      `^JSON$`,

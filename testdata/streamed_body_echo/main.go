@@ -74,6 +74,13 @@ func rawCreatedYAML(c echo.Context) error {
 	return err
 }
 
+// No declaration: echo writes through net/http, which sniffs the bytes, so
+// this page goes out as text/html (issue #596).
+func undeclared(c echo.Context) error {
+	_, err := c.Response().Write([]byte("<!DOCTYPE html><p>hi</p>"))
+	return err
+}
+
 func main() {
 	e := echo.New()
 	e.GET("/export.csv", csvExport)
@@ -83,5 +90,6 @@ func main() {
 	e.GET("/raw.yaml", rawYAML)
 	e.GET("/raw-header.yaml", rawHeaderYAML)
 	e.GET("/raw-created.yaml", rawCreatedYAML)
+	e.GET("/undeclared", undeclared)
 	e.Logger.Fatal(e.Start(":8080"))
 }

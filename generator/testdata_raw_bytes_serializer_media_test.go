@@ -29,22 +29,24 @@ import (
 // base64 string.
 //
 // The serializer cases must be untouched: a real encoder's typed body wins over
-// the declaration, and raw bytes under the default application/json keep the
-// behaviour they had.
+// the declaration.
 func TestTestdata_RawBytesSerializerMedia(t *testing.T) {
 	out := loadTestdata(t, "raw_bytes_serializer_media", spec.DefaultChiConfig())
 	noDanglingRefs(t, out)
 
 	cases := []struct {
 		path, media, format, ref string
+		unknown                  bool // the empty schema: a document of unknown shape
 	}{
 		{path: "/yaml-charset", media: "application/yaml; charset=utf-8", format: "binary"},
 		{path: "/yaml", media: "application/yaml", format: "binary"},
 		{path: "/xml", media: "application/xml", format: "binary"},
 		{path: "/text", media: "text/plain; charset=utf-8", format: "binary"},
 		{path: "/pdf", media: "application/pdf", format: "binary"},
-		// Unchanged: the default media type keeps raw bytes typed.
-		{path: "/json-raw", media: "application/json", format: "byte"},
+		// Declared JSON is a JSON document of unknown shape: neither binary,
+		// which would stop a client parsing it, nor the byte slice's base64
+		// rendering (issue #596).
+		{path: "/json-raw", media: "application/json", unknown: true},
 		// Unchanged: a serializer's typed body wins over the declaration.
 		{path: "/xml-encoded", media: "application/xml", ref: "Item"},
 		{path: "/yaml-encoded", media: "application/yaml", ref: "Item"},
@@ -65,6 +67,10 @@ func TestTestdata_RawBytesSerializerMedia(t *testing.T) {
 		switch {
 		case schema == nil:
 			t.Errorf("GET %s: no schema", tc.path)
+		case tc.unknown:
+			if schema.Type != "" || schema.Format != "" || schema.Ref != "" {
+				t.Errorf("GET %s: schema %+v, want the empty schema", tc.path, schema)
+			}
 		case tc.ref != "":
 			if !strings.HasSuffix(schema.Ref, "_"+tc.ref) {
 				t.Errorf("GET %s: schema %+v, want a $ref to %s", tc.path, schema, tc.ref)
