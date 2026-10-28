@@ -1959,7 +1959,7 @@ func documentUndeclaredRawBytes(resp *ResponseInfo) {
 // response carrying it no longer names the type, so nothing would register the
 // component it points at.
 func rawDocumentSchema(raw *ResponseInfo) *Schema {
-	if s := raw.Schema; s != nil && s.Ref == "" && !(s.Type == "string" && s.Format == "byte") {
+	if s := raw.Schema; s != nil && s.Ref == "" && (s.Type != "string" || s.Format != "byte") {
 		return s
 	}
 	return &Schema{}
