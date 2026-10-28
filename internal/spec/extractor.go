@@ -260,6 +260,11 @@ type ResponseInfo struct {
 	// says what the bytes are (issue #544).
 	MediaTypeDeclared bool
 	RawBytes          bool
+	// RawMediaType is the media type the server sends RawBytes under when
+	// nothing declares one — sniffed from a constant argument, or the server's
+	// fixed default. Empty when it depends on bytes the analysis cannot see
+	// (see documentUndeclaredRawBytes).
+	RawMediaType string
 
 	// DeclarationOnly marks a Content-Type declaration for a media type a
 	// serializer can produce (application/xml, application/yaml, text/plain).
@@ -1638,6 +1643,17 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// Beside raw bytes a tentative declaration IS the body's media
 			// type, so it stands from here on.
 			kept.DeclarationOnly = false
+			// Under the default media type the bytes are a document of that
+			// type whose shape nothing traced — not a binary blob, which would
+			// stop a client parsing JSON, and not the byte slice's base64
+			// rendering (issue #596).
+			if kept.HeaderDeclaration && sameMediaType(kept.ContentType, e.cfg.Defaults.ResponseContentType) {
+				raw := existing
+				if raw == kept {
+					raw = resp
+				}
+				kept.Schema = rawDocumentSchema(raw)
+			}
 			route.Response[slot] = kept
 		case resp.DeclarationOnly:
 			// A body is already here and is not raw bytes: it describes itself,
@@ -1679,7 +1695,14 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		// still facts about it: two branches reaching one status is a response
 		// both of them send, and dropping the loser's sites would attribute it
 		// to only one (see ResponseInfo.EntrySites).
-		if kept := route.Response[slot]; kept != nil && existing != nil {
+		//
+		// Not when one side is a tentative declaration a body displaced or
+		// outranked: the declaration documented nothing, so its arm sends no
+		// part of this response. Merging its sites handed a body on one arm
+		// the entry site of another, and a method-dispatch split then kept
+		// GET's body on POST as a phantom 200 (issue #596).
+		if kept := route.Response[slot]; kept != nil && existing != nil &&
+			!existing.DeclarationOnly && !resp.DeclarationOnly {
 			kept.EntrySites = appendUniqueSites(appendUniqueSites(nil, existing.EntrySites), resp.EntrySites)
 		}
 	}
@@ -1734,7 +1757,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			if !e.controlFlow().dominates(codePos{file: d.file, line: d.line, col: d.col}, bodyAt) {
 				continue
 			}
-			if d.resp.StatusCode == f.resp.StatusCode {
+			if d.resp.StatusCode == f.resp.StatusCode && !d.resp.DeclarationOnly {
 				return // same slot: the store already paired them
 			}
 			cp := *d.resp
@@ -1764,11 +1787,23 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			declared[f.chain] = append(declared[f.chain], f)
 		}
 		switch {
+		case f.resp.HeaderDeclaration && f.resp.DeclarationOnly:
+			// A tentative declaration describes only raw bytes written on its
+			// own chain, so it is recorded above and paired by adoptDeclaration
+			// when they are stored. Parked in its default slot it paired with
+			// whatever else landed there: a shared error responder's
+			// `application/json; charset=utf-8` took over another arm's 200
+			// (issue #596).
+		case f.resp.HeaderDeclaration:
+			// A declaration sends no status (see HeaderDeclaration), so it is
+			// not one a later body can claim. Standing in as a pending 200, it
+			// handed that 200 to the error body of a shared responder —
+			// `Header().Set(...)`, `WriteHeader(err.Code)`, `Encode(err)` —
+			// wherever the code did not resolve (issue #596).
+			store(f.resp, false)
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
-			if !f.resp.HeaderDeclaration {
-				committedAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
-			}
+			committedAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
@@ -1876,6 +1911,58 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			delete(route.Response, slot)
 		}
 	}
+
+	// Raw bytes nothing declared a media type for. Only now is that known:
+	// a declaration anywhere on the chain displaces them during pairing.
+	for _, resp := range route.Response {
+		if resp != nil && resp.RawBytes && !resp.MediaTypeDeclared {
+			documentUndeclaredRawBytes(resp)
+		}
+	}
+}
+
+// documentUndeclaredRawBytes documents bytes written verbatim under no declared
+// media type as what the server actually sends.
+//
+// They used to keep the byte slice's own schema — `type: string, format: byte`
+// under the default media type. That is how a SERIALIZER renders a []byte
+// value (json.Marshal base64-encodes it), and it never describes bytes written
+// as-is: a generated client base64-decoded `w.Write([]byte("OK"))`, which
+// net/http sends as text/plain (issue #596).
+//
+// When the server's media type is known the bytes are documented under it. When
+// it is not — net/http sniffing bytes the analysis cannot see — the default
+// media type stays, because untraced bytes are often a JSON document a
+// serializer produced out of sight (cached, pre-marshaled), and calling those
+// binary would stop a client parsing them. But their shape is unknown, so the
+// schema says so rather than claiming a base64 string (golden rule #7).
+func documentUndeclaredRawBytes(resp *ResponseInfo) {
+	resp.RawBytes = false
+	resp.BodyType = ""
+	if len(resp.Alternates) == 0 {
+		// Alternates record every representation's type for component
+		// collection; a lone raw write has none to keep.
+		resp.OneOfTypes = nil
+	}
+	if resp.RawMediaType != "" {
+		resp.ContentType = resp.RawMediaType
+		resp.Schema = &Schema{Type: "string", Format: "binary"}
+		return
+	}
+	resp.Schema = rawDocumentSchema(resp)
+}
+
+// rawDocumentSchema is the schema of raw bytes documented as a document of the
+// default media type: the bytes' own schema when their type says something —
+// json.RawMessage is "arbitrary JSON" — and the empty schema when all it says
+// is the byte slice's base64 rendering (issue #596). A $ref is not kept: the
+// response carrying it no longer names the type, so nothing would register the
+// component it points at.
+func rawDocumentSchema(raw *ResponseInfo) *Schema {
+	if s := raw.Schema; s != nil && s.Ref == "" && !(s.Type == "string" && s.Format == "byte") {
+		return s
+	}
+	return &Schema{}
 }
 
 // appendUniqueSites appends the sites not already present, so a slot's site set
@@ -3077,12 +3164,11 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// the JSON default (issue #570). So the declaration is kept as
 		// tentative and pairing decides (see ResponseInfo.DeclarationOnly).
 		//
-		// The default media type is the exception: raw bytes already fall back
-		// to it, so the declaration has nothing to add there.
+		// The default media type is no exception. Undeclared raw bytes no
+		// longer fall back to it — the server sniffs them (issue #596) — so a
+		// declared `application/json` is what stops `w.Write([]byte("{…}"))`
+		// being documented as the text/plain it would otherwise be sent as.
 		if r.serializerCovers(declared) {
-			if sameMediaType(declared, r.cfg.Defaults.ResponseContentType) {
-				return nil
-			}
 			tentative = true
 		}
 		contentType = declared
@@ -3210,6 +3296,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			arg = payload
 		} else if r.pattern.RawBody {
 			respInfo.RawBytes = true
+			respInfo.RawMediaType = r.undeclaredRawMediaType(arg)
 		}
 
 		// Parameter tracing: if the body arg is a parameter of the

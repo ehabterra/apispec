@@ -85,6 +85,16 @@ func pdfLate(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(doc)
 }
 
+// A stored JSON blob written as-is under a declared application/json: the
+// bytes keep json.RawMessage's own "arbitrary JSON" schema (issue #596).
+var prefs json.RawMessage = []byte(`{"theme":"dark"}`)
+
+func rawMessage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(prefs)
+}
+
 func main() {
 	r := chi.NewRouter()
 	r.Get("/yaml-charset", yamlCharset)
@@ -100,5 +110,6 @@ func main() {
 	r.Post("/pdf-created", pdfCreated)
 	r.Post("/yaml-late", yamlLate)
 	r.Post("/pdf-late", pdfLate)
+	r.Get("/raw-message", rawMessage)
 	_ = http.ListenAndServe(":8080", r)
 }
