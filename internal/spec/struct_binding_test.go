@@ -68,3 +68,31 @@ func TestBoundFields(t *testing.T) {
 		t.Errorf("tag only: got %v, want %v", tagOnly, want)
 	}
 }
+
+// A parameter documented from a declaration replaces one read through an
+// accessor, in the accessor's position, whichever came first. Two accessors or
+// two declarations keep the first, as before.
+func TestDeduplicateParametersPrefersDeclared(t *testing.T) {
+	accessor := Parameter{Name: "page", In: "query", Schema: &Schema{Type: "string"}}
+	declared := Parameter{Name: "page", In: "query", Required: true, Schema: &Schema{Type: "integer"}, declared: true}
+	other := Parameter{Name: "sort", In: "query", Schema: &Schema{Type: "string"}}
+
+	for _, order := range [][]Parameter{
+		{accessor, other, declared},
+		{declared, other, accessor},
+	} {
+		got := deduplicateParameters(order)
+		if len(got) != 2 || got[1].Name != "sort" {
+			t.Fatalf("got %+v, want page then sort", got)
+		}
+		if got[0].Schema.Type != "integer" || !got[0].Required {
+			t.Errorf("order %s,%s: page = %+v, want the declared integer",
+				order[0].Schema.Type, order[2].Schema.Type, got[0])
+		}
+	}
+
+	second := Parameter{Name: "page", In: "query", Schema: &Schema{Type: "number"}}
+	if got := deduplicateParameters([]Parameter{accessor, second}); got[0].Schema.Type != "string" {
+		t.Errorf("two accessors: kept %q, want the first", got[0].Schema.Type)
+	}
+}

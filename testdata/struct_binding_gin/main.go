@@ -74,6 +74,22 @@ func search(c *gin.Context) {
 	c.JSON(200, []Item{})
 }
 
+type MixedQuery struct {
+	Page int    `form:"page" binding:"required"`
+	Sort string `form:"sort"`
+}
+
+// mixed reads the query both ways: a bound struct and literal accessors, with
+// `page` read by both. It is one parameter, not two, and the accessor is read
+// FIRST so the struct's type and validation must win on merit, not on order.
+func mixed(c *gin.Context) {
+	_ = c.Query("page")
+	var q MixedQuery
+	_ = c.ShouldBindQuery(&q)
+	_ = c.GetHeader("X-Tenant")
+	c.JSON(200, []Item{})
+}
+
 // untyped binds into a value whose type is not known: nothing is documented.
 func untyped(c *gin.Context) {
 	var v any
@@ -87,5 +103,6 @@ func main() {
 	r.GET("/items/:id", getItem)
 	r.GET("/search", search)
 	r.GET("/untyped", untyped)
+	r.GET("/mixed", mixed)
 	_ = r.Run()
 }

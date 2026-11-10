@@ -110,8 +110,9 @@ func TestTestdata_StructBindingGin(t *testing.T) {
 		// Absent on purpose: `form:"-"`, the unexported field, and the
 		// struct-typed Filter field.
 	})
-	if p := out.Paths["/items"].Get.Parameters; len(p) > 0 && p[0].Schema.Minimum != 1 {
-		t.Errorf("page lost its `binding:\"min=1\"` constraint: %+v", p[0].Schema)
+	if page := findParam(out.Paths["/items"].Get, "page"); page == nil || page.Schema == nil ||
+		page.Schema.Minimum != 1 {
+		t.Errorf("page lost its `binding:\"min=1\"` constraint: %+v", page)
 	}
 
 	// `uri:"extra"` names no segment of /items/:id, so it is not a parameter.
@@ -127,6 +128,29 @@ func TestTestdata_StructBindingGin(t *testing.T) {
 
 	// Bound into an `any`: there is no struct to read, so nothing is guessed.
 	assertBoundParams(t, out, "/untyped", "GET", nil)
+
+	// A handler reading the query both ways documents each parameter once.
+	// `page` is read by `c.Query` first and then bound; the struct field's
+	// type and `binding:"required"` win, because an accessor returns a string
+	// whatever the value is.
+	assertBoundParams(t, out, "/mixed", "GET", []boundParam{
+		{name: "page", in: "query", typ: "integer", required: true},
+		{name: "sort", in: "query", typ: "string"},
+		{name: "X-Tenant", in: "header", typ: "string"},
+	})
+}
+
+// findParam returns the operation's parameter with this name, or nil.
+func findParam(op *spec.Operation, name string) *spec.Parameter {
+	if op == nil {
+		return nil
+	}
+	for i := range op.Parameters {
+		if op.Parameters[i].Name == name {
+			return &op.Parameters[i]
+		}
+	}
+	return nil
 }
 
 // echo's Bind fills `param` tags always and `query` tags only for GET, DELETE

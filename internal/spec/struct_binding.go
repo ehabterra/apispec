@@ -217,7 +217,7 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 	if schema == nil {
 		schema = &Schema{Type: "string"}
 	}
-	param := &Parameter{Name: bf.name, In: in, Schema: schema}
+	param := &Parameter{Name: bf.name, In: in, Schema: schema, declared: true}
 
 	tag := getStringFromPool(meta, bf.field.Tag)
 	sources := []string{tag}

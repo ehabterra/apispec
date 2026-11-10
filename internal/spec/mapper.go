@@ -1025,9 +1025,14 @@ func refTargetName(ref string) string {
 	return strings.ToLower(key[:1]) + key[1:]
 }
 
-// deduplicateParameters removes duplicate parameters by (name, in)
+// deduplicateParameters removes duplicate parameters by (name, in). The first
+// occurrence keeps its position, but a declared parameter replaces an
+// accessor-read one with the same key: `c.Query("page")` says only "a string",
+// while the bound struct field says `int` and `binding:"required"`, and which
+// call the handler happens to make first must not decide what the document
+// says (CodeRabbit on #601).
 func deduplicateParameters(params []Parameter) []Parameter {
-	seen := make(map[string]struct{})
+	seen := make(map[string]int)
 	result := make([]Parameter, 0, len(params))
 	for _, p := range params {
 		// A nameless inline parameter never reaches the document: OpenAPI
@@ -1045,10 +1050,14 @@ func deduplicateParameters(params []Parameter) []Parameter {
 			continue
 		}
 		key := p.Name + ":" + p.In
-		if _, exists := seen[key]; !exists {
-			seen[key] = struct{}{}
-			result = append(result, p)
+		if i, exists := seen[key]; exists {
+			if p.declared && !result[i].declared {
+				result[i] = p
+			}
+			continue
 		}
+		seen[key] = len(result)
+		result = append(result, p)
 	}
 	return result
 }
