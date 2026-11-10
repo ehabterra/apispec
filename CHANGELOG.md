@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Parameters bound from a whole struct are documented.** Binding a struct
+  and letting its tags name the parameters is the idiomatic way to read a
+  query string in gin, echo and fiber, and it produced no parameters at all
+  (and a "not found in the code" warning on the path variable). gin's
+  `ShouldBindQuery`/`ShouldBindUri`/`ShouldBindHeader` (and their `Bind*`
+  forms), echo's `Bind` and `DefaultBinder.Bind{PathParams,QueryParams,Headers}`,
+  and fiber's `QueryParser`/`ParamsParser`/`ReqHeaderParser` now document one
+  parameter per field, with each binder's own rules: untagged embeds promote,
+  gin and fiber bind an untagged field under its Go name while echo skips it,
+  echo's `Bind` reads the query string only for GET, DELETE and HEAD, and
+  `validate:` (and gin's `binding:`) rules set `required` and constraints. A
+  config pattern opts in with `structBindings` (#355).
+
 ### Changed
 
 - **The generated `info` block no longer carries apispec's own details.**

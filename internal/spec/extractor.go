@@ -2334,6 +2334,11 @@ func (e *Extractor) extractParamsFromNode(node TrackerNodeInterface, route *Rout
 		if impl, ok := matcher.(*ParamPatternMatcherImpl); ok && impl.pattern.NameFromMapKey {
 			return nil
 		}
+		// A whole-struct binding names its parameters by field tags, so one
+		// call yields as many as the struct declares (issue #355).
+		if impl, ok := matcher.(*ParamPatternMatcherImpl); ok && len(impl.pattern.StructBindings) > 0 {
+			return impl.ExtractStructParams(node, route)
+		}
 		if param := matcher.ExtractParam(node, route); param != nil {
 			return []Parameter{*param}
 		}

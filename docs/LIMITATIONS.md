@@ -103,9 +103,15 @@ right as far as they go, they just say less than your code knows.
   that merely fall back to the framework's implicit status keep the first one
   and drop the rest. Within an `r.Method` split, an `anyOf` that two arms share
   is documented on **both** operations rather than divided between them.
-- Only `go-playground/validator`-style `validate:` tags are read; Gin/Echo
-  `binding:` tags and comparison validators (`gt`/`gte`/`lt`/`lte`) are not yet
-  mapped.
+- Only `go-playground/validator`-style `validate:` tags are read in body
+  schemas; gin's `binding:` key is read only on parameters bound from a struct
+  (`ShouldBindQuery`, `ShouldBindUri`, `ShouldBindHeader`; body schemas are
+  #600), and comparison
+  validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
+- **Struct-typed fields of a bound parameter struct.** A field of struct type
+  inside a `ShouldBindQuery`/`Bind`/`QueryParser` target is not documented:
+  each binder flattens it by its own naming rules, so it is left out rather
+  than published under a name no request could send.
 - **A path that exists only as a runtime value.** Routes registered from a
   **table** (`for _, r := range routes { adapter.Add(r.Method, r.Path, r.Handler) }`)
   cannot be located, so they are **reported and

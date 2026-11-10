@@ -239,6 +239,30 @@ func DefaultGinConfig() *APISpecConfig {
 					Multi:         true,
 					RecvTypeRegex: ginContextRecv,
 				},
+				{
+					// Whole-struct binding: the struct's tags name the
+					// parameters (issue #355). gin reads an untagged field under
+					// its Go name and validates with the `binding` key.
+					CallRegex:      "^(ShouldBindQuery|BindQuery)$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "form", In: "query", UntaggedByName: true}},
+					ValidateTag:    "binding",
+					RecvTypeRegex:  ginContextRecv,
+				},
+				{
+					CallRegex:      "^(ShouldBindUri|BindUri)$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "uri", In: "path", UntaggedByName: true}},
+					ValidateTag:    "binding",
+					RecvTypeRegex:  ginContextRecv,
+				},
+				{
+					CallRegex:      "^(ShouldBindHeader|BindHeader)$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "header", In: "header", UntaggedByName: true}},
+					ValidateTag:    "binding",
+					RecvTypeRegex:  ginContextRecv,
+				},
 			}, ctxMultipartParamPatterns(ginContextRecv)...),
 			SecurityPatterns: ginSecurityPatterns(),
 			MountPatterns: []MountPattern{

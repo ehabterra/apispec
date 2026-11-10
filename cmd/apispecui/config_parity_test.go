@@ -54,6 +54,7 @@ func TestConfigEditorCoversEveryField(t *testing.T) {
 		"bufferSinks":       "nested BufferSink list; edited in YAML mode, like bodyTransforms",
 		"bodyReaders":       "nested BodyReader list; edited in YAML mode, like bodyTransforms",
 		"contentTypeWrites": "nested ContentTypeWrite list; edited in YAML mode, like bodyTransforms",
+		"structBindings":    "nested StructBinding list; edited in YAML mode, like bodyTransforms",
 	}
 
 	// Every config struct whose fields the structured editor is expected to reach.
