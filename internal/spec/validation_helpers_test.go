@@ -89,3 +89,29 @@ func TestApplyValidationConstraints_ByType(t *testing.T) {
 		t.Errorf("array items: got minimum=%v maximum=%v, want 5/100", arr.Items.Minimum, arr.Items.Maximum)
 	}
 }
+
+// The validate key's value ends at its closing quote. Reading on to the end of
+// the tag took every later key and value as rules, so a field whose json NAME
+// was "date", "uuid" or "url" gained that rule's pattern or format (CodeRabbit
+// on #601).
+func TestExtractValidationConstraints_StopsAtOwnValue(t *testing.T) {
+	for _, tag := range []string{
+		`form:"q" validate:"required" json:"date"`,
+		`validate:"required" json:"uuid" example:"url"`,
+	} {
+		c := extractValidationConstraints(tag)
+		if c == nil || !c.Required {
+			t.Errorf("%s: lost its own `required` rule: %+v", tag, c)
+			continue
+		}
+		if c.Pattern != "" || c.Format != "" {
+			t.Errorf("%s: a later key's text became a rule: pattern=%q format=%q", tag, c.Pattern, c.Format)
+		}
+	}
+
+	// A tag with no validate key states no validate rules, whatever its other
+	// values spell.
+	if c := extractValidationConstraints(`json:"email"`); c != nil && (c.Format != "" || c.Required) {
+		t.Errorf("no validate key, yet got %+v", c)
+	}
+}
