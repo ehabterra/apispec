@@ -218,11 +218,29 @@ func DefaultFiberConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvTypeRegex: `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
 				},
-				// No pattern for Queries() or QueryParser(out): neither NAMES a
-				// parameter. Queries() takes no argument and returns every query
-				// pair as a map, and QueryParser binds the whole query into a
-				// struct — which is issue #355, not this one. A pattern for
-				// either would match a call it cannot read a name from.
+				// No pattern for Queries(): it takes no argument and returns
+				// every query pair as a map, so it names no parameter.
+				{
+					// Whole-struct binding (issue #355): the struct's tags name
+					// the parameters, and fiber reads an untagged field under
+					// its Go name.
+					CallRegex:      "^QueryParser$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "query", In: "query", UntaggedByName: true}},
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:      "^ParamsParser$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "params", In: "path", UntaggedByName: true}},
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
+				{
+					CallRegex:      "^ReqHeaderParser$",
+					TypeArgIndex:   0,
+					StructBindings: []StructBinding{{Tag: "reqHeader", In: "header", UntaggedByName: true}},
+					RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+				},
 			}, ctxMultipartParamPatterns(`^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`)...),
 			SecurityPatterns: fiberSecurityPatterns(),
 			MountPatterns: []MountPattern{

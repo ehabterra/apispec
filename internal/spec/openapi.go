@@ -108,6 +108,13 @@ type Parameter struct {
 	Schema      *Schema                `yaml:"schema,omitempty" json:"schema,omitempty"`
 	Example     interface{}            `yaml:"example,omitempty" json:"example,omitempty"`
 	Extensions  map[string]interface{} `yaml:",inline" json:"-"`
+
+	// declared marks a parameter documented from a Go declaration (a bound
+	// struct field) rather than read through an accessor. A declaration states
+	// the type and the validation; an accessor returns a string whatever the
+	// value is, so when both document one parameter the declaration wins
+	// (see deduplicateParameters). Never serialised.
+	declared bool
 }
 
 // MarshalJSON writes Extensions as sibling keys of the parameter's own fields.

@@ -246,8 +246,9 @@ func TestConfigPatternValidation(t *testing.T) {
 		if pattern.CallRegex == "" {
 			t.Errorf("ParamPattern[%d] should have CallRegex", i)
 		}
-		if pattern.ParamIn == "" {
-			t.Errorf("ParamPattern[%d] should have ParamIn", i)
+		// A whole-struct binding takes its locations from StructBindings.
+		if pattern.ParamIn == "" && len(pattern.StructBindings) == 0 {
+			t.Errorf("ParamPattern[%d] should have ParamIn or StructBindings", i)
 		}
 	}
 

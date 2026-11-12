@@ -89,3 +89,52 @@ func TestApplyValidationConstraints_ByType(t *testing.T) {
 		t.Errorf("array items: got minimum=%v maximum=%v, want 5/100", arr.Items.Minimum, arr.Items.Maximum)
 	}
 }
+
+// The validate key's value ends at its closing quote. Reading on to the end of
+// the tag took every later key and value as rules, so a field whose json NAME
+// was "date", "uuid" or "url" gained that rule's pattern or format (CodeRabbit
+// on #601).
+func TestExtractValidationConstraints_StopsAtOwnValue(t *testing.T) {
+	for _, tag := range []string{
+		`form:"q" validate:"required" json:"date"`,
+		`validate:"required" json:"uuid" example:"url"`,
+	} {
+		c := extractValidationConstraints(tag)
+		if c == nil || !c.Required {
+			t.Errorf("%s: lost its own `required` rule: %+v", tag, c)
+			continue
+		}
+		if c.Pattern != "" || c.Format != "" {
+			t.Errorf("%s: a later key's text became a rule: pattern=%q format=%q", tag, c.Pattern, c.Format)
+		}
+	}
+
+	// A tag with no validate key states no validate rules, whatever its other
+	// values spell.
+	if c := extractValidationConstraints(`json:"email"`); c != nil && (c.Format != "" || c.Required) {
+		t.Errorf("no validate key, yet got %+v", c)
+	}
+}
+
+// The custom constraint keys are keys, not substrings: another tag's VALUE
+// that happens to spell `min:5` is not a constraint, and a key's value is read
+// whole, spaces included (CodeRabbit on #601).
+func TestExtractValidationConstraints_CustomKeysAreKeys(t *testing.T) {
+	if c := extractValidationConstraints(`json:"n" example:"min:5 max:9 regexp:x enum:a,b"`); c != nil {
+		t.Errorf("another tag's value became constraints: %+v", c)
+	}
+
+	c := extractValidationConstraints(`json:"n" min:"1" max:"10" regexp:"^a b$" enum:"x, y"`)
+	if c == nil {
+		t.Fatal("own keys produced nothing")
+	}
+	if c.Min == nil || *c.Min != 1 || c.Max == nil || *c.Max != 10 {
+		t.Errorf("min/max = %v/%v, want 1/10", c.Min, c.Max)
+	}
+	if c.Pattern != "^a b$" {
+		t.Errorf("pattern = %q, want the whole value %q", c.Pattern, "^a b$")
+	}
+	if len(c.Enum) != 2 || c.Enum[0] != "x" || c.Enum[1] != "y" {
+		t.Errorf("enum = %v, want [x y]", c.Enum)
+	}
+}

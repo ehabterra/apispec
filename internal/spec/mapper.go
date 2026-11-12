@@ -1025,9 +1025,14 @@ func refTargetName(ref string) string {
 	return strings.ToLower(key[:1]) + key[1:]
 }
 
-// deduplicateParameters removes duplicate parameters by (name, in)
+// deduplicateParameters removes duplicate parameters by (name, in). The first
+// occurrence keeps its position, but a declared parameter replaces an
+// accessor-read one with the same key: `c.Query("page")` says only "a string",
+// while the bound struct field says `int` and `binding:"required"`, and which
+// call the handler happens to make first must not decide what the document
+// says (CodeRabbit on #601).
 func deduplicateParameters(params []Parameter) []Parameter {
-	seen := make(map[string]struct{})
+	seen := make(map[string]int)
 	result := make([]Parameter, 0, len(params))
 	for _, p := range params {
 		// A nameless inline parameter never reaches the document: OpenAPI
@@ -1045,10 +1050,14 @@ func deduplicateParameters(params []Parameter) []Parameter {
 			continue
 		}
 		key := p.Name + ":" + p.In
-		if _, exists := seen[key]; !exists {
-			seen[key] = struct{}{}
-			result = append(result, p)
+		if i, exists := seen[key]; exists {
+			if p.declared && !result[i].declared {
+				result[i] = p
+			}
+			continue
 		}
+		seen[key] = len(result)
+		result = append(result, p)
 	}
 	return result
 }
@@ -2980,273 +2989,255 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 
 	constraints := &ValidationConstraints{}
 
-	// Parse validate tag (common validation libraries like go-playground/validator)
-	if strings.Contains(tag, "validate:") {
-		parts := strings.Split(tag, "validate:")
-		if len(parts) > 1 {
-			validateTag := strings.Trim(parts[1], "\"")
+	// Parse validate tag (common validation libraries like go-playground/validator).
+	// Only the validate key's own value: reading on to the end of the tag
+	// took every key after it as rules, so `validate:"required" json:"date"`
+	// gained a date pattern from the json NAME.
+	if validateTag, ok := reflect.StructTag(tag).Lookup("validate"); ok {
+		// Peel off post-`dive` rules: they constrain slice/map elements, not
+		// the container, so parse them separately into constraints.Dive
+		// (issue #165). The container rules (before `dive`) fall through to
+		// the loop below.
+		if before, after, found := splitOnDive(validateTag); found {
+			validateTag = before
+			if trimmed := strings.Trim(after, ", "); trimmed != "" {
+				constraints.Dive = extractValidationConstraints(`validate:"` + trimmed + `"`)
+			}
+		}
 
-			// Peel off post-`dive` rules: they constrain slice/map elements, not
-			// the container, so parse them separately into constraints.Dive
-			// (issue #165). The container rules (before `dive`) fall through to
-			// the loop below.
-			if before, after, found := splitOnDive(validateTag); found {
-				validateTag = before
-				if trimmed := strings.Trim(after, ", "); trimmed != "" {
-					constraints.Dive = extractValidationConstraints(`validate:"` + trimmed + `"`)
+		// Parse common validation rules - improved regex to handle various formats
+		// Matches: required, email, min=5, max=10, len=8, regexp=^[a-z]{2,3}$, oneof=val1 val2, etc.
+		// This regex captures validation rules more accurately:
+		// - Simple rules: required, email, url, etc.
+		// - Rules with values: min=5, max=10, len=8
+		// - Rules with complex values: regexp=^[a-z]{2,3}$, oneof=val1 val2 val3
+		rules := mustCachedRegex(`([a-zA-Z_][a-zA-Z0-9_]*(?:=(?:[^,{}]|{[^}]*})*)?)`).FindAllStringSubmatch(validateTag, -1)
+		for _, ruleSet := range rules {
+			rule := strings.TrimSpace(ruleSet[1])
+			if rule == "required" {
+				constraints.Required = true
+			} else if strings.HasPrefix(rule, "min=") {
+				if val, err := strconv.Atoi(strings.TrimPrefix(rule, "min=")); err == nil {
+					// For numeric validation, use Min instead of MinLength
+					constraints.Min = &[]float64{float64(val)}[0]
 				}
-			}
-
-			// Parse common validation rules - improved regex to handle various formats
-			// Matches: required, email, min=5, max=10, len=8, regexp=^[a-z]{2,3}$, oneof=val1 val2, etc.
-			// This regex captures validation rules more accurately:
-			// - Simple rules: required, email, url, etc.
-			// - Rules with values: min=5, max=10, len=8
-			// - Rules with complex values: regexp=^[a-z]{2,3}$, oneof=val1 val2 val3
-			rules := mustCachedRegex(`([a-zA-Z_][a-zA-Z0-9_]*(?:=(?:[^,{}]|{[^}]*})*)?)`).FindAllStringSubmatch(validateTag, -1)
-			for _, ruleSet := range rules {
-				rule := strings.TrimSpace(ruleSet[1])
-				if rule == "required" {
-					constraints.Required = true
-				} else if strings.HasPrefix(rule, "min=") {
-					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "min=")); err == nil {
-						// For numeric validation, use Min instead of MinLength
-						constraints.Min = &[]float64{float64(val)}[0]
-					}
-				} else if strings.HasPrefix(rule, "max=") {
-					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "max=")); err == nil {
-						// For numeric validation, use Max instead of MaxLength
-						constraints.Max = &[]float64{float64(val)}[0]
-					}
-				} else if strings.HasPrefix(rule, "len=") {
-					// Length validation for strings, arrays, slices
-					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "len=")); err == nil {
-						constraints.MinLength = &val
-						constraints.MaxLength = &val
-					}
-				} else if strings.HasPrefix(rule, "minlen=") {
-					// Minimum length for strings, arrays, slices
-					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "minlen=")); err == nil {
-						constraints.MinLength = &val
-					}
-				} else if strings.HasPrefix(rule, "maxlen=") {
-					// Maximum length for strings, arrays, slices
-					if val, err := strconv.Atoi(strings.TrimPrefix(rule, "maxlen=")); err == nil {
-						constraints.MaxLength = &val
-					}
-				} else if strings.HasPrefix(rule, "regexp=") {
-					constraints.Pattern = strings.TrimPrefix(rule, "regexp=")
-				} else if strings.HasPrefix(rule, "oneof=") {
-					// One of validation - creates enum values
-					enumPart := strings.TrimPrefix(rule, "oneof=")
-					enumValues := strings.Split(enumPart, " ")
-					for _, val := range enumValues {
-						constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
-					}
-				} else if rule == "email" {
-					// Email validation - set pattern
-					constraints.Format = `email`
-				} else if rule == "url" {
-					// URL validation - set pattern
-					constraints.Format = `uri`
-				} else if rule == "uuid" {
-					// UUID validation - set pattern
-					constraints.Format = `uuid`
-				} else if rule == "alpha" {
-					// Alphabetic characters only
-					constraints.Pattern = `^[a-zA-Z]+$`
-				} else if rule == "alphanum" {
-					// Alphanumeric characters only
-					constraints.Pattern = `^[a-zA-Z0-9]+$`
-				} else if rule == "numeric" {
-					// Numeric characters only
-					constraints.Pattern = `^[0-9]+$`
-				} else if rule == "alphaunicode" {
-					// Unicode alphabetic characters only
-					constraints.Pattern = `^\p{L}+$`
-				} else if rule == "alphanumunicode" {
-					// Unicode alphanumeric characters only
-					constraints.Pattern = `^[\p{L}\p{N}]+$`
-				} else if rule == "hexadecimal" {
-					// Hexadecimal characters only
-					constraints.Pattern = `^[0-9a-fA-F]+$`
-				} else if rule == "hexcolor" {
-					// Hex color validation
-					constraints.Pattern = `^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`
-				} else if rule == "rgb" {
-					// RGB color validation
-					constraints.Pattern = `^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$`
-				} else if rule == "rgba" {
-					// RGBA color validation
-					constraints.Pattern = `^rgba\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
-				} else if rule == "hsl" {
-					// HSL color validation
-					constraints.Pattern = `^hsl\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*\)$`
-				} else if rule == "hsla" {
-					// HSLA color validation
-					constraints.Pattern = `^hsla\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
-				} else if rule == "json" {
-					// JSON validation - basic pattern
-					constraints.Pattern = `^[\s\S]*$` // JSON is complex, this is a basic check
-				} else if rule == "base64" {
-					// Base64 validation
-					constraints.Pattern = `^[A-Za-z0-9+/]*={0,2}$`
-				} else if rule == "base64url" {
-					// Base64URL validation
-					constraints.Pattern = `^[A-Za-z0-9_-]*$`
-				} else if rule == "datetime" {
-					// DateTime validation (RFC3339)
-					constraints.Pattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`
-				} else if rule == "date" {
-					// Date validation (YYYY-MM-DD)
-					constraints.Pattern = `^\d{4}-\d{2}-\d{2}$`
-				} else if rule == "time" {
-					// Time validation (HH:MM:SS)
-					constraints.Pattern = `^\d{2}:\d{2}:\d{2}$`
-				} else if rule == "ip" {
-					// IP address validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
-				} else if rule == "ipv4" {
-					// IPv4 address validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
-				} else if rule == "ipv6" {
-					// IPv6 address validation
-					constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$`
-				} else if rule == "cidr" {
-					// CIDR validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
-				} else if rule == "cidrv4" {
-					// CIDRv4 validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
-				} else if rule == "cidrv6" {
-					// CIDRv6 validation
-					constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\/(?:[0-9]|[1-9][0-9]|1[0-2][0-8])$`
-				} else if rule == "tcp_addr" {
-					// TCP address validation
-					constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
-				} else if rule == "tcp4_addr" {
-					// TCP4 address validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
-				} else if rule == "tcp6_addr" {
-					// TCP6 address validation
-					constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
-				} else if rule == "udp_addr" {
-					// UDP address validation
-					constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
-				} else if rule == "udp4_addr" {
-					// UDP4 address validation
-					constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
-				} else if rule == "udp6_addr" {
-					// UDP6 address validation
-					constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
-				} else if rule == "unix_addr" {
-					// Unix address validation
-					constraints.Pattern = `^[a-zA-Z0-9._/-]+$`
-				} else if rule == "mac" {
-					// MAC address validation
-					constraints.Pattern = `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
-				} else if rule == "hostname" {
-					// Hostname validation
-					constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`
-				} else if rule == "fqdn" {
-					// FQDN validation
-					constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.$`
-				} else if rule == "isbn" {
-					// ISBN validation
-					constraints.Pattern = `^(?:ISBN(?:-1[03])?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$|97[89][0-9]{10}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)(?:97[89][- ]?)?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
-				} else if rule == "isbn10" {
-					// ISBN-10 validation
-					constraints.Pattern = `^(?:ISBN(?:-10)?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$)[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
-				} else if rule == "isbn13" {
-					// ISBN-13 validation
-					constraints.Pattern = `^(?:ISBN(?:-13)?:? )?(?=[0-9]{13}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)97[89][- ]?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9]$`
-				} else if rule == "issn" {
-					// ISSN validation
-					constraints.Pattern = `^[0-9]{4}-[0-9]{3}[0-9X]$`
-				} else if rule == "uuid3" {
-					// UUID v3 validation
-					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$`
-				} else if rule == "uuid4" {
-					// UUID v4 validation
-					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
-				} else if rule == "uuid5" {
-					// UUID v5 validation
-					constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
-				} else if rule == "ulid" {
-					// ULID validation
-					constraints.Pattern = `^[0-9A-HJKMNP-TV-Z]{26}$`
-				} else if rule == "ascii" {
-					// ASCII validation
-					constraints.Pattern = `^[\x00-\x7F]*$`
-				} else if rule == "printascii" {
-					// Printable ASCII validation
-					constraints.Pattern = `^[\x20-\x7E]*$`
-				} else if rule == "multibyte" {
-					// Multibyte validation
-					constraints.Pattern = `^[\x00-\x7F]*$`
-				} else if rule == "datauri" {
-					// Data URI validation
-					constraints.Pattern = `^data:([a-z]+\/[a-z0-9\-\+]+(;[a-z0-9\-\+]+\=[a-z0-9\-\+]+)?)?(;base64)?,([a-z0-9\!\$\&\'\(\)\*\+\,\;\=\-\.\_\~\:\@\/\?\%\s]*)$`
-				} else if rule == "latitude" {
-					// Latitude validation
-					constraints.Pattern = `^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?)$`
-				} else if rule == "longitude" {
-					// Longitude validation
-					constraints.Pattern = `^[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$`
-				} else if rule == "ssn" {
-					// SSN validation
-					constraints.Pattern = `^\d{3}-?\d{2}-?\d{4}$`
-				} else if rule == "credit_card" {
-					// Credit card validation
-					constraints.Pattern = `^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})$`
-				} else if rule == "mongodb" {
-					// MongoDB ObjectID validation
-					constraints.Pattern = `^[0-9a-fA-F]{24}$`
-				} else if rule == "cron" {
-					// Cron expression validation
-					constraints.Pattern = `^(\*|([0-5]?\d)) (\*|([01]?\d|2[0-3])) (\*|([012]?\d|3[01])) (\*|([0]?\d|1[0-2])) (\*|([0-6]))$`
+			} else if strings.HasPrefix(rule, "max=") {
+				if val, err := strconv.Atoi(strings.TrimPrefix(rule, "max=")); err == nil {
+					// For numeric validation, use Max instead of MaxLength
+					constraints.Max = &[]float64{float64(val)}[0]
 				}
+			} else if strings.HasPrefix(rule, "len=") {
+				// Length validation for strings, arrays, slices
+				if val, err := strconv.Atoi(strings.TrimPrefix(rule, "len=")); err == nil {
+					constraints.MinLength = &val
+					constraints.MaxLength = &val
+				}
+			} else if strings.HasPrefix(rule, "minlen=") {
+				// Minimum length for strings, arrays, slices
+				if val, err := strconv.Atoi(strings.TrimPrefix(rule, "minlen=")); err == nil {
+					constraints.MinLength = &val
+				}
+			} else if strings.HasPrefix(rule, "maxlen=") {
+				// Maximum length for strings, arrays, slices
+				if val, err := strconv.Atoi(strings.TrimPrefix(rule, "maxlen=")); err == nil {
+					constraints.MaxLength = &val
+				}
+			} else if strings.HasPrefix(rule, "regexp=") {
+				constraints.Pattern = strings.TrimPrefix(rule, "regexp=")
+			} else if strings.HasPrefix(rule, "oneof=") {
+				// One of validation - creates enum values
+				enumPart := strings.TrimPrefix(rule, "oneof=")
+				enumValues := strings.Split(enumPart, " ")
+				for _, val := range enumValues {
+					constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
+				}
+			} else if rule == "email" {
+				// Email validation - set pattern
+				constraints.Format = `email`
+			} else if rule == "url" {
+				// URL validation - set pattern
+				constraints.Format = `uri`
+			} else if rule == "uuid" {
+				// UUID validation - set pattern
+				constraints.Format = `uuid`
+			} else if rule == "alpha" {
+				// Alphabetic characters only
+				constraints.Pattern = `^[a-zA-Z]+$`
+			} else if rule == "alphanum" {
+				// Alphanumeric characters only
+				constraints.Pattern = `^[a-zA-Z0-9]+$`
+			} else if rule == "numeric" {
+				// Numeric characters only
+				constraints.Pattern = `^[0-9]+$`
+			} else if rule == "alphaunicode" {
+				// Unicode alphabetic characters only
+				constraints.Pattern = `^\p{L}+$`
+			} else if rule == "alphanumunicode" {
+				// Unicode alphanumeric characters only
+				constraints.Pattern = `^[\p{L}\p{N}]+$`
+			} else if rule == "hexadecimal" {
+				// Hexadecimal characters only
+				constraints.Pattern = `^[0-9a-fA-F]+$`
+			} else if rule == "hexcolor" {
+				// Hex color validation
+				constraints.Pattern = `^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`
+			} else if rule == "rgb" {
+				// RGB color validation
+				constraints.Pattern = `^rgb\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*\)$`
+			} else if rule == "rgba" {
+				// RGBA color validation
+				constraints.Pattern = `^rgba\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
+			} else if rule == "hsl" {
+				// HSL color validation
+				constraints.Pattern = `^hsl\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*\)$`
+			} else if rule == "hsla" {
+				// HSLA color validation
+				constraints.Pattern = `^hsla\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]{1,3})%\s*,\s*([0-9]*(?:\.[0-9]+)?)\s*\)$`
+			} else if rule == "json" {
+				// JSON validation - basic pattern
+				constraints.Pattern = `^[\s\S]*$` // JSON is complex, this is a basic check
+			} else if rule == "base64" {
+				// Base64 validation
+				constraints.Pattern = `^[A-Za-z0-9+/]*={0,2}$`
+			} else if rule == "base64url" {
+				// Base64URL validation
+				constraints.Pattern = `^[A-Za-z0-9_-]*$`
+			} else if rule == "datetime" {
+				// DateTime validation (RFC3339)
+				constraints.Pattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`
+			} else if rule == "date" {
+				// Date validation (YYYY-MM-DD)
+				constraints.Pattern = `^\d{4}-\d{2}-\d{2}$`
+			} else if rule == "time" {
+				// Time validation (HH:MM:SS)
+				constraints.Pattern = `^\d{2}:\d{2}:\d{2}$`
+			} else if rule == "ip" {
+				// IP address validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+			} else if rule == "ipv4" {
+				// IPv4 address validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+			} else if rule == "ipv6" {
+				// IPv6 address validation
+				constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$`
+			} else if rule == "cidr" {
+				// CIDR validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
+			} else if rule == "cidrv4" {
+				// CIDRv4 validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$`
+			} else if rule == "cidrv6" {
+				// CIDRv6 validation
+				constraints.Pattern = `^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\/(?:[0-9]|[1-9][0-9]|1[0-2][0-8])$`
+			} else if rule == "tcp_addr" {
+				// TCP address validation
+				constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
+			} else if rule == "tcp4_addr" {
+				// TCP4 address validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
+			} else if rule == "tcp6_addr" {
+				// TCP6 address validation
+				constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
+			} else if rule == "udp_addr" {
+				// UDP address validation
+				constraints.Pattern = `^[a-zA-Z0-9.-]+:\d+$`
+			} else if rule == "udp4_addr" {
+				// UDP4 address validation
+				constraints.Pattern = `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d+$`
+			} else if rule == "udp6_addr" {
+				// UDP6 address validation
+				constraints.Pattern = `^\[(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\]:\d+$`
+			} else if rule == "unix_addr" {
+				// Unix address validation
+				constraints.Pattern = `^[a-zA-Z0-9._/-]+$`
+			} else if rule == "mac" {
+				// MAC address validation
+				constraints.Pattern = `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`
+			} else if rule == "hostname" {
+				// Hostname validation
+				constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`
+			} else if rule == "fqdn" {
+				// FQDN validation
+				constraints.Pattern = `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.$`
+			} else if rule == "isbn" {
+				// ISBN validation
+				constraints.Pattern = `^(?:ISBN(?:-1[03])?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$|97[89][0-9]{10}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)(?:97[89][- ]?)?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
+			} else if rule == "isbn10" {
+				// ISBN-10 validation
+				constraints.Pattern = `^(?:ISBN(?:-10)?:? )?(?=[0-9X]{10}$|(?=(?:[0-9]+[- ]){3})[- 0-9X]{13}$)[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9X]$`
+			} else if rule == "isbn13" {
+				// ISBN-13 validation
+				constraints.Pattern = `^(?:ISBN(?:-13)?:? )?(?=[0-9]{13}$|(?=(?:[0-9]+[- ]){4})[- 0-9]{17}$)97[89][- ]?[0-9]{1,5}[- ]?[0-9]+[- ]?[0-9]+[- ]?[0-9]$`
+			} else if rule == "issn" {
+				// ISSN validation
+				constraints.Pattern = `^[0-9]{4}-[0-9]{3}[0-9X]$`
+			} else if rule == "uuid3" {
+				// UUID v3 validation
+				constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$`
+			} else if rule == "uuid4" {
+				// UUID v4 validation
+				constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+			} else if rule == "uuid5" {
+				// UUID v5 validation
+				constraints.Pattern = `^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+			} else if rule == "ulid" {
+				// ULID validation
+				constraints.Pattern = `^[0-9A-HJKMNP-TV-Z]{26}$`
+			} else if rule == "ascii" {
+				// ASCII validation
+				constraints.Pattern = `^[\x00-\x7F]*$`
+			} else if rule == "printascii" {
+				// Printable ASCII validation
+				constraints.Pattern = `^[\x20-\x7E]*$`
+			} else if rule == "multibyte" {
+				// Multibyte validation
+				constraints.Pattern = `^[\x00-\x7F]*$`
+			} else if rule == "datauri" {
+				// Data URI validation
+				constraints.Pattern = `^data:([a-z]+\/[a-z0-9\-\+]+(;[a-z0-9\-\+]+\=[a-z0-9\-\+]+)?)?(;base64)?,([a-z0-9\!\$\&\'\(\)\*\+\,\;\=\-\.\_\~\:\@\/\?\%\s]*)$`
+			} else if rule == "latitude" {
+				// Latitude validation
+				constraints.Pattern = `^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?)$`
+			} else if rule == "longitude" {
+				// Longitude validation
+				constraints.Pattern = `^[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$`
+			} else if rule == "ssn" {
+				// SSN validation
+				constraints.Pattern = `^\d{3}-?\d{2}-?\d{4}$`
+			} else if rule == "credit_card" {
+				// Credit card validation
+				constraints.Pattern = `^(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})$`
+			} else if rule == "mongodb" {
+				// MongoDB ObjectID validation
+				constraints.Pattern = `^[0-9a-fA-F]{24}$`
+			} else if rule == "cron" {
+				// Cron expression validation
+				constraints.Pattern = `^(\*|([0-5]?\d)) (\*|([01]?\d|2[0-3])) (\*|([012]?\d|3[01])) (\*|([0]?\d|1[0-2])) (\*|([0-6]))$`
 			}
 		}
 	}
 
-	// Parse custom validation tags
-	if strings.Contains(tag, "min:") {
-		parts := strings.Split(tag, "min:")
-		if len(parts) > 1 {
-			minPart := strings.Split(parts[1], " ")[0]
-			if val, err := strconv.ParseFloat(strings.Trim(minPart, "\""), 64); err == nil {
-				constraints.Min = &val
-			}
+	// Custom constraint keys, each read as its own key with its whole value.
+	// A substring search matched the key inside another tag's value —
+	// `example:"min:5"` set a minimum — and cut the value at the first space,
+	// so `regexp:"^a b$"` became `^a` (CodeRabbit on #601).
+	st := reflect.StructTag(tag)
+	if value, ok := st.Lookup("min"); ok {
+		if val, err := strconv.ParseFloat(value, 64); err == nil {
+			constraints.Min = &val
 		}
 	}
-
-	if strings.Contains(tag, "max:") {
-		parts := strings.Split(tag, "max:")
-		if len(parts) > 1 {
-			maxPart := strings.Split(parts[1], " ")[0]
-			if val, err := strconv.ParseFloat(strings.Trim(maxPart, "\""), 64); err == nil {
-				constraints.Max = &val
-			}
+	if value, ok := st.Lookup("max"); ok {
+		if val, err := strconv.ParseFloat(value, 64); err == nil {
+			constraints.Max = &val
 		}
 	}
-
-	if strings.Contains(tag, "regexp:") {
-		parts := strings.Split(tag, "regexp:")
-		if len(parts) > 1 {
-			patternPart := strings.Split(parts[1], " ")[0]
-			constraints.Pattern = strings.Trim(patternPart, "\"")
-		}
+	if value, ok := st.Lookup("regexp"); ok {
+		constraints.Pattern = value
 	}
-
-	if strings.Contains(tag, "enum:") {
-		parts := strings.Split(tag, "enum:")
-		if len(parts) > 1 {
-			enumPart := strings.Split(parts[1], " ")[0]
-			enumValues := strings.Split(strings.Trim(enumPart, "\""), ",")
-			for _, val := range enumValues {
-				constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
-			}
+	if value, ok := st.Lookup("enum"); ok {
+		for _, val := range strings.Split(value, ",") {
+			constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
 		}
 	}
 

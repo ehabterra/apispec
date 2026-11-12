@@ -855,6 +855,19 @@ type ParamPattern struct {
 	// appear as `{placeholder}` segments in the route path are emitted.
 	NameFromMapKey bool `yaml:"nameFromMapKey,omitempty" json:"nameFromMapKey,omitempty"`
 
+	// StructBindings makes this a whole-struct binding: the call fills the
+	// struct at TypeArgIndex — `c.ShouldBindQuery(&q)`, `c.QueryParser(&q)` —
+	// and the struct's tags, not a call argument, name the parameters. Each
+	// entry reads one tag key into one location, so a binder that fills several
+	// locations from one struct (echo's Bind: `param` and `query`) lists one
+	// entry per key. ParamIn and ParamArgIndex are not consulted (issue #355).
+	StructBindings []StructBinding `yaml:"structBindings,omitempty" json:"structBindings,omitempty"`
+
+	// ValidateTag names a struct-tag key the binder validates with, read with
+	// go-playground/validator rule syntax alongside the standard `validate` key
+	// — gin spells it `binding`. Only consulted for StructBindings.
+	ValidateTag string `yaml:"validateTag,omitempty" json:"validateTag,omitempty"`
+
 	// ExcludeRecvOriginRegex rejects the match when the receiver's ORIGIN — the
 	// calls it is chained onto, or the assignment a variable receiver came from —
 	// is a type matching this regex.
@@ -884,6 +897,23 @@ type ParamPattern struct {
 	CallerRecvTypePatterns []string `yaml:"callerRecvTypePatterns,omitempty" json:"callerRecvTypePatterns,omitempty"`
 	CalleePkgPatterns      []string `yaml:"calleePkgPatterns,omitempty" json:"calleePkgPatterns,omitempty"`
 	CalleeRecvTypePatterns []string `yaml:"calleeRecvTypePatterns,omitempty" json:"calleeRecvTypePatterns,omitempty"`
+}
+
+// StructBinding is one tag key a whole-struct binder reads, and where the
+// values it names come from. See ParamPattern.StructBindings.
+type StructBinding struct {
+	// Tag is the struct-tag key naming the parameter: `form`, `uri`, `query`.
+	Tag string `yaml:"tag" json:"tag"`
+	// In is the OpenAPI location the tag reads from: path, query, header, cookie.
+	In string `yaml:"in" json:"in"`
+	// UntaggedByName binds an exported field with no such tag under its Go
+	// field name, which is what gin's and fiber's binders do. Without it an
+	// untagged field binds nothing (echo).
+	UntaggedByName bool `yaml:"untaggedByName,omitempty" json:"untaggedByName,omitempty"`
+	// Methods limits the binding to routes with one of these HTTP methods —
+	// echo's Bind reads the query string only for GET, DELETE and HEAD. Empty
+	// means every method.
+	Methods []string `yaml:"methods,omitempty" json:"methods,omitempty"`
 }
 
 // MountPattern defines how to extract mount/subrouter information

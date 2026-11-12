@@ -30,6 +30,9 @@ var echoRequestContext = RequestContextConfig{
 	BodyReaders: stdlibBodyReaders(),
 }
 
+// echoBinderRecv scopes the patterns for echo's DefaultBinder methods.
+const echoBinderRecv = `^github\.com/labstack/echo/v\d\.\*DefaultBinder$`
+
 // DefaultEchoConfig returns a default configuration for the Echo framework.
 func DefaultEchoConfig() *APISpecConfig {
 	const echoContextRecv = "github\\.com/labstack/echo/v\\d\\.Context"
@@ -173,6 +176,38 @@ func DefaultEchoConfig() *APISpecConfig {
 					ParamIn:       "cookie",
 					ParamArgIndex: 0,
 					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
+					// Whole-struct binding (issue #355). echo's Bind fills path
+					// params always and the query string only for GET, DELETE
+					// and HEAD; an untagged field binds nothing.
+					CallRegex:    "^Bind$",
+					TypeArgIndex: 0,
+					StructBindings: []StructBinding{
+						{Tag: "param", In: "path"},
+						{Tag: "query", In: "query", Methods: []string{"GET", "DELETE", "HEAD"}},
+					},
+					RecvTypeRegex: "github\\.com/labstack/echo/v\\d\\.Context",
+				},
+				{
+					// The binder's single-source methods, which take the
+					// Context first: `(&echo.DefaultBinder{}).BindQueryParams(c, &q)`.
+					CallRegex:      "^BindPathParams$",
+					TypeArgIndex:   1,
+					StructBindings: []StructBinding{{Tag: "param", In: "path"}},
+					RecvTypeRegex:  echoBinderRecv,
+				},
+				{
+					CallRegex:      "^BindQueryParams$",
+					TypeArgIndex:   1,
+					StructBindings: []StructBinding{{Tag: "query", In: "query"}},
+					RecvTypeRegex:  echoBinderRecv,
+				},
+				{
+					CallRegex:      "^BindHeaders$",
+					TypeArgIndex:   1,
+					StructBindings: []StructBinding{{Tag: "header", In: "header"}},
+					RecvTypeRegex:  echoBinderRecv,
 				},
 			}, ctxMultipartParamPatterns("github\\.com/labstack/echo/v\\d\\.Context")...),
 			SecurityPatterns: echoSecurityPatterns(),
