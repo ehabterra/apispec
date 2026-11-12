@@ -36,8 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A `validate:` tag's rules end at its own closing quote.** Everything after
   `validate:` to the end of the struct tag was read as rules, so a later key's
   text became a constraint: `validate:"required" json:"date"` gave the field a
-  date `pattern`, and a field named `uuid` or `url` gained that format. This
-  affected request and response body schemas as well as bound parameters.
+  date `pattern`, and a field named `uuid` or `url` gained that format. The
+  `min:`, `max:`, `regexp:` and `enum:` keys had the same flaw: they were found
+  anywhere in the tag (`example:"min:5"` set a minimum) and cut at the first
+  space (`regexp:"^a b$"` became `^a`). Each key is now read as its own key,
+  whole. This affected request and response body schemas as well as bound
+  parameters.
 - **The JSON output is a valid OpenAPI document again.** Go's JSON encoder
   ignores the inline setting the YAML encoder honours, so every synthesized
   path parameter wrote its `x-warning` under an `"Extensions"` key the

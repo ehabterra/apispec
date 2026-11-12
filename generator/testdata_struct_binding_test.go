@@ -115,6 +115,13 @@ func TestTestdata_StructBindingGin(t *testing.T) {
 		t.Errorf("page lost its `binding:\"min=1\"` constraint: %+v", page)
 	}
 
+	// A query bind is parameters, never a body: ShouldBindQuery reads no
+	// request body, and documenting one would tell clients to send JSON on a
+	// GET (issue #355's acceptance).
+	if rb := out.Paths["/items"].Get.RequestBody; rb != nil {
+		t.Errorf("GET /items binds only the query, yet documents a request body: %+v", rb)
+	}
+
 	// `uri:"extra"` names no segment of /items/:id, so it is not a parameter.
 	assertBoundParams(t, out, "/items/{id}", "GET", []boundParam{
 		{name: "id", in: "path", typ: "string", required: true},
@@ -183,6 +190,9 @@ func TestTestdata_StructBindingFiber(t *testing.T) {
 		{name: "tag", in: "query", typ: "array"},
 		{name: "Cursor", in: "query", typ: "string"},
 	})
+	if rb := out.Paths["/items"].Get.RequestBody; rb != nil {
+		t.Errorf("GET /items binds only the query, yet documents a request body: %+v", rb)
+	}
 	assertBoundParams(t, out, "/items/{id}", "GET", []boundParam{
 		{name: "id", in: "path", typ: "integer", required: true},
 		{name: "X-Request-ID", in: "header", typ: "string"},

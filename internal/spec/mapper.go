@@ -3217,43 +3217,27 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 		}
 	}
 
-	// Parse custom validation tags
-	if strings.Contains(tag, "min:") {
-		parts := strings.Split(tag, "min:")
-		if len(parts) > 1 {
-			minPart := strings.Split(parts[1], " ")[0]
-			if val, err := strconv.ParseFloat(strings.Trim(minPart, "\""), 64); err == nil {
-				constraints.Min = &val
-			}
+	// Custom constraint keys, each read as its own key with its whole value.
+	// A substring search matched the key inside another tag's value —
+	// `example:"min:5"` set a minimum — and cut the value at the first space,
+	// so `regexp:"^a b$"` became `^a` (CodeRabbit on #601).
+	st := reflect.StructTag(tag)
+	if value, ok := st.Lookup("min"); ok {
+		if val, err := strconv.ParseFloat(value, 64); err == nil {
+			constraints.Min = &val
 		}
 	}
-
-	if strings.Contains(tag, "max:") {
-		parts := strings.Split(tag, "max:")
-		if len(parts) > 1 {
-			maxPart := strings.Split(parts[1], " ")[0]
-			if val, err := strconv.ParseFloat(strings.Trim(maxPart, "\""), 64); err == nil {
-				constraints.Max = &val
-			}
+	if value, ok := st.Lookup("max"); ok {
+		if val, err := strconv.ParseFloat(value, 64); err == nil {
+			constraints.Max = &val
 		}
 	}
-
-	if strings.Contains(tag, "regexp:") {
-		parts := strings.Split(tag, "regexp:")
-		if len(parts) > 1 {
-			patternPart := strings.Split(parts[1], " ")[0]
-			constraints.Pattern = strings.Trim(patternPart, "\"")
-		}
+	if value, ok := st.Lookup("regexp"); ok {
+		constraints.Pattern = value
 	}
-
-	if strings.Contains(tag, "enum:") {
-		parts := strings.Split(tag, "enum:")
-		if len(parts) > 1 {
-			enumPart := strings.Split(parts[1], " ")[0]
-			enumValues := strings.Split(strings.Trim(enumPart, "\""), ",")
-			for _, val := range enumValues {
-				constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
-			}
+	if value, ok := st.Lookup("enum"); ok {
+		for _, val := range strings.Split(value, ",") {
+			constraints.Enum = append(constraints.Enum, strings.TrimSpace(val))
 		}
 	}
 
