@@ -16,6 +16,7 @@ package spec
 
 import (
 	"go/ast"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -241,7 +242,7 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 			param.Required = param.Required || c.Required
 		}
 	}
-	applyTagOptions(param, reflect.StructTag(tag).Get(binding.Tag), binding)
+	applyTagOptions(param, reflect.StructTag(tag).Get(binding.Tag), binding, defaultConverter(fieldType, meta))
 
 	if in == "path" {
 		param.Required = true
@@ -250,35 +251,134 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 	return param
 }
 
-// applyTagOptions reads the binder's own options off the binding tag's value:
-// `schema:"page,required"`, `schema:"page,default:1"`. A default is a fallback
-// the binder supplies, so it also clears `required` — whichever option says
-// so — the way a handler-supplied fallback does (DefaultArgIndex).
-func applyTagOptions(param *Parameter, value string, binding StructBinding) {
+// applyTagOptions reads the binder's own options off the binding tag's value,
+// by the binder's own grammar: `schema:"page,required"`, `schema:"page,default:1"`.
+//
+// The options are compared as written. gorilla/schema splits on commas and
+// trims nothing, so `schema:"id, required"` is NOT required there, and reading
+// it as required here would document a constraint the server never enforces.
+//
+// A default is a fallback the binder supplies, so it clears `required`, the
+// way a handler-supplied fallback does (DefaultArgIndex). The exception is a
+// field that is BOTH: gorilla/schema rejects that combination on every decode
+// ("required fields cannot have a default value"), so no default is ever
+// applied, and the field stays required. convert turns the default's text into
+// the value the binder would store, or reports that it would store none.
+func applyTagOptions(param *Parameter, value string, binding StructBinding, convert func(string) (any, bool)) {
 	_, options, found := strings.Cut(value, ",")
 	if !found {
 		return
 	}
-	hasDefault := false
+	required, hasDefault := false, false
+	var raw string
 	for _, opt := range strings.Split(options, ",") {
-		opt = strings.TrimSpace(opt)
 		switch {
 		case binding.OptionRequired != "" && opt == binding.OptionRequired:
-			param.Required = true
+			required = true
 		case binding.OptionDefault != "" && strings.HasPrefix(opt, binding.OptionDefault):
 			hasDefault = true
-			// The default lands on the parameter's own schema; one a $ref points
-			// at is shared with every other use of the type.
-			if param.Schema != nil && param.Schema.Ref == "" {
-				if v, ok := typedDefault(param.Schema, strings.TrimPrefix(opt, binding.OptionDefault)); ok {
-					param.Schema.Default = v
-				}
+			// gorilla/schema keeps the text up to the next ':' only.
+			raw, _, _ = strings.Cut(strings.TrimPrefix(opt, binding.OptionDefault), ":")
+		}
+	}
+	switch {
+	case required:
+		param.Required = true
+	case hasDefault:
+		param.Required = false
+		// The default lands on the parameter's own schema; one a $ref points
+		// at is shared with every other use of the type.
+		if param.Schema != nil && param.Schema.Ref == "" && convert != nil {
+			if v, ok := convert(raw); ok {
+				param.Schema.Default = v
 			}
 		}
 	}
-	if hasDefault {
-		param.Required = false
+}
+
+// defaultConverter returns how a binder converts a default's text for a field
+// of this Go type: through the field's own kind, with its width and sign — a
+// `uint8` field takes `ParseUint(v, 10, 8)`, so `default:-1` is no default —
+// and for a slice, element by element over `|`-separated text. A type with no
+// builtin scalar kind (a struct, a map) takes no default.
+func defaultConverter(goType string, meta *metadata.Metadata) func(string) (any, bool) {
+	ref := typemodel.Parse(goType)
+	if ref.Kind == typemodel.KindSlice {
+		elem := builtinKind(ref.Elem, meta)
+		if elem == "" {
+			return nil
+		}
+		return func(raw string) (any, bool) {
+			var out []any
+			for _, part := range strings.Split(raw, "|") {
+				v, ok := convertScalarDefault(elem, part)
+				if !ok {
+					return nil, false
+				}
+				out = append(out, v)
+			}
+			return out, true
+		}
 	}
+	kind := builtinKind(ref, meta)
+	if kind == "" {
+		return nil
+	}
+	return func(raw string) (any, bool) { return convertScalarDefault(kind, raw) }
+}
+
+// builtinKind names the builtin scalar a type is, following a declared type to
+// its underlying one (`type Level uint8` is uint8), or "" when it is none.
+func builtinKind(ref *typemodel.TypeRef, meta *metadata.Metadata) string {
+	for hops := 0; ref != nil && ref.Kind == typemodel.KindNamed && hops < maxRequestOriginHops; hops++ {
+		if ref.Pkg == "" {
+			if _, ok := scalarBits[ref.Name]; ok {
+				return ref.Name
+			}
+		}
+		decl := typeByName(ref.Pkg, ref.Name, meta)
+		if decl == nil || isStructType(meta, decl) {
+			return ""
+		}
+		ref = typemodel.Parse(getStringFromPool(meta, decl.Target))
+	}
+	return ""
+}
+
+// scalarBits is each builtin scalar's bit size for its strconv parse (0 is the
+// platform size), mirroring gorilla/schema's builtin converters.
+var scalarBits = map[string]int{
+	"bool": 0, "string": 0,
+	"int": 0, "int8": 8, "int16": 16, "int32": 32, "rune": 32, "int64": 64,
+	"uint": 0, "uint8": 8, "byte": 8, "uint16": 16, "uint32": 32, "uint64": 64,
+	"float32": 32, "float64": 64,
+}
+
+// convertScalarDefault converts one default for a builtin kind, or reports
+// that the binder would store nothing.
+func convertScalarDefault(kind, raw string) (any, bool) {
+	bits := scalarBits[kind]
+	switch kind {
+	case "string":
+		return raw, true
+	case "bool":
+		if raw == "on" {
+			return true, true
+		}
+		v, err := strconv.ParseBool(raw)
+		return v, err == nil
+	case "float32", "float64":
+		v, err := strconv.ParseFloat(raw, bits)
+		// NaN and the infinities parse, and the binder stores them, but JSON
+		// has no spelling for them: a default the document cannot hold is left
+		// out rather than failing the whole JSON output.
+		return v, err == nil && !math.IsNaN(v) && !math.IsInf(v, 0)
+	case "uint", "uint8", "byte", "uint16", "uint32", "uint64":
+		v, err := strconv.ParseUint(raw, 10, bits)
+		return v, err == nil
+	}
+	v, err := strconv.ParseInt(raw, 10, bits)
+	return v, err == nil
 }
 
 // decodesFrom reports whether a decoder's source argument is what the binding
@@ -340,37 +440,4 @@ func (p *ParamPatternMatcherImpl) decodesFrom(node TrackerNodeInterface, binding
 	}
 	w := requestOriginWalker{cp: p.contextProvider, requestTypes: requestTypes}
 	return w.valueOrigin(src, at, 0) != requestOriginElsewhere
-}
-
-// typedDefault converts a tag's default text to the schema's type, the way the
-// binder converts it to the field's: `default:20` on an int is 20, not "20". A
-// slice's default lists its elements separated by `|`, gorilla/schema's
-// syntax. A value that does not convert is no default at all — the binder
-// rejects it — so it is left out rather than published as a string.
-func typedDefault(schema *Schema, raw string) (any, bool) {
-	switch schema.Type {
-	case "integer":
-		v, err := strconv.ParseInt(raw, 10, 64)
-		return v, err == nil
-	case "number":
-		v, err := strconv.ParseFloat(raw, 64)
-		return v, err == nil
-	case "boolean":
-		v, err := strconv.ParseBool(raw)
-		return v, err == nil
-	case "array":
-		if schema.Items == nil {
-			return nil, false
-		}
-		var out []any
-		for _, part := range strings.Split(raw, "|") {
-			v, ok := typedDefault(schema.Items, part)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, v)
-		}
-		return out, true
-	}
-	return raw, true
 }

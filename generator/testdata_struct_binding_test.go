@@ -254,6 +254,8 @@ func TestTestdata_StructBindingHTTP(t *testing.T) {
 	// A URL parsed from configuration has a Query() too; decoding it reads no
 	// request parameter.
 	assertBoundParams(t, out, "/upstream", "GET", nil)
+	// Neither does a package-level url.Values, which is configuration.
+	assertBoundParams(t, out, "/defaults", "GET", nil)
 }
 
 // gorilla/schema is the decoder of every net/http-based router, so each of

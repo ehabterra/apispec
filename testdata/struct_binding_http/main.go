@@ -115,6 +115,17 @@ func upstream(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, Item{})
 }
 
+// defaultQuery is configuration held in a package-level variable.
+var defaultQuery = url.Values{"token": {"abc"}}
+
+// defaults decodes that package-level map: it is set at start-up, never per
+// request, so no request parameter is read.
+func defaults(w http.ResponseWriter, r *http.Request) {
+	var q UpstreamQuery
+	_ = decoder.Decode(&q, defaultQuery)
+	writeJSON(w, Item{})
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /items", listItems)
@@ -122,5 +133,6 @@ func main() {
 	mux.HandleFunc("GET /search", search)
 	mux.HandleFunc("GET /tagged", tagged)
 	mux.HandleFunc("GET /upstream", upstream)
+	mux.HandleFunc("GET /defaults", defaults)
 	_ = http.ListenAndServe(":8080", mux)
 }
