@@ -914,6 +914,25 @@ type StructBinding struct {
 	// echo's Bind reads the query string only for GET, DELETE and HEAD. Empty
 	// means every method.
 	Methods []string `yaml:"methods,omitempty" json:"methods,omitempty"`
+
+	// SourceRegex makes the location depend on what the binder decodes FROM.
+	// A decoder handed a map — gorilla/schema's `Decode(&q, src)` — reads
+	// whatever it is given, so `r.URL.Query()` binds query parameters and
+	// `r.PostForm` a form body. The binding applies only when the argument at
+	// SourceArgIndex is produced by a call or field whose name matches, and
+	// is not provably built outside the request (`u.Query()` on a URL parsed
+	// from configuration documents nothing). Empty means no source check
+	// (issue #602).
+	SourceRegex    string `yaml:"sourceRegex,omitempty" json:"sourceRegex,omitempty"`
+	SourceArgIndex int    `yaml:"sourceArgIndex,omitempty" json:"sourceArgIndex,omitempty"`
+
+	// OptionRequired and OptionDefault read the binder's own tag options:
+	// gorilla/schema's `schema:"page,required"` and `schema:"page,default:1"`.
+	// OptionDefault is the option's prefix, separator included; its value
+	// becomes the schema's `default` and clears `required`, as a fallback the
+	// handler supplies does. Empty means the binder has no such option.
+	OptionRequired string `yaml:"optionRequired,omitempty" json:"optionRequired,omitempty"`
+	OptionDefault  string `yaml:"optionDefault,omitempty" json:"optionDefault,omitempty"`
 }
 
 // MountPattern defines how to extract mount/subrouter information
@@ -2001,6 +2020,41 @@ func requestMultipartParamPatterns() []ParamPattern {
 			RecvType:  requestRecv,
 		},
 	}
+}
+
+// gorillaSchemaParamPatterns returns the struct binding of gorilla/schema, the
+// decoder the net/http-based routers (net/http, chi, gorilla/mux) bind a query
+// string or form into a struct with: `decoder.Decode(&q, r.URL.Query())`.
+//
+// Decode reads whatever map it is handed, so the location is the SOURCE's: the
+// request's query is query parameters, its parsed form is a form body that
+// resolves by method like FormValue (#171). A source of any other kind
+// documents nothing. gorilla/schema binds an untagged field under its Go name,
+// and reads `,required` and `,default:<v>` options (issue #602).
+//
+// The tag is gorilla/schema's default, `schema`. A project that renames it
+// with SetAliasTag configures its own pattern.
+func gorillaSchemaParamPatterns() []ParamPattern {
+	binding := func(in, source string) StructBinding {
+		return StructBinding{
+			Tag:            "schema",
+			In:             in,
+			UntaggedByName: true,
+			SourceRegex:    source,
+			SourceArgIndex: 1,
+			OptionRequired: "required",
+			OptionDefault:  "default:",
+		}
+	}
+	return []ParamPattern{{
+		CallRegex:    "^Decode$",
+		TypeArgIndex: 0,
+		StructBindings: []StructBinding{
+			binding("query", "^Query$"),
+			binding(paramInForm, "^(Form|PostForm)$"),
+		},
+		RecvType: "github.com/gorilla/schema.*Decoder",
+	}}
 }
 
 // ctxMultipartParamPatterns returns the same two multipart reads for frameworks

@@ -198,3 +198,80 @@ func TestTestdata_StructBindingFiber(t *testing.T) {
 		{name: "X-Request-ID", in: "header", typ: "string"},
 	})
 }
+
+// gorilla/schema's Decode reads whatever map it is handed, so the location is
+// the source's: the request's query is query parameters, its parsed form a form
+// body, and the query of a URL built from configuration is no request read at
+// all (issue #602).
+func TestTestdata_StructBindingHTTP(t *testing.T) {
+	out := loadTestdata(t, "struct_binding_http", spec.DefaultHTTPConfig())
+
+	// `,required` and `,default:20` are gorilla/schema's own options; a
+	// default also means the client may omit the parameter.
+	assertBoundParams(t, out, "/items", "GET", []boundParam{
+		{name: "page", in: "query", typ: "integer", required: true},
+		{name: "limit", in: "query", typ: "integer"},
+		{name: "sort", in: "query", typ: "string"},
+		{name: "Cursor", in: "query", typ: "string"},
+	})
+	if limit := findParam(out.Paths["/items"].Get, "limit"); limit == nil || limit.Schema == nil ||
+		limit.Schema.Default != int64(20) {
+		t.Errorf("limit default = %+v, want the integer 20 — the binder converts it to the field's type", limit)
+	}
+	if rb := out.Paths["/items"].Get.RequestBody; rb != nil {
+		t.Errorf("GET /items decodes only the query, yet documents a request body: %+v", rb)
+	}
+
+	// Through a local variable, and through a wrapper taking the source and
+	// the destination as parameters.
+	assertBoundParams(t, out, "/search", "GET", []boundParam{
+		{name: "q", in: "query", typ: "string", required: true},
+	})
+	assertBoundParams(t, out, "/tagged", "GET", []boundParam{
+		{name: "tag", in: "query", typ: "array"},
+	})
+
+	// The parsed form on a POST is the body, not parameters.
+	assertBoundParams(t, out, "/items", "POST", nil)
+	rb := out.Paths["/items"].Post.RequestBody
+	if rb == nil {
+		t.Fatal("POST /items decodes r.PostForm, yet documents no request body")
+	}
+	form, ok := rb.Content["application/x-www-form-urlencoded"]
+	if !ok || form.Schema == nil {
+		t.Fatalf("POST /items body is %+v, want application/x-www-form-urlencoded", rb.Content)
+	}
+	for _, name := range []string{"name", "email"} {
+		if _, ok := form.Schema.Properties[name]; !ok {
+			t.Errorf("form body has no %q property", name)
+		}
+	}
+	// One entry per field, however many times the walk met the read.
+	if got := form.Schema.Required; len(got) != 1 || got[0] != "name" {
+		t.Errorf("form body required = %v, want [name]", got)
+	}
+
+	// A URL parsed from configuration has a Query() too; decoding it reads no
+	// request parameter.
+	assertBoundParams(t, out, "/upstream", "GET", nil)
+}
+
+// gorilla/schema is the decoder of every net/http-based router, so each of
+// their configs carries it — not only the one the fixture runs under.
+func TestGorillaSchemaInEveryNetHTTPConfig(t *testing.T) {
+	for name, cfg := range map[string]*spec.APISpecConfig{
+		"net/http": spec.DefaultHTTPConfig(),
+		"chi":      spec.DefaultChiConfig(),
+		"mux":      spec.DefaultMuxConfig(),
+	} {
+		found := false
+		for _, p := range cfg.Framework.ParamPatterns {
+			if p.CallRegex == "^Decode$" && p.RecvType == "github.com/gorilla/schema.*Decoder" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s config has no gorilla/schema struct binding", name)
+		}
+	}
+}

@@ -96,3 +96,53 @@ func TestDeduplicateParametersPrefersDeclared(t *testing.T) {
 		t.Errorf("two accessors: kept %q, want the first", got[0].Schema.Type)
 	}
 }
+
+// A binder's own tag options: `required` marks the parameter required, and a
+// default both sets `default` — converted to the schema's type — and clears
+// `required`, whichever order the options come in (issue #602).
+func TestApplyTagOptions(t *testing.T) {
+	b := StructBinding{Tag: "schema", OptionRequired: "required", OptionDefault: "default:"}
+	cases := []struct {
+		value    string
+		typ      string
+		required bool
+		def      any
+	}{
+		{value: "page", typ: "integer"},
+		{value: "page,required", typ: "integer", required: true},
+		{value: "page,default:20", typ: "integer", def: int64(20)},
+		{value: "page,required,default:20", typ: "integer", def: int64(20)},
+		{value: "on,default:true", typ: "boolean", def: true},
+		{value: "ratio,default:0.5", typ: "number", def: 0.5},
+		{value: "sort,default:name", typ: "string", def: "name"},
+		// A default the binder cannot convert is no default; it still means
+		// the parameter is optional.
+		{value: "page,default:many", typ: "integer"},
+		// A binder without the option reads neither.
+		{value: "page,omitempty", typ: "integer"},
+	}
+	for _, c := range cases {
+		p := &Parameter{Schema: &Schema{Type: c.typ}}
+		applyTagOptions(p, c.value, b)
+		if p.Required != c.required {
+			t.Errorf("%q: required = %v, want %v", c.value, p.Required, c.required)
+		}
+		if p.Schema.Default != c.def {
+			t.Errorf("%q: default = %#v, want %#v", c.value, p.Schema.Default, c.def)
+		}
+	}
+
+	// A slice's default lists elements separated by `|`.
+	p := &Parameter{Schema: &Schema{Type: "array", Items: &Schema{Type: "integer"}}}
+	applyTagOptions(p, "ids,default:1|2", b)
+	if got, ok := p.Schema.Default.([]any); !ok || len(got) != 2 || got[0] != int64(1) || got[1] != int64(2) {
+		t.Errorf("slice default = %#v, want [1 2]", p.Schema.Default)
+	}
+
+	// A $ref schema is shared with every use of the type: never mutated.
+	shared := &Parameter{Schema: &Schema{Ref: "#/components/schemas/Mode"}}
+	applyTagOptions(shared, "mode,default:fast", b)
+	if shared.Schema.Default != nil {
+		t.Errorf("a $ref schema gained a default: %#v", shared.Schema.Default)
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"go/ast"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -59,6 +60,9 @@ func (p *ParamPatternMatcherImpl) ExtractStructParams(node TrackerNodeInterface,
 		}) {
 			continue
 		}
+		if binding.SourceRegex != "" && !p.decodesFrom(node, binding) {
+			continue
+		}
 		if binding.In == "path" && placeholders == nil {
 			// The route still carries the framework's own syntax (`:id`).
 			openAPIPath, _ := convertPathToOpenAPI(route.Path)
@@ -70,7 +74,7 @@ func (p *ParamPatternMatcherImpl) ExtractStructParams(node TrackerNodeInterface,
 			if binding.In == "path" && !slices.Contains(placeholders, bf.name) {
 				continue
 			}
-			if param := p.structFieldParam(route, bf, binding.In); param != nil {
+			if param := p.structFieldParam(route, bf, binding); param != nil {
 				params = append(params, *param)
 			}
 		}
@@ -191,8 +195,9 @@ func boundFieldName(meta *metadata.Metadata, f metadata.Field, binding StructBin
 }
 
 // structFieldParam documents one bound field as a parameter.
-func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundField, in string) *Parameter {
+func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundField, binding StructBinding) *Parameter {
 	meta := route.Metadata
+	in := binding.In
 	fieldType := getStringFromPool(meta, bf.field.Type)
 	if fieldType == "" || bf.field.NestedType != nil {
 		return nil
@@ -236,10 +241,136 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 			param.Required = param.Required || c.Required
 		}
 	}
+	applyTagOptions(param, reflect.StructTag(tag).Get(binding.Tag), binding)
 
 	if in == "path" {
 		param.Required = true
 		applyPathConstraint(param, route.Path)
 	}
 	return param
+}
+
+// applyTagOptions reads the binder's own options off the binding tag's value:
+// `schema:"page,required"`, `schema:"page,default:1"`. A default is a fallback
+// the binder supplies, so it also clears `required` — whichever option says
+// so — the way a handler-supplied fallback does (DefaultArgIndex).
+func applyTagOptions(param *Parameter, value string, binding StructBinding) {
+	_, options, found := strings.Cut(value, ",")
+	if !found {
+		return
+	}
+	hasDefault := false
+	for _, opt := range strings.Split(options, ",") {
+		opt = strings.TrimSpace(opt)
+		switch {
+		case binding.OptionRequired != "" && opt == binding.OptionRequired:
+			param.Required = true
+		case binding.OptionDefault != "" && strings.HasPrefix(opt, binding.OptionDefault):
+			hasDefault = true
+			// The default lands on the parameter's own schema; one a $ref points
+			// at is shared with every other use of the type.
+			if param.Schema != nil && param.Schema.Ref == "" {
+				if v, ok := typedDefault(param.Schema, strings.TrimPrefix(opt, binding.OptionDefault)); ok {
+					param.Schema.Default = v
+				}
+			}
+		}
+	}
+	if hasDefault {
+		param.Required = false
+	}
+}
+
+// decodesFrom reports whether a decoder's source argument is what the binding
+// reads: produced by a call or field whose name matches SourceRegex —
+// `r.URL.Query()`, `r.PostForm` — directly, through a local variable, or
+// through a wrapper's parameter, and not provably built outside the request.
+//
+// The name is not enough on its own: `u.Query()` on a URL parsed from
+// configuration is a Query() too, and it is the request-origin walk that
+// tells them apart (issue #552). A source it cannot place keeps the binding,
+// as every other request-origin check does; one it proves foreign drops it.
+func (p *ParamPatternMatcherImpl) decodesFrom(node TrackerNodeInterface, binding StructBinding) bool {
+	edge := node.GetEdge()
+	if edge == nil || binding.SourceArgIndex < 0 || binding.SourceArgIndex >= len(edge.Args) {
+		return false
+	}
+	re, err := cachedRegex(binding.SourceRegex)
+	if err != nil {
+		return false
+	}
+	src, at := edge.Args[binding.SourceArgIndex], node
+	for hops := 0; src != nil && hops < maxRequestOriginHops; hops++ {
+		for src != nil && (src.GetKind() == metadata.KindParen || src.GetKind() == metadata.KindUnary) {
+			src = src.X
+		}
+		if src == nil || src.GetKind() != metadata.KindIdent {
+			break
+		}
+		if rhs := latestAssignment(p.contextProvider, at.GetEdge(), src.GetName()); rhs != nil {
+			src = rhs
+			continue
+		}
+		resolved, rnode := resolveArgThroughParams(src, at)
+		if resolved == nil || resolved == src || rnode == nil {
+			break
+		}
+		src, at = resolved, rnode
+	}
+	if src == nil {
+		return false
+	}
+
+	var name string
+	switch src.GetKind() {
+	case metadata.KindCall:
+		name = calleeNameOf(src.Fun)
+	case metadata.KindSelector:
+		if src.Sel != nil {
+			name = src.Sel.GetName()
+		}
+	}
+	if name == "" || !re.MatchString(name) {
+		return false
+	}
+
+	requestTypes := compileAll(p.cfg.Framework.RequestContext.TypeRegexes)
+	if len(requestTypes) == 0 {
+		return true // nothing to prove against
+	}
+	w := requestOriginWalker{cp: p.contextProvider, requestTypes: requestTypes}
+	return w.valueOrigin(src, at, 0) != requestOriginElsewhere
+}
+
+// typedDefault converts a tag's default text to the schema's type, the way the
+// binder converts it to the field's: `default:20` on an int is 20, not "20". A
+// slice's default lists its elements separated by `|`, gorilla/schema's
+// syntax. A value that does not convert is no default at all — the binder
+// rejects it — so it is left out rather than published as a string.
+func typedDefault(schema *Schema, raw string) (any, bool) {
+	switch schema.Type {
+	case "integer":
+		v, err := strconv.ParseInt(raw, 10, 64)
+		return v, err == nil
+	case "number":
+		v, err := strconv.ParseFloat(raw, 64)
+		return v, err == nil
+	case "boolean":
+		v, err := strconv.ParseBool(raw)
+		return v, err == nil
+	case "array":
+		if schema.Items == nil {
+			return nil, false
+		}
+		var out []any
+		for _, part := range strings.Split(raw, "|") {
+			v, ok := typedDefault(schema.Items, part)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, v)
+		}
+		return out, true
+	}
+	return raw, true
 }
