@@ -233,7 +233,7 @@ func DefaultHTTPConfig() *APISpecConfig {
 					ParamArgIndex: 0,
 					RecvType:      "net/http.*Request",
 				},
-			}, requestMultipartParamPatterns()...),
+			}, append(requestMultipartParamPatterns(), gorillaSchemaParamPatterns()...)...),
 		},
 		Defaults: stdDefaults(http.StatusOK),
 	}

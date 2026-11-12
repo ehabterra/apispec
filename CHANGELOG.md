@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echo's `Bind` reads the query string only for GET, DELETE and HEAD, and
   `validate:` (and gin's `binding:`) rules set `required` and constraints. A
   config pattern opts in with `structBindings` (#355).
+- **gorilla/schema struct decoding is documented** for net/http, chi and
+  gorilla/mux. `decoder.Decode(&q, src)` reads whatever map it is handed, so
+  the location follows the source: `r.URL.Query()` documents query parameters,
+  `r.Form`/`r.PostForm` a form body (or query parameters on a GET), and the
+  query of a URL built elsewhere (`url.Parse(cfg).Query()`) documents nothing.
+  The source is followed through local variables and wrapper parameters.
+  gorilla/schema's `,required` and `,default:<v>` options are read, with the
+  default converted to the field's type. A struct binding opts in to a source
+  check with `sourceRegex`/`sourceArgIndex`, and to tag options with
+  `optionRequired`/`optionDefault` (#602).
 
 ### Changed
 
@@ -33,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A required form field is listed once in the form body's `required`.** A
+  form body built from parameters the walk met several times took one
+  `required` entry per occurrence (#602).
 - **A `validate:` tag's rules end at its own closing quote.** Everything after
   `validate:` to the end of the struct tag was read as rules, so a later key's
   text became a constraint: `validate:"required" json:"date"` gave the field a

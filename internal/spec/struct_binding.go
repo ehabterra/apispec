@@ -16,8 +16,10 @@ package spec
 
 import (
 	"go/ast"
+	"math"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -59,6 +61,9 @@ func (p *ParamPatternMatcherImpl) ExtractStructParams(node TrackerNodeInterface,
 		}) {
 			continue
 		}
+		if binding.SourceRegex != "" && !p.decodesFrom(node, binding) {
+			continue
+		}
 		if binding.In == "path" && placeholders == nil {
 			// The route still carries the framework's own syntax (`:id`).
 			openAPIPath, _ := convertPathToOpenAPI(route.Path)
@@ -70,7 +75,7 @@ func (p *ParamPatternMatcherImpl) ExtractStructParams(node TrackerNodeInterface,
 			if binding.In == "path" && !slices.Contains(placeholders, bf.name) {
 				continue
 			}
-			if param := p.structFieldParam(route, bf, binding.In); param != nil {
+			if param := p.structFieldParam(route, bf, binding); param != nil {
 				params = append(params, *param)
 			}
 		}
@@ -191,8 +196,9 @@ func boundFieldName(meta *metadata.Metadata, f metadata.Field, binding StructBin
 }
 
 // structFieldParam documents one bound field as a parameter.
-func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundField, in string) *Parameter {
+func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundField, binding StructBinding) *Parameter {
 	meta := route.Metadata
+	in := binding.In
 	fieldType := getStringFromPool(meta, bf.field.Type)
 	if fieldType == "" || bf.field.NestedType != nil {
 		return nil
@@ -236,10 +242,202 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 			param.Required = param.Required || c.Required
 		}
 	}
+	applyTagOptions(param, reflect.StructTag(tag).Get(binding.Tag), binding, defaultConverter(fieldType, meta))
 
 	if in == "path" {
 		param.Required = true
 		applyPathConstraint(param, route.Path)
 	}
 	return param
+}
+
+// applyTagOptions reads the binder's own options off the binding tag's value,
+// by the binder's own grammar: `schema:"page,required"`, `schema:"page,default:1"`.
+//
+// The options are compared as written. gorilla/schema splits on commas and
+// trims nothing, so `schema:"id, required"` is NOT required there, and reading
+// it as required here would document a constraint the server never enforces.
+//
+// A default is a fallback the binder supplies, so it clears `required`, the
+// way a handler-supplied fallback does (DefaultArgIndex). The exception is a
+// field that is BOTH: gorilla/schema rejects that combination on every decode
+// ("required fields cannot have a default value"), so no default is ever
+// applied, and the field stays required. convert turns the default's text into
+// the value the binder would store, or reports that it would store none.
+func applyTagOptions(param *Parameter, value string, binding StructBinding, convert func(string) (any, bool)) {
+	_, options, found := strings.Cut(value, ",")
+	if !found {
+		return
+	}
+	required, hasDefault := false, false
+	var raw string
+	for _, opt := range strings.Split(options, ",") {
+		switch {
+		case binding.OptionRequired != "" && opt == binding.OptionRequired:
+			required = true
+		case binding.OptionDefault != "" && strings.HasPrefix(opt, binding.OptionDefault):
+			hasDefault = true
+			// gorilla/schema keeps the text up to the next ':' only.
+			raw, _, _ = strings.Cut(strings.TrimPrefix(opt, binding.OptionDefault), ":")
+		}
+	}
+	switch {
+	case required:
+		param.Required = true
+	case hasDefault:
+		param.Required = false
+		// The default lands on the parameter's own schema; one a $ref points
+		// at is shared with every other use of the type.
+		if param.Schema != nil && param.Schema.Ref == "" && convert != nil {
+			if v, ok := convert(raw); ok {
+				param.Schema.Default = v
+			}
+		}
+	}
+}
+
+// defaultConverter returns how a binder converts a default's text for a field
+// of this Go type: through the field's own kind, with its width and sign — a
+// `uint8` field takes `ParseUint(v, 10, 8)`, so `default:-1` is no default —
+// and for a slice, element by element over `|`-separated text. A type with no
+// builtin scalar kind (a struct, a map) takes no default.
+func defaultConverter(goType string, meta *metadata.Metadata) func(string) (any, bool) {
+	ref := typemodel.Parse(goType)
+	if ref.Kind == typemodel.KindSlice {
+		elem := builtinKind(ref.Elem, meta)
+		if elem == "" {
+			return nil
+		}
+		return func(raw string) (any, bool) {
+			var out []any
+			for _, part := range strings.Split(raw, "|") {
+				v, ok := convertScalarDefault(elem, part)
+				if !ok {
+					return nil, false
+				}
+				out = append(out, v)
+			}
+			return out, true
+		}
+	}
+	kind := builtinKind(ref, meta)
+	if kind == "" {
+		return nil
+	}
+	return func(raw string) (any, bool) { return convertScalarDefault(kind, raw) }
+}
+
+// builtinKind names the builtin scalar a type is, following a declared type to
+// its underlying one (`type Level uint8` is uint8), or "" when it is none.
+func builtinKind(ref *typemodel.TypeRef, meta *metadata.Metadata) string {
+	for hops := 0; ref != nil && ref.Kind == typemodel.KindNamed && hops < maxRequestOriginHops; hops++ {
+		if ref.Pkg == "" {
+			if _, ok := scalarBits[ref.Name]; ok {
+				return ref.Name
+			}
+		}
+		decl := typeByName(ref.Pkg, ref.Name, meta)
+		if decl == nil || isStructType(meta, decl) {
+			return ""
+		}
+		ref = typemodel.Parse(getStringFromPool(meta, decl.Target))
+	}
+	return ""
+}
+
+// scalarBits is each builtin scalar's bit size for its strconv parse (0 is the
+// platform size), mirroring gorilla/schema's builtin converters.
+var scalarBits = map[string]int{
+	"bool": 0, "string": 0,
+	"int": 0, "int8": 8, "int16": 16, "int32": 32, "rune": 32, "int64": 64,
+	"uint": 0, "uint8": 8, "byte": 8, "uint16": 16, "uint32": 32, "uint64": 64,
+	"float32": 32, "float64": 64,
+}
+
+// convertScalarDefault converts one default for a builtin kind, or reports
+// that the binder would store nothing.
+func convertScalarDefault(kind, raw string) (any, bool) {
+	bits := scalarBits[kind]
+	switch kind {
+	case "string":
+		return raw, true
+	case "bool":
+		if raw == "on" {
+			return true, true
+		}
+		v, err := strconv.ParseBool(raw)
+		return v, err == nil
+	case "float32", "float64":
+		v, err := strconv.ParseFloat(raw, bits)
+		// NaN and the infinities parse, and the binder stores them, but JSON
+		// has no spelling for them: a default the document cannot hold is left
+		// out rather than failing the whole JSON output.
+		return v, err == nil && !math.IsNaN(v) && !math.IsInf(v, 0)
+	case "uint", "uint8", "byte", "uint16", "uint32", "uint64":
+		v, err := strconv.ParseUint(raw, 10, bits)
+		return v, err == nil
+	}
+	v, err := strconv.ParseInt(raw, 10, bits)
+	return v, err == nil
+}
+
+// decodesFrom reports whether a decoder's source argument is what the binding
+// reads: produced by a call or field whose name matches SourceRegex —
+// `r.URL.Query()`, `r.PostForm` — directly, through a local variable, or
+// through a wrapper's parameter, and not provably built outside the request.
+//
+// The name is not enough on its own: `u.Query()` on a URL parsed from
+// configuration is a Query() too, and it is the request-origin walk that
+// tells them apart (issue #552). A source it cannot place keeps the binding,
+// as every other request-origin check does; one it proves foreign drops it.
+func (p *ParamPatternMatcherImpl) decodesFrom(node TrackerNodeInterface, binding StructBinding) bool {
+	edge := node.GetEdge()
+	if edge == nil || binding.SourceArgIndex < 0 || binding.SourceArgIndex >= len(edge.Args) {
+		return false
+	}
+	re, err := cachedRegex(binding.SourceRegex)
+	if err != nil {
+		return false
+	}
+	src, at := edge.Args[binding.SourceArgIndex], node
+	for hops := 0; src != nil && hops < maxRequestOriginHops; hops++ {
+		for src != nil && (src.GetKind() == metadata.KindParen || src.GetKind() == metadata.KindUnary) {
+			src = src.X
+		}
+		if src == nil || src.GetKind() != metadata.KindIdent {
+			break
+		}
+		if rhs := latestAssignment(p.contextProvider, at.GetEdge(), src.GetName()); rhs != nil {
+			src = rhs
+			continue
+		}
+		resolved, rnode := resolveArgThroughParams(src, at)
+		if resolved == nil || resolved == src || rnode == nil {
+			break
+		}
+		src, at = resolved, rnode
+	}
+	if src == nil {
+		return false
+	}
+
+	var name string
+	switch src.GetKind() {
+	case metadata.KindCall:
+		name = calleeNameOf(src.Fun)
+	case metadata.KindSelector:
+		if src.Sel != nil {
+			name = src.Sel.GetName()
+		}
+	}
+	if name == "" || !re.MatchString(name) {
+		return false
+	}
+
+	requestTypes := compileAll(p.cfg.Framework.RequestContext.TypeRegexes)
+	if len(requestTypes) == 0 {
+		return true // nothing to prove against
+	}
+	w := requestOriginWalker{cp: p.contextProvider, requestTypes: requestTypes}
+	return w.valueOrigin(src, at, 0) != requestOriginElsewhere
 }
