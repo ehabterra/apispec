@@ -226,21 +226,13 @@ func (p *ParamPatternMatcherImpl) structFieldParam(route *RouteInfo, bf boundFie
 	param := &Parameter{Name: bf.name, In: in, Schema: schema, declared: true}
 
 	tag := getStringFromPool(meta, bf.field.Tag)
-	sources := []string{tag}
-	if key := p.pattern.ValidateTag; key != "" && key != "validate" {
-		if rules, ok := reflect.StructTag(tag).Lookup(key); ok {
-			sources = append(sources, `validate:"`+rules+`"`)
+	if c := extractValidationConstraints(tag, validateTagsOf(p.cfg)...); c != nil {
+		// Constraints mutate the schema, and a schema a $ref points at is
+		// shared with every other use of the type.
+		if schema.Ref == "" {
+			applyValidationConstraints(schema, c)
 		}
-	}
-	for _, src := range sources {
-		if c := extractValidationConstraints(src); c != nil {
-			// Constraints mutate the schema, and a schema a $ref points at is
-			// shared with every other use of the type.
-			if schema.Ref == "" {
-				applyValidationConstraints(schema, c)
-			}
-			param.Required = param.Required || c.Required
-		}
+		param.Required = param.Required || c.Required
 	}
 	applyTagOptions(param, reflect.StructTag(tag).Get(binding.Tag), binding, defaultConverter(fieldType, meta))
 

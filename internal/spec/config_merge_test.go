@@ -14,7 +14,10 @@
 
 package spec
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestMergeFrameworkConfigs(t *testing.T) {
 	t.Run("secondary patterns append, identical surfaces dedupe to primary's", func(t *testing.T) {
@@ -314,4 +317,24 @@ func TestMergeFrameworkConfigs(t *testing.T) {
 			t.Errorf("MergeFrameworkConfigs(nil, ...) = %v, want nil", got)
 		}
 	})
+}
+
+// A validator key is scoped by the struct tag itself, so both merge paths carry
+// it: a chi API that also binds gin requests still reads gin's `binding` rules
+// on gin's types, and the key is listed once however many configs carry it
+// (issue #600).
+func TestValidateTagsMerge(t *testing.T) {
+	if got := DefaultGinConfig().Framework.ValidateTags; !slices.Equal(got, []string{"binding"}) {
+		t.Fatalf("gin's validator keys = %v, want [binding]", got)
+	}
+	if got := DefaultChiConfig().Framework.ValidateTags; len(got) != 0 {
+		t.Errorf("chi validates with no key of its own, got %v", got)
+	}
+	if got := SecondaryView(DefaultGinConfig()).Framework.ValidateTags; !slices.Equal(got, []string{"binding"}) {
+		t.Errorf("SecondaryView dropped gin's validator key: %v", got)
+	}
+	merged := MergeFrameworkConfigs(DefaultChiConfig(), SecondaryView(DefaultGinConfig()), DefaultGinConfig())
+	if got := merged.Framework.ValidateTags; !slices.Equal(got, []string{"binding"}) {
+		t.Errorf("merged validator keys = %v, want [binding] once", got)
+	}
 }

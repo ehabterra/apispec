@@ -103,11 +103,10 @@ right as far as they go, they just say less than your code knows.
   that merely fall back to the framework's implicit status keep the first one
   and drop the rest. Within an `r.Method` split, an `anyOf` that two arms share
   is documented on **both** operations rather than divided between them.
-- Only `go-playground/validator`-style `validate:` tags are read in body
-  schemas; gin's `binding:` key is read only on parameters bound from a struct
-  (`ShouldBindQuery`, `ShouldBindUri`, `ShouldBindHeader`; body schemas are
-  #600), and comparison
-  validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
+- Validator tags are read with `go-playground/validator` rule syntax, under
+  `validate:` and the framework's own key (gin's `binding:`, or any key listed
+  in `framework.validateTags`). Comparison validators (`gt`/`gte`/`lt`/`lte`)
+  are not yet mapped.
 - **A `gorilla/schema` decoder with a renamed tag.** Struct decoding is read
   under gorilla/schema's default `schema` tag; a project that calls
   `SetAliasTag` needs its own pattern with that tag.

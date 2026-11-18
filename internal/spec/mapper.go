@@ -2203,7 +2203,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		if getStringFromPool(meta, field.Name) != "_" {
 			continue
 		}
-		if note := structLevelValidationNote(getStringFromPool(meta, field.Tag)); note != "" {
+		if note := structLevelValidationNote(getStringFromPool(meta, field.Tag), validateTagsOf(cfg)...); note != "" {
 			schema.Description = appendConstraintNote(schema.Description, note)
 		}
 	}
@@ -2259,7 +2259,7 @@ func generateStructSchema(usedTypes map[string]*Schema, key string, typ *metadat
 		}
 
 		// Extract validation constraints from struct tag
-		validationConstraints := extractValidationConstraints(getStringFromPool(meta, field.Tag))
+		validationConstraints := extractValidationConstraints(getStringFromPool(meta, field.Tag), validateTagsOf(cfg)...)
 
 		// Generate schema for field type
 		var fieldSchema *Schema
@@ -2602,25 +2602,13 @@ func extractJSONName(tag string) string {
 	return ""
 }
 
-// validateTagValue returns the value of the `validate:"..."` struct tag, or ""
-// when absent. Robust to other tags sharing the struct-tag string.
-func validateTagValue(tag string) string {
-	const key = `validate:"`
-	idx := strings.Index(tag, key)
-	if idx == -1 {
-		return ""
-	}
-	rest := tag[idx+len(key):]
-	if end := strings.IndexByte(rest, '"'); end != -1 {
-		return rest[:end]
-	}
-	return ""
-}
-
-// structLevelValidationNote turns a blank marker field's validate rules into a
-// human-readable schema note, or "" when there are none (issue #166).
-func structLevelValidationNote(tag string) string {
-	rules := strings.TrimSpace(validateTagValue(tag))
+// structLevelValidationNote turns a blank marker field's validator rules into
+// a human-readable schema note, or "" when there are none (issue #166). The
+// rules are read like a field's: under `validate` and the framework's own keys
+// (issue #600), each as a whole key rather than a substring.
+func structLevelValidationNote(tag string, keys ...string) string {
+	rules, _ := validatorRules(tag, keys)
+	rules = strings.TrimSpace(rules)
 	if rules == "" || rules == "-" {
 		return ""
 	}
@@ -2975,6 +2963,45 @@ type ValidationConstraints struct {
 	Required bool
 }
 
+// validatorRules gathers the validator rules a field declares under `validate`
+// and under each extra key, as one rule string. Each key's rules are split on
+// `dive` before they are joined: concatenated whole, a second key's container
+// rules would follow the first key's `dive` and be read as element rules —
+// `validate:"dive,min=1" binding:"required"` would lose `required`.
+func validatorRules(tag string, keys []string) (string, bool) {
+	st := reflect.StructTag(tag)
+	var container, elems []string
+	found := false
+	for _, key := range appendUniqueStrings([]string{"validate"}, keys...) {
+		rules, ok := st.Lookup(key)
+		if key == "" || !ok {
+			continue
+		}
+		found = true
+		before, after, dive := splitOnDive(rules)
+		if before = strings.Trim(before, ", "); before != "" {
+			container = append(container, before)
+		}
+		if after = strings.Trim(after, ", "); dive && after != "" {
+			elems = append(elems, after)
+		}
+	}
+	rules := strings.Join(container, ",")
+	if len(elems) > 0 {
+		rules += ",dive," + strings.Join(elems, ",")
+	}
+	return rules, found
+}
+
+// validateTagsOf is the framework's extra validator keys, or none without a
+// config.
+func validateTagsOf(cfg *APISpecConfig) []string {
+	if cfg == nil {
+		return nil
+	}
+	return cfg.Framework.ValidateTags
+}
+
 // splitOnDive splits a go-playground/validator rule string on the first `dive`
 // token (comma-delimited). Rules before `dive` constrain the container; rules
 // after constrain each element. found is false when there is no `dive`.
@@ -2988,8 +3015,10 @@ func splitOnDive(validateTag string) (before, after string, found bool) {
 	return validateTag, "", false
 }
 
-// extractValidationConstraints extracts validation constraints from struct tags
-func extractValidationConstraints(tag string) *ValidationConstraints {
+// extractValidationConstraints extracts validation constraints from struct
+// tags: the standard `validate` key plus any key the framework validates with
+// (gin's `binding`, FrameworkConfig.ValidateTags).
+func extractValidationConstraints(tag string, keys ...string) *ValidationConstraints {
 	if tag == "" {
 		return nil
 	}
@@ -3000,7 +3029,7 @@ func extractValidationConstraints(tag string) *ValidationConstraints {
 	// Only the validate key's own value: reading on to the end of the tag
 	// took every key after it as rules, so `validate:"required" json:"date"`
 	// gained a date pattern from the json NAME.
-	if validateTag, ok := reflect.StructTag(tag).Lookup("validate"); ok {
+	if validateTag, ok := validatorRules(tag, keys); ok {
 		// Peel off post-`dive` rules: they constrain slice/map elements, not
 		// the container, so parse them separately into constraints.Dive
 		// (issue #165). The container rules (before `dive`) fall through to
