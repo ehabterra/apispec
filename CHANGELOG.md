@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **gin request bodies document their `binding:` rules.** gin validates with
+  the `binding` struct-tag key, but body schemas read only `validate:`, so a
+  body declared the gin way (`binding:"required,min=3"`) listed no required
+  fields and no constraints. The key is now a framework setting,
+  `framework.validateTags`, read by body schemas and struct-bound parameters
+  alike; the gin preset sets `binding`, and a mixed project keeps it when gin
+  is not the primary framework. A struct-level validation note on a `_` marker
+  field reads it too (#600).
 - **A required form field is listed once in the form body's `required`.** A
   form body built from parameters the walk met several times took one
   `required` entry per occurrence (#602).

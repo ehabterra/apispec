@@ -601,6 +601,10 @@ export function ConfigMode() {
             ${area("Method names (one per line)", lines(fc.handlerInterfaceMethods), (e) => setFC("handlerInterfaceMethods", toLines(e.target.value)), "ServeHTTP")}
           <//>
 
+          <${Section} title="Validator tag keys" help="Struct-tag keys the framework validates with, read with go-playground/validator rule syntax beside the standard validate key. Their rules (required, min, max, oneof, dive, ...) set required fields and constraints on request bodies and struct-bound parameters. gin validates with binding, which its preset already sets. One per line." hint=${`${(fc.validateTags || []).length}`}>
+            ${area("Tag keys (one per line)", lines(fc.validateTags), (e) => setFC("validateTags", toLines(e.target.value)), "binding")}
+          <//>
+
           <${Section} title="Request context" help="Disambiguates generic decoders. json.Decode / json.Unmarshal / render.DecodeJSON decode request bodies AND unrelated data (config files, internal payloads). A decoder counts as a request body only when its source traces back to a body accessor on a request-context value. Type regexes = the request types to watch (e.g. ^\\*?net/http\\.Request$, ^.*gin\\.\\*Context$). Body accessors = methods that yield the body (e.g. ^Body$, ^GetRawData$). Leave empty to fall back to receiver-only matching.">
             <${RequestContextEditor} rc=${fc.requestContext} onChange=${(v) => setFC("requestContext", v)} />
           <//>

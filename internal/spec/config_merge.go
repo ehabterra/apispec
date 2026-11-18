@@ -186,6 +186,10 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 	// Error sentinels are scoped by the package that declares them, so like
 	// ExternalTypes they can only ever claim their own framework's values.
 	out.Framework.ErrorSentinels = append(out.Framework.ErrorSentinels, cfg.Framework.ErrorSentinels...)
+	// A validator key is scoped by the struct tag itself: it can only ever
+	// claim a field that carries it, and a field carries gin's `binding`
+	// because gin validates that type (issue #600).
+	out.Framework.ValidateTags = append(out.Framework.ValidateTags, cfg.Framework.ValidateTags...)
 	for _, p := range cfg.Framework.RoutePatterns {
 		if p.RecvType != "" || p.RecvTypeRegex != "" {
 			out.Framework.RoutePatterns = append(out.Framework.RoutePatterns, p)
@@ -225,10 +229,11 @@ func SecondaryView(cfg *APISpecConfig) *APISpecConfig {
 // context accumulates unique type regexes and body accessors. ExternalTypes
 // merge the same way, keyed by type name (issue #212) — every other framework
 // preset carries only its own types, so the union is what "both frameworks are
-// present" means. Error sentinels are package-scoped and union likewise. Info, Defaults, overrides and mappings stay the primary's
-// alone. The primary is mutated and
-// returned; a nil primary returns nil (mirroring SecondaryView's guard, since
-// both are exported through the public spec package).
+// present" means. Error sentinels are package-scoped and union likewise, as do
+// the validator tag keys. Info, Defaults, overrides and mappings stay the
+// primary's alone. The primary is mutated and returned; a nil primary returns
+// nil (mirroring SecondaryView's guard, since both are exported through the
+// public spec package).
 func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig) *APISpecConfig {
 	if primary == nil {
 		return nil
@@ -320,6 +325,8 @@ func MergeFrameworkConfigs(primary *APISpecConfig, secondaries ...*APISpecConfig
 				primary.Framework.ErrorSentinels = append(primary.Framework.ErrorSentinels, e)
 			}
 		}
+		primary.Framework.ValidateTags = appendUniqueStrings(
+			primary.Framework.ValidateTags, sec.Framework.ValidateTags...)
 		primary.Framework.RequestContext.TypeRegexes = appendUniqueStrings(
 			primary.Framework.RequestContext.TypeRegexes, sec.Framework.RequestContext.TypeRegexes...)
 		primary.Framework.RequestContext.BodyAccessors = appendUniqueStrings(

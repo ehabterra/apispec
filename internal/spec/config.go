@@ -133,6 +133,13 @@ type FrameworkConfig struct {
 	// gate ResponsePattern.RequireResponseDestination. See issue #170.
 	ResponseContext ResponseContextConfig `yaml:"responseContext,omitempty" json:"responseContext,omitempty"`
 
+	// ValidateTags names the struct-tag keys this framework validates with,
+	// read with go-playground/validator rule syntax alongside the standard
+	// `validate` key. gin spells it `binding`. Both the body schemas and the
+	// struct-bound parameters read it: a schema serves its type wherever it
+	// appears, so the key cannot belong to any one pattern (issue #600).
+	ValidateTags []string `yaml:"validateTags,omitempty" json:"validateTags,omitempty"`
+
 	// ErrorSentinels describe the error VALUES a handler returns that the
 	// framework's error handler turns into a response — echo's
 	// `return echo.ErrForbidden`, fiber's `return fiber.ErrNotFound` (issue
@@ -862,11 +869,6 @@ type ParamPattern struct {
 	// locations from one struct (echo's Bind: `param` and `query`) lists one
 	// entry per key. ParamIn and ParamArgIndex are not consulted (issue #355).
 	StructBindings []StructBinding `yaml:"structBindings,omitempty" json:"structBindings,omitempty"`
-
-	// ValidateTag names a struct-tag key the binder validates with, read with
-	// go-playground/validator rule syntax alongside the standard `validate` key
-	// — gin spells it `binding`. Only consulted for StructBindings.
-	ValidateTag string `yaml:"validateTag,omitempty" json:"validateTag,omitempty"`
 
 	// ExcludeRecvOriginRegex rejects the match when the receiver's ORIGIN — the
 	// calls it is chained onto, or the assignment a variable receiver came from —

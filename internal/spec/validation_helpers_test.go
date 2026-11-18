@@ -16,19 +16,62 @@ package spec
 
 import "testing"
 
-// TestValidateTagValue covers the struct-tag extractor: present, absent, and a
-// malformed (unterminated) validate tag.
-func TestValidateTagValue(t *testing.T) {
-	cases := map[string]string{
-		`json:"x" validate:"required,min=3"`: "required,min=3",
-		`json:"x"`:                           "",
-		`validate:"gtefield=Min" json:"y"`:   "gtefield=Min",
-		`validate:"unterminated`:             "",
+// TestValidatorRules covers how a field's validator rules are gathered from
+// `validate` and the framework's own keys (issue #600): each read as a whole
+// key, and each key's `dive` kept apart so one key's element rules cannot
+// absorb another key's container rules.
+func TestValidatorRules(t *testing.T) {
+	cases := []struct {
+		name, tag string
+		keys      []string
+		want      string
+		found     bool
+	}{
+		{name: "validate", tag: `json:"x" validate:"required,min=3"`, want: "required,min=3", found: true},
+		{name: "absent", tag: `json:"x"`},
+		{name: "unterminated", tag: `validate:"unterminated`},
+		// Without the framework's key, gin's tag is not a validator tag.
+		{name: "binding unconfigured", tag: `binding:"required"`},
+		{name: "binding", tag: `binding:"required,min=3"`, keys: []string{"binding"}, want: "required,min=3", found: true},
+		// A whole key, never a substring of another.
+		{name: "key inside another", tag: `xvalidate:"required"`},
+		{name: "both keys", tag: `validate:"email" binding:"required"`, keys: []string{"binding"}, want: "email,required", found: true},
+		// `validate` listed again is not read twice.
+		{name: "repeated key", tag: `validate:"required"`, keys: []string{"validate", ""}, want: "required", found: true},
+		{
+			name: "dive per key", tag: `validate:"dive,max=10" binding:"required,min=1,dive,min=2"`,
+			keys: []string{"binding"}, want: "required,min=1,dive,max=10,min=2", found: true,
+		},
+		{name: "empty value", tag: `validate:""`, found: true},
 	}
-	for tag, want := range cases {
-		if got := validateTagValue(tag); got != want {
-			t.Errorf("validateTagValue(%q) = %q, want %q", tag, got, want)
+	for _, c := range cases {
+		got, found := validatorRules(c.tag, c.keys)
+		if got != c.want || found != c.found {
+			t.Errorf("%s: validatorRules(%q, %v) = %q, %v; want %q, %v", c.name, c.tag, c.keys, got, found, c.want, c.found)
 		}
+	}
+}
+
+// TestExtractValidationConstraintsFrameworkKey: gin's `binding` rules set
+// `required` and constraints only when the framework names the key, and a
+// `dive` under one key leaves the other key's container rules on the container.
+func TestExtractValidationConstraintsFrameworkKey(t *testing.T) {
+	if c := extractValidationConstraints(`binding:"required,min=3"`); c != nil {
+		t.Errorf("binding read with no framework key: %+v", c)
+	}
+	c := extractValidationConstraints(`binding:"required,min=3"`, "binding")
+	if c == nil || !c.Required || c.Min == nil || *c.Min != 3 {
+		t.Fatalf("binding:\"required,min=3\" = %+v, want required with min 3", c)
+	}
+	c = extractValidationConstraints(`validate:"dive,max=10" binding:"required"`, "binding")
+	if c == nil || !c.Required {
+		t.Fatalf("binding's `required` was lost behind validate's dive: %+v", c)
+	}
+	if c.Dive == nil || c.Dive.Max == nil || *c.Dive.Max != 10 || c.Dive.Required {
+		t.Errorf("element rules = %+v, want max 10 and not required", c.Dive)
+	}
+	if c.Max != nil {
+		t.Errorf("an element rule reached the container: max = %v", *c.Max)
 	}
 }
 
@@ -40,9 +83,11 @@ func TestStructLevelValidationNote(t *testing.T) {
 		`validate:"-"`:            "",
 		`validate:""`:             "",
 		`json:"x"`:                "",
+		// gin's key, read because the framework names it (issue #600).
+		`binding:"gtefield=Min"`: "Struct-level validation: gtefield=Min",
 	}
 	for tag, want := range cases {
-		if got := structLevelValidationNote(tag); got != want {
+		if got := structLevelValidationNote(tag, "binding"); got != want {
 			t.Errorf("structLevelValidationNote(%q) = %q, want %q", tag, got, want)
 		}
 	}
