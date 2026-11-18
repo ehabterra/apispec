@@ -28,6 +28,12 @@ concurrency:
 jobs:
   badge:
     runs-on: ubuntu-latest
+    # An explicit `bash` runs with pipefail; the implicit default does not. A
+    # failed `gh api` would otherwise let awk print a partial (or 0) total and
+    # publish it over the last good count.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Count release downloads
         id: count
