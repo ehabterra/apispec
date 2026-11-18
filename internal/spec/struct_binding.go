@@ -340,7 +340,7 @@ func builtinKind(ref *typemodel.TypeRef, meta *metadata.Metadata) string {
 		if decl == nil || isStructType(meta, decl) {
 			return ""
 		}
-		ref = typemodel.Parse(getStringFromPool(meta, decl.Target))
+		ref = meta.TypeRefOf(decl.Target)
 	}
 	return ""
 }
