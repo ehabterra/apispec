@@ -1,0 +1,65 @@
+name: Downloads Badge
+
+# shields.io's github/downloads badge sums EVERY release asset, so each
+# `.sha256` fetched to verify a binary counted as a second download. This sums
+# the assets ourselves, leaving the checksums out, and publishes the total as a
+# shields endpoint JSON on the `badges` branch, which the README badge reads.
+#
+# The JSON lives on its own branch so the daily refresh never commits to main;
+# main is the only protected branch, so the default GITHUB_TOKEN can push it.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  # A release created with GITHUB_TOKEN fires no `release` event, so follow the
+  # release workflow itself to refresh right after a new version ships.
+  workflow_run:
+    workflows: [ Release ]
+    types: [ completed ]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # push the badges branch
+
+concurrency:
+  group: downloads-badge
+  cancel-in-progress: false
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    # An explicit `bash` runs with pipefail; the implicit default does not. A
+    # failed `gh api` would otherwise let awk print a partial (or 0) total and
+    # publish it over the last good count.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Count release downloads
+        id: count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # --paginate runs the filter per page, so emit one number per asset
+          # and sum them afterwards.
+          total=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[].assets[] | select(.name | endswith(".sha256") | not) | .download_count' \
+            | awk '{s += $1} END {print s + 0}')
+          echo "Release downloads (checksums excluded): $total"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the endpoint JSON
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOTAL: ${{ steps.count.outputs.total }}
+        run: |
+          mkdir badges && cd badges
+          git init -q -b badges
+          printf '{"schemaVersion":1,"label":"downloads","message":"%s","color":"blue","namedLogo":"github"}\n' "$TOTAL" > downloads.json
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add downloads.json
+          git commit -q -m "Update downloads badge: $TOTAL"
+          # One orphan commit, force-pushed: the branch only ever holds the
+          # current numbers, never a history of them.
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
