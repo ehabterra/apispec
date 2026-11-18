@@ -108,9 +108,9 @@ right as far as they go, they just say less than your code knows.
   (`ShouldBindQuery`, `ShouldBindUri`, `ShouldBindHeader`; body schemas are
   #600), and comparison
   validators (`gt`/`gte`/`lt`/`lte`) are not yet mapped.
-- **`gorilla/schema` struct decoding** (the chi / mux / net/http idiom,
-  `decoder.Decode(&q, r.URL.Query())`) documents no parameters yet; gin, echo
-  and fiber binding is read (#602).
+- **A `gorilla/schema` decoder with a renamed tag.** Struct decoding is read
+  under gorilla/schema's default `schema` tag; a project that calls
+  `SetAliasTag` needs its own pattern with that tag.
 - **Struct-typed fields of a bound parameter struct.** A field of struct type
   inside a `ShouldBindQuery`/`Bind`/`QueryParser` target is not documented:
   each binder flattens it by its own naming rules, so it is left out rather

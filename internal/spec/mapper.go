@@ -1162,6 +1162,13 @@ func resolveFormParams(method string, params []Parameter, hasRequestBody, multip
 		kept = append(kept, p)
 	}
 
+	// The same field arrives once per place the walk met its read, so the list
+	// is deduplicated first, by the rule every other parameter follows. The
+	// property map hid the repeats, but `required` is a list and took one entry
+	// per copy — latent until a struct binding made a form field required
+	// (issue #602).
+	formParams = deduplicateParameters(formParams)
+
 	if methodTakesRequestBody(method) && !hasRequestBody {
 		schema := &Schema{Type: "object"}
 		for _, fp := range formParams {

@@ -116,7 +116,7 @@ func DefaultMuxConfig() *APISpecConfig {
 					NameFromMapKey: true,
 					RecvTypeRegex:  `^github\.com/gorilla/mux$`,
 				},
-			}, requestMultipartParamPatterns()...),
+			}, append(requestMultipartParamPatterns(), gorillaSchemaParamPatterns()...)...),
 			SecurityPatterns: muxSecurityPatterns(),
 			MountPatterns: []MountPattern{
 				{
