@@ -8,7 +8,7 @@
 [![Lint](https://img.shields.io/github/actions/workflow/status/ehabterra/apispec/lint.yml?branch=main&label=Lint&logo=github)](https://github.com/ehabterra/apispec/actions/workflows/lint.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ehabterra/apispec.svg)](https://pkg.go.dev/github.com/ehabterra/apispec)
 [![GitHub release](https://img.shields.io/github/v/release/ehabterra/apispec?include_prereleases&sort=semver)](https://github.com/ehabterra/apispec/releases)
-[![Downloads](https://img.shields.io/github/downloads/ehabterra/apispec/total?logo=github)](https://github.com/ehabterra/apispec/releases)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fehabterra%2Fapispec%2Fbadges%2Fdownloads.json)](https://github.com/ehabterra/apispec/releases)
 
 <!-- markdownlint-disable MD033 -->
 <div align="center">
