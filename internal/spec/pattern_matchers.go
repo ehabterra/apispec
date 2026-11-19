@@ -1110,14 +1110,15 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		// strictly more honest than a placeholder standing in for the same value,
 		// so it is kept. A nested path that RESOLVES still wins, which is what
 		// leaves chain-style routes working.
-		if unresolved && routeInfo.Path != "" && !routeInfo.PathUnresolved {
+		if unresolved && routeInfo.hasPath() && !routeInfo.PathUnresolved {
 			found = true
 		} else {
 			routeInfo.PathUnresolved = unresolved
+			// An empty path is kept as "" rather than normalised to "/": it
+			// means the prefix itself, and "/" would add a trailing slash the
+			// framework never serves (issue #609). joinPaths renders it.
 			routeInfo.Path = path
-			if routeInfo.Path == "" {
-				routeInfo.Path = "/"
-			}
+			routeInfo.PathEmpty = path == ""
 			routeInfo.DynamicParams = appendUniqueStrings(routeInfo.DynamicParams, dynNames...)
 			found = true
 		}

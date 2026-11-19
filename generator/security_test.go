@@ -135,11 +135,13 @@ func TestGenerateFromDirectory_EchoVarWrapperAuth(t *testing.T) {
 		return false
 	}
 
-	// Protected via a variable-assigned middleware.
-	if item, ok := out.Paths["/user/"]; !ok || item.Get == nil {
-		t.Fatalf("GET /user/ missing; paths=%v", mapPathKeys(out.Paths))
+	// Protected via a variable-assigned middleware. Registered as
+	// `user.GET("", me)`, which echo serves at /user — this asserted /user/
+	// until the empty-path trailing slash was fixed (issue #609).
+	if item, ok := out.Paths["/user"]; !ok || item.Get == nil {
+		t.Fatalf("GET /user missing; paths=%v", mapPathKeys(out.Paths))
 	} else if !hasBearer(item.Get.Security) {
-		t.Errorf("GET /user/: expected bearerAuth (variable middleware), got security=%v", item.Get.Security)
+		t.Errorf("GET /user: expected bearerAuth (variable middleware), got security=%v", item.Get.Security)
 	}
 
 	// Protected via the inline constructor form.
