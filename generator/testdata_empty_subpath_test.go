@@ -32,8 +32,9 @@ import (
 // the framework does not serve. A client generated from the spec then called
 // the wrong URL. The whole path set is asserted per framework so a slash
 // creeping back onto any route fails loud, and the gin fixture keeps the
-// explicit-"/" route beside the empty ones so the fix cannot simply strip
-// every trailing slash.
+// explicit-"/" route beside the empty ones — and the chi fixture pins the same
+// for Route and Mount prefixes — so the fix cannot simply strip every trailing
+// slash.
 func TestTestdata_EmptySubpath(t *testing.T) {
 	cases := []struct {
 		fixture string
@@ -49,6 +50,18 @@ func TestTestdata_EmptySubpath(t *testing.T) {
 				"/api/users/{id}": {"GET"},
 				"/api/health":     {"GET"}, // a Group("") adds nothing to the prefix
 				"/api/orgs/":      {"GET"}, // explicit "/" keeps its slash
+			},
+		},
+		{
+			// chi has no empty-path form; it is the explicit-"/" control on
+			// the mount path, where the prefix arrives through a Route or
+			// Mount rather than a group (issue #609's acceptance).
+			fixture: "empty_subpath_chi",
+			cfg:     spec.DefaultChiConfig(),
+			want: map[string][]string{
+				"/items/":     {"GET"},
+				"/items/{id}": {"GET"},
+				"/users/":     {"GET"},
 			},
 		},
 		{
