@@ -40,9 +40,23 @@ func TestExtractor_joinPaths(t *testing.T) {
 			expected: "/users",
 		},
 		{
+			// An empty sub-path is the prefix itself (issue #609).
 			name:     "empty path",
 			base:     "/api",
 			path:     "",
+			expected: "/api",
+		},
+		{
+			name:     "empty path keeps a base's own trailing slash",
+			base:     "/api/",
+			path:     "",
+			expected: "/api/",
+		},
+		{
+			// An explicit "/" is a real trailing slash, unlike "".
+			name:     "root path under a base",
+			base:     "/api",
+			path:     "/",
 			expected: "/api/",
 		},
 		{

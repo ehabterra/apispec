@@ -42,7 +42,12 @@ const (
 
 // RouteInfo represents extracted route information
 type RouteInfo struct {
-	Path      string
+	Path string
+	// PathEmpty records a registration whose path is the empty string, which
+	// frameworks serve at the enclosing prefix itself (`users.GET("", h)` is
+	// /users). Path stays "" so joinPaths can tell it from an explicit "/";
+	// this flag is what marks it as set rather than not-yet-extracted.
+	PathEmpty bool
 	MountPath string
 	Method    string
 	Handler   string
@@ -156,7 +161,13 @@ func NewRouteInfo() *RouteInfo {
 
 // IsValid checks if the route info is valid
 func (r *RouteInfo) IsValid() bool {
-	return r.Path != "" && r.Handler != ""
+	return r.hasPath() && r.Handler != ""
+}
+
+// hasPath reports whether a registration path has been extracted, counting an
+// empty one (see PathEmpty).
+func (r *RouteInfo) hasPath() bool {
+	return r.Path != "" || r.PathEmpty
 }
 
 // RequestInfo represents request information
@@ -2819,8 +2830,22 @@ func pathPlaceholders(path string) []string {
 	return names
 }
 
-// joinPaths joins two URL paths cleanly
+// joinPaths joins two URL paths cleanly.
+//
+// An empty b means "the prefix itself" and returns a untouched: gin, echo and
+// fiber all serve `g := r.Group("/users"); g.GET("", h)` at `/users`, and a
+// route that carries no mount path of its own is joined through here with an
+// empty b too. That is not the same as an explicit "/" — chi's
+// `Route("/x", …){ r.Get("/", h) }` and gin's `g.GET("/", h)` really register
+// `/x/` — so the empty case must be decided before b's slashes are trimmed
+// (issue #609).
 func joinPaths(a, b string) string {
+	if b == "" {
+		if a == "" {
+			return "/"
+		}
+		return a
+	}
 	a = strings.TrimRight(a, "/")
 	b = strings.TrimLeft(b, "/")
 	if a == "" {
