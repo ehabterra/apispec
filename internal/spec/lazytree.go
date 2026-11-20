@@ -2029,11 +2029,23 @@ func (n *LazyNode) handlerValueKeys() []string {
 //
 // Keyed on the argument's KIND, not its classification: an ident of func type
 // classifies as ArgTypeFunctionCall, the class an inline literal has too.
+//
+// A conversion of the ident (`http.HandlerFunc(h)`) is looked through, as
+// convertedValueKeys does for a named function: the conversion's own key names
+// a type and the ident's names a variable, and neither has a body (CodeRabbit
+// review on PR #616). The route identity already peels it (handlerArgValue).
 func (n *LazyNode) closureValueKey() string {
-	if !n.isArgument || n.arg == nil || n.arg.GetKind() != metadata.KindIdent {
+	if !n.isArgument || n.arg == nil {
 		return ""
 	}
-	lit := closureAssignedTo(n.tree.contextProvider(), n.edge, n.arg)
+	arg := n.arg
+	if arg.GetKind() == metadata.KindTypeConversion && len(arg.Args) == 1 && arg.Args[0] != nil {
+		arg = arg.Args[0]
+	}
+	if arg.GetKind() != metadata.KindIdent {
+		return ""
+	}
+	lit := closureAssignedTo(n.tree.contextProvider(), n.edge, arg)
 	if lit == nil {
 		return ""
 	}

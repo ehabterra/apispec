@@ -1224,18 +1224,54 @@ func resolveHandlerArg(cp ContextProvider, arg *metadata.CallArgument, node Trac
 // (golden rule #7). The tracker and the route's identity both ask here, so the
 // body that is walked and the handler that is named cannot disagree.
 //
-// It inherits pathVarAssignments' KNOWN LIMIT (issue #436): two `h := func…` in
-// separate blocks, each registered in its own, are one name to the scope and
-// read as ambiguous. That leaves both routes as they were before — unresolved,
-// never attributed to the other block's closure.
+// The scope is keyed by NAME (issue #436), and a name is not a binding: an
+// inner block's `h := func…` is the only recorded assignment to `h` even where
+// the call outside that block names a package-level function `h`, or a
+// parameter. Agreement cannot see that — one assignment always agrees with
+// itself — so every assignment must also DOMINATE the call: be written above it
+// in a region the call is inside. Go's scoping makes that the test a shadowing
+// declaration fails, since an inner block's `:=` is invisible outside it. It is
+// strict on missing facts — an assignment it cannot place is a reason not to
+// resolve — because the answer it would otherwise give is a confident wrong
+// handler (CodeRabbit review on PR #616).
+//
+// Two `h := func…` in separate blocks, each registered in its own, still read
+// as one ambiguous name and stay unresolved: safe, if not complete, until
+// metadata records which binding an assignment writes to.
 func closureAssignedTo(cp ContextProvider, edge *metadata.CallGraphEdge, arg *metadata.CallArgument) *metadata.CallArgument {
 	if cp == nil || edge == nil || arg == nil || arg.GetKind() != metadata.KindIdent || arg.GetName() == "" {
 		return nil
 	}
+	impl, ok := cp.(*ContextProviderImpl)
+	if !ok {
+		return nil
+	}
+	callFile, callLine, callCol := positionOfInstanceID(edge.Callee.ID())
+	call := codePos{file: callFile, line: callLine, col: callCol}
+	if !call.valid() {
+		return nil
+	}
+	// A method records no control-flow regions (issue #617), so dominance there
+	// would answer yes for want of facts rather than prove anything — and a
+	// shadowed package-level `h` written in a method was attributed to the
+	// inner block's closure. The frame is the declaration the call is written
+	// in: a closure's regions live in the one that encloses it.
+	frame := &edge.Caller
+	if edge.ParentFunction != nil && strings.HasPrefix(impl.GetString(frame.Name), metadata.FuncLitPrefix) {
+		frame = edge.ParentFunction
+	}
+	if impl.GetString(frame.RecvType) != "" {
+		return nil
+	}
+	flow := impl.controlFlow()
 	var lit *metadata.CallArgument
 	for _, a := range pathVarAssignments(cp, edge, arg.GetName()) {
 		v := a.Value
 		if v.GetKind() != metadata.KindFuncLit {
+			return nil
+		}
+		at := assignmentPos(impl.meta, &a)
+		if !at.valid() || at.file != call.file || !at.beforeOrAt(call) || !flow.dominates(at, call) {
 			return nil
 		}
 		if lit != nil && lit.ID() != v.ID() {

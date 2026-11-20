@@ -40,7 +40,10 @@ import (
 //   - a variable assigned two different closures, which must stay unresolved:
 //     which one serves the route is runtime state (golden rule #7);
 //   - a handler factory whose returned closure reads the factory's parameters,
-//     which the binding guard below must keep resolving.
+//     which the binding guard below must keep resolving;
+//   - a closure in an inner block shadowing a package-level function or a
+//     parameter: the call outside the block must keep naming the outer binding;
+//   - a conversion at the registration, `http.HandlerFunc(c)`.
 //
 // The helper case also guards the binding leak the fix exposed: routes
 // registered in main hang under the helper's call (the router's producer), and
@@ -52,15 +55,16 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 		method, status, response, request string
 	}
 	type want struct {
-		query   string // the query parameter the handler reads, if any
-		literal string // "main.go:<line>" of the closure the route must name, if unique
+		query    string // the query parameter the handler reads, if any
+		literal  string // "main.go:<line>" of the closure the route must name, if unique
+		response string // the 200 body's type, when which handler serves it is the point
 	}
 	cases := []struct {
-		fixture   string
-		cfg       *spec.APISpecConfig
-		resolved  map[string]want
-		factory   map[string]factoryWant
-		ambiguous []string
+		fixture    string
+		cfg        *spec.APISpecConfig
+		resolved   map[string]want
+		factory    map[string]factoryWant
+		unresolved []string
 	}{
 		{
 			fixture: "var_closure_handler_gin",
@@ -77,16 +81,31 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				"/api/factory/geo":   {method: "GET", status: "200", response: "Geo"},
 				"/api/factory/place": {method: "POST", request: "NewPlace"},
 			},
-			ambiguous: []string{"/api/ambiguous"},
+			unresolved: []string{"/api/ambiguous"},
 		},
 		{
 			fixture: "var_closure_handler_http",
 			cfg:     spec.DefaultHTTPConfig(),
 			resolved: map[string]want{
-				"/geo":     {query: "count", literal: "main.go:27:"},
-				"/health":  {literal: "main.go:33:"}, // var health http.HandlerFunc = func…
-				"/wrapped": {query: "page", literal: "main.go:38:"},
-				"/inline":  {query: "count", literal: "main.go:45:"},
+				"/geo":       {query: "count", literal: "main.go:69:"},
+				"/health":    {literal: "main.go:75:"}, // var health http.HandlerFunc = func…
+				"/wrapped":   {query: "page", literal: "main.go:80:"},
+				"/converted": {query: "q", literal: "main.go:87:"}, // http.HandlerFunc(c)
+				"/inline":    {query: "count", literal: "main.go:98:"},
+				// An inner block's closure resolves for the call inside it…
+				"/shadow/inner":  {literal: "main.go:35:", response: "Inner"},
+				"/shadowp/inner": {literal: "main.go:44:", response: "Inner"},
+				// …and NOT for the call outside it, which names the
+				// package-level function the local shadows.
+				"/shadow/outer": {response: "Pkg"},
+			},
+			unresolved: []string{
+				// Outside the shadowing block: the parameter, not the closure.
+				"/shadowp/outer",
+				// A method records no control-flow regions, so the assignment
+				// cannot be proven to be the binding (issue #617).
+				// Change-detector: flips to resolved when #617 is fixed.
+				"/method",
 			},
 		},
 	}
@@ -114,6 +133,9 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				if w.query != "" && paramNamed(op, w.query, "query") == nil {
 					t.Errorf("GET %s: query parameter %q missing", path, w.query)
 				}
+				if w.response != "" && !strings.HasSuffix(schemaRefAt(op, "200"), "_"+w.response) {
+					t.Errorf("GET %s: 200 body is %q, want %s — attributed to the wrong handler", path, schemaRefAt(op, "200"), w.response)
+				}
 				if w.literal != "" && !strings.Contains(op.OperationID, "FuncLit:"+w.literal) {
 					t.Errorf("GET %s: operationId %q does not name the closure at %s", path, op.OperationID, w.literal)
 				}
@@ -138,7 +160,7 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				}
 			}
 
-			for _, path := range tc.ambiguous {
+			for _, path := range tc.unresolved {
 				item, ok := out.Paths[path]
 				if !ok {
 					t.Errorf("path %q missing; have %v", path, mapPathKeys(out.Paths))
@@ -150,10 +172,10 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 					continue
 				}
 				if strings.Contains(op.OperationID, "FuncLit:") {
-					t.Errorf("GET %s: attributed to %q, but the variable holds one of two closures", path, op.OperationID)
+					t.Errorf("GET %s: attributed to %q, but nothing proves the variable holds that closure here", path, op.OperationID)
 				}
 				if _, ok := op.Responses["200"]; ok {
-					t.Errorf("GET %s: documents a 200 body from one of two possible closures", path)
+					t.Errorf("GET %s: documents a 200 body from a closure that may not be the handler", path)
 				}
 			}
 		})

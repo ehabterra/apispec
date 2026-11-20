@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 )
 
 type Geo struct {
@@ -13,6 +14,47 @@ type Geo struct {
 
 type Status struct {
 	OK bool `json:"ok"`
+}
+
+type Inner struct {
+	X int `json:"x"`
+}
+
+type Pkg struct {
+	Name string `json:"name"`
+}
+
+// A package-level function sharing its name with a local below.
+func pkgHandler(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Pkg{}) }
+
+// The inner block's `pkgHandler := func…` is the only recorded assignment to the
+// name, yet the outer registration names the PACKAGE-LEVEL function: it must
+// not be attributed to the inner closure (an assignment must dominate the call).
+func shadowPkg(mux *http.ServeMux) {
+	if os.Getenv("SHADOW") != "" {
+		pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }
+		mux.HandleFunc("GET /shadow/inner", pkgHandler)
+	}
+	mux.HandleFunc("GET /shadow/outer", pkgHandler)
+}
+
+// The same with a parameter as the outer binding.
+func shadowParam(mux *http.ServeMux, p http.HandlerFunc) {
+	if os.Getenv("SHADOW") != "" {
+		p := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }
+		mux.HandleFunc("GET /shadowp/inner", p)
+	}
+	mux.HandleFunc("GET /shadowp/outer", p)
+}
+
+// In a METHOD body the closure stays unresolved: methods record no
+// control-flow regions (issue #617), so nothing proves the assignment is the
+// binding the call names. Change-detector — flips when #617 is fixed.
+type API struct{ mux *http.ServeMux }
+
+func (a *API) routes() {
+	m := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Geo{}) }
+	a.mux.HandleFunc("GET /method", m)
 }
 
 // The closure reaches the registration through a helper's parameter: the
@@ -40,6 +82,17 @@ func main() {
 		json.NewEncoder(w).Encode(Status{})
 	}
 	register(mux, "GET /wrapped", wrapped)
+
+	// Converted at the registration: http.HandlerFunc(c) is looked through.
+	c := func(w http.ResponseWriter, r *http.Request) {
+		_ = r.URL.Query().Get("q")
+		json.NewEncoder(w).Encode(Geo{})
+	}
+	mux.Handle("GET /converted", http.HandlerFunc(c))
+
+	shadowPkg(mux)
+	shadowParam(mux, health)
+	(&API{mux: mux}).routes()
 
 	// The control: inline.
 	mux.HandleFunc("GET /inline", func(w http.ResponseWriter, r *http.Request) {
