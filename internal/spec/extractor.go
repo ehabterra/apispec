@@ -3577,9 +3577,15 @@ func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) (*metad
 		return nil, nil
 	}
 	// Fast path: the immediate parent is normally the call into the enclosing
-	// function.
+	// function — but not when it was made FROM that function. A node re-homed
+	// under a receiver producer sits below whatever call the producer hangs
+	// under, and reading that call's bindings by NAME rebinds a local that
+	// merely shares a name with its parameter: `h := func…;
+	// mux.HandleFunc("GET /geo", h)` in main, attached under
+	// `register(mux, "GET /wrapped", wrapped)`, resolved its `h` to `wrapped`
+	// (issue #610). See madeFromSameFrame for why that is the test.
 	if parent := node.GetParent(); parent != nil {
-		if pe := parent.GetEdge(); pe != nil && pe.ParamArgMap != nil {
+		if pe := parent.GetEdge(); pe != nil && pe.ParamArgMap != nil && !madeFromSameFrame(pe, node.GetEdge()) {
 			if callerArg, ok := pe.ParamArgMap[arg.GetName()]; ok {
 				return &callerArg, parent
 			}
@@ -3611,6 +3617,33 @@ func argViaParent(arg *metadata.CallArgument, node TrackerNodeInterface) (*metad
 		return &callerArg, p
 	}
 	return nil, nil
+}
+
+// madeFromSameFrame reports whether `into` — the call a node hangs under — was
+// made by the very function the node's own call is written in. Such a call
+// cannot be the one that entered that function, so its parameter bindings say
+// nothing about the node's identifiers; they only share names.
+//
+// It is the FRAME that is compared, not the callee, and that is deliberate.
+// The call entering a body is routinely named differently from the body it
+// runs: a call to an interface method executes the implementer
+// (`Render.HTML` → `pageRenderer.HTML`, which is how gitea's 404/500 statuses
+// reach their WriteHeader), a promoted method runs on the embedded type
+// (`Context.FormString` → `Base.FormString`), a closure runs inside its
+// factory, a func-valued parameter runs whatever was bound to it. A
+// callee-equals-caller test rejected all of those and cost 448 gitea
+// operations their error statuses. Each of them is entered from an OUTER
+// frame, which is what this test leaves alone.
+//
+// Recursion — a function calling itself — is the one same-frame call that does
+// enter the frame, so it is kept. So is a node's own call (an argument node's
+// parent is the call it is an argument of), which keeps that path as it was.
+func madeFromSameFrame(into, edge *metadata.CallGraphEdge) bool {
+	if edge == nil || into == edge {
+		return false
+	}
+	frame := edge.Caller.BaseID()
+	return into.Caller.BaseID() == frame && into.Callee.BaseID() != frame
 }
 
 // resolveArgThroughParams follows a parameter ident up through one or more

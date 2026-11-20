@@ -1142,7 +1142,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		// This is #463's rule ("never render an argument") applied to the other
 		// argument of a registration: rendering a path yields a Go symbol,
 		// rendering a handler yields a type.
-		handlerArg = resolveHandlerArg(handlerArg, node)
+		handlerArg = resolveHandlerArg(r.contextProvider, handlerArg, node)
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
 
@@ -1175,7 +1175,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 //
 // Bounded by the same budget as the unwrap peel, and it stops as soon as a pass
 // changes nothing, so a handler named directly costs one failed lookup.
-func resolveHandlerArg(arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
+func resolveHandlerArg(cp ContextProvider, arg *metadata.CallArgument, node TrackerNodeInterface) *metadata.CallArgument {
 	cur, curNode := arg, node
 	for i := 0; i < maxHandlerUnwraps && cur != nil; i++ {
 		next := cur
@@ -1186,6 +1186,15 @@ func resolveHandlerArg(arg *metadata.CallArgument, node TrackerNodeInterface) *m
 			}
 		}
 		next = handlerArgValue(next)
+		// A local holding a closure (`h := func(…){…}; r.GET("/x", h)`): the
+		// value is the literal, which is what an inline registration names. The
+		// resolved node's edge is the call made in the scope the ident lives in
+		// — the registration itself, or the call a parameter hop resolved at.
+		if curNode != nil {
+			if lit := closureAssignedTo(cp, curNode.GetEdge(), next); lit != nil {
+				next = lit
+			}
+		}
 		if next == nil || next == cur {
 			break
 		}
@@ -1195,6 +1204,46 @@ func resolveHandlerArg(arg *metadata.CallArgument, node TrackerNodeInterface) *m
 		return arg
 	}
 	return cur
+}
+
+// closureAssignedTo returns the function literal a local variable holds at a
+// call site, or nil when it holds anything else or cannot be pinned to one.
+//
+//	handler := func(c *gin.Context) { … }
+//	router.GET("/geo", handler)
+//
+// The literal is what an inline registration passes, and its body is recorded
+// under its own identity (`FuncLit:<pos>`), so a route that names the variable
+// instead reached neither: the tracker found no calls under the ident and the
+// route was documented with no parameters and no responses (issue #610).
+//
+// The question is the one a path held in a variable asks (issue #431), so it
+// takes the same scope and the same agreement rule: every assignment to the name
+// must be the same literal. A variable reassigned between two closures is
+// ambiguous and stays unresolved rather than documenting one branch's handler
+// (golden rule #7). The tracker and the route's identity both ask here, so the
+// body that is walked and the handler that is named cannot disagree.
+//
+// It inherits pathVarAssignments' KNOWN LIMIT (issue #436): two `h := func…` in
+// separate blocks, each registered in its own, are one name to the scope and
+// read as ambiguous. That leaves both routes as they were before — unresolved,
+// never attributed to the other block's closure.
+func closureAssignedTo(cp ContextProvider, edge *metadata.CallGraphEdge, arg *metadata.CallArgument) *metadata.CallArgument {
+	if cp == nil || edge == nil || arg == nil || arg.GetKind() != metadata.KindIdent || arg.GetName() == "" {
+		return nil
+	}
+	var lit *metadata.CallArgument
+	for _, a := range pathVarAssignments(cp, edge, arg.GetName()) {
+		v := a.Value
+		if v.GetKind() != metadata.KindFuncLit {
+			return nil
+		}
+		if lit != nil && lit.ID() != v.ID() {
+			return nil
+		}
+		lit = &v
+	}
+	return lit
 }
 
 // isValidHTTPMethod checks if a string is a valid HTTP method
