@@ -50,7 +50,10 @@ import (
 
 // LazyTree implements TrackerTreeInterface over metadata, expanding on demand.
 type LazyTree struct {
-	meta   *metadata.Metadata
+	meta *metadata.Metadata
+	// cp answers the spec layer's assignment lookups (closureValueKey) over
+	// meta; built on first use.
+	cp     *ContextProviderImpl
 	limits metadata.TrackerLimits
 	roots  []TrackerNodeInterface
 
@@ -1496,6 +1499,13 @@ func (t *LazyTree) internBoundArg(inv *metadata.CallGraphEdge, name string) *met
 		return nil
 	}
 	arg := handlerArgValue(&bound)
+	// A local holding a closure is bound by NAME, and its own key has no calls,
+	// so substituteBound would decline it and the handler's body would never
+	// reach the route (issue #610). The binding call is made in the scope that
+	// assigned the local, so that is where it resolves.
+	if lit := closureAssignedTo(t.contextProvider(), inv, arg); lit != nil {
+		arg = lit
+	}
 	t.boundArgs[bk] = arg
 	return arg
 }
@@ -1884,6 +1894,12 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	for _, methodKey := range n.handlerValueKeys() {
 		expandKey(methodKey)
 	}
+	// Closure held in a local (`h := func(…){…}; r.GET("/x", h)`): the ident's
+	// own key has no calls, the literal's does — the same key an inline
+	// literal argument expands (issue #610).
+	if key := n.closureValueKey(); key != "" {
+		expandKey(key)
+	}
 	// Variable/field argument (router.Mount("/cart", r.cartRouter) or
 	// Mount("/x", subRouter)): the producer subtree — the registrations
 	// claimed under the router that was stored into the variable/field —
@@ -2005,6 +2021,44 @@ func (n *LazyNode) handlerValueKeys() []string {
 	}
 	pkg, name := handlerValueTypeOf(n.arg)
 	return handlerMethodKeys(n.tree.meta, n.tree.handlerMethods, pkg, name)
+}
+
+// closureValueKey resolves an ident argument that holds a function literal to
+// the literal's base ID, whose calls are the closure body. closureAssignedTo
+// decides, so the body walked here is the one the route is attributed to.
+//
+// Keyed on the argument's KIND, not its classification: an ident of func type
+// classifies as ArgTypeFunctionCall, the class an inline literal has too.
+//
+// A conversion of the ident (`http.HandlerFunc(h)`) is looked through, as
+// convertedValueKeys does for a named function: the conversion's own key names
+// a type and the ident's names a variable, and neither has a body (CodeRabbit
+// review on PR #616). The route identity already peels it (handlerArgValue).
+func (n *LazyNode) closureValueKey() string {
+	if !n.isArgument || n.arg == nil {
+		return ""
+	}
+	arg := n.arg
+	if arg.GetKind() == metadata.KindTypeConversion && len(arg.Args) == 1 && arg.Args[0] != nil {
+		arg = arg.Args[0]
+	}
+	if arg.GetKind() != metadata.KindIdent {
+		return ""
+	}
+	lit := closureAssignedTo(n.tree.contextProvider(), n.edge, arg)
+	if lit == nil {
+		return ""
+	}
+	return metadata.StripToBase(strings.TrimPrefix(lit.ID(), "*"))
+}
+
+// contextProvider returns the tree's provider for the spec layer's assignment
+// lookups, building it on first use.
+func (t *LazyTree) contextProvider() *ContextProviderImpl {
+	if t.cp == nil {
+		t.cp = NewContextProvider(t.meta)
+	}
+	return t.cp
 }
 
 // argProducerIDs resolves a variable or struct-field argument to the callee
