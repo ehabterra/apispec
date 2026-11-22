@@ -47,14 +47,34 @@ func shadowParam(mux *http.ServeMux, p http.HandlerFunc) {
 	mux.HandleFunc("GET /shadowp/outer", p)
 }
 
-// In a METHOD body the closure stays unresolved: methods record no
-// control-flow regions (issue #617), so nothing proves the assignment is the
-// binding the call names. Change-detector — flips when #617 is fixed.
+// In a METHOD body the closure resolves as it does in a function: methods
+// record their control-flow regions too (issue #617), so the assignment is
+// proven to be the binding the call names.
 type API struct{ mux *http.ServeMux }
 
 func (a *API) routes() {
 	m := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Geo{}) }
 	a.mux.HandleFunc("GET /method", m)
+}
+
+// The shadowing shape in a METHOD: the outer registration names the parameter,
+// not the inner block's closure.
+func (a *API) methodShadow(g http.HandlerFunc) {
+	if os.Getenv("SHADOW") != "" {
+		g := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }
+		a.mux.HandleFunc("GET /mshadow/inner", g)
+	}
+	a.mux.HandleFunc("GET /mshadow/outer", g)
+}
+
+// The package-level shadow in a METHOD: no parameter hop to fall back on, so
+// only the method's recorded regions keep the outer call off the inner closure.
+func (a *API) methodShadowPkg() {
+	if os.Getenv("SHADOW") != "" {
+		pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }
+		a.mux.HandleFunc("GET /mshadowpkg/inner", pkgHandler)
+	}
+	a.mux.HandleFunc("GET /mshadowpkg/outer", pkgHandler)
 }
 
 // The closure reaches the registration through a helper's parameter: the
@@ -92,7 +112,10 @@ func main() {
 
 	shadowPkg(mux)
 	shadowParam(mux, health)
-	(&API{mux: mux}).routes()
+	api := &API{mux: mux}
+	api.routes()
+	api.methodShadow(pkgHandler)
+	api.methodShadowPkg()
 
 	// The control: inline.
 	mux.HandleFunc("GET /inline", func(w http.ResponseWriter, r *http.Request) {

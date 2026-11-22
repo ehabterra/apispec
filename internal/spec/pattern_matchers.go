@@ -1251,18 +1251,6 @@ func closureAssignedTo(cp ContextProvider, edge *metadata.CallGraphEdge, arg *me
 	if !call.valid() {
 		return nil
 	}
-	// A method records no control-flow regions (issue #617), so dominance there
-	// would answer yes for want of facts rather than prove anything — and a
-	// shadowed package-level `h` written in a method was attributed to the
-	// inner block's closure. The frame is the declaration the call is written
-	// in: a closure's regions live in the one that encloses it.
-	frame := &edge.Caller
-	if edge.ParentFunction != nil && strings.HasPrefix(impl.GetString(frame.Name), metadata.FuncLitPrefix) {
-		frame = edge.ParentFunction
-	}
-	if impl.GetString(frame.RecvType) != "" {
-		return nil
-	}
 	flow := impl.controlFlow()
 	var lit *metadata.CallArgument
 	for _, a := range pathVarAssignments(cp, edge, arg.GetName()) {

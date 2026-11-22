@@ -42,7 +42,8 @@ import (
 //   - a handler factory whose returned closure reads the factory's parameters,
 //     which the binding guard below must keep resolving;
 //   - a closure in an inner block shadowing a package-level function or a
-//     parameter: the call outside the block must keep naming the outer binding;
+//     parameter, in a function and in a method: the call outside the block
+//     must keep naming the outer binding;
 //   - a conversion at the registration, `http.HandlerFunc(c)`.
 //
 // The helper case also guards the binding leak the fix exposed: routes
@@ -87,25 +88,40 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 			fixture: "var_closure_handler_http",
 			cfg:     spec.DefaultHTTPConfig(),
 			resolved: map[string]want{
-				"/geo":       {query: "count", literal: "main.go:69:"},
-				"/health":    {literal: "main.go:75:"}, // var health http.HandlerFunc = func…
-				"/wrapped":   {query: "page", literal: "main.go:80:"},
-				"/converted": {query: "q", literal: "main.go:87:"}, // http.HandlerFunc(c)
-				"/inline":    {query: "count", literal: "main.go:98:"},
+				"/geo":       {query: "count", literal: "main.go:89:"},
+				"/health":    {literal: "main.go:95:"}, // var health http.HandlerFunc = func…
+				"/wrapped":   {query: "page", literal: "main.go:100:"},
+				"/converted": {query: "q", literal: "main.go:107:"}, // http.HandlerFunc(c)
+				"/inline":    {query: "count", literal: "main.go:121:"},
 				// An inner block's closure resolves for the call inside it…
 				"/shadow/inner":  {literal: "main.go:35:", response: "Inner"},
 				"/shadowp/inner": {literal: "main.go:44:", response: "Inner"},
 				// …and NOT for the call outside it, which names the
 				// package-level function the local shadows.
 				"/shadow/outer": {response: "Pkg"},
+				// A closure local in a METHOD resolves like one in a function:
+				// methods record their control-flow regions (issue #617).
+				"/method": {literal: "main.go:56:", response: "Geo"},
+				// The shadowing shape in a METHOD: the outer call names the
+				// parameter, bound here to pkgHandler — never the inner
+				// block's closure.
+				"/mshadow/outer": {response: "Pkg"},
+				// Change-detector, NOT the desired answer: the inner call is
+				// attributed to the parameter's argument too, because the
+				// parameter hop binds `g` by name without seeing the inner
+				// block's shadowing `g :=`. Independent of methods — a
+				// function with a resolvable parameter does the same. Flips
+				// to {literal: "main.go:64:", response: "Inner"} when the
+				// parameter hop respects shadowing.
+				"/mshadow/inner": {response: "Pkg"},
+				// A package-level function shadowed in a METHOD: only the
+				// method's recorded regions tell the two `pkgHandler`s apart.
+				"/mshadowpkg/inner": {literal: "main.go:74:", response: "Inner"},
+				"/mshadowpkg/outer": {response: "Pkg"},
 			},
 			unresolved: []string{
 				// Outside the shadowing block: the parameter, not the closure.
 				"/shadowp/outer",
-				// A method records no control-flow regions, so the assignment
-				// cannot be proven to be the binding (issue #617).
-				// Change-detector: flips to resolved when #617 is fixed.
-				"/method",
 			},
 		},
 	}
