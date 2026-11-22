@@ -18,6 +18,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -346,5 +347,87 @@ func TestBodyEndLine(t *testing.T) {
 	}
 	if got := bodyEndLine(nil, fset); got != 0 {
 		t.Errorf("nil declaration: bodyEndLine = %d, want 0", got)
+	}
+}
+
+// TestMethodRecordsBlocks pins issue #617: a method records its control-flow
+// regions exactly as a function with the same body does. Methods used to record
+// none, which left every control-flow query blind inside a method handler.
+func TestMethodRecordsBlocks(t *testing.T) {
+	const body = `{
+	if bad {
+		fail()
+		return
+	}
+	for range 3 {
+		fail()
+	}
+	succeed()
+}`
+	// The function and the method sit on lines that differ by a fixed offset,
+	// so their ranges must agree once that offset is taken out.
+	src := "package main\n\ntype API struct{}\n\ntype Doer interface{ Do(bad bool) }\n\n" +
+		"func guard(bad bool) " + body + "\n\n" +
+		"func (a *API) guard(bad bool) " + body + "\n\n" +
+		"func fail()    {}\nfunc succeed() {}\n"
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "guard.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Defs:  map[*ast.Ident]types.Object{},
+		Uses:  map[*ast.Ident]types.Object{},
+	}
+	if _, err := (&types.Config{}).Check("main", fset, []*ast.File{file}, info); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	pkgs := map[string]map[string]*ast.File{"main": {"guard.go": file}}
+	md := GenerateMetadata(pkgs, map[*ast.File]*types.Info{file: info}, map[string]string{"main": "main"}, fset)
+
+	var f *File
+	for _, file := range md.SortedFiles("main") {
+		f = file
+	}
+	if f == nil {
+		t.Fatal("no file recorded for package main")
+	}
+	fn := f.Functions["guard"]
+	if fn == nil || len(fn.Blocks) == 0 {
+		t.Fatalf("function guard recorded no blocks: %+v", fn)
+	}
+	api := f.Types["API"]
+	if api == nil || len(api.Methods) != 1 {
+		t.Fatalf("want one method on API, got %+v", api)
+	}
+	m := api.Methods[0]
+	if got, want := shape(m.Blocks), shape(fn.Blocks); got != want {
+		t.Fatalf("method blocks %q, want the function's %q", got, want)
+	}
+	offset := m.Blocks[0].StartLine - fn.Blocks[0].StartLine
+	if offset <= 0 {
+		t.Fatalf("method blocks start at line %d, function's at %d: the method's own body was not walked",
+			m.Blocks[0].StartLine, fn.Blocks[0].StartLine)
+	}
+	for i := range fn.Blocks {
+		want := fn.Blocks[i]
+		want.StartLine += offset
+		want.EndLine += offset
+		if m.Blocks[i] != want {
+			t.Errorf("method block %d = %+v, want %+v", i, m.Blocks[i], want)
+		}
+	}
+
+	// The method's EndLine bounds its body exactly as the function's does.
+	if fn.EndLine == 0 || m.EndLine != fn.EndLine+offset {
+		t.Errorf("method EndLine = %d, want the function's %d shifted by %d", m.EndLine, fn.EndLine, offset)
+	}
+
+	// An interface method has no body, so no regions and no end.
+	for _, im := range f.Types["Doer"].Methods {
+		if len(im.Blocks) != 0 || im.EndLine != 0 {
+			t.Errorf("interface method recorded a body: blocks %+v, end line %d", im.Blocks, im.EndLine)
+		}
 	}
 }

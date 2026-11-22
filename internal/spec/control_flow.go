@@ -20,7 +20,8 @@ import (
 	"github.com/ehabterra/apispec/internal/metadata"
 )
 
-// Control-flow queries over the block ranges metadata records (Function.Blocks).
+// Control-flow queries over the block ranges metadata records (Function.Blocks
+// and Method.Blocks).
 //
 // The question this answers is "if execution reached B, must it have passed
 // through A?" — which is what decides whether a status write can claim a body
@@ -60,22 +61,82 @@ func (p codePos) beforeOrAt(q codePos) bool {
 }
 
 // blockIndex holds every recorded control-flow region of a file, from every
-// function declared in it.
+// function and method declared in it.
 //
 // Keyed by FILE rather than by function on purpose: a function literal has no
 // Function record of its own, so its regions are recorded inside the enclosing
 // declaration, and a caller identified as `pkg.FuncLit:pos` could not look
 // itself up. Positions are absolute, so containment answers the question
 // without needing to know which declaration a statement belongs to.
+//
+// What containment cannot answer is any rule that relates two regions, or a
+// region and a point outside it — and both exclusivity rules do. So each entry
+// keeps its declaration's identity: groups are renumbered to be unique per
+// file, and the declaration's line span travels with every block.
 type blockIndex struct {
-	byFile map[string][]metadata.Block
+	byFile map[string][]indexedBlock
 }
 
-// newBlockIndex collects the blocks of every function into per-file buckets.
+// indexedBlock is a recorded region plus the line span of the declaration it
+// was recorded in. Zero span lines mean the span is unknown (no parsable
+// Position, or a declaration with no recorded EndLine), and every rule that
+// needs the span then answers in its conservative direction.
+type indexedBlock struct {
+	metadata.Block
+	declStart, declEnd int
+}
+
+// inDecl reports whether a position lies within the block's declaration. An
+// unknown span answers false.
+func (b indexedBlock) inDecl(pos codePos) bool {
+	return b.declStart > 0 && b.declEnd >= b.declStart &&
+		pos.line >= b.declStart && pos.line <= b.declEnd
+}
+
+// newBlockIndex collects the blocks of every function and method into
+// per-file buckets.
+//
+// A method is filed under the file its Position names, not the file its type
+// is declared in: Type.Methods gathers every method of the package onto the
+// type, wherever each is written. A method is listed once, on the type entry of
+// the file declaring the type, so nothing is indexed twice.
+//
+// Block.Group is numbered per declaration, so every file with two
+// conditionals in two declarations holds two "group 1"s. The index appends
+// copies whose groups are shifted past every group already in the file's
+// bucket: left alone, an arm of one handler would read as a sibling arm of a
+// conditional in the next, and two bodies that can both run would be paired as
+// alternatives. (Block.Parent is left as recorded — it indexes the
+// declaration's own slice, and no query here reads it.)
 func newBlockIndex(meta *metadata.Metadata) *blockIndex {
-	idx := &blockIndex{byFile: map[string][]metadata.Block{}}
+	idx := &blockIndex{byFile: map[string][]indexedBlock{}}
 	if meta == nil {
 		return idx
+	}
+	groupBase := map[string]int{}
+	add := func(position, endLine int, blocks []metadata.Block) {
+		if len(blocks) == 0 {
+			return
+		}
+		at, line, _ := parsePosition(meta.StringPool.GetString(position))
+		if at == "" {
+			return
+		}
+		if endLine < line {
+			// A span that cannot be trusted is recorded as unknown.
+			line, endLine = 0, 0
+		}
+		base, top := groupBase[at], 0
+		bucket := idx.byFile[at]
+		for _, b := range blocks {
+			if b.Group != 0 {
+				top = max(top, b.Group)
+				b.Group += base
+			}
+			bucket = append(bucket, indexedBlock{Block: b, declStart: line, declEnd: endLine})
+		}
+		idx.byFile[at] = bucket
+		groupBase[at] = base + top
 	}
 	for _, pkgName := range meta.SortedPackageNames() {
 		pkg := meta.Packages[pkgName]
@@ -88,15 +149,16 @@ func newBlockIndex(meta *metadata.Metadata) *blockIndex {
 				continue
 			}
 			for _, fnName := range sortedFunctionNames(file) {
-				fn := file.Functions[fnName]
-				if fn == nil || len(fn.Blocks) == 0 {
-					continue
+				if fn := file.Functions[fnName]; fn != nil {
+					add(fn.Position, fn.EndLine, fn.Blocks)
 				}
-				at := fileOfPosition(meta.StringPool.GetString(fn.Position))
-				if at == "" {
-					continue
+			}
+			for _, typ := range meta.SortedTypes(pkgName, fileName) {
+				for i := range typ.Methods {
+					// An interface method has no body and so no blocks.
+					m := &typ.Methods[i]
+					add(m.Position, m.EndLine, m.Blocks)
 				}
-				idx.byFile[at] = append(idx.byFile[at], fn.Blocks...)
 			}
 		}
 	}
@@ -146,7 +208,7 @@ func (idx *blockIndex) dominates(earlier, later codePos) bool {
 		return false
 	}
 	for _, b := range idx.byFile[earlier.file] {
-		if blockContains(b, earlier) && !blockContains(b, later) {
+		if blockContains(b.Block, earlier) && !blockContains(b.Block, later) {
 			// earlier is inside a region later escaped: an `if` arm, a loop, a
 			// switch case. Reaching later does not imply earlier ran.
 			return false
@@ -172,13 +234,14 @@ func (idx *blockIndex) exclusive(a, b codePos) bool {
 	}
 	blocks := idx.byFile[a.file]
 	for i, armA := range blocks {
-		if armA.Group == 0 || !blockContains(armA, a) || blockContains(armA, b) {
+		if armA.Group == 0 || !blockContains(armA.Block, a) || blockContains(armA.Block, b) {
 			continue
 		}
 		// a is in an arm b is outside of. Two ways that makes them exclusive:
 		for j, armB := range blocks {
-			// b is in a sibling arm of the same conditional.
-			if i != j && armB.Group == armA.Group && blockContains(armB, b) {
+			// b is in a sibling arm of the same conditional. Groups are unique
+			// per file in the index, so a sibling is in the same declaration.
+			if i != j && armB.Group == armA.Group && blockContains(armB.Block, b) {
 				return true
 			}
 		}
@@ -186,7 +249,29 @@ func (idx *blockIndex) exclusive(a, b codePos) bool {
 		// This is the early-return idiom — `if bad { …; return }` above the
 		// success path — which is how most Go handlers are written and would
 		// otherwise read as sequential code.
-		if armA.Terminates && afterBlock(armA, b) {
+		//
+		// "After" means after it in the SAME function: the arm's return
+		// leaves its own function, which says nothing about a function
+		// written below it in the file. Without a known span, no answer.
+		// The innermost function may be a literal, whose return ends only
+		// the literal — code after it in the enclosing declaration still
+		// runs once the literal has returned.
+		if armA.Terminates && afterBlock(armA.Block, b) && armA.inDecl(b) &&
+			!literalEnds(blocks, armA.Block, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalEnds reports whether a function literal encloses the arm but not pos:
+// the arm's return then leaves that literal, and pos can still run after it.
+// A literal nested INSIDE the arm is not one — the arm's own return is not in
+// it.
+func literalEnds(blocks []indexedBlock, arm metadata.Block, pos codePos) bool {
+	armStart := codePos{line: arm.StartLine, col: arm.StartCol}
+	for _, lit := range blocks {
+		if lit.Kind == metadata.BlockFuncLit && blockContains(lit.Block, armStart) && !blockContains(lit.Block, pos) {
 			return true
 		}
 	}
@@ -208,7 +293,7 @@ func (idx *blockIndex) sharesRegion(a, b codePos) bool {
 		return false
 	}
 	for _, block := range idx.byFile[a.file] {
-		if blockContains(block, a) && blockContains(block, b) {
+		if blockContains(block.Block, a) && blockContains(block.Block, b) {
 			return true
 		}
 	}

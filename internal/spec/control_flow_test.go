@@ -38,8 +38,14 @@ func armAt(startLine, endLine int) meta.Block {
 
 func at(line, col int) codePos { return codePos{file: "h.go", line: line, col: col} }
 
+// indexOf files the blocks under h.go as ONE declaration spanning the whole
+// file, which is what the hand-built cases assume.
 func indexOf(blocks ...meta.Block) *blockIndex {
-	return &blockIndex{byFile: map[string][]meta.Block{"h.go": blocks}}
+	entries := make([]indexedBlock, len(blocks))
+	for i, b := range blocks {
+		entries[i] = indexedBlock{Block: b, declStart: 1, declEnd: 1 << 20}
+	}
+	return &blockIndex{byFile: map[string][]indexedBlock{"h.go": entries}}
 }
 
 func TestDominates(t *testing.T) {
@@ -290,7 +296,74 @@ func succeed() {}
 	}
 }
 
-func indexedFiles(m map[string][]meta.Block) []string {
+// TestNewBlockIndexIncludesMethods pins issue #617: a method's regions are
+// indexed, under the file the method is WRITTEN in — Type.Methods gathers every
+// method of the package onto the type, wherever its declaration sits. Before,
+// only functions were indexed, so inside a method dominance answered yes and
+// exclusivity no for want of facts.
+func TestNewBlockIndexIncludesMethods(t *testing.T) {
+	typesSrc := `package main
+
+type API struct{}
+
+type Doer interface{ Do(bad bool) }
+`
+	handlersSrc := `package main
+
+func (a *API) guard(bad bool) {
+	if bad {
+		fail()
+		return
+	}
+	succeed()
+}
+
+func fail()    {}
+func succeed() {}
+`
+	fset := token.NewFileSet()
+	typesFile, err := parser.ParseFile(fset, "types.go", typesSrc, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	handlersFile, err := parser.ParseFile(fset, "handlers.go", handlersSrc, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	files := []*ast.File{typesFile, handlersFile}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Defs:  map[*ast.Ident]types.Object{},
+		Uses:  map[*ast.Ident]types.Object{},
+	}
+	if _, err := (&types.Config{}).Check("main", fset, files, info); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	pkgs := map[string]map[string]*ast.File{"main": {"types.go": typesFile, "handlers.go": handlersFile}}
+	fileToInfo := map[*ast.File]*types.Info{typesFile: info, handlersFile: info}
+	md := meta.GenerateMetadata(pkgs, fileToInfo, map[string]string{"main": "main"}, fset)
+
+	idx := newBlockIndex(md)
+	if got := idx.byFile["types.go"]; len(got) != 0 {
+		t.Errorf("types.go declares no bodies, yet %d blocks were indexed under it", len(got))
+	}
+	blocks := idx.byFile["handlers.go"]
+	if len(blocks) != 1 {
+		t.Fatalf("want the method's one `if` arm indexed once under handlers.go, got %d blocks (files: %v)",
+			len(blocks), indexedFiles(idx.byFile))
+	}
+
+	inArm := codePos{file: "handlers.go", line: 5, col: 3}
+	belowArm := codePos{file: "handlers.go", line: 8, col: 2}
+	if idx.dominates(inArm, belowArm) {
+		t.Error("in a method, a call inside the returning arm must not dominate the call below it")
+	}
+	if !idx.exclusive(inArm, belowArm) {
+		t.Error("in a method, the returning arm and the code below it must be exclusive")
+	}
+}
+
+func indexedFiles(m map[string][]indexedBlock) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
@@ -309,5 +382,220 @@ func TestNewBlockIndexNilMetadata(t *testing.T) {
 	}
 	if !idx.dominates(at(1, 1), at(2, 1)) {
 		t.Error("an empty index must answer permissively")
+	}
+}
+
+// blockIndexOf runs metadata generation over one package's sources and indexes
+// the result, so a case reads in Go rather than in hand-placed line numbers.
+func blockIndexOf(t *testing.T, sources map[string]string) *blockIndex {
+	t.Helper()
+	fset := token.NewFileSet()
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	files := make([]*ast.File, 0, len(names))
+	byName := map[string]*ast.File{}
+	for _, name := range names {
+		f, err := parser.ParseFile(fset, name, sources[name], 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		files = append(files, f)
+		byName[name] = f
+	}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Defs:  map[*ast.Ident]types.Object{},
+		Uses:  map[*ast.Ident]types.Object{},
+	}
+	if _, err := (&types.Config{}).Check("main", fset, files, info); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	fileToInfo := map[*ast.File]*types.Info{}
+	for _, f := range files {
+		fileToInfo[f] = info
+	}
+	md := meta.GenerateMetadata(map[string]map[string]*ast.File{"main": byName}, fileToInfo, map[string]string{"main": "main"}, fset)
+	return newBlockIndex(md)
+}
+
+// TestExclusiveSiblingArmsStayInOneDeclaration pins the group collision the
+// index used to have: Block.Group is numbered per declaration, so the first
+// if/else of every function and method in a file is "group 1", and an arm of
+// one read as a sibling arm of a conditional in another. Both bodies can run on
+// one request, so they are not alternatives.
+func TestExclusiveSiblingArmsStayInOneDeclaration(t *testing.T) {
+	src := `package main
+
+type API struct{}
+
+func f(bad bool) {
+	if bad {
+		g(false)
+	} else {
+		other()
+	}
+}
+
+func g(bad bool) {
+	if bad {
+		other()
+	} else {
+		other()
+	}
+}
+
+func (a *API) m(bad bool) {
+	if bad {
+		other()
+	} else {
+		other()
+	}
+}
+
+func other() {}
+`
+	idx := blockIndexOf(t, map[string]string{"h.go": src})
+	pos := func(line int) codePos { return codePos{file: "h.go", line: line, col: 3} }
+	fIf, fElse := pos(7), pos(9)
+	gIf, gElse := pos(15), pos(17)
+	mIf, mElse := pos(23), pos(25)
+
+	cases := []struct {
+		name string
+		a, b codePos
+		want bool
+	}{
+		{"if and else of f", fIf, fElse, true},
+		{"if and else of g", gIf, gElse, true},
+		{"if and else of method m", mIf, mElse, true},
+		{"f's if arm and g's else arm", fIf, gElse, false},
+		{"g's if arm and f's else arm", gIf, fElse, false},
+		{"function f's if arm and method m's else arm", fIf, mElse, false},
+		{"method m's if arm and function g's else arm", mIf, gElse, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idx.exclusive(tc.a, tc.b); got != tc.want {
+				t.Errorf("exclusive(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExclusiveTerminatingArmStaysInOneDeclaration pins the other cross-
+// declaration answer: a returning arm leaves its OWN function, so it makes the
+// code after it in that function an alternative, and says nothing about a
+// declaration written below it in the file.
+func TestExclusiveTerminatingArmStaysInOneDeclaration(t *testing.T) {
+	src := `package main
+
+type API struct{}
+
+func h(bad bool) {
+	if bad {
+		return
+	}
+	other()
+}
+
+func k() { other() }
+
+func (a *API) mh(bad bool) {
+	if bad {
+		return
+	}
+	other()
+}
+
+func (a *API) mk() { other() }
+
+func other() {}
+`
+	idx := blockIndexOf(t, map[string]string{"h.go": src})
+	pos := func(line, col int) codePos { return codePos{file: "h.go", line: line, col: col} }
+	hArm, hTail, kBody := pos(7, 3), pos(9, 2), pos(12, 12)
+	mhArm, mhTail, mkBody := pos(16, 3), pos(18, 2), pos(21, 22)
+
+	cases := []struct {
+		name string
+		a, b codePos
+		want bool
+	}{
+		{"function: returning arm and its own tail", hArm, hTail, true},
+		{"method: returning arm and its own tail", mhArm, mhTail, true},
+		{"function arm and the next function's body", hArm, kBody, false},
+		{"method arm and the next method's body", mhArm, mkBody, false},
+		{"function arm and a later method's body", hArm, mhTail, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idx.exclusive(tc.a, tc.b); got != tc.want {
+				t.Errorf("exclusive(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExclusiveUnknownDeclarationSpan: with no declaration span the
+// terminates-after rule cannot tell the arm's own function from the next one,
+// so it does not answer — the conservative direction for exclusivity.
+func TestExclusiveUnknownDeclarationSpan(t *testing.T) {
+	arm := meta.Block{Kind: meta.BlockIf, StartLine: 10, StartCol: 1, EndLine: 13, EndCol: 80, Group: 1, Terminates: true}
+	idx := &blockIndex{byFile: map[string][]indexedBlock{"h.go": {{Block: arm}}}}
+	if idx.exclusive(at(11, 3), at(20, 2)) {
+		t.Error("a returning arm with no known declaration span must not make later code an alternative")
+	}
+}
+
+// TestExclusiveTerminatingArmInsideLiteral: a returning arm inside a function
+// literal leaves the literal only. Code after it in the literal is an
+// alternative; code after the literal in the enclosing declaration is not —
+// the literal returns and that code runs.
+func TestExclusiveTerminatingArmInsideLiteral(t *testing.T) {
+	src := `package main
+
+type API struct{}
+
+func (a *API) m(bad bool) {
+	check := func() {
+		if bad {
+			return
+		}
+		other()
+	}
+	check()
+	other()
+	if bad {
+		go func() { other() }()
+		return
+	}
+	other()
+}
+
+func other() {}
+`
+	idx := blockIndexOf(t, map[string]string{"h.go": src})
+	pos := func(line, col int) codePos { return codePos{file: "h.go", line: line, col: col} }
+	litArm, litTail, declTail := pos(8, 4), pos(10, 3), pos(13, 2)
+	nestedLit, armTail := pos(15, 15), pos(18, 2)
+
+	cases := []struct {
+		name string
+		a, b codePos
+		want bool
+	}{
+		{"literal's returning arm and the literal's own tail", litArm, litTail, true},
+		{"literal's returning arm and the declaration after the literal", litArm, declTail, false},
+		{"a literal nested inside a returning arm and the code after the arm", nestedLit, armTail, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idx.exclusive(tc.a, tc.b); got != tc.want {
+				t.Errorf("exclusive(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
 	}
 }
