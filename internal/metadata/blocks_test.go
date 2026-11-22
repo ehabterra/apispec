@@ -472,3 +472,27 @@ func TestCollectBlocksScopeExtent(t *testing.T) {
 		}
 	}
 }
+
+// TestCollectBlocksScopeOnlyForDefine pins that only a `:=` initializer opens a
+// scope: a plain `=` writes to an existing variable that outlives the
+// statement, and a call-only initializer declares nothing.
+func TestCollectBlocksScopeOnlyForDefine(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"define", "if h := f(); h != nil {\n a()\n}", true},
+		{"assign", "if h = f(); h != nil {\n a()\n}", false},
+		{"call", "if f(); true {\n a()\n}", false},
+		{"switch assign", "switch h = f(); h {\n}", false},
+	} {
+		blocks, _, _ := parseBody(t, tc.body)
+		got := false
+		for _, b := range blocks {
+			got = got || b.Kind == BlockScope
+		}
+		if got != tc.want {
+			t.Errorf("%s: scope recorded = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

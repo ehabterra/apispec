@@ -115,9 +115,12 @@ func terminates(body []ast.Stmt) bool {
 // marking that `h` in `if h := func…; h != nil {}` ends with the statement: a
 // call written after it names a different `h`. The range runs from the init to
 // the end of the whole statement — for an if chain, past the last else, since
-// the binding is visible in every arm. Nothing is recorded without an init.
+// the binding is visible in every arm. Only a `:=` initializer declares names;
+// a plain `=` writes to an existing variable that outlives the statement, so it
+// (and a missing or call-only init) records nothing.
 func (c *blockCollector) scope(init ast.Stmt, whole ast.Stmt, parent int) {
-	if init == nil || whole == nil {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok || assign.Tok != token.DEFINE || whole == nil {
 		return
 	}
 	c.add(BlockScope, init.Pos(), whole.End(), parent, 0, nil)
