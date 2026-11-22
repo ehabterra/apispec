@@ -43,6 +43,9 @@ func main() {
 	mux.HandleFunc("GET /fn/branchstatus", branchStatus)
 	mux.HandleFunc("GET /m/branchstatus", h.BranchStatus)
 
+	mux.HandleFunc("GET /fn/closurestatus", closureStatus)
+	mux.HandleFunc("GET /m/closurestatus", h.ClosureStatus)
+
 	http.ListenAndServe(":8080", mux)
 }
 
@@ -137,6 +140,36 @@ func (h *H) BranchStatus(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("async") != "" {
 		status = http.StatusAccepted
 	}
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(Item{ID: "1"})
+}
+
+// closureStatus sets its status from a returning arm INSIDE a function
+// literal. That return leaves only the literal, so the WriteHeader after the
+// call still runs with the 400 — the arm is not an alternative of it, and both
+// statuses reach the write.
+func closureStatus(w http.ResponseWriter, r *http.Request) {
+	status := http.StatusOK
+	check := func() {
+		if r.URL.Query().Get("id") == "" {
+			status = http.StatusBadRequest
+			return
+		}
+	}
+	check()
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(Item{ID: "1"})
+}
+
+func (h *H) ClosureStatus(w http.ResponseWriter, r *http.Request) {
+	status := http.StatusOK
+	check := func() {
+		if r.URL.Query().Get("id") == "" {
+			status = http.StatusBadRequest
+			return
+		}
+	}
+	check()
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(Item{ID: "1"})
 }

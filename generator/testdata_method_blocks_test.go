@@ -67,6 +67,10 @@ func TestTestdata_MethodBlocks(t *testing.T) {
 				"sequential": {method: "GET", want: map[string]string{"201": "Item"}},
 				// The 200 assigned above the `if` still reaches the write.
 				"branchstatus": {method: "GET", present: []string{"200", "202"}},
+				// The 400 is assigned in a returning arm of a function
+				// literal: that return ends the literal, not the handler, so
+				// the 400 still reaches the write below the call.
+				"closurestatus": {method: "GET", present: []string{"200", "400"}},
 			},
 		},
 		{

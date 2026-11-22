@@ -250,10 +250,28 @@ func (idx *blockIndex) exclusive(a, b codePos) bool {
 		// success path — which is how most Go handlers are written and would
 		// otherwise read as sequential code.
 		//
-		// "After" means after it in the SAME declaration: the arm's return
+		// "After" means after it in the SAME function: the arm's return
 		// leaves its own function, which says nothing about a function
 		// written below it in the file. Without a known span, no answer.
-		if armA.Terminates && afterBlock(armA.Block, b) && armA.inDecl(b) {
+		// The innermost function may be a literal, whose return ends only
+		// the literal — code after it in the enclosing declaration still
+		// runs once the literal has returned.
+		if armA.Terminates && afterBlock(armA.Block, b) && armA.inDecl(b) &&
+			!literalEnds(blocks, armA.Block, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalEnds reports whether a function literal encloses the arm but not pos:
+// the arm's return then leaves that literal, and pos can still run after it.
+// A literal nested INSIDE the arm is not one — the arm's own return is not in
+// it.
+func literalEnds(blocks []indexedBlock, arm metadata.Block, pos codePos) bool {
+	armStart := codePos{line: arm.StartLine, col: arm.StartCol}
+	for _, lit := range blocks {
+		if lit.Kind == metadata.BlockFuncLit && blockContains(lit.Block, armStart) && !blockContains(lit.Block, pos) {
 			return true
 		}
 	}

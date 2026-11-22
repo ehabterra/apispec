@@ -549,3 +549,53 @@ func TestExclusiveUnknownDeclarationSpan(t *testing.T) {
 		t.Error("a returning arm with no known declaration span must not make later code an alternative")
 	}
 }
+
+// TestExclusiveTerminatingArmInsideLiteral: a returning arm inside a function
+// literal leaves the literal only. Code after it in the literal is an
+// alternative; code after the literal in the enclosing declaration is not —
+// the literal returns and that code runs.
+func TestExclusiveTerminatingArmInsideLiteral(t *testing.T) {
+	src := `package main
+
+type API struct{}
+
+func (a *API) m(bad bool) {
+	check := func() {
+		if bad {
+			return
+		}
+		other()
+	}
+	check()
+	other()
+	if bad {
+		go func() { other() }()
+		return
+	}
+	other()
+}
+
+func other() {}
+`
+	idx := blockIndexOf(t, map[string]string{"h.go": src})
+	pos := func(line, col int) codePos { return codePos{file: "h.go", line: line, col: col} }
+	litArm, litTail, declTail := pos(8, 4), pos(10, 3), pos(13, 2)
+	nestedLit, armTail := pos(15, 15), pos(18, 2)
+
+	cases := []struct {
+		name string
+		a, b codePos
+		want bool
+	}{
+		{"literal's returning arm and the literal's own tail", litArm, litTail, true},
+		{"literal's returning arm and the declaration after the literal", litArm, declTail, false},
+		{"a literal nested inside a returning arm and the code after the arm", nestedLit, armTail, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idx.exclusive(tc.a, tc.b); got != tc.want {
+				t.Errorf("exclusive(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
