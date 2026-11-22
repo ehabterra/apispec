@@ -624,6 +624,9 @@ func TestInScopeIsSeparateFromDominance(t *testing.T) {
 	if idx.sharesRegion(init, after) {
 		t.Error("a scope must not count as a shared region")
 	}
+	if idx.sharesRegion(init, inArm) {
+		t.Error("a scope must not count as a shared region when both positions lie inside it")
+	}
 	if idx.exclusive(init, after) {
 		t.Error("a scope is not a branch")
 	}
