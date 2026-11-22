@@ -554,6 +554,7 @@ packages:
                       position: 43
                       resolved_type: -1
                       generic_type_name: -1
+                end_line: 15
               - name: 57
                 receiver: 47
                 signature:
@@ -651,6 +652,7 @@ packages:
                       position: 53
                       resolved_type: -1
                       generic_type_name: -1
+                end_line: 19
             comments: -1
           UserInterface:
             name: 66
@@ -1103,6 +1105,7 @@ packages:
                   position: 43
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 15
           - name: 57
             receiver: 47
             signature:
@@ -1200,6 +1203,7 @@ packages:
                   position: 53
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 19
         comments: -1
       UserInterface:
         name: 66
@@ -1705,6 +1709,7 @@ packages:
                       func: 32
                       callee_func: GetName
                       callee_pkg: multipackage/models
+                end_line: 20
               - name: 118
                 receiver: 109
                 signature:
@@ -1789,6 +1794,7 @@ packages:
                         position: 114
                         resolved_type: -1
                         generic_type_name: -1
+                end_line: 24
             comments: -1
         functions:
           NewUserService:
@@ -2393,6 +2399,7 @@ packages:
                   func: 32
                   callee_func: GetName
                   callee_pkg: multipackage/models
+            end_line: 20
           - name: 118
             receiver: 109
             signature:
@@ -2477,6 +2484,7 @@ packages:
                     position: 114
                     resolved_type: -1
                     generic_type_name: -1
+            end_line: 24
         comments: -1
     name: 21
   multipackage/utils:

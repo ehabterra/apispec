@@ -220,6 +220,7 @@ packages:
                       position: 5
                       resolved_type: -1
                       generic_type_name: -1
+                end_line: 9
               - name: 25
                 receiver: 11
                 signature:
@@ -304,6 +305,7 @@ packages:
                         position: 21
                         resolved_type: -1
                         generic_type_name: -1
+                end_line: 13
             comments: -1
             type_params:
               - T
@@ -1082,6 +1084,7 @@ packages:
                   position: 5
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 9
           - name: 25
             receiver: 11
             signature:
@@ -1166,6 +1169,7 @@ packages:
                     position: 21
                     resolved_type: -1
                     generic_type_name: -1
+            end_line: 13
         comments: -1
         type_params:
           - T

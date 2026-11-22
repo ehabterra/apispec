@@ -335,6 +335,7 @@ packages:
                       position: 5
                       resolved_type: -1
                       generic_type_name: -1
+                end_line: 22
               - name: 27
                 receiver: 11
                 signature:
@@ -419,6 +420,7 @@ packages:
                         position: 22
                         resolved_type: -1
                         generic_type_name: -1
+                end_line: 26
             comments: -1
         functions:
           NewUser:
@@ -958,6 +960,7 @@ packages:
                   position: 5
                   resolved_type: -1
                   generic_type_name: -1
+            end_line: 22
           - name: 27
             receiver: 11
             signature:
@@ -1042,6 +1045,7 @@ packages:
                     position: 22
                     resolved_type: -1
                     generic_type_name: -1
+            end_line: 26
         comments: -1
     name: 1
 call_graph:

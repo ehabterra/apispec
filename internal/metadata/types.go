@@ -1056,9 +1056,24 @@ type Method struct {
 	// A pointer, and a whole DispatchScope rather than the bare
 	// Function.MethodDispatch a declared function carries, for two reasons: a
 	// method that dispatches is a rarity among methods, so nil costs one word
-	// and serializes nothing; and unlike Function, Method records no EndLine, so
-	// the arms would have no body range to be scoped against.
+	// and serializes nothing; and the scope carries the dispatch body's own
+	// range, which is what the split is attributed against — Method.EndLine
+	// bounds the whole declaration, not the dispatching statement.
 	Dispatch *DispatchScope `yaml:"dispatch,omitempty"`
+
+	// EndLine is the last line of the declaration (the body's closing brace),
+	// exactly as Function.EndLine: with Position it bounds the method's body,
+	// so a statement located by position can be tested for membership in THIS
+	// method rather than merely in the same file (issue #617). Zero for a
+	// declaration with no body.
+	EndLine int `yaml:"end_line,omitempty"`
+
+	// Blocks records the body's control-flow regions in source order, exactly
+	// as Function.Blocks does for a declared function (Parent indexes into THIS
+	// slice). Method handlers are the common real shape, and without these
+	// every control-flow query inside a method body answered on missing facts:
+	// dominance yes, exclusivity and shared regions no (issue #617).
+	Blocks []Block `yaml:"blocks,omitempty"`
 }
 
 // Function represents a function
@@ -1151,10 +1166,11 @@ type Block struct {
 	EndLine   int       `yaml:"end_line,omitempty"`
 	EndCol    int       `yaml:"end_col,omitempty"`
 
-	// Parent is the 1-BASED index into Function.Blocks of the enclosing block,
-	// or 0 for a block sitting directly in the function body. One-based so that
-	// "no parent" is the zero value and the field stays out of serialized
-	// metadata; a plain index could not distinguish "block 0" from "none".
+	// Parent is the 1-BASED index into Function.Blocks (or Method.Blocks) of
+	// the enclosing block, or 0 for a block sitting directly in the body.
+	// One-based so that "no parent" is the zero value and the field stays out
+	// of serialized metadata; a plain index could not distinguish "block 0"
+	// from "none".
 	Parent int `yaml:"parent,omitempty"`
 
 	// Terminates records that control cannot fall out of this region into the
@@ -1174,9 +1190,11 @@ type Block struct {
 
 	// Group ties together the arms of ONE conditional — every arm of an
 	// if/else-if/else chain, or every case of one switch or select — with a
-	// 1-based id unique within the function. Two blocks sharing a group are
-	// alternatives: at most one of them runs. Zero for a region whose siblings
-	// are not alternatives (a loop body, a bare block, a function literal).
+	// 1-based id unique within the declaration, and only within it: the next
+	// function or method numbers its own from 1 again. Two blocks sharing a
+	// group are alternatives: at most one of them runs. Zero for a region whose
+	// siblings are not alternatives (a loop body, a bare block, a function
+	// literal).
 	//
 	// This is the fact that line ranges alone cannot supply. Nesting says a
 	// statement is INSIDE a region; only the group says two regions are
