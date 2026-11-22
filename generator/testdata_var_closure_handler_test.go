@@ -118,6 +118,21 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				// method's recorded regions tell the two `pkgHandler`s apart.
 				"/mshadowpkg/inner": {literal: "main.go:74:", response: "Inner"},
 				"/mshadowpkg/outer": {response: "Pkg"},
+				// A closure declared in an if/switch/type-switch/for
+				// initializer (issue #618) is the handler inside the
+				// statement — else arm included — and NOT after it, where
+				// the name is the package-level function again.
+				"/ifinit/inner":  {response: "Inner"}, // one closure at two routes: no literal in the id
+				"/ifinit/else":   {response: "Inner"},
+				"/ifinit/outer":  {response: "Pkg"},
+				"/swinit/inner":  {literal: "main.go:150:", response: "Inner"},
+				"/swinit/outer":  {response: "Pkg"},
+				"/tsinit/inner":  {literal: "main.go:159:", response: "Inner"},
+				"/tsinit/outer":  {response: "Pkg"},
+				"/forinit/inner": {literal: "main.go:167:", response: "Inner"},
+				"/forinit/outer": {response: "Pkg"},
+				"/minit/inner":   {literal: "main.go:176:", response: "Inner"},
+				"/minit/outer":   {response: "Pkg"},
 			},
 			unresolved: []string{
 				// Outside the shadowing block: the parameter, not the closure.
@@ -131,6 +146,15 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 			out := loadTestdataWithFixtureConfig(t, tc.fixture, tc.cfg)
 			noDanglingRefs(t, out)
 			noNullSchemas(t, out)
+
+			// The package-level function, not a literal, names the outer routes.
+			for _, path := range []string{"/ifinit/outer", "/swinit/outer", "/tsinit/outer", "/forinit/outer", "/minit/outer"} {
+				if item, ok := out.Paths[path]; tc.fixture == "var_closure_handler_http" && ok {
+					if op := opFor(item, "GET"); op != nil && strings.Contains(op.OperationID, "FuncLit") {
+						t.Errorf("GET %s: operationId %q names an init-scoped closure", path, op.OperationID)
+					}
+				}
+			}
 
 			for path, w := range tc.resolved {
 				item, ok := out.Paths[path]

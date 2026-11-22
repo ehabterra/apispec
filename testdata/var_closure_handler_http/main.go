@@ -123,5 +123,58 @@ func main() {
 		json.NewEncoder(w).Encode(Geo{})
 	})
 
+	initScopeIf(mux)
+	initScopeSwitch(mux)
+	initScopeTypeSwitch(mux)
+	initScopeFor(mux)
+	(&API{mux: mux}).initScopeMethod()
+
 	http.ListenAndServe(":8080", mux)
+}
+
+// A closure declared in a statement's initializer is visible in the statement,
+// every else arm included, and nowhere after it: the registration after the
+// statement names the package-level function (issue #618). The init runs
+// unconditionally, so it dominates that registration — scope, not dominance,
+// is what tells the two bindings apart.
+func initScopeIf(mux *http.ServeMux) {
+	if pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }; os.Getenv("A") != "" {
+		mux.HandleFunc("GET /ifinit/inner", pkgHandler)
+	} else {
+		mux.HandleFunc("GET /ifinit/else", pkgHandler)
+	}
+	mux.HandleFunc("GET /ifinit/outer", pkgHandler)
+}
+
+func initScopeSwitch(mux *http.ServeMux) {
+	switch pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }; os.Getenv("A") {
+	case "x":
+		mux.HandleFunc("GET /swinit/inner", pkgHandler)
+	}
+	mux.HandleFunc("GET /swinit/outer", pkgHandler)
+}
+
+func initScopeTypeSwitch(mux *http.ServeMux) {
+	var v any = 1
+	switch pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }; v.(type) {
+	case int:
+		mux.HandleFunc("GET /tsinit/inner", pkgHandler)
+	}
+	mux.HandleFunc("GET /tsinit/outer", pkgHandler)
+}
+
+func initScopeFor(mux *http.ServeMux) {
+	for pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }; ; {
+		mux.HandleFunc("GET /forinit/inner", pkgHandler)
+		break
+	}
+	mux.HandleFunc("GET /forinit/outer", pkgHandler)
+}
+
+// The same in a METHOD body, which records its regions as a function does.
+func (a *API) initScopeMethod() {
+	if pkgHandler := func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(Inner{}) }; os.Getenv("A") != "" {
+		a.mux.HandleFunc("GET /minit/inner", pkgHandler)
+	}
+	a.mux.HandleFunc("GET /minit/outer", pkgHandler)
 }
