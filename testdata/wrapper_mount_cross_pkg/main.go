@@ -6,6 +6,8 @@
 //	/api/h      MountWithHealth: an underivable mount precedes the forwarding one
 //	/api/s      MountWithStatus: the forwarding mount precedes a fixed one
 //	/v1         MountFixed: the wrapper adds "/fixed" to the pattern
+//	/api/p      MountPair: two routers, only the first forwarded (inline calls)
+//	/api/pv     MountPair: the same with variables
 //
 // The fixed /health and /status routers are mounted on the receiver inside the
 // wrapper's body, so they stay where the receiver is, not under the caller's
@@ -36,6 +38,11 @@ func main() {
 
 	fx := routes.FixedRoutes()
 	r.MountFixed("/v1", fx)
+
+	r.MountPair("/api/p", routes.PairRoutes(), routes.ExtraRoutes())
+
+	pv, xv := routes.PairVar(), routes.ExtraVar()
+	r.MountPair("/api/pv", pv, xv)
 
 	_ = http.ListenAndServe(":8080", r.ChiRouter)
 }

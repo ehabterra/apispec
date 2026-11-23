@@ -56,3 +56,11 @@ func (r *Router) MountWithStatus(pattern string, sub *Router) {
 func (r *Router) MountFixed(pattern string, sub *Router) {
 	r.ChiRouter.Mount(path.Join("/fixed", pattern), sub.ChiRouter)
 }
+
+// MountPair forwards the first sub-router under the caller's pattern and mounts
+// the second on the receiver at a fixed path: the prefix belongs to the first
+// alone.
+func (r *Router) MountPair(pattern string, sub, extra *Router) {
+	r.ChiRouter.Mount(pattern, sub.ChiRouter)
+	r.ChiRouter.Mount("/extra", extra.ChiRouter)
+}

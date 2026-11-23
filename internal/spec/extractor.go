@@ -1094,9 +1094,12 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 
 	// Continue traversing children
 	for _, child := range node.GetChildren() {
-		if mountInfo.Pattern.argsOnly && child.GetArgument() == nil {
-			// The mount method's own body, not the router it was handed: it
-			// keeps the context the call itself sits in (see argsOnly).
+		if mountInfo.Pattern.argsOnly && (child.GetArgument() == nil || child.GetArgument() != mountInfo.RouterArg) {
+			// The mount method's own body, or an argument other than the router
+			// it forwards: either keeps the context the call itself sits in (see
+			// argsOnly). A second router argument the body mounts at a fixed
+			// path of its own would otherwise also be documented under the
+			// caller's prefix, a path nothing serves.
 			e.traverseForRoutesWithVisited(child, outerPath, outerTags, outerDynParams, outerMW, routes, visited)
 			continue
 		}

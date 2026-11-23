@@ -28,6 +28,9 @@ import (
 //     one is still derived, whichever of the two comes first in its body, and
 //     the fixed router stays where the receiver is — the caller's prefix
 //     belongs to the router it passed in;
+//   - a wrapper handed two routers prefixes only the one it forwards: the
+//     second, which its body mounts at a fixed path of its own, is not also
+//     documented under the caller's prefix;
 //   - a wrapper that adds its own text to the pattern (`path.Join("/fixed",
 //     pattern)`) is not applied, so no route is documented at a path the
 //     wrapper never mounts it at.
@@ -43,6 +46,8 @@ func TestTestdata_WrapperMountCrossPkg(t *testing.T) {
 		"/api/v1/user": true, // Mount, variable from another package's factory
 		"/api/h/h":     true, // MountWithHealth: the underivable mount came first
 		"/api/s/s":     true, // MountWithStatus: the forwarding mount came first
+		"/api/p/p":     true, // MountPair, sub-routers built inline
+		"/api/pv/pv":   true, // MountPair, sub-routers held in variables
 		// Mounted on the receiver inside the wrappers' bodies, not under the
 		// caller's prefix.
 		"/health/ping": true,
@@ -56,6 +61,14 @@ func TestTestdata_WrapperMountCrossPkg(t *testing.T) {
 		// has no producer subtree to mount. When that is fixed this becomes
 		// "/api/same/same".
 		"/same": true,
+		// MountPair's second router is never under "/api/p" or "/api/pv".
+		// Change detector: the body's `Mount("/extra", extra.ChiRouter)` names
+		// the parameter through a field selector, and resolveArgThroughParams
+		// follows a bare identifier only, so the router keeps the caller's
+		// outer context. When that is fixed these become "/extra/x" and
+		// "/extra/xv".
+		"/x":  true,
+		"/xv": true,
 	}
 	for path := range want {
 		item, ok := out.Paths[path]

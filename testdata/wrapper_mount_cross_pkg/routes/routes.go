@@ -18,6 +18,10 @@ func APIRoutes() *web.Router    { m := web.NewRouter(); m.Get("/user", getUser);
 func HealthRoutes() *web.Router { m := web.NewRouter(); m.Get("/h", getUser); return m }
 func StatusRoutes() *web.Router { m := web.NewRouter(); m.Get("/s", getUser); return m }
 func FixedRoutes() *web.Router  { m := web.NewRouter(); m.Get("/f", getUser); return m }
+func PairRoutes() *web.Router   { m := web.NewRouter(); m.Get("/p", getUser); return m }
+func ExtraRoutes() *web.Router  { m := web.NewRouter(); m.Get("/x", getUser); return m }
+func PairVar() *web.Router      { m := web.NewRouter(); m.Get("/pv", getUser); return m }
+func ExtraVar() *web.Router     { m := web.NewRouter(); m.Get("/xv", getUser); return m }
 
 // SameRoutes returns a local named like the caller's variable (`same :=
 // routes.SameRoutes()`).
