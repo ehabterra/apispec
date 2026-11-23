@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -139,5 +140,76 @@ func TestLazyTreeBindingIsPerCallSite(t *testing.T) {
 	}
 	if tree.claimed[set] {
 		t.Error("h.Set was claimed globally")
+	}
+}
+
+// TestArgProducerIDsVariableFromOwnAssignment covers the variable form of a
+// mounted router (issue #611): `api := APIRoutes(); r.Mount("/api/v1", api)`.
+//
+// The origin trace follows `api` into APIRoutes and comes back with that
+// function's own local (`m`), a name the caller's scope does not have, so the
+// lookup keyed on it found no producer and the argument had no children — the
+// routes stayed at the root while the inline form `r.Mount("/api/v1",
+// APIRoutes())` was prefixed. The variable's own assignment in the caller is the
+// producer then. A trace that resolves keeps its answer, and a variable the
+// trace leaves untouched gets no second lookup.
+func TestArgProducerIDsVariableFromOwnAssignment(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	const pkg = "example.com/app"
+	const routerType = "*example.com/app.Router"
+
+	edge := &metadata.CallGraphEdge{
+		Caller: metadata.Call{Meta: meta, Name: pool.Get("main"), Pkg: pool.Get(pkg), Position: -1, RecvType: -1, Scope: -1, SignatureStr: -1},
+		Callee: metadata.Call{Meta: meta, Name: pool.Get("Mount"), Pkg: pool.Get(pkg), Position: -1, RecvType: pool.Get("*Router"), Scope: -1, SignatureStr: -1},
+	}
+	variable := func(name string) *LazyNode {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindIdent)
+		a.SetName(name)
+		a.SetType(routerType)
+		a.SetPkg(pkg)
+		return &LazyNode{edge: edge, arg: a, argType: ArgTypeVariable, isArgument: true}
+	}
+
+	const ownProducer = "example.com/app.APIRoutes@main.go:10:9"
+	const tracedProducer = "example.com/app.Group@main.go:20:7"
+	const crossProducer = "example.com/app/routes.APIRoutes@main.go:40:9"
+	tree := &LazyTree{
+		meta: meta,
+		assignIndex: map[assignmentKey]string{
+			{Name: "api", Pkg: pkg, Type: routerType, Container: "main"}:   ownProducer,
+			{Name: "grp", Pkg: pkg, Type: routerType, Container: "main"}:   tracedProducer,
+			{Name: "alias", Pkg: pkg, Type: routerType, Container: "main"}: "example.com/app.Other@main.go:30:1",
+			{Name: "svc", Pkg: pkg, Type: routerType, Container: "main"}:   crossProducer,
+		},
+		traceCache: map[string][3]string{
+			// Traced into the producing function: a name foreign to main.
+			"api\x00main\x00" + pkg: {"m", pkg, "APIRoutes"},
+			// Traced to another variable of main that has a producer.
+			"alias\x00main\x00" + pkg: {"grp", pkg, "main"},
+			// Traced into a factory in another package whose local has the
+			// SAME name: the name alone would look like an untraced variable.
+			"svc\x00main\x00" + pkg: {"svc", "example.com/app/routes", "APIRoutes"},
+			// Not traced anywhere, and assigned from nothing.
+			"loose\x00main\x00" + pkg: {"loose", pkg, "main"},
+		},
+	}
+
+	cases := []struct {
+		name string
+		want []string
+	}{
+		{"api", []string{ownProducer}},      // the fallback
+		{"alias", []string{tracedProducer}}, // the trace wins when it resolves
+		{"svc", []string{crossProducer}},    // same name, foreign package: still the fallback
+		{"loose", nil},                      // nothing to fall back to
+	}
+	for _, tc := range cases {
+		n := variable(tc.name)
+		n.tree = tree
+		if got := n.argProducerIDs(); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: producers = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

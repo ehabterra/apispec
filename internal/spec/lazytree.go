@@ -2096,8 +2096,24 @@ func (n *LazyNode) argProducerIDs() []string {
 	case n.argType == ArgTypeVariable:
 		varName := metadata.CallArgToString(arg)
 		originVar, originPkg, _ := n.tree.traceOrigin(varName, callerName, callerPkg)
-		return n.tree.producersFor(assignmentKey{
+		if ids := n.tree.producersFor(assignmentKey{
 			Name: originVar, Pkg: originPkg, Type: arg.GetType(), Container: callerName,
+		}); ids != nil || (originVar == varName && originPkg == callerPkg) {
+			return ids
+		}
+		// The trace followed the variable INTO the function that produced it
+		// (`api := APIRoutes()` traces to APIRoutes' own `m`), whose name no
+		// longer belongs to this scope, so the lookup above found nothing. The
+		// name alone does not say the trace stayed here: a factory in another
+		// package may return a local of the same name (`api :=
+		// routes.APIRoutes()` tracing to routes' own `api`), so only the same
+		// name in the caller's own package means there is nothing to fall back
+		// to. The
+		// variable's own assignment here is still its producer — the same call
+		// the inline form `Mount("/x", APIRoutes())` expands — and without it
+		// a router assigned first and mounted second lost its prefix (#611).
+		return n.tree.producersFor(assignmentKey{
+			Name: varName, Pkg: callerPkg, Type: arg.GetType(), Container: callerName,
 		})
 	}
 	return nil

@@ -1036,6 +1036,7 @@ func (e *Extractor) calleeMiddlewareRef(edge *metadata.CallGraphEdge) Middleware
 
 // handleMountNode handles a mount node
 func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountInfo, mountPath string, mountTags []string, mountDynParams []string, mountMW []MiddlewareRef, routes *[]*RouteInfo, visited map[string]bool) {
+	outerPath, outerTags, outerDynParams, outerMW := mountPath, mountTags, mountDynParams, mountMW
 	// Update mount path if needed
 	if mountInfo.Path != "" {
 		if mountPath == "" || !strings.HasSuffix(mountPath, mountInfo.Path) {
@@ -1093,6 +1094,15 @@ func (e *Extractor) handleMountNode(node TrackerNodeInterface, mountInfo MountIn
 
 	// Continue traversing children
 	for _, child := range node.GetChildren() {
+		if mountInfo.Pattern.argsOnly && (child.GetArgument() == nil || child.GetArgument() != mountInfo.RouterArg) {
+			// The mount method's own body, or an argument other than the router
+			// it forwards: either keeps the context the call itself sits in (see
+			// argsOnly). A second router argument the body mounts at a fixed
+			// path of its own would otherwise also be documented under the
+			// caller's prefix, a path nothing serves.
+			e.traverseForRoutesWithVisited(child, outerPath, outerTags, outerDynParams, outerMW, routes, visited)
+			continue
+		}
 		var newTags []string
 		if mountPath != "" {
 			newTags = []string{mountPath}

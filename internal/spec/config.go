@@ -973,6 +973,16 @@ type MountPattern struct {
 
 	// configLayer: see RoutePattern.configLayer.
 	configLayer int
+
+	// argsOnly scopes the prefix to the call's ARGUMENTS. A project router's
+	// own Mount method (detectForwardingMounts, #611) is expanded into its body
+	// at every call site, and that body may register on the receiver itself
+	// (`r.chiRouter.Mount("/health", …)` beside the forwarded sub-router); the
+	// caller's prefix belongs to the router it passed in, not to those. A
+	// framework mount has no body below it, and a derived group mount needs the
+	// prefix in its body, where it runs the group's closure — so only the
+	// forwarding derivation sets it.
+	argsOnly bool
 }
 
 // Security scope values for SecurityPattern.Scope. They describe how far the

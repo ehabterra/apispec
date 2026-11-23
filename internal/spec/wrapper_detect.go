@@ -111,6 +111,7 @@ func DetectRouterWrappers(meta *metadata.Metadata, cfg *APISpecConfig) []Detecte
 
 	wrappers := groupWrappers(found)
 	wrappers = append(wrappers, detectGroupMounts(meta, cp, params, wrappers)...)
+	wrappers = append(wrappers, detectForwardingMounts(meta, cp, params, cfg)...)
 	return append(wrappers, detectValueWrappers(meta, cp, params, cfg)...)
 }
 
