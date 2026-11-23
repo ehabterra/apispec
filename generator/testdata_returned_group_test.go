@@ -33,9 +33,10 @@ import (
 // argument). The negatives: a fresh engine that nothing mounts stays
 // unprefixed, a helper returning its parameter keeps the caller's prefix once,
 // not twice, a helper whose returned local is reassigned gets no prefix, a
-// recursive helper keeps its route, and two calls whose returned groups
-// collapse into one node, or whose local holds a parameter their callers
-// disagree on, get no prefix rather than each other's.
+// recursive helper keeps its route, a helper that reassigns the parameter it
+// returns gets no prefix, and two calls whose returned groups collapse into
+// one node, in either statement order, or whose local holds a parameter their
+// callers disagree on, get no prefix rather than each other's.
 func TestTestdata_ReturnedGroup(t *testing.T) {
 	out := loadTestdata(t, "returned_group", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -74,6 +75,18 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// owns the node, so they stay where they were before #633.
 		"/sa",
 		"/sb",
+		// The same shape with the first returned group passed on to RegO
+		// before the second Suffixed call. RegO's claim was resolved while
+		// only one call site had moved the Group, so it took the node as
+		// unshared and documented /mk/{suffix}/o.
+		"/o",
+		"/p",
+		// Swap and SwapRet assign `parent = other` on one path before
+		// returning it (through Identity, or directly): the returned value is
+		// the caller's argument only on the other path, so /sp is not the
+		// prefix. Both were documented under /sp.
+		"/swap",
+		"/swapret",
 		// ViaTwice groups on `g := Identity(parent)`. The claim on g is
 		// resolved once for the function, and its two callers pass /ty and
 		// /tz: tracing parent followed the first caller and put both routes

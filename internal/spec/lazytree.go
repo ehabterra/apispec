@@ -894,11 +894,6 @@ func (t *LazyTree) buildRelations() {
 	// returned value through a helper needs to know which of the helper's calls
 	// a call site's binding moved (returnResolver.parentPath); applied after,
 	// so the receiverChildren lists keep their order.
-	type paramClaim struct {
-		bind  paramBind
-		site  string
-		edges []*metadata.CallGraphEdge
-	}
 	var paramClaims, unresolved []paramClaim
 	for i := range meta.CallGraph {
 		edge := &meta.CallGraph[i]
@@ -931,15 +926,7 @@ func (t *LazyTree) buildRelations() {
 			res.bind(site, b, paramEdges)
 		}
 	}
-	for _, c := range unresolved {
-		place, ok := res.argPlace(c.bind.arg, c.bind.edge, 0)
-		if !ok {
-			continue
-		}
-		c.bind.key = place.key
-		paramClaims = append(paramClaims, c)
-		res.bind(c.site, c.bind, c.edges)
-	}
+	paramClaims = append(paramClaims, res.resolvePending(unresolved)...)
 
 	// A variable a helper returned belongs under the node that produced the
 	// returned value, not under the helper's call (issue #633).

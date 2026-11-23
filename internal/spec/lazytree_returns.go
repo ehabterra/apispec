@@ -104,6 +104,13 @@ type returnResolver struct {
 	// parameter binding moved that edge under that producer. Above one, the
 	// moved node is shared by those invocations (see parentPath).
 	moves map[moveKey]int
+	// pending counts, per helper edge, the parameter bindings that may still
+	// move it once resolved, and pendingAt marks them per call site. A
+	// binding is pending from before the first one is resolved until it is
+	// bound or known never to resolve, so no answer counts moves that later
+	// bindings would raise (see resolvePending).
+	pending   map[*metadata.CallGraphEdge]int
+	pendingAt map[string]map[*metadata.CallGraphEdge]int
 	// siteEdge: the call edge each invocation key resolveReturned has entered
 	// stands for, so a returned parameter can be read from that call's
 	// ParamArgMap.
@@ -117,6 +124,9 @@ type returnResolver struct {
 	// "this call is not a helper to follow" (its own node is the producer)
 	// from "this helper recurses into itself" (it is not).
 	cycles int
+	// defers counts the answers that depended on a pending binding: a failure
+	// that may turn into a place once that binding is decided.
+	defers int
 }
 
 type paramBind struct {
@@ -133,6 +143,7 @@ type moveKey struct {
 type paramMemo struct {
 	place    returnPlace
 	ok, done bool
+	deferred bool
 }
 
 type returnMemoKey struct {
@@ -142,9 +153,10 @@ type returnMemoKey struct {
 }
 
 type returnMemo struct {
-	place  returnPlace
-	ok     bool
-	cyclic bool // failed because the helper recurses into itself
+	place    returnPlace
+	ok       bool
+	cyclic   bool // failed because the helper recurses into itself
+	deferred bool // failed on a pending binding (see returnResolver.defers)
 }
 
 // returned resolves where the value at index idx returned by the call pe lives,
@@ -162,17 +174,20 @@ func (r *returnResolver) returned(pe *metadata.CallGraphEdge, idx int, outerSite
 		if m.cyclic {
 			r.cycles++
 		}
+		if m.deferred {
+			r.defers++
+		}
 		return m.place, m.ok
 	}
 	if r.visiting[mk] {
 		r.cycles++ // recursive helper: its own call is not a producer to follow
 		return returnPlace{}, false
 	}
-	before := r.cycles
+	before, deferred := r.cycles, r.defers
 	r.visiting[mk] = true
 	place, ok := r.resolveReturned(pe, idx, outerSite, hops)
 	delete(r.visiting, mk)
-	r.memo[mk] = returnMemo{place: place, ok: ok, cyclic: !ok && r.cycles != before}
+	r.memo[mk] = returnMemo{place: place, ok: ok, cyclic: !ok && r.cycles != before, deferred: !ok && r.defers != deferred}
 	return place, ok
 }
 
@@ -235,16 +250,32 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 // so the answer is a reference for the invocation's caller to resolve. Without
 // it, `Wrap(pub)` and `Wrap(adm)` around `return Identity(parent)` would share
 // whichever producer tracing `parent` lands on.
+//
+// A parameter the function assigns to (`parent = other` on some path) holds
+// that invocation's argument only on the paths that skip the assignment, so it
+// has no place.
 func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.CallGraphEdge, outerSite string, hops int) (returnPlace, bool) {
 	if outerSite != "" && arg.GetKind() == metadata.KindIdent {
 		name := arg.GetName()
 		if outer := r.siteEdge[outerSite]; outer != nil && len(r.localRels[name+"\x00"+pe.Caller.BaseID()]) == 0 {
 			if _, isParam := outer.ParamArgMap[name]; isParam {
+				if r.t.assignsParam(outer, name) {
+					return returnPlace{}, false
+				}
 				return returnPlace{param: name}, true
 			}
 		}
 	}
 	return r.argPlace(arg, pe, hops)
+}
+
+// follow is returned for a caller that falls back on another answer when the
+// value cannot be followed. wait reports a failure that depended on a pending
+// binding: the value may yet have a place, so no fallback may stand in for it.
+func (r *returnResolver) follow(pe *metadata.CallGraphEdge, idx int, site string, hops int) (place returnPlace, ok, wait bool) {
+	before := r.defers
+	place, ok = r.returned(pe, idx, site, hops)
+	return place, ok, !ok && r.defers != before
 }
 
 // holder is the place of the value at index idx of the call e, for e inside a
@@ -256,8 +287,8 @@ func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.C
 // materialises, and edges bound there would vanish from the tree.
 func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string, hops int) (returnPlace, bool) {
 	before := r.cycles
-	if p, ok := r.returned(e, idx, site, hops); ok {
-		return p, true
+	if p, ok, wait := r.follow(e, idx, site, hops); ok || wait {
+		return p, ok
 	}
 	if r.cycles != before {
 		return returnPlace{}, false
@@ -289,14 +320,29 @@ func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops
 			// Group node under pub that carries neither suffix, and binding
 			// both callers' routes beneath it merges them. No single
 			// invocation owns that node.
-			if r.moves[moveKey{edge: e, key: b.key}] > 1 && r.argsVary(e, b.edge) {
-				return nil, false
+			//
+			// A pending binding may yet move e under the same producer, so it
+			// counts as one: an answer given now must stay true once every
+			// binding is in, whichever statement came first.
+			if r.argsVary(e, b.edge) {
+				moves := r.moves[moveKey{edge: e, key: b.key}]
+				if moves > 1 {
+					return nil, false
+				}
+				if moves+r.pending[e] > 1 {
+					r.defers++
+					return nil, false
+				}
 			}
 			p, ok := r.argPlace(b.arg, b.edge, hops+1)
 			if !ok {
 				return []string{b.key}, true
 			}
 			return append([]string{p.key}, p.path...), true
+		}
+		if r.pendingAt[site][e] > 0 {
+			r.defers++ // not yet known whether this call site moves e
+			return nil, false
 		}
 	}
 	if rel, claimed := r.claimedBy[e]; claimed {
@@ -375,6 +421,83 @@ func (r *returnResolver) bind(site string, b paramBind, edges []*metadata.CallGr
 	}
 }
 
+// paramClaim is one call site's binding of a helper's calls on a parameter.
+type paramClaim struct {
+	bind  paramBind
+	site  string
+	edges []*metadata.CallGraphEdge
+}
+
+// resolvePending resolves the parameter bindings whose argument had no
+// producer of its own, binds those that resolve and returns them.
+//
+// Resolving one binding can read how others moved a helper's calls
+// (parentPath), so they are all pending before the first is resolved, and an
+// answer that depended on a pending one is retried once the others are
+// decided. Without that the answer followed statement order: a group returned
+// by Suffixed(mk, "/oa") and passed on before the second Suffixed(mk, "/ob")
+// call took the moved Group as its own and documented /mk/{suffix}/o.
+// Each pass decides at least one binding or stops; the bindings still waiting
+// on each other then stay unbound, where expansion leaves them anyway.
+func (r *returnResolver) resolvePending(claims []paramClaim) []paramClaim {
+	for _, c := range claims {
+		r.pend(c.site, c.edges, 1)
+	}
+	var resolved []paramClaim
+	for len(claims) > 0 {
+		r.forget()
+		var retry []paramClaim
+		for _, c := range claims {
+			before := r.defers
+			place, ok := r.argPlace(c.bind.arg, c.bind.edge, 0)
+			if !ok && r.defers != before {
+				retry = append(retry, c)
+				continue
+			}
+			r.pend(c.site, c.edges, -1)
+			if !ok {
+				continue
+			}
+			c.bind.key = place.key
+			resolved = append(resolved, c)
+			r.bind(c.site, c.bind, c.edges)
+		}
+		if len(retry) == len(claims) {
+			for _, c := range retry {
+				r.pend(c.site, c.edges, -1)
+			}
+			break
+		}
+		claims = retry
+	}
+	r.forget()
+	return resolved
+}
+
+// pend adds delta to the pending bindings of edges at site.
+func (r *returnResolver) pend(site string, edges []*metadata.CallGraphEdge, delta int) {
+	if r.pending == nil {
+		r.pending = map[*metadata.CallGraphEdge]int{}
+		r.pendingAt = map[string]map[*metadata.CallGraphEdge]int{}
+	}
+	at := r.pendingAt[site]
+	if at == nil {
+		at = map[*metadata.CallGraphEdge]int{}
+		r.pendingAt[site] = at
+	}
+	for _, e := range edges {
+		r.pending[e] += delta
+		at[e] += delta
+	}
+}
+
+// forget drops every memoised answer, for when the bindings they were computed
+// against have changed.
+func (r *returnResolver) forget() {
+	clear(r.memo)
+	clear(r.params)
+}
+
 // argPlace resolves the value passed as arg at the call edge, following it
 // through a helper's return when it was produced by one, else to the producer
 // argProducerKey names.
@@ -390,8 +513,8 @@ func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.Call
 		// receiver — the router the group was made from, not the group.
 		rels := r.localRels[arg.GetName()+"\x00"+edge.Caller.BaseID()]
 		if len(rels) > 0 && sameProducer(rels) {
-			if p, ok := r.returned(rels[0].Edge, rels[0].Assignment.ReturnIndex, "", hops+1); ok {
-				return p, true
+			if p, ok, wait := r.follow(rels[0].Edge, rels[0].Assignment.ReturnIndex, "", hops+1); ok || wait {
+				return p, ok
 			}
 		}
 		if len(rels) == 0 {
@@ -410,8 +533,8 @@ func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.Call
 			return returnPlace{}, false
 		}
 		if rel := r.producerRel(k); rel != nil {
-			if p, ok := r.returned(rel.Edge, rel.Assignment.ReturnIndex, "", hops+1); ok {
-				return p, true
+			if p, ok, wait := r.follow(rel.Edge, rel.Assignment.ReturnIndex, "", hops+1); ok || wait {
+				return p, ok
 			}
 		}
 		return returnPlace{key: key}, true
@@ -420,8 +543,8 @@ func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.Call
 			return returnPlace{}, false
 		}
 		if arg.Edge != nil {
-			if p, ok := r.returned(arg.Edge, 0, "", hops+1); ok {
-				return p, true
+			if p, ok, wait := r.follow(arg.Edge, 0, "", hops+1); ok || wait {
+				return p, ok
 			}
 		}
 		return returnPlace{key: arg.ID()}, true
@@ -444,13 +567,20 @@ func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (p
 	if _, isParam := callers[0].ParamArgMap[name]; !isParam {
 		return returnPlace{}, false, false
 	}
+	if r.t.assignsParam(callers[0], name) {
+		return returnPlace{}, false, true // not every path holds a caller's argument
+	}
 	mk := name + "\x00" + fn.BaseID()
 	if m, seen := r.params[mk]; seen {
 		// A parameter reached again while it is being resolved forwards itself
 		// through a recursive call: no producer along that path.
+		if m.deferred {
+			r.defers++
+		}
 		return m.place, m.ok && m.done, true
 	}
 	r.params[mk] = paramMemo{}
+	deferred := r.defers
 	var first returnPlace
 	ok = true
 	for i, c := range callers {
@@ -469,7 +599,7 @@ func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (p
 	if !ok {
 		first = returnPlace{}
 	}
-	r.params[mk] = paramMemo{place: first, ok: ok, done: true}
+	r.params[mk] = paramMemo{place: first, ok: ok, done: true, deferred: !ok && r.defers != deferred}
 	return first, ok, true
 }
 
@@ -538,10 +668,25 @@ func (t *LazyTree) returnValue(pe *metadata.CallGraphEdge, idx int) (metadata.Ca
 	if picked == nil {
 		return metadata.CallArgument{}, false
 	}
-	if picked.GetKind() == metadata.KindIdent && len(body.assigns[picked.GetName()]) > 1 {
-		return metadata.CallArgument{}, false
+	if picked.GetKind() == metadata.KindIdent {
+		// A local is assigned once where it is declared; a parameter is
+		// declared by the signature, so any assignment reassigns it.
+		limit := 1
+		if _, isParam := pe.ParamArgMap[picked.GetName()]; isParam {
+			limit = 0
+		}
+		if len(body.assigns[picked.GetName()]) > limit {
+			return metadata.CallArgument{}, false
+		}
 	}
 	return *picked, true
+}
+
+// assignsParam reports whether the body of pe's callee assigns to its
+// parameter name. Assignment links record only call results, so `parent =
+// other` is read from the callee's own assignment list.
+func (t *LazyTree) assignsParam(pe *metadata.CallGraphEdge, name string) bool {
+	return len(t.calleeBody(pe).assigns[name]) > 0
 }
 
 // sameReturnedValue compares two return expressions: a variable by name (each

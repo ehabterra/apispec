@@ -29,6 +29,12 @@
 //	                  parent.Group(suffix) under the same parent: the moved
 //	                  Group is one node for both calls, so neither suffix can
 //	                  be told apart; no prefix rather than a merged one
+//	/o, /p            the same shared Group, reached first through a group
+//	                  passed on to RegO and only then through a second
+//	                  Suffixed call: the answer must not depend on which
+//	                  statement comes first
+//	/swap, /swapret   Swap and SwapRet reassign the parameter they return on
+//	                  one path: not the caller's argument on every path
 //	/t1, /t2          ViaTwice is Via called from two parents: the local's
 //	                  producer depends on the invocation, and the claim on it
 //	                  cannot say which, so neither parent is applied
@@ -107,6 +113,24 @@ func Suffixed(parent *gin.RouterGroup, suffix string) *gin.RouterGroup {
 	return parent.Group(suffix)
 }
 
+func Mk(r *gin.Engine) *gin.RouterGroup { return r.Group("/mk") }
+
+func RegO(g *gin.RouterGroup) { g.GET("/o", h) }
+
+func Swap(parent, other *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		parent = other
+	}
+	return Identity(parent)
+}
+
+func SwapRet(parent, other *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		parent = other
+	}
+	return parent
+}
+
 func main() {
 	r := gin.New()
 
@@ -182,6 +206,19 @@ func main() {
 	sa.GET("/sa", h)
 	sb := Suffixed(vp, "/b")
 	sb.GET("/sb", h)
+
+	mk := Mk(r)
+	oa := Suffixed(mk, "/oa")
+	RegO(oa)
+	ob := Suffixed(mk, "/ob")
+	ob.GET("/p", h)
+
+	sp := r.Group("/sp")
+	so := r.Group("/so")
+	sw := Swap(sp, so, true)
+	sw.GET("/swap", h)
+	sr := SwapRet(sp, so, true)
+	sr.GET("/swapret", h)
 
 	_ = r.Run(":8080")
 }

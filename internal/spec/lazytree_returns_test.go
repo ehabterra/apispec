@@ -587,3 +587,74 @@ func TestReturnResolverInvocationGuards(t *testing.T) {
 		}
 	}
 }
+
+// TestReturnResolverPendingBindings covers the bindings still to be resolved:
+// they count as moves and leave their call site undecided until they are bound
+// or dropped, and bindings that only wait on each other are left unbound.
+func TestReturnResolverPendingBindings(t *testing.T) {
+	tree, meta := buildReturnsTree(t, returnedEdgeSrc)
+	res := &returnResolver{
+		t:        tree,
+		boundTo:  map[string]map[*metadata.CallGraphEdge]paramBind{},
+		moves:    map[moveKey]int{},
+		siteEdge: map[string]*metadata.CallGraphEdge{},
+		params:   map[string]paramMemo{},
+		memo:     map[returnMemoKey]returnMemo{},
+		visiting: map[returnMemoKey]bool{},
+	}
+	var v1, inV1 *metadata.CallGraphEdge
+	for i := range meta.CallGraph {
+		e := &meta.CallGraph[i]
+		switch caller, callee := getString(meta, e.Caller.Name), getString(meta, e.Callee.Name); {
+		case caller == "main" && callee == "V1" && v1 == nil:
+			v1 = e
+		case caller == "V1" && callee == "Group":
+			inV1 = e
+		}
+	}
+	if v1 == nil || inV1 == nil {
+		t.Fatal("V1 or its Group call is missing from the call graph")
+	}
+	param := metadata.NewCallArgument(meta)
+	param.SetKind(metadata.KindIdent)
+	param.SetName("r")
+
+	// One call site has moved a Group whose argument varies; another may yet.
+	varying := *inV1
+	varying.Args = []*metadata.CallArgument{param}
+	edges := []*metadata.CallGraphEdge{&varying}
+	res.bind("site-a", paramBind{arg: *v1.Args[0], edge: v1, key: "bound"}, edges)
+	res.pend("site-b", edges, 1)
+	before := res.defers
+	if _, ok := res.parentPath(&varying, "site-a", 0); ok || res.defers == before {
+		t.Error("parentPath with a pending move of the same call: want none, deferred")
+	}
+	if _, ok := res.parentPath(&varying, "site-b", 0); ok {
+		t.Error("parentPath at a call site whose binding is pending: want none")
+	}
+	res.pend("site-b", edges, -1)
+	if _, ok := res.parentPath(&varying, "site-a", 0); !ok {
+		t.Error("parentPath once the pending binding is dropped: want a place")
+	}
+	if p, ok := res.parentPath(&varying, "site-b", 0); !ok || len(p) != 1 || p[0] != "site-b" {
+		t.Errorf("parentPath at a call site that binds nothing = %v, %v; want its own call", p, ok)
+	}
+
+	// A binding whose argument is V1's result, while that same call site's
+	// move of V1's Group is pending: it waits on itself and is left unbound.
+	site := strings.TrimPrefix(v1.Callee.ID(), "*")
+	call := metadata.NewCallArgument(meta)
+	call.SetKind(metadata.KindCall)
+	call.Fun = v1.Args[0]
+	call.Edge = v1
+	waiting := paramClaim{bind: paramBind{arg: *call, edge: v1}, site: site, edges: []*metadata.CallGraphEdge{inV1}}
+	if got := res.resolvePending([]paramClaim{waiting}); len(got) != 0 {
+		t.Errorf("resolvePending of a binding waiting on itself = %d bound, want 0", len(got))
+	}
+	if n := res.pending[inV1]; n != 0 {
+		t.Errorf("pending after resolvePending = %d, want 0", n)
+	}
+	if _, bound := res.boundTo[site][inV1]; bound {
+		t.Error("resolvePending bound a binding it could not resolve")
+	}
+}
