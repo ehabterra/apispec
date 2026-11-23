@@ -129,16 +129,16 @@ func (t *LazyTree) buildReachIndex() {
 		// planFor memoizes, so the plans built here are the same objects the
 		// expansion will use — this warms the memo rather than duplicating it.
 		plan := t.planFor(t.specNode(spec))
-		// Edges bound beneath a returned producer are per-path children
-		// (LazyNode.returnBoundSpecs); every binding is enumerated, since the
-		// identity is the same whichever invocation's copy it is.
+		var bound []returnBinding
 		if spec.arg == nil && int(spec.keyID) < len(t.returnBound) {
-			for _, b := range t.returnBound[spec.keyID] {
-				plan = append(plan[:len(plan):len(plan)], b.specs...)
-			}
+			bound = t.returnBound[spec.keyID]
 		}
-		out := make([]planKey, 0, len(plan))
-		for _, child := range plan {
+		n := len(plan)
+		for _, b := range bound {
+			n += len(b.specs)
+		}
+		out := make([]planKey, 0, n)
+		add := func(child childSpec) {
 			childID := specIdentity(child)
 			if _, seen := specOf[childID]; !seen {
 				specOf[childID] = child
@@ -156,6 +156,18 @@ func (t *LazyTree) buildReachIndex() {
 					specOf[subID] = sub
 				}
 				out = append(out, subID)
+			}
+		}
+		for _, child := range plan {
+			add(child)
+		}
+		// Edges bound beneath a returned producer are per-path children
+		// (LazyNode.returnBoundSpecs); every binding is enumerated, since the
+		// identity is the same whichever invocation's copy it is. Read in
+		// place: the plan is the memoised one and is never appended to.
+		for _, b := range bound {
+			for _, child := range b.specs {
+				add(child)
 			}
 		}
 		return out
