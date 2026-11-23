@@ -33,8 +33,27 @@ func main() {
 	// wiring style this fixture exists for.
 	mod.RegisterRouter(v1.Group("/mod"))
 
+	// Shape 6: the group is created inline on the ENGINE, not on a group.
+	registerEng(r.Group("/eng"))
+
+	// Shape 7: engine group via a variable (control).
+	eg := r.Group("/engvar")
+	registerEngVar(eg)
+
+	// Shape 8: a user type embedding the engine; Group is promoted twice.
+	app := &App{Engine: r}
+	registerApp(app.Group("/app"))
+	app.Group("/appdirect").GET("/z", handleG)
+
 	_ = r.Run(":8080")
 }
+
+// App embeds the engine so Group reaches it through a promoted method.
+type App struct{ *gin.Engine }
+
+func registerEng(g *gin.RouterGroup)    { g.GET("/e", handleE) }
+func registerEngVar(g *gin.RouterGroup) { g.GET("/f", handleF) }
+func registerApp(g *gin.RouterGroup)    { g.GET("/g", handleG) }
 
 func registerViaVar(r *gin.RouterGroup) {
 	r.GET("/d", handleD)
@@ -52,3 +71,6 @@ func handleA(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "a"}) }
 func handleB(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "b"}) }
 func handleC(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "c"}) }
 func handleD(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "d"}) }
+func handleE(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "e"}) }
+func handleF(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "f"}) }
+func handleG(c *gin.Context) { c.JSON(http.StatusOK, Reply{Name: "g"}) }
