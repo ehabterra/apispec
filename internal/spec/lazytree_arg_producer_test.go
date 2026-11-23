@@ -174,18 +174,23 @@ func TestArgProducerIDsVariableFromOwnAssignment(t *testing.T) {
 
 	const ownProducer = "example.com/app.APIRoutes@main.go:10:9"
 	const tracedProducer = "example.com/app.Group@main.go:20:7"
+	const crossProducer = "example.com/app/routes.APIRoutes@main.go:40:9"
 	tree := &LazyTree{
 		meta: meta,
 		assignIndex: map[assignmentKey]string{
 			{Name: "api", Pkg: pkg, Type: routerType, Container: "main"}:   ownProducer,
 			{Name: "grp", Pkg: pkg, Type: routerType, Container: "main"}:   tracedProducer,
 			{Name: "alias", Pkg: pkg, Type: routerType, Container: "main"}: "example.com/app.Other@main.go:30:1",
+			{Name: "svc", Pkg: pkg, Type: routerType, Container: "main"}:   crossProducer,
 		},
 		traceCache: map[string][3]string{
 			// Traced into the producing function: a name foreign to main.
 			"api\x00main\x00" + pkg: {"m", pkg, "APIRoutes"},
 			// Traced to another variable of main that has a producer.
 			"alias\x00main\x00" + pkg: {"grp", pkg, "main"},
+			// Traced into a factory in another package whose local has the
+			// SAME name: the name alone would look like an untraced variable.
+			"svc\x00main\x00" + pkg: {"svc", "example.com/app/routes", "APIRoutes"},
 			// Not traced anywhere, and assigned from nothing.
 			"loose\x00main\x00" + pkg: {"loose", pkg, "main"},
 		},
@@ -197,6 +202,7 @@ func TestArgProducerIDsVariableFromOwnAssignment(t *testing.T) {
 	}{
 		{"api", []string{ownProducer}},      // the fallback
 		{"alias", []string{tracedProducer}}, // the trace wins when it resolves
+		{"svc", []string{crossProducer}},    // same name, foreign package: still the fallback
 		{"loose", nil},                      // nothing to fall back to
 	}
 	for _, tc := range cases {
