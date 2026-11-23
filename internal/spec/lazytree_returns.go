@@ -96,6 +96,10 @@ type returnResolver struct {
 
 	memo     map[returnMemoKey]returnMemo
 	visiting map[returnMemoKey]bool
+	// cycles counts the recursions returned has run into, so holder can tell
+	// "this call is not a helper to follow" (its own node is the producer)
+	// from "this helper recurses into itself" (it is not).
+	cycles int
 }
 
 type paramBind struct {
@@ -111,8 +115,9 @@ type returnMemoKey struct {
 }
 
 type returnMemo struct {
-	place returnPlace
-	ok    bool
+	place  returnPlace
+	ok     bool
+	cyclic bool // failed because the helper recurses into itself
 }
 
 // returned resolves where the value at index idx returned by the call pe lives,
@@ -127,15 +132,20 @@ func (r *returnResolver) returned(pe *metadata.CallGraphEdge, idx int, outerSite
 	}
 	mk := returnMemoKey{edge: pe, idx: idx, site: outerSite}
 	if m, ok := r.memo[mk]; ok {
+		if m.cyclic {
+			r.cycles++
+		}
 		return m.place, m.ok
 	}
 	if r.visiting[mk] {
-		return returnPlace{}, false // recursive helper: its own call is not a producer to follow
+		r.cycles++ // recursive helper: its own call is not a producer to follow
+		return returnPlace{}, false
 	}
+	before := r.cycles
 	r.visiting[mk] = true
 	place, ok := r.resolveReturned(pe, idx, outerSite, hops)
 	delete(r.visiting, mk)
-	r.memo[mk] = returnMemo{place: place, ok: ok}
+	r.memo[mk] = returnMemo{place: place, ok: ok, cyclic: !ok && r.cycles != before}
 	return place, ok
 }
 
@@ -189,9 +199,17 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 // holder is the place of the value at index idx of the call e, for e inside a
 // function invoked at site: what e's result resolves to when e is itself a
 // helper returning a producer, otherwise e's own node.
+//
+// A helper that recurses into itself has no holder: expansion stops at the
+// recursive call, so a node keyed by it, beneath a copy of itself, never
+// materialises, and edges bound there would vanish from the tree.
 func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string, hops int) (returnPlace, bool) {
+	before := r.cycles
 	if p, ok := r.returned(e, idx, site, hops); ok {
 		return p, true
+	}
+	if r.cycles != before {
+		return returnPlace{}, false
 	}
 	key := strings.TrimPrefix(e.Callee.ID(), "*")
 	if r.t.argInstanceIDs[key] {
@@ -319,20 +337,21 @@ func sameProducer(rels []*metadata.AssignmentLink) bool {
 
 // returnValue is the value at index idx the callee of pe returns, provided every
 // return statement that returns something other than nil there returns the same
-// variable or the same call. Two different values (a branch returning another
-// group) leave the result ambiguous, and golden rule #7 says not to pick one.
+// variable or the same call, and that variable is assigned once. Two different
+// values (a branch returning another group, or reassigning the returned local)
+// leave the result ambiguous, and golden rule #7 says not to pick one.
+//
+// The reassignment is read from the callee's own assignment list: the
+// assignment links the resolver follows keep one assignment per variable, so
+// they cannot tell a reassigned local from a single one.
 func (t *LazyTree) returnValue(pe *metadata.CallGraphEdge, idx int) (metadata.CallArgument, bool) {
-	vars, returns := t.calleeReturns(pe)
-	candidates := returns
-	if len(candidates) == 0 && len(vars) > 0 {
-		candidates = [][]metadata.CallArgument{vars}
-	}
+	body := t.calleeBody(pe)
 	var picked *metadata.CallArgument
-	for i := range candidates {
-		if idx < 0 || idx >= len(candidates[i]) {
+	for i := range body.returns {
+		if idx < 0 || idx >= len(body.returns[i]) {
 			continue
 		}
-		v := &candidates[i][idx]
+		v := &body.returns[i][idx]
 		if v.GetKind() == metadata.KindIdent && v.GetName() == "nil" {
 			continue
 		}
@@ -345,6 +364,9 @@ func (t *LazyTree) returnValue(pe *metadata.CallGraphEdge, idx int) (metadata.Ca
 		}
 	}
 	if picked == nil {
+		return metadata.CallArgument{}, false
+	}
+	if picked.GetKind() == metadata.KindIdent && len(body.assigns[picked.GetName()]) > 1 {
 		return metadata.CallArgument{}, false
 	}
 	return *picked, true
@@ -362,33 +384,40 @@ func sameReturnedValue(a, b *metadata.CallArgument) bool {
 	return a.ID() == b.ID()
 }
 
-// calleeReturns returns the recorded return values of pe's callee, a method or
-// a plain function. A callee outside the analysed packages has none, which
-// keeps framework calls (`r.Group`) as producers rather than descending into
-// their internals.
-func (t *LazyTree) calleeReturns(pe *metadata.CallGraphEdge) ([]metadata.CallArgument, [][]metadata.CallArgument) {
+// calleeBody is what resolving a returned value reads from a callee's body.
+// Every return statement, not ReturnVars: that is one of them, picked by arity.
+type calleeBody struct {
+	returns [][]metadata.CallArgument
+	assigns map[string][]metadata.Assignment
+}
+
+// calleeBody returns the recorded body facts of pe's callee, a method or a
+// plain function. A callee outside the analysed packages has none, which keeps
+// framework calls (`r.Group`) as producers rather than descending into their
+// internals.
+func (t *LazyTree) calleeBody(pe *metadata.CallGraphEdge) calleeBody {
 	meta := t.meta
 	name := getString(meta, pe.Callee.Name)
 	pkg := getString(meta, pe.Callee.Pkg)
 	if name == "" {
-		return nil, nil
+		return calleeBody{}
 	}
 	if recv := getString(meta, pe.Callee.RecvType); recv != "" {
 		typ := typeByName(pkg, bareTypeName(recv), meta)
 		if typ == nil {
-			return nil, nil
+			return calleeBody{}
 		}
 		for i := range typ.Methods {
-			if getString(meta, typ.Methods[i].Name) == name {
-				return typ.Methods[i].ReturnVars, typ.Methods[i].Returns
+			if m := &typ.Methods[i]; getString(meta, m.Name) == name {
+				return calleeBody{returns: m.Returns, assigns: m.AssignmentMap}
 			}
 		}
-		return nil, nil
+		return calleeBody{}
 	}
 	if fn := meta.FunctionInPackage(pkg, name); fn != nil {
-		return fn.ReturnVars, fn.Returns
+		return calleeBody{returns: fn.Returns, assigns: fn.AssignmentMap}
 	}
-	return nil, nil
+	return calleeBody{}
 }
 
 // calleeBodyEdge finds the call edge in pe's callee body that the returned call

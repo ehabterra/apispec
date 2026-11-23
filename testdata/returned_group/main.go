@@ -17,6 +17,9 @@
 //	/fresh            New() returns a fresh engine that nothing mounts
 //	/kept/same        Same(g) returns its parameter: the caller's prefix only
 //	/pick             Pick returns one of two groups: no single prefix to choose
+//	/reassigned       Reassigned returns a local it reassigns on one path
+//	/rec              Rec returns its own call: no group to follow, and the
+//	                  route must not be bound beneath a recursive copy of it
 package main
 
 import (
@@ -62,6 +65,16 @@ func Pick(r *gin.Engine, alt bool) *gin.RouterGroup {
 	return r.Group("/main")
 }
 
+func Reassigned(r *gin.Engine, alt bool) *gin.RouterGroup {
+	g := r.Group("/first")
+	if alt {
+		g = r.Group("/second")
+	}
+	return g
+}
+
+func Rec(r *gin.Engine) *gin.RouterGroup { return Rec(r) }
+
 func main() {
 	r := gin.New()
 
@@ -102,6 +115,12 @@ func main() {
 
 	pick := Pick(r, true)
 	pick.GET("/pick", h)
+
+	re := Reassigned(r, true)
+	re.GET("/reassigned", h)
+
+	rec := Rec(r)
+	rec.GET("/rec", h)
 
 	_ = r.Run(":8080")
 }

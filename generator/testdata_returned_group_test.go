@@ -28,8 +28,9 @@ import (
 // Covered side by side: an ident return, a call return, a two-hop helper, a
 // group nested inside the helper, and one helper called from two parents (each
 // caller's route under its own parent only). The negatives: a fresh engine that
-// nothing mounts stays unprefixed, and a helper returning its parameter keeps
-// the caller's prefix once, not twice.
+// nothing mounts stays unprefixed, a helper returning its parameter keeps the
+// caller's prefix once, not twice, a helper whose returned local is reassigned
+// gets no prefix, and a recursive helper keeps its route.
 func TestTestdata_ReturnedGroup(t *testing.T) {
 	out := loadTestdata(t, "returned_group", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -50,6 +51,12 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// prefix, so none is applied (golden rule #7): the route stays where it
 		// was before #633 rather than under a guessed group.
 		"/pick",
+		// The returned local holds /first or /second depending on the path:
+		// the same ambiguity as /pick, written as a reassignment.
+		"/reassigned",
+		// Rec returns its own call. Following it bound the route beneath a
+		// recursive copy of Rec that expansion never builds, dropping it.
+		"/rec",
 	})
 }
 
