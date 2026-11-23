@@ -129,6 +129,14 @@ func (t *LazyTree) buildReachIndex() {
 		// planFor memoizes, so the plans built here are the same objects the
 		// expansion will use — this warms the memo rather than duplicating it.
 		plan := t.planFor(t.specNode(spec))
+		// Edges bound beneath a returned producer are per-path children
+		// (LazyNode.returnBoundSpecs); every binding is enumerated, since the
+		// identity is the same whichever invocation's copy it is.
+		if spec.arg == nil && int(spec.keyID) < len(t.returnBound) {
+			for _, b := range t.returnBound[spec.keyID] {
+				plan = append(plan[:len(plan):len(plan)], b.specs...)
+			}
+		}
 		out := make([]planKey, 0, len(plan))
 		for _, child := range plan {
 			childID := specIdentity(child)
