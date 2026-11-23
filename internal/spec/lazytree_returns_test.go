@@ -291,6 +291,7 @@ func TestLazyTreeReturnedProducerEdgeShapes(t *testing.T) {
 	const (
 		lineInnerGroup = 53 // return g.Group("/inner")
 		lineAPIGroup   = 70 // func (API) Mount(r *Mux) *Mux { return r.Group("/api") }
+		lineV1Group    = 44 // func V1(r *Mux) *Mux { return r.Group("/v1") }
 	)
 	want := map[string][]int{
 		// Different values on different paths: no one producer (rule #7).
@@ -315,9 +316,9 @@ func TestLazyTreeReturnedProducerEdgeShapes(t *testing.T) {
 		`"/named"`: nil,
 		`"/reg"`:   nil,
 		`"/arg"`:   nil,
-		// Change detector: a returned group passed on through two helpers is
-		// not followed either (nor is a plain group in this shape).
-		`"/passed"`: nil,
+		// A returned group passed on through two helpers: pass forwards its
+		// parameter, and its one call site says which group that is.
+		`"/passed"`: {lineV1Group},
 	}
 	for arg, chain := range want {
 		got := groupsAbove[arg]
@@ -346,6 +347,9 @@ func TestReturnResolverGuards(t *testing.T) {
 			localRels:     map[string][]*metadata.AssignmentLink{},
 			claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
 			boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
+			moves:         map[moveKey]int{},
+			siteEdge:      map[string]*metadata.CallGraphEdge{},
+			params:        map[string]paramMemo{},
 			memo:          map[returnMemoKey]returnMemo{},
 			visiting:      map[returnMemoKey]bool{},
 		}
@@ -471,5 +475,115 @@ func TestReturnResolverGuards(t *testing.T) {
 	}
 	if root.hasAncestry([]int32{root.key}) {
 		t.Error("hasAncestry: a root has no ancestors to match")
+	}
+}
+
+// TestReturnResolverInvocationGuards covers what keeps one invocation's value
+// out of another's: a parameter is answered only when every call site agrees,
+// and a call moved under one producer by several call sites is a place only
+// while its own arguments are the same in each.
+func TestReturnResolverInvocationGuards(t *testing.T) {
+	tree, meta := buildReturnsTree(t, returnedEdgeSrc)
+	res := &returnResolver{
+		t:        tree,
+		boundTo:  map[string]map[*metadata.CallGraphEdge]paramBind{},
+		moves:    map[moveKey]int{},
+		siteEdge: map[string]*metadata.CallGraphEdge{},
+		params:   map[string]paramMemo{},
+		memo:     map[returnMemoKey]returnMemo{},
+		visiting: map[returnMemoKey]bool{},
+	}
+	var v1, inV1, pass *metadata.CallGraphEdge
+	for i := range meta.CallGraph {
+		e := &meta.CallGraph[i]
+		switch caller, callee := getString(meta, e.Caller.Name), getString(meta, e.Callee.Name); {
+		case caller == "main" && callee == "V1" && v1 == nil:
+			v1 = e
+		case caller == "V1" && callee == "Group":
+			inV1 = e
+		case caller == "main" && callee == "pass":
+			pass = e
+		}
+	}
+	if v1 == nil || inV1 == nil || pass == nil {
+		t.Fatal("V1, its Group call or pass is missing from the call graph")
+	}
+
+	ident := func(name string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(meta)
+		a.SetKind(metadata.KindIdent)
+		a.SetName(name)
+		return a
+	}
+	lit := metadata.NewCallArgument(meta)
+	lit.SetKind(metadata.KindLiteral)
+	lit.SetValue(`"/v1"`)
+	call := metadata.NewCallArgument(meta)
+	call.SetKind(metadata.KindCall)
+	call.Fun = ident("join")
+	call.Args = []*metadata.CallArgument{lit, ident("r")}
+	sel := metadata.NewCallArgument(meta)
+	sel.SetKind(metadata.KindSelector)
+	sel.X = ident("cfg")
+	sel.Sel = ident("Prefix")
+	for _, c := range []struct {
+		name string
+		args []*metadata.CallArgument
+		want bool
+	}{
+		{"a literal", []*metadata.CallArgument{lit}, false},
+		{"a package-level name", []*metadata.CallArgument{ident("prefix")}, false},
+		{"a field of a package-level name", []*metadata.CallArgument{sel}, false},
+		{"the helper's parameter", []*metadata.CallArgument{ident("r")}, true},
+		{"a call reading the helper's parameter", []*metadata.CallArgument{call}, true},
+	} {
+		e := *inV1
+		e.Args = c.args
+		if got := res.argsVary(&e, v1); got != c.want {
+			t.Errorf("argsVary(%s) = %v, want %v", c.name, got, c.want)
+		}
+	}
+
+	// V1's Group moved under one producer from two call sites: its "/v1" is
+	// the same in both, so the shared node is still a place.
+	b := paramBind{arg: *v1.Args[0], edge: v1, key: "bound"}
+	res.bind("site-a", b, []*metadata.CallGraphEdge{inV1})
+	res.bind("site-b", b, []*metadata.CallGraphEdge{inV1})
+	if _, ok := res.parentPath(inV1, "site-a", 0); !ok {
+		t.Error("parentPath of a shared move with constant arguments: want a place")
+	}
+	varying := *inV1
+	varying.Args = []*metadata.CallArgument{ident("r")}
+	res.bind("site-a", b, []*metadata.CallGraphEdge{&varying})
+	res.bind("site-b", b, []*metadata.CallGraphEdge{&varying})
+	if _, ok := res.parentPath(&varying, "site-a", 0); ok {
+		t.Error("parentPath of a shared move whose argument is a parameter: want none")
+	}
+
+	if _, _, isParam := res.paramPlace("g", &metadata.Call{}, 0); isParam {
+		t.Error("paramPlace of a function nothing calls: want not a parameter")
+	}
+	if _, _, isParam := res.paramPlace("nope", &pass.Callee, 0); isParam {
+		t.Error("paramPlace of a name that is not a parameter: want not a parameter")
+	}
+	// Reached again while its own resolution is in progress (a parameter
+	// forwarded through a recursive call): no producer along that path.
+	res.params["g\x00"+pass.Callee.BaseID()] = paramMemo{}
+	if _, ok, isParam := res.paramPlace("g", &pass.Callee, 0); ok || !isParam {
+		t.Errorf("paramPlace in progress = %v, %v; want no producer for a parameter", ok, isParam)
+	}
+
+	for _, c := range []struct {
+		a, b returnPlace
+		want bool
+	}{
+		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k", path: []string{"p", "q"}}, true},
+		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k", path: []string{"p", "r"}}, false},
+		{returnPlace{key: "k", path: []string{"p"}}, returnPlace{key: "k"}, false},
+		{returnPlace{param: "g"}, returnPlace{param: "h"}, false},
+	} {
+		if got := samePlace(c.a, c.b); got != c.want {
+			t.Errorf("samePlace(%+v, %+v) = %v, want %v", c.a, c.b, got, c.want)
+		}
 	}
 }

@@ -26,11 +26,16 @@ import (
 // the prefix rather than beneath it, so they were documented at the root.
 //
 // Covered side by side: an ident return, a call return, a two-hop helper, a
-// group nested inside the helper, and one helper called from two parents (each
-// caller's route under its own parent only). The negatives: a fresh engine that
-// nothing mounts stays unprefixed, a helper returning its parameter keeps the
-// caller's prefix once, not twice, a helper whose returned local is reassigned
-// gets no prefix, and a recursive helper keeps its route.
+// group nested inside the helper, one helper called twice from one parent (one
+// group, both routes) and from two parents (each caller's route under its own
+// parent only), and a parameter forwarded through one and two helpers before it
+// is returned, or grouped on through a local (each call resolves to its own
+// argument). The negatives: a fresh engine that nothing mounts stays
+// unprefixed, a helper returning its parameter keeps the caller's prefix once,
+// not twice, a helper whose returned local is reassigned gets no prefix, a
+// recursive helper keeps its route, and two calls whose returned groups
+// collapse into one node, or whose local holds a parameter their callers
+// disagree on, get no prefix rather than each other's.
 func TestTestdata_ReturnedGroup(t *testing.T) {
 	out := loadTestdata(t, "returned_group", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -38,6 +43,7 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 
 	assertExactGetPaths(t, out, []string{
 		"/ident/x",
+		"/ident/again",
 		"/direct/x",
 		"/hop/x",
 		"/api/nested/x",
@@ -57,6 +63,23 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// Rec returns its own call. Following it bound the route beneath a
 		// recursive copy of Rec that expansion never builds, dropping it.
 		"/rec",
+		"/wpub/w1",
+		"/wadm/w2",
+		"/wtwo/w3",
+		"/vx/via/one",
+		// Suffixed returns parent.Group(suffix). Both calls pass /vp, so the
+		// parameter binding moves the Group under /vp once for the two of
+		// them, and that node carries neither "/a" nor "/b". Binding the
+		// routes there documented each under both suffixes; no invocation
+		// owns the node, so they stay where they were before #633.
+		"/sa",
+		"/sb",
+		// ViaTwice groups on `g := Identity(parent)`. The claim on g is
+		// resolved once for the function, and its two callers pass /ty and
+		// /tz: tracing parent followed the first caller and put both routes
+		// under /ty. With no one producer they stay unprefixed.
+		"/t1",
+		"/t2",
 	})
 }
 

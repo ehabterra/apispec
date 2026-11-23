@@ -70,9 +70,16 @@ type returnBinding struct {
 // selects this one. An empty path means the producer belongs to a scope with
 // one instance per caller (the value was passed in by the caller), so a plain
 // receiverChildren entry is already exact.
+//
+// param, when set, means the value is a parameter of the function being
+// resolved, and key and path are empty: which value that is depends on the
+// invocation, so it is answered by the caller that knows it (resolveReturned,
+// through its own call's ParamArgMap) rather than by tracing the parameter's
+// origin, which picks one invocation's argument for all of them.
 type returnPlace struct {
-	key  string
-	path []string
+	key   string
+	path  []string
+	param string
 }
 
 // returnResolver follows returned values to their producers. It reads indexes
@@ -93,6 +100,16 @@ type returnResolver struct {
 	// boundTo: per helper call site, the argument each of the helper's
 	// parameter-receiver edges was bound to there (see LazyTree.boundAt).
 	boundTo map[string]map[*metadata.CallGraphEdge]paramBind
+	// moves counts, per helper edge and producer key, the call sites whose
+	// parameter binding moved that edge under that producer. Above one, the
+	// moved node is shared by those invocations (see parentPath).
+	moves map[moveKey]int
+	// siteEdge: the call edge each invocation key resolveReturned has entered
+	// stands for, so a returned parameter can be read from that call's
+	// ParamArgMap.
+	siteEdge map[string]*metadata.CallGraphEdge
+	// params memoises paramPlace by (function BaseID, parameter name).
+	params map[string]paramMemo
 
 	memo     map[returnMemoKey]returnMemo
 	visiting map[returnMemoKey]bool
@@ -106,6 +123,16 @@ type paramBind struct {
 	arg  metadata.CallArgument
 	edge *metadata.CallGraphEdge
 	key  string
+}
+
+type moveKey struct {
+	edge *metadata.CallGraphEdge
+	key  string
+}
+
+type paramMemo struct {
+	place    returnPlace
+	ok, done bool
 }
 
 type returnMemoKey struct {
@@ -155,6 +182,7 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 		return returnPlace{}, false
 	}
 	site := strings.TrimPrefix(pe.Callee.ID(), "*")
+	r.siteEdge[site] = pe
 	var inner returnPlace
 	switch rv.GetKind() {
 	case metadata.KindIdent:
@@ -172,7 +200,7 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 		}
 		// A returned parameter is the caller's own value, so its producer is in
 		// the caller's scope and as exact as any receiver claim there.
-		return r.argPlace(arg, pe, hops+1)
+		return r.paramArgPlace(arg, pe, outerSite, hops+1)
 	case metadata.KindCall:
 		e := r.t.calleeBodyEdge(pe, rv)
 		if e == nil {
@@ -185,6 +213,11 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 	if !ok {
 		return returnPlace{}, false
 	}
+	if inner.param != "" {
+		// The helper handed back one of its parameters: the value pe passed,
+		// which paramArgPlace made a reference only after finding it there.
+		return r.paramArgPlace(pe.ParamArgMap[inner.param], pe, outerSite, hops+1)
+	}
 	// Anchored at pe's own node: extend with where pe sits in ITS invocation.
 	if n := len(inner.path); n > 0 && inner.path[n-1] == site {
 		up, ok := r.parentPath(pe, outerSite, hops+1)
@@ -194,6 +227,24 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 		inner.path = append(inner.path[:n:n], up...)
 	}
 	return inner, true
+}
+
+// paramArgPlace resolves arg, the value the call pe passed for a parameter its
+// callee returned. pe runs inside a function invoked at outerSite; when arg is
+// that function's own parameter, the value is whatever that invocation passed,
+// so the answer is a reference for the invocation's caller to resolve. Without
+// it, `Wrap(pub)` and `Wrap(adm)` around `return Identity(parent)` would share
+// whichever producer tracing `parent` lands on.
+func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.CallGraphEdge, outerSite string, hops int) (returnPlace, bool) {
+	if outerSite != "" && arg.GetKind() == metadata.KindIdent {
+		name := arg.GetName()
+		if outer := r.siteEdge[outerSite]; outer != nil && len(r.localRels[name+"\x00"+pe.Caller.BaseID()]) == 0 {
+			if _, isParam := outer.ParamArgMap[name]; isParam {
+				return returnPlace{param: name}, true
+			}
+		}
+	}
+	return r.argPlace(arg, pe, hops)
 }
 
 // holder is the place of the value at index idx of the call e, for e inside a
@@ -230,6 +281,17 @@ func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string,
 func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops int) ([]string, bool) {
 	if site != "" {
 		if b, ok := r.boundTo[site][e]; ok {
+			// Bound to the same producer at another call site too, e is one
+			// node for all of them. That is exact while e's arguments are the
+			// same in every invocation (`Ident(r)` twice: one /ident group),
+			// but not when they come from the invocation: `Version(pub, "/a")`
+			// and `Version(pub, "/b")` returning `parent.Group(suffix)` are one
+			// Group node under pub that carries neither suffix, and binding
+			// both callers' routes beneath it merges them. No single
+			// invocation owns that node.
+			if r.moves[moveKey{edge: e, key: b.key}] > 1 && r.argsVary(e, b.edge) {
+				return nil, false
+			}
 			p, ok := r.argPlace(b.arg, b.edge, hops+1)
 			if !ok {
 				return []string{b.key}, true
@@ -245,12 +307,58 @@ func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops
 		if !ok {
 			return nil, false
 		}
+		if h.param != "" {
+			// The local holds one of this function's parameters. The claim
+			// pass resolved it with no invocation to read it from, so e hangs
+			// where every call site agrees the parameter's producer is
+			// (paramPlace). When they disagree, e stays in the function's body,
+			// one copy per invocation that the route walk does not tell apart
+			// (it keys a visit by node and parent): an edge bound beneath one
+			// of them would be dropped, so there is no place to offer.
+			h, ok = r.returned(rel.Edge, rel.Assignment.ReturnIndex, "", hops+1)
+			if !ok {
+				return nil, false
+			}
+		}
 		return append([]string{h.key}, h.path...), true
 	}
 	if site == "" {
 		return nil, true
 	}
 	return []string{site}, true
+}
+
+// argsVary reports whether any argument of e, a call in helper's callee body,
+// can differ between invocations of the helper: it mentions one of the helper's
+// parameters or locals. Literals and package-level names cannot.
+func (r *returnResolver) argsVary(e, helper *metadata.CallGraphEdge) bool {
+	assigns := r.t.calleeBody(helper).assigns
+	var varies func(a *metadata.CallArgument) bool
+	varies = func(a *metadata.CallArgument) bool {
+		if a == nil {
+			return false
+		}
+		if a.GetKind() == metadata.KindIdent {
+			name := a.GetName()
+			_, isParam := helper.ParamArgMap[name]
+			return isParam || len(assigns[name]) > 0
+		}
+		if varies(a.X) || varies(a.Fun) {
+			return true
+		}
+		for _, sub := range a.Args {
+			if varies(sub) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, a := range e.Args {
+		if varies(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // bind records that, at the helper call site, the helper's calls on a parameter
@@ -263,6 +371,7 @@ func (r *returnResolver) bind(site string, b paramBind, edges []*metadata.CallGr
 	}
 	for _, e := range edges {
 		bound[e] = b
+		r.moves[moveKey{edge: e, key: b.key}]++
 	}
 }
 
@@ -279,9 +388,15 @@ func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.Call
 		// the origin trace below steps INTO a helper's return and, for a
 		// returned call (`return r.Group("/x")`), comes out at the helper's
 		// receiver — the router the group was made from, not the group.
-		if rels := r.localRels[arg.GetName()+"\x00"+edge.Caller.BaseID()]; len(rels) > 0 && sameProducer(rels) {
+		rels := r.localRels[arg.GetName()+"\x00"+edge.Caller.BaseID()]
+		if len(rels) > 0 && sameProducer(rels) {
 			if p, ok := r.returned(rels[0].Edge, rels[0].Assignment.ReturnIndex, "", hops+1); ok {
 				return p, true
+			}
+		}
+		if len(rels) == 0 {
+			if p, ok, isParam := r.paramPlace(arg.GetName(), &edge.Caller, hops+1); isParam {
+				return p, ok
 			}
 		}
 		originVar, originPkg, originFunc := r.t.traceOrigin(
@@ -312,6 +427,63 @@ func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.Call
 		return returnPlace{key: arg.ID()}, true
 	}
 	return returnPlace{}, false
+}
+
+// paramPlace resolves the parameter name of the function fn with no invocation
+// to read it from: through every call site of fn, and only when they all agree.
+// isParam is false when name is not one of fn's parameters.
+//
+// Tracing the parameter's origin instead follows fn's first call site and
+// answers with that caller's argument for every invocation — a helper called
+// as Via(vx) and Via(vy) put both callers' routes under /vx.
+func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (place returnPlace, ok, isParam bool) {
+	callers := r.t.meta.Callees[fn.BaseID()]
+	if len(callers) == 0 {
+		return returnPlace{}, false, false
+	}
+	if _, isParam := callers[0].ParamArgMap[name]; !isParam {
+		return returnPlace{}, false, false
+	}
+	mk := name + "\x00" + fn.BaseID()
+	if m, seen := r.params[mk]; seen {
+		// A parameter reached again while it is being resolved forwards itself
+		// through a recursive call: no producer along that path.
+		return m.place, m.ok && m.done, true
+	}
+	r.params[mk] = paramMemo{}
+	var first returnPlace
+	ok = true
+	for i, c := range callers {
+		arg, has := c.ParamArgMap[name]
+		if !has {
+			ok = false
+			break
+		}
+		p, pok := r.argPlace(arg, c, hops)
+		if !pok || (i > 0 && !samePlace(first, p)) {
+			ok = false
+			break
+		}
+		first = p
+	}
+	if !ok {
+		first = returnPlace{}
+	}
+	r.params[mk] = paramMemo{place: first, ok: ok, done: true}
+	return first, ok, true
+}
+
+// samePlace reports whether two places are the same node.
+func samePlace(a, b returnPlace) bool {
+	if a.key != b.key || a.param != b.param || len(a.path) != len(b.path) {
+		return false
+	}
+	for i := range a.path {
+		if a.path[i] != b.path[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // producerRel returns the assignment producerByVar recorded for k, when there

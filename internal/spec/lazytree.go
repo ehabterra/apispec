@@ -839,6 +839,9 @@ func (t *LazyTree) buildRelations() {
 		localRels:     map[string][]*metadata.AssignmentLink{},
 		claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
 		boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
+		moves:         map[moveKey]int{},
+		siteEdge:      map[string]*metadata.CallGraphEdge{},
+		params:        map[string]paramMemo{},
 		memo:          map[returnMemoKey]returnMemo{},
 		visiting:      map[returnMemoKey]bool{},
 	}
