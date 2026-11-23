@@ -571,59 +571,101 @@ func (m *Metadata) BuildAssignmentRelationships() map[AssignmentKey]*AssignmentL
 			}
 		}
 
-		// Process assignments for this edge
+		// Process assignments for this edge. An entry function's edge carries
+		// the caller-scope assignment its call feeds (`same := Same()` in main)
+		// beside the callee body's own, under the same name when the factory
+		// builds its result in a local called `same` too. The two are different
+		// variables, so each scope's latest assignment is linked on its own:
+		// taking the latest of the merged list kept only the caller's and lost
+		// the callee's (issue #628).
 		for recvVarName, assigns := range edge.AssignmentMap {
-			assignment := assigns[len(assigns)-1] // Latest assignment
-
-			akey := AssignmentKey{
-				Name:      recvVarName,
-				Pkg:       m.StringPool.GetString(assignment.Pkg),
-				Type:      m.StringPool.GetString(assignment.ConcreteType),
-				Container: m.StringPool.GetString(assignment.Func),
-			}
-
-			// The producer is the call whose result the variable holds: a call
-			// in the callee's body, or — for an assignment in the CALLER's own
-			// scope, which is how `main`'s `g := r.Group(…)` is recorded on the
-			// producing edge — this edge itself.
-			//
-			// Anything else has no producer and is left out. A variable
-			// assigned inside the callee with no call behind it (`x := &T{…}`,
-			// `folder := frm.Folder`, `counts[k] += 1`) used to fall back to
-			// `edge` too, which is the invocation of the function it is written
-			// in. For a handler closure that function is the route
-			// REGISTRATION (`UploadToService(router)`), so any argument reading
-			// the variable expanded every route it registers beneath itself —
-			// other handlers' redirects, rate limiters and query parameters
-			// documented as this one's (issue #550).
-			var assignmentEdge *CallGraphEdge
-			if callers, exists := m.Callers[edge.Callee.BaseID()]; exists {
-				for _, nestedEdge := range callers {
-					if nestedEdge.CalleeRecvVarName == recvVarName {
-						assignmentEdge = nestedEdge
-						break
-					}
+			callerIdx, calleeIdx := -1, -1
+			for i := range assigns {
+				if m.inCallerScope(edge, &assigns[i]) {
+					callerIdx = i
+				} else {
+					calleeIdx = i
 				}
 			}
-			if assignmentEdge == nil && assignment.Func == edge.Caller.Name {
-				assignmentEdge = edge
-			}
-			if assignmentEdge == nil && m.storesBoundParameter(edge, &assignment) {
-				assignmentEdge = edge
-			}
-			if assignmentEdge == nil {
-				continue
-			}
-
-			relationships[akey] = &AssignmentLink{
-				AssignmentKey: akey,
-				Assignment:    &assignment,
-				Edge:          assignmentEdge,
+			// The two keys differ by Container; callee scope goes first, as
+			// the walk records it first.
+			for _, idx := range [2]int{calleeIdx, callerIdx} {
+				if idx < 0 {
+					continue
+				}
+				assignment := assigns[idx]
+				akey := AssignmentKey{
+					Name:      recvVarName,
+					Pkg:       m.StringPool.GetString(assignment.Pkg),
+					Type:      m.StringPool.GetString(assignment.ConcreteType),
+					Container: m.StringPool.GetString(assignment.Func),
+				}
+				assignmentEdge := m.assignmentProducer(edge, recvVarName, &assignment, idx == callerIdx)
+				if assignmentEdge == nil {
+					continue
+				}
+				relationships[akey] = &AssignmentLink{
+					AssignmentKey: akey,
+					Assignment:    &assignment,
+					Edge:          assignmentEdge,
+				}
 			}
 		}
 	}
 
 	return relationships
+}
+
+// inCallerScope reports whether an assignment recorded on edge was written in
+// the edge's caller rather than in the callee's body. Only an entry function's
+// edges record such assignments — the one the call's result is assigned in —
+// so a callee that merely shares its caller's name (`Routes` calling
+// `web.Routes`) keeps its body's assignments in the callee scope. A call to
+// itself has one scope on both sides, which the callee-body lookup searches.
+func (m *Metadata) inCallerScope(edge *CallGraphEdge, a *Assignment) bool {
+	if a.Func != edge.Caller.Name {
+		return false
+	}
+	if edge.Caller.Name == edge.Callee.Name && edge.Caller.Pkg == edge.Callee.Pkg && edge.Caller.RecvType == edge.Callee.RecvType {
+		return false
+	}
+	return isEntryFunc(m.StringPool.GetString(edge.Caller.Name), m.StringPool.GetString(edge.Caller.RecvType))
+}
+
+// assignmentProducer returns the call whose result the variable holds, or nil
+// when there is none.
+//
+// For an assignment in the callee's body that is a call in that body assigned
+// to the variable. For an assignment in the CALLER's own scope — how `main`'s
+// `g := r.Group(…)` is recorded on the producing edge — it is edge itself, and
+// never a call in the callee's body: a factory that builds its result in a
+// local named like the caller's variable (`same := chi.NewRouter()` inside
+// `Same()`, `same := Same()` in main) has a call assigned to that name, but it
+// is a different variable. Linking the caller's `same` to it gave a router
+// mounted from the variable no routes beneath it, so they lost the mount
+// prefix (issue #628).
+//
+// Anything else has no producer and is left out. A variable assigned inside
+// the callee with no call behind it (`x := &T{…}`, `folder := frm.Folder`,
+// `counts[k] += 1`) used to fall back to edge too, which is the invocation of
+// the function it is written in. For a handler closure that function is the
+// route REGISTRATION (`UploadToService(router)`), so any argument reading the
+// variable expanded every route it registers beneath itself — other handlers'
+// redirects, rate limiters and query parameters documented as this one's
+// (issue #550).
+func (m *Metadata) assignmentProducer(edge *CallGraphEdge, name string, a *Assignment, callerScope bool) *CallGraphEdge {
+	if callerScope {
+		return edge
+	}
+	for _, nested := range m.Callers[edge.Callee.BaseID()] {
+		if nested.CalleeRecvVarName == name {
+			return nested
+		}
+	}
+	if m.storesBoundParameter(edge, a) {
+		return edge
+	}
+	return nil
 }
 
 // storesBoundParameter reports whether an assignment in the body of the

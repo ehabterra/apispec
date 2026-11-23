@@ -24,7 +24,9 @@ func TestLazyTreeBuildRelationsScopesReceiverClaimsToAssignmentFunction(t *testi
 	pool := metadata.NewStringPool()
 	meta := &metadata.Metadata{StringPool: pool}
 	pkg := pool.Get("example")
-	routesFunc := pool.Get("routes.func1")
+	// The router wiring sits in main: only an entry function's edges carry an
+	// assignment from the caller's own scope (issue #628).
+	routesFunc := pool.Get("main")
 	middlewareFunc := pool.Get("middleware.func1")
 
 	// Pooled string fields use -1 as the "unset" sentinel; 0 is a valid index
@@ -54,26 +56,26 @@ func TestLazyTreeBuildRelationsScopesReceiverClaimsToAssignmentFunction(t *testi
 
 	meta.CallGraph = []metadata.CallGraphEdge{
 		{
-			Caller: call("routes.func1", "1"),
+			Caller: call("main", "1"),
 			Callee: call("middleware", "2"),
 			AssignmentMap: map[string][]metadata.Assignment{
 				"r": {assignment("r", middlewareFunc, "*net/http.Request")},
 			},
 		},
 		{
-			Caller:        call("routes.func1", "3"),
+			Caller:        call("main", "3"),
 			Callee:        call("Get", "4"),
 			CalleeVarName: "r",
 		},
 		{
-			Caller: call("routes.func1", "5"),
+			Caller: call("main", "5"),
 			Callee: call("Group", "6"),
 			AssignmentMap: map[string][]metadata.Assignment{
 				"g": {assignment("g", routesFunc, "chi.Router")},
 			},
 		},
 		{
-			Caller:        call("routes.func1", "7"),
+			Caller:        call("main", "7"),
 			Callee:        call("Get", "8"),
 			CalleeVarName: "g",
 		},
