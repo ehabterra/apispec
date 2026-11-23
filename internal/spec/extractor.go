@@ -482,18 +482,29 @@ func (e *Extractor) ExtractRoutes() []*RouteInfo {
 // (/api/user/{id} but also /api/{id}, /user/{id}, /{id}). Only the most-mounted
 // one is real.
 //
-// A route is dropped when, for the same (Function, Method, Path), another route
-// exists whose mount-path segments are a strict ordered *superset*: i.e. this
-// route's segments are a subsequence of the other's. Genuine multi-mounts of
-// the same sub-router at distinct prefixes (e.g. /v2/api and /{mountPoint}) are
-// not subsequences of each other, so both survive.
+// A route is dropped when, for the same registration call site, Function,
+// Method and Path, another route exists whose mount-path segments are a strict
+// ordered *superset*: i.e. this route's segments are a subsequence of the
+// other's. Genuine multi-mounts of the same sub-router at distinct prefixes
+// (e.g. /v2/api and /{mountPoint}) are not subsequences of each other, so both
+// survive.
+//
+// The call site is what makes a pair an echo rather than two endpoints (issue
+// #614). An echo is ONE registration reached through several contexts; two
+// registrations whose prefixes merely extend each other
+//
+//	repo.GET("/attachments/:uuid", h)
+//	repo.Group("/issues/:index").GET("/attachments/:uuid", h)
+//
+// share every other field of the key and have subsequence mounts too, and the
+// shorter one is a real endpoint. Segments alone cannot tell them apart.
 func dropSubsumedMountPrefixes(routes []*RouteInfo) []*RouteInfo {
-	type key struct{ fn, method, path string }
+	type key struct{ site, fn, method, path string }
 	groups := make(map[key][]int)
 	segs := make([][]string, len(routes))
 	for i, r := range routes {
 		segs[i] = mountSegments(r.MountPath)
-		k := key{r.Function, r.Method, r.Path}
+		k := key{registrationSite(r), r.Function, r.Method, r.Path}
 		groups[k] = append(groups[k], i)
 	}
 
@@ -547,6 +558,22 @@ func dropSubsumedMountPrefixes(routes []*RouteInfo) []*RouteInfo {
 		}
 	}
 	return out
+}
+
+// registrationSite identifies the registration call a route was matched at:
+// the callee's instance ID, which carries the call's source position. Echo
+// copies of one registration are different tree nodes over the same call-graph
+// edge, so they share it; separate registrations do not. A route with no
+// matched edge (only hand-built ones in tests) has no site, and all such
+// routes are judged together as before.
+func registrationSite(r *RouteInfo) string {
+	if r.Node == nil {
+		return ""
+	}
+	if edge := r.Node.GetEdge(); edge != nil {
+		return edge.Callee.ID()
+	}
+	return ""
 }
 
 // mountSegments splits a mount path into its non-empty segments
