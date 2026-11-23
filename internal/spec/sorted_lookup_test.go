@@ -34,33 +34,34 @@ func TestSortedAssignmentRelationshipsIsATotalOrder(t *testing.T) {
 	assign := func(pkg, typ, fn string) []metadata.Assignment {
 		return []metadata.Assignment{{Pkg: pool.Get(pkg), ConcreteType: pool.Get(typ), Func: pool.Get(fn)}}
 	}
-	// Caller-scope assignments, recorded on the edge that produced them (the
-	// way `main`'s are): an assignment belongs to its producing edge only in
-	// that edge's caller's scope (issue #550), so the link that differs by
-	// Container comes from a second caller of the same callee.
+	// Caller-scope assignments, recorded on the edge that produced them, which
+	// only an entry function's edges carry: an assignment belongs to its
+	// producing edge only in that edge's caller's scope (issues #550, #628), so
+	// the link that differs by Container comes from a second entry function
+	// calling the same callee.
 	newCallee := metadata.Call{Meta: meta, Name: pool.Get("New"), Pkg: pool.Get("app/router"), RecvType: -1}
 	meta.CallGraph = []metadata.CallGraphEdge{
 		{
-			Caller: metadata.Call{Meta: meta, Name: pool.Get("Setup"), Pkg: pool.Get("app"), RecvType: -1},
+			Caller: metadata.Call{Meta: meta, Name: pool.Get("init"), Pkg: pool.Get("app"), RecvType: -1},
 			Callee: newCallee,
 			AssignmentMap: map[string][]metadata.Assignment{
-				"r": assign("app", "*Router", "Setup"),
-				"s": assign("app", "*Router", "Setup"), // differs by Name
-				"t": assign("app", "*Engine", "Setup"), // differs by Type
-				"v": assign("zzz", "*Router", "Setup"), // differs by Pkg
+				"r": assign("app", "*Router", "init"),
+				"s": assign("app", "*Router", "init"), // differs by Name
+				"t": assign("app", "*Engine", "init"), // differs by Type
+				"v": assign("zzz", "*Router", "init"), // differs by Pkg
 			},
 		},
 		{
-			Caller: metadata.Call{Meta: meta, Name: pool.Get("Startup"), Pkg: pool.Get("app"), RecvType: -1},
+			Caller: metadata.Call{Meta: meta, Name: pool.Get("main"), Pkg: pool.Get("app"), RecvType: -1},
 			Callee: newCallee,
 			AssignmentMap: map[string][]metadata.Assignment{
-				"u": assign("app", "*Router", "Startup"), // differs by Container
+				"u": assign("app", "*Router", "main"), // differs by Container
 			},
 		},
 	}
 
-	want := []string{"Setup|app|r|*Router", "Setup|app|s|*Router", "Setup|app|t|*Engine",
-		"Setup|zzz|v|*Router", "Startup|app|u|*Router"}
+	want := []string{"init|app|r|*Router", "init|app|s|*Router", "init|app|t|*Engine",
+		"init|zzz|v|*Router", "main|app|u|*Router"}
 	key := func(l *metadata.AssignmentLink) string {
 		k := l.AssignmentKey
 		return k.Container + "|" + k.Pkg + "|" + k.Name + "|" + k.Type

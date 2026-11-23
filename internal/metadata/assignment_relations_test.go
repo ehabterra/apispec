@@ -473,3 +473,90 @@ func main() { handler(1) }
 		}
 	}
 }
+
+// A caller-scope variable is produced by the call it is assigned from, even
+// when the callee builds its result in a local of the same name. Matching the
+// caller's `same` by name against the factory's own `same := newRouter()`
+// made that inner call the producer, so a router mounted from the variable had
+// no routes beneath it and lost its prefix (issue #628). The factory's local
+// keeps its own producer under its own scope.
+func TestCallerScopeAssignmentIgnoresCalleeLocalOfSameName(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type Router struct{}
+
+func newRouter() *Router { return &Router{} }
+
+func (r *Router) Get(string) {}
+
+func Same() *Router {
+	same := newRouter()
+	same.Get("/same")
+	return same
+}
+
+func main() {
+	same := Same()
+	_ = same
+}
+`)
+	type link struct{ caller, callee string }
+	linked := map[string]link{}
+	for key, rel := range meta.BuildAssignmentRelationships() {
+		if key.Name != "same" {
+			continue
+		}
+		linked[key.Container] = link{
+			caller: meta.StringPool.GetString(rel.Edge.Caller.Name),
+			callee: meta.StringPool.GetString(rel.Edge.Callee.Name),
+		}
+	}
+	if got, want := linked["main"], (link{"main", "Same"}); got != want {
+		t.Errorf("main's same produced by %s -> %s, want %s -> %s; have %v",
+			got.caller, got.callee, want.caller, want.callee, linked)
+	}
+	if got, want := linked["Same"], (link{"Same", "newRouter"}); got != want {
+		t.Errorf("Same's same produced by %s -> %s, want %s -> %s; have %v",
+			got.caller, got.callee, want.caller, want.callee, linked)
+	}
+}
+
+// The callee-body lookup is what links a helper's own variables: `same :=
+// Same()` in setup is recorded on main's call of setup, and its producer is the
+// call in setup's body, not that invocation, and not the factory's inner
+// `same := newRouter()` either (issue #628).
+func TestCalleeScopeAssignmentLinksItsBodyCall(t *testing.T) {
+	meta := metadataFor(t, `package p
+
+type Router struct{}
+
+func newRouter() *Router { return &Router{} }
+
+func use(*Router) {}
+
+func Same() *Router {
+	same := newRouter()
+	return same
+}
+
+func setup() {
+	same := Same()
+	use(same)
+}
+
+func main() { setup() }
+`)
+	linked := map[string]string{}
+	for key, rel := range meta.BuildAssignmentRelationships() {
+		if key.Name == "same" {
+			linked[key.Container] = meta.StringPool.GetString(rel.Edge.Caller.Name) + " -> " +
+				meta.StringPool.GetString(rel.Edge.Callee.Name)
+		}
+	}
+	if got, want := linked["setup"], "setup -> Same"; got != want {
+		t.Errorf("setup's same produced by %q, want %q; have %v", got, want, linked)
+	}
+	if got, want := linked["Same"], "Same -> newRouter"; got != want {
+		t.Errorf("Same's same produced by %q, want %q; have %v", got, want, linked)
+	}
+}

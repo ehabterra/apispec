@@ -55,12 +55,9 @@ func TestTestdata_WrapperMountCrossPkg(t *testing.T) {
 		// MountFixed is left unapplied: the route keeps the context it was
 		// registered in rather than "/v1/f", which drops the wrapper's "/fixed".
 		"/f": true,
-		// Change detector: the factory's local has the caller variable's own
-		// name, and the metadata assignment relation pairs the caller's `same`
-		// with the factory's `same := web.NewRouter()` by name, so the variable
-		// has no producer subtree to mount. When that is fixed this becomes
-		// "/api/same/same".
-		"/same": true,
+		// Mount, the factory's local has the caller variable's own name
+		// (issue #628).
+		"/api/same/same": true,
 		// MountPair's second router is never under "/api/p" or "/api/pv".
 		// Change detector: the body's `Mount("/extra", extra.ChiRouter)` names
 		// the parameter through a field selector, and resolveArgThroughParams
