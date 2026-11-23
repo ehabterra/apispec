@@ -34,9 +34,11 @@ import (
 // unprefixed, a helper returning its parameter keeps the caller's prefix once,
 // not twice, a helper whose returned local is reassigned gets no prefix, a
 // recursive helper keeps its route, a helper that reassigns the parameter it
-// returns gets no prefix, and two calls whose returned groups collapse into
-// one node, in either statement order, or whose local holds a parameter their
-// callers disagree on, get no prefix rather than each other's.
+// returns, or groups on, gets no prefix, and two calls whose returned groups
+// collapse into one node, in either statement order, or are moved copies that
+// read their suffix from no one call, or whose local holds a parameter their
+// callers disagree on, get no prefix rather than each other's. A helper-local
+// group handed back through another helper stays per invocation.
 func TestTestdata_ReturnedGroup(t *testing.T) {
 	out := loadTestdata(t, "returned_group", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -93,6 +95,28 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// under /ty. With no one producer they stay unprefixed.
 		"/t1",
 		"/t2",
+		// LocalWrap and LocalVersion return a helper's result for a group of
+		// their own local. Each invocation builds its own copy of that local's
+		// Group, so each caller's route belongs beneath its own copy only;
+		// resolved without the invocation, both copies took both routes.
+		"/lpub/lv/l1",
+		"/ladm/lv/l2",
+		"/lpub/lw/v/m1",
+		"/ladm/lw/v/m2",
+		// SwapGroup assigns `parent = other` on one path before grouping on
+		// it: the Group runs on /sp or on /so, so neither is the prefix. It
+		// was documented under /sp/leaf.
+		"/swapgroup",
+		// Branch's Group is moved under /bp by both calls, once named by bp
+		// and once by Identity(bp): one node carrying neither suffix, which
+		// documented /a/ba, /b/ba, /b/bb and /bp/{suffix}/ba.
+		"/ba",
+		"/bb",
+		// Area's calls move the Group under distinct parents, but each moved
+		// copy reads the suffix from neither call: /ap/{suffix}/aa beside
+		// /a/aa. No invocation's place is known, so no prefix.
+		"/aa",
+		"/ab",
 	})
 }
 

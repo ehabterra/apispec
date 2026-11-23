@@ -16,6 +16,10 @@
 //	/wadm/w2            forwarded, and each call resolves to its own argument
 //	/wtwo/w3          Wrap2 forwards through Wrap: two hops of forwarding
 //	/vx/via/one       Via groups on a local holding its forwarded parameter
+//	/lpub/lv/l1       LocalWrap returns Identity(g) for its own local group g:
+//	/ladm/lv/l2         followed in each invocation, not shared by both
+//	/lpub/lw/v/m1     LocalVersion returns Version(g) for its own local group:
+//	/ladm/lw/v/m2       the same, one helper further
 //
 // Negative cases:
 //
@@ -38,6 +42,11 @@
 //	/t1, /t2          ViaTwice is Via called from two parents: the local's
 //	                  producer depends on the invocation, and the claim on it
 //	                  cannot say which, so neither parent is applied
+//	/swapgroup        SwapGroup groups on a parameter it reassigns on one path
+//	/ba, /bb          Branch(bp, "/a") and Branch(Identity(bp), "/b"): two
+//	                  keys for the one Group node moved under /bp
+//	/aa, /ab          Area(ap, "/a") and Area(aq, "/b"): distinct parents, but
+//	                  the moved Group reads its suffix from neither call
 package main
 
 import (
@@ -131,6 +140,31 @@ func SwapRet(parent, other *gin.RouterGroup, swap bool) *gin.RouterGroup {
 	return parent
 }
 
+func LocalWrap(parent *gin.RouterGroup) *gin.RouterGroup {
+	g := parent.Group("/lv")
+	return Identity(g)
+}
+
+func LocalVersion(parent *gin.RouterGroup) *gin.RouterGroup {
+	g := parent.Group("/lw")
+	return Version(g)
+}
+
+func SwapGroup(parent, other *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		parent = other
+	}
+	return parent.Group("/leaf")
+}
+
+func Branch(parent *gin.RouterGroup, suffix string) *gin.RouterGroup {
+	return parent.Group(suffix)
+}
+
+func Area(parent *gin.RouterGroup, suffix string) *gin.RouterGroup {
+	return parent.Group(suffix)
+}
+
 func main() {
 	r := gin.New()
 
@@ -219,6 +253,32 @@ func main() {
 	sw.GET("/swap", h)
 	sr := SwapRet(sp, so, true)
 	sr.GET("/swapret", h)
+	sg := SwapGroup(sp, so, true)
+	sg.GET("/swapgroup", h)
+
+	lpub := r.Group("/lpub")
+	ladm := r.Group("/ladm")
+	l1 := LocalWrap(lpub)
+	l1.GET("/l1", h)
+	l2 := LocalWrap(ladm)
+	l2.GET("/l2", h)
+	m1 := LocalVersion(lpub)
+	m1.GET("/m1", h)
+	m2 := LocalVersion(ladm)
+	m2.GET("/m2", h)
+
+	bp := r.Group("/bp")
+	ba := Branch(bp, "/a")
+	ba.GET("/ba", h)
+	bb := Branch(Identity(bp), "/b")
+	bb.GET("/bb", h)
+
+	ap := r.Group("/ap")
+	aq := r.Group("/aq")
+	aa := Area(ap, "/a")
+	aa.GET("/aa", h)
+	ab := Area(aq, "/b")
+	ab.GET("/ab", h)
 
 	_ = r.Run(":8080")
 }

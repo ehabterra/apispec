@@ -839,7 +839,7 @@ func (t *LazyTree) buildRelations() {
 		localRels:     map[string][]*metadata.AssignmentLink{},
 		claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
 		boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
-		moves:         map[moveKey]int{},
+		moves:         map[*metadata.CallGraphEdge]int{},
 		siteEdge:      map[string]*metadata.CallGraphEdge{},
 		params:        map[string]paramMemo{},
 		memo:          map[returnMemoKey]returnMemo{},
@@ -918,10 +918,10 @@ func (t *LazyTree) buildRelations() {
 			if !ok {
 				// Resolved once the bindings that can be are known: a value a
 				// helper returned may still have a producer (issue #633).
-				unresolved = append(unresolved, paramClaim{bind: paramBind{arg: arg, edge: edge}, site: site, edges: paramEdges})
+				unresolved = append(unresolved, paramClaim{bind: paramBind{arg: arg, edge: edge, param: param}, site: site, edges: paramEdges})
 				continue
 			}
-			b := paramBind{arg: arg, edge: edge, key: producerKey}
+			b := paramBind{arg: arg, edge: edge, param: param, key: producerKey}
 			paramClaims = append(paramClaims, paramClaim{bind: b, site: site, edges: paramEdges})
 			res.bind(site, b, paramEdges)
 		}

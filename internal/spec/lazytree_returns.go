@@ -100,10 +100,11 @@ type returnResolver struct {
 	// boundTo: per helper call site, the argument each of the helper's
 	// parameter-receiver edges was bound to there (see LazyTree.boundAt).
 	boundTo map[string]map[*metadata.CallGraphEdge]paramBind
-	// moves counts, per helper edge and producer key, the call sites whose
-	// parameter binding moved that edge under that producer. Above one, the
-	// moved node is shared by those invocations (see parentPath).
-	moves map[moveKey]int
+	// moves counts, per helper edge, the call sites whose parameter binding
+	// moved that edge under a producer — any producer: two bindings name
+	// different keys for one node (`pub` and `Identity(pub)`), and a moved
+	// call reads its arguments from no single one of them (see parentPath).
+	moves map[*metadata.CallGraphEdge]int
 	// pending counts, per helper edge, the parameter bindings that may still
 	// move it once resolved, and pendingAt marks them per call site. A
 	// binding is pending from before the first one is resolved until it is
@@ -130,14 +131,10 @@ type returnResolver struct {
 }
 
 type paramBind struct {
-	arg  metadata.CallArgument
-	edge *metadata.CallGraphEdge
-	key  string
-}
-
-type moveKey struct {
-	edge *metadata.CallGraphEdge
-	key  string
+	arg   metadata.CallArgument
+	edge  *metadata.CallGraphEdge
+	param string // the callee's parameter arg was passed for
+	key   string
 }
 
 type paramMemo struct {
@@ -206,7 +203,7 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 			if !sameProducer(rels) {
 				return returnPlace{}, false // reassigned on some path: no one producer
 			}
-			inner, ok = r.holder(rels[0].Edge, rels[0].Assignment.ReturnIndex, site, hops+1)
+			inner, ok = r.holder(rels[0].Edge, rels[0].Assignment.ReturnIndex, site, outerSite, hops+1)
 			break
 		}
 		arg, isParam := pe.ParamArgMap[name]
@@ -221,21 +218,28 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 		if e == nil {
 			return returnPlace{}, false
 		}
-		inner, ok = r.holder(e, 0, site, hops+1)
+		inner, ok = r.holder(e, 0, site, outerSite, hops+1)
 	default:
 		return returnPlace{}, false
 	}
 	if !ok {
 		return returnPlace{}, false
 	}
+	return r.anchor(inner, pe, outerSite, hops)
+}
+
+// anchor completes inner, a place found inside the callee of pe, for pe inside
+// a function invoked at outerSite.
+func (r *returnResolver) anchor(inner returnPlace, pe *metadata.CallGraphEdge, outerSite string, hops int) (returnPlace, bool) {
 	if inner.param != "" {
 		// The helper handed back one of its parameters: the value pe passed,
 		// which paramArgPlace made a reference only after finding it there.
 		return r.paramArgPlace(pe.ParamArgMap[inner.param], pe, outerSite, hops+1)
 	}
 	// Anchored at pe's own node: extend with where pe sits in ITS invocation.
+	site := strings.TrimPrefix(pe.Callee.ID(), "*")
 	if n := len(inner.path); n > 0 && inner.path[n-1] == site {
-		up, ok := r.parentPath(pe, outerSite, hops+1)
+		up, ok := r.parentPath(pe, outerSite, "", hops+1)
 		if !ok {
 			return returnPlace{}, false
 		}
@@ -254,16 +258,29 @@ func (r *returnResolver) resolveReturned(pe *metadata.CallGraphEdge, idx int, ou
 // A parameter the function assigns to (`parent = other` on some path) holds
 // that invocation's argument only on the paths that skip the assignment, so it
 // has no place.
+//
+// A local of that function (`g := p.Group("/v"); return Identity(g)`) has a
+// producer of its own, but one node per invocation too: it is followed in the
+// invocation at outerSite, as a returned local is, or the copies made for
+// LocalWrap(pub) and LocalWrap(adm) would both take every caller's routes.
 func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.CallGraphEdge, outerSite string, hops int) (returnPlace, bool) {
-	if outerSite != "" && arg.GetKind() == metadata.KindIdent {
+	if outer := r.siteEdge[outerSite]; outer != nil && arg.GetKind() == metadata.KindIdent {
 		name := arg.GetName()
-		if outer := r.siteEdge[outerSite]; outer != nil && len(r.localRels[name+"\x00"+pe.Caller.BaseID()]) == 0 {
-			if _, isParam := outer.ParamArgMap[name]; isParam {
-				if r.t.assignsParam(outer, name) {
-					return returnPlace{}, false
-				}
-				return returnPlace{param: name}, true
+		if rels := r.localRels[name+"\x00"+pe.Caller.BaseID()]; len(rels) > 0 {
+			if !sameProducer(rels) {
+				return returnPlace{}, false // reassigned on some path: no one producer
 			}
+			inner, ok := r.holder(rels[0].Edge, rels[0].Assignment.ReturnIndex, outerSite, "", hops+1)
+			if !ok {
+				return returnPlace{}, false
+			}
+			return r.anchor(inner, outer, "", hops)
+		}
+		if _, isParam := outer.ParamArgMap[name]; isParam {
+			if r.t.assignsParam(outer, name) {
+				return returnPlace{}, false
+			}
+			return returnPlace{param: name}, true
 		}
 	}
 	return r.argPlace(arg, pe, hops)
@@ -279,13 +296,14 @@ func (r *returnResolver) follow(pe *metadata.CallGraphEdge, idx int, site string
 }
 
 // holder is the place of the value at index idx of the call e, for e inside a
-// function invoked at site: what e's result resolves to when e is itself a
-// helper returning a producer, otherwise e's own node.
+// function invoked at site, whose own caller was invoked at outer ("" when not
+// known): what e's result resolves to when e is itself a helper returning a
+// producer, otherwise e's own node.
 //
 // A helper that recurses into itself has no holder: expansion stops at the
 // recursive call, so a node keyed by it, beneath a copy of itself, never
 // materialises, and edges bound there would vanish from the tree.
-func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string, hops int) (returnPlace, bool) {
+func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site, outer string, hops int) (returnPlace, bool) {
 	before := r.cycles
 	if p, ok, wait := r.follow(e, idx, site, hops); ok || wait {
 		return p, ok
@@ -297,7 +315,7 @@ func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string,
 	if r.t.argInstanceIDs[key] {
 		return returnPlace{}, false // materialised as an argument node, not as a callee child
 	}
-	path, ok := r.parentPath(e, site, hops)
+	path, ok := r.parentPath(e, site, outer, hops)
 	if !ok {
 		return returnPlace{}, false
 	}
@@ -305,27 +323,37 @@ func (r *returnResolver) holder(e *metadata.CallGraphEdge, idx int, site string,
 }
 
 // parentPath is the ancestry of e's node for e inside a function invoked at
-// site, nearest first, up to the first node of the caller's scope. Mirrors how
+// site (whose caller was invoked at outer), nearest first, up to the first
+// node of the caller's scope. Mirrors how
 // expansion places an edge: under the producer a parameter binding moved it to
 // (boundAt), under the producer of the local it is called on (claimed), or in
 // the function's own body under the call site.
-func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops int) ([]string, bool) {
+func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site, outer string, hops int) ([]string, bool) {
 	if site != "" {
 		if b, ok := r.boundTo[site][e]; ok {
-			// Bound to the same producer at another call site too, e is one
-			// node for all of them. That is exact while e's arguments are the
-			// same in every invocation (`Ident(r)` twice: one /ident group),
-			// but not when they come from the invocation: `Version(pub, "/a")`
-			// and `Version(pub, "/b")` returning `parent.Group(suffix)` are one
+			// A parameter the helper assigns to (`if swap { p = q }`) holds the
+			// bound argument only on the paths that skip the assignment, so
+			// the binding does not say where e runs.
+			if r.t.assignsParam(b.edge, b.param) {
+				return nil, false
+			}
+			// Moved at another call site too, e is one node shared with it.
+			// That is exact while e's arguments are the same in every
+			// invocation (`Ident(r)` twice: one /ident group), but not when
+			// they come from the invocation: `Version(pub, "/a")` and
+			// `Version(pub, "/b")` returning `parent.Group(suffix)` are one
 			// Group node under pub that carries neither suffix, and binding
 			// both callers' routes beneath it merges them. No single
-			// invocation owns that node.
+			// invocation owns that node. The count is per edge, not per
+			// producer: `pub` and `Identity(pub)` are two keys for one node,
+			// and even under distinct producers (`Version(adm, "/b")`) the
+			// moved calls resolve the suffix from no one invocation.
 			//
 			// A pending binding may yet move e under the same producer, so it
 			// counts as one: an answer given now must stay true once every
 			// binding is in, whichever statement came first.
 			if r.argsVary(e, b.edge) {
-				moves := r.moves[moveKey{edge: e, key: b.key}]
+				moves := r.moves[e]
 				if moves > 1 {
 					return nil, false
 				}
@@ -334,8 +362,18 @@ func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops
 					return nil, false
 				}
 			}
-			p, ok := r.argPlace(b.arg, b.edge, hops+1)
+			// The argument is read in the invocation of b.edge's caller when
+			// that is known (a local of a helper has a copy per invocation);
+			// a parameter of it resolves as every caller agrees (paramPlace).
+			p, ok := r.paramArgPlace(b.arg, b.edge, outer, hops+1)
+			if ok && p.param != "" {
+				p, ok = r.argPlace(b.arg, b.edge, hops+1)
+			}
 			if !ok {
+				if outer != "" {
+					// b.key names the producer of every invocation, not this one.
+					return nil, false
+				}
 				return []string{b.key}, true
 			}
 			return append([]string{p.key}, p.path...), true
@@ -349,7 +387,7 @@ func (r *returnResolver) parentPath(e *metadata.CallGraphEdge, site string, hops
 		if rel == nil {
 			return nil, false
 		}
-		h, ok := r.holder(rel.Edge, rel.Assignment.ReturnIndex, site, hops+1)
+		h, ok := r.holder(rel.Edge, rel.Assignment.ReturnIndex, site, outer, hops+1)
 		if !ok {
 			return nil, false
 		}
@@ -417,7 +455,7 @@ func (r *returnResolver) bind(site string, b paramBind, edges []*metadata.CallGr
 	}
 	for _, e := range edges {
 		bound[e] = b
-		r.moves[moveKey{edge: e, key: b.key}]++
+		r.moves[e]++
 	}
 }
 
