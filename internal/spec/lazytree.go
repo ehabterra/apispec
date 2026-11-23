@@ -840,7 +840,6 @@ func (t *LazyTree) buildRelations() {
 		claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
 		boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
 		moves:         map[*metadata.CallGraphEdge]int{},
-		siteEdge:      map[string]*metadata.CallGraphEdge{},
 		params:        map[string]paramMemo{},
 		memo:          map[returnMemoKey]returnMemo{},
 		visiting:      map[returnMemoKey]bool{},
@@ -934,7 +933,7 @@ func (t *LazyTree) buildRelations() {
 		for _, edge := range c.edges {
 			t.claimed[edge] = true
 		}
-		if place, ok := res.returned(c.rel.Edge, c.rel.Assignment.ReturnIndex, "", 0); ok {
+		if place, ok := res.returned(c.rel.Edge, c.rel.Assignment.ReturnIndex, noInvocation, 0); ok {
 			t.bindReturned(place, c.edges)
 			continue
 		}

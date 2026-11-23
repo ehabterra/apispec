@@ -38,7 +38,9 @@ import (
 // collapse into one node, in either statement order, or are moved copies that
 // read their suffix from no one call, or whose local holds a parameter their
 // callers disagree on, get no prefix rather than each other's. A helper-local
-// group handed back through another helper stays per invocation.
+// group handed back through one, two or three more helpers stays per
+// invocation, and where a copy for the invocation is not built, or not
+// placed, the route stays unprefixed rather than under another caller's.
 func TestTestdata_ReturnedGroup(t *testing.T) {
 	out := loadTestdata(t, "returned_group", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -117,6 +119,25 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// /a/aa. No invocation's place is known, so no prefix.
 		"/aa",
 		"/ab",
+		// LocalFwd's local group reaches Version's Group through Fwd: two
+		// helpers deeper than its own invocation. Each node on that path has
+		// a copy per invocation, so the place is read in the whole chain of
+		// calls; cut short, every caller's route landed under every copy.
+		"/fpub/lf/v/f1",
+		"/fadm/lf/v/f2",
+		// OuterP adds one more forwarding call. The Group LocalFwd makes
+		// inside OuterP is bound once for both callers, under the first one's
+		// group, so the second caller has no copy of its own: /o2 stays
+		// unprefixed rather than under /opub.
+		"/opub/lf/v/o1",
+		"/o2",
+		// An inline group passed to OuterP is not followed yet (the inline
+		// argument keeps the call's own key), but is not cross-placed either.
+		"/o3",
+		// LocalCallArg passes Fwd an inline Group made per invocation, which
+		// no binding places for one of them: unprefixed, not under both.
+		"/lc1",
+		"/lc2",
 	})
 }
 

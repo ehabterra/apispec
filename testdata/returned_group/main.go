@@ -20,6 +20,9 @@
 //	/ladm/lv/l2         followed in each invocation, not shared by both
 //	/lpub/lw/v/m1     LocalVersion returns Version(g) for its own local group:
 //	/ladm/lw/v/m2       the same, one helper further
+//	/fpub/lf/v/f1     LocalFwd returns Fwd(g), which returns Version(p), for its
+//	/fadm/lf/v/f2       own local group g: two helpers further
+//	/opub/lf/v/o1     OuterP forwards to LocalFwd: the first caller's group
 //
 // Negative cases:
 //
@@ -47,6 +50,11 @@
 //	                  keys for the one Group node moved under /bp
 //	/aa, /ab          Area(ap, "/a") and Area(aq, "/b"): distinct parents, but
 //	                  the moved Group reads its suffix from neither call
+//	/o2               OuterP's second caller: the Group LocalFwd makes inside
+//	                  OuterP is bound under the first caller's group only
+//	/o3               OuterP of an inline group (not followed yet)
+//	/lc1, /lc2        LocalCallArg passes Fwd an inline Group of its own: one
+//	                  node per invocation, which nothing places for either
 package main
 
 import (
@@ -165,6 +173,17 @@ func Area(parent *gin.RouterGroup, suffix string) *gin.RouterGroup {
 	return parent.Group(suffix)
 }
 
+func Fwd(p *gin.RouterGroup) *gin.RouterGroup { return Version(p) }
+
+func LocalFwd(parent *gin.RouterGroup) *gin.RouterGroup {
+	g := parent.Group("/lf")
+	return Fwd(g)
+}
+
+func OuterP(parent *gin.RouterGroup) *gin.RouterGroup { return LocalFwd(parent) }
+
+func LocalCallArg(parent *gin.RouterGroup) *gin.RouterGroup { return Fwd(parent.Group("/ic")) }
+
 func main() {
 	r := gin.New()
 
@@ -279,6 +298,27 @@ func main() {
 	aa.GET("/aa", h)
 	ab := Area(aq, "/b")
 	ab.GET("/ab", h)
+
+	fpub := r.Group("/fpub")
+	fadm := r.Group("/fadm")
+	f1 := LocalFwd(fpub)
+	f1.GET("/f1", h)
+	f2 := LocalFwd(fadm)
+	f2.GET("/f2", h)
+
+	opg := r.Group("/opub")
+	oag := r.Group("/oadm")
+	o1 := OuterP(opg)
+	o1.GET("/o1", h)
+	o2 := OuterP(oag)
+	o2.GET("/o2", h)
+	o3 := OuterP(r.Group("/oin"))
+	o3.GET("/o3", h)
+
+	lc1 := LocalCallArg(r.Group("/lca"))
+	lc1.GET("/lc1", h)
+	lc2 := LocalCallArg(r.Group("/lcb"))
+	lc2.GET("/lc2", h)
 
 	_ = r.Run(":8080")
 }

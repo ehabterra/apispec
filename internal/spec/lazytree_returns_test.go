@@ -348,7 +348,6 @@ func TestReturnResolverGuards(t *testing.T) {
 			claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
 			boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
 			moves:         map[*metadata.CallGraphEdge]int{},
-			siteEdge:      map[string]*metadata.CallGraphEdge{},
 			params:        map[string]paramMemo{},
 			memo:          map[returnMemoKey]returnMemo{},
 			visiting:      map[returnMemoKey]bool{},
@@ -370,14 +369,15 @@ func TestReturnResolverGuards(t *testing.T) {
 	inV1 := edgeOf("V1", "Group") // return r.Group("/v1")
 	site := strings.TrimPrefix(v1.Callee.ID(), "*")
 	inV1Key := strings.TrimPrefix(inV1.Callee.ID(), "*")
+	in := func(res *returnResolver) invocation { return res.enter(v1, site, noInvocation) }
 
-	if _, ok := res.returned(nil, 0, "", 0); ok {
+	if _, ok := res.returned(nil, 0, noInvocation, 0); ok {
 		t.Error("returned(nil): want no producer")
 	}
-	if _, ok := res.returned(v1, 0, "", maxReturnHops+1); ok {
+	if _, ok := res.returned(v1, 0, noInvocation, maxReturnHops+1); ok {
 		t.Error("returned past the hop bound: want no producer")
 	}
-	if _, ok := res.returned(v1, 1, "", 0); ok {
+	if _, ok := res.returned(v1, 1, noInvocation, 0); ok {
 		t.Error("returned at an index V1 does not return: want no producer")
 	}
 	if _, ok := res.argPlace(*v1.Args[0], v1, maxReturnHops+1); ok {
@@ -421,7 +421,7 @@ func TestReturnResolverGuards(t *testing.T) {
 	}
 
 	// Sanity: unobstructed, V1's returned group is found, beneath V1's call.
-	if p, ok := newResolver().returned(v1, 0, "", 0); !ok || p.key != inV1Key {
+	if p, ok := newResolver().returned(v1, 0, noInvocation, 0); !ok || p.key != inV1Key {
 		t.Fatalf("returned(V1) = %+v, %v; want the Group call inside V1", p, ok)
 	}
 
@@ -429,15 +429,15 @@ func TestReturnResolverGuards(t *testing.T) {
 	// group it makes nor anything returned through it has a place.
 	res = newResolver()
 	res.claimedBy[inV1] = nil
-	if _, ok := res.parentPath(inV1, site, "", 0); ok {
+	if _, ok := res.parentPath(inV1, in(res), 0); ok {
 		t.Error("parentPath of a call on a reassigned variable: want none")
 	}
-	if _, ok := res.holder(inV1, 0, site, "", 0); ok {
+	if _, ok := res.holder(inV1, 0, in(res), 0); ok {
 		t.Error("holder of a call on a reassigned variable: want none")
 	}
 	res = newResolver()
 	res.claimedBy[v1] = nil
-	if _, ok := res.returned(v1, 0, "", 0); ok {
+	if _, ok := res.returned(v1, 0, noInvocation, 0); ok {
 		t.Error("returned through a helper call with no one parent: want none")
 	}
 
@@ -446,11 +446,11 @@ func TestReturnResolverGuards(t *testing.T) {
 	saved := tree.argInstanceIDs
 	tree.argInstanceIDs = map[string]bool{inV1Key: true}
 	res = newResolver()
-	if _, ok := res.holder(inV1, 0, site, "", 0); ok {
+	if _, ok := res.holder(inV1, 0, in(res), 0); ok {
 		t.Error("holder of an argument-node call: want none")
 	}
 	res.claimedBy[v1] = &metadata.AssignmentLink{Edge: inV1, Assignment: &metadata.Assignment{}}
-	if _, ok := res.parentPath(v1, site, "", 0); ok {
+	if _, ok := res.parentPath(v1, in(res), 0); ok {
 		t.Error("parentPath under an argument-node producer: want none")
 	}
 	tree.argInstanceIDs = saved
@@ -459,12 +459,13 @@ func TestReturnResolverGuards(t *testing.T) {
 	// call under the producer the binding recorded.
 	res = newResolver()
 	res.bind(site, paramBind{arg: *bareCall, edge: v1, key: "bound"}, []*metadata.CallGraphEdge{inV1})
-	if path, ok := res.parentPath(inV1, site, "", 0); !ok || !slices.Equal(path, []string{"bound"}) {
+	if path, ok := res.parentPath(inV1, in(res), 0); !ok || !slices.Equal(path, []string{"bound"}) {
 		t.Errorf("parentPath of a bound call = %v, %v; want [bound]", path, ok)
 	}
 	// Within a known invocation of V1's caller, the recorded producer is every
 	// invocation's, not that one's.
-	if path, ok := res.parentPath(inV1, site, "outer-site", 0); ok {
+	outer := res.enter(v1, "outer-site", noInvocation)
+	if path, ok := res.parentPath(inV1, res.enter(v1, site, outer), 0); ok {
 		t.Errorf("parentPath of a bound call in a known invocation = %v; want none", path)
 	}
 
@@ -493,7 +494,6 @@ func TestReturnResolverInvocationGuards(t *testing.T) {
 		t:        tree,
 		boundTo:  map[string]map[*metadata.CallGraphEdge]paramBind{},
 		moves:    map[*metadata.CallGraphEdge]int{},
-		siteEdge: map[string]*metadata.CallGraphEdge{},
 		params:   map[string]paramMemo{},
 		memo:     map[returnMemoKey]returnMemo{},
 		visiting: map[returnMemoKey]bool{},
@@ -554,14 +554,14 @@ func TestReturnResolverInvocationGuards(t *testing.T) {
 	b := paramBind{arg: *v1.Args[0], edge: v1, key: "bound"}
 	res.bind("site-a", b, []*metadata.CallGraphEdge{inV1})
 	res.bind("site-b", b, []*metadata.CallGraphEdge{inV1})
-	if _, ok := res.parentPath(inV1, "site-a", "", 0); !ok {
+	if _, ok := res.parentPath(inV1, res.enter(v1, "site-a", noInvocation), 0); !ok {
 		t.Error("parentPath of a shared move with constant arguments: want a place")
 	}
 	varying := *inV1
 	varying.Args = []*metadata.CallArgument{ident("r")}
 	res.bind("site-a", b, []*metadata.CallGraphEdge{&varying})
 	res.bind("site-b", b, []*metadata.CallGraphEdge{&varying})
-	if _, ok := res.parentPath(&varying, "site-a", "", 0); ok {
+	if _, ok := res.parentPath(&varying, res.enter(v1, "site-a", noInvocation), 0); ok {
 		t.Error("parentPath of a shared move whose argument is a parameter: want none")
 	}
 	// Moved at two call sites under different producer keys (`pub` and
@@ -572,7 +572,7 @@ func TestReturnResolverInvocationGuards(t *testing.T) {
 	other.key = "other"
 	res.bind("site-a", b, []*metadata.CallGraphEdge{&split})
 	res.bind("site-b", other, []*metadata.CallGraphEdge{&split})
-	if _, ok := res.parentPath(&split, "site-a", "", 0); ok {
+	if _, ok := res.parentPath(&split, res.enter(v1, "site-a", noInvocation), 0); ok {
 		t.Error("parentPath of a varying move made under two producer keys: want none")
 	}
 
@@ -596,11 +596,37 @@ func TestReturnResolverInvocationGuards(t *testing.T) {
 		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k", path: []string{"p", "q"}}, true},
 		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k", path: []string{"p", "r"}}, false},
 		{returnPlace{key: "k", path: []string{"p"}}, returnPlace{key: "k"}, false},
-		{returnPlace{param: "g"}, returnPlace{param: "h"}, false},
 	} {
 		if got := samePlace(c.a, c.b); got != c.want {
 			t.Errorf("samePlace(%+v, %+v) = %v, want %v", c.a, c.b, got, c.want)
 		}
+	}
+
+	// A place read in an invocation chain is one of the copies the tree built
+	// only when it is the same node with the tree's ancestry as its start.
+	for _, c := range []struct {
+		p, tree returnPlace
+		want    bool
+	}{
+		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k"}, true},
+		{returnPlace{key: "k", path: []string{"p", "q"}}, returnPlace{key: "k", path: []string{"p"}}, true},
+		{returnPlace{key: "k", path: []string{"r", "q"}}, returnPlace{key: "k", path: []string{"p"}}, false},
+		{returnPlace{key: "k"}, returnPlace{key: "k", path: []string{"p"}}, false},
+		{returnPlace{key: "j", path: []string{"p"}}, returnPlace{key: "k"}, false},
+	} {
+		if got := extends(c.p, c.tree); got != c.want {
+			t.Errorf("extends(%+v, %+v) = %v, want %v", c.p, c.tree, got, c.want)
+		}
+	}
+
+	// Inside an invocation, a call argument is a node of that invocation's
+	// copy, which nothing places for one invocation in particular.
+	in := res.enter(v1, "site-in", noInvocation)
+	if res.enter(v1, "site-in", noInvocation) != in {
+		t.Error("enter: the same chain must intern to one invocation")
+	}
+	if _, ok := res.paramArgPlace(*call, pass, in, 0); ok {
+		t.Error("paramArgPlace of a call argument inside an invocation: want none")
 	}
 }
 
@@ -613,7 +639,6 @@ func TestReturnResolverPendingBindings(t *testing.T) {
 		t:        tree,
 		boundTo:  map[string]map[*metadata.CallGraphEdge]paramBind{},
 		moves:    map[*metadata.CallGraphEdge]int{},
-		siteEdge: map[string]*metadata.CallGraphEdge{},
 		params:   map[string]paramMemo{},
 		memo:     map[returnMemoKey]returnMemo{},
 		visiting: map[returnMemoKey]bool{},
@@ -642,17 +667,17 @@ func TestReturnResolverPendingBindings(t *testing.T) {
 	res.bind("site-a", paramBind{arg: *v1.Args[0], edge: v1, key: "bound"}, edges)
 	res.pend("site-b", edges, 1)
 	before := res.defers
-	if _, ok := res.parentPath(&varying, "site-a", "", 0); ok || res.defers == before {
+	if _, ok := res.parentPath(&varying, res.enter(v1, "site-a", noInvocation), 0); ok || res.defers == before {
 		t.Error("parentPath with a pending move of the same call: want none, deferred")
 	}
-	if _, ok := res.parentPath(&varying, "site-b", "", 0); ok {
+	if _, ok := res.parentPath(&varying, res.enter(v1, "site-b", noInvocation), 0); ok {
 		t.Error("parentPath at a call site whose binding is pending: want none")
 	}
 	res.pend("site-b", edges, -1)
-	if _, ok := res.parentPath(&varying, "site-a", "", 0); !ok {
+	if _, ok := res.parentPath(&varying, res.enter(v1, "site-a", noInvocation), 0); !ok {
 		t.Error("parentPath once the pending binding is dropped: want a place")
 	}
-	if p, ok := res.parentPath(&varying, "site-b", "", 0); !ok || len(p) != 1 || p[0] != "site-b" {
+	if p, ok := res.parentPath(&varying, res.enter(v1, "site-b", noInvocation), 0); !ok || len(p) != 1 || p[0] != "site-b" {
 		t.Errorf("parentPath at a call site that binds nothing = %v, %v; want its own call", p, ok)
 	}
 
