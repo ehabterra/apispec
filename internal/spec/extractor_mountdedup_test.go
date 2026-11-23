@@ -14,7 +14,11 @@
 
 package spec
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ehabterra/apispec/internal/metadata"
+)
 
 func TestIsSubsequence(t *testing.T) {
 	cases := []struct {
@@ -100,6 +104,65 @@ func TestDropSubsumedMountPrefixes(t *testing.T) {
 		got := dropSubsumedMountPrefixes(routes)
 		if len(got) != 2 {
 			t.Fatalf("distinct functions must not be deduped, got %d", len(got))
+		}
+	})
+}
+
+// TestDropSubsumedMountPrefixesScopedToCallSite pins issue #614: subsumption
+// only collapses copies of ONE registration call. Two registrations of a handler
+// at prefixes that extend each other are both endpoints, even though the
+// shorter mount is a subsequence of the longer.
+func TestDropSubsumedMountPrefixesScopedToCallSite(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	site := func(pos string) *metadata.CallGraphEdge {
+		return &metadata.CallGraphEdge{Callee: metadata.Call{
+			Meta:     meta,
+			Pkg:      meta.StringPool.Get("github.com/gin-gonic/gin"),
+			Name:     meta.StringPool.Get("GET"),
+			RecvType: meta.StringPool.Get("*RouterGroup"),
+			Position: meta.StringPool.Get(pos),
+		}}
+	}
+	at := func(edge *metadata.CallGraphEdge, mount, status string) *RouteInfo {
+		r := NewRouteInfo()
+		r.Function, r.Method, r.Path, r.MountPath = "main.getAttachment", "GET", "/attachments/:uuid", mount
+		r.Node = &TrackerNode{CallGraphEdge: edge}
+		r.Response[status] = &ResponseInfo{StatusCode: 0}
+		return r
+	}
+
+	t.Run("same-site echo is dropped and folded", func(t *testing.T) {
+		// One registration reached under a partial and a full mount context:
+		// distinct tree nodes over the same call-graph edge.
+		edge := site("main.go:10:7")
+		echo := at(edge, "/:owner/:repo/", "404")
+		full := at(edge, "/:owner/:repo/issues/:index/", "200")
+		got := dropSubsumedMountPrefixes([]*RouteInfo{echo, full})
+		if len(got) != 1 || got[0] != full {
+			t.Fatalf("want only the most-mounted copy, got %v", mountsOf(got))
+		}
+		if _, ok := full.Response["404"]; !ok {
+			t.Error("the echo's extraction must fold into the survivor")
+		}
+	})
+
+	t.Run("different-site extending prefixes both survive", func(t *testing.T) {
+		short := at(site("main.go:10:7"), "/:owner/:repo/", "404")
+		long := at(site("main.go:11:30"), "/:owner/:repo/issues/:index/", "200")
+		got := dropSubsumedMountPrefixes([]*RouteInfo{short, long})
+		if len(got) != 2 {
+			t.Fatalf("two registrations are two endpoints, got %v", mountsOf(got))
+		}
+		if _, ok := long.Response["404"]; ok {
+			t.Error("a separate registration's extraction must not fold into another")
+		}
+	})
+
+	t.Run("same line in another file is another site", func(t *testing.T) {
+		short := at(site("a.go:10:7"), "/:owner/:repo/", "404")
+		long := at(site("b.go:10:7"), "/:owner/:repo/issues/:index/", "200")
+		if got := dropSubsumedMountPrefixes([]*RouteInfo{short, long}); len(got) != 2 {
+			t.Fatalf("the site must include the file, got %v", mountsOf(got))
 		}
 	})
 }
