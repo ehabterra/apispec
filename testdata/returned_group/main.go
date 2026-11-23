@@ -55,6 +55,9 @@
 //	/o3               OuterP of an inline group (not followed yet)
 //	/lc1, /lc2        LocalCallArg passes Fwd an inline Group of its own: one
 //	                  node per invocation, which nothing places for either
+//	/gs, /gsret, /gsv GroupSwap, GroupSwapRet and GroupSwapV assign their
+//	                  parameter a group of another one on one path: called
+//	                  with swap false, the value is never that group
 package main
 
 import (
@@ -163,6 +166,27 @@ func SwapGroup(parent, other *gin.RouterGroup, swap bool) *gin.RouterGroup {
 		parent = other
 	}
 	return parent.Group("/leaf")
+}
+
+func GroupSwap(p, q *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		p = q.Group("/other")
+	}
+	return Identity(p)
+}
+
+func GroupSwapRet(p, q *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		p = q.Group("/other")
+	}
+	return p
+}
+
+func GroupSwapV(p, q *gin.RouterGroup, swap bool) *gin.RouterGroup {
+	if swap {
+		p = q.Group("/other")
+	}
+	return Version(p)
 }
 
 func Branch(parent *gin.RouterGroup, suffix string) *gin.RouterGroup {
@@ -319,6 +343,15 @@ func main() {
 	lc1.GET("/lc1", h)
 	lc2 := LocalCallArg(r.Group("/lcb"))
 	lc2.GET("/lc2", h)
+
+	gp := r.Group("/gp")
+	gq := r.Group("/gq")
+	gs := GroupSwap(gp, gq, false)
+	gs.GET("/gs", h)
+	gsr := GroupSwapRet(gp, gq, false)
+	gsr.GET("/gsret", h)
+	gsv := GroupSwapV(gp, gq, false)
+	gsv.GET("/gsv", h)
 
 	_ = r.Run(":8080")
 }

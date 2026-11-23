@@ -138,6 +138,13 @@ func TestTestdata_ReturnedGroup(t *testing.T) {
 		// no binding places for one of them: unprefixed, not under both.
 		"/lc1",
 		"/lc2",
+		// GroupSwap* assign `p = q.Group("/other")` on one path. That
+		// assignment is a call result, recorded like a local's producer, and
+		// was read as the parameter's place: /gq/other/gs although the call
+		// passes swap false. p is /gp or /gq/other, so neither is the prefix.
+		"/gs",
+		"/gsret",
+		"/gsv",
 	})
 }
 

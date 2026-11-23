@@ -326,6 +326,15 @@ func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.C
 		return returnPlace{}, false
 	}
 	name := arg.GetName()
+	// The parameter test comes first: `p = q.Group("/x")` on one path is a
+	// call result, recorded among the locals' producers like any other, and
+	// would place p at that Group on every path.
+	if passed, isParam := f.edge.ParamArgMap[name]; isParam {
+		if r.t.assignsParam(f.edge, name) {
+			return returnPlace{}, false
+		}
+		return r.paramArgPlace(passed, f.edge, f.up, hops+1)
+	}
 	if rels := r.localRels[name+"\x00"+pe.Caller.BaseID()]; len(rels) > 0 {
 		if !sameProducer(rels) {
 			return returnPlace{}, false // reassigned on some path: no one producer
@@ -336,14 +345,7 @@ func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.C
 		}
 		return r.anchor(inner, f.edge, f.up, hops)
 	}
-	passed, isParam := f.edge.ParamArgMap[name]
-	if !isParam {
-		return r.argPlace(arg, pe, hops) // package-level: one value for every invocation
-	}
-	if r.t.assignsParam(f.edge, name) {
-		return returnPlace{}, false
-	}
-	return r.paramArgPlace(passed, f.edge, f.up, hops+1)
+	return r.argPlace(arg, pe, hops) // package-level: one value for every invocation
 }
 
 // follow is returned for a caller that falls back on another answer when the
