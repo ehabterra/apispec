@@ -1235,6 +1235,11 @@ func resolveHandlerArg(cp ContextProvider, arg *metadata.CallArgument, node Trac
 // resolve — because the answer it would otherwise give is a confident wrong
 // handler (CodeRabbit review on PR #616).
 //
+// An `if`/`switch`/`for` initializer's binding ends with its statement, yet the
+// init runs unconditionally and so dominates the code after it. Metadata records
+// that extent as a scope region (`BlockScope`), which `inScope` consults
+// separately so dominance — and the response pairing built on it — is unchanged.
+//
 // Two `h := func…` in separate blocks, each registered in its own, still read
 // as one ambiguous name and stay unresolved: safe, if not complete, until
 // metadata records which binding an assignment writes to.
@@ -1259,7 +1264,7 @@ func closureAssignedTo(cp ContextProvider, edge *metadata.CallGraphEdge, arg *me
 			return nil
 		}
 		at := assignmentPos(impl.meta, &a)
-		if !at.valid() || at.file != call.file || !at.beforeOrAt(call) || !flow.dominates(at, call) {
+		if !at.valid() || at.file != call.file || !at.beforeOrAt(call) || !flow.dominates(at, call) || !flow.inScope(at, call) {
 			return nil
 		}
 		if lit != nil && lit.ID() != v.ID() {

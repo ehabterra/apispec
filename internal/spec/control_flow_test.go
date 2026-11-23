@@ -599,3 +599,43 @@ func other() {}
 		})
 	}
 }
+
+// TestInScopeIsSeparateFromDominance pins the split closureAssignedTo relies
+// on: an initializer runs unconditionally, so it dominates the code after its
+// statement, yet the names it declares are not visible there. The scope region
+// must answer inScope without changing dominates, exclusive or sharesRegion.
+func TestInScopeIsSeparateFromDominance(t *testing.T) {
+	scope := meta.Block{Kind: meta.BlockScope, StartLine: 10, StartCol: 5, EndLine: 14, EndCol: 2}
+	arm := armAt(10, 12)
+	arm.StartCol = 30 // the init shares the arm's first line but not the arm
+	idx := indexOf(scope, arm)
+
+	init, inArm, after := at(10, 5), at(11, 3), at(16, 2)
+
+	if idx.inScope(init, inArm) != true {
+		t.Error("a use inside the statement's arm must see the init's binding")
+	}
+	if idx.inScope(init, after) {
+		t.Error("a use after the statement must not see the init's binding")
+	}
+	if !idx.dominates(init, after) {
+		t.Error("the init still dominates code after its statement (response pairing relies on it)")
+	}
+	if idx.sharesRegion(init, after) {
+		t.Error("a scope must not count as a shared region")
+	}
+	if idx.sharesRegion(init, inArm) {
+		t.Error("a scope must not count as a shared region when both positions lie inside it")
+	}
+	if idx.exclusive(init, after) {
+		t.Error("a scope is not a branch")
+	}
+	// A binding declared before the statement is unaffected by it.
+	if !idx.inScope(at(8, 2), after) {
+		t.Error("an assignment outside any scope stays visible")
+	}
+	// Missing facts stay permissive.
+	if !(*blockIndex)(nil).inScope(init, after) || !idx.inScope(codePos{}, after) {
+		t.Error("missing facts must answer in scope")
+	}
+}

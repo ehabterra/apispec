@@ -108,6 +108,24 @@ func terminates(body []ast.Stmt) bool {
 	}
 }
 
+// scope records where the names an initializer declares stop being visible.
+//
+// The init statement itself is recorded under the SURROUNDING region (it runs
+// unconditionally, so for dominance it belongs there), which leaves nothing
+// marking that `h` in `if h := func…; h != nil {}` ends with the statement: a
+// call written after it names a different `h`. The range runs from the init to
+// the end of the whole statement — for an if chain, past the last else, since
+// the binding is visible in every arm. Only a `:=` initializer declares names;
+// a plain `=` writes to an existing variable that outlives the statement, so it
+// (and a missing or call-only init) records nothing.
+func (c *blockCollector) scope(init ast.Stmt, whole ast.Stmt, parent int) {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok || assign.Tok != token.DEFINE || whole == nil {
+		return
+	}
+	c.add(BlockScope, init.Pos(), whole.End(), parent, 0, nil)
+}
+
 // nextGroup mints the id shared by the arms of one conditional.
 func (c *blockCollector) nextGroup() int {
 	c.groups++
@@ -136,11 +154,13 @@ func (c *blockCollector) stmt(stmt ast.Stmt, parent int) {
 		c.ifChain(s, parent)
 
 	case *ast.SwitchStmt:
+		c.scope(s.Init, s, parent)
 		c.stmt(s.Init, parent)
 		c.exprs(parent, s.Tag)
 		c.clauses(s.Body, parent)
 
 	case *ast.TypeSwitchStmt:
+		c.scope(s.Init, s, parent)
 		c.stmt(s.Init, parent)
 		c.stmt(s.Assign, parent)
 		c.clauses(s.Body, parent)
@@ -149,6 +169,7 @@ func (c *blockCollector) stmt(stmt ast.Stmt, parent int) {
 		c.clauses(s.Body, parent)
 
 	case *ast.ForStmt:
+		c.scope(s.Init, s, parent)
 		c.stmt(s.Init, parent)
 		c.exprs(parent, s.Cond)
 		c.stmt(s.Post, parent)
@@ -181,6 +202,7 @@ func (c *blockCollector) ifChain(stmt *ast.IfStmt, parent int) {
 		// The init and condition run BEFORE the arm is entered and are not part
 		// of it — which is exactly why block ranges carry columns, since on a
 		// one-line `if` they share the arm's lines.
+		c.scope(cur.Init, stmt, parent)
 		c.stmt(cur.Init, parent)
 		c.exprs(parent, cur.Cond)
 

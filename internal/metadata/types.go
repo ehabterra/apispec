@@ -1228,6 +1228,14 @@ const (
 	// declaration because a literal gets no Function record of its own, so
 	// without this its extent is invisible.
 	BlockFuncLit BlockKind = "func"
+	// BlockScope is the extent of the names an `if`/`switch`/`for` initializer
+	// declares: from the init statement to the end of the whole statement,
+	// every `else` arm included. It is a SCOPE fact only — the init runs
+	// unconditionally, so it is not a conditional region, carries no group and
+	// never terminates, and is not another block's Parent. A consumer asking
+	// what must have run (dominance, exclusivity) ignores it; one asking which
+	// binding a name denotes at a position reads it.
+	BlockScope BlockKind = "scope"
 )
 
 // MethodBranch is one arm of an `r.Method` dispatch: the HTTP method(s) it

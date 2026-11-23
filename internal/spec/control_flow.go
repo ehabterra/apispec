@@ -208,6 +208,9 @@ func (idx *blockIndex) dominates(earlier, later codePos) bool {
 		return false
 	}
 	for _, b := range idx.byFile[earlier.file] {
+		if b.Kind == metadata.BlockScope {
+			continue // a scope is not a branch: the init it opens always runs
+		}
 		if blockContains(b.Block, earlier) && !blockContains(b.Block, later) {
 			// earlier is inside a region later escaped: an `if` arm, a loop, a
 			// switch case. Reaching later does not imply earlier ran.
@@ -278,6 +281,25 @@ func literalEnds(blocks []indexedBlock, arm metadata.Block, pos codePos) bool {
 	return false
 }
 
+// inScope reports whether a name bound at earlier is still visible at later: no
+// initializer scope holds earlier without also holding later.
+//
+// Dominance cannot answer this. An init statement runs unconditionally, so it
+// dominates everything after its statement — and the name it declared is gone
+// there (`if h := func…; h != nil {}` then `register(h)` names another `h`).
+// Missing facts answer true, as dominates does.
+func (idx *blockIndex) inScope(earlier, later codePos) bool {
+	if idx == nil || !earlier.valid() || !later.valid() || earlier.file != later.file {
+		return true
+	}
+	for _, b := range idx.byFile[earlier.file] {
+		if b.Kind == metadata.BlockScope && blockContains(b.Block, earlier) && !blockContains(b.Block, later) {
+			return false
+		}
+	}
+	return true
+}
+
 // sharesRegion reports whether some recorded region contains both positions.
 //
 // Used to decide whether a write BELOW a call can still be the value at it: in
@@ -293,7 +315,7 @@ func (idx *blockIndex) sharesRegion(a, b codePos) bool {
 		return false
 	}
 	for _, block := range idx.byFile[a.file] {
-		if blockContains(block.Block, a) && blockContains(block.Block, b) {
+		if block.Kind != metadata.BlockScope && blockContains(block.Block, a) && blockContains(block.Block, b) {
 			return true
 		}
 	}

@@ -111,7 +111,24 @@ func TestCollectBlocksShapes(t *testing.T) {
 			// A loop body is exclusive with nothing, so it carries no group.
 			name: "for and range bodies carry no group",
 			body: "for i := 0; i < 3; i++ {\n a()\n}\nfor range s() {\n b()\n}",
-			want: "loop:-:- loop:-:-",
+			want: "scope:-:- loop:-:- loop:-:-",
+		},
+		{
+			// The initializer's names end with the statement, and the scope is
+			// not a branch: it has no group and nothing is parented to it.
+			name: "if init opens a scope, else-if init another",
+			body: "if a := f(); a {\n x()\n} else if b := g(); b {\n y()\n} else {\n z()\n}",
+			want: "scope:-:- if:-:1 scope:-:- if:-:1 else:-:1",
+		},
+		{
+			name: "switch and type switch inits open a scope",
+			body: "switch a := f(); a {\ncase 1:\n x()\n}\nswitch b := g(); v := b.(type) {\ncase int:\n _ = v\n}",
+			want: "scope:-:- case:-:1 scope:-:- case:-:2",
+		},
+		{
+			name: "no init, no scope",
+			body: "if x() {\n a()\n}\nswitch {\ncase true:\n}\nfor {\n}",
+			want: "if:-:1 case:-:2 loop:-:-",
 		},
 		{
 			name: "bare block",
@@ -161,10 +178,10 @@ func TestCollectBlocksRangesAreColumnPrecise(t *testing.T) {
 	// it. Both sit on the same line.
 	src := "if err := before(); err != nil { inside() }"
 	blocks, fset, fn := parseBody(t, src)
-	if len(blocks) != 1 {
-		t.Fatalf("want 1 block, got %d (%s)", len(blocks), shape(blocks))
+	if len(blocks) != 2 || blocks[0].Kind != BlockScope {
+		t.Fatalf("want a scope and an arm, got %d (%s)", len(blocks), shape(blocks))
 	}
-	arm := blocks[0]
+	arm := blocks[1]
 	if arm.StartLine != arm.EndLine {
 		t.Fatalf("this fixture is meant to be one line, got %d..%d", arm.StartLine, arm.EndLine)
 	}
@@ -428,6 +445,54 @@ func TestMethodRecordsBlocks(t *testing.T) {
 	for _, im := range f.Types["Doer"].Methods {
 		if len(im.Blocks) != 0 || im.EndLine != 0 {
 			t.Errorf("interface method recorded a body: blocks %+v, end line %d", im.Blocks, im.EndLine)
+		}
+	}
+}
+
+// TestCollectBlocksScopeExtent pins where an initializer's scope ends: with the
+// whole statement, every else arm included, and not a line earlier or later.
+func TestCollectBlocksScopeExtent(t *testing.T) {
+	blocks, fset, fn := parseBody(t, "if h := f(); h != nil {\n a()\n} else {\n b()\n}\nafter()")
+	scope := blocks[0]
+	if scope.Kind != BlockScope {
+		t.Fatalf("first block is %s, want scope", scope.Kind)
+	}
+	at := map[string]token.Position{}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if id, ok := call.Fun.(*ast.Ident); ok {
+				at[id.Name] = fset.Position(id.Pos())
+			}
+		}
+		return true
+	})
+	for name, want := range map[string]bool{"f": true, "a": true, "b": true, "after": false} {
+		if got := contains(scope, at[name]); got != want {
+			t.Errorf("scope contains %s() = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestCollectBlocksScopeOnlyForDefine pins that only a `:=` initializer opens a
+// scope: a plain `=` writes to an existing variable that outlives the
+// statement, and a call-only initializer declares nothing.
+func TestCollectBlocksScopeOnlyForDefine(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       bool
+	}{
+		{"define", "if h := f(); h != nil {\n a()\n}", true},
+		{"assign", "if h = f(); h != nil {\n a()\n}", false},
+		{"call", "if f(); true {\n a()\n}", false},
+		{"switch assign", "switch h = f(); h {\n}", false},
+	} {
+		blocks, _, _ := parseBody(t, tc.body)
+		got := false
+		for _, b := range blocks {
+			got = got || b.Kind == BlockScope
+		}
+		if got != tc.want {
+			t.Errorf("%s: scope recorded = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
