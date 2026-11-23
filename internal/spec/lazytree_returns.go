@@ -148,6 +148,12 @@ type returnResolver struct {
 	// defers counts the answers that depended on a pending binding: a failure
 	// that may turn into a place once that binding is decided.
 	defers int
+	// capped counts the lookups refused for the hop bound. A failure that
+	// tripped it says how deep the question was asked, not what the call
+	// returns, so it is not memoised: the same call asked with budget left
+	// is resolved again. A place is memoised whatever the depth: reusing it
+	// costs nothing, which is all the bound limits.
+	capped int
 }
 
 type paramBind struct {
@@ -212,6 +218,7 @@ func (r *returnResolver) returned(pe *metadata.CallGraphEdge, idx int, in invoca
 	}
 	if hops > maxReturnHops {
 		r.dead++
+		r.capped++
 		return returnPlace{}, false
 	}
 	mk := returnMemoKey{edge: pe, idx: idx, in: in}
@@ -231,10 +238,13 @@ func (r *returnResolver) returned(pe *metadata.CallGraphEdge, idx int, in invoca
 		r.dead++ // recursive helper: its own call is not a producer to follow
 		return returnPlace{}, false
 	}
-	before, deferred := r.dead, r.defers
+	before, deferred, capped := r.dead, r.defers, r.capped
 	r.visiting[vk] = true
 	place, ok := r.resolveReturned(pe, idx, in, hops)
 	delete(r.visiting, vk)
+	if !ok && r.capped != capped {
+		return place, ok
+	}
 	r.memo[mk] = returnMemo{place: place, ok: ok, dead: !ok && r.dead != before, deferred: !ok && r.defers != deferred}
 	return place, ok
 }
@@ -320,7 +330,11 @@ func (r *returnResolver) paramArgPlace(arg metadata.CallArgument, pe *metadata.C
 	if !inside {
 		return r.argPlace(arg, pe, hops)
 	}
-	if hops > maxReturnHops || arg.GetKind() != metadata.KindIdent {
+	if hops > maxReturnHops {
+		r.capped++
+		return returnPlace{}, false
+	}
+	if arg.GetKind() != metadata.KindIdent {
 		// A call argument inside an invocation names a node of that
 		// invocation, which argPlace places for none in particular.
 		return returnPlace{}, false
@@ -617,6 +631,7 @@ func (r *returnResolver) forget() {
 // argProducerKey names.
 func (r *returnResolver) argPlace(arg metadata.CallArgument, edge *metadata.CallGraphEdge, hops int) (returnPlace, bool) {
 	if hops > maxReturnHops {
+		r.capped++
 		return returnPlace{}, false
 	}
 	switch arg.GetKind() {
@@ -694,7 +709,7 @@ func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (p
 		return m.place, m.ok && m.done, true
 	}
 	r.params[mk] = paramMemo{}
-	deferred := r.defers
+	deferred, capped := r.defers, r.capped
 	var first returnPlace
 	ok = true
 	for i, c := range callers {
@@ -712,6 +727,10 @@ func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (p
 	}
 	if !ok {
 		first = returnPlace{}
+		if r.capped != capped {
+			delete(r.params, mk) // the bound's answer, not the parameter's (see capped)
+			return first, false, true
+		}
 	}
 	r.params[mk] = paramMemo{place: first, ok: ok, done: true, deferred: !ok && r.defers != deferred}
 	return first, ok, true

@@ -380,6 +380,15 @@ func TestReturnResolverGuards(t *testing.T) {
 	if _, ok := res.returned(v1, 1, noInvocation, 0); ok {
 		t.Error("returned at an index V1 does not return: want no producer")
 	}
+	// At the last hop, V1's Group is one hop too far, but that answer is the
+	// bound's, not V1's: asked again with the budget whole, V1 is followed.
+	capped := newResolver()
+	if _, ok := capped.returned(v1, 0, noInvocation, maxReturnHops); ok {
+		t.Error("returned with no hop left for V1's Group: want no producer")
+	}
+	if p, ok := capped.returned(v1, 0, noInvocation, 0); !ok || p.key != inV1Key {
+		t.Errorf("returned after a capped lookup = %+v, %v; want V1's Group %s", p, ok, inV1Key)
+	}
 	if _, ok := res.argPlace(*v1.Args[0], v1, maxReturnHops+1); ok {
 		t.Error("argPlace past the hop bound: want no producer")
 	}
