@@ -47,6 +47,8 @@ func TestTestdata_GroupArgInline(t *testing.T) {
 		"/v1/samepkg/b":   "GET",  // created in the argument, same package
 		"/v1/mod/login":   "POST", // created in the argument, another package
 		"/v1/mod/profile": "GET",
+		"/eng/e":          "GET", // created inline on the engine (#635)
+		"/engvar/f":       "GET", // engine group via a variable
 	}
 
 	for path, method := range want {
@@ -65,9 +67,27 @@ func TestTestdata_GroupArgInline(t *testing.T) {
 		}
 	}
 
-	// Every route belongs under /v1; a bare "/b" or "/login" is the defect.
+	// Change-detector for the user-type receiver gap. A user type embedding the
+	// engine is not matched by the framework's receiver patterns at all, so
+	// even `app.Group("/appdirect").GET("/z")` loses its prefix; that is a
+	// receiver-matching gap, not an argument-producer one. When it is fixed
+	// these flip to "/app/g" and "/appdirect/z" and this block must be updated.
+	for _, p := range []string{"/g", "/z"} {
+		if _, ok := out.Paths[p]; !ok {
+			t.Errorf("user-type receiver path %q missing; the known gap changed, update this test: %v", p, mapPathKeys(out.Paths))
+		}
+		delete(out.Paths, p)
+	}
+	for _, p := range []string{"/e", "/f"} {
+		if _, ok := out.Paths[p]; ok {
+			t.Errorf("path %q present: an engine group lost its prefix", p)
+		}
+	}
+
+	// Every route belongs under its group; a bare "/b", "/e" or "/login" is the defect.
 	for path := range out.Paths {
-		if !strings.HasPrefix(path, "/v1/") {
+		if !strings.HasPrefix(path, "/v1/") && !strings.HasPrefix(path, "/eng/") &&
+			!strings.HasPrefix(path, "/engvar/") {
 			t.Errorf("path %q is documented outside the group it was registered on", path)
 		}
 	}
