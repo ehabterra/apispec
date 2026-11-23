@@ -23,8 +23,9 @@ import (
 
 // mountWrapperGraph builds a house router whose Mount forwards a FIELD of its
 // sub-router parameter to the framework mount (issue #611), a second type that
-// forwards into that Mount (the transitive shape), and the two shapes that must
-// not be derived.
+// forwards into that Mount (the transitive shape), the shapes that must not be
+// derived, and methods that mount twice (an incomplete mount beside the
+// forwarding one).
 func mountWrapperGraph(t *testing.T) *metadata.Metadata {
 	t.Helper()
 	pool := metadata.NewStringPool()
@@ -60,6 +61,12 @@ func mountWrapperGraph(t *testing.T) *metadata.Metadata {
 		a.SetValue(value)
 		return a
 	}
+	binary := func(x, y *metadata.CallArgument) *metadata.CallArgument {
+		a := newArg(metadata.KindBinary)
+		a.X, a.Fun = x, y
+		a.SetValue("+")
+		return a
+	}
 	sig := func(params ...*metadata.CallArgument) metadata.CallArgument {
 		s := newArg(metadata.KindFuncType)
 		s.Args = params
@@ -80,9 +87,19 @@ func mountWrapperGraph(t *testing.T) *metadata.Metadata {
 					{Name: pool.Get("Mount"), Signature: sig(ident("pattern", "string"), ident("sub", "*example.com/app.Router"))},
 					{Name: pool.Get("MountBuilt"), Signature: sig(ident("pattern", "string"), ident("cfg", "Config"))},
 					{Name: pool.Get("MountAPI"), Signature: sig(ident("sub", "*example.com/app.Router"))},
+					{Name: pool.Get("MountWithHealth"), Signature: sig(ident("pattern", "string"), ident("sub", "*example.com/app.Router"))},
+					{Name: pool.Get("MountFixed"), Signature: sig(ident("pattern", "string"), ident("sub", "*example.com/app.Router"))},
+					{
+						Name:      pool.Get("MountJoined"),
+						Signature: sig(ident("pattern", "string"), ident("sub", "*example.com/app.Router")),
+						AssignmentMap: map[string][]metadata.Assignment{
+							"full": {{Value: *binary(literal(`"/fixed"`), ident("pattern", "string"))}},
+						},
+					},
 				}},
 				"Outer": {Name: pool.Get("Outer"), Methods: []metadata.Method{
 					{Name: pool.Get("Attach"), Signature: sig(ident("p", "string"), ident("s", "*example.com/app.Router"))},
+					{Name: pool.Get("AttachWithStatic"), Signature: sig(ident("p", "string"), ident("s", "*example.com/app.Router"))},
 				}},
 			}},
 		}},
@@ -123,6 +140,57 @@ func mountWrapperGraph(t *testing.T) *metadata.Metadata {
 		// Router.Mount is known.
 		{
 			Caller: call("Attach", "example.com/app", "*Outer"),
+			Callee: call("Mount", "example.com/app", "*Router"),
+			Args:   []*metadata.CallArgument{ident("p", "string"), ident("s", "*example.com/app.Router")},
+		},
+		// r.chiRouter.Mount("/health", healthRoutes()) then
+		// r.chiRouter.Mount(pattern, sub.chiRouter): the incomplete mount comes
+		// first and must not hide the forwarding one.
+		{
+			Caller: call("MountWithHealth", "example.com/app", "*Router"),
+			Callee: call("Mount", "github.com/go-chi/chi/v5", "*Mux"),
+			Args: []*metadata.CallArgument{
+				literal(`"/health"`),
+				callOf(ident("healthRoutes", "")),
+			},
+		},
+		{
+			Caller: call("MountWithHealth", "example.com/app", "*Router"),
+			Callee: call("Mount", "github.com/go-chi/chi/v5", "*Mux"),
+			Args: []*metadata.CallArgument{
+				ident("pattern", "string"),
+				selector(ident("sub", "*example.com/app.Router"), "chiRouter"),
+			},
+		},
+		// r.chiRouter.Mount(path.Join("/fixed", pattern), sub.chiRouter): the
+		// wrapper adds text the call site's argument does not carry.
+		{
+			Caller: call("MountFixed", "example.com/app", "*Router"),
+			Callee: call("Mount", "github.com/go-chi/chi/v5", "*Mux"),
+			Args: []*metadata.CallArgument{
+				callOf(selector(ident("path", ""), "Join"), literal(`"/fixed"`), ident("pattern", "string")),
+				selector(ident("sub", "*example.com/app.Router"), "chiRouter"),
+			},
+		},
+		// full := "/fixed" + pattern; r.chiRouter.Mount(full, sub.chiRouter):
+		// the same added text, one assignment away.
+		{
+			Caller: call("MountJoined", "example.com/app", "*Router"),
+			Callee: call("Mount", "github.com/go-chi/chi/v5", "*Mux"),
+			Args: []*metadata.CallArgument{
+				ident("full", "string"),
+				selector(ident("sub", "*example.com/app.Router"), "chiRouter"),
+			},
+		},
+		// o.chi.Mount("/static", files()) is incomplete in the first round;
+		// o.inner.Mount(p, s) completes the same method only in the second.
+		{
+			Caller: call("AttachWithStatic", "example.com/app", "*Outer"),
+			Callee: call("Mount", "github.com/go-chi/chi/v5", "*Mux"),
+			Args:   []*metadata.CallArgument{literal(`"/static"`), callOf(ident("files", ""))},
+		},
+		{
+			Caller: call("AttachWithStatic", "example.com/app", "*Outer"),
 			Callee: call("Mount", "example.com/app", "*Router"),
 			Args:   []*metadata.CallArgument{ident("p", "string"), ident("s", "*example.com/app.Router")},
 		},
@@ -173,6 +241,7 @@ func TestDetectForwardingMounts(t *testing.T) {
 		RouterFromArg:  true,
 		RouterArgIndex: 1,
 		IsMount:        true,
+		argsOnly:       true,
 	}
 	mount, ok := byMethod["example.com/app.*Router.Mount"]
 	if !ok || !mount.Complete {
@@ -193,6 +262,27 @@ func TestDetectForwardingMounts(t *testing.T) {
 	for _, key := range []string{"example.com/app.*Router.MountBuilt", "example.com/app.*Router.MountAPI"} {
 		if w, ok := byMethod[key]; ok && w.Complete {
 			t.Errorf("%s was derived as applicable; mounting the caller's argument there would prefix routes it never produced", key)
+		}
+	}
+
+	// An incomplete mount beside the forwarding one — earlier in the method,
+	// or derivable a round earlier — must not hide it.
+	for _, key := range []string{"example.com/app.*Router.MountWithHealth", "example.com/app.*Outer.AttachWithStatic"} {
+		w, ok := byMethod[key]
+		if !ok || !w.Complete {
+			t.Errorf("%s not derived as an applicable mount (an incomplete edge won): %+v", key, w)
+			continue
+		}
+		if w.Mount.PathArgIndex != 0 || w.Mount.RouterArgIndex != 1 {
+			t.Errorf("%s roles = (%d, %d), want (0, 1)", key, w.Mount.PathArgIndex, w.Mount.RouterArgIndex)
+		}
+	}
+
+	// A wrapper that adds literal text around its path parameter would lose
+	// that text at the call site, so it stays unapplied.
+	for _, key := range []string{"example.com/app.*Router.MountFixed", "example.com/app.*Router.MountJoined"} {
+		if w, ok := byMethod[key]; ok && w.Complete {
+			t.Errorf("%s was derived as applicable; its routes would lose the wrapper's own path text", key)
 		}
 	}
 	for key := range byMethod {

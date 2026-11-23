@@ -77,8 +77,13 @@ func detectForwardingMounts(meta *metadata.Metadata, cp ContextProvider, params 
 					continue
 				}
 				w := deriveForwardingMount(cp, params, caller, seeds[j], edge)
+				// A method may mount more than once — a fixed health router
+				// beside the forwarded one — and the edges arrive in no useful
+				// order, so a complete derivation replaces an incomplete one,
+				// even from an earlier round. Between two complete ones the
+				// first still wins.
 				key := w.RecvType + "." + w.Methods[0]
-				if _, seen := found[key]; !seen {
+				if prev, seen := found[key]; !seen || (!prev.Complete && w.Complete) {
 					found[key] = w
 					if w.Complete {
 						derived = append(derived, *w.Mount)
@@ -112,6 +117,7 @@ func deriveForwardingMount(cp ContextProvider, params *paramIndex, w *wrapperMet
 		IsMount:        true,
 		RouterFromArg:  true,
 		RouterArgIndex: -1,
+		argsOnly:       true,
 	}
 	out := DetectedWrapper{
 		RecvType: w.fqRecv(),
@@ -127,7 +133,7 @@ func deriveForwardingMount(cp ContextProvider, params *paramIndex, w *wrapperMet
 	}
 
 	pathOK := !inner.PathFromArg
-	if inner.PathFromArg {
+	if inner.PathFromArg && !addsLiteralText(params, w, arg(inner.PathArgIndex)) {
 		if i, ok := params.indexOf(w, arg(inner.PathArgIndex)); ok {
 			mount.PathFromArg, mount.PathArgIndex = true, i
 			pathOK = true
@@ -147,6 +153,70 @@ func deriveForwardingMount(cp ContextProvider, params *paramIndex, w *wrapperMet
 	// router there is no sub-router to place under the prefix.
 	out.Complete = pathOK && routerOK
 	return out
+}
+
+// addsLiteralText reports whether a mount's path expression writes fixed text of
+// its own — a string literal in the expression, or in the assignments of the
+// locals it mentions (the hops indexOf follows to reach the parameter).
+//
+// The derived pattern records only WHICH parameter the path comes from, and the
+// call site substitutes its own argument there, so text the wrapper adds around
+// the parameter — `path.Join("/fixed", pattern)`, `pattern + "/"` — would be
+// silently dropped from every route below the mount. Such a wrapper stays
+// incomplete. Text added by a helper on the receiver (`r.getPattern(pattern)`,
+// which prepends the receiver's current group prefix) is not visible here and is
+// the containment case: the group the receiver sits in prefixes the mount call.
+// A literal that removes rather than adds text (`strings.TrimSuffix(pattern,
+// "/")`) is rejected too; leaving such a wrapper unapplied loses its prefix, the
+// behavior before the derivation existed, rather than inventing one.
+func addsLiteralText(params *paramIndex, w *wrapperMethod, arg *metadata.CallArgument) bool {
+	exprs := []*metadata.CallArgument{arg}
+	seen := map[string]bool{}
+	for hop := 0; hop < wrapperAssignHops && len(exprs) > 0; hop++ {
+		var next []*metadata.CallArgument
+		for _, e := range exprs {
+			if hasStringLiteral(e, wrapperExprDepth) {
+				return true
+			}
+			for _, name := range identsIn(e, wrapperExprDepth) {
+				if name == "" || seen[name] {
+					continue
+				}
+				seen[name] = true
+				for _, assign := range params.assignmentsOf(w, name) {
+					value := assign.Value
+					next = append(next, &value)
+				}
+			}
+		}
+		exprs = next
+	}
+	return false
+}
+
+// hasStringLiteral reports whether an expression contains a non-empty string
+// literal, searching the same sub-expressions identsIn does.
+func hasStringLiteral(arg *metadata.CallArgument, depth int) bool {
+	if arg == nil || depth <= 0 {
+		return false
+	}
+	if arg.GetKind() == metadata.KindLiteral {
+		v := arg.GetValue()
+		if len(v) > 2 && (v[0] == '"' || v[0] == '`') {
+			return true
+		}
+	}
+	for _, child := range []*metadata.CallArgument{arg.X, arg.Sel, arg.Fun} {
+		if hasStringLiteral(child, depth-1) {
+			return true
+		}
+	}
+	for _, a := range arg.Args {
+		if hasStringLiteral(a, depth-1) {
+			return true
+		}
+	}
+	return false
 }
 
 // valueRootIdent returns the identifier an expression is a part of — the
