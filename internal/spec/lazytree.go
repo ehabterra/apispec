@@ -41,6 +41,7 @@ package spec
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -94,6 +95,9 @@ type LazyTree struct {
 	// the Group call, not under main) — mirrored here by excluding them from
 	// the plain caller expansion.
 	claimed map[*metadata.CallGraphEdge]bool
+	// calleeKeyAt maps a call site (position + callee name) to the node key of
+	// the edge written there; see argProducerKey.
+	calleeKeyAt map[string][]string
 	// boundAt is the per-CALL-SITE counterpart of claimed, for a helper's calls
 	// on its parameter: keyed by the helper call's instance key, it lists the
 	// edges that call site's argument binding moved under the argument's
@@ -767,10 +771,35 @@ func (t *LazyTree) argProducerKey(arg metadata.CallArgument, edge *metadata.Call
 		// registration call and where the receiver chain reaches it under the
 		// enclosing group — so the callee's registrations land under both, and
 		// the one carrying the mount prefix wins in dropSubsumedMountPrefixes.
-		return arg.ID(), true
+		//
+		// The argument's own ID is a second rendering of the call, and it can
+		// disagree with the node: a method promoted through an embedded field
+		// (`engine.Group(...)`, Group declared on the embedded RouterGroup) is
+		// named for its declaring type in the argument but for the receiver's
+		// type in the edge the node is built from. The edge at the same call
+		// site is the source of truth, so prefer its key (issue #635).
+		//
+		// One site can carry several edges with different keys (a generic
+		// instantiation copy shares Position and Name). When the argument's own
+		// ID is already one of them it is right; with several candidates and no
+		// match, picking one would be a guess (rule 7), so keep the argument ID.
+		own := arg.ID()
+		keys := t.calleeKeyAt[calleeSiteKey(arg.GetPosition(), calleeNameOf(arg.Fun))]
+		for _, k := range keys {
+			if k == strings.TrimPrefix(own, "*") {
+				return own, true
+			}
+		}
+		if len(keys) == 1 {
+			return keys[0], true
+		}
+		return own, true
 	}
 	return "", false
 }
+
+// calleeSiteKey identifies a call by where it is written and what it names.
+func calleeSiteKey(pos, name string) string { return pos + "\x00" + name }
 
 // buildRelations constructs the chain and receiver-variable indexes once.
 func (t *LazyTree) buildRelations() {
@@ -781,6 +810,7 @@ func (t *LazyTree) buildRelations() {
 	t.chainChildren = map[string][]*metadata.CallGraphEdge{}
 	t.receiverChildren = map[string][]*metadata.CallGraphEdge{}
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
+	t.calleeKeyAt = make(map[string][]string, len(t.meta.CallGraph))
 	t.boundAt = map[string]map[*metadata.CallGraphEdge]bool{}
 	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
@@ -789,6 +819,11 @@ func (t *LazyTree) buildRelations() {
 	t.addEntrypointRoots(entrypointKeys)
 
 	for i := range meta.CallGraph {
+		callee := &meta.CallGraph[i].Callee
+		site := calleeSiteKey(getString(meta, callee.Position), getString(meta, callee.Name))
+		if k := strings.TrimPrefix(callee.ID(), "*"); !slices.Contains(t.calleeKeyAt[site], k) {
+			t.calleeKeyAt[site] = append(t.calleeKeyAt[site], k)
+		}
 		for _, arg := range meta.CallGraph[i].Args {
 			if arg == nil {
 				continue

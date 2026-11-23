@@ -213,3 +213,90 @@ func TestArgProducerIDsVariableFromOwnAssignment(t *testing.T) {
 		}
 	}
 }
+
+// TestArgProducerKeyPromotedMethodMatchesNode covers issue #635: a call argument
+// naming a method promoted through an embedded field is rendered under the
+// declaring type (RouterGroup.Group) while the edge — and so the node — carries
+// the receiver's type (Engine.Group). The producer key has to be the node's, or
+// the callee's registrations bind to a key no node has and lose the prefix.
+func TestArgProducerKeyPromotedMethodMatchesNode(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	const pkg = "example.com/gin"
+
+	groupCall := metadata.Call{
+		Meta: meta, Name: pool.Get("Group"), Pkg: pool.Get(pkg), Position: pool.Get("6"),
+		RecvType: pool.Get("*Engine"), Scope: -1, SignatureStr: -1,
+	}
+	// The argument as the metadata renders it: without the receiver type.
+	declaring := metadata.NewCallArgument(meta)
+	declaring.SetKind(metadata.KindIdent)
+	declaring.SetName("Group")
+	declaring.SetPkg(pkg)
+	groupArg := metadata.CallArgument{
+		Meta: meta, Kind: pool.Get(metadata.KindCall), Position: pool.Get("6"),
+		Name: -1, Value: -1, Raw: -1, Pkg: -1, Type: -1, Fun: declaring,
+	}
+	caller := metadata.Call{Meta: meta, Name: pool.Get("main"), Pkg: pool.Get(pkg), Position: -1, RecvType: -1, Scope: -1, SignatureStr: -1}
+	meta.CallGraph = []metadata.CallGraphEdge{{Caller: caller, Callee: groupCall}}
+	meta.BuildCallGraphMaps()
+
+	tree := &LazyTree{meta: meta}
+	tree.buildRelations()
+
+	node := strings.TrimPrefix(meta.CallGraph[0].Callee.ID(), "*")
+	if groupArg.ID() == node {
+		t.Fatalf("test shape lost: argument ID %q already equals the node key", groupArg.ID())
+	}
+	got, ok := tree.argProducerKey(groupArg, &meta.CallGraph[0], nil)
+	if !ok || got != node {
+		t.Errorf("producer key = %q (ok=%v), want the node key %q", got, ok, node)
+	}
+}
+
+// TestLazyTreeArgProducerAmbiguousSite pins the honest fallback: one call site
+// carrying edges with different callee keys (a generic-instantiation copy)
+// must not be resolved by picking whichever edge came last. The argument's own
+// ID is kept, and wins outright when it already matches one of the edges.
+func TestLazyTreeArgProducerAmbiguousSite(t *testing.T) {
+	pool := metadata.NewStringPool()
+	meta := &metadata.Metadata{StringPool: pool}
+	pkg := pool.Get("example")
+	call := func(name, position string, recv int) metadata.Call {
+		return metadata.Call{
+			Meta: meta, Name: pool.Get(name), Pkg: pkg, Position: pool.Get(position),
+			RecvType: recv, Scope: -1, SignatureStr: -1,
+		}
+	}
+	groupArg := metadata.CallArgument{
+		Meta: meta, Kind: pool.Get(metadata.KindCall), Position: pool.Get("6"),
+		Name: -1, Value: -1, Raw: -1, Pkg: -1, Type: -1,
+		Fun: &metadata.CallArgument{
+			Meta: meta, Kind: pool.Get(metadata.KindIdent), Name: pool.Get("Group"),
+			Pkg: pkg, Value: -1, Raw: -1, Type: -1, Position: -1,
+		},
+	}
+	own := groupArg.ID()
+
+	build := func(recvs ...string) *LazyTree {
+		meta.CallGraph = nil
+		for _, r := range recvs {
+			meta.CallGraph = append(meta.CallGraph, metadata.CallGraphEdge{
+				Caller: call("main", "5", -1), Callee: call("Group", "6", pool.Get(r)),
+			})
+		}
+		meta.BuildCallGraphMaps()
+		tree := &LazyTree{meta: meta}
+		tree.buildRelations()
+		return tree
+	}
+
+	// Two edges, neither equal to the argument's own ID: no guess.
+	tree := build("*example.A", "*example.B")
+	if a, b := meta.CallGraph[0].Callee.ID(), meta.CallGraph[1].Callee.ID(); a == b || a == own || b == own {
+		t.Fatalf("setup: want three distinct keys, got %q %q %q", a, b, own)
+	}
+	if got, _ := tree.argProducerKey(groupArg, &meta.CallGraph[0], nil); got != own {
+		t.Errorf("ambiguous site resolved to %q, want the argument's own ID %q", got, own)
+	}
+}
