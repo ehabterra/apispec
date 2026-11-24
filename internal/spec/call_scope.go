@@ -68,7 +68,26 @@ func (b *BasePatternMatcher) matchCallScope(edge *metadata.CallGraphEdge, s call
 	return matchesAny(s.callerPkg, cp.GetString(edge.Caller.Pkg)) &&
 		matchesAny(s.callerRecvType, fqOwner(cp, edge.Caller.Pkg, edge.Caller.RecvType)) &&
 		matchesAny(s.calleePkg, cp.GetString(edge.Callee.Pkg)) &&
-		matchesAny(s.calleeRecvType, fqOwner(cp, edge.Callee.Pkg, edge.Callee.RecvType))
+		matchesAnyForm(s.calleeRecvType, recvForms(cp, &edge.Callee))
+}
+
+// matchesAnyForm is matchesAny over every receiver form a callee carries, so a
+// callee filter naming the type the call was written against keeps matching a
+// promoted method recorded on its declaring type (issue #643), as
+// RecvTypeRegex already does through matchesRecvType.
+func matchesAnyForm(patterns, forms []string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	if len(forms) == 0 {
+		return matchesAny(patterns, "")
+	}
+	for _, form := range forms {
+		if matchesAny(patterns, form) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesAny reports whether value matches at least one of the patterns, and

@@ -296,7 +296,7 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	infoVar := &types.Info{Uses: map[*ast.Ident]types.Object{
 		identX: types.NewVar(token.NoPos, nil, "r", ifaceType),
 	}}
-	name, pkg, recv := getCalleeFunctionNameAndPackage(mkSel(identX, "Read"), file, "p",
+	name, pkg, recv, _ := getCalleeFunctionNameAndPackage(mkSel(identX, "Read"), file, "p",
 		map[*ast.File]*types.Info{file: infoVar}, nil, fset, sweepMeta())
 	if name != "Read" || pkg != "p" || recv != "interface" {
 		t.Errorf("iface var receiver: got (%q,%q,%q)", name, pkg, recv)
@@ -307,7 +307,7 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	infoErr := &types.Info{Types: map[ast.Expr]types.TypeAndValue{
 		callX: {Type: types.Universe.Lookup("error").Type()},
 	}}
-	name, pkg, recv = getCalleeFunctionNameAndPackage(mkSel(callX, "Error"), file, "p",
+	name, pkg, recv, _ = getCalleeFunctionNameAndPackage(mkSel(callX, "Error"), file, "p",
 		map[*ast.File]*types.Info{file: infoErr}, nil, fset, sweepMeta())
 	if name != "Error" || pkg != "p" || recv != "error" {
 		t.Errorf("error receiver: got (%q,%q,%q)", name, pkg, recv)
@@ -318,7 +318,7 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	infoIface := &types.Info{Types: map[ast.Expr]types.TypeAndValue{
 		callX2: {Type: ifaceType},
 	}}
-	name, pkg, recv = getCalleeFunctionNameAndPackage(mkSel(callX2, "Do"), file, "p",
+	name, pkg, recv, _ = getCalleeFunctionNameAndPackage(mkSel(callX2, "Do"), file, "p",
 		map[*ast.File]*types.Info{file: infoIface}, nil, fset, sweepMeta())
 	if name != "Do" || pkg != "p" || recv != "interface" {
 		t.Errorf("iface complex receiver: got (%q,%q,%q)", name, pkg, recv)
@@ -329,26 +329,26 @@ func TestSweepGetCalleeFunctionNameAndPackageArms(t *testing.T) {
 	infoBasic := &types.Info{Types: map[ast.Expr]types.TypeAndValue{
 		callX3: {Type: types.Typ[types.Int]},
 	}}
-	name, pkg, recv = getCalleeFunctionNameAndPackage(mkSel(callX3, "Do"), file, "p",
+	name, pkg, recv, _ = getCalleeFunctionNameAndPackage(mkSel(callX3, "Do"), file, "p",
 		map[*ast.File]*types.Info{file: infoBasic}, nil, fset, sweepMeta())
 	if name != "Do" || pkg != "p" || recv != "" {
 		t.Errorf("basic receiver fallback: got (%q,%q,%q)", name, pkg, recv)
 	}
 
 	// CallExpr recurses into its Fun.
-	name, _, _ = getCalleeFunctionNameAndPackage(&ast.CallExpr{Fun: ast.NewIdent("mk")}, file, "p", nil, nil, fset, sweepMeta())
+	name, _, _, _ = getCalleeFunctionNameAndPackage(&ast.CallExpr{Fun: ast.NewIdent("mk")}, file, "p", nil, nil, fset, sweepMeta())
 	if name != "mk" {
 		t.Errorf("call expr recursion: got %q", name)
 	}
 
 	// IndexListExpr recurses into X.
-	name, _, _ = getCalleeFunctionNameAndPackage(&ast.IndexListExpr{X: ast.NewIdent("gen")}, file, "p", nil, nil, fset, sweepMeta())
+	name, _, _, _ = getCalleeFunctionNameAndPackage(&ast.IndexListExpr{X: ast.NewIdent("gen")}, file, "p", nil, nil, fset, sweepMeta())
 	if name != "gen" {
 		t.Errorf("index list recursion: got %q", name)
 	}
 
 	// Unhandled expression kinds resolve to nothing.
-	name, pkg, recv = getCalleeFunctionNameAndPackage(&ast.BasicLit{Kind: token.INT, Value: "1"}, file, "p", nil, nil, fset, sweepMeta())
+	name, pkg, recv, _ = getCalleeFunctionNameAndPackage(&ast.BasicLit{Kind: token.INT, Value: "1"}, file, "p", nil, nil, fset, sweepMeta())
 	if name != "" || pkg != "" || recv != "" {
 		t.Errorf("unhandled expr: got (%q,%q,%q)", name, pkg, recv)
 	}

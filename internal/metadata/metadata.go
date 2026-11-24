@@ -1718,7 +1718,7 @@ func processAssignment(assign *ast.AssignStmt, file *ast.File, info *types.Info,
 				}
 				// If RHS is a function call, record callee info
 				if callExpr, ok := rhsExpr.(*ast.CallExpr); ok {
-					calleeFunc, calleePkg, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
+					calleeFunc, calleePkg, _, _ := getCalleeFunctionNameAndPackage(callExpr.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 					assignment.CalleeFunc = calleeFunc
 					assignment.CalleePkg = calleePkg
 					assignment.ReturnIndex = returnIndex
@@ -1940,7 +1940,7 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 	}
 
 	callerFunc, callerParts, callerSignatureStr := getEnclosingFunctionName(file, call.Pos(), info, fset, metadata)
-	calleeFunc, calleePkg, calleeParts := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
+	calleeFunc, calleePkg, calleeParts, calleeWritten := getCalleeFunctionNameAndPackage(call.Fun, file, pkgName, fileToInfo, funcMap, fset, metadata)
 
 	var calleeSignatureStr string
 	calleeType := getTypeWithGenerics(call.Fun, info)
@@ -2025,6 +2025,9 @@ func processCallExpression(call *ast.CallExpr, file *ast.File, pkgs map[string]m
 			metadata.StringPool.Get(calleeScope),
 		)
 		cgEdge.Callee.SignatureStr = metadata.StringPool.Get(calleeSignatureStr)
+		if calleeWritten != "" {
+			cgEdge.Callee.SetWrittenRecvType(metadata.StringPool.Get(calleeWritten))
+		}
 
 		// Use instance ID for calleeMap indexing to avoid conflicts
 		calleeInstance := cgEdge.Callee.InstanceID()
