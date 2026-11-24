@@ -389,6 +389,25 @@ func TestReturnResolverGuards(t *testing.T) {
 	if p, ok := capped.returned(v1, 0, noInvocation, 0); !ok || p.key != inV1Key {
 		t.Errorf("returned after a capped lookup = %+v, %v; want V1's Group %s", p, ok, inV1Key)
 	}
+	// A capped lookup can also succeed, with a fallback: a call argument whose
+	// helper is one hop too far is placed at the call itself. That place is
+	// the bound's answer, not the parameter's, so asked again with the budget
+	// whole the parameter reaches V1's Group. pass's call site is given the
+	// inline V1(r) argument, call edge included, which argPlace follows.
+	cappedParam := newResolver()
+	pass := edgeOf("main", "pass")
+	inline := *edgeOf("main", "register").Args[0]
+	for _, c := range meta.Callees[pass.Callee.BaseID()] {
+		orig := c.ParamArgMap
+		c.ParamArgMap = map[string]metadata.CallArgument{"g": inline}
+		defer func() { c.ParamArgMap = orig }()
+	}
+	if p, ok, _ := cappedParam.paramPlace("g", &pass.Callee, maxReturnHops); !ok || p.key == inV1Key {
+		t.Fatalf("paramPlace with no hop left for V1's Group = %+v, %v; want the V1 call as fallback", p, ok)
+	}
+	if p, ok, _ := cappedParam.paramPlace("g", &pass.Callee, 0); !ok || p.key != inV1Key {
+		t.Errorf("paramPlace after a capped lookup = %+v, %v; want V1's Group %s", p, ok, inV1Key)
+	}
 	if _, ok := res.argPlace(*v1.Args[0], v1, maxReturnHops+1); ok {
 		t.Error("argPlace past the hop bound: want no producer")
 	}

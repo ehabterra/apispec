@@ -148,11 +148,12 @@ type returnResolver struct {
 	// defers counts the answers that depended on a pending binding: a failure
 	// that may turn into a place once that binding is decided.
 	defers int
-	// capped counts the lookups refused for the hop bound. A failure that
-	// tripped it says how deep the question was asked, not what the call
-	// returns, so it is not memoised: the same call asked with budget left
-	// is resolved again. A place is memoised whatever the depth: reusing it
-	// costs nothing, which is all the bound limits.
+	// capped counts the lookups refused for the hop bound. An answer reached
+	// while it tripped says how deep the question was asked, not what the
+	// call returns, so it is not memoised: the same call asked with budget
+	// left is resolved again. That holds for a place as much as a failure —
+	// a refused follow falls back to the call node itself, a place that a
+	// lookup with budget would have carried on to the helper's group.
 	capped int
 }
 
@@ -242,8 +243,8 @@ func (r *returnResolver) returned(pe *metadata.CallGraphEdge, idx int, in invoca
 	r.visiting[vk] = true
 	place, ok := r.resolveReturned(pe, idx, in, hops)
 	delete(r.visiting, vk)
-	if !ok && r.capped != capped {
-		return place, ok
+	if r.capped != capped {
+		return place, ok // the bound's answer, not the call's (see capped)
 	}
 	r.memo[mk] = returnMemo{place: place, ok: ok, dead: !ok && r.dead != before, deferred: !ok && r.defers != deferred}
 	return place, ok
@@ -727,10 +728,10 @@ func (r *returnResolver) paramPlace(name string, fn *metadata.Call, hops int) (p
 	}
 	if !ok {
 		first = returnPlace{}
-		if r.capped != capped {
-			delete(r.params, mk) // the bound's answer, not the parameter's (see capped)
-			return first, false, true
-		}
+	}
+	if r.capped != capped {
+		delete(r.params, mk) // the bound's answer, not the parameter's (see capped)
+		return first, ok, true
 	}
 	r.params[mk] = paramMemo{place: first, ok: ok, done: true, deferred: !ok && r.defers != deferred}
 	return first, ok, true
