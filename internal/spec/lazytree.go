@@ -109,7 +109,12 @@ type LazyTree struct {
 	// claimed instead took them out of the helper for every caller, and a call
 	// site whose own binding failed (`h := w.Header(); declare(h)`) was left
 	// with the helper's writes on no path at all (issue #546).
-	boundAt        map[string]map[*metadata.CallGraphEdge]bool
+	boundAt map[string]map[*metadata.CallGraphEdge]bool
+	// returnBound, indexed by node key handle: edges claimed by a variable a
+	// helper returned, added beneath the copies of the producing node that
+	// belong to the claiming invocation (see returnBinding, issue #633). A
+	// slice rather than a map because every expansion consults it.
+	returnBound    [][]returnBinding
 	relationsBuilt bool
 	budgetWarned   bool
 
@@ -864,30 +869,113 @@ func (t *LazyTree) buildRelations() {
 	// source map's iteration order (see sortedAssignmentRelationships).
 	rels := sortedAssignmentRelationships(meta)
 	producerByVar := map[recvKey]string{}
+	res := &returnResolver{
+		t:             t,
+		producerByVar: producerByVar,
+		relsByVar:     map[recvKey][]*metadata.AssignmentLink{},
+		localRels:     map[string][]*metadata.AssignmentLink{},
+		claimedBy:     map[*metadata.CallGraphEdge]*metadata.AssignmentLink{},
+		boundTo:       map[string]map[*metadata.CallGraphEdge]paramBind{},
+		moves:         map[*metadata.CallGraphEdge]int{},
+		params:        map[string]paramMemo{},
+		memo:          map[returnMemoKey]returnMemo{},
+		visiting:      map[returnMemoKey]bool{},
+	}
+	type receiverClaim struct {
+		rel   *metadata.AssignmentLink
+		edges []*metadata.CallGraphEdge
+	}
+	var claims []receiverClaim
 	for _, rel := range rels {
 		producerKey := strings.TrimPrefix(rel.Edge.Callee.ID(), "*")
 		// Bare-name key: consumed by TraceVariableOrigin-driven lookups
 		// (param bindings, option-arg step-through), which only have bare
 		// function names.
-		producerByVar[recvKey{
+		vk := recvKey{
 			name: getString(meta, rel.Assignment.VariableName),
 			pkg:  getString(meta, rel.Assignment.Pkg),
 			fn:   getString(meta, rel.Assignment.Func),
-		}] = producerKey
+		}
+		producerByVar[vk] = producerKey
+		res.relsByVar[vk] = append(res.relsByVar[vk], rel)
 		// Claim receiver calls only when the assignment lives in the producing
 		// edge's caller. Callee-body assignments can leak through AssignmentMap;
 		// matching them by variable name would steal unrelated caller-scope edges.
 		if getString(meta, rel.Assignment.Func) != getString(meta, rel.Edge.Caller.Name) {
 			continue
 		}
-		edges := edgesByRecvVar[recvEdgeKey(getString(meta, rel.Assignment.VariableName), &rel.Edge.Caller)]
+		local := recvEdgeKey(vk.name, &rel.Edge.Caller)
+		res.localRels[local] = append(res.localRels[local], rel)
+		edges := edgesByRecvVar[local]
 		if len(edges) == 0 {
 			continue
 		}
-		t.receiverChildren[producerKey] = append(t.receiverChildren[producerKey], edges...)
+		claims = append(claims, receiverClaim{rel: rel, edges: edges})
 		for _, edge := range edges {
+			if prev, seen := res.claimedBy[edge]; seen && prev != rel {
+				res.claimedBy[edge] = nil // reassigned variable: no single parent
+				continue
+			}
+			res.claimedBy[edge] = rel
+		}
+	}
+
+	// Param bindings: a value passed into a function parameter (UserRoutes(g)
+	// with func UserRoutes(rg *gin.RouterGroup)) makes the callee's calls on
+	// that parameter belong to the value's producer — so a group's routes
+	// registered in a helper still hang (prefixed) under the Group call. This
+	// is what the eager build wires through variableNodes/ParamArgMap.
+	//
+	// Resolved before the receiver claims are applied, because following a
+	// returned value through a helper needs to know which of the helper's calls
+	// a call site's binding moved (returnResolver.parentPath); applied after,
+	// so the receiverChildren lists keep their order.
+	var paramClaims, unresolved []paramClaim
+	for i := range meta.CallGraph {
+		edge := &meta.CallGraph[i]
+		if len(edge.ParamArgMap) == 0 {
+			continue
+		}
+		params := make([]string, 0, len(edge.ParamArgMap))
+		for param := range edge.ParamArgMap {
+			params = append(params, param)
+		}
+		sort.Strings(params)
+		for _, param := range params {
+			arg := edge.ParamArgMap[param]
+			// The callee's calls on this param have Caller == the callee, so
+			// the exact-caller key is (param, callee BaseID).
+			paramEdges := edgesByRecvVar[recvEdgeKey(param, &edge.Callee)]
+			if len(paramEdges) == 0 {
+				continue
+			}
+			site := strings.TrimPrefix(edge.Callee.ID(), "*")
+			producerKey, ok := t.argProducerKey(arg, edge, producerByVar)
+			if !ok {
+				// Resolved once the bindings that can be are known: a value a
+				// helper returned may still have a producer (issue #633).
+				unresolved = append(unresolved, paramClaim{bind: paramBind{arg: arg, edge: edge, param: param}, site: site, edges: paramEdges})
+				continue
+			}
+			b := paramBind{arg: arg, edge: edge, param: param, key: producerKey}
+			paramClaims = append(paramClaims, paramClaim{bind: b, site: site, edges: paramEdges})
+			res.bind(site, b, paramEdges)
+		}
+	}
+	paramClaims = append(paramClaims, res.resolvePending(unresolved)...)
+
+	// A variable a helper returned belongs under the node that produced the
+	// returned value, not under the helper's call (issue #633).
+	for _, c := range claims {
+		for _, edge := range c.edges {
 			t.claimed[edge] = true
 		}
+		if place, ok := res.returned(c.rel.Edge, c.rel.Assignment.ReturnIndex, noInvocation, 0); ok {
+			t.bindReturned(place, c.edges)
+			continue
+		}
+		producerKey := strings.TrimPrefix(c.rel.Edge.Callee.ID(), "*")
+		t.receiverChildren[producerKey] = append(t.receiverChildren[producerKey], c.edges...)
 	}
 
 	// assignIndex: the eager tree's assignmentIndex, byte-for-byte key
@@ -941,43 +1029,19 @@ func (t *LazyTree) buildRelations() {
 		}
 	}
 
-	// Param bindings: a value passed into a function parameter (UserRoutes(g)
-	// with func UserRoutes(rg *gin.RouterGroup)) makes the callee's calls on
-	// that parameter belong to the value's producer — so a group's routes
-	// registered in a helper still hang (prefixed) under the Group call. This
-	// is what the eager build wires through variableNodes/ParamArgMap.
-	for i := range meta.CallGraph {
-		edge := &meta.CallGraph[i]
-		if len(edge.ParamArgMap) == 0 {
-			continue
+	for _, c := range paramClaims {
+		place, ok := res.argPlace(c.bind.arg, c.bind.edge, 0)
+		if !ok {
+			place = returnPlace{key: c.bind.key}
 		}
-		params := make([]string, 0, len(edge.ParamArgMap))
-		for param := range edge.ParamArgMap {
-			params = append(params, param)
+		t.bindReturned(place, c.edges)
+		bound := t.boundAt[c.site]
+		if bound == nil {
+			bound = map[*metadata.CallGraphEdge]bool{}
+			t.boundAt[c.site] = bound
 		}
-		sort.Strings(params)
-		for _, param := range params {
-			arg := edge.ParamArgMap[param]
-			// The callee's calls on this param have Caller == the callee, so
-			// the exact-caller key is (param, callee BaseID).
-			paramEdges := edgesByRecvVar[recvEdgeKey(param, &edge.Callee)]
-			if len(paramEdges) == 0 {
-				continue
-			}
-			producerKey, ok := t.argProducerKey(arg, edge, producerByVar)
-			if !ok {
-				continue
-			}
-			t.receiverChildren[producerKey] = append(t.receiverChildren[producerKey], paramEdges...)
-			site := strings.TrimPrefix(edge.Callee.ID(), "*")
-			bound := t.boundAt[site]
-			if bound == nil {
-				bound = map[*metadata.CallGraphEdge]bool{}
-				t.boundAt[site] = bound
-			}
-			for _, pe := range paramEdges {
-				bound[pe] = true
-			}
+		for _, pe := range c.edges {
+			bound[pe] = true
 		}
 	}
 }
@@ -1646,6 +1710,11 @@ func (n *LazyNode) GetChildren() []TrackerNodeInterface {
 		n.tree.instanceCount[scope] = scopeCounts
 	}
 	plan := n.tree.planFor(n)
+	// Per-path too: edges bound beneath this copy of a returned producer only
+	// when its ancestry is the invocation that returned it (issue #633).
+	if extra := n.returnBoundSpecs(); len(extra) > 0 {
+		plan = append(plan[:len(plan):len(plan)], extra...)
+	}
 	// The children slice is GROWN, not sized from the plan. Nearly every child a
 	// plan lists is refused before it is built — by the barren-subtree prune,
 	// the cycle guard, the per-scope instance cap — so sizing by len(plan)

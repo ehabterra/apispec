@@ -80,19 +80,15 @@ func TestTestdata_FactoryLocalSameNameFiber(t *testing.T) {
 	assertExactGetPaths(t, out, []string{"/a/same", "/b/other", "/c/inline"})
 }
 
-// TestTestdata_FactoryLocalSameNameGin probes the gin form of the shape: gin has
-// no Mount, so the factory returns a group it made itself and the caller
-// registers on it.
-//
-// Change detector: neither group keeps its prefix, whatever the factory's
-// local is called — a route registered on a group a factory returns is not
-// placed under that group's Group() call. That gap is independent of the name
-// collision (the differently named `g` fails the same way); when it is fixed
-// these become "/v1/same" and "/v2/other".
+// TestTestdata_FactoryLocalSameNameGin is the gin form of the shape: gin has no
+// Mount, so the factory returns a group it made itself and the caller registers
+// on it. The routes belong under the factory's Group() call whatever its local
+// is called (issue #633 — the caller's routes used to hang beside that call,
+// not beneath it, and were documented at the root).
 func TestTestdata_FactoryLocalSameNameGin(t *testing.T) {
 	out := loadTestdata(t, "factory_local_same_name_gin", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
 	noUnresolvedPlaceholders(t, out)
 
-	assertExactGetPaths(t, out, []string{"/same", "/other"})
+	assertExactGetPaths(t, out, []string{"/v1/same", "/v2/other"})
 }
