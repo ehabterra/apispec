@@ -88,8 +88,11 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 			fixture: "var_closure_handler_http",
 			cfg:     spec.DefaultHTTPConfig(),
 			resolved: map[string]want{
-				"/geo":       {query: "count", literal: "main.go:89:"},
-				"/health":    {literal: "main.go:95:"}, // var health http.HandlerFunc = func…
+				"/geo": {query: "count", literal: "main.go:89:"},
+				// var health http.HandlerFunc = func… — also bound to
+				// shadowParam's `p`, so it serves /shadowp/outer too and its
+				// operationId falls back to method+path (#459): no literal.
+				"/health":    {response: "Status"},
 				"/wrapped":   {query: "page", literal: "main.go:100:"},
 				"/converted": {query: "q", literal: "main.go:107:"}, // http.HandlerFunc(c)
 				"/inline":    {query: "count", literal: "main.go:121:"},
@@ -97,8 +100,11 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				"/shadow/inner":  {literal: "main.go:35:", response: "Inner"},
 				"/shadowp/inner": {literal: "main.go:44:", response: "Inner"},
 				// …and NOT for the call outside it, which names the
-				// package-level function the local shadows.
-				"/shadow/outer": {response: "Pkg"},
+				// package-level function the local shadows, or the parameter:
+				// `p` is bound to `health` at shadowParam(mux, health) — the
+				// registration sits in that call's frame (issue #615).
+				"/shadow/outer":  {response: "Pkg"},
+				"/shadowp/outer": {response: "Status"},
 				// A closure local in a METHOD resolves like one in a function:
 				// methods record their control-flow regions (issue #617).
 				"/method": {literal: "main.go:56:", response: "Geo"},
@@ -106,14 +112,11 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				// parameter, bound here to pkgHandler — never the inner
 				// block's closure.
 				"/mshadow/outer": {response: "Pkg"},
-				// Change-detector, NOT the desired answer: the inner call is
-				// attributed to the parameter's argument too, because the
-				// parameter hop binds `g` by name without seeing the inner
-				// block's shadowing `g :=`. Independent of methods — a
-				// function with a resolvable parameter does the same. Flips
-				// to {literal: "main.go:64:", response: "Inner"} when the
-				// parameter hop respects shadowing.
-				"/mshadow/inner": {response: "Pkg"},
+				// The inner call names the inner block's closure: a closure
+				// the name provably holds at the call outranks the parameter
+				// hop, in the tracker and in the handler's identity alike
+				// (issue #615).
+				"/mshadow/inner": {literal: "main.go:64:", response: "Inner"},
 				// A package-level function shadowed in a METHOD: only the
 				// method's recorded regions tell the two `pkgHandler`s apart.
 				"/mshadowpkg/inner": {literal: "main.go:74:", response: "Inner"},
@@ -133,10 +136,6 @@ func TestTestdata_VarClosureHandler(t *testing.T) {
 				"/forinit/outer": {response: "Pkg"},
 				"/minit/inner":   {literal: "main.go:176:", response: "Inner"},
 				"/minit/outer":   {response: "Pkg"},
-			},
-			unresolved: []string{
-				// Outside the shadowing block: the parameter, not the closure.
-				"/shadowp/outer",
 			},
 		},
 	}
