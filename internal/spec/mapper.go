@@ -672,6 +672,11 @@ func buildPathsFromRoutes(routes []*RouteInfo, handlerMethods ...string) map[str
 		if route.OperationIDSuffix != "" {
 			operationID += "_" + route.OperationIDSuffix
 		}
+		// An unbound handler renders as its type; left empty, the id is
+		// repaired to the operation's method and path (repairOperationIDs).
+		if route.HandlerUnbound {
+			operationID = ""
+		}
 		// Fill the summary/description from the handler's Go doc comment (issue
 		// #168) when not already set by a more specific source.
 		// Each field falls back independently: a comment carrying only a

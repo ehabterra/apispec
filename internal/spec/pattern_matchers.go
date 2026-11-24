@@ -1145,6 +1145,7 @@ func (r *RoutePatternMatcherImpl) extractRouteDetails(node TrackerNodeInterface,
 		handlerArg = resolveHandlerArg(r.contextProvider, handlerArg, node)
 		routeInfo.Handler = r.contextProvider.GetArgumentInfo(handlerArg)
 		routeInfo.Function = r.contextProvider.GetArgumentInfo(handlerArg)
+		routeInfo.HandlerUnbound = handlerUnbound(handlerArg, r.cfg.Framework.HandlerInterfaceMethods)
 
 		pkg := handlerArg.GetPkg()
 		if pkg == "" {
@@ -1179,19 +1180,34 @@ func resolveHandlerArg(cp ContextProvider, arg *metadata.CallArgument, node Trac
 	cur, curNode := arg, node
 	for i := 0; i < maxHandlerUnwraps && cur != nil; i++ {
 		next := cur
-		if resolved, resolvedNode := resolveArgThroughParams(next, curNode); resolved != nil {
-			next = resolved
-			if resolvedNode != nil {
-				curNode = resolvedNode
+		// A closure the name holds at THIS call outranks the parameter hop. The
+		// hop binds by name, and an inner block's `p := func…` shadows the
+		// parameter `p` for the calls inside that block: hopping there names the
+		// caller's handler for a route the local closure serves (issue #615,
+		// where a helper's registrations came to sit in the frame of the call
+		// that bound its parameters). closureAssignedTo already proves the
+		// binding is in effect — every assignment dominates the call and is in
+		// scope there — so where it answers, the parameter is not what the call
+		// names; where it does not (`h = withLogging(h)`, or a call outside the
+		// shadowing block), the hop stands. The tracker applies the same rule
+		// (LazyTree.closureBound), so the handler named and the body walked
+		// agree.
+		if lit := closureAt(cp, curNode, next); lit != nil {
+			next = lit
+		} else {
+			if resolved, resolvedNode := resolveArgThroughParams(next, curNode); resolved != nil {
+				next = resolved
+				if resolvedNode != nil {
+					curNode = resolvedNode
+				}
 			}
-		}
-		next = handlerArgValue(next)
-		// A local holding a closure (`h := func(…){…}; r.GET("/x", h)`): the
-		// value is the literal, which is what an inline registration names. The
-		// resolved node's edge is the call made in the scope the ident lives in
-		// — the registration itself, or the call a parameter hop resolved at.
-		if curNode != nil {
-			if lit := closureAssignedTo(cp, curNode.GetEdge(), next); lit != nil {
+			next = handlerArgValue(next)
+			// A local holding a closure (`h := func(…){…}; r.GET("/x", h)`): the
+			// value is the literal, which is what an inline registration names.
+			// The resolved node's edge is the call made in the scope the ident
+			// lives in — the registration itself, or the call a parameter hop
+			// resolved at.
+			if lit := closureAt(cp, curNode, next); lit != nil {
 				next = lit
 			}
 		}
@@ -1204,6 +1220,35 @@ func resolveHandlerArg(cp ContextProvider, arg *metadata.CallArgument, node Trac
 		return arg
 	}
 	return cur
+}
+
+// handlerUnbound reports whether a handler argument, after resolveHandlerArg
+// has followed every binding it could, is still a name for a value rather than
+// a handler: a parameter no call site binds, or a local the walk cannot pin
+// (`for _, h := range hs { reg(api, h) }`). Rendering such a name yields its
+// type, and an operationId of `…gin.HandlerFunc` names no operation; the
+// method-and-path id is the honest one (golden rule #7).
+//
+// Three names do identify the handler and stay: a declared function, a
+// package-level variable, and a value whose type serves requests through the
+// framework's handler interface (`s := &statusHandler{}; mux.Handle("/s", s)`)
+// — that type's ServeHTTP is the body the route walks (handlerValueKeys), so
+// the type is the handler's name.
+func handlerUnbound(arg *metadata.CallArgument, handlerMethods []string) bool {
+	if arg == nil || arg.Meta == nil || arg.GetKind() != metadata.KindIdent {
+		return false
+	}
+	pkg, name := arg.GetPkg(), arg.GetName()
+	if name == "" || arg.Meta.FunctionInPackage(pkg, name) != nil {
+		return false
+	}
+	for _, file := range arg.Meta.SortedFiles(pkg) {
+		if _, ok := file.Variables[name]; ok {
+			return false
+		}
+	}
+	tpkg, tname := handlerValueTypeOf(arg)
+	return len(handlerMethodKeys(arg.Meta, handlerMethods, tpkg, tname)) == 0
 }
 
 // closureAssignedTo returns the function literal a local variable holds at a
@@ -1273,6 +1318,14 @@ func closureAssignedTo(cp ContextProvider, edge *metadata.CallGraphEdge, arg *me
 		lit = &v
 	}
 	return lit
+}
+
+// closureAt is closureAssignedTo at a tracker node's call, nil without a node.
+func closureAt(cp ContextProvider, node TrackerNodeInterface, arg *metadata.CallArgument) *metadata.CallArgument {
+	if node == nil {
+		return nil
+	}
+	return closureAssignedTo(cp, node.GetEdge(), arg)
 }
 
 // isValidHTTPMethod checks if a string is a valid HTTP method

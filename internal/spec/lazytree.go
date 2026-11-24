@@ -114,7 +114,27 @@ type LazyTree struct {
 	// helper returned, added beneath the copies of the producing node that
 	// belong to the claiming invocation (see returnBinding, issue #633). A
 	// slice rather than a map because every expansion consults it.
-	returnBound    [][]returnBinding
+	returnBound [][]returnBinding
+	// bindingFrames lists, per producer key, the helper-call ARGUMENTS that bound
+	// the producer's value to a parameter — one per call site — and
+	// paramEdgesAt lists, per such argument, the helper's calls on that
+	// parameter. Together they hang a helper's registrations under the producer
+	// INSIDE the call that bound them (producer → binding argument → r.GET),
+	// rather than directly under the producer.
+	//
+	// The frame is the point. The group's prefix reaches a registration by
+	// containment under the producer, but every other argument of that
+	// registration — the handler, the path — is a parameter of the helper,
+	// bound only by the helper call's ParamArgMap and read from the parent
+	// frame. Hung straight under the producer the registration had the prefix
+	// and no binding, while its copy inside the helper call had the binding and
+	// no prefix, so `reg(api, named)` documented `/api/x` with an unresolved
+	// handler AND `/x` with the real one (issue #615). An argument node's edge
+	// is its call's edge, which is exactly the frame both lookups need, and it
+	// is per call site, so `reg(api, "/a", h1); reg(api, "/b", h2)` stay two
+	// routes instead of one shared node binding neither.
+	bindingFrames  map[string][]childSpec
+	paramEdgesAt   map[*metadata.CallArgument][]*metadata.CallGraphEdge
 	relationsBuilt bool
 	budgetWarned   bool
 
@@ -261,6 +281,8 @@ type LazyTree struct {
 
 	// funcTypes memoizes funcValued by type string (see funcValued).
 	funcTypes map[string]bool
+	// closureBoundArgs memoizes closureBound per call-site argument.
+	closureBoundArgs map[*metadata.CallArgument]bool
 
 	// boundArgs interns the value bound to a parameter at one invocation, so a
 	// substituted child has ONE identity across the prune's index and the
@@ -819,6 +841,8 @@ func (t *LazyTree) buildRelations() {
 	t.claimed = map[*metadata.CallGraphEdge]bool{}
 	t.calleeKeyAt = make(map[string][]string, len(t.meta.CallGraph))
 	t.boundAt = map[string]map[*metadata.CallGraphEdge]bool{}
+	t.bindingFrames = map[string][]childSpec{}
+	t.paramEdgesAt = map[*metadata.CallArgument][]*metadata.CallGraphEdge{}
 	t.argInstanceIDs = map[string]bool{}
 	meta := t.meta
 	var entrypointKeys []string
@@ -1034,7 +1058,19 @@ func (t *LazyTree) buildRelations() {
 		if !ok {
 			place = returnPlace{key: c.bind.key}
 		}
-		t.bindReturned(place, c.edges)
+		// A helper that returns a value may hand back one its calls produced
+		// (issue #633): that placement is read from the producer's direct
+		// children, so a frame in between would hide the producing call.
+		if len(place.path) == 0 && len(t.calleeBody(c.bind.edge).returns) == 0 {
+			if frame, ok := t.bindingFrame(c.bind.edge, c.bind.arg); ok {
+				t.bindingFrames[place.key] = append(t.bindingFrames[place.key], frame)
+				t.paramEdgesAt[frame.arg] = append(t.paramEdgesAt[frame.arg], c.edges...)
+			} else {
+				t.bindReturned(place, c.edges)
+			}
+		} else {
+			t.bindReturned(place, c.edges)
+		}
 		bound := t.boundAt[c.site]
 		if bound == nil {
 			bound = map[*metadata.CallGraphEdge]bool{}
@@ -1044,6 +1080,54 @@ func (t *LazyTree) buildRelations() {
 			bound[pe] = true
 		}
 	}
+}
+
+// bindingFrame builds the argument child that stands for `edge`'s binding of
+// `bound` — the same identity buildPlan gives that argument under the call
+// itself, so both copies share one plan (see bindingFrames).
+//
+// Only an IDENT argument gets a frame. A call argument (`reg(v1.Group("/x"))`)
+// is its own producer: its node key is the producer key, so a frame under the
+// producer would be the producer again and the cycle guard would drop it — and
+// with it every registration the helper makes. Those keep the plain
+// receiver-children binding. So does an argument the call's own Args do not
+// list exactly once, since a frame built from a copy would be an identity no
+// plan reaches.
+func (t *LazyTree) bindingFrame(edge *metadata.CallGraphEdge, bound metadata.CallArgument) (childSpec, bool) {
+	if bound.GetKind() != metadata.KindIdent {
+		return childSpec{}, false
+	}
+	id := bound.ID()
+	if id == "" {
+		return childSpec{}, false
+	}
+	var arg *metadata.CallArgument
+	for i, a := range edge.Args {
+		if i >= t.limits.MaxArgsPerFunction {
+			break
+		}
+		if a == nil || a.ID() != id {
+			continue
+		}
+		if arg != nil {
+			return childSpec{}, false
+		}
+		arg = a
+	}
+	// The same exclusions buildPlan applies to argument children, so a frame is
+	// never an argument the call itself would not have listed.
+	if arg == nil || arg.GetName() == "nil" ||
+		edge.Caller.ID() == metadata.StripToBase(id) || edge.Callee.ID() == id {
+		return childSpec{}, false
+	}
+	key := strings.TrimPrefix(id, "*")
+	return childSpec{
+		key:     key,
+		keyID:   t.internKey(key),
+		arg:     arg,
+		argEdge: edge,
+		argType: classifyArgument(arg),
+	}, true
 }
 
 // NewLazyTree builds the root layer (main functions, like the eager tree)
@@ -1488,10 +1572,36 @@ func (n *LazyNode) boundSpec(spec childSpec) childSpec {
 	if _, ok := inv.ParamArgMap[name]; !ok {
 		return spec
 	}
-	if sub, ok := n.tree.substituteBound(spec, inv, name); ok {
-		return sub
+	sub, ok := n.tree.substituteBound(spec, inv, name)
+	if !ok || n.tree.closureBound(spec) {
+		return spec
 	}
-	return spec
+	return sub
+}
+
+// closureBound reports whether the name an argument passes holds a closure
+// assigned in the calling function itself (closureAssignedTo), memoized per
+// argument. Such a name is not the parameter of the same name — an inner
+// block's `p := func…` shadows it — so substituting the caller's binding would
+// walk another handler's body; the argument stays as written and expands the
+// literal instead (closureValueKey). resolveHandlerArg applies the same rule, so
+// the handler named and the body walked agree (issue #615).
+//
+// Consulted only after a substitution has been found, so the dominance query
+// runs for the few function-valued arguments that bind to a body, once per call
+// site. The prune's index (boundSpecVariants) still lists the substitution: an
+// extra identity there is one the expansion never asks about, which costs
+// nothing, while a missing one is what drops a child.
+func (t *LazyTree) closureBound(spec childSpec) bool {
+	if v, ok := t.closureBoundArgs[spec.arg]; ok {
+		return v
+	}
+	v := closureAssignedTo(t.contextProvider(), spec.argEdge, spec.arg) != nil
+	if t.closureBoundArgs == nil {
+		t.closureBoundArgs = map[*metadata.CallArgument]bool{}
+	}
+	t.closureBoundArgs[spec.arg] = v
+	return v
 }
 
 // substituteBound rewrites spec to carry `bound` instead of the parameter it
@@ -2010,11 +2120,25 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	// Mount("/x", subRouter)): the producer subtree — the registrations
 	// claimed under the router that was stored into the variable/field —
 	// becomes this argument's children, so the mount prefix applies to them.
+	//
+	// A helper's binding argument is itself a frame (see bindingFrames): it
+	// carries its own helper's registrations, and listing every other call
+	// site's frame under it would nest the frames into one another.
+	ownFrame := n.isArgument && len(t.paramEdgesAt[n.arg]) > 0
+	var frames []childSpec
 	for _, producerID := range n.argProducerIDs() {
 		for _, edge := range t.receiverChildren[producerID] {
 			appendCallee(edge, false)
 		}
+		if !ownFrame {
+			frames = append(frames, t.bindingFrames[producerID]...)
+		}
 		expandKey(metadata.StripToBase(producerID))
+	}
+	if n.isArgument {
+		for _, edge := range t.paramEdgesAt[n.arg] {
+			appendCallee(edge, false)
+		}
 	}
 	// Chain children are listed under this node (so matchers see
 	// `.Methods("GET")` on the route call, or `.Use(mw)` on a group) but
@@ -2025,10 +2149,14 @@ func (t *LazyTree) buildPlan(n *LazyNode) []childSpec {
 	for _, edge := range t.receiverChildren[t.keyString(n.key)] {
 		appendCallee(edge, false)
 	}
+	frames = append(frames, t.bindingFrames[t.keyString(n.key)]...)
 
 	// Spend the budget on routing code first — see orderTowardRoutes.
 	t.orderTowardRoutes(plan, calleeStart)
-	return plan
+	// Frames are argument children and join them at the front, where
+	// orderTowardRoutes leaves arguments: each leads to a registration by
+	// construction, and the reach set, keyed by callee, would not know it.
+	return slices.Insert(plan, calleeStart, frames...)
 }
 
 // methodBaseKeys resolves a method-referencing argument to the base ID(s) of
