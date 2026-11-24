@@ -198,3 +198,54 @@ func main() { reg(named); mount(&statusHandler{}) }
 		t.Error("a closure, or no argument, is not an unbound name")
 	}
 }
+
+// gateNode is a TrackerNodeInterface carrying only what readsAsStatement looks
+// at: the node's edge and argument.
+type gateNode struct {
+	edge *metadata.CallGraphEdge
+	arg  *metadata.CallArgument
+}
+
+func (g *gateNode) GetKey() string                      { return "" }
+func (g *gateNode) GetParent() TrackerNodeInterface     { return nil }
+func (g *gateNode) GetChildren() []TrackerNodeInterface { return nil }
+func (g *gateNode) GetEdge() *metadata.CallGraphEdge    { return g.edge }
+func (g *gateNode) GetArgument() *metadata.CallArgument { return g.arg }
+func (g *gateNode) GetTypeParamMap() map[string]string  { return nil }
+
+// TestReadsAsStatement pins the extraction gate (issue #615): a binding frame
+// — an ident argument hung under a producer, carrying its helper call's edge —
+// is not read, while a call node, an argument under its own call, and an
+// argument that is itself a call (carrying its own edge, wherever it hangs)
+// are. The last one is the only copy of `parse(req.Header.Get("X"))`'s read a
+// large service's walk reaches; gating it lost a thousand parameters.
+func TestReadsAsStatement(t *testing.T) {
+	meta := &metadata.Metadata{StringPool: metadata.NewStringPool()}
+	producer := &metadata.CallGraphEdge{}
+	helperCall := &metadata.CallGraphEdge{}
+	parseCall := &metadata.CallGraphEdge{}
+	getCall := &metadata.CallGraphEdge{}
+
+	ident := metadata.NewCallArgument(meta)
+	ident.SetKind(metadata.KindIdent)
+	ident.SetName("values")
+	callArg := metadata.NewCallArgument(meta)
+	callArg.SetKind(metadata.KindCall)
+	callArg.Edge = getCall
+
+	for _, tc := range []struct {
+		name          string
+		parent, child TrackerNodeInterface
+		want          bool
+	}{
+		{"call node", &gateNode{edge: producer}, &gateNode{edge: helperCall}, true},
+		{"argument under its own call", &gateNode{edge: helperCall}, &gateNode{edge: helperCall, arg: ident}, true},
+		{"binding frame under a producer", &gateNode{edge: producer}, &gateNode{edge: helperCall, arg: ident}, false},
+		{"call argument under the call it feeds", &gateNode{edge: parseCall}, &gateNode{edge: getCall, arg: callArg}, true},
+		{"nil child", &gateNode{edge: producer}, nil, false},
+	} {
+		if got := readsAsStatement(tc.parent, tc.child); got != tc.want {
+			t.Errorf("%s: readsAsStatement = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

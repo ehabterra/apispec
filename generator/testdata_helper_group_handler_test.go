@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	intspec "github.com/ehabterra/apispec/internal/spec"
 	"github.com/ehabterra/apispec/spec"
 )
 
@@ -245,4 +246,72 @@ func TestTestdata_HelperFrameResponse(t *testing.T) {
 	if got := strings.Join(contentTypesOf(get, "200"), " "); got != "application/json" {
 		t.Errorf("GET /items/{id} 200 media types = %q, want application/json alone", got)
 	}
+}
+
+// TestTestdata_HelperFrameParam guards the parameter side of the same frame
+// (issue #615): a configured accessor whose binding argument hangs under a
+// shared producer must not document its parameter on a route that only
+// reaches the producer. The walk reads that frame node twice — as a child of
+// the producer, and again in its own recursion's tail — and both must hold the
+// gate. The default config is the negative case: readFlag is then no accessor
+// and nothing documents `verbose` at all. GET /self is the other side of the
+// gate: a header read nested as another call's argument is its own statement.
+func TestTestdata_HelperFrameParam(t *testing.T) {
+	accessor := intspec.DefaultHTTPConfig()
+	accessor.Framework.ParamPatterns = append(accessor.Framework.ParamPatterns, intspec.ParamPattern{
+		CallRegex:     "^readFlag$",
+		ParamIn:       "query",
+		ParamArgIndex: 1,
+	})
+	for _, tc := range []struct {
+		name    string
+		cfg     *intspec.APISpecConfig
+		getWant string
+	}{
+		{"accessor", accessor, "path:id query:verbose"},
+		{"default", intspec.DefaultHTTPConfig(), "path:id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := loadTestdataWithFixtureConfig(t, "http_helper_frame_param", tc.cfg)
+			noDanglingRefs(t, out)
+
+			list := opFor(out.Paths["/items"], "GET")
+			if list == nil {
+				t.Fatalf("GET /items missing; have %v", mapPathKeys(out.Paths))
+			}
+			if got := paramKeys(list); len(got) != 0 {
+				t.Errorf("GET /items parameters = %v, want none — readFlag is never called on this route", got)
+			}
+
+			get := opFor(out.Paths["/items/{id}"], "GET")
+			if get == nil {
+				t.Fatalf("GET /items/{id} missing; have %v", mapPathKeys(out.Paths))
+			}
+			if got := strings.Join(paramKeys(get), " "); got != tc.getWant {
+				t.Errorf("GET /items/{id} parameters = %q, want %q", got, tc.getWant)
+			}
+
+			// A header read nested as another call's argument is a statement
+			// of the route that makes the call. Here a direct copy reaches it
+			// too; TestReadsAsStatement pins the gate for the argument copy,
+			// which on a large service is often the only one.
+			self := opFor(out.Paths["/self"], "GET")
+			if self == nil {
+				t.Fatalf("GET /self missing; have %v", mapPathKeys(out.Paths))
+			}
+			if got := strings.Join(paramKeys(self), " "); got != "header:X-Forwarded-Proto" {
+				t.Errorf("GET /self parameters = %q, want header:X-Forwarded-Proto", got)
+			}
+		})
+	}
+}
+
+// paramKeys lists an operation's parameters as sorted "in:name" keys.
+func paramKeys(op *intspec.Operation) []string {
+	var keys []string
+	for _, p := range op.Parameters {
+		keys = append(keys, p.In+":"+p.Name)
+	}
+	sort.Strings(keys)
+	return keys
 }

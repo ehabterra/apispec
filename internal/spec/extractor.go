@@ -1452,17 +1452,7 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 		// through a lateral relation link belongs to another route's handler,
 		// and taking it documents a confidently wrong schema (issue #269).
 		childBodyScope := bodyScope && e.followsControlFlow(routeNode, child, depth)
-		// An argument is read as its call: its node carries the edge of the
-		// call it belongs to, so a matcher reading it re-reads that call. Under
-		// the call itself that is the same statement in the same place. But a
-		// helper's binding argument also hangs under the PRODUCER of the value
-		// it passes (LazyTree.bindingFrames), wherever that producer is
-		// reached, and there it stands for a call the route never made. Read
-		// as one, `ctx.APIError(err)` became a response of every route that
-		// reached the call producing `err` — a JSON body on pages that render
-		// HTML (issue #615). An argument outside its own call is a frame, not
-		// a statement, so nothing is read off it.
-		read := child != nil && (child.GetArgument() == nil || child.GetEdge() == routeNode.GetEdge())
+		read := readsAsStatement(routeNode, child)
 		if req := e.extractRequestFromNode(child, route); req != nil && childBodyScope && read {
 			// Record the call site so a method-dispatch handler can attribute
 			// this request body to the right verb branch by line range.
@@ -1516,8 +1506,39 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 		}
 	}
 
-	// Extract parameters from the route node itself
-	route.Params = append(route.Params, e.extractParamsFromNode(routeNode, route)...)
+	// Extract parameters from the route node itself. Only at the top: every
+	// deeper routeNode is a child the loop above already read, under the
+	// `read` gate. Reading it again here would let a frame — an argument
+	// outside its own call — contribute its call's parameter after all.
+	if depth == 0 {
+		route.Params = append(route.Params, e.extractParamsFromNode(routeNode, route)...)
+	}
+}
+
+// readsAsStatement reports whether the route walk may read requests,
+// responses and parameters off child, reached under parent.
+//
+// An argument is read as its call: its node carries the edge of the call it
+// belongs to, so a matcher reading it re-reads that call. Under the call itself
+// that is the same statement in the same place. But a helper's binding argument
+// also hangs under the PRODUCER of the value it passes (LazyTree.bindingFrames),
+// wherever that producer is reached, and there it stands for a call the route
+// never made. Read as one, `ctx.APIError(err)` became a response of every route
+// that reached the call producing `err` — a JSON body on pages that render HTML
+// (issue #615). An argument outside its own call is a frame, not a statement,
+// so nothing is read off it.
+//
+// An argument that is itself a call — `parse(req.Header.Get("X"))` — carries
+// its OWN edge, not the enclosing call's: it is that statement wherever it sits.
+// On a large service it is often the only copy of the read the walk reaches (a
+// helper's calls on a bound parameter leave its body), so treating it as a frame
+// lost a thousand header and query parameters.
+func readsAsStatement(parent, child TrackerNodeInterface) bool {
+	if child == nil {
+		return false
+	}
+	arg := child.GetArgument()
+	return arg == nil || child.GetEdge() == parent.GetEdge() || child.GetEdge() == arg.Edge
 }
 
 // completesSameRegistration reports whether a child node can finish the route its
