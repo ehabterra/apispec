@@ -1689,10 +1689,11 @@ type Call struct {
 	SignatureStr int `yaml:"signature_str,omitempty"`
 
 	// writtenRecvType is the receiver this call was WRITTEN against, kept when
-	// RecvType has been replaced by the concrete type a resolved call graph
-	// proves runs. Both are facts and neither subsumes the other (golden rule
-	// #7): the concrete type is what actually executes, and the written one is
-	// what a pattern scoped to an interface names.
+	// RecvType names a different one: the type that DECLARES a method promoted
+	// through an embedded field (issue #643), or the concrete type a resolved
+	// call graph proves runs. Both are facts and neither subsumes the other
+	// (golden rule #7): the recorded type is what actually executes, and the
+	// written one is what a pattern scoped to the source's own type names.
 	//
 	// Without it, resolving is a net loss for any interface-scoped pattern.
 	// net/http's param config excludes `Header().Get(k)` reads whose receiver
@@ -1700,23 +1701,30 @@ type Call struct {
 	// project's own writer type and the exclusion matches nothing, so a response
 	// header is documented as a request parameter (issue #260).
 	//
+	// It is stored FULLY QUALIFIED (`pkg.Recv`, the fqOwner form), because its
+	// package is generally not the call's: `app.Group` on `type App struct{
+	// *gin.Engine }` is recorded in gin's package but written against main's
+	// App, and qualifying the written form with Pkg would name a type that does
+	// not exist.
+	//
 	// Stored as pool index + 1 so that UNSET is 0 rather than -1, which is what
 	// keeps `omitempty` working: an unset -1 would serialise on every call in
-	// every metadata golden. Nothing sets it unless a resolved call graph is in
-	// use, so legacy runs are byte-identical. It is exported only because
-	// metadata round-trips through YAML (LoadMetadata); read and write it
-	// through WrittenRecvType / SetWrittenRecvType, which own the encoding.
+	// every metadata golden. Only a call that differs sets it. It is exported
+	// only because metadata round-trips through YAML (LoadMetadata); read and
+	// write it through WrittenRecvType / SetWrittenRecvType, which own the
+	// encoding.
 	WrittenRecv int `yaml:"written_recv,omitempty"`
 }
 
-// WrittenRecvType returns the pooled index of the receiver this call was written
-// against, or -1 when the recorded RecvType is already that receiver.
+// WrittenRecvType returns the pooled index of the fully-qualified receiver this
+// call was written against, or -1 when the recorded RecvType is already that
+// receiver.
 func (c *Call) WrittenRecvType() int {
 	return c.WrittenRecv - 1
 }
 
-// SetWrittenRecvType records the receiver a call was written against, before a
-// resolved call graph replaced RecvType with the concrete type. Passing -1 (the
+// SetWrittenRecvType records the fully-qualified receiver (`pkg.Recv`) a call
+// was written against, when RecvType records a different one. Passing -1 (the
 // pool's "no string") clears it.
 func (c *Call) SetWrittenRecvType(idx int) {
 	if idx < 0 {

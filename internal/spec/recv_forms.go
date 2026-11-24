@@ -17,8 +17,9 @@ package spec
 import "github.com/ehabterra/apispec/internal/metadata"
 
 // recvForms returns every fully-qualified receiver a call may legitimately be
-// matched on: the one recorded, and — when a resolved call graph replaced it —
-// the one the call was WRITTEN against.
+// matched on: the one recorded, and — when that is not what the source says (a
+// method promoted through an embedded field, a callee a resolved call graph
+// replaced) — the one the call was WRITTEN against.
 //
 // Both are facts about the same call and neither subsumes the other (golden rule
 // #7). The concrete type is what actually runs, so a pattern scoped to it should
@@ -31,8 +32,9 @@ import "github.com/ehabterra/apispec/internal/metadata"
 // (issue #260).
 //
 // The recorded form is always first, so a caller that wants the primary answer
-// can take forms[0]. The written form is omitted when unset or identical, which
-// is every call on a legacy run.
+// can take forms[0]. The written form is omitted when unset or identical. It is
+// stored already qualified with its OWN package, which is not the call's when
+// the method is promoted from another package's type (issue #643).
 func recvForms(cp ContextProvider, call *metadata.Call) []string {
 	if cp == nil || call == nil {
 		return nil
@@ -45,7 +47,7 @@ func recvForms(cp ContextProvider, call *metadata.Call) []string {
 		}
 		return []string{recorded}
 	}
-	writtenFq := qualifyOwner(cp.GetString(call.Pkg), cp.GetString(written))
+	writtenFq := cp.GetString(written)
 	switch {
 	case recorded == "":
 		if writtenFq == "" {

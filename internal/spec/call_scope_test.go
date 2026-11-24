@@ -149,6 +149,26 @@ func TestMatchCallScope(t *testing.T) {
 			t.Error("a plain caller function did not match its package as an owner")
 		}
 	})
+
+	t.Run("a promoted callee matches either receiver it carries", func(t *testing.T) {
+		// app.Group on `type App struct{ *gin.Engine }` is recorded on gin's
+		// RouterGroup and written against App (issue #643).
+		promoted := &metadata.CallGraphEdge{
+			Caller:   sweepCall(meta, "main", "example.com/app", "", ""),
+			Callee:   sweepCall(meta, "Group", "github.com/gin-gonic/gin", "*RouterGroup", ""),
+			Position: meta.StringPool.Get(""),
+		}
+		promoted.Callee.SetWrittenRecvType(meta.StringPool.Get("example.com/app.*App"))
+		if !base.matchCallScope(promoted, callScope{calleeRecvType: []string{`^example\.com/app\.\*App$`}}) {
+			t.Error("a callee filter naming the embedding type stopped matching the call written against it")
+		}
+		if !base.matchCallScope(promoted, callScope{calleeRecvType: []string{`gin\.\*RouterGroup$`}}) {
+			t.Error("a callee filter naming the declaring type did not match")
+		}
+		if base.matchCallScope(promoted, callScope{calleeRecvType: []string{`gin\.\*Engine$`}}) {
+			t.Error("accepting either form must not accept a type the call carries neither as")
+		}
+	})
 }
 
 // TestCallScopeIsAppliedByEveryMatcher pins the wiring rather than the rule: the

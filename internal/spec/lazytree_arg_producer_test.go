@@ -214,11 +214,13 @@ func TestArgProducerIDsVariableFromOwnAssignment(t *testing.T) {
 	}
 }
 
-// TestArgProducerKeyPromotedMethodMatchesNode covers issue #635: a call argument
-// naming a method promoted through an embedded field is rendered under the
-// declaring type (RouterGroup.Group) while the edge — and so the node — carries
-// the receiver's type (Engine.Group). The producer key has to be the node's, or
-// the callee's registrations bind to a key no node has and lose the prefix.
+// TestArgProducerKeyPromotedMethodMatchesNode covers issue #635: when a call
+// argument's rendering disagrees with the edge at the same site, the producer
+// key has to be the node's, or the callee's registrations bind to a key no node
+// has and lose the prefix. The shape is the one #635 met — the edge carrying the
+// receiver's type (Engine.Group) for a promoted method. Metadata no longer
+// records that shape (#643 names the declaring type), so the edge is built by
+// hand to keep the rule pinned.
 func TestArgProducerKeyPromotedMethodMatchesNode(t *testing.T) {
 	pool := metadata.NewStringPool()
 	meta := &metadata.Metadata{StringPool: pool}

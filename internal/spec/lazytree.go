@@ -773,11 +773,13 @@ func (t *LazyTree) argProducerKey(arg metadata.CallArgument, edge *metadata.Call
 		// the one carrying the mount prefix wins in dropSubsumedMountPrefixes.
 		//
 		// The argument's own ID is a second rendering of the call, and it can
-		// disagree with the node: a method promoted through an embedded field
-		// (`engine.Group(...)`, Group declared on the embedded RouterGroup) is
-		// named for its declaring type in the argument but for the receiver's
-		// type in the edge the node is built from. The edge at the same call
-		// site is the source of truth, so prefer its key (issue #635).
+		// disagree with the node. A method promoted through an embedded field
+		// (`engine.Group(...)`, Group declared on the embedded RouterGroup) was
+		// the case that found it (issue #635): the edge named the receiver's
+		// type. The edge now names the declaring type as the argument does
+		// (#643), so no fixture reaches the fallback below, but the edge at the
+		// same call site stays the source of truth whenever the two renderings
+		// part, so prefer its key.
 		//
 		// One site can carry several edges with different keys (a generic
 		// instantiation copy shares Position and Name). When the argument's own

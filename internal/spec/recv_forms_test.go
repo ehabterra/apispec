@@ -49,17 +49,23 @@ func TestRecvFormsKeepsBothFactsAndNeitherMore(t *testing.T) {
 			name: "legacy call has one form",
 			pkg:  "net/http", recorded: "*Request", written: "",
 			want: []string{"net/http.*Request"},
-			why:  "nothing sets the written receiver without a resolved call graph",
+			why:  "a call written against the type that declares its method records nothing more",
 		},
 		{
 			name: "resolved past an interface keeps both",
-			pkg:  "example.com/app", recorded: "*recorder", written: "ResponseWriter",
-			want: []string{"example.com/app.*recorder", "example.com/app.ResponseWriter"},
+			pkg:  "example.com/app", recorded: "*recorder", written: "net/http.ResponseWriter",
+			want: []string{"example.com/app.*recorder", "net/http.ResponseWriter"},
 			why:  "the concrete type runs and the interface is what a pattern names",
 		},
 		{
+			name: "promoted method keeps the embedding type in its own package",
+			pkg:  "github.com/gin-gonic/gin", recorded: "*RouterGroup", written: "example.com/app.*App",
+			want: []string{"github.com/gin-gonic/gin.*RouterGroup", "example.com/app.*App"},
+			why:  "the written form is qualified with ITS package, not the declaring one (#643)",
+		},
+		{
 			name: "identical written receiver is not repeated",
-			pkg:  "net/http", recorded: "Header", written: "Header",
+			pkg:  "net/http", recorded: "Header", written: "net/http.Header",
 			want: []string{"net/http.Header"},
 			why:  "a duplicate form would make every regex test the same string twice",
 		},
@@ -92,11 +98,11 @@ func TestRecvFormsKeepsBothFactsAndNeitherMore(t *testing.T) {
 // pattern scoped to an interface must keep matching a call whose graph has been
 // resolved past that interface.
 func TestMatchesRecvTypeAcceptsEitherForm(t *testing.T) {
-	meta, call := recvFormsFixture(t, "example.com/app", "*recorder", "ResponseWriter")
+	meta, call := recvFormsFixture(t, "example.com/app", "*recorder", "net/http.ResponseWriter")
 	cp := NewContextProvider(meta)
 
 	t.Run("exact match on the written interface", func(t *testing.T) {
-		if !matchesRecvType(cp, call, "example.com/app.ResponseWriter", "") {
+		if !matchesRecvType(cp, call, "net/http.ResponseWriter", "") {
 			t.Error("a pattern naming the interface stopped matching once the callee was resolved to the concrete type")
 		}
 	})

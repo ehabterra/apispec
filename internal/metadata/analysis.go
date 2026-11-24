@@ -222,66 +222,24 @@ func isTypeConversion(call *ast.CallExpr, info *types.Info) bool {
 	return false
 }
 
-// getCalleeFunctionNameAndPackage extracts function name, package, and receiver type from a call expression
-func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, meta *Metadata) (string, string, string) {
+// getCalleeFunctionNameAndPackage extracts function name, package, and receiver
+// type from a call expression, plus the fully-qualified receiver the call was
+// WRITTEN against when that differs from the one recorded (see
+// promotedMethodOwner); the fourth result is "" otherwise.
+func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info, funcMap map[string]*ast.FuncDecl, fset *token.FileSet, meta *Metadata) (string, string, string, string) {
 	switch x := expr.(type) {
 	case *ast.Ident:
 		// Simple identifier - assume it's a function in the current package
-		return x.Name, pkgName, ""
+		return x.Name, pkgName, "", ""
 
 	case *ast.SelectorExpr:
-		if ident, ok := x.X.(*ast.Ident); ok {
-
-			// If not an import, try to resolve as variable/method
-			if info, exists := fileToInfo[file]; exists {
-				if obj := info.ObjectOf(ident); obj != nil {
-					if pkg, ok := obj.(*types.PkgName); ok {
-						return x.Sel.Name, pkg.Imported().Path(), ""
-					} else if varObj, ok := obj.(*types.Var); ok {
-						t := varObj.Type()
-						receiverType := getReceiverTypeString(t)
-						switch t := t.(type) {
-						case *types.Named:
-							if t.Obj().Pkg() != nil {
-								return x.Sel.Name, t.Obj().Pkg().Path(), receiverType
-							}
-							return x.Sel.Name, pkgName, receiverType
-						case *types.Pointer:
-							if named, ok := t.Elem().(*types.Named); ok {
-								return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
-							}
-						case *types.Interface:
-							// For interfaces, fallback to current package
-							return x.Sel.Name, pkgName, receiverType
-						}
-					}
-				}
-			}
-			// Default: assume it's a method call in current package
-			return x.Sel.Name, pkgName, ""
-		}
-
-		// Handle more complex receiver expressions
-		if info, exists := fileToInfo[file]; exists {
-			if tv := info.Types[x.X]; tv.Type != nil {
-				receiverType := getReceiverTypeString(tv.Type)
-				switch t := tv.Type.(type) {
-				case *types.Named:
-					if t.Obj().Pkg() != nil {
-						return x.Sel.Name, t.Obj().Pkg().Path(), receiverType
-					}
-					return x.Sel.Name, pkgName, receiverType
-				case *types.Pointer:
-					if named, ok := t.Elem().(*types.Named); ok {
-						return x.Sel.Name, named.Obj().Pkg().Path(), receiverType
-					}
-				case *types.Interface:
-					// For interfaces, fallback to current package
-					return x.Sel.Name, pkgName, receiverType
-				}
+		name, pkg, recv := selectorCallee(x, file, pkgName, fileToInfo)
+		if info := fileToInfo[file]; info != nil && recv != "" {
+			if declPkg, declRecv, ok := promotedMethodOwner(info, x); ok {
+				return name, declPkg, declRecv, pkg + "." + recv
 			}
 		}
-		return x.Sel.Name, pkgName, ""
+		return name, pkg, recv, ""
 
 	case *ast.CallExpr:
 		return getCalleeFunctionNameAndPackage(x.Fun, file, pkgName, fileToInfo, funcMap, fset, meta)
@@ -296,10 +254,112 @@ func getCalleeFunctionNameAndPackage(expr ast.Expr, file *ast.File, pkgName stri
 		// Recursively analyze the X field to find function calls
 		return getCalleeFunctionNameAndPackage(x.X, file, pkgName, fileToInfo, funcMap, fset, meta)
 	case *ast.FuncLit:
-		return funcLitName(meta.stablePosition(x.Pos(), fset)), pkgName, ""
+		return funcLitName(meta.stablePosition(x.Pos(), fset)), pkgName, "", ""
 
 	}
-	return "", "", ""
+	return "", "", "", ""
+}
+
+// selectorCallee names a selector call by the type its receiver expression is
+// written as: `app.Group` on a `*App` is (Group, App's package, "*App").
+func selectorCallee(x *ast.SelectorExpr, file *ast.File, pkgName string, fileToInfo map[*ast.File]*types.Info) (string, string, string) {
+	if ident, ok := x.X.(*ast.Ident); ok {
+		// If not an import, try to resolve as variable/method
+		if info, exists := fileToInfo[file]; exists {
+			if obj := info.ObjectOf(ident); obj != nil {
+				if pkg, ok := obj.(*types.PkgName); ok {
+					return x.Sel.Name, pkg.Imported().Path(), ""
+				} else if varObj, ok := obj.(*types.Var); ok {
+					if pkg, recv, ok := receiverOwner(varObj.Type()); ok {
+						return x.Sel.Name, orPkg(pkg, pkgName), recv
+					}
+				}
+			}
+		}
+		// Default: assume it's a method call in current package
+		return x.Sel.Name, pkgName, ""
+	}
+
+	// Handle more complex receiver expressions
+	if info, exists := fileToInfo[file]; exists {
+		if tv := info.Types[x.X]; tv.Type != nil {
+			if pkg, recv, ok := receiverOwner(tv.Type); ok {
+				return x.Sel.Name, orPkg(pkg, pkgName), recv
+			}
+		}
+	}
+	return x.Sel.Name, pkgName, ""
+}
+
+// receiverOwner names the package and receiver string of a receiver
+// expression's type: a named type or a pointer to one, or an interface. pkg is
+// "" when the type carries no package of its own (a universe type, a literal
+// interface) and the caller's package stands in. ok is false for any other
+// type, which records no receiver.
+func receiverOwner(t types.Type) (pkg, recv string, ok bool) {
+	recv = getReceiverTypeString(t)
+	switch t := t.(type) {
+	case *types.Named:
+		if t.Obj().Pkg() != nil {
+			return t.Obj().Pkg().Path(), recv, true
+		}
+		return "", recv, true
+	case *types.Pointer:
+		if named, isNamed := t.Elem().(*types.Named); isNamed && named.Obj().Pkg() != nil {
+			return named.Obj().Pkg().Path(), recv, true
+		}
+	case *types.Interface:
+		return "", recv, true
+	}
+	return "", "", false
+}
+
+func orPkg(pkg, fallback string) string {
+	if pkg == "" {
+		return fallback
+	}
+	return pkg
+}
+
+// promotedMethodOwner reports the package and receiver of the type that
+// DECLARES a method reached through an embedded field.
+//
+// `type App struct{ *gin.Engine }; app.Group(...)` is written against App but
+// runs gin's (*RouterGroup).Group, two embeddings down. Naming the callee by the
+// receiver expression's type records `App.Group` — a method no one declares,
+// which no framework receiver pattern names and no function lookup finds — so
+// the call is invisible to every matcher (issue #643). The same holds for a
+// framework's own embedding: `engine.GET` runs the RouterGroup's GET.
+//
+// Only a method VALUE selected through at least one embedded field is
+// promoted (an Index longer than one). A method the outer type declares itself
+// shadows the embedded one and is selected directly, so it keeps its own
+// receiver. An interface's method set is flat, so a call on an interface value
+// is never promoted here either; an interface embedded in a STRUCT is, and its
+// declaring receiver is that interface.
+//
+// The generic origin is used so a method promoted from an instantiated generic
+// type is named by its declaration (`Base`, not `Base[int]`), the form every
+// function lookup keys on. A method with no package (the universe `error`'s
+// Error) has no declaring package to record and stays as written.
+func promotedMethodOwner(info *types.Info, x *ast.SelectorExpr) (pkg, recv string, ok bool) {
+	sel, found := info.Selections[x]
+	if !found || sel.Kind() != types.MethodVal || len(sel.Index()) < 2 {
+		return "", "", false
+	}
+	fn, isFn := sel.Obj().(*types.Func)
+	if !isFn || fn.Pkg() == nil {
+		return "", "", false
+	}
+	sig, isSig := fn.Origin().Type().(*types.Signature)
+	if !isSig || sig.Recv() == nil {
+		return "", "", false
+	}
+	recv = getReceiverTypeString(sig.Recv().Type())
+	if recv == "" {
+		return "", "", false
+	}
+	return fn.Pkg().Path(), recv, true
 }
 
 // getReceiverTypeString gets a string representation of the receiver type
