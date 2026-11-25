@@ -39,6 +39,9 @@ func TestTestdata_DeclaredMediaTypeSerializer(t *testing.T) {
 		{"/fn-helper", "400", "application/problem+json", "Problem"},
 		{"/method-helper", "404", "application/problem+json", "Problem"},
 		{"/inline", "409", "application/problem+json", "Problem"},
+		// A declaration written after WriteHeader commits the headers has no
+		// effect, in a derived helper as inline: the body keeps the default.
+		{"/late-helper", "410", "application/json", "Problem"},
 		// No status write: the body keeps the implicit 200.
 		{"/implicit-status", "200", "application/vnd.item+json", "Item"},
 		// A declaration on one branch is not in effect after the join: the
@@ -92,7 +95,7 @@ func TestTestdata_DeclaredMediaTypeSerializer(t *testing.T) {
 
 	// The declaration went with its body: it leaves no 200 behind on the
 	// operations that never send one.
-	for _, path := range []string{"/fn-helper", "/method-helper", "/inline"} {
+	for _, path := range []string{"/fn-helper", "/method-helper", "/inline", "/late-helper"} {
 		op := opFor(out.Paths[path], "GET")
 		if op == nil {
 			continue

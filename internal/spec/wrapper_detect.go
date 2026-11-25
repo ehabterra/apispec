@@ -706,6 +706,9 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 				if inner.ContentTypeFromHeaderWrite {
 					media.declaration(key, m, node)
 				}
+				if inner.StatusFromArg && !inner.TypeFromArg && !inner.ContentTypeFromHeaderWrite {
+					media.commit(key, edge)
+				}
 				body, rawBytes := m.wrapperBodyArg(edge)
 				innerDeclined := j < len(declined) && declined[j]
 				hadBody := byMethod[key] != nil && byMethod[key].Response != nil && byMethod[key].Response.TypeFromArg
@@ -741,6 +744,8 @@ type responderMedia struct {
 	flow *blockIndex
 	// method key -> its Content-Type header writes
 	decls map[string][]responderDecl
+	// method key -> its status writes, which commit the headers
+	commits map[string][]codePos
 	// method key -> the call that gave it its body role, when that call's
 	// body takes the header's media type (see takesHeaderMediaType)
 	bodyAt map[string]codePos
@@ -759,7 +764,7 @@ func newResponderMedia(cp ContextProvider, meta *metadata.Metadata) *responderMe
 	} else {
 		flow = newBlockIndex(meta)
 	}
-	return &responderMedia{flow: flow, decls: map[string][]responderDecl{}, bodyAt: map[string]codePos{}}
+	return &responderMedia{flow: flow, decls: map[string][]responderDecl{}, commits: map[string][]codePos{}, bodyAt: map[string]codePos{}}
 }
 
 func (r *responderMedia) declaration(key string, m *ResponsePatternMatcherImpl, node TrackerNodeInterface) {
@@ -776,6 +781,26 @@ func (r *responderMedia) declaration(key string, m *ResponsePatternMatcherImpl, 
 	r.decls[key] = append(r.decls[key], responderDecl{at: at, mediaType: mediaType, tentative: tentative})
 }
 
+func (r *responderMedia) commit(key string, edge *metadata.CallGraphEdge) {
+	at := edgePosition(edge)
+	if !slices.Contains(r.commits[key], at) {
+		r.commits[key] = append(r.commits[key], at)
+	}
+}
+
+// committed reports whether a status write in the method runs on every path
+// to at: WriteHeader puts the headers on the wire, so a Content-Type set after
+// it has no effect — the rule pairing applies inline (committedAt in
+// pairAndFillResponses).
+func (r *responderMedia) committed(key string, at codePos) bool {
+	for _, c := range r.commits[key] {
+		if c.file == at.file && c.valid() && r.flow.dominates(c, at) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *responderMedia) body(key string, edge *metadata.CallGraphEdge) {
 	r.bodyAt[key] = edgePosition(edge)
 }
@@ -783,8 +808,9 @@ func (r *responderMedia) body(key string, edge *metadata.CallGraphEdge) {
 // apply gives each responder the media type declared where its body is
 // written: the last declaration in the method that dominates the body call,
 // as pairing reads it (see pairAndFillResponses). One in a branch is not in
-// effect on the other path; a tentative one — a media type a serializer
-// produces — leaves the body describing itself (issue #570).
+// effect on the other path, nor one written after a status write has
+// committed the headers; a tentative one — a media type a serializer produces
+// — leaves the body describing itself (issue #570).
 func (r *responderMedia) apply(byMethod map[string]*DetectedWrapper) {
 	for key, bodyAt := range r.bodyAt {
 		entry := byMethod[key]
@@ -797,7 +823,7 @@ func (r *responderMedia) apply(byMethod map[string]*DetectedWrapper) {
 		// and that is only sound because of this keying.
 		for i := range r.decls[key] {
 			d := &r.decls[key][i]
-			if d.at.file != bodyAt.file || !d.at.valid() || !r.flow.dominates(d.at, bodyAt) {
+			if d.at.file != bodyAt.file || !d.at.valid() || !r.flow.dominates(d.at, bodyAt) || r.committed(key, d.at) {
 				continue
 			}
 			if effect == nil || effect.at.beforeOrAt(d.at) {

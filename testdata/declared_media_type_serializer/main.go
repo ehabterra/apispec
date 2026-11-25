@@ -36,10 +36,23 @@ func (responder) problem(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// late declares after WriteHeader has committed the headers: net/http ignores
+// the write, so the body goes out under the encoder's default, not the
+// declaration.
+func (responder) late(w http.ResponseWriter, status int, v any) {
+	w.WriteHeader(status)
+	w.Header().Set("Content-Type", "application/problem+json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 type api struct{ out responder }
 
 func (a *api) methodHelper(w http.ResponseWriter, _ *http.Request) {
 	a.out.problem(w, http.StatusNotFound, Problem{Title: "missing"})
+}
+
+func (a *api) lateHelper(w http.ResponseWriter, _ *http.Request) {
+	a.out.late(w, http.StatusGone, Problem{Title: "gone"})
 }
 
 func inline(w http.ResponseWriter, _ *http.Request) {
@@ -98,6 +111,7 @@ func main() {
 	a := &api{}
 	r.Get("/fn-helper", fnHelper)
 	r.Get("/method-helper", a.methodHelper)
+	r.Get("/late-helper", a.lateHelper)
 	r.Get("/inline", inline)
 	r.Get("/implicit-status", implicitStatus)
 	r.Get("/branch-declared", branchDeclared)
