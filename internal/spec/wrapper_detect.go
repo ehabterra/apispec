@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -574,15 +575,22 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 	// Wrappers stack: a project that wraps encoding/json in its own package (gitea
 	// does) reaches the framework pattern two levels down, so each round feeds
 	// what it derived back in as patterns to match against.
+	//
+	// The search stops at a fixed point: when a round leaves the seeds as they
+	// were, the next would match the same patterns against the same edges. The
+	// method count is not that signal — a round can resolve a method an earlier
+	// one had only started (a `WriteHeader(code)` beside a forward to a
+	// declined-body responder), and that method seeds the next layer while the
+	// count stands still (CodeRabbit on #660).
 	seeds := *cfg
 	var declined []bool // the framework's own patterns decline nothing
 	for round := 0; round < wrapperDetectRounds; round++ {
-		before := len(byMethod)
 		detectValueRound(meta, cp, params, body, &seeds, declined, byMethod)
-		if len(byMethod) == before {
+		next, nextDeclined := seedsFrom(byMethod)
+		if !hasSeeds(next) || (round > 0 && sameSeeds(seeds, next) && slices.Equal(declined, nextDeclined)) {
 			break
 		}
-		seeds, declined = seedsFrom(byMethod)
+		seeds, declined = next, nextDeclined
 	}
 
 	out := make([]DetectedWrapper, 0, len(byMethod))
@@ -608,22 +616,53 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 // out with a resolved status, no body role and no reason why, and was left
 // unapplied (CodeRabbit on #660). A seed that reads its body from a parameter
 // is not declined, whatever else the method writes.
+//
+// Every resolved role is seeded on its own: a method that decodes the caller's
+// value AND answers with the caller's status is both a decoder and a responder
+// to whatever forwards to it. Seeded as one role only, the forwarder inherited
+// the other never, and no later round could restore it (CodeRabbit on #660).
+//
+// Seeds come out in method order, so the fixed-point check in
+// detectValueWrappers can compare two rounds' seeds directly, and so the order
+// in which a forwarder meets its seeds — merges are first-wins per role — does
+// not follow map iteration (golden rule #1).
 func seedsFrom(byMethod map[string]*DetectedWrapper) (cfg APISpecConfig, declined []bool) {
-	for _, w := range byMethod {
+	keys := make([]string, 0, len(byMethod))
+	for k := range byMethod {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		w := byMethod[k]
 		if !w.Complete {
 			continue
 		}
-		switch {
-		case w.ResponseResolved():
+		if w.ResponseResolved() {
 			cfg.Framework.ResponsePatterns = append(cfg.Framework.ResponsePatterns, *w.Response)
 			declined = append(declined, w.bodyDeclined && !w.Response.TypeFromArg)
-		case w.Request != nil:
+		}
+		if w.Request != nil {
 			cfg.Framework.RequestBodyPatterns = append(cfg.Framework.RequestBodyPatterns, *w.Request)
-		case w.Param != nil:
+		}
+		if w.Param != nil {
 			cfg.Framework.ParamPatterns = append(cfg.Framework.ParamPatterns, *w.Param)
 		}
 	}
 	return cfg, declined
+}
+
+func hasSeeds(cfg APISpecConfig) bool {
+	f := cfg.Framework
+	return len(f.ResponsePatterns) > 0 || len(f.RequestBodyPatterns) > 0 || len(f.ParamPatterns) > 0
+}
+
+// sameSeeds compares the derived patterns two rounds seeded from. The patterns
+// are plain data (strings, ints, flags and string slices), which DeepEqual
+// compares by value.
+func sameSeeds(a, b APISpecConfig) bool {
+	return reflect.DeepEqual(a.Framework.ResponsePatterns, b.Framework.ResponsePatterns) &&
+		reflect.DeepEqual(a.Framework.RequestBodyPatterns, b.Framework.RequestBodyPatterns) &&
+		reflect.DeepEqual(a.Framework.ParamPatterns, b.Framework.ParamPatterns)
 }
 
 // detectValueRound matches every edge against one set of patterns and folds what

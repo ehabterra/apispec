@@ -703,3 +703,150 @@ func TestDeclinedBodyCarriesAcrossWrapperLayers(t *testing.T) {
 		}
 	}
 }
+
+// ctxMethodsMeta builds a module with one context type `*Ctx` carrying the given
+// methods (name → parameter names) and the given call edges, for the
+// value-wrapper derivation tests that need several layers of forwarding.
+type ctxMethodsMeta struct {
+	m    *metadata.Metadata
+	pool *metadata.StringPool
+}
+
+func newCtxMethodsMeta() *ctxMethodsMeta {
+	pool := metadata.NewStringPool()
+	return &ctxMethodsMeta{pool: pool, m: &metadata.Metadata{StringPool: pool, CurrentModulePath: "example.com/app"}}
+}
+
+func (c *ctxMethodsMeta) ident(name string) *metadata.CallArgument {
+	a := metadata.NewCallArgument(c.m)
+	a.SetKind(metadata.KindIdent)
+	a.SetName(name)
+	return a
+}
+
+// built is `r.URL`: a value built from the parameter r, not r itself.
+func (c *ctxMethodsMeta) built() *metadata.CallArgument {
+	a := metadata.NewCallArgument(c.m)
+	a.SetKind(metadata.KindSelector)
+	a.X, a.Sel = c.ident("r"), c.ident("URL")
+	return a
+}
+
+func (c *ctxMethodsMeta) call(name, pkg, recv string) metadata.Call {
+	out := metadata.Call{Meta: c.m, Name: c.pool.Get(name), Pkg: c.pool.Get(pkg), Position: -1, Scope: -1, SignatureStr: -1, RecvType: -1}
+	if recv != "" {
+		out.RecvType = c.pool.Get(recv)
+	}
+	return out
+}
+
+func (c *ctxMethodsMeta) ctx(name string) metadata.Call {
+	return c.call(name, "example.com/app", "*Ctx")
+}
+
+func (c *ctxMethodsMeta) args(names ...string) []*metadata.CallArgument {
+	out := make([]*metadata.CallArgument, 0, len(names))
+	for _, n := range names {
+		out = append(out, c.ident(n))
+	}
+	return out
+}
+
+func (c *ctxMethodsMeta) build(methods [][]string, edges []metadata.CallGraphEdge) map[string]DetectedWrapper {
+	var ms []metadata.Method
+	for _, spec := range methods {
+		sig := metadata.NewCallArgument(c.m)
+		sig.SetKind(metadata.KindFuncType)
+		sig.Args = c.args(spec[1:]...)
+		ms = append(ms, metadata.Method{Name: c.pool.Get(spec[0]), Signature: *sig})
+	}
+	c.m.Packages = map[string]*metadata.Package{
+		"example.com/app": {Files: map[string]*metadata.File{
+			"ctx.go": {Types: map[string]*metadata.Type{"Ctx": {Name: c.pool.Get("Ctx"), Methods: ms}}},
+		}},
+	}
+	c.m.CallGraph = edges
+	c.m.BuildCallGraphMaps()
+	cfg := &APISpecConfig{Framework: FrameworkConfig{
+		ResponsePatterns: []ResponsePattern{
+			{CallRegex: `^Error$`, StatusFromArg: true, StatusArgIndex: 2, TypeFromArg: true, TypeArgIndex: 1},
+			{CallRegex: `^WriteHeader$`, StatusFromArg: true, StatusArgIndex: 0},
+		},
+		RequestBodyPatterns: []RequestBodyPattern{{CallRegex: `^Decode$`, TypeFromArg: true, TypeArgIndex: 0, Deref: true}},
+	}}
+	got := map[string]DetectedWrapper{}
+	for _, w := range DetectRouterWrappers(c.m, cfg) {
+		got[w.Methods[0]] = w
+	}
+	return got
+}
+
+// The transitive search runs until the derived roles stop changing, not until
+// the set of methods stops growing:
+//
+//	func (c *Ctx) Deny(w http.ResponseWriter, r *http.Request, code int) {
+//		w.WriteHeader(code)       // round 1: Deny exists, body never located
+//		c.Reject(w, r, code)      // round 2: Reject's declined body resolves Deny
+//	}
+//	func (c *Ctx) Forward(w http.ResponseWriter, r *http.Request, code int) {
+//		c.Deny(w, r, code)        // round 3: needs Deny as a seed
+//	}
+//
+// Round two resolves a method that already existed, so the method count stays
+// put; stopping on that count left Deny out of the seeds and Forward
+// underived, with rounds to spare (CodeRabbit on #660).
+func TestValueWrapperRoundsRunUntilRolesSettle(t *testing.T) {
+	c := newCtxMethodsMeta()
+	got := c.build(
+		[][]string{{"Reject", "w", "r", "code"}, {"Deny", "w", "r", "code"}, {"Forward", "w", "r", "code"}},
+		[]metadata.CallGraphEdge{
+			{Caller: c.ctx("Reject"), Callee: c.call("Error", "net/http", ""), Args: []*metadata.CallArgument{c.ident("w"), c.built(), c.ident("code")}},
+			{Caller: c.ctx("Deny"), Callee: c.call("WriteHeader", "net/http", "ResponseWriter"), Args: c.args("code")},
+			{Caller: c.ctx("Deny"), Callee: c.ctx("Reject"), Args: c.args("w", "r", "code")},
+			{Caller: c.ctx("Forward"), Callee: c.ctx("Deny"), Args: c.args("w", "r", "code")},
+		},
+	)
+	for _, name := range []string{"Reject", "Deny", "Forward"} {
+		if w, ok := got[name]; !ok || !w.ResponseResolved() {
+			t.Errorf("%s: want a resolved status-only responder, got %+v (derived: %v)", name, w.Response, ok)
+		}
+	}
+}
+
+// A method carrying several roles seeds every one of them:
+//
+//	func (c *Ctx) Bind(w http.ResponseWriter, r *http.Request, dst any, code int) {
+//		if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+//			http.Error(w, "bad "+r.URL.Path, code)
+//		}
+//	}
+//	func (c *Ctx) Forward(w http.ResponseWriter, r *http.Request, dst any, code int) {
+//		c.Bind(w, r, dst, code)
+//	}
+//
+// Bind resolves its decoder and its (status-only) response in the same round.
+// Seeded as its response alone, Bind left Forward a responder that never
+// decodes, and no later round could put the request body back (CodeRabbit on
+// #660).
+func TestValueWrapperSeedsEveryResolvedRole(t *testing.T) {
+	c := newCtxMethodsMeta()
+	got := c.build(
+		[][]string{{"Bind", "w", "r", "dst", "code"}, {"Forward", "w", "r", "dst", "code"}},
+		[]metadata.CallGraphEdge{
+			{Caller: c.ctx("Bind"), Callee: c.call("Decode", "encoding/json", "*Decoder"), Args: c.args("dst")},
+			{Caller: c.ctx("Bind"), Callee: c.call("Error", "net/http", ""), Args: []*metadata.CallArgument{c.ident("w"), c.built(), c.ident("code")}},
+			{Caller: c.ctx("Forward"), Callee: c.ctx("Bind"), Args: c.args("w", "r", "dst", "code")},
+		},
+	)
+	for _, name := range []string{"Bind", "Forward"} {
+		w, ok := got[name]
+		switch {
+		case !ok:
+			t.Errorf("%s: not derived; have %v", name, got)
+		case w.Request == nil || w.Request.TypeArgIndex != 2:
+			t.Errorf("%s: want a request body read from argument 2, got %+v", name, w.Request)
+		case !w.ResponseResolved() || w.Response.StatusArgIndex != 3:
+			t.Errorf("%s: want a status-only response reading argument 3, got %+v", name, w.Response)
+		}
+	}
+}
