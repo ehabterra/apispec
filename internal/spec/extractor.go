@@ -1706,6 +1706,10 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		// inner is the statement's own position when file/line/col is the call
 		// that dispatched into it: it orders the statements one call runs.
 		inner codePos
+		// sites are the frames it was reached through and its own statement,
+		// as extracted: store merges other fragments' sites into a kept
+		// response's EntrySites.
+		sites []codePos
 	}
 
 	saved := route.Response
@@ -1758,7 +1762,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// to the right verb branch.
 			resp.File, resp.Line = file, line
 			resp.EntrySites = sites
-			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col, inner: inner})
+			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col, inner: inner, sites: sites})
 		}
 	}
 	route.Response = saved
@@ -1884,13 +1888,13 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// region the body escaped. `if err != nil { WriteHeader(400); return }`
 	// followed by the success body is the shape this rejects — source order
 	// alone hands that body a 400 it can never carry (see control_flow.go).
-	pendingAt := map[string]codePos{}
+	pendingAt := map[string]stmtPos{}
 	// chain -> the bodies that have already claimed that pending status. A
 	// second body claims it only when it cannot run alongside the first: arms
 	// of one conditional are alternatives under a single status write, while
 	// two bodies on the same path are two different responses and the later one
 	// is not what that write was for (issue #391).
-	claimedAt := map[string][]codePos{}
+	claimedAt := map[string][]stmtPos{}
 	// chain -> whether that pending status was resolved without leaving the
 	// frame. A status traced in from a caller belongs to one invocation, and
 	// the walk cannot tell invocations of a shared responder apart, so such a
@@ -1915,7 +1919,52 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// reading it would hand the pending status to its default 200 (review of
 	// #577). Same file only: dominance answers permissively across files, and
 	// the fragments' file order is not execution order.
-	committedAt := map[string]codePos{}
+	committedAt := map[string]stmtPos{}
+	posOf := func(f *fragment) stmtPos {
+		return stmtPos{at: codePos{file: f.file, line: f.line, col: f.col}, inner: f.inner, caller: f.caller}
+	}
+	// alwaysReaches reports whether a path that runs earlier always goes on to
+	// run later, for the response on chain: later sits in no branch earlier's
+	// path can skip, and every early exit written between them answers the
+	// response itself. An exit that writes nothing a pattern sees — `if ok {
+	// stream(w); return }` — sends what earlier declared under its own default
+	// status, so a declaration overridden only past that exit is not
+	// overridden, and its default slot is a real response (review of #645).
+	// An exit holding a status or body on the chain, or reached through a
+	// call from it — `if err != nil { http.Error(w, …); return }` — sends that
+	// response, not the default one.
+	var exitWrites map[string][]chainPos
+	alwaysReaches := func(chain string, earlier, later codePos) bool {
+		flow := e.controlFlow()
+		if !flow.alwaysFollows(earlier, later) {
+			return false
+		}
+		exits := flow.exitsBetween(earlier, later)
+		if len(exits) == 0 {
+			return true
+		}
+		if exitWrites == nil {
+			// Every point a response write runs through: its own statement,
+			// the call that dispatched it, and the frames it was reached by.
+			exitWrites = map[string][]chainPos{}
+			for i := range frags {
+				g := &frags[i]
+				if g.resp.HeaderDeclaration {
+					continue
+				}
+				at := codePos{file: g.file, line: g.line, col: g.col}
+				for _, p := range append([]codePos{at, g.inner}, g.sites...) {
+					exitWrites[p.file] = append(exitWrites[p.file], chainPos{chain: g.chain, pos: p})
+				}
+			}
+		}
+		for _, exit := range exits {
+			if !writesIn(exitWrites[earlier.file], chain, exit) {
+				return false
+			}
+		}
+		return true
+	}
 	// declarationOf returns the Content-Type declaration that describes raw
 	// bytes: the last one on their own chain that dominates them. nil when the
 	// bytes declare their own media type, when nothing declares one, or when
@@ -1924,11 +1973,11 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		if !f.resp.RawBytes || f.resp.MediaTypeDeclared {
 			return nil
 		}
-		bodyAt := codePos{file: f.file, line: f.line, col: f.col}
+		bodyAt := posOf(f)
 		decls := declared[f.chain]
 		for i := len(decls) - 1; i >= 0; i-- {
 			d := decls[i]
-			if !e.controlFlow().dominates(codePos{file: d.file, line: d.line, col: d.col}, bodyAt) {
+			if !e.controlFlow().dominates(framePositions(posOf(d), bodyAt)) {
 				continue
 			}
 			if d.resp.StatusCode == f.resp.StatusCode && !d.resp.DeclarationOnly {
@@ -1986,23 +2035,30 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// they leave their default slots whether or not it moves: a tentative
 	// text/plain over a text/html still means the page's media type never goes
 	// out.
+	//
+	// Positions here are the frame's own, a dispatched call's statements all at
+	// that call: the call declares and writes a status as one statement. A
+	// renderer's `if Header().Get("Content-Type") == "" { Set(…) }` default
+	// then goes with the status the call writes, as it does on every path that
+	// set nothing before it; read statement by statement, a declaration under
+	// a condition reaches no status at all.
 	commitDeclarations := func(f *fragment) {
-		statusAt := codePos{file: f.file, line: f.line, col: f.col}
+		statusAt := posOf(f).at
 		decls := declared[f.chain]
 		for i := len(decls) - 1; i >= 0; i-- {
 			d := decls[i]
-			declAt := codePos{file: d.file, line: d.line, col: d.col}
+			declAt := posOf(d).at
 			if !e.controlFlow().dominates(declAt, statusAt) {
 				continue
 			}
 			for _, o := range decls[:i] {
 				if !o.resp.DeclarationOnly && o.file == d.file &&
-					e.controlFlow().alwaysFollows(codePos{file: o.file, line: o.line, col: o.col}, declAt) {
+					alwaysReaches(f.chain, posOf(o).at, declAt) {
 					moved[o.resp] = true
 				}
 			}
 			if d.resp.DeclarationOnly || d.resp.StatusCode == f.resp.StatusCode || d.file != f.file ||
-				!e.controlFlow().alwaysFollows(declAt, statusAt) {
+				!alwaysReaches(f.chain, declAt, statusAt) {
 				return
 			}
 			cp := *d.resp
@@ -2025,8 +2081,8 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		// a fragment stays the status write it always was.
 		hasBody := body != "" || (!known && f.resp.Schema != nil)
 		if f.resp.HeaderDeclaration {
-			at := codePos{file: f.file, line: f.line, col: f.col}
-			if c, ok := committedAt[f.chain]; ok && c.file == at.file && e.controlFlow().dominates(c, at) {
+			at := posOf(f)
+			if c, ok := committedAt[f.chain]; ok && c.at.file == at.at.file && e.controlFlow().dominates(framePositions(c, at)) {
 				continue // the headers are already on the wire
 			}
 			declared[f.chain] = append(declared[f.chain], f)
@@ -2048,10 +2104,10 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			store(f.resp, false)
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
-			committedAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
+			committedAt[f.chain] = posOf(f)
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
-			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
+			pendingAt[f.chain] = posOf(f)
 			pendingInFrame[f.chain] = f.resp.StatusInFrame
 			commitDeclarations(f)
 			// A new status starts a fresh conversation: the bodies that claimed
@@ -2070,10 +2126,10 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			if statusUnresolved[f.chain] {
 				f.resp.ImplicitStatus = 0
 			}
-			bodyAt := codePos{file: f.file, line: f.line, col: f.col}
+			bodyAt := posOf(f)
 			claimable := len(claimedAt[f.chain]) == 0 ||
 				(pendingInFrame[f.chain] && e.exclusiveWithClaimants(claimedAt[f.chain], bodyAt))
-			if pending[f.chain] && claimable && e.controlFlow().dominates(pendingAt[f.chain], bodyAt) {
+			if pending[f.chain] && claimable && e.controlFlow().dominates(framePositions(pendingAt[f.chain], bodyAt)) {
 				// The status is NOT consumed by the body that claims it: a
 				// write that dominates two bodies is carried by both, and
 				// `WriteHeader(201)` above an if/else sends 201 down either
@@ -2283,6 +2339,48 @@ func (e *Extractor) extractResponsesMatched(node TrackerNodeInterface, route *Ro
 	return nil
 }
 
+// stmtPos is where a response statement runs in the frame pairing reads it in:
+// at, in the frame's own function, and — for a statement a dispatched call runs
+// (see dispatchedFrom) — inner, its own position in the function it is written
+// in, caller. For any other statement inner is at.
+type stmtPos struct {
+	at, inner codePos
+	caller    string
+}
+
+// framePositions returns the positions two statements of one frame are
+// compared by. Every statement one dispatched call runs sits at that call, so
+// at alone made them one point: a status written in one branch of the
+// implementation dominated a Content-Type set, or bytes written, past it,
+// and the bytes claimed the branch's 204 (review of #645). Those statements
+// are ordered by where they are written. Against any other statement — the
+// frame's own, or another implementer's of the same call — the call's
+// position is still the one that answers.
+func framePositions(a, b stmtPos) (codePos, codePos) {
+	if a.at == b.at && a.caller == b.caller {
+		return a.inner, b.inner
+	}
+	return a.at, b.at
+}
+
+// chainPos is a point a response write on chain runs through.
+type chainPos struct {
+	chain string
+	pos   codePos
+}
+
+// writesIn reports whether a response on chain, or in a frame entered from it,
+// runs through the region: an exit that answers the response itself.
+func writesIn(writes []chainPos, chain string, region metadata.Block) bool {
+	for _, w := range writes {
+		if (chain == "" || w.chain == chain || strings.HasPrefix(w.chain, chain+chainSep)) &&
+			blockContains(region, w.pos) {
+			return true
+		}
+	}
+	return false
+}
+
 // calleePosition parses "file:line:col" out of the node's callee position,
 // for source-order sorting of response fragments.
 func calleePosition(n TrackerNodeInterface) (string, int, int) {
@@ -2407,10 +2505,10 @@ func declaredOverRawBytes(a, b *ResponseInfo) *ResponseInfo {
 // different response — and letting it in is how a 200 ended up documenting an
 // error type on a large real project, because such a body would otherwise be
 // weighed by call depth in the unpaired pass.
-func (e *Extractor) exclusiveWithClaimants(claimed []codePos, bodyAt codePos) bool {
+func (e *Extractor) exclusiveWithClaimants(claimed []stmtPos, bodyAt stmtPos) bool {
 	flow := e.controlFlow()
 	for _, prior := range claimed {
-		if !flow.exclusive(prior, bodyAt) {
+		if !flow.exclusive(framePositions(prior, bodyAt)) {
 			return false
 		}
 	}

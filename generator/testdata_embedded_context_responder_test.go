@@ -137,4 +137,44 @@ func TestTestdata_EmbeddedContextResponder(t *testing.T) {
 	// that dominates the status write moves to it.
 	exactly("GET", "/branched", "202", "text/html")
 	exactly("GET", "/branched", "200", "text/csv", "text/html")
+
+	// An override written past an early exit overrides nothing on the exit's
+	// path: the PDF goes out with the 200 that `stream(w)` sends, and only the
+	// 500 is PNG. The PDF used to be marked overridden and its 200 removed.
+	//
+	// NOT FIXED, asserted so the day it changes: the 200 also lists image/png,
+	// the moved declaration that was composed into the slot (as on /register).
+	exactly("GET", "/download", "500", "image/png")
+	exactly("GET", "/download", "200", "application/pdf", "image/png")
+	statuses("GET", "/download", "200", "500")
+	// Negative: an exit that answers the response itself — directly, or one
+	// call down — sends its own, so the declaration still goes with the 202
+	// alone and leaves no 200 behind.
+	for _, path := range []string{"/report", "/report-helper"} {
+		exactly("GET", path, "202", "text/csv")
+		exactly("GET", path, "500", plainErr)
+		statuses("GET", path, "202", "500")
+	}
+
+	// The statements one interface call runs are ordered by where they are
+	// written: the implementation's early 204 does not commit the headers its
+	// CSV branch sets, nor claim the bytes that branch writes. The same code
+	// called directly is the control.
+	for _, path := range []string{"/rows", "/rows-direct"} {
+		exactly("GET", path, "200", "text/csv")
+		exactly("GET", path, "204")
+		statuses("GET", path, "200", "204")
+	}
+
+	// A responder writing through a local copy of its receiver's writer
+	// (`dst := b.Resp`) still writes where its caller pointed it: the encoded
+	// body is documented, not ruled out as a write into a buffer of its own.
+	//
+	// NOT FIXED, asserted so the day it changes: the body is at 200, not the
+	// 201 the call writes — ctx.JSON on this Context pairs the same way.
+	if op := opAt(t, out, "GET", "/options"); op != nil {
+		if ref := schemaRefAt(op, "200"); !strings.HasSuffix(ref, "_Options") {
+			t.Errorf("GET /options 200 $ref = %q, want the Options component", ref)
+		}
+	}
 }

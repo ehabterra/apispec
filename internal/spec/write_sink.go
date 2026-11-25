@@ -107,7 +107,21 @@ func (r *ResponsePatternMatcherImpl) writesElsewhere(edge *metadata.CallGraphEdg
 // A METHOD's result is built only where its receiver value is:
 // `json.NewEncoder(b.Writer())` writes to whatever the receiver hands out,
 // which is as much the caller's to decide as `b.Resp` itself.
+//
+// A local is what it was assigned: `dst := b.Resp` is the caller's writer under
+// another name, and judged as built it dropped the responder whose `b.Resp` is
+// a project's own writer interface (review of #645). Followed a bounded number
+// of assignments deep; past that, the local is not judged.
 func builtLocally(cp ContextProvider, arg *metadata.CallArgument, edge *metadata.CallGraphEdge, isParam func(string) bool) bool {
+	return builtLocallyDepth(cp, arg, edge, isParam, 0)
+}
+
+// maxBuiltLocallyHops bounds the assignments builtLocally follows: `a := b`,
+// `b = a` must not recurse forever, and a longer chain of renames is not a
+// shape responders are written in.
+const maxBuiltLocallyHops = 4
+
+func builtLocallyDepth(cp ContextProvider, arg *metadata.CallArgument, edge *metadata.CallGraphEdge, isParam func(string) bool, hops int) bool {
 	addressed := false
 	for arg != nil && (arg.GetKind() == metadata.KindUnary || arg.GetKind() == metadata.KindStar || arg.GetKind() == metadata.KindParen) {
 		addressed = addressed || arg.GetKind() == metadata.KindUnary
@@ -119,14 +133,15 @@ func builtLocally(cp ContextProvider, arg *metadata.CallArgument, edge *metadata
 	switch arg.GetKind() {
 	case metadata.KindCall:
 		if fun := arg.Fun; fun != nil && fun.GetKind() == metadata.KindSelector && fun.ReceiverType != nil {
-			return builtLocally(cp, fun.X, edge, isParam)
+			return builtLocallyDepth(cp, fun.X, edge, isParam, hops)
 		}
 		return true
 	case metadata.KindCompositeLit:
 		return true
 	case metadata.KindIdent:
-		if latestAssignment(cp, edge, arg.GetName()) != nil {
-			return true
+		if rhs := latestAssignment(cp, edge, arg.GetName()); rhs != nil {
+			// The address of a local is the function's own whatever it holds.
+			return addressed || (hops < maxBuiltLocallyHops && builtLocallyDepth(cp, rhs, edge, isParam, hops+1))
 		}
 		return addressed && isParam != nil && !isParam(arg.GetName())
 	}

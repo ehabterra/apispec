@@ -19,6 +19,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"slices"
 	"sort"
 	"testing"
 
@@ -637,5 +638,75 @@ func TestInScopeIsSeparateFromDominance(t *testing.T) {
 	// Missing facts stay permissive.
 	if !(*blockIndex)(nil).inScope(init, after) || !idx.inScope(codePos{}, after) {
 		t.Error("missing facts must answer in scope")
+	}
+}
+
+// TestExitsBetween pins which early exits a path from earlier can take
+// without reaching later: an exiting arm written between the two in their
+// own function, and nothing else — not an arm holding either position, not an
+// arm that does not exit, not a literal's return, not another function's arm.
+func TestExitsBetween(t *testing.T) {
+	src := `package main
+
+func h(ok, bad bool) {
+	set()
+	if ok {
+		stream()
+		return
+	}
+	if bad {
+		other()
+	}
+	go func() {
+		if bad {
+			return
+		}
+	}()
+	set()
+	if bad {
+		set()
+		return
+	}
+}
+
+func k(bad bool) {
+	set()
+	if bad {
+		return
+	}
+	set()
+}
+
+func set()    {}
+func stream() {}
+func other()  {}
+`
+	idx := blockIndexOf(t, map[string]string{"h.go": src})
+	pos := func(line, col int) codePos { return codePos{file: "h.go", line: line, col: col} }
+	first, second, inLast := pos(4, 2), pos(17, 2), pos(19, 3)
+	kFirst, kLast := pos(25, 2), pos(29, 2)
+
+	cases := []struct {
+		name           string
+		earlier, later codePos
+		want           []int // start lines of the exits
+	}{
+		{"the early return between them, not the non-exiting arm or the literal's", first, second, []int{5}},
+		{"an exiting arm holding later is a branch, not an exit", second, inLast, nil},
+		{"an exit before earlier is not between", second, second, nil},
+		{"another function's arm is not this path's", first, kLast, nil},
+		{"the other function's own early return", kFirst, kLast, []int{26}},
+		{"missing facts", codePos{}, second, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []int
+			for _, b := range idx.exitsBetween(tc.earlier, tc.later) {
+				got = append(got, b.StartLine)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("exitsBetween(%v, %v) starts = %v, want %v", tc.earlier, tc.later, got, tc.want)
+			}
+		})
 	}
 }

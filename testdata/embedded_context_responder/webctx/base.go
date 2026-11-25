@@ -30,6 +30,15 @@ func (b *Base) JSON(status int, content any) {
 	_ = json.NewEncoder(b.Resp).Encode(content)
 }
 
+// JSONVia is JSON through a local holding the receiver's writer: the
+// destination is still the one the caller handed in.
+func (b *Base) JSONVia(status int, content any) {
+	dst := b.Resp
+	dst.Header().Set("Content-Type", "application/json;charset=utf-8")
+	dst.WriteHeader(status)
+	_ = json.NewEncoder(dst).Encode(content)
+}
+
 // YAML encodes content as YAML on the response: a destination-gated encoder
 // whose destination is the response field stays a responder.
 func (b *Base) YAML(status int, content any) {

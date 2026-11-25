@@ -319,6 +319,30 @@ func (idx *blockIndex) alwaysFollows(earlier, later codePos) bool {
 	return true
 }
 
+// exitsBetween returns the regions written between earlier and later, in the
+// function holding both, whose control leaves that function: the early-return
+// arms a path from earlier can take without ever reaching later. A region
+// holding either position is not one — it is a branch, which alwaysFollows
+// already answers, or it ends neither path. nil on missing facts.
+func (idx *blockIndex) exitsBetween(earlier, later codePos) []metadata.Block {
+	if idx == nil || !earlier.valid() || !later.valid() || earlier.file != later.file {
+		return nil
+	}
+	blocks := idx.byFile[later.file]
+	var exits []metadata.Block
+	for _, b := range blocks {
+		if !b.Terminates || blockContains(b.Block, earlier) || blockContains(b.Block, later) {
+			continue
+		}
+		start := codePos{line: b.StartLine, col: b.StartCol}
+		if !start.beforeOrAt(earlier) && afterBlock(b.Block, later) && b.inDecl(earlier) && b.inDecl(later) &&
+			!literalEnds(blocks, b.Block, later) {
+			exits = append(exits, b.Block)
+		}
+	}
+	return exits
+}
+
 // sharesRegion reports whether some recorded region contains both positions.
 //
 // Used to decide whether a write BELOW a call can still be the value at it: in
