@@ -48,6 +48,9 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeFromArg:    true,
 			Deref:          true,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+			// fasthttp's SetContentType: a Content-Type set before it is
+			// replaced, not adopted (issue #652).
+			SetsContentType: true,
 		},
 		ResponsePattern{
 			CallRegex:      `^Status$`,
@@ -85,9 +88,10 @@ func DefaultFiberConfig() *APISpecConfig {
 	// JSONP names text/javascript, not echo's and gin's application/javascript
 	// (review of #584).
 	responsePatterns = append(responsePatterns, typedRendererPatterns(ResponsePattern{
-		StatusArgIndex: -1,
-		Deref:          true,
-		RecvTypeRegex:  fiberCtxRecv,
+		StatusArgIndex:  -1,
+		Deref:           true,
+		RecvTypeRegex:   fiberCtxRecv,
+		SetsContentType: true,
 	},
 		typedRendererCall{call: `^XML$`, typeArg: 0, mediaType: contentTypeXML},
 		typedRendererCall{call: `^JSONP$`, typeArg: 0, mediaType: contentTypeJSONPText},

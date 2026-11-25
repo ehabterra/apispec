@@ -571,6 +571,10 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 	// from the second round on — and a decoder two wrappers deep would derive
 	// unverified, which is the whole of #513 one level further down.
 	body := newBodySourceResolver(cfg, cp)
+	// Kept across rounds for the same reason: a method's own header writes
+	// match only the framework's patterns, in the first round, while its body
+	// role may come from a responder derived in a later one.
+	media := newResponderMedia(cp, meta)
 
 	// Wrappers stack: a project that wraps encoding/json in its own package (gitea
 	// does) reaches the framework pattern two levels down, so each round feeds
@@ -585,7 +589,7 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 	seeds := *cfg
 	var declined []bool // the framework's own patterns decline nothing
 	for round := 0; round < wrapperDetectRounds; round++ {
-		detectValueRound(meta, cp, params, body, &seeds, declined, byMethod)
+		detectValueRound(meta, cp, params, body, media, &seeds, declined, byMethod)
 		next, nextDeclined := seedsFrom(byMethod)
 		if !hasSeeds(next) || (round > 0 && sameSeeds(seeds, next) && slices.Equal(declined, nextDeclined)) {
 			break
@@ -668,7 +672,7 @@ func sameSeeds(a, b APISpecConfig) bool {
 // detectValueRound matches every edge against one set of patterns and folds what
 // it finds into byMethod. declined is parallel to the response patterns, or nil
 // when none of them declined its body (see seedsFrom).
-func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, declined []bool, byMethod map[string]*DetectedWrapper) {
+func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, media *responderMedia, cfg *APISpecConfig, declined []bool, byMethod map[string]*DetectedWrapper) {
 
 	respMatchers := make([]*ResponsePatternMatcherImpl, 0, len(cfg.Framework.ResponsePatterns))
 	for _, p := range cfg.Framework.ResponsePatterns {
@@ -698,9 +702,17 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		isParam := func(name string) bool { return slices.Contains(params.paramsOf(w), name) }
 		for j, m := range respMatchers {
 			if m.MatchNode(node) && !m.writesElsewhere(edge, isParam) {
+				inner := cfg.Framework.ResponsePatterns[j]
+				if inner.ContentTypeFromHeaderWrite {
+					media.declaration(key, m, node)
+				}
 				body, rawBytes := m.wrapperBodyArg(edge)
 				innerDeclined := j < len(declined) && declined[j]
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], innerDeclined, edge, recvRegex, body, rawBytes)
+				hadBody := byMethod[key] != nil && byMethod[key].Response != nil && byMethod[key].Response.TypeFromArg
+				mergeResponseRoles(byMethod, key, w, cp, params, inner, innerDeclined, edge, recvRegex, body, rawBytes)
+				if e := byMethod[key]; !hadBody && e.Response != nil && e.Response.TypeFromArg && takesHeaderMediaType(&inner) {
+					media.body(key, edge)
+				}
 			}
 		}
 		for j, m := range reqMatchers {
@@ -714,7 +726,94 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 			}
 		}
 	}
+	media.apply(byMethod)
+}
 
+// responderMedia finds the media type a derived responder sends its body
+// under when the method declares it itself: `w.Header().Set("Content-Type",
+// "application/problem+json")`, then `json.NewEncoder(w).Encode(v)`. The
+// encoder writes no header, so the declaration is the body's media type at
+// every call site (issue #652). Derived without it, the call site documented
+// the caller's value under the JSON default beside the walk's own pairing
+// inside the method, which reads the declaration — one response in two media
+// types.
+type responderMedia struct {
+	flow *blockIndex
+	// method key -> its Content-Type header writes
+	decls map[string][]responderDecl
+	// method key -> the call that gave it its body role, when that call's
+	// body takes the header's media type (see takesHeaderMediaType)
+	bodyAt map[string]codePos
+}
+
+type responderDecl struct {
+	at        codePos
+	mediaType string
+	tentative bool
+}
+
+func newResponderMedia(cp ContextProvider, meta *metadata.Metadata) *responderMedia {
+	var flow *blockIndex
+	if impl, ok := cp.(*ContextProviderImpl); ok {
+		flow = impl.controlFlow()
+	} else {
+		flow = newBlockIndex(meta)
+	}
+	return &responderMedia{flow: flow, decls: map[string][]responderDecl{}, bodyAt: map[string]codePos{}}
+}
+
+func (r *responderMedia) declaration(key string, m *ResponsePatternMatcherImpl, node TrackerNodeInterface) {
+	mediaType, tentative, ok := m.headerDeclaration(node)
+	if !ok {
+		return
+	}
+	at := edgePosition(node.GetEdge())
+	for _, d := range r.decls[key] {
+		if d.at == at {
+			return // the same write, met again in a later round
+		}
+	}
+	r.decls[key] = append(r.decls[key], responderDecl{at: at, mediaType: mediaType, tentative: tentative})
+}
+
+func (r *responderMedia) body(key string, edge *metadata.CallGraphEdge) {
+	r.bodyAt[key] = edgePosition(edge)
+}
+
+// apply gives each responder the media type declared where its body is
+// written: the last declaration in the method that dominates the body call,
+// as pairing reads it (see pairAndFillResponses). One in a branch is not in
+// effect on the other path; a tentative one — a media type a serializer
+// produces — leaves the body describing itself (issue #570).
+func (r *responderMedia) apply(byMethod map[string]*DetectedWrapper) {
+	for key, bodyAt := range r.bodyAt {
+		entry := byMethod[key]
+		if entry == nil || entry.Response == nil || !bodyAt.valid() {
+			continue
+		}
+		var effect *responderDecl
+		// decls and bodyAt share the method key, so every declaration here is
+		// in the body's own function; dominates answers true across functions,
+		// and that is only sound because of this keying.
+		for i := range r.decls[key] {
+			d := &r.decls[key][i]
+			if d.at.file != bodyAt.file || !d.at.valid() || !r.flow.dominates(d.at, bodyAt) {
+				continue
+			}
+			if effect == nil || effect.at.beforeOrAt(d.at) {
+				effect = d
+			}
+		}
+		if effect != nil && !effect.tentative {
+			entry.Response.DeclaredContentType = effect.mediaType
+		}
+	}
+}
+
+// edgePosition is the call's own position in its caller.
+func edgePosition(edge *metadata.CallGraphEdge) codePos {
+	file, line, col := positionOfInstanceID(edge.Callee.ID())
+	return codePos{file: file, line: line, col: col}
 }
 
 // wrapperShell returns the accumulating entry for a method, creating it once.
@@ -776,6 +875,8 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 			entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
 			entry.Response.Deref = inner.Deref
 			entry.Response.DefaultContentType = inner.DefaultContentType
+			entry.Response.SetsContentType = inner.SetsContentType
+			entry.Response.DeclaredContentType = inner.DeclaredContentType
 			entry.Response.RawBody = rawBytes
 			entry.Response.SerializedBodyOnly = rawBytes
 		} else if _, built := params.indexOf(w, body); built {
@@ -868,6 +969,8 @@ func normaliseResponseRoles(entry *DetectedWrapper) {
 	p.TypeArgIndex = -1
 	p.Deref = false
 	p.DefaultContentType = ""
+	p.SetsContentType = false
+	p.DeclaredContentType = ""
 	p.RawBody = false
 	p.SerializedBodyOnly = false
 	// Sticky: a later merge must not read the absence of a body role as "no

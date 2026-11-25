@@ -750,6 +750,29 @@ type ResponsePattern struct {
 	// serializer's document (issue #544).
 	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
 
+	// SetsContentType marks a call that writes the Content-Type header itself,
+	// replacing one the handler set before it — fiber's `c.JSON` calls
+	// SetContentType unconditionally. A serializer without it leaves the
+	// header to the handler: net/http's json.Encoder writes none, and gin's
+	// and echo's renderers set theirs only when none is set. A Content-Type
+	// declared ahead of such a call is the media type its body goes out
+	// under (issue #652), so this is what stops that declaration being
+	// adopted where the server overwrites it.
+	SetsContentType bool `yaml:"setsContentType,omitempty" json:"setsContentType,omitempty"`
+
+	// DeclaredContentType is the media type a responder declares in the
+	// Content-Type header itself before writing its body — a derived
+	// `func (r responder) Problem(w, status, v)` that sets
+	// application/problem+json and then encodes v. The call sends its body
+	// under that type whatever its caller declared, so it implies
+	// SetsContentType.
+	//
+	// Not DefaultContentType: that one makes the call a serializer OF its
+	// media type (see serializerCovers), which would turn every other
+	// declaration of the type tentative — and a declaration beside a body
+	// it does not describe is dropped.
+	DeclaredContentType string `yaml:"declaredContentType,omitempty" json:"declaredContentType,omitempty"`
+
 	// SerializedBodyOnly marks a derived responder whose body parameter is
 	// forwarded into a RawBody write: the method writes whatever bytes its
 	// caller hands it. Those bytes are a document only where the caller
