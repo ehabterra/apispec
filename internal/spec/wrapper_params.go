@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/ehabterra/apispec/internal/metadata"
@@ -137,6 +138,115 @@ func (p *paramIndex) indexOf(w *wrapperMethod, arg *metadata.CallArgument) (int,
 		names = next
 	}
 	return 0, false
+}
+
+// valueIndexOf returns the parameter position an argument IS, where indexOf
+// settles for one it mentions.
+//
+// indexOf's rule — any identifier in the expression, through any assignment —
+// is right for the roles a caller's value merely flows into: the path reaches
+// the inner call through `r.getPattern(pattern)`, the handler through
+// `h[len(h)-1]` and two locals, and a status through whatever the method computes
+// from it (an error mapper's `api.Status` is resolved from the caller's error at
+// the call site). It is wrong for a VALUE role, where the call site substitutes
+// its own argument for the inner one wholesale:
+//
+//	func (rt *R) normalize(w http.ResponseWriter, req *http.Request) {
+//		p := req.URL.Path
+//		http.Error(w, "bad "+p, http.StatusBadRequest)
+//	}
+//
+// The body mentions `req`, so the derived pattern read every caller's request as
+// the response body, and a large real project documented *http.Request under
+// three of its operations (issue #659). A message built from a parameter, a
+// field of it, or a call over it is a value the method made; only the parameter
+// itself — directly, through a plain local, its address or dereference, a type
+// assertion or a conversion — is one the caller supplies.
+//
+// A local qualifies only when EVERY assignment to it does, and to the same
+// parameter. One branch that builds its own value (`v := http.StatusText(code)`
+// beside `v = contents[0]`) leaves the body undecidable from the signature, and
+// declining it is the honest answer (golden rule #7).
+func (p *paramIndex) valueIndexOf(w *wrapperMethod, arg *metadata.CallArgument) (int, bool) {
+	if p == nil || w == nil || arg == nil {
+		return 0, false
+	}
+	params := p.paramsOf(w)
+	if len(params) == 0 {
+		return 0, false
+	}
+	return p.identityOf(w, params, arg, wrapperAssignHops, map[string]bool{})
+}
+
+// identityOf resolves one value expression for valueIndexOf. onPath holds the
+// locals on the current assignment path, so a cycle (`a = b; b = a`) stops while
+// two branches through the same local both still resolve.
+//
+// A parameter is a local whose first assignment is the caller's argument, and
+// it is held to the same rule as any other: the method may overwrite it.
+// `v = map[string]any{"data": v}; Encode(v)` sends the map, and returning the
+// parameter on its name alone documented the caller's bare value as the body
+// (CodeRabbit on #660). So a reassigned parameter qualifies only while every
+// assignment hands on the parameter itself — a cycle back to its own name is
+// that — and a conditional default (`if v == nil { v = []T{} }`) declines like
+// any local with one branch that builds its own value.
+func (p *paramIndex) identityOf(w *wrapperMethod, params []string, arg *metadata.CallArgument, hops int, onPath map[string]bool) (int, bool) {
+	name := valueOperandIdent(arg)
+	if name == "" {
+		return 0, false
+	}
+	param := slices.Index(params, name)
+	if onPath[name] {
+		return param, param >= 0
+	}
+	assigns := p.assignmentsOf(w, name)
+	if len(assigns) == 0 {
+		return param, param >= 0
+	}
+	if hops <= 0 {
+		return 0, false
+	}
+	onPath[name] = true
+	defer delete(onPath, name)
+	found := param
+	for _, assign := range assigns {
+		value := assign.Value
+		i, ok := p.identityOf(w, params, &value, hops-1, onPath)
+		if !ok || (found >= 0 && i != found) {
+			return 0, false
+		}
+		found = i
+	}
+	return found, true
+}
+
+// valueOperandIdent returns the identifier an expression passes on unchanged,
+// and "" for one that computes a new value. `&v`, `*v`, `(v)`, `v.(T)` and
+// `T(v)` all hand on v itself; a selector into v, an index into it, arithmetic
+// or a call over it do not.
+func valueOperandIdent(arg *metadata.CallArgument) string {
+	for depth := 0; arg != nil && depth < wrapperExprDepth; depth++ {
+		switch arg.GetKind() {
+		case metadata.KindIdent:
+			return arg.GetName()
+		case metadata.KindUnary:
+			if arg.GetValue() != "&" {
+				return ""
+			}
+			arg = arg.X
+		case metadata.KindStar, metadata.KindParen, metadata.KindTypeAssert:
+			arg = arg.X
+		case metadata.KindTypeConversion:
+			inner, ok := conversionOperand(arg)
+			if !ok {
+				return ""
+			}
+			arg = inner
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // paramsOf returns a method's parameter names in declaration order.

@@ -148,17 +148,30 @@ func builtLocallyDepth(cp ContextProvider, arg *metadata.CallArgument, edge *met
 	return false
 }
 
-// forwardsRawBytes reports whether this call writes its body argument's bytes
-// verbatim: a RawBody pattern whose argument no BodyTransforms serializer
-// produced. Such bytes have no media type of their own — the Content-Type the
+// wrapperBodyArg returns the value this call's body role writes, as wrapper
+// derivation must map it onto the enclosing method's parameters, and whether
+// the call writes that argument's bytes verbatim.
+//
+// A RawBody pattern whose argument a BodyTransforms serializer produced writes
+// the serialized VALUE: `bs, _ := json.Marshal(v); w.Write(bs)` sends v, and v
+// is what a caller of the enclosing method supplies. Mapping the bytes instead
+// would ask whether `bs` is a parameter, which it never is. Bytes no serializer
+// produced are raw: they have no media type of their own — the Content-Type the
 // enclosing code declares, or the server's sniff, gives them one — so the
 // argument says nothing about the body a caller of the enclosing function sends
 // (see mergeResponseRoles).
-func (r *ResponsePatternMatcherImpl) forwardsRawBytes(edge *metadata.CallGraphEdge) bool {
-	if !r.pattern.RawBody || !r.pattern.TypeFromArg || edge == nil {
-		return false
+func (r *ResponsePatternMatcherImpl) wrapperBodyArg(edge *metadata.CallGraphEdge) (body *metadata.CallArgument, rawBytes bool) {
+	if edge == nil {
+		return nil, false
 	}
-	return r.unwrapWriteSink(argAt(edge, r.pattern.TypeArgIndex), edge) == nil
+	body = argAt(edge, r.pattern.TypeArgIndex)
+	if !r.pattern.RawBody || !r.pattern.TypeFromArg {
+		return body, false
+	}
+	if payload := r.unwrapWriteSink(body, edge); payload != nil {
+		return payload, false
+	}
+	return body, true
 }
 
 // unwrapHelperReturn resolves w.Write(helper(a0, a1, …)) to the call-site

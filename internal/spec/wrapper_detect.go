@@ -15,6 +15,7 @@
 package spec
 
 import (
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -53,13 +54,29 @@ type DetectedWrapper struct {
 	// registration produces a route with the wrong path rather than no route.
 	Complete bool
 
-	// bodyIsStatus records that the response's body role was DECLINED because it
-	// resolved to the same parameter as its status (see normaliseResponseRoles).
-	// Such a responder is still complete — the status is known and the body is
-	// known not to exist — and the flag lives on the entry rather than in the
-	// merge that discovered it, because roles accumulate across edges in
-	// whatever order the call graph stores them.
-	bodyIsStatus bool
+	// bodyDeclined records that the response's body role was DECLINED: it
+	// resolved to the same parameter as its status (see normaliseResponseRoles),
+	// or it is a value the method builds from its parameters rather than one of
+	// them (see paramIndex.valueIndexOf). Such a responder is still complete when
+	// its status is known — the body is known not to be the caller's — and the
+	// flag lives on the entry rather than in the merge that discovered it,
+	// because roles accumulate across edges in whatever order the call graph
+	// stores them.
+	bodyDeclined bool
+}
+
+// ResponseResolved reports whether the response role describes something a
+// call site can apply: a body read from a parameter, or a status read from one
+// with the body known not to be the caller's (see bodyDeclined). A status whose
+// body was merely never located is not enough — the method writes SOME body,
+// and the walk into it documents that body better than a pattern that drops it.
+//
+// It is kept apart from Complete because Complete covers every role the method
+// carries: a decoder role resolved beside a response half that resolved
+// nothing makes the entry applicable, but not that half.
+func (w DetectedWrapper) ResponseResolved() bool {
+	p := w.Response
+	return p != nil && (p.TypeFromArg || (w.bodyDeclined && p.StatusFromArg))
 }
 
 // wrapperDetectRounds bounds the transitive search. Delegation chains are short
@@ -558,14 +575,22 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 	// Wrappers stack: a project that wraps encoding/json in its own package (gitea
 	// does) reaches the framework pattern two levels down, so each round feeds
 	// what it derived back in as patterns to match against.
+	//
+	// The search stops at a fixed point: when a round leaves the seeds as they
+	// were, the next would match the same patterns against the same edges. The
+	// method count is not that signal — a round can resolve a method an earlier
+	// one had only started (a `WriteHeader(code)` beside a forward to a
+	// declined-body responder), and that method seeds the next layer while the
+	// count stands still (CodeRabbit on #660).
 	seeds := *cfg
+	var declined []bool // the framework's own patterns decline nothing
 	for round := 0; round < wrapperDetectRounds; round++ {
-		before := len(byMethod)
-		detectValueRound(meta, cp, params, body, &seeds, byMethod)
-		if len(byMethod) == before {
+		detectValueRound(meta, cp, params, body, &seeds, declined, byMethod)
+		next, nextDeclined := seedsFrom(byMethod)
+		if !hasSeeds(next) || (round > 0 && sameSeeds(seeds, next) && slices.Equal(declined, nextDeclined)) {
 			break
 		}
-		seeds = seedsFrom(byMethod)
+		seeds, declined = next, nextDeclined
 	}
 
 	out := make([]DetectedWrapper, 0, len(byMethod))
@@ -582,27 +607,68 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 }
 
 // seedsFrom turns the wrappers derived so far into patterns for the next round.
-func seedsFrom(byMethod map[string]*DetectedWrapper) APISpecConfig {
-	var cfg APISpecConfig
-	for _, w := range byMethod {
+//
+// declined runs parallel to the response patterns: it marks a seed whose body
+// was declined (see bodyDeclined), which a pattern cannot say for itself — the
+// pattern has no body role either way. A method forwarding to such a responder
+// inherits the declined body: the inner method makes the body, so the outer one
+// has none of the caller's to substitute either. Without it the forwarder came
+// out with a resolved status, no body role and no reason why, and was left
+// unapplied (CodeRabbit on #660). A seed that reads its body from a parameter
+// is not declined, whatever else the method writes.
+//
+// Every resolved role is seeded on its own: a method that decodes the caller's
+// value AND answers with the caller's status is both a decoder and a responder
+// to whatever forwards to it. Seeded as one role only, the forwarder inherited
+// the other never, and no later round could restore it (CodeRabbit on #660).
+//
+// Seeds come out in method order, so the fixed-point check in
+// detectValueWrappers can compare two rounds' seeds directly, and so the order
+// in which a forwarder meets its seeds — merges are first-wins per role — does
+// not follow map iteration (golden rule #1).
+func seedsFrom(byMethod map[string]*DetectedWrapper) (cfg APISpecConfig, declined []bool) {
+	keys := make([]string, 0, len(byMethod))
+	for k := range byMethod {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		w := byMethod[k]
 		if !w.Complete {
 			continue
 		}
-		switch {
-		case w.Response != nil:
+		if w.ResponseResolved() {
 			cfg.Framework.ResponsePatterns = append(cfg.Framework.ResponsePatterns, *w.Response)
-		case w.Request != nil:
+			declined = append(declined, w.bodyDeclined && !w.Response.TypeFromArg)
+		}
+		if w.Request != nil {
 			cfg.Framework.RequestBodyPatterns = append(cfg.Framework.RequestBodyPatterns, *w.Request)
-		case w.Param != nil:
+		}
+		if w.Param != nil {
 			cfg.Framework.ParamPatterns = append(cfg.Framework.ParamPatterns, *w.Param)
 		}
 	}
-	return cfg
+	return cfg, declined
+}
+
+func hasSeeds(cfg APISpecConfig) bool {
+	f := cfg.Framework
+	return len(f.ResponsePatterns) > 0 || len(f.RequestBodyPatterns) > 0 || len(f.ParamPatterns) > 0
+}
+
+// sameSeeds compares the derived patterns two rounds seeded from. The patterns
+// are plain data (strings, ints, flags and string slices), which DeepEqual
+// compares by value.
+func sameSeeds(a, b APISpecConfig) bool {
+	return reflect.DeepEqual(a.Framework.ResponsePatterns, b.Framework.ResponsePatterns) &&
+		reflect.DeepEqual(a.Framework.RequestBodyPatterns, b.Framework.RequestBodyPatterns) &&
+		reflect.DeepEqual(a.Framework.ParamPatterns, b.Framework.ParamPatterns)
 }
 
 // detectValueRound matches every edge against one set of patterns and folds what
-// it finds into byMethod.
-func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, byMethod map[string]*DetectedWrapper) {
+// it finds into byMethod. declined is parallel to the response patterns, or nil
+// when none of them declined its body (see seedsFrom).
+func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, declined []bool, byMethod map[string]*DetectedWrapper) {
 
 	respMatchers := make([]*ResponsePatternMatcherImpl, 0, len(cfg.Framework.ResponsePatterns))
 	for _, p := range cfg.Framework.ResponsePatterns {
@@ -632,7 +698,9 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		isParam := func(name string) bool { return slices.Contains(params.paramsOf(w), name) }
 		for j, m := range respMatchers {
 			if m.MatchNode(node) && !m.writesElsewhere(edge, isParam) {
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex, m.forwardsRawBytes(edge))
+				body, rawBytes := m.wrapperBodyArg(edge)
+				innerDeclined := j < len(declined) && declined[j]
+				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], innerDeclined, edge, recvRegex, body, rawBytes)
 			}
 		}
 		for j, m := range reqMatchers {
@@ -672,8 +740,9 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // body the walk documents inside the method: `http.Error(b.Resp, msg, status)`
 // wrapped in a method answered text/plain AND application/json (issue #645).
 //
-// rawBytes marks an inner call that writes its argument's bytes verbatim
-// (forwardsRawBytes). Whether those bytes are a document is a fact about each
+// body is the value the inner call's body role writes, seen through a
+// serializer, and rawBytes marks an inner call that writes its argument's bytes
+// verbatim (both from wrapperBodyArg). Whether those bytes are a document is a fact about each
 // CALL SITE, not about the method: `b.Blob(201, bs)` after `bs :=
 // json.Marshal(item)` sends Item, while `b.PlainText(500, "failed")` sends
 // bytes whose media type the method declares before writing (or the server
@@ -683,7 +752,11 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // text/plain the walk pairs inside the method; dropped altogether, the
 // serialized call lost its $ref. A wrapper of such a method inherits the mark
 // through the same check one round later, since the mark keeps RawBody.
-func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string, rawBytes bool) {
+//
+// innerDeclined marks an inner call to a derived responder whose own body was
+// declined (see seedsFrom): that responder makes its body itself, so this
+// method's body is declined with it.
+func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, innerDeclined bool, edge *metadata.CallGraphEdge, recvRegex string, body *metadata.CallArgument, rawBytes bool) {
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	if entry.Response == nil {
 		entry.Response = &ResponsePattern{
@@ -699,13 +772,21 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 		}
 	}
 	if inner.TypeFromArg && !entry.Response.TypeFromArg {
-		if i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex)); ok {
+		if i, ok := params.valueIndexOf(w, body); ok {
 			entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
 			entry.Response.Deref = inner.Deref
 			entry.Response.DefaultContentType = inner.DefaultContentType
 			entry.Response.RawBody = rawBytes
 			entry.Response.SerializedBodyOnly = rawBytes
+		} else if _, built := params.indexOf(w, body); built {
+			// Built FROM the caller's values but not one of them — `"bad "+p`,
+			// `http.StatusText(code)`: the method makes the body itself, so the
+			// call site has none to substitute (issue #659).
+			entry.bodyDeclined = true
 		}
+	}
+	if innerDeclined {
+		entry.bodyDeclined = true
 	}
 	normaliseResponseRoles(entry)
 	if inner.DefaultStatus != 0 && entry.Response.DefaultStatus == 0 {
@@ -713,14 +794,24 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 	}
 
 	// A body is what makes a responder worth describing: a status alone documents
-	// nothing a client can use — UNLESS the body was declined because it
-	// resolved to the status parameter. There the status is known and the body
-	// is known not to exist, which is a complete description of
-	// `ctx.HTTPError(404)`: that endpoint really can answer 404, and saying so
-	// with no body beats both inventing one and dropping the status with it.
-	// Keeping the pattern is worth 186 statuses on a large real project, every
-	// one of which had been resting on the invented body (issue #485).
-	entry.Complete = entry.Response.TypeFromArg || entry.bodyIsStatus
+	// nothing a client can use — UNLESS the body was declined, because it
+	// resolved to the status parameter or is built by the method from the
+	// caller's values. There the status is known and the body is known not to be
+	// the caller's, which is a complete description of `ctx.HTTPError(404)`: that
+	// endpoint really can answer 404, and saying so with no body beats both
+	// inventing one and dropping the status with it. Keeping the pattern is worth
+	// 186 statuses on a large real project, every one of which had been resting
+	// on the invented body (issue #485). With no status role either, a declined
+	// body leaves nothing to apply, and the walk into the method documents what
+	// it writes.
+	//
+	// Completeness is the ENTRY's, not this half's: a decoder or parameter role
+	// already resolved on the method stays applicable whatever a response edge
+	// met later fails to resolve. Recomputed from the response alone, a
+	// `Decode(dst)` followed by `http.Error(w, "bad "+r.URL.Path, 400)` lost its
+	// request body, and the same calls in the other order kept it (CodeRabbit on
+	// #660).
+	entry.Complete = entry.ResponseResolved() || entry.Request != nil || entry.Param != nil
 }
 
 // sameAsStatusParam reports whether a derived pattern would read its BODY from
@@ -781,7 +872,7 @@ func normaliseResponseRoles(entry *DetectedWrapper) {
 	p.SerializedBodyOnly = false
 	// Sticky: a later merge must not read the absence of a body role as "no
 	// body was ever found" and drop the status with it.
-	entry.bodyIsStatus = true
+	entry.bodyDeclined = true
 }
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —
@@ -790,7 +881,10 @@ func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *w
 	if !inner.TypeFromArg {
 		return
 	}
-	i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex))
+	// The destination is a value role like a response body: `Decode(&dst)`
+	// fills the caller's dst, `Decode(&env.Data)` fills the method's own
+	// envelope, and the call site can only substitute the first (issue #659).
+	i, ok := params.valueIndexOf(w, argAt(edge, inner.TypeArgIndex))
 	if !ok {
 		return
 	}

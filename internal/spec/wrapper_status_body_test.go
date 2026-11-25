@@ -83,7 +83,7 @@ func TestResponseRoleCollisionIsOrderIndependent(t *testing.T) {
 		t.Error("the status arrived second and the body still reads the same parameter — " +
 			"one parameter cannot be both roles")
 	}
-	if !bodyFirst.bodyIsStatus {
+	if !bodyFirst.bodyDeclined {
 		t.Error("the declined body was not recorded, so a later merge will read it as 'no body found'")
 	}
 
@@ -92,7 +92,7 @@ func TestResponseRoleCollisionIsOrderIndependent(t *testing.T) {
 		StatusFromArg: true, StatusArgIndex: 0, TypeFromArg: true, TypeArgIndex: 0,
 	}}
 	normaliseResponseRoles(statusFirst)
-	if statusFirst.Response.TypeFromArg || !statusFirst.bodyIsStatus {
+	if statusFirst.Response.TypeFromArg || !statusFirst.bodyDeclined {
 		t.Error("the collision was not resolved when the status was recorded first")
 	}
 
@@ -104,7 +104,7 @@ func TestResponseRoleCollisionIsOrderIndependent(t *testing.T) {
 	if !ok.Response.TypeFromArg || ok.Response.TypeArgIndex != 1 {
 		t.Error("a body on its own parameter was dropped")
 	}
-	if ok.bodyIsStatus {
+	if ok.bodyDeclined {
 		t.Error("a responder with distinct roles was marked as having had its body declined")
 	}
 
