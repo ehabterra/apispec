@@ -36,9 +36,10 @@ func DefaultGinConfig() *APISpecConfig {
 	const ginContextRecv = "^github\\.com/gin-gonic/gin\\.\\*Context$"
 
 	responsePatterns := netHTTPResponsePatterns()
-	// gin's own writer, `c.Writer` (issue #576).
+	// gin's own writer, `c.Writer` (issue #576). Its WriteHeader only records
+	// the status; WriteHeaderNow, on the first write, sends the headers.
 	responsePatterns = append(responsePatterns, responseWriterPatterns(
-		`^github\.com/gin-gonic/gin\.\*?ResponseWriter$`, `^WriteHeader$`, `^Write$`, sniffedMedia)...)
+		`^github\.com/gin-gonic/gin\.\*?ResponseWriter$`, `^WriteHeader$`, `^Write$`, true, sniffedMedia)...)
 	// gin's raw-bytes renderers state their own media type; ahead of the
 	// catch-all, which would read `Data`'s media-type argument as its body.
 	responsePatterns = append(responsePatterns, rawBodyRendererPatterns(ginContextRecv,
@@ -93,10 +94,12 @@ func DefaultGinConfig() *APISpecConfig {
 	)...)
 	responsePatterns = append(responsePatterns, rendererResponsePatterns(ginRenderer)...)
 	// c.Status(code) sets the status a later body is sent under, like
-	// WriteHeader; c.Redirect's location goes in a header, not the body.
+	// WriteHeader, but sends no headers: a Content-Type set after it still
+	// applies (issue #652). c.Redirect's location goes in a header, not the
+	// body.
 	responsePatterns = append(responsePatterns, statusOnlyPatterns(ginContextRecv,
 		statusOnlyCall{call: `^Redirect$`, statusArg: 0},
-		statusOnlyCall{call: `^Status$`, statusArg: 0},
+		statusOnlyCall{call: `^Status$`, statusArg: 0, defersHeaders: true},
 	)...)
 	responsePatterns = append(responsePatterns, fileSenderPatterns(ginContextRecv, false,
 		`^File$`, `^FileAttachment$`, `^FileFromFS$`,

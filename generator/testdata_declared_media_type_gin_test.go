@@ -28,6 +28,10 @@ import (
 // write, so each goes out under the declaration. A copy that dropped the
 // renderer's header-media-type mark stayed under application/json and left
 // the declaration at a 200 the handler never sends.
+//
+// It also pins a declaration made after gin's c.Status, which only records
+// the status: read as a header commit, the declaration was dropped and the
+// body stayed under application/json.
 func TestTestdata_DeclaredMediaTypeGin(t *testing.T) {
 	out := loadTestdata(t, "declared_media_type_gin", spec.DefaultGinConfig())
 	noDanglingRefs(t, out)
@@ -44,6 +48,14 @@ func TestTestdata_DeclaredMediaTypeGin(t *testing.T) {
 		{"/residue-status", []string{"400"}, "application/problem+json"},
 		// Negative: nothing declared, nothing adopted.
 		{"/undeclared", []string{"400", "422"}, "application/json"},
+		// c.Status records the status and sends no headers, so a declaration
+		// after it is still the body's media type — inline and inside a
+		// derived responder.
+		{"/status-then-header", []string{"409"}, "application/problem+json"},
+		{"/status-helper", []string{"410"}, "application/problem+json"},
+		// Negative: AbortWithStatus writes the headers at once, and the
+		// declaration after it never reaches the client.
+		{"/abort-then-header", []string{"423"}, "application/json"},
 	}
 	for _, tc := range cases {
 		op := opFor(out.Paths[tc.path], "GET")

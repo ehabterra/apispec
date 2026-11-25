@@ -706,7 +706,7 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 				if inner.ContentTypeFromHeaderWrite {
 					media.declaration(key, m, node)
 				}
-				if inner.StatusFromArg && !inner.TypeFromArg && !inner.ContentTypeFromHeaderWrite {
+				if inner.StatusFromArg && !inner.TypeFromArg && !inner.ContentTypeFromHeaderWrite && !inner.DefersHeaders {
 					media.commit(key, edge)
 				}
 				body, rawBytes := m.wrapperBodyArg(edge)
@@ -894,6 +894,9 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 	if inner.StatusFromArg && !entry.Response.StatusFromArg {
 		if i, ok := params.indexOf(w, argAt(edge, inner.StatusArgIndex)); ok {
 			entry.Response.StatusFromArg, entry.Response.StatusArgIndex = true, i
+			// A wrapper of `c.Status(code)` leaves the headers open as the
+			// call it wraps does.
+			entry.Response.DefersHeaders = inner.DefersHeaders
 		}
 	}
 	if inner.TypeFromArg && !entry.Response.TypeFromArg {

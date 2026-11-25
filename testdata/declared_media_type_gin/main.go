@@ -43,10 +43,45 @@ func undeclared(c *gin.Context) {
 	c.JSON(code, Problem{Title: "invalid"})
 }
 
+// gin's c.Status only records the status: the headers go out with the first
+// body write, so a Content-Type set after it is still the body's.
+func statusThenHeader(c *gin.Context) {
+	c.Status(http.StatusConflict)
+	c.Header("Content-Type", "application/problem+json")
+	c.JSON(http.StatusConflict, Problem{Title: "conflict"})
+}
+
+type responder struct{}
+
+// The same order inside a responder: every call site's body takes the
+// declaration.
+func (responder) problem(c *gin.Context, code int, v any) {
+	c.Status(code)
+	c.Header("Content-Type", "application/problem+json")
+	c.JSON(code, v)
+}
+
+type api struct{ out responder }
+
+func (a *api) statusHelper(c *gin.Context) {
+	a.out.problem(c, http.StatusGone, Problem{Title: "gone"})
+}
+
+// AbortWithStatus writes the headers at once: a Content-Type set after it
+// never reaches the client.
+func abortThenHeader(c *gin.Context) {
+	c.AbortWithStatus(http.StatusLocked)
+	c.Header("Content-Type", "application/problem+json")
+	c.JSON(http.StatusLocked, Problem{Title: "locked"})
+}
+
 func main() {
 	r := gin.New()
 	r.GET("/branch-status", branchStatus)
 	r.GET("/residue-status", residueStatus)
 	r.GET("/undeclared", undeclared)
+	r.GET("/status-then-header", statusThenHeader)
+	r.GET("/status-helper", (&api{}).statusHelper)
+	r.GET("/abort-then-header", abortThenHeader)
 	_ = r.Run(":8080")
 }

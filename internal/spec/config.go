@@ -760,6 +760,15 @@ type ResponsePattern struct {
 	// adopted where the server overwrites it.
 	SetsContentType bool `yaml:"setsContentType,omitempty" json:"setsContentType,omitempty"`
 
+	// DefersHeaders marks a status-only call that records the status without
+	// sending the headers: they go out with the first body write, so a
+	// Content-Type set after the call still reaches the client. gin's
+	// `c.Status` and its writer's WriteHeader, fiber's `c.Status` and chi's
+	// `render.Status` work this way. Without it a status write commits the
+	// headers, as net/http's WriteHeader and echo's Response.WriteHeader do,
+	// and a declaration after it is ignored.
+	DefersHeaders bool `yaml:"defersHeaders,omitempty" json:"defersHeaders,omitempty"`
+
 	// DeclaredContentType is the media type a responder declares in the
 	// Content-Type header itself before writing its body — a derived
 	// `func (r responder) Problem(w, status, v)` that sets
@@ -1590,7 +1599,7 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 // netHTTPResponsePatterns returns the standard ResponseWriter and net/http
 // helper response patterns. Identical across every framework default.
 func netHTTPResponsePatterns() []ResponsePattern {
-	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`, sniffedMedia),
+	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`, false, sniffedMedia),
 		ResponsePattern{
 			CallRegex:          `^Error$`,
 			StatusArgIndex:     2,
@@ -1628,8 +1637,9 @@ func netHTTPResponsePatterns() []ResponsePattern {
 // One constructor for every framework (golden rule #5): what differs is the
 // writer's type, the names of its calls, and how its server picks a media type
 // the handler did not declare. writeHeaderCall is empty for a writer whose
-// status is set elsewhere (fiber's `c.Status`).
-func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, undeclared undeclaredMedia) []ResponsePattern {
+// status is set elsewhere (fiber's `c.Status`); headersDeferred marks a writer
+// whose WriteHeader only records the status (see ResponsePattern.DefersHeaders).
+func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, headersDeferred bool, undeclared undeclaredMedia) []ResponsePattern {
 	var out []ResponsePattern
 	if writeHeaderCall != "" {
 		out = append(out, ResponsePattern{
@@ -1638,6 +1648,7 @@ func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, un
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  recvTypeRegex,
+			DefersHeaders:  headersDeferred,
 		})
 	}
 	return append(out, ResponsePattern{
@@ -1942,6 +1953,7 @@ type statusOnlyCall struct {
 	call          string
 	statusArg     int
 	defaultStatus int
+	defersHeaders bool
 }
 
 // statusOnlyPatterns builds the status-only patterns for one receiver.
@@ -1955,6 +1967,7 @@ func statusOnlyPatterns(recvTypeRegex string, calls ...statusOnlyCall) []Respons
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			DefaultStatus:  c.defaultStatus,
+			DefersHeaders:  c.defersHeaders,
 		})
 	}
 	return out

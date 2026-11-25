@@ -38,7 +38,7 @@ func DefaultFiberConfig() *APISpecConfig {
 	// bytes verbatim, and its status is `c.Status`, below (issue #576).
 	// fasthttp does not sniff: undeclared bytes go out as text/plain unless
 	// the app sets DisableDefaultContentType (issue #596).
-	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`,
+	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`, false,
 		undeclaredMedia{contentType: contentTypeText})...)
 	responsePatterns = append(responsePatterns,
 		ResponsePattern{
@@ -58,6 +58,8 @@ func DefaultFiberConfig() *APISpecConfig {
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+			// fasthttp sends the headers when the handler returns.
+			DefersHeaders: true,
 		},
 		// An error the handler RETURNS: fiber's default ErrorHandler writes
 		// the status it carries and sends its message as plain text

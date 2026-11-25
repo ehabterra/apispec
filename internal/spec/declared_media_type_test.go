@@ -137,21 +137,28 @@ func hasAlternate(resp *ResponseInfo, mediaType string) bool {
 // the Content-Type header (issue #652): net/http's encoder and gin's and echo's
 // JSON renderers do; fiber's renderers, chi's render.JSON and every call that
 // names its media type do not.
+// findResponsePattern returns the first response pattern of cfg matching a
+// call on recv, the one the matcher would pick.
+func findResponsePattern(t *testing.T, cfg *APISpecConfig, call, recv string) *ResponsePattern {
+	t.Helper()
+	for i := range cfg.Framework.ResponsePatterns {
+		p := &cfg.Framework.ResponsePatterns[i]
+		if p.CallRegex == "" || !regexp.MustCompile(p.CallRegex).MatchString(call) {
+			continue
+		}
+		if p.RecvTypeRegex != "" && !regexp.MustCompile(p.RecvTypeRegex).MatchString(recv) {
+			continue
+		}
+		return p
+	}
+	t.Fatalf("no pattern matches %s on %s", call, recv)
+	return nil
+}
+
 func TestTakesHeaderMediaType(t *testing.T) {
 	find := func(cfg *APISpecConfig, call, recv string) *ResponsePattern {
 		t.Helper()
-		for i := range cfg.Framework.ResponsePatterns {
-			p := &cfg.Framework.ResponsePatterns[i]
-			if p.CallRegex == "" || !regexp.MustCompile(p.CallRegex).MatchString(call) {
-				continue
-			}
-			if p.RecvTypeRegex != "" && !regexp.MustCompile(p.RecvTypeRegex).MatchString(recv) {
-				continue
-			}
-			return p
-		}
-		t.Fatalf("no pattern matches %s on %s", call, recv)
-		return nil
+		return findResponsePattern(t, cfg, call, recv)
 	}
 	cases := []struct {
 		name string
@@ -170,6 +177,36 @@ func TestTakesHeaderMediaType(t *testing.T) {
 	for _, tc := range cases {
 		if got := takesHeaderMediaType(tc.p); got != tc.want {
 			t.Errorf("%s: takesHeaderMediaType = %v, want %v (pattern %+v)", tc.name, got, tc.want, *tc.p)
+		}
+	}
+}
+
+// TestStatusWritesDeferringHeaders pins which status-only writes leave the
+// headers open for a later Content-Type (review of #652). gin's c.Status and
+// its writer's WriteHeader only record the status, fiber's headers go out
+// when the handler returns, and chi's render.Status writes nothing at all;
+// net/http's and echo's WriteHeader, and gin's AbortWithStatus, send them.
+func TestStatusWritesDeferringHeaders(t *testing.T) {
+	cases := []struct {
+		name string
+		p    *ResponsePattern
+		want bool
+	}{
+		{"gin c.Status", findResponsePattern(t, DefaultGinConfig(), "Status", "github.com/gin-gonic/gin.*Context"), true},
+		{"gin c.Writer.WriteHeader", findResponsePattern(t, DefaultGinConfig(), "WriteHeader", "github.com/gin-gonic/gin.ResponseWriter"), true},
+		{"fiber c.Status", findResponsePattern(t, DefaultFiberConfig(), "Status", "github.com/gofiber/fiber/v2.*Ctx"), true},
+		{"chi render.Status", findResponsePattern(t, DefaultChiConfig(), "Status", "github.com/go-chi/render"), true},
+		{"gin c.AbortWithStatus", findResponsePattern(t, DefaultGinConfig(), "AbortWithStatus", "github.com/gin-gonic/gin.*Context"), false},
+		{"net/http WriteHeader", findResponsePattern(t, DefaultHTTPConfig(), "WriteHeader", "net/http.ResponseWriter"), false},
+		{"echo Response.WriteHeader", findResponsePattern(t, DefaultEchoConfig(), "WriteHeader", "github.com/labstack/echo/v4.*Response"), false},
+	}
+	for _, tc := range cases {
+		if !tc.p.StatusFromArg || tc.p.TypeFromArg {
+			t.Errorf("%s: matched %+v, want a status-only pattern", tc.name, *tc.p)
+			continue
+		}
+		if tc.p.DefersHeaders != tc.want {
+			t.Errorf("%s: DefersHeaders = %v, want %v", tc.name, tc.p.DefersHeaders, tc.want)
 		}
 	}
 }

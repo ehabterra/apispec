@@ -308,6 +308,11 @@ type ResponseInfo struct {
 	// on its chain is its media type (issue #652).
 	MediaTypeFromHeader bool
 
+	// DefersHeaders marks a status write that leaves the headers open (see
+	// ResponsePattern.DefersHeaders): a Content-Type declared after it still
+	// describes the body that follows.
+	DefersHeaders bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1925,7 +1930,8 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// chain -> where a status was WRITTEN on it. WriteHeader commits the
 	// response headers, so a Content-Type set after one has no effect, and
 	// reading it would hand the pending status to its default 200 (review of
-	// #577). Same file only: dominance answers permissively across files, and
+	// #577). Not a write that defers the headers — gin's `c.Status` — where
+	// the declaration after it is still sent (review of #652). Same file only: dominance answers permissively across files, and
 	// the fragments' file order is not execution order.
 	committedAt := map[string]stmtPos{}
 	posOf := func(f *fragment) stmtPos {
@@ -2150,7 +2156,9 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			store(f.resp, false)
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
-			committedAt[f.chain] = posOf(f)
+			if !f.resp.DefersHeaders {
+				committedAt[f.chain] = posOf(f)
+			}
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = posOf(f)
@@ -3633,6 +3641,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		DeclarationOnly:     tentative,
 		HeaderDeclaration:   r.pattern.ContentTypeFromHeaderWrite,
 		MediaTypeFromHeader: takesHeaderMediaType(&r.pattern),
+		DefersHeaders:       r.pattern.DefersHeaders,
 	}
 
 	edge := node.GetEdge()
@@ -3892,6 +3901,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 					BodyType:            respInfo.BodyType,
 					Schema:              respInfo.Schema,
 					MediaTypeFromHeader: respInfo.MediaTypeFromHeader,
+					DefersHeaders:       respInfo.DefersHeaders,
 				}
 			}
 			out := make([]*ResponseInfo, 0, len(expanded)+1)

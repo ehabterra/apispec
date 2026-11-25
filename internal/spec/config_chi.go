@@ -40,6 +40,9 @@ func DefaultChiConfig() *APISpecConfig {
 			StatusArgIndex: 1,
 			StatusFromArg:  true,
 			RecvTypeRegex:  "^github\\.com/go-chi/render$",
+			// render.Status stores the status in the request context; nothing
+			// is written until a responder runs.
+			DefersHeaders: true,
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)
