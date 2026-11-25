@@ -125,4 +125,31 @@ func TestTestdata_DerivedBodyArg(t *testing.T) {
 				"body of a decoder that wraps it in its own envelope", name)
 		}
 	}
+
+	// A decoder method that also rejects with a message built from the request:
+	// the rejection's body is declined and it has no status parameter, so it
+	// adds nothing — but the decoder role it shares the method with must still
+	// apply, whichever of the two calls the derivation meets first.
+	for path, want := range map[string]string{"/gadgets": "_Gadget", "/parts": "_Part"} {
+		op := opOf("POST", path)
+		noRequestBody(path, op)
+		if ref := requestRefOf(op); !strings.HasSuffix(ref, want) {
+			t.Errorf("POST %s request = %q, want the %s handed to the decoder method", path, ref, want[1:])
+		}
+	}
+
+	// A parameter the method reassigns before encoding is not the caller's
+	// value: `v = map[string]any{"data": v}` sends the map, never a bare Receipt,
+	// and the derived sendWrapped pattern now declines (the unit cases in
+	// TestParamIndexValueIndexOf pin that). CHANGE-DETECTOR: the walk into
+	// sendWrapped still binds `v` to the caller's argument without reading the
+	// method's own assignment to it — the response-body side of the gap #638
+	// files for router parameters — so Receipt is documented anyway. When that
+	// binding learns to see the reassignment, this flips: assert the Receipt is
+	// gone instead.
+	receipts := opAt("/receipts")
+	if ref := schemaRefAt(receipts, "200"); !strings.HasSuffix(ref, "_Receipt") {
+		t.Errorf("/receipts 200 = %q — the walk no longer reads the caller's Receipt through a "+
+			"reassigned parameter; flip this to assert the Receipt is absent", ref)
+	}
 }

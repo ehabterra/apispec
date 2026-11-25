@@ -181,24 +181,34 @@ func (p *paramIndex) valueIndexOf(w *wrapperMethod, arg *metadata.CallArgument) 
 // identityOf resolves one value expression for valueIndexOf. onPath holds the
 // locals on the current assignment path, so a cycle (`a = b; b = a`) stops while
 // two branches through the same local both still resolve.
+//
+// A parameter is a local whose first assignment is the caller's argument, and
+// it is held to the same rule as any other: the method may overwrite it.
+// `v = map[string]any{"data": v}; Encode(v)` sends the map, and returning the
+// parameter on its name alone documented the caller's bare value as the body
+// (CodeRabbit on #660). So a reassigned parameter qualifies only while every
+// assignment hands on the parameter itself — a cycle back to its own name is
+// that — and a conditional default (`if v == nil { v = []T{} }`) declines like
+// any local with one branch that builds its own value.
 func (p *paramIndex) identityOf(w *wrapperMethod, params []string, arg *metadata.CallArgument, hops int, onPath map[string]bool) (int, bool) {
 	name := valueOperandIdent(arg)
 	if name == "" {
 		return 0, false
 	}
-	if i := slices.Index(params, name); i >= 0 {
-		return i, true
-	}
-	if hops <= 0 || onPath[name] {
-		return 0, false
+	param := slices.Index(params, name)
+	if onPath[name] {
+		return param, param >= 0
 	}
 	assigns := p.assignmentsOf(w, name)
 	if len(assigns) == 0 {
+		return param, param >= 0
+	}
+	if hops <= 0 {
 		return 0, false
 	}
 	onPath[name] = true
 	defer delete(onPath, name)
-	found := -1
+	found := param
 	for _, assign := range assigns {
 		value := assign.Value
 		i, ok := p.identityOf(w, params, &value, hops-1, onPath)

@@ -37,7 +37,7 @@ func TestParamIndexValueIndexOf(t *testing.T) {
 
 type R struct{}
 
-func (r *R) M(w W, v any, code int, req *Req) {
+func (r *R) M(w W, v any, code int, req *Req, env any, dflt any, keep any) {
 	alias := v
 	twice := alias
 	both := v
@@ -49,6 +49,11 @@ func (r *R) M(w W, v any, code int, req *Req) {
 	mixed = "fallback"
 	loopA := loopB
 	loopB := loopA
+	env = &Envelope{Data: env}
+	viaEnv := env
+	dflt = 0
+	k := keep
+	keep = k
 }
 `
 	fset := token.NewFileSet()
@@ -116,6 +121,7 @@ func (r *R) M(w W, v any, code int, req *Req) {
 		{"through a local", ident("alias"), v},
 		{"through two locals, by address", wrap(metadata.KindUnary, "&", ident("twice")), v},
 		{"every assignment the same parameter", ident("same"), v},
+		{"a parameter re-pointed at itself through a local", ident("keep"), 6},
 
 		{"a field of it", selector(ident("req"), "URL"), none},
 		{"a local holding a field of it", ident("built"), none},
@@ -127,6 +133,9 @@ func (r *R) M(w W, v any, code int, req *Req) {
 		{"one assignment builds its own value", ident("mixed"), none},
 		{"a cycle of locals", ident("loopA"), none},
 		{"a name the method never binds", ident("ghost"), none},
+		{"a parameter the method overwrites with its own value", ident("env"), none},
+		{"a local holding an overwritten parameter", ident("viaEnv"), none},
+		{"a parameter given a default", ident("dflt"), none},
 		{"no argument", nil, none},
 	}
 	idx := newParamIndex(meta)

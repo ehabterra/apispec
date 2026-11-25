@@ -63,6 +63,35 @@ func (rt *R) bindEnvelope(r *http.Request, dst any) error {
 	return json.NewDecoder(r.Body).Decode(&Envelope{Data: dst})
 }
 
+// bindOrReject decodes into the caller's destination and rejects a bad body
+// with a message built from the request. The rejection has no status
+// parameter and a body the method makes, so it contributes nothing to the
+// derived pattern — and must not take the decoder role down with it.
+func (rt *R) bindOrReject(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		http.Error(w, "bad body for "+r.URL.Path, http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// rejectOrBind is bindOrReject with its two calls in the other order, so the
+// rejection reaches the derivation before the decode does.
+func (rt *R) rejectOrBind(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if r.ContentLength == 0 {
+		http.Error(w, "empty body for "+r.URL.Path, http.StatusBadRequest)
+		return false
+	}
+	return json.NewDecoder(r.Body).Decode(dst) == nil
+}
+
+// sendWrapped reassigns its parameter before encoding it: the body is the map
+// the method builds around the caller's value, not that value.
+func (rt *R) sendWrapped(w http.ResponseWriter, v any) {
+	v = map[string]any{"data": v}
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 // Envelope wraps every payload bindEnvelope reads.
 type Envelope struct {
 	Data any `json:"data"`
@@ -71,6 +100,21 @@ type Envelope struct {
 // Order is the payload handed to bindEnvelope.
 type Order struct {
 	Qty int `json:"qty"`
+}
+
+// Gadget is the payload handed to bindOrReject.
+type Gadget struct {
+	Serial string `json:"serial"`
+}
+
+// Part is the payload handed to rejectOrBind.
+type Part struct {
+	Code string `json:"code"`
+}
+
+// Receipt is the value sendWrapped wraps.
+type Receipt struct {
+	Total int `json:"total"`
 }
 
 // Item is the body send documents.
@@ -129,6 +173,26 @@ func createOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+func createGadget(w http.ResponseWriter, r *http.Request) {
+	var in Gadget
+	if !(&R{}).bindOrReject(w, r, &in) {
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func createPart(w http.ResponseWriter, r *http.Request) {
+	var in Part
+	if !(&R{}).rejectOrBind(w, r, &in) {
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func receipts(w http.ResponseWriter, r *http.Request) {
+	(&R{}).sendWrapped(w, Receipt{})
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /normalized", normalized)
@@ -136,5 +200,8 @@ func main() {
 	mux.HandleFunc("GET /widgets", widgets)
 	mux.HandleFunc("POST /widgets", createWidget)
 	mux.HandleFunc("POST /orders", createOrder)
+	mux.HandleFunc("POST /gadgets", createGadget)
+	mux.HandleFunc("POST /parts", createPart)
+	mux.HandleFunc("GET /receipts", receipts)
 	_ = http.ListenAndServe(":8080", mux)
 }
