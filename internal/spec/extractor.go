@@ -3880,25 +3880,29 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			expanded, residue = r.statusesFromMapperField(statusArg, node)
 		}
 		if len(expanded) > 1 || (len(expanded) >= 1 && residue) {
+			// Every copy is the same write, so each goes out under whatever
+			// Content-Type the handler declared ahead of it: without the
+			// mark, `c.Header(…problem+json…)` then `c.JSON(code, p)` left
+			// every branch's body under the JSON default and the declaration
+			// at a 200 the handler never sends (review of #652).
+			fanned := func(status int) *ResponseInfo {
+				return &ResponseInfo{
+					StatusCode:          status,
+					ContentType:         respInfo.ContentType,
+					BodyType:            respInfo.BodyType,
+					Schema:              respInfo.Schema,
+					MediaTypeFromHeader: respInfo.MediaTypeFromHeader,
+				}
+			}
 			out := make([]*ResponseInfo, 0, len(expanded)+1)
 			for _, st := range expanded {
-				out = append(out, &ResponseInfo{
-					StatusCode:  st,
-					ContentType: respInfo.ContentType,
-					BodyType:    respInfo.BodyType,
-					Schema:      respInfo.Schema,
-				})
+				out = append(out, fanned(st))
 			}
 			// A non-constant branch keeps an honest `default`: a fresh
 			// unresolved status (below every real code), never a copy of an
 			// already-resolved concrete status.
 			if residue {
-				out = append(out, &ResponseInfo{
-					StatusCode:  unresolvedStatus,
-					ContentType: respInfo.ContentType,
-					BodyType:    respInfo.BodyType,
-					Schema:      respInfo.Schema,
-				})
+				out = append(out, fanned(unresolvedStatus))
 			}
 			return out
 		}
