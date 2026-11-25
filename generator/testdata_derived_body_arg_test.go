@@ -138,6 +138,22 @@ func TestTestdata_DerivedBodyArg(t *testing.T) {
 		}
 	}
 
+	// Two layers: deny forwards to reject, which builds its message from the
+	// request and forwards its status. The 403 is the caller's and nothing the
+	// caller passes is the body, at either layer. The derived deny pattern
+	// applies only since its declined body carries over from reject
+	// (TestDeclinedBodyCarriesAcrossWrapperLayers); the walk into deny already
+	// found the 403, so this guards the output while the unit test guards the
+	// derivation.
+	denied := opAt("/denied")
+	noRequestBody("/denied", denied)
+	if _, ok := denied.Responses["403"]; !ok {
+		t.Errorf("/denied lost the 403 deny(w, r, code) forwards; have %v", sortedStatusKeys(denied))
+	}
+	if ref := schemaRefAt(denied, "200"); !strings.HasSuffix(ref, "_Item") {
+		t.Errorf("/denied 200 = %q, want the Item the caller hands send(w, v)", ref)
+	}
+
 	// A parameter the method reassigns before encoding is not the caller's
 	// value: `v = map[string]any{"data": v}` sends the map, never a bare Receipt,
 	// and the derived sendWrapped pattern now declines (the unit cases in

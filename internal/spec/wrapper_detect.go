@@ -575,13 +575,14 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 	// does) reaches the framework pattern two levels down, so each round feeds
 	// what it derived back in as patterns to match against.
 	seeds := *cfg
+	var declined []bool // the framework's own patterns decline nothing
 	for round := 0; round < wrapperDetectRounds; round++ {
 		before := len(byMethod)
-		detectValueRound(meta, cp, params, body, &seeds, byMethod)
+		detectValueRound(meta, cp, params, body, &seeds, declined, byMethod)
 		if len(byMethod) == before {
 			break
 		}
-		seeds = seedsFrom(byMethod)
+		seeds, declined = seedsFrom(byMethod)
 	}
 
 	out := make([]DetectedWrapper, 0, len(byMethod))
@@ -598,8 +599,16 @@ func detectValueWrappers(meta *metadata.Metadata, cp ContextProvider, params *pa
 }
 
 // seedsFrom turns the wrappers derived so far into patterns for the next round.
-func seedsFrom(byMethod map[string]*DetectedWrapper) APISpecConfig {
-	var cfg APISpecConfig
+//
+// declined runs parallel to the response patterns: it marks a seed whose body
+// was declined (see bodyDeclined), which a pattern cannot say for itself — the
+// pattern has no body role either way. A method forwarding to such a responder
+// inherits the declined body: the inner method makes the body, so the outer one
+// has none of the caller's to substitute either. Without it the forwarder came
+// out with a resolved status, no body role and no reason why, and was left
+// unapplied (CodeRabbit on #660). A seed that reads its body from a parameter
+// is not declined, whatever else the method writes.
+func seedsFrom(byMethod map[string]*DetectedWrapper) (cfg APISpecConfig, declined []bool) {
 	for _, w := range byMethod {
 		if !w.Complete {
 			continue
@@ -607,18 +616,20 @@ func seedsFrom(byMethod map[string]*DetectedWrapper) APISpecConfig {
 		switch {
 		case w.ResponseResolved():
 			cfg.Framework.ResponsePatterns = append(cfg.Framework.ResponsePatterns, *w.Response)
+			declined = append(declined, w.bodyDeclined && !w.Response.TypeFromArg)
 		case w.Request != nil:
 			cfg.Framework.RequestBodyPatterns = append(cfg.Framework.RequestBodyPatterns, *w.Request)
 		case w.Param != nil:
 			cfg.Framework.ParamPatterns = append(cfg.Framework.ParamPatterns, *w.Param)
 		}
 	}
-	return cfg
+	return cfg, declined
 }
 
 // detectValueRound matches every edge against one set of patterns and folds what
-// it finds into byMethod.
-func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, byMethod map[string]*DetectedWrapper) {
+// it finds into byMethod. declined is parallel to the response patterns, or nil
+// when none of them declined its body (see seedsFrom).
+func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *paramIndex, body *bodySourceResolver, cfg *APISpecConfig, declined []bool, byMethod map[string]*DetectedWrapper) {
 
 	respMatchers := make([]*ResponsePatternMatcherImpl, 0, len(cfg.Framework.ResponsePatterns))
 	for _, p := range cfg.Framework.ResponsePatterns {
@@ -649,7 +660,8 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		for j, m := range respMatchers {
 			if m.MatchNode(node) && !m.writesElsewhere(edge, isParam) {
 				body, rawBytes := m.wrapperBodyArg(edge)
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex, body, rawBytes)
+				innerDeclined := j < len(declined) && declined[j]
+				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], innerDeclined, edge, recvRegex, body, rawBytes)
 			}
 		}
 		for j, m := range reqMatchers {
@@ -701,7 +713,11 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // text/plain the walk pairs inside the method; dropped altogether, the
 // serialized call lost its $ref. A wrapper of such a method inherits the mark
 // through the same check one round later, since the mark keeps RawBody.
-func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string, body *metadata.CallArgument, rawBytes bool) {
+//
+// innerDeclined marks an inner call to a derived responder whose own body was
+// declined (see seedsFrom): that responder makes its body itself, so this
+// method's body is declined with it.
+func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, innerDeclined bool, edge *metadata.CallGraphEdge, recvRegex string, body *metadata.CallArgument, rawBytes bool) {
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	if entry.Response == nil {
 		entry.Response = &ResponsePattern{
@@ -729,6 +745,9 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 			// call site has none to substitute (issue #659).
 			entry.bodyDeclined = true
 		}
+	}
+	if innerDeclined {
+		entry.bodyDeclined = true
 	}
 	normaliseResponseRoles(entry)
 	if inner.DefaultStatus != 0 && entry.Response.DefaultStatus == 0 {

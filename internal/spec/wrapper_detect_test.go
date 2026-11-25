@@ -592,3 +592,114 @@ func TestDerivedCompletionIsOrderIndependent(t *testing.T) {
 		}
 	}
 }
+
+// A method that forwards to a responder whose body was declined inherits the
+// declination, two layers down as one:
+//
+//	func (c *Ctx) Reject(w http.ResponseWriter, r *http.Request, code int) {
+//		http.Error(w, "bad "+r.URL.Path, code)
+//	}
+//	func (c *Ctx) Deny(w http.ResponseWriter, r *http.Request, code int) {
+//		c.Reject(w, r, code)
+//	}
+//
+// Reject's status is the caller's and its body is one it makes, so it applies
+// as a status-only responder. The pattern seeded from it carries no body role,
+// and Deny, matching that pattern, read the missing role as "never located" and
+// stayed unapplied (CodeRabbit on #660). An ordinary status-only responder —
+// one whose body was never located rather than declined — stays unresolved,
+// and so does a forwarder that fixes the status itself.
+func TestDeclinedBodyCarriesAcrossWrapperLayers(t *testing.T) {
+	pool := metadata.NewStringPool()
+	m := &metadata.Metadata{StringPool: pool, CurrentModulePath: "example.com/app"}
+	ident := func(name string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(m)
+		a.SetKind(metadata.KindIdent)
+		a.SetName(name)
+		return a
+	}
+	literal := func(v string) *metadata.CallArgument {
+		a := metadata.NewCallArgument(m)
+		a.SetKind(metadata.KindLiteral)
+		a.SetValue(v)
+		return a
+	}
+	sig := func(params ...string) metadata.CallArgument {
+		s := metadata.NewCallArgument(m)
+		s.SetKind(metadata.KindFuncType)
+		for _, p := range params {
+			s.Args = append(s.Args, ident(p))
+		}
+		return *s
+	}
+	call := func(name, pkg, recv string) metadata.Call {
+		c := metadata.Call{Meta: m, Name: pool.Get(name), Pkg: pool.Get(pkg), Position: -1, Scope: -1, SignatureStr: -1, RecvType: -1}
+		if recv != "" {
+			c.RecvType = pool.Get(recv)
+		}
+		return c
+	}
+	method := func(name string, params ...string) metadata.Method {
+		return metadata.Method{Name: pool.Get(name), Signature: sig(params...)}
+	}
+	m.Packages = map[string]*metadata.Package{
+		"example.com/app": {Files: map[string]*metadata.File{
+			"ctx.go": {Types: map[string]*metadata.Type{
+				"Ctx": {Name: pool.Get("Ctx"), Methods: []metadata.Method{
+					method("Reject", "w", "r", "code"),
+					method("Deny", "w", "r", "code"),
+					method("Refuse", "w", "r"),
+					method("Halt", "w", "code"),
+					method("Stop", "w", "code"),
+				}},
+			}},
+		}},
+	}
+	// `r.URL`: a value built from the parameter r, not r itself.
+	built := metadata.NewCallArgument(m)
+	built.SetKind(metadata.KindSelector)
+	built.X, built.Sel = ident("r"), ident("URL")
+
+	ctx := func(name string) metadata.Call { return call(name, "example.com/app", "*Ctx") }
+	m.CallGraph = []metadata.CallGraphEdge{
+		{Caller: ctx("Reject"), Callee: call("Error", "net/http", ""), Args: []*metadata.CallArgument{ident("w"), built, ident("code")}},
+		{Caller: ctx("Deny"), Callee: ctx("Reject"), Args: []*metadata.CallArgument{ident("w"), ident("r"), ident("code")}},
+		{Caller: ctx("Refuse"), Callee: ctx("Reject"), Args: []*metadata.CallArgument{ident("w"), ident("r"), literal("403")}},
+		{Caller: ctx("Halt"), Callee: call("WriteHeader", "net/http", "ResponseWriter"), Args: []*metadata.CallArgument{ident("code")}},
+		{Caller: ctx("Stop"), Callee: ctx("Halt"), Args: []*metadata.CallArgument{ident("w"), ident("code")}},
+	}
+	m.BuildCallGraphMaps()
+
+	cfg := &APISpecConfig{Framework: FrameworkConfig{
+		ResponsePatterns: []ResponsePattern{
+			{CallRegex: `^Error$`, StatusFromArg: true, StatusArgIndex: 2, TypeFromArg: true, TypeArgIndex: 1},
+			{CallRegex: `^WriteHeader$`, StatusFromArg: true, StatusArgIndex: 0},
+		},
+	}}
+
+	got := map[string]DetectedWrapper{}
+	for _, w := range DetectRouterWrappers(m, cfg) {
+		got[w.Methods[0]] = w
+	}
+	for name, want := range map[string]bool{
+		"Reject": true,  // status forwarded, body built: one layer
+		"Deny":   true,  // forwards Reject: the declined body carries over
+		"Refuse": false, // forwards Reject with a status of its own
+		"Halt":   false, // status only, body never located
+		"Stop":   false, // forwards Halt: nothing declined to inherit
+	} {
+		w, ok := got[name]
+		if !ok {
+			if want {
+				t.Errorf("%s: not derived; have %v", name, got)
+			}
+			continue
+		}
+		if w.ResponseResolved() != want {
+			t.Errorf("%s: ResponseResolved = %v, want %v (%+v, declined=%v)", name, !want, want, w.Response, w.bodyDeclined)
+		}
+		if want && (w.Response.TypeFromArg || !w.Response.StatusFromArg || w.Response.StatusArgIndex != 2) {
+			t.Errorf("%s: want a status-only pattern reading argument 2, got %+v", name, w.Response)
+		}
+	}
+}

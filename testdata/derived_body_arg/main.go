@@ -92,6 +92,18 @@ func (rt *R) sendWrapped(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// reject builds its message from the request and forwards its status: the
+// status is the caller's, the body is not.
+func (rt *R) reject(w http.ResponseWriter, req *http.Request, code int) {
+	http.Error(w, "rejected "+req.URL.Path, code)
+}
+
+// deny forwards to reject unchanged. It writes nothing itself, so whether its
+// body is the caller's is whatever reject already established: it is not.
+func (rt *R) deny(w http.ResponseWriter, req *http.Request, code int) {
+	rt.reject(w, req, code)
+}
+
 // Envelope wraps every payload bindEnvelope reads.
 type Envelope struct {
 	Data any `json:"data"`
@@ -193,6 +205,15 @@ func receipts(w http.ResponseWriter, r *http.Request) {
 	(&R{}).sendWrapped(w, Receipt{})
 }
 
+func denied(w http.ResponseWriter, r *http.Request) {
+	rt := &R{}
+	if r.URL.Query().Get("token") == "" {
+		rt.deny(w, r, http.StatusForbidden)
+		return
+	}
+	rt.send(w, Item{})
+}
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /normalized", normalized)
@@ -203,5 +224,6 @@ func main() {
 	mux.HandleFunc("POST /gadgets", createGadget)
 	mux.HandleFunc("POST /parts", createPart)
 	mux.HandleFunc("GET /receipts", receipts)
+	mux.HandleFunc("GET /denied", denied)
 	_ = http.ListenAndServe(":8080", mux)
 }
