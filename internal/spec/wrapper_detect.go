@@ -53,13 +53,15 @@ type DetectedWrapper struct {
 	// registration produces a route with the wrong path rather than no route.
 	Complete bool
 
-	// bodyIsStatus records that the response's body role was DECLINED because it
-	// resolved to the same parameter as its status (see normaliseResponseRoles).
-	// Such a responder is still complete — the status is known and the body is
-	// known not to exist — and the flag lives on the entry rather than in the
-	// merge that discovered it, because roles accumulate across edges in
-	// whatever order the call graph stores them.
-	bodyIsStatus bool
+	// bodyDeclined records that the response's body role was DECLINED: it
+	// resolved to the same parameter as its status (see normaliseResponseRoles),
+	// or it is a value the method builds from its parameters rather than one of
+	// them (see paramIndex.valueIndexOf). Such a responder is still complete when
+	// its status is known — the body is known not to be the caller's — and the
+	// flag lives on the entry rather than in the merge that discovered it,
+	// because roles accumulate across edges in whatever order the call graph
+	// stores them.
+	bodyDeclined bool
 }
 
 // wrapperDetectRounds bounds the transitive search. Delegation chains are short
@@ -632,7 +634,8 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		isParam := func(name string) bool { return slices.Contains(params.paramsOf(w), name) }
 		for j, m := range respMatchers {
 			if m.MatchNode(node) && !m.writesElsewhere(edge, isParam) {
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex, m.forwardsRawBytes(edge))
+				body, rawBytes := m.wrapperBodyArg(edge)
+				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex, body, rawBytes)
 			}
 		}
 		for j, m := range reqMatchers {
@@ -672,8 +675,9 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // body the walk documents inside the method: `http.Error(b.Resp, msg, status)`
 // wrapped in a method answered text/plain AND application/json (issue #645).
 //
-// rawBytes marks an inner call that writes its argument's bytes verbatim
-// (forwardsRawBytes). Whether those bytes are a document is a fact about each
+// body is the value the inner call's body role writes, seen through a
+// serializer, and rawBytes marks an inner call that writes its argument's bytes
+// verbatim (both from wrapperBodyArg). Whether those bytes are a document is a fact about each
 // CALL SITE, not about the method: `b.Blob(201, bs)` after `bs :=
 // json.Marshal(item)` sends Item, while `b.PlainText(500, "failed")` sends
 // bytes whose media type the method declares before writing (or the server
@@ -683,7 +687,7 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // text/plain the walk pairs inside the method; dropped altogether, the
 // serialized call lost its $ref. A wrapper of such a method inherits the mark
 // through the same check one round later, since the mark keeps RawBody.
-func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string, rawBytes bool) {
+func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string, body *metadata.CallArgument, rawBytes bool) {
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	if entry.Response == nil {
 		entry.Response = &ResponsePattern{
@@ -699,12 +703,17 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 		}
 	}
 	if inner.TypeFromArg && !entry.Response.TypeFromArg {
-		if i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex)); ok {
+		if i, ok := params.valueIndexOf(w, body); ok {
 			entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
 			entry.Response.Deref = inner.Deref
 			entry.Response.DefaultContentType = inner.DefaultContentType
 			entry.Response.RawBody = rawBytes
 			entry.Response.SerializedBodyOnly = rawBytes
+		} else if _, built := params.indexOf(w, body); built {
+			// Built FROM the caller's values but not one of them — `"bad "+p`,
+			// `http.StatusText(code)`: the method makes the body itself, so the
+			// call site has none to substitute (issue #659).
+			entry.bodyDeclined = true
 		}
 	}
 	normaliseResponseRoles(entry)
@@ -713,14 +722,17 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 	}
 
 	// A body is what makes a responder worth describing: a status alone documents
-	// nothing a client can use — UNLESS the body was declined because it
-	// resolved to the status parameter. There the status is known and the body
-	// is known not to exist, which is a complete description of
-	// `ctx.HTTPError(404)`: that endpoint really can answer 404, and saying so
-	// with no body beats both inventing one and dropping the status with it.
-	// Keeping the pattern is worth 186 statuses on a large real project, every
-	// one of which had been resting on the invented body (issue #485).
-	entry.Complete = entry.Response.TypeFromArg || entry.bodyIsStatus
+	// nothing a client can use — UNLESS the body was declined, because it
+	// resolved to the status parameter or is built by the method from the
+	// caller's values. There the status is known and the body is known not to be
+	// the caller's, which is a complete description of `ctx.HTTPError(404)`: that
+	// endpoint really can answer 404, and saying so with no body beats both
+	// inventing one and dropping the status with it. Keeping the pattern is worth
+	// 186 statuses on a large real project, every one of which had been resting
+	// on the invented body (issue #485). With no status role either, a declined
+	// body leaves nothing to apply, and the walk into the method documents what
+	// it writes.
+	entry.Complete = entry.Response.TypeFromArg || (entry.bodyDeclined && entry.Response.StatusFromArg)
 }
 
 // sameAsStatusParam reports whether a derived pattern would read its BODY from
@@ -781,7 +793,7 @@ func normaliseResponseRoles(entry *DetectedWrapper) {
 	p.SerializedBodyOnly = false
 	// Sticky: a later merge must not read the absence of a body role as "no
 	// body was ever found" and drop the status with it.
-	entry.bodyIsStatus = true
+	entry.bodyDeclined = true
 }
 
 // deriveRequestWrapper derives a request-body pattern from a decoder wrapper —
@@ -790,7 +802,10 @@ func deriveRequestWrapper(byMethod map[string]*DetectedWrapper, key string, w *w
 	if !inner.TypeFromArg {
 		return
 	}
-	i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex))
+	// The destination is a value role like a response body: `Decode(&dst)`
+	// fills the caller's dst, `Decode(&env.Data)` fills the method's own
+	// envelope, and the call site can only substitute the first (issue #659).
+	i, ok := params.valueIndexOf(w, argAt(edge, inner.TypeArgIndex))
 	if !ok {
 		return
 	}
