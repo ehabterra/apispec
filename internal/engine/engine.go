@@ -1865,8 +1865,9 @@ func applyDetectedWrappers(cfg *intspec.APISpecConfig, wrappers []intspec.Detect
 				applied++
 			}
 		}
-		// A response derivation with neither role resolved describes nothing.
-		if w.Response != nil && (w.Response.TypeFromArg || w.Response.StatusFromArg) {
+		// A response derivation that resolved nothing describes nothing, even on
+		// an entry another role made complete.
+		if w.ResponseResolved() {
 			roled = true
 			if addPatternOnce(&cfg.Framework.ResponsePatterns, *w.Response, func(p intspec.ResponsePattern) (string, string) {
 				return p.CallRegex, p.RecvTypeRegex

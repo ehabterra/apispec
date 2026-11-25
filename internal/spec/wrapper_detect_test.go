@@ -511,3 +511,84 @@ func TestEmbeddingRecvRegex(t *testing.T) {
 		t.Errorf("an unknown package lost its own type: %s", lone)
 	}
 }
+
+// A decoder method that also rejects with a message it builds keeps its
+// decoder role whichever call the derivation meets first.
+//
+//	func (c *Ctx) Bind(w http.ResponseWriter, r *http.Request, dst any) {
+//		if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+//			http.Error(w, "bad "+r.URL.Path, http.StatusBadRequest)
+//		}
+//	}
+//
+// The rejection's body is declined — built from `r`, not `r` — and its status
+// is a constant, so the response half resolves nothing. Recomputing the
+// entry's completeness from that half alone cleared what the decode had
+// established when the decode came first, and left it set when it came second:
+// the request body was documented or dropped by call-graph order (CodeRabbit
+// on #660).
+func TestDerivedCompletionIsOrderIndependent(t *testing.T) {
+	for _, decodeFirst := range []bool{true, false} {
+		pool := metadata.NewStringPool()
+		m := &metadata.Metadata{StringPool: pool, CurrentModulePath: "example.com/app"}
+		ident := func(name string) *metadata.CallArgument {
+			a := metadata.NewCallArgument(m)
+			a.SetKind(metadata.KindIdent)
+			a.SetName(name)
+			return a
+		}
+		sig := metadata.NewCallArgument(m)
+		sig.SetKind(metadata.KindFuncType)
+		sig.Args = []*metadata.CallArgument{ident("w"), ident("r"), ident("dst")}
+		call := func(name, pkg, recv string) metadata.Call {
+			c := metadata.Call{Meta: m, Name: pool.Get(name), Pkg: pool.Get(pkg), Position: -1, Scope: -1, SignatureStr: -1, RecvType: -1}
+			if recv != "" {
+				c.RecvType = pool.Get(recv)
+			}
+			return c
+		}
+		m.Packages = map[string]*metadata.Package{
+			"example.com/app": {Files: map[string]*metadata.File{
+				"ctx.go": {Types: map[string]*metadata.Type{
+					"Ctx": {Name: pool.Get("Ctx"), Methods: []metadata.Method{{Name: pool.Get("Bind"), Signature: *sig}}},
+				}},
+			}},
+		}
+		// `r.URL`: a value built from the parameter r, not r itself.
+		built := metadata.NewCallArgument(m)
+		built.SetKind(metadata.KindSelector)
+		built.X, built.Sel = ident("r"), ident("URL")
+		status := metadata.NewCallArgument(m)
+		status.SetKind(metadata.KindLiteral)
+		status.SetValue("400")
+
+		decode := metadata.CallGraphEdge{Caller: call("Bind", "example.com/app", "*Ctx"), Callee: call("Decode", "encoding/json", "*Decoder"), Args: []*metadata.CallArgument{ident("dst")}}
+		reject := metadata.CallGraphEdge{Caller: call("Bind", "example.com/app", "*Ctx"), Callee: call("Error", "net/http", ""), Args: []*metadata.CallArgument{ident("w"), built, status}}
+		if decodeFirst {
+			m.CallGraph = []metadata.CallGraphEdge{decode, reject}
+		} else {
+			m.CallGraph = []metadata.CallGraphEdge{reject, decode}
+		}
+		m.BuildCallGraphMaps()
+
+		cfg := &APISpecConfig{Framework: FrameworkConfig{
+			ResponsePatterns:    []ResponsePattern{{CallRegex: `^Error$`, StatusFromArg: true, StatusArgIndex: 2, TypeFromArg: true, TypeArgIndex: 1}},
+			RequestBodyPatterns: []RequestBodyPattern{{CallRegex: `^Decode$`, TypeFromArg: true, TypeArgIndex: 0, Deref: true}},
+		}}
+
+		var bind *DetectedWrapper
+		for _, w := range DetectRouterWrappers(m, cfg) {
+			if w.Methods[0] == "Bind" {
+				bind = &w
+			}
+		}
+		switch {
+		case bind == nil || bind.Request == nil:
+			t.Errorf("decodeFirst=%v: no decoder derived; have %+v", decodeFirst, bind)
+		case !bind.Complete:
+			t.Errorf("decodeFirst=%v: the resolved decoder role was left unapplied by a response half that resolved nothing", decodeFirst)
+		case bind.ResponseResolved():
+			t.Errorf("decodeFirst=%v: a response with neither its status nor its body resolved counts as resolved: %+v", decodeFirst, bind.Response)
+		}
+	}
+}

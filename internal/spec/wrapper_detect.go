@@ -64,6 +64,20 @@ type DetectedWrapper struct {
 	bodyDeclined bool
 }
 
+// ResponseResolved reports whether the response role describes something a
+// call site can apply: a body read from a parameter, or a status read from one
+// with the body known not to be the caller's (see bodyDeclined). A status whose
+// body was merely never located is not enough — the method writes SOME body,
+// and the walk into it documents that body better than a pattern that drops it.
+//
+// It is kept apart from Complete because Complete covers every role the method
+// carries: a decoder role resolved beside a response half that resolved
+// nothing makes the entry applicable, but not that half.
+func (w DetectedWrapper) ResponseResolved() bool {
+	p := w.Response
+	return p != nil && (p.TypeFromArg || (w.bodyDeclined && p.StatusFromArg))
+}
+
 // wrapperDetectRounds bounds the transitive search. Delegation chains are short
 // (`Get` -> `Methods` -> chi), and the bound keeps a cyclic graph from spinning.
 const wrapperDetectRounds = 4
@@ -591,7 +605,7 @@ func seedsFrom(byMethod map[string]*DetectedWrapper) APISpecConfig {
 			continue
 		}
 		switch {
-		case w.Response != nil:
+		case w.ResponseResolved():
 			cfg.Framework.ResponsePatterns = append(cfg.Framework.ResponsePatterns, *w.Response)
 		case w.Request != nil:
 			cfg.Framework.RequestBodyPatterns = append(cfg.Framework.RequestBodyPatterns, *w.Request)
@@ -732,7 +746,14 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 	// on the invented body (issue #485). With no status role either, a declined
 	// body leaves nothing to apply, and the walk into the method documents what
 	// it writes.
-	entry.Complete = entry.Response.TypeFromArg || (entry.bodyDeclined && entry.Response.StatusFromArg)
+	//
+	// Completeness is the ENTRY's, not this half's: a decoder or parameter role
+	// already resolved on the method stays applicable whatever a response edge
+	// met later fails to resolve. Recomputed from the response alone, a
+	// `Decode(dst)` followed by `http.Error(w, "bad "+r.URL.Path, 400)` lost its
+	// request body, and the same calls in the other order kept it (CodeRabbit on
+	// #660).
+	entry.Complete = entry.ResponseResolved() || entry.Request != nil || entry.Param != nil
 }
 
 // sameAsStatusParam reports whether a derived pattern would read its BODY from
