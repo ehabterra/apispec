@@ -72,6 +72,80 @@ func (r *ResponsePatternMatcherImpl) unwrapWriteSink(arg *metadata.CallArgument,
 	return nil
 }
 
+// writesElsewhere reports whether this call provably writes somewhere other
+// than the response: a destination-gated pattern whose destination the
+// enclosing function BUILT itself and which does not trace to the response
+// writer — `yaml.NewEncoder(&buf).Encode(m)` into a buffer the method declared.
+// It is the check ExtractResponse makes at each route, made where a wrapper
+// method is derived: without it a method that serializes into its own buffer
+// became a responder for every caller, and its argument a response body
+// (issue #645).
+//
+// A destination the function was HANDED — a parameter, the receiver or one of
+// its fields — is the caller's to decide, so it never rules the derivation out:
+// `b.Resp` typed as a project's own ResponseWriter interface does not resolve
+// to the writer here, and judging it would drop every responder written on such
+// a field. isParam names the enclosing function's parameters.
+func (r *ResponsePatternMatcherImpl) writesElsewhere(edge *metadata.CallGraphEdge, isParam func(string) bool) bool {
+	if edge == nil || !r.pattern.RequireResponseDestination || r.pattern.DestFromAnyArg ||
+		r.destResolver == nil || !r.destResolver.Enabled() {
+		return false
+	}
+	dst, dstEdge := r.destination(newEdgeNode(edge))
+	if !builtLocally(r.contextProvider, dst, dstEdge, isParam) {
+		return false
+	}
+	return r.destResolver.ShouldDrop(dst, dstEdge)
+}
+
+// builtLocally reports whether a value is one the function at edge constructed:
+// a composite literal, a call's result, a local assigned in its body, or the
+// address of a variable that is none of its parameters (`var buf
+// bytes.Buffer` records no assignment, but `&buf` is a value the function
+// owns). A bare unassigned ident is not judged: it may be the receiver.
+//
+// A METHOD's result is built only where its receiver value is:
+// `json.NewEncoder(b.Writer())` writes to whatever the receiver hands out,
+// which is as much the caller's to decide as `b.Resp` itself.
+func builtLocally(cp ContextProvider, arg *metadata.CallArgument, edge *metadata.CallGraphEdge, isParam func(string) bool) bool {
+	addressed := false
+	for arg != nil && (arg.GetKind() == metadata.KindUnary || arg.GetKind() == metadata.KindStar || arg.GetKind() == metadata.KindParen) {
+		addressed = addressed || arg.GetKind() == metadata.KindUnary
+		arg = arg.X
+	}
+	if arg == nil {
+		return false
+	}
+	switch arg.GetKind() {
+	case metadata.KindCall:
+		if fun := arg.Fun; fun != nil && fun.GetKind() == metadata.KindSelector && fun.ReceiverType != nil {
+			return builtLocally(cp, fun.X, edge, isParam)
+		}
+		return true
+	case metadata.KindCompositeLit:
+		return true
+	case metadata.KindIdent:
+		if latestAssignment(cp, edge, arg.GetName()) != nil {
+			return true
+		}
+		return addressed && isParam != nil && !isParam(arg.GetName())
+	}
+	return false
+}
+
+// forwardsRawBytes reports whether this call writes its body argument's bytes
+// verbatim: a RawBody pattern whose argument no BodyTransforms serializer
+// produced. Such bytes have no media type of their own — the Content-Type the
+// enclosing code declares, or the server's sniff, gives them one — so the
+// argument says nothing about the body a caller of the enclosing function sends
+// (see mergeResponseRoles).
+func (r *ResponsePatternMatcherImpl) forwardsRawBytes(edge *metadata.CallGraphEdge) bool {
+	if !r.pattern.RawBody || !r.pattern.TypeFromArg || edge == nil {
+		return false
+	}
+	return r.unwrapWriteSink(argAt(edge, r.pattern.TypeArgIndex), edge) == nil
+}
+
 // unwrapHelperReturn resolves w.Write(helper(a0, a1, …)) to the call-site
 // argument that the helper serializes and returns. It finds the helper's return
 // value, follows it to a body transform (a returned marshal call, or a local

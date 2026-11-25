@@ -1345,6 +1345,10 @@ func (e *Extractor) findTargetNode(assignment *metadata.CallArgument) TrackerNod
 type responseCandidate struct {
 	node  TrackerNodeInterface
 	chain string
+	// at is the instance ID of the call that dispatched into the node's
+	// function when that call, not the node, is the statement of the frame
+	// (see dispatchedFrom); "" otherwise.
+	at string
 	// sites is the FULL chain of frames the walk entered to reach the node, kept
 	// as call-site positions for method-dispatch attribution. Copied because the
 	// walk reuses one chain buffer; only actual candidates pay for it.
@@ -1384,18 +1388,68 @@ func candidateKey(chain []string, callee string) string {
 	return b.String()
 }
 
-func frameChainKey(chain []string, node TrackerNodeInterface) string {
+// frameChainKey returns the frame a response candidate belongs to, as the
+// chain prefix that ends at the call of its enclosing function, plus the
+// instance ID of the call that stands for it inside that frame — "" when the
+// candidate is a statement of the frame itself (see dispatchedFrom).
+func frameChainKey(chain []string, node TrackerNodeInterface) (key, at string) {
 	edge := node.GetEdge()
 	if edge == nil {
-		return strings.Join(chain, chainSep)
+		return strings.Join(chain, chainSep), ""
 	}
 	callerBase := edge.Caller.BaseID()
 	for i := len(chain) - 1; i >= 0; i-- {
 		if metadata.StripToBase(chain[i]) == callerBase {
-			return strings.Join(chain[:i+1], chainSep)
+			return strings.Join(chain[:i+1], chainSep), ""
 		}
 	}
-	return "" // route/handler frame
+	if dispatch, i := dispatchedFrom(chain, node); dispatch != nil {
+		key, at = frameChainKey(chain[:i], dispatch)
+		if at == "" {
+			at = chain[i]
+		}
+		return key, at
+	}
+	return "", "" // route/handler frame
+}
+
+// dispatchedFrom returns the call a node was reached through when its caller is
+// no frame on the chain, with that call's index on the chain: an interface
+// method fanned out to its implementers, or any other call whose body the tree
+// hangs under a different key. That body runs as part of the call that
+// dispatched it, so it belongs to the frame the call was made in, at the call's
+// position.
+//
+// It used to fall through to the handler frame from any depth. A project's own
+// ResponseWriter decorator (`b.Resp.Write(bs)` in a plain-text helper) then
+// wrote its bytes in the HANDLER's frame, where they claimed whatever status the
+// handler wrote last: a 409 from `ctx.HTTPError` documented them under
+// application/json beside its own text/plain, and an HTML renderer reached the
+// same way added text/html (issue #645). At the handler level the dispatching
+// frame IS the handler frame, so what is found there is unchanged.
+//
+// The dispatching call is the nearest call above the node that the walk entered
+// as a frame. Not necessarily the last one: a call the implementation makes on
+// a value bound through a relation (`respWriter.Header().Set(…)` on the writer
+// the dispatching call was handed) hangs under that value's argument node,
+// while the walk reaches it through the receiver call it chains from.
+func dispatchedFrom(chain []string, node TrackerNodeInterface) (TrackerNodeInterface, int) {
+	if len(chain) == 0 {
+		return nil, -1
+	}
+	for p := node.GetParent(); p != nil; p = p.GetParent() {
+		pe := p.GetEdge()
+		if p.GetArgument() != nil || pe == nil {
+			continue
+		}
+		id := pe.Callee.ID()
+		for i := len(chain) - 1; i >= 0; i-- {
+			if chain[i] == id {
+				return p, i
+			}
+		}
+	}
+	return nil, -1
 }
 
 // chainSites renders the walk's current chain as call-site positions, outermost
@@ -1475,9 +1529,11 @@ func (e *Extractor) extractRouteChildrenScoped(routeNode TrackerNodeInterface, r
 			candKey := candidateKey(*chain, child.GetEdge().Callee.ID())
 			if !visitedEdges[candKey] {
 				visitedEdges[candKey] = true
+				frame, at := frameChainKey(*chain, child)
 				*respCandidates = append(*respCandidates, responseCandidate{
 					node:  child,
-					chain: frameChainKey(*chain, child),
+					chain: frame,
+					at:    at,
 					sites: chainSites(*chain),
 				})
 			}
@@ -1647,6 +1703,9 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		file   string
 		line   int
 		col    int
+		// inner is the statement's own position when file/line/col is the call
+		// that dispatched into it: it orders the statements one call runs.
+		inner codePos
 	}
 
 	saved := route.Response
@@ -1664,6 +1723,12 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		sites = append(sites, codePos{file: file, line: line, col: col})
 		siteID := cand.node.GetEdge().Callee.ID()
 		caller := cand.node.GetEdge().Caller.BaseID()
+		// Pairing reads positions in the frame's own function: a dispatched
+		// body runs at the call that dispatched it (see dispatchedFrom).
+		inner := codePos{file: file, line: line, col: col}
+		if cand.at != "" {
+			file, line, col = positionOfInstanceID(cand.at)
+		}
 		for _, resp := range resps {
 			// A stream write carries its body in Schema rather than as a Go
 			// BodyType, and takes its status from ImplicitStatus further down —
@@ -1693,10 +1758,16 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// to the right verb branch.
 			resp.File, resp.Line = file, line
 			resp.EntrySites = sites
-			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col})
+			frags = append(frags, fragment{resp: resp, chain: cand.chain, caller: caller, file: file, line: line, col: col, inner: inner})
 		}
 	}
 	route.Response = saved
+	// The slots pairing did not fill: only those can turn out to hold nothing
+	// but moved declarations (see the cleanup after pairing).
+	preset := make(map[string]bool, len(saved))
+	for slot := range saved {
+		preset[slot] = true
+	}
 
 	sort.SliceStable(frags, func(i, j int) bool {
 		if frags[i].file != frags[j].file {
@@ -1705,7 +1776,17 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		if frags[i].line != frags[j].line {
 			return frags[i].line < frags[j].line
 		}
-		return frags[i].col < frags[j].col
+		if frags[i].col != frags[j].col {
+			return frags[i].col < frags[j].col
+		}
+		a, b := frags[i].inner, frags[j].inner
+		if a.file != b.file {
+			return a.file < b.file
+		}
+		if a.line != b.line {
+			return a.line < b.line
+		}
+		return a.col < b.col
 	})
 
 	// A slot whose status the handler STATED — written explicitly, or claimed
@@ -1716,7 +1797,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	stated := map[string]bool{}
 	// slot -> how many fragments were stored there, so a header declaration
 	// that moved to its body's status can tell whether its own default-status
-	// slot holds anything but itself (see adoptDeclaration).
+	// slot holds anything but itself (see storeBody).
 	storedAt := map[string]int{}
 	store := func(resp *ResponseInfo, statusStated bool) {
 		slot := fmt.Sprintf("%d", resp.StatusCode)
@@ -1835,9 +1916,13 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// #577). Same file only: dominance answers permissively across files, and
 	// the fragments' file order is not execution order.
 	committedAt := map[string]codePos{}
-	adoptDeclaration := func(f *fragment, statusStated bool) {
+	// declarationOf returns the Content-Type declaration that describes raw
+	// bytes: the last one on their own chain that dominates them. nil when the
+	// bytes declare their own media type, when nothing declares one, or when
+	// the declaration already sits in the bytes' slot, where store pairs them.
+	declarationOf := func(f *fragment) *fragment {
 		if !f.resp.RawBytes || f.resp.MediaTypeDeclared {
-			return
+			return nil
 		}
 		bodyAt := codePos{file: f.file, line: f.line, col: f.col}
 		decls := declared[f.chain]
@@ -1847,12 +1932,83 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				continue
 			}
 			if d.resp.StatusCode == f.resp.StatusCode && !d.resp.DeclarationOnly {
-				return // same slot: the store already paired them
+				return nil
+			}
+			return d
+		}
+		return nil
+	}
+	// storeBody stores a body, with raw bytes already under the declaration that
+	// describes them. Stored first and paired after, the bytes met whatever
+	// other representation their status already held and composed with it as
+	// an alternate under the JSON default, where the declaration could no
+	// longer reach them: http.Error's text/plain and a helper's declared
+	// text/plain bytes on one 404 documented application/json beside both
+	// (issue #645).
+	storeBody := func(f *fragment, statusStated bool) {
+		d := declarationOf(f)
+		if d == nil {
+			store(f.resp, statusStated)
+			return
+		}
+		cp := *d.resp
+		cp.StatusCode = f.resp.StatusCode
+		cp.EntrySites = f.resp.EntrySites
+		// Beside raw bytes a tentative declaration IS the body's media type.
+		cp.DeclarationOnly = false
+		// Under the default media type the bytes are a document of that type
+		// whose shape nothing traced (see store).
+		if cp.HeaderDeclaration && sameMediaType(cp.ContentType, e.cfg.Defaults.ResponseContentType) {
+			cp.Schema = rawDocumentSchema(f.resp)
+		}
+		store(&cp, statusStated)
+		moved[d.resp] = true
+	}
+	// commitDeclarations sends a chain's Content-Type declarations with the
+	// status written after them. WriteHeader commits the headers, so a
+	// declaration that this write always follows describes whatever goes out
+	// under it — a template executed into the writer, a body no pattern sees —
+	// and not the default status it was parked at. Raw bytes used to be the only
+	// thing that moved a declaration, which left an HTML renderer's
+	// `Header().Set(…text/html…)`, `WriteHeader(status)` documenting a 200 it
+	// never sends once its bytes were attributed to its own frame (issue #645).
+	//
+	// Only a write that ALWAYS follows the declaration: one in a branch — `if
+	// err != nil { WriteHeader(500); return }` before a streamed success body —
+	// leaves the declaration's own status as reachable as before.
+	//
+	// Only the declaration IN EFFECT, found as declarationOf finds it: the last
+	// one that dominates the write. A Content-Type set twice is sent once, and
+	// moving every declaration on the chain documented the overridden media
+	// type on a status that never carries it.
+	//
+	// The declarations it always overrides are sent under no status at all, so
+	// they leave their default slots whether or not it moves: a tentative
+	// text/plain over a text/html still means the page's media type never goes
+	// out.
+	commitDeclarations := func(f *fragment) {
+		statusAt := codePos{file: f.file, line: f.line, col: f.col}
+		decls := declared[f.chain]
+		for i := len(decls) - 1; i >= 0; i-- {
+			d := decls[i]
+			declAt := codePos{file: d.file, line: d.line, col: d.col}
+			if !e.controlFlow().dominates(declAt, statusAt) {
+				continue
+			}
+			for _, o := range decls[:i] {
+				if !o.resp.DeclarationOnly && o.file == d.file &&
+					e.controlFlow().alwaysFollows(codePos{file: o.file, line: o.line, col: o.col}, declAt) {
+					moved[o.resp] = true
+				}
+			}
+			if d.resp.DeclarationOnly || d.resp.StatusCode == f.resp.StatusCode || d.file != f.file ||
+				!e.controlFlow().alwaysFollows(declAt, statusAt) {
+				return
 			}
 			cp := *d.resp
 			cp.StatusCode = f.resp.StatusCode
 			cp.EntrySites = f.resp.EntrySites
-			store(&cp, statusStated)
+			store(&cp, f.resp.StatusInFrame)
 			moved[d.resp] = true
 			return
 		}
@@ -1878,7 +2034,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		switch {
 		case f.resp.HeaderDeclaration && f.resp.DeclarationOnly:
 			// A tentative declaration describes only raw bytes written on its
-			// own chain, so it is recorded above and paired by adoptDeclaration
+			// own chain, so it is recorded above and paired by storeBody
 			// when they are stored. Parked in its default slot it paired with
 			// whatever else landed there: a shared error responder's
 			// `application/json; charset=utf-8` took over another arm's 200
@@ -1897,14 +2053,14 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = codePos{file: f.file, line: f.line, col: f.col}
 			pendingInFrame[f.chain] = f.resp.StatusInFrame
+			commitDeclarations(f)
 			// A new status starts a fresh conversation: the bodies that claimed
 			// the PREVIOUS one are not claimants of this one, and leaving them
 			// here would make the next body prove itself exclusive with a
 			// status it has nothing to do with.
 			delete(claimedAt, f.chain)
 		case known:
-			store(f.resp, f.resp.StatusInFrame)
-			adoptDeclaration(f, f.resp.StatusInFrame)
+			storeBody(f, f.resp.StatusInFrame)
 		case f.resp.StatusUnresolved:
 			// A status write whose value did not resolve: nothing to store (no
 			// status, no body), but it disqualifies this chain's later bodies
@@ -1930,8 +2086,7 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 				// could never reach. The dominance test does that job now.
 				f.resp.StatusCode = pendingStatus[f.chain]
 				claimedAt[f.chain] = append(claimedAt[f.chain], bodyAt)
-				store(f.resp, pendingInFrame[f.chain])
-				adoptDeclaration(f, pendingInFrame[f.chain])
+				storeBody(f, pendingInFrame[f.chain])
 			} else {
 				unpaired = append(unpaired, f)
 			}
@@ -1971,23 +2126,31 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			// undetermined.
 			if f.resp.ImplicitStatus > 0 {
 				f.resp.StatusCode = f.resp.ImplicitStatus
-				store(f.resp, false)
-				adoptDeclaration(f, false)
+				storeBody(f, false)
 				continue
 			}
 			unknown++
 			f.resp.StatusCode = -unknown
-			store(f.resp, false)
-			adoptDeclaration(f, false)
+			storeBody(f, false)
 		}
 	}
 
-	// A declaration that went with its bytes to another status leaves its
-	// default-status slot behind. Nothing but the declaration itself landed
-	// there, so the handler never sends that status.
+	// A declaration that went with its bytes, or with the status written after
+	// it, to another status leaves its default-status slot behind. When nothing
+	// but such declarations landed there, the handler never sends that status.
+	// Counted rather than required to be alone: one renderer reached from two
+	// call sites parks two copies of its declaration in the same slot (issue
+	// #645). Counted rather than read off the slot's survivor, too: two
+	// different declarations parked there — one overriding the other —
+	// compose into a fresh response that is itself no declaration.
+	movedStored := map[string]int{}
 	for decl := range moved {
-		slot := fmt.Sprintf("%d", decl.StatusCode)
-		if route.Response[slot] == decl && storedAt[slot] == 1 {
+		if !decl.DeclarationOnly {
+			movedStored[fmt.Sprintf("%d", decl.StatusCode)]++
+		}
+	}
+	for slot, n := range movedStored {
+		if !preset[slot] && storedAt[slot] == n {
 			delete(route.Response, slot)
 		}
 	}
@@ -3306,6 +3469,25 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	edge := node.GetEdge()
+
+	// A forwarded byte slice the caller did not serialize is not this call's
+	// body to document (see ResponsePattern.SerializedBodyOnly). What is left of
+	// the call is then only a status it passes: one the method fixes itself, or
+	// a default it inherited from an inner call, is already documented by the
+	// walk inside the method, and repeating it here invented a 200 for
+	// `func (b *Base) Fail500(t string) { b.PlainText(500, t) }`.
+	var serialized *metadata.CallArgument
+	bodyFromArg := r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex
+	if bodyFromArg {
+		serialized = r.unwrapWriteSink(edge.Args[r.pattern.TypeArgIndex], edge)
+		if r.pattern.SerializedBodyOnly && serialized == nil {
+			if !r.pattern.StatusFromArg {
+				return nil
+			}
+			bodyFromArg = false
+		}
+	}
+
 	if r.pattern.StatusFromArg && len(edge.Args) > r.pattern.StatusArgIndex {
 		statusArg := edge.Args[r.pattern.StatusArgIndex]
 		statusStr := r.contextProvider.GetArgumentInfo(statusArg)
@@ -3373,7 +3555,7 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		}
 	}
 
-	if r.pattern.TypeFromArg && len(edge.Args) > r.pattern.TypeArgIndex {
+	if bodyFromArg {
 		// If status code is not from argument, attach this body to an existing
 		// response that has no body yet. route.Response is a map, so iterating it
 		// and taking the "first" match is nondeterministic (Go randomizes map
@@ -3400,8 +3582,8 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 		// resolve the body from the transform's payload (v) rather than the []byte
 		// the sink literally receives. No-op when the arg isn't a transform result
 		// (a raw w.Write([]byte("ok"))), so raw writes are kept as-is.
-		if payload := r.unwrapWriteSink(arg, edge); payload != nil {
-			arg = payload
+		if serialized != nil {
+			arg = serialized
 		} else if r.pattern.RawBody {
 			respInfo.RawBytes = true
 			respInfo.RawMediaType = r.undeclaredRawMediaType(arg)

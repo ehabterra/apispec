@@ -691,9 +691,9 @@ func TestSweepSmallHelpers(t *testing.T) {
 	})
 
 	t.Run("frameChainKey without edge joins the chain", func(t *testing.T) {
-		got := frameChainKey([]string{"x", "y"}, &TrackerNode{})
-		if got != "x"+chainSep+"y" {
-			t.Errorf("frameChainKey = %q, want joined chain", got)
+		got, at := frameChainKey([]string{"x", "y"}, &TrackerNode{})
+		if got != "x"+chainSep+"y" || at != "" {
+			t.Errorf("frameChainKey = %q, %q; want joined chain, no dispatch site", got, at)
 		}
 	})
 

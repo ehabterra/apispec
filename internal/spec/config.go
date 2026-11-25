@@ -750,6 +750,17 @@ type ResponsePattern struct {
 	// serializer's document (issue #544).
 	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
 
+	// SerializedBodyOnly marks a derived responder whose body parameter is
+	// forwarded into a RawBody write: the method writes whatever bytes its
+	// caller hands it. Those bytes are a document only where the caller
+	// produced them with a BodyTransforms serializer (`bs := json.Marshal(v);
+	// b.Blob(201, bs)` sends v), and that is a fact about each call site. Where
+	// they are not, the call contributes no body: their media type is the one
+	// the method declares before writing, or the server's sniff, and the walk
+	// inside the method documents that — a body here would repeat it under the
+	// JSON default (issue #645).
+	SerializedBodyOnly bool `yaml:"serializedBodyOnly,omitempty" json:"serializedBodyOnly,omitempty"`
+
 	// SniffContentType and UndeclaredContentType say what media type a RawBody
 	// writer's server sends when the handler declares none. Without either, the
 	// bytes were documented as the byte slice's JSON rendering — a base64

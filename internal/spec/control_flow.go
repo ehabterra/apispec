@@ -300,6 +300,25 @@ func (idx *blockIndex) inScope(earlier, later codePos) bool {
 	return true
 }
 
+// alwaysFollows reports whether later runs whenever earlier does: earlier
+// dominates it, and no region holds later without also holding earlier — so
+// later sits in no branch, loop or case that earlier's path can skip. Missing
+// facts answer true, as dominates does.
+func (idx *blockIndex) alwaysFollows(earlier, later codePos) bool {
+	if !idx.dominates(earlier, later) {
+		return false
+	}
+	if idx == nil || !earlier.valid() || !later.valid() || earlier.file != later.file {
+		return true
+	}
+	for _, b := range idx.byFile[later.file] {
+		if b.Kind != metadata.BlockScope && blockContains(b.Block, later) && !blockContains(b.Block, earlier) {
+			return false
+		}
+	}
+	return true
+}
+
 // sharesRegion reports whether some recorded region contains both positions.
 //
 // Used to decide whether a write BELOW a call can still be the value at it: in
