@@ -58,6 +58,12 @@ func TestTestdata_EncodeBufferSink(t *testing.T) {
 		"/copied",      // io.Copy(w, buf)
 		"/var-encoder", // the encoder assigned to a variable first
 		"/via-func",    // the encode and the flush inside a helper FUNCTION
+		// The same inside a METHOD on the payload type — gitea's sitemap,
+		// `func (s *Sitemap) WriteTo(w io.Writer)`. The encoder assigned in a
+		// method body had no destination: the receiver-source lookup searched
+		// only the file's function table, where methods are not recorded
+		// (issue #645).
+		"/via-helper",
 	} {
 		if !xmlBody(t, path) {
 			t.Errorf("%s: no application/xml response — the buffer this encode wrote into "+
@@ -71,17 +77,5 @@ func TestTestdata_EncodeBufferSink(t *testing.T) {
 	if xmlBody(t, "/discarded") {
 		t.Error("/discarded: an application/xml response was documented, but that buffer " +
 			"never reaches a writer — it is encoded and dropped")
-	}
-
-	// NOT FIXED, asserted so the day it changes: the encode inside a METHOD on
-	// the payload type is never reached by the walk, so the gate never sees it.
-	// That is gitea's sitemap exactly — `func (s *Sitemap) WriteTo(w io.Writer)`
-	// — and is why this change recovers the shape without yet recovering those
-	// 18 endpoints. A plain function helper (/via-func above) works, so the gap
-	// is the method hop and not the extra frame.
-	if xmlBody(t, "/via-helper") {
-		t.Error("/via-helper now resolves: the encode inside a method on the payload type " +
-			"is reached. Issue #471's remaining half is fixed — move this path up into the " +
-			"list above and update the issue")
 	}
 }

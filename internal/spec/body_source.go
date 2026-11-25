@@ -422,12 +422,21 @@ func resolveReceiverSource(edge *metadata.CallGraphEdge, meta *metadata.Metadata
 	}
 	callerName := meta.StringPool.GetString(edge.Caller.Name)
 	callerPkg := meta.StringPool.GetString(edge.Caller.Pkg)
-	fn := findFunction(meta, callerPkg, callerName)
-	if fn == nil {
-		return nil
+	var assigns []metadata.Assignment
+	if fn := findFunction(meta, callerPkg, callerName); fn != nil {
+		assigns = fn.AssignmentMap[recv]
 	}
-	assigns, ok := fn.AssignmentMap[recv]
-	if !ok || len(assigns) == 0 {
+	// A method's scope is not in the file's function table: it lives on its
+	// Type, so `enc := yaml.NewEncoder(&buf); enc.Encode(m)` written in a
+	// method body had no destination, and a method serializing into its own
+	// buffer could not be told from one writing the response (issue #645; the
+	// same gap #513 closed for callerAssignmentMap).
+	if len(assigns) == 0 {
+		if recvType := meta.StringPool.GetString(edge.Caller.RecvType); recvType != "" {
+			assigns = methodAssignmentMap(meta, callerPkg, recvType, callerName, recv)[recv]
+		}
+	}
+	if len(assigns) == 0 {
 		return nil
 	}
 	rhs := assigns[len(assigns)-1].Value

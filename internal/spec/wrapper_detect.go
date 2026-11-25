@@ -16,6 +16,7 @@ package spec
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -628,9 +629,10 @@ func detectValueRound(meta *metadata.Metadata, cp ContextProvider, params *param
 		// Widened once per method: the pattern has to match where handlers CALL
 		// this method, which is through whatever type embeds it.
 		recvRegex := embeddingRecvRegex(meta, w)
+		isParam := func(name string) bool { return slices.Contains(params.paramsOf(w), name) }
 		for j, m := range respMatchers {
-			if m.MatchNode(node) {
-				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex)
+			if m.MatchNode(node) && !m.writesElsewhere(edge, isParam) {
+				mergeResponseRoles(byMethod, key, w, cp, params, cfg.Framework.ResponsePatterns[j], edge, recvRegex, m.forwardsRawBytes(edge))
 			}
 		}
 		for j, m := range reqMatchers {
@@ -664,7 +666,24 @@ func wrapperShell(byMethod map[string]*DetectedWrapper, key string, w *wrapperMe
 // mergeResponseRoles folds one inner response call into the method's derived
 // pattern: the status from a `WriteHeader(status)`, the body from an
 // `Encode(content)`, both of which the same responder performs.
-func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string) {
+//
+// A body role carries the inner call's media type with it. Lifted without one,
+// the derived pattern documented every body under the JSON default, beside the
+// body the walk documents inside the method: `http.Error(b.Resp, msg, status)`
+// wrapped in a method answered text/plain AND application/json (issue #645).
+//
+// rawBytes marks an inner call that writes its argument's bytes verbatim
+// (forwardsRawBytes). Whether those bytes are a document is a fact about each
+// CALL SITE, not about the method: `b.Blob(201, bs)` after `bs :=
+// json.Marshal(item)` sends Item, while `b.PlainText(500, "failed")` sends
+// bytes whose media type the method declares before writing (or the server
+// sniffs). So the body role is kept, marked SerializedBodyOnly: the call site
+// documents a body only where its argument traces to a serializer. Lifted
+// unconditionally, a derived `PlainText` said application/json beside the
+// text/plain the walk pairs inside the method; dropped altogether, the
+// serialized call lost its $ref. A wrapper of such a method inherits the mark
+// through the same check one round later, since the mark keeps RawBody.
+func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wrapperMethod, cp ContextProvider, params *paramIndex, inner ResponsePattern, edge *metadata.CallGraphEdge, recvRegex string, rawBytes bool) {
 	entry := wrapperShell(byMethod, key, w, cp.GetString(edge.Callee.Pkg)+"."+cp.GetString(edge.Callee.Name))
 	if entry.Response == nil {
 		entry.Response = &ResponsePattern{
@@ -683,6 +702,9 @@ func mergeResponseRoles(byMethod map[string]*DetectedWrapper, key string, w *wra
 		if i, ok := params.indexOf(w, argAt(edge, inner.TypeArgIndex)); ok {
 			entry.Response.TypeFromArg, entry.Response.TypeArgIndex = true, i
 			entry.Response.Deref = inner.Deref
+			entry.Response.DefaultContentType = inner.DefaultContentType
+			entry.Response.RawBody = rawBytes
+			entry.Response.SerializedBodyOnly = rawBytes
 		}
 	}
 	normaliseResponseRoles(entry)
@@ -754,6 +776,9 @@ func normaliseResponseRoles(entry *DetectedWrapper) {
 	p.TypeFromArg = false
 	p.TypeArgIndex = -1
 	p.Deref = false
+	p.DefaultContentType = ""
+	p.RawBody = false
+	p.SerializedBodyOnly = false
 	// Sticky: a later merge must not read the absence of a body role as "no
 	// body was ever found" and drop the status with it.
 	entry.bodyIsStatus = true

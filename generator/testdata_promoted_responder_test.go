@@ -47,6 +47,7 @@ func TestTestdata_PromotedResponder(t *testing.T) {
 		plainText         []string
 	}{
 		{"DELETE", "/unpin", "a promoted Status and PlainText", []string{"204", "500"}, []string{"500"}},
+		{"DELETE", "/unpin-explicit", "Status and PlainText through the field by name", []string{"204", "500"}, []string{"500"}},
 		{"GET", "/item", "an UNEXPORTED promoted method", []string{"200", "404"}, []string{"404"}},
 		{"POST", "/internal", "methods promoted through two embedded fields", []string{"202", "503"}, []string{"503"}},
 	}
@@ -64,6 +65,13 @@ func TestTestdata_PromotedResponder(t *testing.T) {
 			if !hasContentType(op, status, "text/plain;charset=utf-8") {
 				t.Errorf("%s: %s %s %s lost the plain-text body Base writes; content = %v",
 					tc.why, tc.method, tc.path, status, contentTypesOf(op, status))
+			}
+			// Base declares text/plain before it writes, and that is all it
+			// sends. The derived PlainText responder used to add the body
+			// again under the JSON default (issue #645).
+			if got := contentTypesOf(op, status); len(got) != 1 {
+				t.Errorf("%s: %s %s %s content = %v, want text/plain;charset=utf-8 only",
+					tc.why, tc.method, tc.path, status, got)
 			}
 		}
 	}
