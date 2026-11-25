@@ -45,6 +45,20 @@ func (responder) late(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// negotiated declares a different media type on each arm. Neither declaration
+// is in effect on the other arm's body, so neither is the responder's.
+func (responder) negotiated(w http.ResponseWriter, legacy bool, status int, v any) {
+	if legacy {
+		w.Header().Set("Content-Type", "application/vnd.legacy+json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(v)
+		return
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 type api struct{ out responder }
 
 func (a *api) methodHelper(w http.ResponseWriter, _ *http.Request) {
@@ -53,6 +67,10 @@ func (a *api) methodHelper(w http.ResponseWriter, _ *http.Request) {
 
 func (a *api) lateHelper(w http.ResponseWriter, _ *http.Request) {
 	a.out.late(w, http.StatusGone, Problem{Title: "gone"})
+}
+
+func (a *api) negotiatedHelper(w http.ResponseWriter, r *http.Request) {
+	a.out.negotiated(w, r.URL.Query().Get("legacy") != "", http.StatusPreconditionFailed, Problem{Title: "stale"})
 }
 
 func inline(w http.ResponseWriter, _ *http.Request) {
@@ -112,6 +130,7 @@ func main() {
 	r.Get("/fn-helper", fnHelper)
 	r.Get("/method-helper", a.methodHelper)
 	r.Get("/late-helper", a.lateHelper)
+	r.Get("/negotiated-helper", a.negotiatedHelper)
 	r.Get("/inline", inline)
 	r.Get("/implicit-status", implicitStatus)
 	r.Get("/branch-declared", branchDeclared)

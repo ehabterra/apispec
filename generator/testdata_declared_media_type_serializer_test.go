@@ -15,6 +15,7 @@
 package generator
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -90,6 +91,32 @@ func TestTestdata_DeclaredMediaTypeSerializer(t *testing.T) {
 	if op := opFor(out.Paths["/render-json"], "GET"); op != nil {
 		if got := contentTypesOf(op, "200"); len(got) != 1 || got[0] != "text/csv" {
 			t.Errorf("GET /render-json 200 content = %v, want only text/csv", got)
+		}
+	}
+
+	// A responder whose arms declare different media types: each declaration
+	// governs its own arm's body, and the walk inside the responder documents
+	// both arms under their own types. The call site adds no third,
+	// undeclared application/json.
+	if op := opFor(out.Paths["/negotiated-helper"], "GET"); op == nil {
+		t.Errorf("GET /negotiated-helper missing")
+	} else {
+		got := contentTypesOf(op, "412")
+		sort.Strings(got)
+		want := []string{"application/problem+json", "application/vnd.legacy+json"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("GET /negotiated-helper 412 content = %v, want %v", got, want)
+		}
+		if s := op.Responses["412"].Content["application/vnd.legacy+json"].Schema; s == nil || !strings.HasSuffix(s.Ref, "_Problem") {
+			t.Errorf("GET /negotiated-helper 412 legacy schema = %+v, want a $ref to Problem", s)
+		}
+		// Change detector: the second arm's declaration, sent with the status
+		// written after it, keeps its binary placeholder beside the body that
+		// adopts it, because the first arm's body already holds the slot and
+		// the two compose as alternates. When that composition lets the body
+		// displace the placeholder this becomes a plain $ref to Problem.
+		if s := op.Responses["412"].Content["application/problem+json"].Schema; s == nil || len(s.AnyOf) != 2 {
+			t.Errorf("GET /negotiated-helper 412 problem+json schema = %+v, want the anyOf of placeholder and Problem (change detector)", s)
 		}
 	}
 
