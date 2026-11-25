@@ -300,6 +300,19 @@ type ResponseInfo struct {
 	// declaration belongs to THAT status (review of #577).
 	HeaderDeclaration bool
 
+	// MediaTypeFromHeader marks a serializer's body whose media type is
+	// whatever the response's Content-Type header says when it goes out: the
+	// call fixes no media type and writes no header of its own (see
+	// ResponsePattern.SetsContentType). Its ContentType is only the default
+	// that applies when the handler declares none, so a declaration in effect
+	// on its chain is its media type (issue #652).
+	MediaTypeFromHeader bool
+
+	// DefersHeaders marks a status write that leaves the headers open (see
+	// ResponsePattern.DefersHeaders): a Content-Type declared after it still
+	// describes the body that follows.
+	DefersHeaders bool
+
 	// StatusUnresolved marks a status WRITE whose value could not be read
 	// (`w.WriteHeader(computeStatus())`). It documents nothing itself — no status,
 	// no body — and is never stored; it exists so pairing knows the handler does
@@ -1917,7 +1930,8 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// chain -> where a status was WRITTEN on it. WriteHeader commits the
 	// response headers, so a Content-Type set after one has no effect, and
 	// reading it would hand the pending status to its default 200 (review of
-	// #577). Same file only: dominance answers permissively across files, and
+	// #577). Not a write that defers the headers — gin's `c.Status` — where
+	// the declaration after it is still sent (review of #652). Same file only: dominance answers permissively across files, and
 	// the fragments' file order is not execution order.
 	committedAt := map[string]stmtPos{}
 	posOf := func(f *fragment) stmtPos {
@@ -1965,24 +1979,48 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 		}
 		return true
 	}
+	// inEffect returns the Content-Type declaration in effect where f writes
+	// its body: the last one on its own chain that dominates it. A declaration
+	// on one branch only, or on another route's chain, is not what this body
+	// goes out under.
+	inEffect := func(f *fragment) *fragment {
+		bodyAt := posOf(f)
+		decls := declared[f.chain]
+		for i := len(decls) - 1; i >= 0; i-- {
+			if d := decls[i]; e.controlFlow().dominates(framePositions(posOf(d), bodyAt)) {
+				return d
+			}
+		}
+		return nil
+	}
 	// declarationOf returns the Content-Type declaration that describes raw
-	// bytes: the last one on their own chain that dominates them. nil when the
-	// bytes declare their own media type, when nothing declares one, or when
-	// the declaration already sits in the bytes' slot, where store pairs them.
+	// bytes. nil when the bytes declare their own media type, when nothing
+	// declares one, or when the declaration already sits in the bytes' slot,
+	// where store pairs them.
 	declarationOf := func(f *fragment) *fragment {
 		if !f.resp.RawBytes || f.resp.MediaTypeDeclared {
 			return nil
 		}
-		bodyAt := posOf(f)
-		decls := declared[f.chain]
-		for i := len(decls) - 1; i >= 0; i-- {
-			d := decls[i]
-			if !e.controlFlow().dominates(framePositions(posOf(d), bodyAt)) {
-				continue
-			}
-			if d.resp.StatusCode == f.resp.StatusCode && !d.resp.DeclarationOnly {
-				return nil
-			}
+		d := inEffect(f)
+		if d != nil && d.resp.StatusCode == f.resp.StatusCode && !d.resp.DeclarationOnly {
+			return nil
+		}
+		return d
+	}
+	// adoptedBy returns the declaration whose media type a serializer's body
+	// goes out under (see ResponseInfo.MediaTypeFromHeader). json.Encoder
+	// writes no Content-Type, so `Header().Set(…problem+json)`,
+	// `WriteHeader(400)`, `Encode(p)` sends p as problem+json; filed under the
+	// JSON default, the body sat beside the declaration's own binary
+	// placeholder, or a 200 the handler never sends (issue #652).
+	//
+	// Not a tentative declaration: its media type is one a serializer
+	// produces, and beside a body the body describes itself (issue #570).
+	adoptedBy := func(f *fragment) *fragment {
+		if !f.resp.MediaTypeFromHeader || f.resp.RawBytes || f.resp.HeaderDeclaration || bodyless(f.resp) {
+			return nil
+		}
+		if d := inEffect(f); d != nil && !d.resp.DeclarationOnly {
 			return d
 		}
 		return nil
@@ -1995,6 +2033,20 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 	// text/plain bytes on one 404 documented application/json beside both
 	// (issue #645).
 	storeBody := func(f *fragment, statusStated bool) {
+		if d := adoptedBy(f); d != nil {
+			cp := *f.resp
+			cp.ContentType = d.resp.ContentType
+			store(&cp, statusStated)
+			// The declaration leaves its own slot only when this body always
+			// follows it. Adopted by an early exit — `c.Header(…text/csv…)`,
+			// then `if err != nil { c.JSON(500, …); return }` ahead of the
+			// stream — it still goes out under its default status on the path
+			// that streams.
+			if d.file == f.file && alwaysReaches(f.chain, posOf(d).at, posOf(f).at) {
+				moved[d.resp] = true
+			}
+			return
+		}
 		d := declarationOf(f)
 		if d == nil {
 			store(f.resp, statusStated)
@@ -2104,7 +2156,9 @@ func (e *Extractor) pairAndFillResponses(route *RouteInfo, candidates []response
 			store(f.resp, false)
 		case known && body == "":
 			store(f.resp, f.resp.StatusInFrame)
-			committedAt[f.chain] = posOf(f)
+			if !f.resp.DefersHeaders {
+				committedAt[f.chain] = posOf(f)
+			}
 			pending[f.chain] = true
 			pendingStatus[f.chain] = status
 			pendingAt[f.chain] = posOf(f)
@@ -3435,6 +3489,59 @@ func (r *ResponsePatternMatcherImpl) GetPriority() int {
 	return priority
 }
 
+// takesHeaderMediaType reports whether a pattern's body goes out under the
+// media type the response's Content-Type header holds when it is written: the
+// call fixes no media type of its own — not by name, not from an argument —
+// and does not write the header itself (see ResponseInfo.MediaTypeFromHeader).
+func takesHeaderMediaType(p *ResponsePattern) bool {
+	return !p.ContentTypeFromHeaderWrite && !p.ContentTypeFromArg && p.DefaultContentType == "" &&
+		!p.SetsContentType && p.DeclaredContentType == ""
+}
+
+// headerDeclaration reads the media type a Content-Type header write declares
+// on the response. ok is false when the call is not one: a header write that
+// names another header, a value decided at runtime, or a header that is not
+// the response's. tentative marks a media type a serializer can produce.
+func (r *ResponsePatternMatcherImpl) headerDeclaration(node TrackerNodeInterface) (declared string, tentative, ok bool) {
+	// No writer provenance configured means RequireResponseDestination
+	// could not run, and a header write is a shape that genuinely
+	// occurs on an OUTBOUND request — the same confusion issues #513 and
+	// #519 are about, pointed a third way. Unverifiable, so not claimed: a
+	// framework whose ResponseContext declares no writer types documents no
+	// streamed body until it does, rather than documenting one that might
+	// be a client call (golden rule #7).
+	if r.destResolver == nil || !r.destResolver.Enabled() {
+		return "", false, false
+	}
+	declared, ok = r.contentTypeHeaderWrite(node.GetEdge())
+	if !ok {
+		return "", false, false
+	}
+	// A header set on an outbound request, or on a map nothing sends, is
+	// not this operation's response — and the generic destination gate cannot
+	// place a header write at all (issue #543).
+	if r.destResolver.HeaderWriteDetached(node) {
+		return "", false, false
+	}
+	// A media type a serializer already describes is not necessarily a
+	// stream. If a serializer wrote the body, that pattern documents it
+	// properly; if its body did not resolve, unresolved is the honest
+	// answer — calling a document a binary blob stops a generated client
+	// parsing it, which is worse than saying nothing (golden rule #7).
+	//
+	// But nothing here knows whether a serializer ran. A handler serving
+	// its embedded openapi.yaml declares application/yaml and writes the
+	// bytes itself, and dropping the declaration left those bytes under
+	// the JSON default (issue #570). So the declaration is kept as
+	// tentative and pairing decides (see ResponseInfo.DeclarationOnly).
+	//
+	// The default media type is no exception. Undeclared raw bytes no
+	// longer fall back to it — the server sniffs them (issue #596) — so a
+	// declared `application/json` is what stops `w.Write([]byte("{…}"))`
+	// being documented as the text/plain it would otherwise be sent as.
+	return declared, r.serializerCovers(declared), true
+}
+
 // ExtractResponse extracts response information from a matched node.
 //
 // Returns a slice to support conditional status codes (issue #39): when the
@@ -3501,46 +3608,15 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	// that does not name Content-Type — or names it with a value decided at
 	// runtime — is not a response at all (issue #517).
 	if r.pattern.ContentTypeFromHeaderWrite {
-		// No writer provenance configured means RequireResponseDestination
-		// above could not run, and a header write is a shape that genuinely
-		// occurs on an OUTBOUND request — the same confusion issues #513 and
-		// #519 are about, pointed a third way. Unverifiable, so not claimed: a
-		// framework whose ResponseContext declares no writer types documents no
-		// streamed body until it does, rather than documenting one that might
-		// be a client call (golden rule #7).
-		if r.destResolver == nil || !r.destResolver.Enabled() {
-			return nil
-		}
-		declared, ok := r.contentTypeHeaderWrite(node.GetEdge())
+		declared, isTentative, ok := r.headerDeclaration(node)
 		if !ok {
 			return nil
 		}
-		// A header set on an outbound request, or on a map nothing sends, is
-		// not this operation's response — and the generic gate above cannot
-		// place a header write at all (issue #543).
-		if r.destResolver.HeaderWriteDetached(node) {
-			return nil
-		}
-		// A media type a serializer already describes is not necessarily a
-		// stream. If a serializer wrote the body, that pattern documents it
-		// properly; if its body did not resolve, unresolved is the honest
-		// answer — calling a document a binary blob stops a generated client
-		// parsing it, which is worse than saying nothing (golden rule #7).
-		//
-		// But nothing here knows whether a serializer ran. A handler serving
-		// its embedded openapi.yaml declares application/yaml and writes the
-		// bytes itself, and dropping the declaration left those bytes under
-		// the JSON default (issue #570). So the declaration is kept as
-		// tentative and pairing decides (see ResponseInfo.DeclarationOnly).
-		//
-		// The default media type is no exception. Undeclared raw bytes no
-		// longer fall back to it — the server sniffs them (issue #596) — so a
-		// declared `application/json` is what stops `w.Write([]byte("{…}"))`
-		// being documented as the text/plain it would otherwise be sent as.
-		if r.serializerCovers(declared) {
-			tentative = true
-		}
+		tentative = isTentative
 		contentType = declared
+	}
+	if r.pattern.DeclaredContentType != "" {
+		contentType = r.pattern.DeclaredContentType
 	}
 
 	// A call that states its own media type (`c.Data(200, "application/pdf",
@@ -3559,11 +3635,13 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 	}
 
 	respInfo := &ResponseInfo{
-		StatusCode:        leastStatusCode - 1,
-		ContentType:       contentType,
-		MediaTypeDeclared: r.pattern.ContentTypeFromHeaderWrite || statedMediaType,
-		DeclarationOnly:   tentative,
-		HeaderDeclaration: r.pattern.ContentTypeFromHeaderWrite,
+		StatusCode:          leastStatusCode - 1,
+		ContentType:         contentType,
+		MediaTypeDeclared:   r.pattern.ContentTypeFromHeaderWrite || statedMediaType,
+		DeclarationOnly:     tentative,
+		HeaderDeclaration:   r.pattern.ContentTypeFromHeaderWrite,
+		MediaTypeFromHeader: takesHeaderMediaType(&r.pattern),
+		DefersHeaders:       r.pattern.DefersHeaders,
 	}
 
 	edge := node.GetEdge()
@@ -3811,25 +3889,30 @@ func (r *ResponsePatternMatcherImpl) ExtractResponse(node TrackerNodeInterface, 
 			expanded, residue = r.statusesFromMapperField(statusArg, node)
 		}
 		if len(expanded) > 1 || (len(expanded) >= 1 && residue) {
+			// Every copy is the same write, so each goes out under whatever
+			// Content-Type the handler declared ahead of it: without the
+			// mark, `c.Header(…problem+json…)` then `c.JSON(code, p)` left
+			// every branch's body under the JSON default and the declaration
+			// at a 200 the handler never sends (review of #652).
+			fanned := func(status int) *ResponseInfo {
+				return &ResponseInfo{
+					StatusCode:          status,
+					ContentType:         respInfo.ContentType,
+					BodyType:            respInfo.BodyType,
+					Schema:              respInfo.Schema,
+					MediaTypeFromHeader: respInfo.MediaTypeFromHeader,
+					DefersHeaders:       respInfo.DefersHeaders,
+				}
+			}
 			out := make([]*ResponseInfo, 0, len(expanded)+1)
 			for _, st := range expanded {
-				out = append(out, &ResponseInfo{
-					StatusCode:  st,
-					ContentType: respInfo.ContentType,
-					BodyType:    respInfo.BodyType,
-					Schema:      respInfo.Schema,
-				})
+				out = append(out, fanned(st))
 			}
 			// A non-constant branch keeps an honest `default`: a fresh
 			// unresolved status (below every real code), never a copy of an
 			// already-resolved concrete status.
 			if residue {
-				out = append(out, &ResponseInfo{
-					StatusCode:  unresolvedStatus,
-					ContentType: respInfo.ContentType,
-					BodyType:    respInfo.BodyType,
-					Schema:      respInfo.Schema,
-				})
+				out = append(out, fanned(unresolvedStatus))
 			}
 			return out
 		}

@@ -750,6 +750,38 @@ type ResponsePattern struct {
 	// serializer's document (issue #544).
 	RawBody bool `yaml:"rawBody,omitempty" json:"rawBody,omitempty"`
 
+	// SetsContentType marks a call that writes the Content-Type header itself,
+	// replacing one the handler set before it — fiber's `c.JSON` calls
+	// SetContentType unconditionally. A serializer without it leaves the
+	// header to the handler: net/http's json.Encoder writes none, and gin's
+	// and echo's renderers set theirs only when none is set. A Content-Type
+	// declared ahead of such a call is the media type its body goes out
+	// under (issue #652), so this is what stops that declaration being
+	// adopted where the server overwrites it.
+	SetsContentType bool `yaml:"setsContentType,omitempty" json:"setsContentType,omitempty"`
+
+	// DefersHeaders marks a status-only call that records the status without
+	// sending the headers: they go out with the first body write, so a
+	// Content-Type set after the call still reaches the client. gin's
+	// `c.Status` and its writer's WriteHeader, fiber's `c.Status` and chi's
+	// `render.Status` work this way. Without it a status write commits the
+	// headers, as net/http's WriteHeader and echo's Response.WriteHeader do,
+	// and a declaration after it is ignored.
+	DefersHeaders bool `yaml:"defersHeaders,omitempty" json:"defersHeaders,omitempty"`
+
+	// DeclaredContentType is the media type a responder declares in the
+	// Content-Type header itself before writing its body — a derived
+	// `func (r responder) Problem(w, status, v)` that sets
+	// application/problem+json and then encodes v. The call sends its body
+	// under that type whatever its caller declared, so it implies
+	// SetsContentType.
+	//
+	// Not DefaultContentType: that one makes the call a serializer OF its
+	// media type (see serializerCovers), which would turn every other
+	// declaration of the type tentative — and a declaration beside a body
+	// it does not describe is dropped.
+	DeclaredContentType string `yaml:"declaredContentType,omitempty" json:"declaredContentType,omitempty"`
+
 	// SerializedBodyOnly marks a derived responder whose body parameter is
 	// forwarded into a RawBody write: the method writes whatever bytes its
 	// caller hands it. Those bytes are a document only where the caller
@@ -1567,7 +1599,7 @@ func (p *RoutePattern) MatchFunctionName(functionName string) bool {
 // netHTTPResponsePatterns returns the standard ResponseWriter and net/http
 // helper response patterns. Identical across every framework default.
 func netHTTPResponsePatterns() []ResponsePattern {
-	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`, sniffedMedia),
+	return append(responseWriterPatterns(`^net/http\.ResponseWriter$`, `^WriteHeader$`, `^Write$`, false, sniffedMedia),
 		ResponsePattern{
 			CallRegex:          `^Error$`,
 			StatusArgIndex:     2,
@@ -1605,8 +1637,9 @@ func netHTTPResponsePatterns() []ResponsePattern {
 // One constructor for every framework (golden rule #5): what differs is the
 // writer's type, the names of its calls, and how its server picks a media type
 // the handler did not declare. writeHeaderCall is empty for a writer whose
-// status is set elsewhere (fiber's `c.Status`).
-func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, undeclared undeclaredMedia) []ResponsePattern {
+// status is set elsewhere (fiber's `c.Status`); headersDeferred marks a writer
+// whose WriteHeader only records the status (see ResponsePattern.DefersHeaders).
+func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, headersDeferred bool, undeclared undeclaredMedia) []ResponsePattern {
 	var out []ResponsePattern
 	if writeHeaderCall != "" {
 		out = append(out, ResponsePattern{
@@ -1615,6 +1648,7 @@ func responseWriterPatterns(recvTypeRegex, writeHeaderCall, writeCall string, un
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  recvTypeRegex,
+			DefersHeaders:  headersDeferred,
 		})
 	}
 	return append(out, ResponsePattern{
@@ -1919,6 +1953,7 @@ type statusOnlyCall struct {
 	call          string
 	statusArg     int
 	defaultStatus int
+	defersHeaders bool
 }
 
 // statusOnlyPatterns builds the status-only patterns for one receiver.
@@ -1932,6 +1967,7 @@ func statusOnlyPatterns(recvTypeRegex string, calls ...statusOnlyCall) []Respons
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			DefaultStatus:  c.defaultStatus,
+			DefersHeaders:  c.defersHeaders,
 		})
 	}
 	return out

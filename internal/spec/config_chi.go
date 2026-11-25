@@ -31,12 +31,18 @@ func DefaultChiConfig() *APISpecConfig {
 			StatusFromArg: false,
 			Deref:         true,
 			RecvTypeRegex: "^github\\.com/go-chi/render$",
+			// render.JSON sets Content-Type to application/json unconditionally:
+			// a Content-Type set before it is replaced, not adopted (issue #652).
+			SetsContentType: true,
 		},
 		ResponsePattern{
 			CallRegex:      `^Status$`,
 			StatusArgIndex: 1,
 			StatusFromArg:  true,
 			RecvTypeRegex:  "^github\\.com/go-chi/render$",
+			// render.Status stores the status in the request context; nothing
+			// is written until a responder runs.
+			DefersHeaders: true,
 		},
 	)
 	responsePatterns = append(responsePatterns, nonJSONEncodePatterns()...)

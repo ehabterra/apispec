@@ -38,7 +38,7 @@ func DefaultFiberConfig() *APISpecConfig {
 	// bytes verbatim, and its status is `c.Status`, below (issue #576).
 	// fasthttp does not sniff: undeclared bytes go out as text/plain unless
 	// the app sets DisableDefaultContentType (issue #596).
-	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`,
+	responsePatterns = append(responsePatterns, responseWriterPatterns(fiberCtxRecv, "", `^(Send|Write)$`, false,
 		undeclaredMedia{contentType: contentTypeText})...)
 	responsePatterns = append(responsePatterns,
 		ResponsePattern{
@@ -48,6 +48,9 @@ func DefaultFiberConfig() *APISpecConfig {
 			TypeFromArg:    true,
 			Deref:          true,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+			// fasthttp's SetContentType: a Content-Type set before it is
+			// replaced, not adopted (issue #652).
+			SetsContentType: true,
 		},
 		ResponsePattern{
 			CallRegex:      `^Status$`,
@@ -55,6 +58,8 @@ func DefaultFiberConfig() *APISpecConfig {
 			StatusFromArg:  true,
 			TypeArgIndex:   -1,
 			RecvTypeRegex:  `^github\.com/gofiber/fiber(/v\d)?\.\*Ctx$`,
+			// fasthttp sends the headers when the handler returns.
+			DefersHeaders: true,
 		},
 		// An error the handler RETURNS: fiber's default ErrorHandler writes
 		// the status it carries and sends its message as plain text
@@ -85,9 +90,10 @@ func DefaultFiberConfig() *APISpecConfig {
 	// JSONP names text/javascript, not echo's and gin's application/javascript
 	// (review of #584).
 	responsePatterns = append(responsePatterns, typedRendererPatterns(ResponsePattern{
-		StatusArgIndex: -1,
-		Deref:          true,
-		RecvTypeRegex:  fiberCtxRecv,
+		StatusArgIndex:  -1,
+		Deref:           true,
+		RecvTypeRegex:   fiberCtxRecv,
+		SetsContentType: true,
 	},
 		typedRendererCall{call: `^XML$`, typeArg: 0, mediaType: contentTypeXML},
 		typedRendererCall{call: `^JSONP$`, typeArg: 0, mediaType: contentTypeJSONPText},
